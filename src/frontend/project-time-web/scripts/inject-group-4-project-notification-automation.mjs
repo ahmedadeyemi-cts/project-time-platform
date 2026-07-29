@@ -5,38 +5,9 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const sourceRoot = path.join(webRoot, 'src');
+const appPath = path.join(sourceRoot, 'App.jsx');
+const registryPath = path.join(sourceRoot, 'module-availability-registry.js');
 const importLine = "import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';";
-const markerStart = 'GROUP_4_PROJECT_NOTIFICATION_AUTOMATION_START';
-const markerEnd = 'GROUP_4_PROJECT_NOTIFICATION_AUTOMATION_END';
-const group3Marker = 'GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START';
-
-const moduleTargets = [
-  {
-    file: 'CostOverrunAlertCenter.jsx',
-    importAnchor: "import './cost-overrun-alert-center.css';",
-    rootAnchor: '    <section className="cost-alert-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="routing" />'
-  },
-  {
-    file: 'TimeComplianceCenter.jsx',
-    importAnchor: "import './time-compliance-center.css';",
-    rootAnchor: '    <section id="time-compliance" className="time-compliance-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="scheduling" />'
-  },
-  {
-    file: 'CloseoutEmailAutomationCenter.jsx',
-    importAnchor: "import './closeout-email-automation-center.css';",
-    rootAnchor: '    <div className="closeout-email-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="closeout" />'
-  },
-  {
-    file: 'ProjectManagerWorkloadCenter.jsx',
-    importAnchor: "import './project-manager-workload-center.css';",
-    rootAnchor: '    <section className="pm-workload-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="pm" />',
-    mountWhenGroup3Present: "      <ProjectNotificationAutomationCenter workspace={'pm'} />"
-  }
-];
 
 function count(source, needle) {
   return source.split(needle).length - 1;
@@ -46,84 +17,115 @@ function write(filePath, source) {
   fs.writeFileSync(filePath, source.endsWith('\n') ? source : `${source}\n`, 'utf8');
 }
 
-function installModulePanel(configuration) {
-  const filePath = path.join(sourceRoot, configuration.file);
-  if (!fs.existsSync(filePath)) throw new Error(`Group 4 target is missing: ${configuration.file}`);
-  let source = fs.readFileSync(filePath, 'utf8');
-  const selectedMount = configuration.mountWhenGroup3Present && source.includes(group3Marker)
-    ? configuration.mountWhenGroup3Present
-    : configuration.mount;
-  const knownMounts = [configuration.mount, configuration.mountWhenGroup3Present].filter(Boolean);
+function installApp() {
+  if (!fs.existsSync(appPath)) throw new Error('Group 4 App.jsx target is missing.');
+  let source = fs.readFileSync(appPath, 'utf8');
 
   if (!source.includes(importLine)) {
-    if (!source.includes(configuration.importAnchor)) throw new Error(`Group 4 import anchor is missing in ${configuration.file}.`);
-    source = source.replace(configuration.importAnchor, `${configuration.importAnchor}\n${importLine}`);
+    const importAnchor = "import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';";
+    if (!source.includes(importAnchor)) throw new Error('Group 4 App import anchor is missing.');
+    source = source.replace(importAnchor, `${importAnchor}\n${importLine}`);
   }
 
-  if (!source.includes(markerStart)) {
-    if (!source.includes(configuration.rootAnchor)) throw new Error(`Group 4 root anchor is missing in ${configuration.file}.`);
-    source = source.replace(configuration.rootAnchor, [
-      configuration.rootAnchor,
-      `      {/* ${markerStart} */}`,
-      selectedMount,
-      `      {/* ${markerEnd} */}`
-    ].join('\n'));
-  } else if (!source.includes(selectedMount) && configuration.mountWhenGroup3Present) {
-    const currentMount = knownMounts.find((mount) => source.includes(mount));
-    if (!currentMount) throw new Error(`Group 4 mount is missing in ${configuration.file}.`);
-    source = source.replace(currentMount, selectedMount);
-  }
-
-  if (count(source, importLine) !== 1) throw new Error(`Group 4 import must appear exactly once in ${configuration.file}.`);
-  if (count(source, markerStart) !== 1 || count(source, markerEnd) !== 1) throw new Error(`Group 4 markers must appear exactly once in ${configuration.file}.`);
-  const mountedVariants = knownMounts.reduce((total, mount) => total + count(source, mount.trim()), 0);
-  if (mountedVariants !== 1 || count(source, selectedMount.trim()) !== 1) {
-    throw new Error(`Group 4 mount must appear exactly once in ${configuration.file}.`);
-  }
-  write(filePath, source);
-}
-
-function installStandaloneModule032() {
-  const appPath = path.join(sourceRoot, 'App.jsx');
-  let app = fs.readFileSync(appPath, 'utf8');
-  const appImportAnchor = "import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';";
-  const appImport = "import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';";
-  const routeAnchor = `      {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (`;
-  const routeBlock = [
-    `      {/* GROUP_4_MODULE_032_ROUTE_START */}`,
-    `      {(activeRoute === 'notification-delivery-monitor' && canSeeAny(['VIEW_NOTIFICATION_DELIVERY_MONITOR', 'MANAGE_NOTIFICATION_DELIVERY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (`,
-    `        <section id="notification-delivery-monitor" className="panel notification-delivery-monitor-route-panel">`,
-    `          <ProjectNotificationAutomationCenter workspace="delivery" />`,
-    `        </section>`,
-    `      ) : null}`,
-    `      {/* GROUP_4_MODULE_032_ROUTE_END */}`,
-    ``
+  const module032Navigation = [
+    '  {',
+    '    route: "notification-delivery-monitor",',
+    '    href: "#notification-delivery-monitor",',
+    '    title: "Notification Delivery Monitor",',
+    '    navLabel: "MODULE 032",',
+    '    description: "Monitor project notification dispatches, automatically derived recipients, source failures, retry evidence, and Module 065 governed delivery.",',
+    '    permissions: ["VIEW_NOTIFICATION_DELIVERY_MONITOR", "MANAGE_NOTIFICATION_DELIVERY", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],',
+    '    roleCodes: ["PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "ACCOUNTING", "ACCOUNTING_BILLING", "BILLING", "FINANCE", "EXECUTIVE", "ENGINEERING", "ENGINEERING_LEAD", "SALES", "INSIDE_SALES", "SOLUTION_ARCHITECT", "MANAGER", "PROJECT_TEAM_COORDINATOR", "ADMINISTRATOR", "SUPER_ADMINISTRATOR"],',
+    '  },'
   ].join('\n');
 
-  if (!app.includes(appImport)) {
-    if (!app.includes(appImportAnchor)) throw new Error('Group 4 App import anchor is missing.');
-    app = app.replace(appImportAnchor, `${appImportAnchor}\n${appImport}`);
+  if (!source.includes('route: "notification-delivery-monitor"')) {
+    const navAnchor = '  {\n    route: "reporting",';
+    if (!source.includes(navAnchor)) throw new Error('Group 4 primary navigation anchor is missing.');
+    source = source.replace(navAnchor, `${module032Navigation}\n${navAnchor}`);
   }
-  if (!app.includes('GROUP_4_MODULE_032_ROUTE_START')) {
-    if (!app.includes(routeAnchor)) throw new Error('Group 4 App route anchor is missing.');
-    app = app.replace(routeAnchor, `${routeBlock}${routeAnchor}`);
-  }
-  if (count(app, appImport) !== 1) throw new Error('Group 4 App import is not unique.');
-  if (count(app, 'GROUP_4_MODULE_032_ROUTE_START') !== 1) throw new Error('Group 4 Module 032 route is not unique.');
-  write(appPath, app);
 
-  const registryPath = path.join(sourceRoot, 'module-availability-registry.js');
-  let registry = fs.readFileSync(registryPath, 'utf8');
-  const registryAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),";
-  const registryEntry = "  Object.freeze({ moduleNumber: '032', route: 'notification-delivery-monitor', displayName: 'Notification Delivery Monitor', group: 'Reports & Workflow', description: 'Operational inbox for project notification dispatches, automatically derived recipients, Module 065 readiness, source failures, retries, and immutable delivery evidence.' }),";
-  if (!registry.includes(registryEntry)) {
-    if (!registry.includes(registryAnchor)) throw new Error('Group 4 registry anchor is missing.');
-    registry = registry.replace(registryAnchor, `${registryAnchor}\n${registryEntry}`);
+  const installedEntry = [
+    '    {',
+    '      route: "notification-delivery-monitor",',
+    '      href: "#notification-delivery-monitor",',
+    '      title: "Notification Delivery Monitor",',
+    '      navLabel: "MODULE 032",',
+    '      group: "Reports & Workflow",',
+    '      description: "Monitor project notification dispatches, automatically derived recipients, source failures, retry evidence, and Module 065 governed delivery.",',
+    '      permissions: ["VIEW_NOTIFICATION_DELIVERY_MONITOR", "MANAGE_NOTIFICATION_DELIVERY", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],',
+    '    },'
+  ].join('\n');
+
+  if (count(source, 'route: "notification-delivery-monitor"') < 2) {
+    const installedAnchor = '    {\n      route: "reporting",';
+    if (!source.includes(installedAnchor)) throw new Error('Group 4 installed module anchor is missing.');
+    source = source.replace(installedAnchor, `${installedEntry}\n${installedAnchor}`);
   }
-  if (count(registry, registryEntry) !== 1) throw new Error('Group 4 Module 032 registry entry is not unique.');
-  write(registryPath, registry);
+
+  if (!source.includes('GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE')) {
+    const routeAnchor = `      {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (`;
+    if (!source.includes(routeAnchor)) throw new Error('Group 4 route mount anchor is missing.');
+    const routeBlock = [
+      '      {/* GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE */}',
+      `      {(activeRoute === 'notification-delivery-monitor' && canSeeAny(['VIEW_NOTIFICATION_DELIVERY_MONITOR', 'MANAGE_NOTIFICATION_DELIVERY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (`,
+      '        <section id="notification-delivery-monitor" className="panel notification-delivery-monitor-route-panel">',
+      '          <ProjectNotificationAutomationCenter mode="delivery-monitor" authSession={authSession} />',
+      '        </section>',
+      '      ) : null}',
+      ''
+    ].join('\n');
+    source = source.replace(routeAnchor, `${routeBlock}${routeAnchor}`);
+  }
+
+  if (!source.includes('GROUP_4_MODULE_022_CONFIGURABLE_RULES')) {
+    const module022Anchor = '        <section id="cost-alerts" className="panel cost-alert-route-panel">';
+    if (!source.includes(module022Anchor)) throw new Error('Group 4 Module 022 anchor is missing.');
+    source = source.replace(module022Anchor, [
+      module022Anchor,
+      '          {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}',
+      '          <ProjectNotificationAutomationCenter mode="routing-rules" authSession={authSession} />'
+    ].join('\n'));
+  }
+
+  if (!source.includes('GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES')) {
+    const module023Anchor = '        <section id="time-compliance" className="panel time-compliance-route-panel">';
+    if (!source.includes(module023Anchor)) throw new Error('Group 4 Module 023 anchor is missing.');
+    source = source.replace(module023Anchor, [
+      module023Anchor,
+      '          {/* GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES */}',
+      '          <ProjectNotificationAutomationCenter mode="schedules" authSession={authSession} />'
+    ].join('\n'));
+  }
+
+  if (count(source, importLine) !== 1) throw new Error('Group 4 import must appear exactly once.');
+  if (count(source, 'GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE') !== 1) throw new Error('Group 4 Module 032 route marker must appear once.');
+  if (count(source, 'GROUP_4_MODULE_022_CONFIGURABLE_RULES') !== 1) throw new Error('Group 4 Module 022 marker must appear once.');
+  if (count(source, 'GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES') !== 1) throw new Error('Group 4 Module 023 marker must appear once.');
+  if (count(source, 'route: "notification-delivery-monitor"') !== 2) throw new Error('Group 4 Module 032 navigation entries must appear exactly twice.');
+
+  write(appPath, source);
 }
 
-moduleTargets.forEach(installModulePanel);
-installStandaloneModule032();
-console.log(`GROUP_4_PROJECT_NOTIFICATION_INJECTION=PASS files=${moduleTargets.map((item) => item.file).join(',')},App.jsx,module-availability-registry.js`);
+function installRegistry() {
+  if (!fs.existsSync(registryPath)) throw new Error('Group 4 module registry target is missing.');
+  let source = fs.readFileSync(registryPath, 'utf8');
+  const legacyAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),";
+  const financialReportAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Financial Report Center', group: 'Reports & Workflow', description: 'Search, preview, run, export, and review history for actual role-scoped financial reports with independent source recovery.' }),";
+  const module032 = "  Object.freeze({ moduleNumber: '032', route: 'notification-delivery-monitor', displayName: 'Notification Delivery Monitor', group: 'Reports & Workflow', description: 'Operational inbox for project notification dispatches, recipient derivation, Module 065 readiness, source failures, release, retry, and delivery evidence.' }),";
+  if (!source.includes("moduleNumber: '032'")) {
+    const anchor = source.includes(financialReportAnchor)
+      ? financialReportAnchor
+      : source.includes(legacyAnchor)
+        ? legacyAnchor
+        : null;
+    if (!anchor) throw new Error('Group 4 registry anchor is missing.');
+    source = source.replace(anchor, `${anchor}\n${module032}`);
+  }
+  if (count(source, "moduleNumber: '032'") !== 1) throw new Error('Group 4 Module 032 registry entry must appear exactly once.');
+  write(registryPath, source);
+}
+
+installApp();
+installRegistry();
+console.log('GROUP_4_NOTIFICATION_AUTOMATION_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=022,023,032,041,065');
