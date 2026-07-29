@@ -9,6 +9,18 @@ on:
       - scripts/security/apply-platform-security-remediation-20260729.py
       - src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
       - ops/projectpulse/scripts/projectpulse-send-backup-email.py
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - .github/workflows/apply-platform-security-remediation-20260729.yml
+      - scripts/security/apply-platform-security-remediation-20260729.py
+      - src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+      - ops/projectpulse/scripts/projectpulse-send-backup-email.py
   workflow_dispatch:
 
 permissions:
@@ -20,22 +32,30 @@ concurrency:
 
 jobs:
   apply-validate-and-commit:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name != 'pull_request' || github.head_ref == 'security/platform-findings-remediation-20260729')
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      TARGET_BRANCH: security/platform-findings-remediation-20260729
 
     steps:
       - name: Check out isolated security branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify branch boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$GITHUB_REF" = "refs/heads/security/platform-findings-remediation-20260729"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            test "$GITHUB_HEAD_REF" = "$TARGET_BRANCH"
+          else
+            test "$GITHUB_REF" = "refs/heads/$TARGET_BRANCH"
+          fi
           test -s scripts/security/apply-platform-security-remediation-20260729.py
           test -s src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
           test -s ops/projectpulse/scripts/projectpulse-send-backup-email.py
@@ -125,5 +145,5 @@ jobs:
 
           git diff --cached --check
           git commit -m 'Remediate platform security findings [security-source-applied]'
-          git push origin HEAD:security/platform-findings-remediation-20260729
+          git push origin "HEAD:$TARGET_BRANCH"
           echo 'SECURITY_REMEDIATION_SOURCE_COMMITTED=YES'
