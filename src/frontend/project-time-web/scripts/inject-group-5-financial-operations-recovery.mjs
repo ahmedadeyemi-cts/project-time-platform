@@ -7,6 +7,7 @@ const webRoot = path.resolve(scriptDirectory, '..');
 const sourceRoot = path.join(webRoot, 'src');
 const appPath = path.join(sourceRoot, 'App.jsx');
 const registryPath = path.join(sourceRoot, 'module-availability-registry.js');
+const componentPath = path.join(sourceRoot, 'FinancialOperationsRecoveryWorkspace.jsx');
 const importLine = "import FinancialOperationsRecoveryWorkspace from './FinancialOperationsRecoveryWorkspace.jsx';";
 
 function count(source, needle) {
@@ -15,6 +16,80 @@ function count(source, needle) {
 
 function write(filePath, source) {
   fs.writeFileSync(filePath, source.endsWith('\n') ? source : `${source}\n`, 'utf8');
+}
+
+function installAuthenticatedReportExport() {
+  if (!fs.existsSync(componentPath)) throw new Error('Group 5 report workspace target is missing.');
+  let component = fs.readFileSync(componentPath, 'utf8');
+  if (component.includes('GROUP_5_AUTHENTICATED_REPORT_EXPORT_START')) return;
+
+  const legacyDownload = `  function downloadRun(runId) {
+    if (!runId) return;
+    const link = document.createElement('a');
+    link.href = \`/api/financial-operations/reports/runs/\${runId}/export\`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }`;
+
+  const authenticatedDownload = `  /* GROUP_5_AUTHENTICATED_REPORT_EXPORT_START */
+  async function downloadRun(runId) {
+    if (!runId) return;
+    setResultState((current) => ({ ...current, error: '' }));
+    try {
+      const response = await fetch(\`/api/financial-operations/reports/runs/\${runId}/export\`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: requestHeaders(authSession)
+      });
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type') ?? '';
+        const payload = contentType.includes('application/json')
+          ? await response.json().catch(() => null)
+          : await response.text().catch(() => '');
+        throw new Error(
+          payload?.message
+          ?? payload?.detail
+          ?? payload?.status
+          ?? (typeof payload === 'string' && payload)
+          ?? \`Report export returned HTTP \${response.status}.\`
+        );
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const match = disposition.match(/filename\\*?=(?:UTF-8''|\")?([^\";]+)/i);
+      const fileName = match?.[1]
+        ? decodeURIComponent(match[1].replaceAll('"', ''))
+        : \`projectpulse-financial-report-\${runId}.csv\`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setResultState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unable to export the report.'
+      }));
+    }
+  }
+  /* GROUP_5_AUTHENTICATED_REPORT_EXPORT_END */`;
+
+  if (!component.includes(legacyDownload)) {
+    throw new Error('Group 5 authenticated report-export anchor is missing.');
+  }
+  component = component.replace(legacyDownload, authenticatedDownload);
+  if (count(component, 'GROUP_5_AUTHENTICATED_REPORT_EXPORT_START') !== 1
+      || count(component, 'GROUP_5_AUTHENTICATED_REPORT_EXPORT_END') !== 1) {
+    throw new Error('Group 5 authenticated report export must be installed exactly once.');
+  }
+  write(componentPath, component);
 }
 
 function installImport(app) {
@@ -178,6 +253,7 @@ function installRegistry() {
   write(registryPath, registry);
 }
 
+installAuthenticatedReportExport();
 installApp();
 installRegistry();
-console.log('GROUP_5_FINANCIAL_OPERATIONS_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=030,031,039,040,041,042 module038=unchanged');
+console.log('GROUP_5_FINANCIAL_OPERATIONS_INJECTION=PASS files=FinancialOperationsRecoveryWorkspace.jsx,App.jsx,module-availability-registry.js modules=030,031,039,040,041,042 module038=unchanged authenticated_export=enabled');
