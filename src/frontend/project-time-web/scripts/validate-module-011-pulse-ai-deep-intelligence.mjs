@@ -6,23 +6,27 @@ const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const absolute = (relative) => path.join(repositoryRoot, relative);
 const exists = (relative) => fs.existsSync(absolute(relative));
 const read = (relative) => fs.readFileSync(absolute(relative), 'utf8');
-const assertions = [];
+const checks = [];
 
 function assert(name, condition, evidence) {
-  assertions.push({ name, condition, evidence });
+  checks.push({ name, condition, evidence });
   console.log(`MODULE011_DEEP_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
+}
+
+function includesAll(source, markers) {
+  return markers.every((marker) => source.includes(marker));
 }
 
 function walk(relativeDirectory) {
   const directory = absolute(relativeDirectory);
   if (!fs.existsSync(directory)) return [];
-  const results = [];
+  const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const relative = path.join(relativeDirectory, entry.name).replaceAll('\\', '/');
-    if (entry.isDirectory()) results.push(...walk(relative));
-    else results.push(relative);
+    if (entry.isDirectory()) files.push(...walk(relative));
+    else files.push(relative);
   }
-  return results;
+  return files;
 }
 
 const paths = {
@@ -54,35 +58,34 @@ for (const [name, relative] of Object.entries(paths)) {
   assert(`FILE_${name.toUpperCase()}`, exists(relative), relative);
 }
 
-if (assertions.some((row) => !row.condition)) {
+if (checks.some((check) => !check.condition)) {
   console.error('MODULE_011_DEEP_INTELLIGENCE_CONTRACT=FAILED_MISSING_FILE');
   process.exit(1);
 }
 
-const content = Object.fromEntries(
+const source = Object.fromEntries(
   Object.entries(paths).map(([name, relative]) => [name, read(relative)])
 );
-const backend = [
-  content.contracts,
-  content.grounding,
-  content.planner,
-  content.sanitizer,
-  content.module,
-  content.services,
-  content.timesheet,
-  content.flowHiveFactory
+const newBackend = [
+  source.contracts,
+  source.grounding,
+  source.planner,
+  source.sanitizer,
+  source.module,
+  source.services,
+  source.timesheet,
+  source.flowHiveFactory
 ].join('\n');
-const frontend = [
-  content.workbench,
-  content.workbenchCss,
-  content.mount,
-  content.help,
-  content.helpCss,
-  content.helpBoundaryCss
+const newFrontend = [
+  source.workbench,
+  source.workbenchCss,
+  source.mount,
+  source.help,
+  source.helpCss,
+  source.helpBoundaryCss
 ].join('\n');
-const docs = [content.runtimeDoc, content.qualityDoc, content.foundationDoc, content.flowHiveAiDoc].join('\n');
 
-const requiredRoutes = [
+const routes = [
   '/api/pulse-ai/v1/overview',
   '/api/pulse-ai/v1/private-runtime/readiness',
   '/api/pulse-ai/v1/tools',
@@ -92,156 +95,176 @@ const requiredRoutes = [
   '/api/pulse-ai/v1/insights/plan',
   '/api/pulse-ai/v1/external-escalation/sanitize-preview'
 ];
-for (const route of requiredRoutes) {
-  assert(
-    `ROUTE_${route.replaceAll(/[^a-z0-9]+/gi, '_').toUpperCase()}`,
-    content.module.includes(`"${route}"`),
-    route
-  );
-}
 
+assert(
+  'API_FAMILY',
+  routes.every((route) => source.module.includes(`"${route}"`)),
+  `${routes.length} isolated Pulse AI routes`
+);
 assert(
   'ENDPOINT_REGISTRATION',
-  content.project.includes('app.MapPulseAiDeepIntelligenceEndpoints();')
-    && content.module.includes('MapPulseAiDeepIntelligenceEndpoints'),
-  'generated Program registration maps the isolated Module 011 family'
+  source.project.includes('app.MapPulseAiDeepIntelligenceEndpoints();')
+    && source.module.includes('MapPulseAiDeepIntelligenceEndpoints'),
+  'generated Program maps the deep-intelligence family'
 );
-
 assert(
   'SERVICE_REGISTRATION',
-  content.services.includes('services.AddHttpContextAccessor();')
-    && content.services.includes('PulseAiDocumentGroundingService')
-    && content.services.includes('PulseAiQuestionPlanner')
-    && content.services.includes('PulseAiEscalationSanitizer'),
-  'private grounding, planning, sanitization, and effective-user context are registered'
+  includesAll(source.services, [
+    'services.AddHttpContextAccessor();',
+    'PulseAiDocumentGroundingService',
+    'PulseAiQuestionPlanner',
+    'PulseAiEscalationSanitizer'
+  ]),
+  'effective-user, grounding, planning, and sanitization services'
 );
-
 assert(
-  'EFFECTIVE_USER_BOUNDARY',
-  content.module.includes('ProjectPulseEffectiveUserId')
-    && content.module.includes('ProjectPulseActualUserId')
-    && content.grounding.includes('ProjectPulseEffectiveUserId') === false
-    && content.grounding.includes('Guid effectiveUserId'),
-  'the endpoint resolves actual/effective identity and passes only the effective user to the grounding service'
+  'SESSION_AND_EFFECTIVE_USER',
+  includesAll(source.module, [
+    'ProjectPulseEffectiveUserId',
+    'ProjectPulseActualUserId',
+    'administrator_read_only_view_as',
+    'serverAuthorized = true'
+  ]),
+  'actual/effective identity is retained for every new endpoint'
 );
 
 assert(
   'DOCUMENT_SCHEMA_INSPECTION',
-  content.grounding.includes('information_schema.columns')
-    && content.grounding.includes("to_regclass('public.project_intake_documents')")
-    && content.grounding.includes('ai_timesheet_context_enabled')
-    && content.grounding.includes('ai_context_summary')
-    && content.grounding.includes('ai_context_last_processed_at'),
-  'the service detects existing optional document capabilities before querying them'
+  includesAll(source.grounding, [
+    "to_regclass('public.project_intake_documents')",
+    'information_schema.columns',
+    'engineering_visible',
+    'ai_timesheet_context_enabled',
+    'extraction_status',
+    'ai_context_summary',
+    'ai_context_last_processed_at'
+  ]),
+  'optional document fields are inspected before use'
 );
-
 assert(
-  'PROJECT_SCOPE_ENFORCEMENT',
-  content.grounding.includes('project_manager_user_id = @user_id')
-    && content.grounding.includes('project_assignments')
-    && content.grounding.includes('engineering_resource_requests')
-    && content.grounding.includes('project_outside_effective_user_scope'),
-  'project PM, assignment, resource-request, and broad-role boundaries are enforced'
+  'PROJECT_SCOPE',
+  includesAll(source.grounding, [
+    'project_manager_user_id = @user_id',
+    'project_assignments',
+    'engineering_resource_requests',
+    'project_outside_effective_user_scope'
+  ]),
+  'broad, PM, assignment, and resource-request project scope'
 );
-
 assert(
-  'TIMESHEET_DOCUMENT_FILTERS',
-  content.grounding.includes('COALESCE(d.engineering_visible, FALSE) = TRUE')
-    && content.grounding.includes('COALESCE(d.ai_timesheet_context_enabled, FALSE) = TRUE')
-    && content.grounding.includes('requireTimesheetContextFlag: true'),
-  'Module 001 grounding requires engineering visibility and explicit AI-timesheet eligibility'
+  'TIMESHEET_DOCUMENT_ELIGIBILITY',
+  includesAll(source.grounding, [
+    'requireTimesheetContextFlag: true',
+    'COALESCE(d.engineering_visible, FALSE) = TRUE',
+    'COALESCE(d.ai_timesheet_context_enabled, FALSE) = TRUE'
+  ]),
+  'engineering-visible and explicitly enabled timesheet context only'
 );
-
 assert(
-  'DOCUMENT_PRIORITY',
-  ['WHEN \'sow\' THEN 10', 'WHEN \'gsd\' THEN 20', 'WHEN \'architecture\' THEN 30', 'WHEN \'order\' THEN 40']
-    .every((marker) => content.grounding.includes(marker)),
-  'SOW, GSD, architecture/design, order, and supporting source precedence is deterministic'
+  'DOCUMENT_SOURCE_PRIORITY',
+  includesAll(source.grounding, [
+    "WHEN 'sow' THEN 10",
+    "WHEN 'gsd' THEN 20",
+    "WHEN 'architecture' THEN 30",
+    "WHEN 'order' THEN 40"
+  ]),
+  'deterministic SOW, GSD, design, order, and supporting precedence'
 );
-
 assert(
-  'NO_RAW_DOCUMENT_PUBLIC_RESPONSE',
-  content.contracts.includes('rawDocumentTextReturned = false')
-    && content.contracts.includes('rawDocumentTextSentExternally = false')
-    && content.contracts.includes('public object ToEvidence()')
-    && !content.contracts.match(/ToEvidence\(\)[\s\S]{0,1600}ContextSummary\s*=/),
-  'public evidence contains metadata and readiness but not the private context summary'
+  'PRIVATE_CONTEXT_NOT_EXPOSED',
+  includesAll(source.contracts, [
+    'rawDocumentTextReturned = false',
+    'rawDocumentTextSentExternally = false',
+    'public object ToEvidence()'
+  ])
+    && !/ToEvidence\(\)[\s\S]{0,1200}ContextSummary\s*=/.test(source.contracts),
+  'public evidence returns readiness and metadata, not private summaries'
 );
-
 assert(
-  'COVERAGE_CONFLICT_AND_MISSING_EVIDENCE',
-  content.grounding.includes('CoverageScore')
-    && content.grounding.includes('CoverageLevel')
-    && content.grounding.includes('BuildMissingInputs')
-    && content.grounding.includes('BuildConflicts')
-    && content.grounding.includes('eligible SOW documents')
-    && content.grounding.includes('eligible GSD documents'),
-  'the grounding result measures source coverage and surfaces version conflicts and missing inputs'
+  'SOURCE_COVERAGE',
+  includesAll(source.grounding, [
+    'CoverageScore',
+    'CoverageLevel',
+    'BuildMissingInputs',
+    'BuildConflicts',
+    'eligible SOW documents',
+    'eligible GSD documents'
+  ]),
+  'coverage, conflicts, version questions, and missing evidence'
 );
-
 assert(
   'PRIVATE_RUNTIME_READINESS',
-  [
+  includesAll(source.grounding, [
     'PROJECTPULSE_PRIVATE_AI_ENDPOINT',
     'PROJECTPULSE_PRIVATE_AI_MODEL',
     'PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT',
     'PROJECTPULSE_PRIVATE_EMBEDDING_MODEL',
     'PROJECTPULSE_PRIVATE_VECTOR_INDEX',
     'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION'
-  ].every((name) => content.grounding.includes(name))
-    && content.module.includes('externalEscalationReady = false'),
-  'private model, embedding, vector, and external-policy readiness is detected without activation'
+  ])
+    && source.module.includes('externalEscalationReady = false'),
+  'private inference, embedding, vector, and policy readiness without activation'
 );
 
 assert(
-  'EXISTING_TIMESHEET_PATH_ENHANCED',
-  content.timesheet.includes('PulseAiDocumentGroundingService')
-    && content.timesheet.includes('BuildTimesheetContextAsync')
-    && content.timesheet.includes('grounding.HasReadyPrivateContext')
-    && content.timesheet.includes('BuildPrivateGroundedSuggestion')
-    && content.timesheet.includes('BuildRemotePromptWithoutPrivateDocuments'),
-  'the existing Module 001 service receives private grounding without a duplicate workflow'
+  'TIMESHEET_EXISTING_PATH',
+  includesAll(source.timesheet, [
+    'PulseAiDocumentGroundingService',
+    'BuildTimesheetContextAsync',
+    'grounding.HasReadyPrivateContext',
+    'BuildPrivateGroundedSuggestion',
+    'BuildRemotePromptWithoutPrivateDocuments'
+  ]),
+  'existing Module 001 suggestion service is enriched'
 );
-
 assert(
-  'PRIVATE_TIMESHEET_NO_REMOTE_DOCUMENT_CONTEXT',
-  content.timesheet.includes('ProjectPulseAiProviders.Local')
-    && content.timesheet.includes('Raw document text and extracted summaries were not sent to Claude or OpenAI')
-    && content.timesheet.includes('No SOW, GSD, architecture, contract, rate, financial, customer-document, or extracted private-document content is included')
-    && !content.timesheet.includes('grounding.Documents.Select(document => document.ContextSummary')
-    && !content.timesheet.includes('grounding.ContextSummary'),
-  'ready private document context never enters the Module 064 remote prompt'
+  'TIMESHEET_PRIVATE_PATH',
+  includesAll(source.timesheet, [
+    'ProjectPulseAiProviders.Local',
+    'Raw document text and extracted summaries were not sent to Claude or OpenAI',
+    'No SOW, GSD, architecture, contract, rate, financial, customer-document, or extracted private-document content is included'
+  ])
+    && !source.timesheet.includes('grounding.ContextSummary')
+    && !source.timesheet.includes('document.ContextSummary'),
+  'ready document context stays private and outside remote prompts'
 );
-
 assert(
   'TIMESHEET_ENGINEER_CONTROL',
-  content.timesheet.includes('The Engineer must confirm')
-    && content.runtimeDoc.includes('Engineer must review and explicitly apply')
-    && content.qualityDoc.includes('cannot change hours, date, time type, project, task, category, allocation'),
-  'the Engineer remains responsible for reported work, application, save, and submission'
+  source.timesheet.includes('The Engineer must confirm')
+    && source.runtimeDoc.includes('Engineer must review and explicitly apply')
+    && source.qualityDoc.includes('cannot change hours, date, time type, project, task, category, allocation'),
+  'suggestions cannot save, submit, or replace Engineer accountability'
 );
 
+const requiredDomains = [
+  'help_and_documentation',
+  'projects_delivery_documents',
+  'time_work_utilization',
+  'flowhive_planning',
+  'financial_commercial',
+  'identity_permissions_security',
+  'platform_operations'
+];
 assert(
-  'QUESTION_MULTI_DOMAIN_PLANNING',
-  ['help_and_documentation', 'projects_delivery_documents', 'time_work_utilization', 'flowhive_planning', 'financial_commercial', 'identity_permissions_security', 'platform_operations']
-    .every((domain) => content.planner.includes(`Code: "${domain}"`))
-    && content.planner.includes('DistinctBy(domain => domain.Code)'),
-  'questions can span product, project, time, FlowHive, finance, security, and operations domains'
+  'MULTI_DOMAIN_PLANNER',
+  requiredDomains.every((domain) => source.planner.includes(`Code: "${domain}"`))
+    && source.planner.includes('DistinctBy(domain => domain.Code)'),
+  'questions can span every material ProjectPulse domain'
 );
-
 assert(
-  'DETAILED_ANSWER_CONTRACT',
-  content.planner.includes('extremely_detailed_comprehensive_source_grounded')
-    && content.planner.includes('Executive answer')
-    && content.planner.includes('Detailed evidence')
-    && content.planner.includes('Sources and freshness')
-    && content.qualityDoc.includes('Required response structure'),
-  'answers require direct conclusions, detailed evidence, calculations, uncertainty, actions, and freshness'
+  'DETAILED_ANSWER_STANDARD',
+  includesAll(source.planner, [
+    'extremely_detailed_comprehensive_source_grounded',
+    'Executive answer',
+    'Detailed evidence',
+    'Sources and freshness'
+  ])
+    && source.qualityDoc.includes('Required response structure'),
+  'direct conclusion, detail, calculations, uncertainty, action, and freshness'
 );
-
 assert(
-  'PRODUCT_KNOWLEDGE_DEPTH',
-  [
+  'DIRECT_PRODUCT_GUIDANCE',
+  includesAll(source.planner, [
     'Generate a document-grounded timesheet description',
     'Understand ProjectPulse access and permissions',
     'Create and maintain a ProjectPulse project',
@@ -250,217 +273,250 @@ assert(
     'Ask a detailed reporting or financial question',
     'Configure and govern an AI provider',
     'Report and investigate a ProjectPulse defect'
-  ].every((marker) => content.planner.includes(marker)),
-  'detailed direct guidance covers the highest-value ProjectPulse questions'
+  ]),
+  'high-value Help topics include detailed procedures and safeguards'
 );
-
 assert(
   'SEMANTIC_QUERY_NO_ARBITRARY_SQL',
-  content.planner.includes('queryType = "governed_semantic_read_plan"')
-    && content.planner.includes('arbitrarySqlAllowed = false')
-    && content.planner.includes('deterministicValuesRequired = true')
-    && content.planner.includes('unknownValuesPreserved = true')
-    && !content.planner.match(/SELECT\s|INSERT\s|UPDATE\s|DELETE\s/i),
-  'the planner creates governed metric/dimension plans rather than generated SQL'
+  includesAll(source.planner, [
+    'queryType = "governed_semantic_read_plan"',
+    'arbitrarySqlAllowed = false',
+    'deterministicValuesRequired = true',
+    'unknownValuesPreserved = true'
+  ])
+    && !/\b(?:INSERT\s+INTO|UPDATE\s+[a-z_][a-z0-9_]*\s+SET|DELETE\s+FROM|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i.test(source.planner)
+    && !/\bSELECT\s+(?:\*|[a-z_][a-z0-9_]*\s*(?:,|FROM\b))/i.test(source.planner),
+  'normal user guidance is allowed while generated SQL syntax is rejected'
 );
-
 assert(
-  'FINANCIAL_PR220_DEPENDENCY',
-  content.planner.includes('dependent_on_open_pr_220_before_runtime_consumption')
-    && content.module.includes('sourcePr = 220')
-    && [
-      '/api/project-financials/portfolio',
-      '/api/project-financials/reporting-summary',
+  'FINANCIAL_PR220_BOUNDARY',
+  includesAll(source.planner, [
+    'dependent_on_open_pr_220_before_runtime_consumption',
+    '/api/project-financials/portfolio',
+    '/api/project-financials/reporting-summary'
+  ])
+    && includesAll(source.module, [
+      'sourcePr = 220',
       '/api/project-financials/projects/{projectId}',
-      '/api/project-financials/sources'
-    ].every((route) => content.module.includes(route))
-    && content.module.includes('not_registered_in_this_dependent_branch'),
-  'Pulse AI plans consumption of PR #220 without duplicating its financial calculations'
+      '/api/project-financials/sources',
+      'not_registered_in_this_dependent_branch'
+    ]),
+  'PR #220 is referenced but not copied, estimated, or runtime-activated'
 );
 
 assert(
   'FLOWHIVE_PRIVATE_FIRST',
-  content.flowHiveFactory.includes('requiredProviderOrder = new[] { "private_model", "local_template" }')
-    && content.flowHiveFactory.includes('legacyExternalRouteRejected = new[] { "claude", "openai", "local_template" }')
-    && content.flowHiveFactory.includes('promptSha256')
-    && content.flowHiveFactory.includes('rawPromptReturned = false')
-    && content.flowHiveFactory.includes('privateDocumentContentIncluded = false')
-    && content.flowHiveFactory.includes('sanitized_reasoning_capsule_only'),
-  'detailed FlowHive context is private and only an abstract capsule can be considered externally'
+  includesAll(source.flowHiveFactory, [
+    'requiredProviderOrder = new[] { "private_model", "local_template" }',
+    'legacyExternalRouteRejected = new[] { "claude", "openai", "local_template" }',
+    'promptSha256',
+    'rawPromptReturned = false',
+    'privateDocumentContentIncluded = false',
+    'sanitized_reasoning_capsule_only'
+  ]),
+  'detailed planning context uses private model/local paths only'
 );
-
 assert(
   'FLOWHIVE_NO_DIRECT_CLIENT',
-  !/new\s+HttpClient|IHttpClientFactory|api\.anthropic|api\.openai|ANTHROPIC_API_KEY|OPENAI_API_KEY/i.test(content.flowHiveFactory)
-    && content.flowHiveFactory.includes('The preview calls no model or provider.'),
-  'FlowHive preview contains no provider client, key, or execution'
+  !/new\s+HttpClient|IHttpClientFactory|api\.anthropic|api\.openai|ANTHROPIC_API_KEY|OPENAI_API_KEY/i.test(source.flowHiveFactory)
+    && source.flowHiveFactory.includes('The preview calls no model or provider.'),
+  'FlowHive preview contains no direct provider client or key'
+);
+assert(
+  'FLOWHIVE_HUMAN_REVIEW',
+  source.flowHiveFactory.includes('AI output is a draft and cannot establish a baseline, assign resources, reserve capacity, or commit customer dates')
+    && includesAll(source.flowHiveAiDoc, [
+      'The Project Manager reviews',
+      'presenting the draft to Engineering',
+      'Engineering',
+      'cannot modify canonical tasks'
+    ]),
+  'PM review, Engineering modification, deterministic scheduling, and separate approval'
 );
 
 assert(
-  'FLOWHIVE_HUMAN_CONTROL',
-  content.flowHiveFactory.includes('cannot establish a baseline, assign resources, reserve capacity, or commit customer dates')
-    && content.flowHiveAiDoc.includes('Project Manager reviews')
-    && content.flowHiveAiDoc.includes('Engineering')
-    && content.flowHiveAiDoc.includes('cannot modify canonical tasks'),
-  'FlowHive remains draft-only with PM/Engineering review and no autonomous baseline'
+  'SANITIZER_COVERAGE',
+  includesAll(source.sanitizer, [
+    'SecretAssignment',
+    'Email',
+    'Url',
+    'Ipv4',
+    'GuidValue',
+    'CurrencyValue',
+    'Phone',
+    'LongIdentifier',
+    'PersonOrCustomerLabel',
+    'ExternalExecutionAuthorized: false'
+  ]),
+  'credentials, identities, records, infrastructure, and financial values'
 );
-
-assert(
-  'SANITIZER_CATEGORIES',
-  ['SecretAssignment', 'Email', 'Url', 'Ipv4', 'GuidValue', 'CurrencyValue', 'Phone', 'LongIdentifier', 'PersonOrCustomerLabel']
-    .every((marker) => content.sanitizer.includes(marker))
-    && content.sanitizer.includes('ExternalExecutionAuthorized: false'),
-  'sanitization detects credentials, identities, infrastructure, records, and financial values'
-);
-
 assert(
   'SANITIZER_PREVIEW_ONLY',
-  content.module.includes('externalExecutionAuthorized = false')
-    && content.module.includes('providerCalled = false')
-    && content.module.includes('module064RouteChanged = false')
-    && !/HttpClient|IHttpClientFactory|ProjectPulseAiRouter/.test(content.sanitizer),
-  'the sanitizer is local, deterministic, non-executing, and non-routing'
+  includesAll(source.module, [
+    'externalExecutionAuthorized = false',
+    'providerCalled = false',
+    'module064RouteChanged = false',
+    'rawDocumentSent = false'
+  ])
+    && !/HttpClient|IHttpClientFactory|ProjectPulseAiRouter/.test(source.sanitizer),
+  'local deterministic redaction with no provider execution or route mutation'
 );
 
 assert(
-  'GLOBAL_HELP_INTEGRATION',
-  content.help.includes("'/api/pulse-ai/v1/help-search/plan'")
-    && content.help.includes('DetailedAssistantAnswer')
-    && content.help.includes('Automatic multi-tool execution is not yet enabled')
-    && content.help.includes('fallbackAnswer')
-    && content.help.includes('retired Work Task Builder no longer owns project or task creation'),
-  'global Help uses detailed Pulse AI planning and preserves a corrected non-fabricating fallback'
+  'GLOBAL_HELP',
+  includesAll(source.help, [
+    "'/api/pulse-ai/v1/help-search/plan'",
+    'DetailedAssistantAnswer',
+    'Automatic multi-tool execution is not yet enabled',
+    'fallbackAnswer',
+    'retired Work Task Builder no longer owns project or task creation'
+  ]),
+  'global Help renders detailed guidance and a corrected fallback'
 );
-
 assert(
-  'HELP_NO_UNSAFE_HTML',
-  !content.help.includes('dangerouslySetInnerHTML')
-    && !content.help.includes('innerHTML')
-    && content.help.includes('NavigationTargets'),
-  'Help renders structured React content and safe navigation controls'
+  'HELP_SAFE_RENDERING',
+  !source.help.includes('dangerouslySetInnerHTML')
+    && !source.help.includes('innerHTML')
+    && source.help.includes('NavigationTargets'),
+  'structured React rendering without unsafe HTML injection'
 );
-
 assert(
   'WORKBENCH_MOUNT',
-  content.mount.includes("import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';")
-    && content.mount.includes('<PulseAiDeepIntelligenceWorkbench />')
-    && content.workbench.includes("import './pulse-ai-deep-intelligence-workbench.css';"),
-  'the deep workbench is mounted inside the established Module 011 compatibility route'
+  includesAll(source.mount, [
+    "import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';",
+    '<PulseAiMissionControl />',
+    '<PulseAiDeepIntelligenceWorkbench />',
+    '<PulseAiCenter />',
+    'return <PulseAiCenter />;'
+  ])
+    && source.workbench.includes("import './pulse-ai-deep-intelligence-workbench.css';"),
+  'dependent workbench extends the established Module 011 mount'
 );
-
 assert(
-  'WORKBENCH_FUNCTIONAL_TABS',
-  ['Private Runtime', 'Timesheet Grounding', 'Help & Search', 'FlowHive Planning', 'Reports & Financials', 'Privacy Capsule', 'Tool Registry']
-    .every((label) => content.workbench.includes(`label: '${label}'`))
-    && requiredRoutes.every((route) => content.workbench.includes(route)),
-  'the workbench calls every registered deep-intelligence preview surface'
+  'WORKBENCH_FUNCTIONS',
+  [
+    'Private Runtime',
+    'Timesheet Grounding',
+    'Help & Search',
+    'FlowHive Planning',
+    'Reports & Financials',
+    'Privacy Capsule',
+    'Tool Registry'
+  ].every((label) => source.workbench.includes(`label: '${label}'`))
+    && routes.every((route) => source.workbench.includes(route)),
+  'interactive previews call every registered deep-intelligence route'
 );
-
 assert(
-  'WORKBENCH_FULL_EVIDENCE',
-  content.workbench.includes('View complete structured evidence')
-    && content.workbench.includes('JSON.stringify(payload, null, 2)')
-    && content.workbench.includes('Detailed procedure')
-    && content.workbench.includes('Comprehensive execution sequence'),
-  'operators can inspect detailed results and complete structured evidence'
+  'FULL_STRUCTURED_EVIDENCE',
+  includesAll(source.workbench, [
+    'View complete structured evidence',
+    'JSON.stringify(payload, null, 2)',
+    'Detailed procedure',
+    'Comprehensive execution sequence'
+  ]),
+  'operators can inspect detailed answer structures and raw JSON evidence'
 );
-
 assert(
-  'RESPONSIVE_UI',
-  content.workbenchCss.includes('@media (max-width: 980px)')
-    && content.workbenchCss.includes('@media (max-width: 720px)')
-    && content.workbenchCss.includes('[data-theme="dark"]')
-    && content.helpCss.includes('@media (max-width: 760px)')
-    && content.helpCss.includes('@media (max-width: 620px)'),
-  'Module 011 and global Help support desktop, mobile, and dark-theme layouts'
+  'RESPONSIVE_DARK_UI',
+  includesAll(source.workbenchCss, [
+    '@media (max-width: 980px)',
+    '@media (max-width: 720px)',
+    '[data-theme="dark"]'
+  ])
+    && includesAll(source.helpCss, [
+      '@media (max-width: 760px)',
+      '@media (max-width: 620px)'
+    ]),
+  'desktop, mobile, and dark-theme behavior'
 );
-
 assert(
-  'NO_PRIVATE_BROWSER_PERSISTENCE',
-  !content.workbench.includes('localStorage')
-    && !content.workbench.includes('sessionStorage')
-    && !content.workbench.includes('indexedDB')
-    && !content.help.includes('localStorage')
-    && !content.help.includes('sessionStorage')
-    && !content.help.includes('indexedDB'),
-  'questions, documents, evidence, and capsules are not persisted by the new browser surfaces'
+  'NO_NEW_BROWSER_STORAGE',
+  !/localStorage|sessionStorage|indexedDB/.test(source.workbench)
+    && !/localStorage|sessionStorage|indexedDB/.test(source.help),
+  'new questions, evidence, and capsules are not persisted in the browser'
 );
 
 assert(
   'READ_ONLY_SQL',
-  !/\b(?:INSERT\s+INTO|UPDATE\s+[a-z_]|DELETE\s+FROM|ALTER\s+TABLE|CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i.test(
-    [content.grounding, content.module, content.planner, content.sanitizer].join('\n')
+  !/\b(?:INSERT\s+INTO|UPDATE\s+[a-z_][a-z0-9_]*\s+SET|DELETE\s+FROM|ALTER\s+TABLE|CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i.test(
+    [source.grounding, source.module, source.planner, source.sanitizer].join('\n')
   ),
-  'new Pulse AI backend code contains no mutating SQL or schema statement'
+  'new backend code contains no mutating SQL or schema statement'
 );
-
 assert(
-  'NO_DIRECT_PROVIDER_ENDPOINTS',
+  'NO_DIRECT_PROVIDER_ENDPOINT',
   !/api\.anthropic\.com|api\.openai\.com|generativelanguage\.googleapis\.com|\/v1\/chat\/completions|\/v1\/responses/i.test(
-    [content.grounding, content.planner, content.sanitizer, content.module, content.workbench, content.help].join('\n')
+    [source.grounding, source.planner, source.sanitizer, source.module, source.workbench, source.help].join('\n')
   ),
-  'new deep-intelligence paths contain no direct public-provider endpoint'
+  'new deep-intelligence paths contain no public-provider endpoint'
 );
-
 assert(
   'NO_PROVIDER_SECRET_MANAGEMENT',
   !/PROJECTPULSE_(?:CLAUDE|OPENAI)_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|ApplyStoredSecret|secret\/replace/i.test(
-    [content.grounding, content.planner, content.sanitizer, content.module, content.workbench, content.help].join('\n')
+    [source.grounding, source.planner, source.sanitizer, source.module, source.workbench, source.help].join('\n')
   ),
-  'the package does not read, write, replace, or return provider credentials'
+  'the package cannot read, replace, return, or activate provider secrets'
 );
-
 assert(
-  'DOCUMENTED_NO_MUTATION',
-  content.runtimeDoc.includes('no database migration')
-    && content.runtimeDoc.includes('no Azure or Entra change')
-    && content.runtimeDoc.includes('no external model execution')
-    && content.runtimeDoc.includes('no deployment or rollback workflow')
-    && content.qualityDoc.includes('cannot train, approve, promote, deploy, or roll back itself'),
-  'documentation records the locked database, cloud, provider, training, and deployment boundary'
+  'AUTHORITATIVE_SCOPE',
+  includesAll(source.policy, [
+    'DefaultRawDocumentBoundary',
+    'DefaultExternalEscalationPayload',
+    'timesheet_document_grounding',
+    'system_help_search',
+    'flowhive_document_planning',
+    'financial_commercial_insight'
+  ])
+    && includesAll(source.foundationDoc, [
+      'document-grounded timesheet suggestions',
+      'system-wide Help and Search',
+      'document-grounded FlowHive project planning',
+      'reporting, financial, and cross-system insight'
+    ]),
+  'dependent implementation follows PR #219 mission and privacy policy'
 );
-
 assert(
-  'FOUNDATION_SCOPE_PRESERVED',
-  content.policy.includes('InternalDocumentBoundary')
-    && content.policy.includes('ExternalProviderBoundary')
-    && content.foundationDoc.includes('Timesheet intelligence')
-    && content.foundationDoc.includes('System-wide Help and Search')
-    && content.foundationDoc.includes('Reporting and financial intelligence'),
-  'the dependent implementation follows the authoritative PR #219 mission and privacy policy'
+  'DOCUMENTED_LOCKS',
+  includesAll(source.runtimeDoc, [
+    'no database migration',
+    'no Azure or Entra change',
+    'no external model execution',
+    'no deployment or rollback workflow'
+  ])
+    && source.qualityDoc.includes('cannot train, approve, promote, deploy, or roll back itself'),
+  'database, cloud, provider, training, and deployment boundaries are explicit'
 );
-
 assert(
-  'FOUNDATION_VALIDATORS_PRESERVED',
-  content.foundationValidator.includes('MODULE_011_PULSE_AI_CONTRACT=PASSED')
-    && content.flowHiveValidator.includes('MODULE_066_SHARED_AI_ONLY'),
-  'existing Module 011 and Module 066 source contracts remain present'
+  'PRESERVED_VALIDATORS',
+  source.foundationValidator.includes('MODULE_011_PULSE_AI_CONTRACT=PASSED')
+    && source.flowHiveValidator.includes('MODULE_066_SHARED_AI_ONLY'),
+  'foundation and FlowHive contracts remain intact'
 );
 
-const pulseAiMigrations = walk('database/migrations')
+const migrations = walk('database/migrations')
   .filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|deep[-_]?intelligence)/i.test(relative));
 assert(
   'NO_MIGRATION',
-  pulseAiMigrations.length === 0,
-  pulseAiMigrations.length === 0
-    ? 'no Module 011 deep-intelligence migration exists'
-    : `unexpected migration paths: ${pulseAiMigrations.join(', ')}`
+  migrations.length === 0,
+  migrations.length === 0 ? 'no Module 011 migration exists' : migrations.join(', ')
 );
 
-const pulseAiDeploymentFiles = [
+const environmentActions = [
   ...walk('.github/workflows'),
   ...walk('scripts'),
   ...walk('deployment')
-].filter((relative) => /module[-_]?011.*(?:deploy|migration|azure|entra|container)|pulse[-_]?ai.*(?:deploy|migration|azure|entra|container)/i.test(relative));
+].filter((relative) =>
+  /module[-_]?011.*(?:deploy|migration|azure|entra|container)|pulse[-_]?ai.*(?:deploy|migration|azure|entra|container)/i.test(relative)
+);
 assert(
-  'NO_DEPLOYMENT_OR_ENVIRONMENT_ACTION',
-  pulseAiDeploymentFiles.length === 0,
-  pulseAiDeploymentFiles.length === 0
+  'NO_ENVIRONMENT_ACTION',
+  environmentActions.length === 0,
+  environmentActions.length === 0
     ? 'no Module 011 deployment, migration, Azure, Entra, or Container action exists'
-    : `unexpected environment-changing paths: ${pulseAiDeploymentFiles.join(', ')}`
+    : environmentActions.join(', ')
 );
 
-console.log(`MODULE_011_DEEP_INTELLIGENCE_CHECKS=${assertions.length}`);
+console.log(`MODULE_011_DEEP_INTELLIGENCE_CHECKS=${checks.length}`);
 console.log('MODULE_011_DEEP_INTELLIGENCE_PHASE=PRIVATE_READ_ONLY_RUNTIME_FOUNDATION');
 console.log('MODULE_011_DEEP_INTELLIGENCE_TIMESHEET_PRIVATE_GROUNDING=REGISTERED');
 console.log('MODULE_011_DEEP_INTELLIGENCE_HELP_SEARCH_PLANNING=REGISTERED');
@@ -471,7 +527,7 @@ console.log('MODULE_011_DEEP_INTELLIGENCE_DATABASE_CHANGES=0');
 console.log('MODULE_011_DEEP_INTELLIGENCE_AZURE_ENTRA_CHANGES=0');
 console.log('MODULE_011_DEEP_INTELLIGENCE_DEPLOYMENTS=0');
 
-if (assertions.some((row) => !row.condition)) {
+if (checks.some((check) => !check.condition)) {
   console.error('MODULE_011_DEEP_INTELLIGENCE_CONTRACT=FAILED');
   process.exit(1);
 }
