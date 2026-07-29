@@ -42,7 +42,7 @@ public static class ProjectNotificationAutomationModule
             (Func<Guid, ProjectNotificationReleaseRequest, HttpContext, Task<IResult>>)ProjectNotificationAutomationService.RetryDispatchAsync);
         endpoints.MapPost(
             "/api/project-notifications/run-due",
-            (Func<HttpContext, Task<IResult>>)ProjectNotificationAutomationService.RunDueAsync);
+            (Func<HttpContext, Task<IResult>>)ProjectNotificationQuietHoursService.RunDueAsync);
         endpoints.MapPost(
             "/api/project-notifications/closeout/queue",
             (Func<ProjectCloseoutNotificationRequest, HttpContext, Task<IResult>>)ProjectNotificationAutomationService.QueueCloseoutAsync);
