@@ -1,0 +1,90 @@
+name: Normalize Pulse AI Private RAG Compile Contracts
+
+on:
+  push:
+    branches:
+      - feature/module-011-private-rag-orchestration-20260729
+    paths:
+      - .github/workflows/pulse-ai-private-rag-compile-normalizer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pulse-ai-private-rag-compile-normalizer
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/module-011-private-rag-orchestration-20260729
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Normalize nullable projections and endpoint/citation registration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          repo = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs')
+          text = repo.read_text()
+          replacements = {
+              'reader.IsDBNull(4) ? null : reader.GetGuid(4)': 'reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)',
+              'reader.IsDBNull(5) ? null : reader.GetGuid(5)': 'reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5)',
+              'reader.IsDBNull(6) ? null : reader.GetGuid(6)': 'reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6)',
+              'reader.IsDBNull(29) ? null : reader.GetFieldValue<DateTimeOffset>(29)': 'reader.IsDBNull(29) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(29)',
+              'reader.IsDBNull(0) ? null : reader.GetGuid(0)': 'reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0)',
+              'reader.IsDBNull(1) ? null : reader.GetGuid(1)': 'reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)',
+              'reader.IsDBNull(8) ? null : reader.GetInt32(8)': 'reader.IsDBNull(8) ? (int?)null : reader.GetInt32(8)',
+              'reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16)': 'reader.IsDBNull(16) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(16)',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          # Remove obsolete private chunk-id reconstruction helpers after citation
+          # persistence was normalized to document ID plus source/text checksums.
+          text = re.sub(
+              r'(?ms)^\s*private static string FindChunkId\(.*?^\s*private static async Task<IReadOnlyList<object>> LoadCitationAuditAsync',
+              '\n    private static async Task<IReadOnlyList<object>> LoadCitationAuditAsync',
+              text,
+              count=1
+          )
+          if 'FindChunkId(citation, answer)' in text:
+              raise SystemExit('Obsolete citation helper call remains.')
+          if 'ch.project_intake_document_id = @document_id' not in text:
+              raise SystemExit('Checksum-based citation persistence is missing.')
+          repo.write_text(text)
+
+          module = Path('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs')
+          module_text = module.read_text()
+          if 'endpoints.MapPulseAiPrivateRagEndpoints();' not in module_text:
+              marker = '        return endpoints;'
+              if module_text.count(marker) != 1:
+                  raise SystemExit('Private runtime return marker was not unique.')
+              module_text = module_text.replace(marker, '        endpoints.MapPulseAiPrivateRagEndpoints();\n        return endpoints;')
+              module.write_text(module_text)
+          PY
+          rm -f .github/workflows/pulse-ai-private-rag-compile-normalizer.yml
+          git diff --check
+      - name: Build normalized API source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+      - name: Commit normalized source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs .github/workflows/pulse-ai-private-rag-compile-normalizer.yml
+          git commit -m 'Normalize Pulse AI private RAG compile contracts'
+          git push origin HEAD:feature/module-011-private-rag-orchestration-20260729
