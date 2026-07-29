@@ -6,7 +6,21 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '003', route: 'utilization', displayName: 'Utilization', group: 'Resource Management' }),
   Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload', group: 'Project Management' }),
-  Object.freeze({ moduleNumber: '006', route: 'psa-modules', displayName: 'Toyota & Hyundai Pipeline', group: 'Sales & Opportunities', description: 'Toyota and Hyundai opportunity, intake, delivery pipeline, resourcing, expense, billing, and executive readiness workspace.' }),
+  Object.freeze({
+    moduleNumber: '006',
+    route: 'project-register',
+    displayName: 'Project Register',
+    group: 'Project Operations',
+    lifecycle: 'source_foundation',
+    description: 'Authoritative, role-scoped project inventory with active and archived views. Project creation and mutation remain owned by Modules 055D and 055C.',
+    compatibilityRoute: true,
+    previousIdentity: Object.freeze({
+      displayName: 'Toyota & Hyundai Pipeline',
+      route: 'psa-modules',
+      lifecycle: 'retired_non_destructively',
+      retirementReason: 'The customer-specific placeholder was replaced by the enterprise Project Register.'
+    })
+  }),
   Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval, Export & Audit Workflow', group: 'Approvals', description: 'Post-time-entry approval, accounting reconciliation, export preparation, package download, preflight validation, and workflow audit evidence.' }),
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
@@ -89,7 +103,8 @@ const ROUTE_ALIASES = Object.freeze({
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
   'resource-assignment-handoff': 'signed-handoff',
-  'global-mail-configuration': 'entra-secret-administration'
+  'global-mail-configuration': 'entra-secret-administration',
+  'psa-modules': 'project-register'
 });
 
 export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));
