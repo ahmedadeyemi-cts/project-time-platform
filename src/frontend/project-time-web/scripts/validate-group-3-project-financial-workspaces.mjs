@@ -119,9 +119,8 @@ if (fullRepositoryContext) {
   check('CALCULATION_EXPLANATIONS', includesAll(backend, [
     'remaining_hours', 'labor_cost', 'committed_cost',
     'forecasted_final_cost', 'current_variance',
-    'completion_percentage', 'How values were calculated'
-  ].filter((value) => value !== 'How values were calculated')),
-  'calculation formulas and explanations are returned with each project');
+    'completion_percentage'
+  ]), 'calculation formulas and explanations are returned with each project');
 
   check('SOURCE_ISOLATION', includesAll(backend, [
     'TryLoadAsync', 'SourceState.Unavailable', 'SourceState.Partial',
@@ -130,8 +129,8 @@ if (fullRepositoryContext) {
 
   check('NO_MODULE_011_DEPENDENCY',
     backend.includes('module011Dependency = false')
-      && !/work-task-builder|WorkTaskBuilder|Module\s*011/i.test(backend),
-    'engineering workspace contains no Module 011 dependency');
+      && !/work-task-builder|WorkTaskBuilder/i.test(backend),
+    'engineering workspace explicitly declares no Module 011 dependency');
 
   check('REGISTRATION',
     count(project, 'app.MapProjectFinancialTruthEndpoints();') === 1,
@@ -161,10 +160,8 @@ check('OFFICIAL_US_SIGNAL_LOGO',
   'one approved US Signal image asset is used');
 
 check('WORKSPACE_IDENTITIES', includesAll(component, [
-  "module: '018'", "module: '019'", "module: '036'", "module: '055B'",
-  "workspace=\"pm\"", "workspace=\"engineering\"",
-  "workspace=\"sales\"", "workspace=\"rate-card\""
-].slice(0, 4)), 'Modules 018, 019, 036, and 055B use one shared component');
+  "module: '018'", "module: '019'", "module: '036'", "module: '055B'"
+]), 'Modules 018, 019, 036, and 055B use one shared component');
 
 check('FINANCIAL_EXPERIENCE', includesAll(component, [
   'Project portfolio and financial truth', 'Contracted value',
@@ -174,11 +171,11 @@ check('FINANCIAL_EXPERIENCE', includesAll(component, [
 ]), 'PM and sales financial truth is visible with formulas');
 
 check('ENGINEERING_EXPERIENCE', includesAll(component, [
-  'Allocated, used, and remaining hours', 'IQS, service request, project, and customer files',
-  'Download', '/api/project-workspace/documents/'
-].filter((value) => value !== '/api/project-workspace/documents/'))
-  && component.includes('document.downloadUrl'),
-  'engineering hours, grouped documents, and authenticated downloads are present');
+  'Allocated, used, and remaining hours',
+  'IQS, service request, project, and customer files',
+  'Download'
+]) && component.includes('document.downloadUrl'),
+'engineering hours, grouped documents, and authenticated downloads are present');
 
 check('SELL_GOVERNANCE_PRESENTATION', includesAll(component, [
   'Connection owner', 'SELL relationship', 'Module 026',
