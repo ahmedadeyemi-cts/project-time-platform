@@ -1,0 +1,127 @@
+name: Publish US Signal Pulse AI Architecture v1.1
+
+on:
+  push:
+    branches:
+      - docs/pulse-ai-architecture-v1-1-20260729
+    paths:
+      - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
+      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-pulse-ai-architecture-v1-1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Enforce documentation branch and source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF_NAME" == "docs/pulse-ai-architecture-v1-1-20260729" ]]
+          test -f docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
+          test -f docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
+          [[ "$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')" == "c4fc4b33f744d065deeec531f393aa39996273e51eb946a452b1319e6e529183" ]]
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install document-generation dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0
+          python -m pip install --upgrade pip
+          python -m pip install python-docx reportlab cairosvg pillow pypdf
+
+      - name: Generate the US Signal architecture package
+        shell: bash
+        working-directory: docs/modules/module-011-pulse-ai/architecture/v1.1/source
+        run: |
+          set -Eeuo pipefail
+          python generate_pulse_architecture_v1_1.py | tee ../generation.log
+
+      - name: Validate the generated documents and diagrams
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
+          FILES=(
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+            'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+            'SHA256SUMS.txt'
+          )
+          for file in "${FILES[@]}"; do
+            test -s "$ROOT/$file"
+          done
+          ! find "$ROOT" -maxdepth 1 -type f -name '*v1.0*' -print -quit | grep -q .
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from PIL import Image
+          from pypdf import PdfReader
+
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v1.1')
+          main_pdf = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+          diagrams_pdf = root / 'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+          docx = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+          logical = root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+          deployment = root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+
+          assert len(PdfReader(str(main_pdf)).pages) >= 20
+          assert len(PdfReader(str(diagrams_pdf)).pages) == 2
+          with ZipFile(docx) as archive:
+              assert '[Content_Types].xml' in archive.namelist()
+              assert 'word/document.xml' in archive.namelist()
+          assert Image.open(logical).width >= 2000
+          assert Image.open(deployment).width >= 2400
+          for svg in [
+              root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg',
+              root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+          ]:
+              text = svg.read_text(encoding='utf-8')
+              assert 'US Signal' in text
+              assert 'Pulse' in text
+              assert 'data:image/jpeg;base64,' in text
+          print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+          PY
+          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
+          git diff --check
+
+      - name: Commit the generated architecture artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
+            exit 0
+          fi
+          git commit -m 'Publish US Signal Pulse AI architecture package v1.1'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
