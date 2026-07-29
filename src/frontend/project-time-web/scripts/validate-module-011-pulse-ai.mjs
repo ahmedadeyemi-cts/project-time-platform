@@ -314,13 +314,39 @@ assert(
     : `unexpected migration paths: ${pulseAiMigrations.join(', ')}`
 );
 
-const pulseAiDeploymentWorkflows = walk('.github/workflows').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai)/i.test(relative));
+const pulseAiWorkflowPaths = walk('.github/workflows').filter((relative) =>
+  /(?:module[-_]?011|pulse[-_]?ai)/i.test(relative)
+);
+const documentationPublicationWorkflow = '.github/workflows/publish-pulse-ai-architecture-v1-1.yml';
+const documentationWorkflowSource = exists(documentationPublicationWorkflow)
+  ? read(documentationPublicationWorkflow)
+  : '';
+const pulseAiEnvironmentWorkflows = pulseAiWorkflowPaths.filter((relative) => {
+  if (relative === documentationPublicationWorkflow) {
+    return /azure\/login|projectpulse-deploy-|az\s+containerapp|run[-_ ]?migration|provider[-_ ]?secret|vector[-_ ]?index/i
+      .test(documentationWorkflowSource);
+  }
+  return /(?:deploy|migration|azure|entra|container)/i.test(relative);
+});
 assert(
   'NO_DEPLOYMENT_WORKFLOW',
-  pulseAiDeploymentWorkflows.length === 0,
-  pulseAiDeploymentWorkflows.length === 0
-    ? 'no Module 011 deployment or environment-changing workflow exists'
-    : `unexpected workflow paths: ${pulseAiDeploymentWorkflows.join(', ')}`
+  pulseAiEnvironmentWorkflows.length === 0,
+  pulseAiEnvironmentWorkflows.length === 0
+    ? 'no Module 011 deployment or environment-changing workflow exists; documentation publication is source-only'
+    : `unexpected environment-changing workflow paths: ${pulseAiEnvironmentWorkflows.join(', ')}`
+);
+assert(
+  'ARCHITECTURE_WORKFLOW_DOCUMENTATION_ONLY',
+  !exists(documentationPublicationWorkflow)
+    || (
+      documentationWorkflowSource.includes('docs/modules/module-011-pulse-ai/architecture/v1.1/')
+      && documentationWorkflowSource.includes('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+      && !/azure\/login|projectpulse-deploy-|az\s+containerapp|run[-_ ]?migration|provider[-_ ]?secret|vector[-_ ]?index/i
+        .test(documentationWorkflowSource)
+    ),
+  exists(documentationPublicationWorkflow)
+    ? 'the architecture workflow is limited to documentation generation, validation, checksums, and branch publication'
+    : 'no architecture publication workflow is present in this build context'
 );
 
 console.log(`MODULE_011_PULSE_AI_CHECKS=${checks.length}`);
