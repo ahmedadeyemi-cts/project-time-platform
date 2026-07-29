@@ -1,0 +1,264 @@
+name: Validate Group 5 Financial Operations Recovery
+
+on:
+  push:
+    branches:
+      - 'feature/group-5-financial-reports-closeout-billing-recovery-*'
+  pull_request:
+    paths:
+      - '.github/workflows/group5-financial-operations-recovery-ci.yml'
+      - 'database/migrations/051_financial_operations_reporting_recovery.sql'
+      - 'database/rollback/051_financial_operations_reporting_recovery_rollback.sql'
+      - 'docs/modules/group-5-financial-operations/README.md'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsReportEngine.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsRepository.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsSourceLoader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FinancialOperationsWorkItemFactory.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFinancialTruthReportingBridge.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-group-5-financial-operations-recovery.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs'
+      - 'src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/financial-operations-recovery-workspace.css'
+      - 'tests/test-financial-operations-migration-051.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group5-financial-operations-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 5 stacked source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH='feature/group-4-cost-routing-notification-schedules-20260729-final'
+          git fetch origin "$BASE_BRANCH" main --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 5 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/.*[Cc]ertify|src/backend/ProjectTime.Api/Modules/Module038)' <<<"$CHANGED"; then
+            echo 'Group 5 overlaps deployment, canonical App/registry source, or Module 038 Certify source.' >&2
+            exit 1
+          fi
+
+          echo 'GROUP_5_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 5 JavaScript syntax
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-group-5-financial-operations-recovery.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs
+
+      - name: Test migration 051 apply idempotence permissions evidence and rollback
+        id: migration_test
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-financial-operations-migration-051.sh > group5-migration-051.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload migration 051 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group5-migration-051-${{ github.run_id }}-${{ github.run_attempt }}
+          path: group5-migration-051.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce migration 051 result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.migration_test.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            cat group5-migration-051.log >&2
+            exit "$STATUS"
+          fi
+          cat group5-migration-051.log
+
+      - name: Validate Group 5 source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-group-5-financial-operations-recovery.mjs > group5-source-contract.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 5 source-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group5-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group5-source-contract.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Group 5 source-contract result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            cat src/frontend/project-time-web/group5-source-contract.log >&2
+            exit "$STATUS"
+          fi
+          cat src/frontend/project-time-web/group5-source-contract.log
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > group5-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 5 API-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group5-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: group5-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 240 group5-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 50 group5-api-build.log
+          echo 'GROUP_5_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Group 3 Group 4 work-to-cash and Module 038 regression dependencies
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:group3-project-financial-workspaces
+          npm run validate:group4-project-notifications
+          npm run validate:work-to-cash-lifecycle
+          npm run validate:work-to-cash-lock-order
+          npm run validate:module005
+          npm run validate:superadmin-sso-expense-module006
+          npm run validate:modules021026
+          npm run validate:module065
+          npm run validate:group5-financial-operations
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > group5-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Group 5 frontend-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: group5-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/group5-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build and compiled markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 240 group5-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+
+          cat dist/assets/*.js > /tmp/group5-financial-operations.js
+          cat dist/assets/*.css > /tmp/group5-financial-operations.css
+          for marker in \
+            'Financial Report Center' \
+            'Financial Operations Workbench' \
+            'Actual report catalog' \
+            'Source health and recovery' \
+            'Closeout Notification Recovery' \
+            'Invoice & Billing Recovery' \
+            'Group 4 routing and Module 065 delivery' \
+            '/api/financial-operations/reports/catalog' \
+            '/api/financial-operations/workbench'; do
+            grep -Fq "$marker" /tmp/group5-financial-operations.js
+          done
+          for marker in \
+            '.group5-financial-operations' \
+            '.group5-report-picker' \
+            '.group5-source-grid' \
+            '.group5-work-item-list' \
+            '.group5-table-wrap'; do
+            grep -Fq "$marker" /tmp/group5-financial-operations.css
+          done
+          tail -n 50 group5-frontend-build.log
+          echo 'GROUP_5_FRONTEND_BUILD=PASSED'
