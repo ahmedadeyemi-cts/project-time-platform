@@ -20,9 +20,9 @@ The repository copies are losslessly packaged or publication-optimized for sourc
 
 | File | Purpose | SHA-256 |
 |---|---|---|
-| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx` | Editable architecture document | `3af14688cbbf5caea88c83c84f37b5be177a2a2f974e19204a70bca372638f1a` |
-| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf` | Published architecture document | `9fc6746bd6e4847ade5bcdc530681d4a508ccb734f0f5b5685d08a17553d0877` |
-| `US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf` | Combined systems-engineering diagram package | `a04d9e85816a6edc3c3983d28dafb96d1b1e45a3f3efc3cedac0eef53ab84851` |
+| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx` | Editable architecture document | `a8091380cc71d8464ff933e0676dc7be79807d13569c3454a018230cf2825f2d` |
+| `US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf` | Published architecture document | `c0dbc0c9c54f645ff6394b4a0a46e5d0e529705681c09b1bf10845e926ac755d` |
+| `US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf` | Combined systems-engineering diagram package | `05a7d51a7d57760085256c016562022cd76e989bcf99f05d42aaf996a91a3f4d` |
 | `US_Signal_Pulse_AI_Logical_Architecture_v1.1.png` | High-resolution private-first logical architecture | `22180ea7d3890407756d33e95642f94ffdb8f751bb05ac25f31c6761759be5fc` |
 | `US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg` | Editable vector private-first logical architecture | `dcc3c2148db944eb02c55ee073f83990afe3212080931d1c7b4e8013854e0996` |
 | `US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png` | High-resolution deployment and network architecture | `2a51f56e89d4abfd222f734c3c4e0cb1f0fd75830caa1a094ed34f736275dcb4` |
