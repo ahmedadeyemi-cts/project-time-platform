@@ -3,6 +3,7 @@ import './enterprise-module-system.css';
 
 const MODULE_PRESENTATION = Object.freeze({
   '024': Object.freeze({
+    route: 'sales-intake',
     group: 'Sales & Opportunities',
     title: 'Sales Intake',
     summary: 'Capture qualified sales opportunities and prepare a governed handoff into delivery.',
@@ -10,6 +11,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Intake workflow'
   }),
   '025': Object.freeze({
+    route: 'sow-generator',
     group: 'Sales & Opportunities',
     title: 'SOW Generator',
     summary: 'Prepare governed statements of work with consistent scope, assumptions, deliverables, and review evidence.',
@@ -17,6 +19,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Document workflow'
   }),
   '027': Object.freeze({
+    route: 'signed-handoff',
     group: 'Project Delivery',
     title: 'Signed Handoff',
     summary: 'Move an approved sales package into delivery with accountable ownership and resource-handoff evidence.',
@@ -24,6 +27,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Delivery handoff'
   }),
   '028': Object.freeze({
+    route: 'ai-time-entry',
     group: 'Time Management',
     title: 'AI Time Entry',
     summary: 'Assist users with customer-facing time descriptions while preserving human review and time-entry authority.',
@@ -31,6 +35,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Governed assistance'
   }),
   '029': Object.freeze({
+    route: 'uat-validation',
     group: 'Platform Operations',
     title: 'UAT Validation',
     summary: 'Validate role, workflow, and release behavior with clear expected outcomes and durable evidence.',
@@ -38,6 +43,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Validation workspace'
   }),
   '064': Object.freeze({
+    route: 'ai-provider-configuration',
     group: 'Security',
     title: 'AI Provider Configuration Center',
     summary: 'Review governed AI-provider readiness, non-secret configuration, routing, and operational health.',
@@ -45,6 +51,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Provider administration'
   }),
   '068': Object.freeze({
+    route: 'system-architecture',
     group: 'Platform Operations',
     title: 'Provider-Neutral System Architecture',
     summary: 'Present the live platform, integration, regional, redundancy, and module-to-API architecture.',
@@ -52,6 +59,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Architecture evidence'
   }),
   '069': Object.freeze({
+    route: 'qualifications-certifications',
     group: 'Resources',
     title: 'Qualifications & Certification Matrix',
     summary: 'Manage role-appropriate qualification, certification, renewal, and evidence visibility.',
@@ -59,6 +67,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Workforce readiness'
   }),
   '071': Object.freeze({
+    route: 'oncall-scheduling',
     group: 'Platform Operations',
     title: 'On-Call Scheduling',
     summary: 'Coordinate on-call coverage, rotations, conflicts, and operational ownership.',
@@ -66,6 +75,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Coverage planning'
   }),
   '072': Object.freeze({
+    route: 'oneassist-routing-directory',
     group: 'Platform Operations',
     title: 'OneAssist Routing Directory',
     summary: 'Maintain governed OneAssist routing information with clear ownership and access boundaries.',
@@ -73,6 +83,7 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Operational directory'
   }),
   '074': Object.freeze({
+    route: 'oem-vendor-directory',
     group: 'Sales & Opportunities',
     title: 'OEM & Vendor Directory',
     summary: 'Maintain an authoritative operational directory for OEM and vendor relationships.',
@@ -80,6 +91,12 @@ const MODULE_PRESENTATION = Object.freeze({
     posture: 'Partner directory'
   })
 });
+
+const ROUTE_TO_MODULE = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MODULE_PRESENTATION).map(([moduleCode, metadata]) => [metadata.route, moduleCode])
+  )
+);
 
 export function EnterprisePrintHeader({ moduleCode, title }) {
   return (
@@ -250,19 +267,18 @@ export function EnterpriseModulePage({
   );
 }
 
-export default function EnterpriseModulePresentation({ moduleCode }) {
-  const metadata = MODULE_PRESENTATION[moduleCode] ?? {
-    group: 'ProjectPulse',
-    title: `Module ${moduleCode}`,
-    summary: 'Enterprise ProjectPulse workspace.',
-    owner: 'Application Operations',
-    posture: 'Enterprise workspace'
-  };
+export default function EnterpriseModulePresentation({ activeRoute, moduleCode: explicitModuleCode }) {
+  const moduleCode = explicitModuleCode ?? ROUTE_TO_MODULE[activeRoute];
+  if (!moduleCode) return null;
+
+  const metadata = MODULE_PRESENTATION[moduleCode];
+  if (!metadata) return null;
 
   return (
     <section
       className="uss-enterprise-module-presentation"
       data-group6-enterprise-presentation={moduleCode}
+      data-group6-enterprise-route={metadata.route}
     >
       <EnterprisePrintHeader moduleCode={moduleCode} title={metadata.title} />
       <EnterprisePageHeader
@@ -295,4 +311,4 @@ export default function EnterpriseModulePresentation({ moduleCode }) {
   );
 }
 
-export { MODULE_PRESENTATION };
+export { MODULE_PRESENTATION, ROUTE_TO_MODULE };
