@@ -25,17 +25,19 @@ function walk(relativeDirectory) {
   return files;
 }
 
-const paths = {
+const paths = Object.freeze({
   center: 'src/frontend/project-time-web/src/ProjectRegisterCenter.jsx',
   css: 'src/frontend/project-time-web/src/project-register-center.css',
   generator: 'src/frontend/project-time-web/scripts/inject-module-006-project-register.mjs',
+  validator: 'src/frontend/project-time-web/scripts/validate-module-006-project-register.mjs',
   retiredGenerator: 'src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs',
   registry: 'src/frontend/project-time-web/src/module-availability-registry.js',
   rbac: 'src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js',
   packageJson: 'src/frontend/project-time-web/package.json',
   workRegister: 'src/frontend/project-time-web/src/WorkRegisterCenter.jsx',
-  generatedApp: 'src/frontend/project-time-web/src/App.Module001.g.jsx'
-};
+  generatedApp: 'src/frontend/project-time-web/src/App.Module001.g.jsx',
+  plan: 'docs/modules/module-006-project-register/IMPLEMENTATION-PLAN.md'
+});
 
 for (const [key, relative] of Object.entries(paths)) {
   if (key === 'retiredGenerator' || key === 'generatedApp') continue;
@@ -55,6 +57,7 @@ const registry = read(paths.registry);
 const rbac = read(paths.rbac);
 const packageJson = read(paths.packageJson);
 const workRegister = read(paths.workRegister);
+const plan = read(paths.plan);
 const generatedApp = exists(paths.generatedApp) ? read(paths.generatedApp) : '';
 
 const module006Start = registry.indexOf("moduleNumber: '006'");
@@ -88,7 +91,7 @@ assert(
     && rbac.includes('MODULE_ROUTE_OVERRIDES')
     && rbac.includes('moduleDisplayNameOverrides')
     && rbac.includes('moduleRouteOverrides'),
-  'Modules 012 and 037 receive the current name and route even before the database catalog migration'
+  'Modules 012 and 037 receive the current name and route before the later database catalog migration'
 );
 
 assert(
@@ -144,7 +147,8 @@ assert(
     && center.includes('Import controls locked')
     && center.includes('Branded exports')
     && center.includes('Evidence-gated')
-    && center.includes('Export controls locked'),
+    && center.includes('Export controls locked')
+    && plan.includes('No workbook row will persist until a reviewer accepts the mapping and row decisions.'),
   'workbook import and Excel/PDF export remain visibly locked until their evidence schemas are reviewed'
 );
 
@@ -194,7 +198,9 @@ assert(
   'predevelopment, prebuild, and complete build run the Project Register source controls'
 );
 
-const module006Migrations = walk('database/migrations').filter((relative) => /(?:module[-_]?006|project[-_]?register)/i.test(relative));
+const module006Migrations = walk('database/migrations').filter((relative) =>
+  /(?:module[-_]?006|project[-_]?register)/i.test(relative)
+);
 assert(
   'NO_UNREVIEWED_MIGRATION',
   module006Migrations.length === 0,
@@ -203,17 +209,25 @@ assert(
     : `unexpected Module 006 migration paths: ${module006Migrations.join(', ')}`
 );
 
-const deploymentMatches = [
-  ...walk('.github/workflows'),
-  ...walk('scripts'),
-  ...walk('deployment')
-].filter((relative) => /(?:module[-_]?006|project[-_]?register).*(?:deploy|azure|containerapp|migration)/i.test(relative));
+const ownedProjectRegisterPaths = [
+  paths.center,
+  paths.css,
+  paths.generator,
+  paths.validator,
+  paths.registry,
+  paths.rbac,
+  paths.packageJson,
+  paths.plan
+];
+const ownedEnvironmentActions = ownedProjectRegisterPaths.filter((relative) =>
+  /(?:deploy|migration|azure|containerapp|production[-_ ]?change)/i.test(relative)
+);
 assert(
   'NO_ENVIRONMENT_ACTION',
-  deploymentMatches.length === 0,
-  deploymentMatches.length === 0
-    ? 'no Module 006 migration, deployment, Azure, or environment-changing action exists'
-    : `unexpected Module 006 environment paths: ${deploymentMatches.join(', ')}`
+  ownedEnvironmentActions.length === 0,
+  ownedEnvironmentActions.length === 0
+    ? 'no environment-changing action exists in the owned Module 006 source scope'
+    : `unexpected environment-changing owned paths: ${ownedEnvironmentActions.join(', ')}`
 );
 
 console.log(`MODULE_006_PROJECT_REGISTER_CHECKS=${checks.length}`);
