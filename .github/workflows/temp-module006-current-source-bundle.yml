@@ -1,0 +1,48 @@
+name: Temporary Module 006 Current Source Bundle
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-module006-current-source-bundle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact current main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Package complete current repository history and refs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin --prune --no-tags \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/pull/*/head:refs/remotes/pull/*'
+          git show-ref | sort > module006-current-source-refs.txt
+          git bundle create module006-current-source.bundle --all
+          git bundle verify module006-current-source.bundle
+          sha256sum module006-current-source.bundle module006-current-source-refs.txt > SHA256SUMS
+          printf 'CURRENT_MAIN=%s\n' "$(git rev-parse origin/main)" > module006-current-source-report.txt
+          printf 'WORKFLOW_SHA=%s\n' "$GITHUB_SHA" >> module006-current-source-report.txt
+
+      - name: Upload current source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: module006-current-source-${{ github.run_id }}
+          path: |
+            module006-current-source.bundle
+            module006-current-source-refs.txt
+            module006-current-source-report.txt
+            SHA256SUMS
+          retention-days: 1
