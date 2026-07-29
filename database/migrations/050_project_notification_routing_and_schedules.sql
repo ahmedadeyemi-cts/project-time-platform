@@ -134,12 +134,17 @@ CREATE TABLE IF NOT EXISTS project_notification_dispatch_recipients (
     delivery_status VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (delivery_status IN (
         'pending', 'sent', 'failed', 'suppressed'
     )),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(project_notification_dispatch_id, lower(recipient_email), recipient_type)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS ix_project_notification_dispatch_recipients_dispatch
     ON project_notification_dispatch_recipients(project_notification_dispatch_id, recipient_type);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_project_notification_dispatch_recipients_email
+    ON project_notification_dispatch_recipients(
+        project_notification_dispatch_id,
+        lower(recipient_email),
+        recipient_type
+    );
 
 CREATE TABLE IF NOT EXISTS project_notification_delivery_attempts (
     project_notification_delivery_attempt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -314,17 +319,26 @@ WHERE upper(role.role_code) IN (
 )
 ON CONFLICT DO NOTHING;
 
--- Managers and team leads can review schedules and delivery results for their teams.
+-- Engineering, sales, solution architects, managers, and team leads can inspect
+-- delivery evidence relevant to their server-scoped projects and teams.
 INSERT INTO app_role_permissions (app_role_id, app_permission_id)
 SELECT role.app_role_id, permission.app_permission_id
 FROM app_roles role
 JOIN app_permissions permission ON permission.permission_code = ANY(ARRAY[
-    'VIEW_NOTIFICATION_SCHEDULES',
     'VIEW_NOTIFICATION_DELIVERY_MONITOR'
 ])
 WHERE upper(role.role_code) IN (
-    'MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD'
+    'ENGINEERING', 'ENGINEER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD',
+    'MANAGER', 'SALES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT'
 )
+ON CONFLICT DO NOTHING;
+
+-- Solution Architects need project-cost-rule visibility for delivery risk review.
+INSERT INTO app_role_permissions (app_role_id, app_permission_id)
+SELECT role.app_role_id, permission.app_permission_id
+FROM app_roles role
+JOIN app_permissions permission ON permission.permission_code = 'VIEW_COST_ALERT_ROUTING_RULES'
+WHERE upper(role.role_code) = 'SOLUTION_ARCHITECT'
 ON CONFLICT DO NOTHING;
 
 -- Project Team Coordinators and administrators manage routing, schedules, and delivery.
