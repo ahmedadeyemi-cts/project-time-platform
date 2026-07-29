@@ -76,8 +76,8 @@ export default function HelpGovernancePanel({ compact = true }) {
       </ol>
       <HelpAnswerPreferenceControls compact />
       <div className="group7-help-governance__actions">
-        <a href="#defect-tracker?reportType=issue">Report an Issue</a>
-        <a href="#defect-tracker?reportType=feature">Feature Request</a>
+        <a href="?reportType=issue#defect-tracker">Report an Issue</a>
+        <a href="?reportType=feature#defect-tracker">Feature Request</a>
       </div>
     </section>
   );
@@ -95,8 +95,8 @@ export function SystemUserGuideGovernancePanel() {
         </span>
       </div>
       <div className="group7-system-guide-overview__actions">
-        <a href="#defect-tracker?reportType=issue">Report an Issue</a>
-        <a href="#defect-tracker?reportType=feature">Request a Feature</a>
+        <a href="?reportType=issue#defect-tracker">Report an Issue</a>
+        <a href="?reportType=feature#defect-tracker">Request a Feature</a>
       </div>
     </section>
   );
