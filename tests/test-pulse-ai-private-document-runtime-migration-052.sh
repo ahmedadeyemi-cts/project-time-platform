@@ -6,8 +6,8 @@ CONTAINER="projectpulse-pulse-ai-052-${GITHUB_RUN_ID:-local}-$$"
 DB_USER="projectpulse"
 DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
-MIGRATION="/workspace/database/migrations/052_pulse_ai_private_document_runtime.sql"
-ROLLBACK="/workspace/database/rollback/052_pulse_ai_private_document_runtime_rollback.sql"
+MIGRATION="/workspace/database/migrations/052_document_intelligence_runtime.sql"
+ROLLBACK="/workspace/database/rollback/052_document_intelligence_runtime_rollback.sql"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
