@@ -14,11 +14,13 @@
     <Module001GeneratedData>$(IntermediateOutputPath)Module001TimesheetData.g.cs</Module001GeneratedData>
     <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>
     <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
+    <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="PdfPig" Version="0.1.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,12 +40,12 @@
     <Compile Remove="Modules/Module001TimesheetData.cs" />
     <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />
     <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
+    <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />
   </ItemGroup>
 
   <Target Name="GenerateScopedRbacSources" BeforeTargets="CoreCompile">
     <MakeDir Directories="$(IntermediateOutputPath)" />
-    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.UsePlatformOperationsTelemetry();&quot;; print &quot;app.MapPlatformOperationsEndpoints();&quot;; print &quot;app.MapPlatformProductionResilienceEndpoints();&quot;; print &quot;app.MapProjectFinancialTruthEndpoints();&quot;; print &quot;app.UseProjectNotificationCloseoutCompatibility();&quot;; print &quot;app.MapProjectNotificationAutomationEndpoints();&quot;; print &quot;app.MapAdminAuditHistoryEndpoints();&quot;; print &quot;app.MapUserAdministrationTeamScopeEndpoints();&quot;; print &quot;app.UseModuleAvailabilityEnforcement();&quot;; print &quot;app.MapModuleAvailabilityEndpoints();&quot;; print &quot;app.MapModuleAvailabilityOverrideEndpoints();&quot;; print &quot;app.MapClientDiagnosticEndpoints();&quot;; print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; print &quot;app.MapScopedRolePolicyEndpoints();&quot;; print &quot;app.UsePtcTimeStewardRoleBoundary();&quot;; print &quot;app.UseModule001ResultExecutionCompatibility();&quot;; print &quot;app.MapModule001TimeStewardV2Endpoints();&quot;; print &quot;app.MapModule001TimesheetEnhancementEndpoints();&quot;; print &quot;app.MapModule001TimerTargetEndpoints();&quot;; print &quot;app.MapModule001PtcTimesheetManagementEndpoints();&quot;; print &quot;app.MapRuntimeDataCompatibilityEndpoints();&quot;; print &quot;app.MapCombinedModuleRuntimeEndpoints();&quot;; print &quot;app.MapCombinedModulePublicReadinessEndpoint();&quot;; print &quot;app.UseProjectExpenseBillingReadinessContinuitySafe();&quot;; print &quot;app.MapModule005ProjectExpenseUploadEndpointsSafe();&quot;; print &quot;app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();&quot;; print &quot;app.MapModule038CertifyConnectionEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
-
+    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.UsePlatformOperationsTelemetry();&quot;; print &quot;app.MapPlatformOperationsEndpoints();&quot;; print &quot;app.MapPlatformProductionResilienceEndpoints();&quot;; print &quot;app.MapProjectFinancialTruthEndpoints();&quot;; print &quot;app.UseProjectNotificationCloseoutCompatibility();&quot;; print &quot;app.MapProjectNotificationAutomationEndpoints();&quot;; print &quot;app.MapAdminAuditHistoryEndpoints();&quot;; print &quot;app.MapUserAdministrationTeamScopeEndpoints();&quot;; print &quot;app.UseModuleAvailabilityEnforcement();&quot;; print &quot;app.MapModuleAvailabilityEndpoints();&quot;; print &quot;app.MapModuleAvailabilityOverrideEndpoints();&quot;; print &quot;app.MapClientDiagnosticEndpoints();&quot;; print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; print &quot;app.MapPulseAiPrivateDocumentPipelineEndpoints();&quot;; print &quot;app.MapScopedRolePolicyEndpoints();&quot;; print &quot;app.UsePtcTimeStewardRoleBoundary();&quot;; print &quot;app.UseModule001ResultExecutionCompatibility();&quot;; print &quot;app.MapModule001TimeStewardV2Endpoints();&quot;; print &quot;app.MapModule001TimesheetEnhancementEndpoints();&quot;; print &quot;app.MapModule001TimerTargetEndpoints();&quot;; print &quot;app.MapModule001PtcTimesheetManagementEndpoints();&quot;; print &quot;app.MapRuntimeDataCompatibilityEndpoints();&quot;; print &quot;app.MapCombinedModuleRuntimeEndpoints();&quot;; print &quot;app.MapCombinedModulePublicReadinessEndpoint();&quot;; print &quot;app.UseProjectExpenseBillingReadinessContinuitySafe();&quot;; print &quot;app.MapModule005ProjectExpenseUploadEndpointsSafe();&quot;; print &quot;app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();&quot;; print &quot;app.MapModule038CertifyConnectionEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <!-- The canonical Program.cs retains the historic generic Entra names for reviewability.
          The compiled SSO handlers consume the separate active SSO profile, while Graph,
          calendar, identity, and Module 010 continue using their existing services variables. -->
@@ -62,9 +64,13 @@
     <Exec Command="sed -e 's/if (value is Guid id) existingId = id;/if (value is Guid foundEntryId) existingId = foundEntryId;/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetData.cs&quot; &gt; &quot;$(Module001GeneratedData)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(1) ? null : reader.GetGuid(1)/reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)/' -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(4) ? null : reader.GetGuid(4)/reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetEnhancementModule.cs&quot; &gt; &quot;$(Module001GeneratedEndpoints)&quot;" />
     <!-- Pulse AI keeps the canonical permission-aware grounding source readable.
-     The compiled copy materializes ordered role evidence for the existing
-     IReadOnlyList response contract without changing authorization behavior. -->
-  <Exec Command="sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />
+         The compiled copy materializes ordered role evidence for the existing
+         IReadOnlyList response contract without changing authorization behavior. -->
+    <Exec Command="sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />
+    <!-- ClosedXML defines its own LoadOptions type and no longer exposes the old
+         XLEventTracking constructor argument. Keep the canonical extractor easy
+         to review while compiling an API-version-normalized copy. -->
+    <Exec Command="sed -e 's/LoadOptions\.PreserveWhitespace/System.Xml.Linq.LoadOptions.PreserveWhitespace/g' -e 's/new XLWorkbook(source.StoragePath, XLEventTracking.Disabled)/new XLWorkbook(source.StoragePath)/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateDocumentExtractionService.cs&quot; &gt; &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
     <ItemGroup>
       <Compile Include="$(ScopedRbacGeneratedProgram)" />
       <Compile Include="$(ScopedRbacGeneratedModule)" />
@@ -75,6 +81,7 @@
       <Compile Include="$(Module001GeneratedData)" />
       <Compile Include="$(Module001GeneratedEndpoints)" />
       <Compile Include="$(PulseAiGroundingGenerated)" />
+      <Compile Include="$(PulseAiPrivateExtractorGenerated)" />
     </ItemGroup>
   </Target>
 </Project>

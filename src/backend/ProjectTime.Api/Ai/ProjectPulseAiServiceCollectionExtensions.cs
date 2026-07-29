@@ -20,6 +20,8 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiDocumentGroundingService>();
         services.AddSingleton<PulseAiQuestionPlanner>();
         services.AddSingleton<PulseAiEscalationSanitizer>();
+        services.AddSingleton<PulseAiPrivateDocumentExtractionService>();
+        services.AddSingleton<PulseAiPrivateDocumentPipelineService>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();
         services.AddHostedService<ProjectPulseAiHealthMonitor>();
         return services;
