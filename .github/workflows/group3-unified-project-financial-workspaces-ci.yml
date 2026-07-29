@@ -214,7 +214,7 @@ jobs:
             'SELL connection owner: Module 026' \
             'How values were calculated' \
             '/api/project-financials/portfolio' \
-            '/api/project-workspace/documents/'; do
+            'IQS, service request, project, and customer files'; do
             grep -Fq "$marker" /tmp/group3-financial-workspaces.js
           done
           for marker in \
