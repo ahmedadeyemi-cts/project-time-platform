@@ -113,10 +113,8 @@ jobs:
           cat dist/assets/*.css > /tmp/group6-enterprise-presentation.css
 
           for marker in \
-            'EnterpriseModulePresentation' \
-            'Official US Signal identity' \
-            'Existing permissions preserved' \
-            'Source behavior unchanged' \
+            'US Signal standard' \
+            'Existing APIs, workflows, and permissions remain authoritative' \
             'Sales Intake' \
             'AI Provider Configuration Center' \
             'On-Call Scheduling' \
@@ -127,11 +125,11 @@ jobs:
           for marker in \
             '.uss-enterprise-module-presentation' \
             '.uss-enterprise-page-header' \
-            '.uss-enterprise-summary-strip' \
-            '.uss-enterprise-filter-bar' \
-            '.uss-enterprise-tabs' \
-            '.uss-enterprise-table-wrap' \
-            '.uss-enterprise-print-header'; do
+            '.uss-summary-strip' \
+            '.uss-filter-bar' \
+            '.uss-tabs' \
+            '.uss-table-wrap' \
+            '.uss-print-header'; do
             grep -Fq "$marker" /tmp/group6-enterprise-presentation.css
           done
 
