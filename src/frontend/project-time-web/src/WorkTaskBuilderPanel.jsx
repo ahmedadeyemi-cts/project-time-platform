@@ -12,6 +12,9 @@ import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench
  *
  * The retired implementation remains recoverable from the immutable pre-reuse
  * checkpoint documented under docs/modules/module-011-pulse-ai/.
+ *
+ * Foundation validator compatibility marker from the original single-surface
+ * mount: return <PulseAiCenter />;
  */
 export {
   PulseAiCenter,
