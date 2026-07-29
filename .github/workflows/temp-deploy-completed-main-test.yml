@@ -1,0 +1,263 @@
+name: Temporary Deploy Completed Main to Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/deploy-completed-main-test-trigger'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-completed-main-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.actor == 'ahmedadeyemi-cts'
+    name: Apply migrations 050 and 051 and deploy completed main to Test
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    env:
+      EXPECTED_RELEASE_COMMIT: 5d269021b1f8df471a0e1d1b654e17e0c7b1576c
+      EXPECTED_TRIGGER_BRANCH: release/run-completed-main-test-deployment-20260729
+      REQUIRED_CONFIRMATION: DEPLOY-COMPLETED-MAIN-TO-TEST
+
+    steps:
+      - name: Check out exact trigger request
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact main deployment controls
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact completed source release
+        uses: actions/checkout@v5
+        with:
+          ref: 5d269021b1f8df471a0e1d1b654e17e0c7b1576c
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard trigger, control scope, and exact source release
+        id: guard
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$BASE_REF" == main ]]
+          [[ "$HEAD_REF" == "$EXPECTED_TRIGGER_BRANCH" ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git -C control rev-parse HEAD)" == "$BASE_SHA" ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          TRIGGER_FILE='trigger/.github/deploy-completed-main-test-trigger'
+          test -f "$TRIGGER_FILE"
+          [[ "$(sed -n 's/^operation=//p' "$TRIGGER_FILE" | tail -1)" == deploy ]]
+          [[ "$(sed -n 's/^release_commit=//p' "$TRIGGER_FILE" | tail -1)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$(sed -n 's/^confirmation=//p' "$TRIGGER_FILE" | tail -1)" == "$REQUIRED_CONFIRMATION" ]]
+
+          mapfile -t TRIGGER_CHANGED < <(git -C trigger diff --name-only "$BASE_SHA...HEAD" | sort)
+          diff -u \
+            <(printf '%s\n' '.github/deploy-completed-main-test-trigger') \
+            <(printf '%s\n' "${TRIGGER_CHANGED[@]}")
+
+          git -C control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
+          mapfile -t CONTROL_CHANGED < <(git -C control diff --name-only "$EXPECTED_RELEASE_COMMIT...HEAD" | sort)
+          cat > /tmp/expected-control-files.txt <<'EOF'
+          .github/workflows/temp-deploy-completed-main-test.yml
+          scripts/temp-apply-migrations-050-051-test.sh
+          scripts/temp-run-completed-main-test-deployment.sh
+          scripts/temp-run-cumulative-migration-job.sh
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-control-files.txt
+          sort -o /tmp/expected-control-files.txt /tmp/expected-control-files.txt
+          diff -u /tmp/expected-control-files.txt <(printf '%s\n' "${CONTROL_CHANGED[@]}")
+
+          for file in \
+            release/database/migrations/050_project_notification_routing_and_schedules.sql \
+            release/database/migrations/051_financial_operations_reporting_recovery.sql \
+            release/database/rollback/050_project_notification_routing_and_schedules_rollback.sql \
+            release/database/rollback/051_financial_operations_reporting_recovery_rollback.sql \
+            release/src/backend/ProjectTime.Api/Modules/ProjectNotificationAutomationModule.cs \
+            release/src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs \
+            release/src/backend/ProjectTime.Api/Modules/PulseAiDeepIntelligenceModule.cs \
+            release/src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs \
+            release/src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs \
+            release/src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs \
+            release/src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs \
+            control/scripts/temp-apply-migrations-050-051-test.sh \
+            control/scripts/temp-run-cumulative-migration-job.sh \
+            control/scripts/temp-run-completed-main-test-deployment.sh; do
+            test -f "$file"
+          done
+
+          bash -n control/scripts/temp-apply-migrations-050-051-test.sh
+          bash -n control/scripts/temp-run-cumulative-migration-job.sh
+          bash -n control/scripts/temp-run-completed-main-test-deployment.sh
+          git -C control diff --check "$EXPECTED_RELEASE_COMMIT...HEAD"
+          echo "control_commit=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo 'COMPLETED_MAIN_DEPLOYMENT_GUARD=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Rebuild and revalidate the completed release before Azure changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          pushd release/src/frontend/project-time-web >/dev/null
+          node --check scripts/validate-group-4-project-notification-automation.mjs
+          node --check scripts/validate-group-5-financial-operations-recovery.mjs
+          node --check scripts/validate-module-011-pulse-ai.mjs
+          node --check scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node --check scripts/validate-module-011-private-document-pipeline.mjs
+          node scripts/validate-group-4-project-notification-automation.mjs
+          node scripts/validate-group-5-financial-operations-recovery.mjs
+          node scripts/validate-module-011-pulse-ai.mjs
+          node scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node scripts/validate-module-011-private-document-pipeline.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+          echo 'COMPLETED_MAIN_SOURCE_REVALIDATION=PASS'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load Test database connection from the current API Container App
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Build checksum-pinned migrations 050 and 051 image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/completed-main-migrations-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/temp-apply-migrations-050-051-test.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/050_project_notification_routing_and_schedules.sql "$CONTEXT/migrations/050_project_notification_routing_and_schedules.sql"
+          install -m 0644 release/database/migrations/051_financial_operations_reporting_recovery.sql "$CONTEXT/migrations/051_financial_operations_reporting_recovery.sql"
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum \
+              050_project_notification_routing_and_schedules.sql \
+              051_financial_operations_reporting_recovery.sql > SHA256SUMS
+          )
+          printf '%s\n' "$EXPECTED_RELEASE_COMMIT" > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-migrations050051:${EXPECTED_RELEASE_COMMIT}-${GITHUB_SHA:0:12}" \
+            "$CONTEXT/Dockerfile" \
+            "$CONTEXT")"
+          [[ "$DIGEST" == sha256:* ]]
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-migrations050051@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Apply migrations 050 and 051 inside the Test private network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          CUMULATIVE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          CUMULATIVE_MIGRATION_JOB_NAME: cmig-${{ github.run_id }}-${{ github.run_attempt }}-a
+          PROJECTPULSE_CUMULATIVE_MIGRATION_MODE: apply
+        run: bash control/scripts/temp-run-cumulative-migration-job.sh
+
+      - name: Reverify migrations 050 and 051 without database writes
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          CUMULATIVE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          CUMULATIVE_MIGRATION_JOB_NAME: cmig-${{ github.run_id }}-${{ github.run_attempt }}-v
+          PROJECTPULSE_CUMULATIVE_MIGRATION_MODE: verify
+        run: bash control/scripts/temp-run-cumulative-migration-job.sh
+
+      - name: Record migration evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p control/evidence
+          cat > control/evidence/completed-main-migrations-test.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "$EXPECTED_RELEASE_COMMIT",
+            "controlCommit": "${{ steps.guard.outputs.control_commit }}",
+            "workflowRunId": "$GITHUB_RUN_ID",
+            "workflowRunAttempt": "$GITHUB_RUN_ATTEMPT",
+            "migrationIds": [
+              "050_project_notification_routing_and_schedules",
+              "051_financial_operations_reporting_recovery"
+            ],
+            "migrationImage": "${{ steps.migration.outputs.image }}",
+            "migrationDigest": "${{ steps.migration.outputs.digest }}",
+            "applyOrVerifyJob": "succeeded",
+            "verifyOnlyJob": "succeeded",
+            "operationalCountsPreserved": true,
+            "apiWebDeploymentStartedAfterVerification": true,
+            "productionChanged": false
+          }
+          JSON
+
+      - name: Build, deploy, validate, and preserve rollback evidence
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: >-
+          bash control/scripts/temp-run-completed-main-test-deployment.sh
+          control
+          release
+          "$EXPECTED_RELEASE_COMMIT"
+
+      - name: Upload cumulative migration and deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: completed-main-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            control/evidence/
+            ${{ runner.temp }}/completed-main-probes/
+          if-no-files-found: warn
+          retention-days: 30
