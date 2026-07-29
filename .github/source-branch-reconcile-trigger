@@ -1,0 +1,3 @@
+operation=pr221
+target_branch=feature/module-011-pulse-ai-deep-intelligence-20260728
+expected_head=0b9cc8d74fecf19c672ea07f6062acecbc87883c
