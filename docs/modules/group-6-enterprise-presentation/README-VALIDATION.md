@@ -1,1 +1,0 @@
-Group 6 uses the repository-owned US Signal image asset and one reusable route-aware presentation layer. Validation must pass before the source PR can leave draft.

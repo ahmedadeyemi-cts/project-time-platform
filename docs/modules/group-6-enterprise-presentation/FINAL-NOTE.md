@@ -1,1 +1,0 @@
-Group 6 remains draft source work and is not deployed.
