@@ -32,7 +32,9 @@ const paths = {
   portalCss: 'src/frontend/project-time-web/src/project-expense-cross-module.css',
   moduleRegistry: 'src/frontend/project-time-web/src/module-availability-registry.js',
   rbacCompatibility: 'src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js',
-  module006Generator: 'src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs',
+  module006Generator: 'src/frontend/project-time-web/scripts/inject-module-006-project-register.mjs',
+  module006Center: 'src/frontend/project-time-web/src/ProjectRegisterCenter.jsx',
+  module006Css: 'src/frontend/project-time-web/src/project-register-center.css',
   utilization: 'src/frontend/project-time-web/src/EngineeringTeamLeadUtilizationPanel.jsx',
   utilizationCss: 'src/frontend/project-time-web/src/engineering-team-lead-utilization.css',
   packageJson: 'src/frontend/project-time-web/package.json'
@@ -41,15 +43,15 @@ const paths = {
 const [
   actualAuthority, scopedBridge, governed, module026, globalMail, ssoActivation,
   publicOrigin, expenseAcknowledgement, expenseContinuity, project, portal,
-  portalCss, moduleRegistry, rbacCompatibility, module006Generator,
-  utilization, utilizationCss, packageJson
+  portalCss, moduleRegistry, rbacCompatibility, module006Generator, module006Center,
+  module006Css, utilization, utilizationCss, packageJson
 ] = await Promise.all([
   optionalText(paths.actualAuthority), optionalText(paths.scopedBridge), optionalText(paths.governed),
   optionalText(paths.module026), optionalText(paths.globalMail), optionalText(paths.ssoActivation),
   optionalText(paths.publicOrigin), optionalText(paths.expenseAcknowledgement), optionalText(paths.expenseContinuity),
   optionalText(paths.project), text(paths.portal), text(paths.portalCss), text(paths.moduleRegistry),
-  text(paths.rbacCompatibility), text(paths.module006Generator), text(paths.utilization),
-  text(paths.utilizationCss), text(paths.packageJson)
+  text(paths.rbacCompatibility), text(paths.module006Generator), text(paths.module006Center),
+  text(paths.module006Css), text(paths.utilization), text(paths.utilizationCss), text(paths.packageJson)
 ]);
 
 const fullBackendContext = [
@@ -210,29 +212,70 @@ requireAll(portalCss, [
 
 requireAll(moduleRegistry, [
   "moduleNumber: '006'",
+  "route: 'project-register'",
+  "displayName: 'Project Register'",
+  "group: 'Project Operations'",
+  "'psa-modules': 'project-register'",
   "displayName: 'Toyota & Hyundai Pipeline'",
-  "group: 'Sales & Opportunities'"
-], 'Module 006 registry rename');
+  "lifecycle: 'retired_non_destructively'"
+], 'Module 006 Project Register registry');
 rejectAll(moduleRegistry, [
-  "moduleNumber: '006', route: 'psa-modules', displayName: 'PSA Modules'"
-], 'retired Module 006 name');
+  "moduleNumber: '006', route: 'psa-modules'",
+  "displayName: 'Toyota & Hyundai Pipeline', group: 'Sales & Opportunities'"
+], 'retired Module 006 canonical identity');
 
 requireAll(module006Generator, [
-  'MODULE_006_TOYOTA_HYUNDAI_PIPELINE_GENERATION=PASS',
+  'MODULE_006_PROJECT_REGISTER_GENERATION=PASS',
+  "title: 'Project Register'",
+  "activeRoute === 'project-register'",
+  '<ProjectRegisterCenter legacyRoute={activeRoute === \'psa-modules\'} />',
   "title: 'Toyota & Hyundai Pipeline'",
-  'Toyota &amp; Hyundai Pipeline',
-  'Toyota and Hyundai opportunity, intake, delivery, resourcing, expense, billing, and executive-readiness workflows.',
-  "source.includes(\"title: 'PSA Modules'\")"
-], 'Generated Module 006 rename');
+  "title: 'PSA Modules'"
+], 'Generated Module 006 Project Register integration');
+
+requireAll(module006Center, [
+  'data-module="006"',
+  'data-module-name="Project Register"',
+  'data-canonical-route="project-register"',
+  "fetchJson('/api/work-register/overview')",
+  '/api/work-register/projects/${item.workId}/details',
+  '/api/work-lifecycle/projects/${item.workId}',
+  'Archived / historical',
+  'Manage Existing Projects',
+  'Module 055C',
+  'Workbook import',
+  'Branded exports',
+  'Import controls locked',
+  'Export controls locked'
+], 'Module 006 Project Register read foundation');
+rejectAll(module006Center, [
+  "method: 'POST'",
+  "method: 'PUT'",
+  "method: 'PATCH'",
+  "method: 'DELETE'",
+  '/api/work-register/projects/update',
+  '/api/work-register/projects/create'
+], 'Module 006 mutation ownership boundary');
+
+requireAll(module006Css, [
+  '.project-register-center',
+  '.project-register-table-wrap',
+  '.project-register-drawer-backdrop',
+  '[data-theme="dark"]',
+  '@media (max-width: 700px)'
+], 'Module 006 responsive styling');
 
 requireAll(rbacCompatibility, [
-  "'006': 'Toyota & Hyundai Pipeline'",
+  "'006': 'Project Register'",
+  "'006': 'project-register'",
+  'MODULE_ROUTE_OVERRIDES',
   '/api/rbac/v1/bootstrap',
   '/api/rbac/v1/matrix',
   '/api/rbac/v1/modules',
   'normalizeModule',
-  'moduleDisplayNameOverrides'
-], 'Module 012/037 display-name continuity');
+  'moduleDisplayNameOverrides',
+  'moduleRouteOverrides'
+], 'Module 012/037 display-name and route continuity');
 
 requireAll(utilization, [
   'engineering-utilization-manager-table',
@@ -253,14 +296,21 @@ requireAll(utilizationCss, [
 ], 'PR 212 Module 003 table styling');
 
 requireAll(packageJson, [
-  'inject-module-006-toyota-hyundai-pipeline.mjs',
+  'inject-module-006-project-register.mjs',
+  'validate:module006',
+  'validate-module-006-project-register.mjs',
   'validate:superadmin-sso-expense-module006'
 ], 'Permanent source/build integration');
+rejectAll(packageJson, [
+  'inject-module-006-toyota-hyundai-pipeline.mjs'
+], 'retired Module 006 build injector');
 
 console.log('SUPERADMIN_SSO_EXPENSE_MODULE006_PACKAGE=PASS');
 console.log('MODULE026_SUPERADMIN=PERMANENT_FULL_CONTROL_OWN_SESSION');
 console.log('MICROSOFT_SSO_REDIRECT=PUBLIC_ENVIRONMENT_HTTPS_ONLY');
 console.log('MODULE005_EXPENSE_DRAWER=COLLAPSED_NON_INVASIVE');
 console.log('MODULE005_EXPENSE_ACK=PM_PTC_ACCOUNTING_SUPERADMIN');
-console.log('MODULE006_NAME=TOYOTA_AND_HYUNDAI_PIPELINE');
+console.log('MODULE006_NAME=PROJECT_REGISTER');
+console.log('MODULE006_ROUTE=PROJECT_REGISTER');
+console.log('MODULE006_MUTATION_AUTHORITY=MODULES_055C_055D');
 console.log('PR212_MODULE003_TABLE=INCLUDED');
