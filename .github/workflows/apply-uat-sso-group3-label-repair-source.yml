@@ -56,11 +56,14 @@ jobs:
           git apply --check /tmp/uat-sso-group3-label-repair.patch
           git apply /tmp/uat-sso-group3-label-repair.patch
 
+          # GitHub App workflow tokens cannot push a newly added workflow file.
+          # The focused CI workflow is added immediately afterward through the
+          # authenticated GitHub contents API.
+          rm -f .github/workflows/uat-sso-group3-label-repair-ci.yml
           rm -f "$PATCH_PAYLOAD" "$BOOTSTRAP_WORKFLOW"
           rmdir .projectpulse 2>/dev/null || true
 
           cat > /tmp/expected-source-files.txt <<'EOF'
-          .github/workflows/uat-sso-group3-label-repair-ci.yml
           src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
           src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs
           src/backend/ProjectTime.Api/Program.cs
