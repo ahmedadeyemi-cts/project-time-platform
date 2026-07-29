@@ -55,16 +55,76 @@ public sealed class ProjectPulseAiHealthRegistry
         }
     }
 
+    /// <summary>
+    /// Reconciles the health registry with the live provider configuration.
+    /// The registry may be constructed before encrypted database secrets have
+    /// finished loading, so callers must re-apply the live configuration before
+    /// health evaluation or routing decisions.
+    /// </summary>
     public void ApplyConfiguration(ProjectPulseAiProviderConfiguration configuration)
     {
         if (!_states.TryGetValue(configuration.Code, out var state)) return;
+
         lock (state.Sync)
         {
+            var wasEnabled = state.Enabled;
+            var wasConfigured = state.Configured;
             state.Enabled = configuration.Enabled;
             state.Configured = configuration.Configured;
-            if (configuration.Configured && state.Status == "not_configured") state.Status = "not_checked";
-            if (!configuration.Configured) state.ProbeStatus = "not_configured";
-            else if (state.ProbeStatus == "not_configured") state.ProbeStatus = "not_checked";
+
+            if (!configuration.Enabled)
+            {
+                state.Status = "disabled";
+                state.ProbeStatus = "disabled";
+                return;
+            }
+
+            if (!configuration.Configured)
+            {
+                state.Status = "not_configured";
+                state.ProbeStatus = "not_configured";
+                return;
+            }
+
+            var configurationBecameReady = !wasEnabled || !wasConfigured;
+            if (configurationBecameReady
+                || state.ProbeStatus is "not_configured" or "disabled" or "not_checked")
+            {
+                state.ProbeStatus = "checking";
+                if (state.Status is "not_configured" or "disabled" or "not_checked")
+                {
+                    state.Status = "checking";
+                }
+            }
+        }
+    }
+
+    public bool ShouldProbe(string provider, TimeSpan maximumAge, bool force = false)
+    {
+        if (!_states.TryGetValue(provider, out var state)) return false;
+
+        lock (state.Sync)
+        {
+            if (!state.Enabled || !state.Configured) return false;
+            if (force) return true;
+            if (state.ProbeStatus == "checking") return state.LastProbeAt is null;
+            if (state.LastProbeAt is null) return true;
+            return DateTimeOffset.UtcNow - state.LastProbeAt.Value >= maximumAge;
+        }
+    }
+
+    public void MarkProbeStarted(string provider)
+    {
+        if (!_states.TryGetValue(provider, out var state)) return;
+
+        lock (state.Sync)
+        {
+            if (!state.Enabled || !state.Configured) return;
+            state.ProbeStatus = "checking";
+            if (state.Status is "not_checked" or "not_configured" or "disabled" or "probe_due")
+            {
+                state.Status = "checking";
+            }
         }
     }
 
@@ -147,6 +207,7 @@ public sealed class ProjectPulseAiHealthRegistry
             var now = DateTimeOffset.UtcNow;
             state.LastProbeAt = now;
             state.LastProbeRequestId = result.RequestId;
+            state.LastCheckedAt = now;
 
             if (result.Available)
             {
@@ -154,6 +215,11 @@ public sealed class ProjectPulseAiHealthRegistry
                 state.LastProbeSuccessAt = now;
                 state.LastProbeFailureCode = null;
                 state.ProbeSuccessCount++;
+                if (state.Status is "checking" or "not_checked" or "probe_due" or "degraded")
+                {
+                    state.Status = "available";
+                }
+                if (state.LastOutcome == "none") state.LastOutcome = "health_probe_success";
                 return;
             }
 
@@ -161,6 +227,7 @@ public sealed class ProjectPulseAiHealthRegistry
             state.LastProbeFailureAt = now;
             state.LastProbeFailureCode = SanitizeCode(result.Code);
             state.ProbeFailureCount++;
+            if (state.Status is not "circuit_open") state.Status = "degraded";
         }
     }
 
@@ -271,10 +338,14 @@ public sealed class ProjectPulseAiHealthRegistry
             Status = !configuration.Enabled
                 ? "disabled"
                 : configuration.Configured
-                    ? "not_checked"
+                    ? "checking"
                     : "not_configured",
             LastOutcome = "none",
-            ProbeStatus = configuration.Configured ? "not_checked" : "not_configured"
+            ProbeStatus = !configuration.Enabled
+                ? "disabled"
+                : configuration.Configured
+                    ? "checking"
+                    : "not_configured"
         };
 
         public static ProviderState Local() => new()
