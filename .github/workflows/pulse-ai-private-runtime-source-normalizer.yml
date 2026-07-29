@@ -29,21 +29,19 @@ jobs:
           set -Eeuo pipefail
           python - <<'PY'
           from pathlib import Path
+          import re
           path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
           text = path.read_text()
-          old = '''        var ocrPrivate = options.OcrConfigured
-              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-                  options.OcrEndpoint,
-                  options.PrivateHostAllowlist,
-                  out _,
-                  out var ocrReason);
-          var embeddingPrivate = options.EmbeddingConfigured
-              && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-                  options.EmbeddingEndpoint,
-                  options.PrivateHostAllowlist,
-                  out _,
-                  out var embeddingReason);'''
-          new = '''        var ocrReason = "not_configured";
+          pattern = re.compile(
+              r'(?ms)^\s*var ocrPrivate = options\.OcrConfigured\s*'
+              r'&& PulseAiPrivateEndpointPolicy\.IsApprovedPrivateEndpoint\(\s*'
+              r'options\.OcrEndpoint,\s*options\.PrivateHostAllowlist,\s*out _,\s*out var ocrReason\);\s*'
+              r'var embeddingPrivate = options\.EmbeddingConfigured\s*'
+              r'&& PulseAiPrivateEndpointPolicy\.IsApprovedPrivateEndpoint\(\s*'
+              r'options\.EmbeddingEndpoint,\s*options\.PrivateHostAllowlist,\s*out _,\s*out var embeddingReason\);'
+          )
+          replacement = '''
+          var ocrReason = "not_configured";
           var ocrPrivate = options.OcrConfigured
               && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
                   options.OcrEndpoint,
@@ -56,11 +54,14 @@ jobs:
                   options.EmbeddingEndpoint,
                   options.PrivateHostAllowlist,
                   out _,
-                  out embeddingReason);'''
-          if text.count(old) != 1:
-              raise SystemExit('Expected endpoint-policy block was not found exactly once.')
-          path.write_text(text.replace(old, new))
+                  out embeddingReason);'''.lstrip('\n')
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected endpoint-policy block replacement count=1, actual={count}.')
+          path.write_text(updated)
           PY
+          grep -Fq 'var ocrReason = "not_configured";' src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
+          grep -Fq 'var embeddingReason = "not_configured";' src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
           rm -f .github/workflows/pulse-ai-private-runtime-source-normalizer.yml
           git diff --check
           git config user.name 'github-actions[bot]'
