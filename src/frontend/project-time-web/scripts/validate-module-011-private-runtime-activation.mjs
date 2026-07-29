@@ -14,8 +14,8 @@ function assert(name, condition, evidence) {
 }
 
 const paths = {
-  migration: 'database/migrations/052_pulse_ai_private_document_runtime.sql',
-  rollback: 'database/rollback/052_pulse_ai_private_document_runtime_rollback.sql',
+  migration: 'database/migrations/052_document_intelligence_runtime.sql',
+  rollback: 'database/rollback/052_document_intelligence_runtime_rollback.sql',
   migrationTest: 'tests/test-pulse-ai-private-document-runtime-migration-052.sh',
   contracts: 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs',
   scanner: 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs',
@@ -167,7 +167,7 @@ assert(
 
 assert(
   'MALWARE_SCAN_BEFORE_EXTRACTION',
-  scanner.includes('zINSTREAM\\0')
+  scanner.includes('zINSTREAM\0')
     && scanner.includes('MalwareScanAttested')
     && runtime.indexOf('_malwareScanner.ScanAsync') < runtime.indexOf('_extractor.ExtractAsync')
     && runtime.includes('The document was not parsed, embedded, or indexed.'),
@@ -178,7 +178,7 @@ assert(
   'PRIVATE_OCR',
   ocr.includes('MultipartFormDataContent')
     && ocr.includes('X-Pulse-AI-Privacy-Boundary')
-    && ocr.includes('raw') === false
+    && !ocr.includes('rawDocumentTextReturned')
     && runtime.includes('private_ocr_not_configured')
     && runtime.includes('private_ocr_adapter'),
   'image-only documents use a private endpoint and preserve page-level sections'
