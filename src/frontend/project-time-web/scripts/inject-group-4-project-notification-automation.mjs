@@ -32,7 +32,7 @@ const moduleTargets = [
     file: 'ProjectManagerWorkloadCenter.jsx',
     importAnchor: "import './project-manager-workload-center.css';",
     rootAnchor: '    <section className="pm-workload-center">',
-    mount: '      <ProjectNotificationAutomationCenter workspace="pm" />'
+    mount: "      <ProjectNotificationAutomationCenter workspace={'pm'} />"
   }
 ];
 
