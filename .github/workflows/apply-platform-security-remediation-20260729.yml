@@ -69,6 +69,20 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/security/apply-platform-security-remediation-20260729.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        \'var storedFileName = $"{documentType}_\',\n'
+          new = '        \'var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";\',\n'
+
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+
+          print('SECURITY_REMEDIATION_POSTCONDITION_SCOPE=NARROWED')
+          PY
           python -m py_compile scripts/security/apply-platform-security-remediation-20260729.py
           python scripts/security/apply-platform-security-remediation-20260729.py
           git diff --check
@@ -125,6 +139,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            scripts/security/apply-platform-security-remediation-20260729.py \
             src/backend/ProjectTime.Api/Program.cs \
             src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs \
             src/frontend/project-time-web/index.html \
