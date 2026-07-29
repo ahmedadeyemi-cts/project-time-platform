@@ -1,10 +1,8 @@
 name: Temporary Current Integration Bundle
 
 on:
-  push:
-    branches:
-      - main
-      - tooling/current-integration-bundle-20260729
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -12,12 +10,17 @@ permissions:
 
 jobs:
   bundle:
+    if: >-
+      github.event.issue.pull_request
+      && github.event.issue.number == 221
+      && github.event.comment.body == '/projectpulse-integration-bundle'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out triggering branch
+      - name: Check out current main
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: true
 
