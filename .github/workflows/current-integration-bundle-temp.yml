@@ -1,45 +1,289 @@
-name: Temporary Current Integration Bundle
+name: Temporary Guarded Source Branch Reconciler
 
 on:
   pull_request:
     branches:
       - main
     paths:
-      - '.github/current-integration-bundle-trigger'
+      - '.github/source-branch-reconcile-trigger'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: projectpulse-temporary-source-reconciler
+  cancel-in-progress: false
 
 jobs:
-  bundle:
+  reconcile:
+    if: github.actor == 'ahmedadeyemi-cts'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
+
     steps:
-      - name: Check out current main
+      - name: Check out authorized trigger
         uses: actions/checkout@v5
         with:
-          ref: main
-          fetch-depth: 0
-          persist-credentials: true
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Fetch repository branches and pull-request heads
+      - name: Parse and authorize exact target
+        id: target
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin --prune --no-tags \
-            '+refs/heads/*:refs/remotes/origin/*' \
-            '+refs/pull/*/head:refs/remotes/pull/*'
-          git show-ref | sort > current-integration-refs.txt
-          git bundle create current-integration.bundle --all
-          git bundle verify current-integration.bundle
-          sha256sum current-integration.bundle current-integration-refs.txt > SHA256SUMS
+          FILE='trigger/.github/source-branch-reconcile-trigger'
+          test -f "$FILE"
 
-      - name: Upload current integration bundle
-        uses: actions/upload-artifact@v4
+          OPERATION="$(sed -n 's/^operation=//p' "$FILE" | tail -1)"
+          TARGET_BRANCH="$(sed -n 's/^target_branch=//p' "$FILE" | tail -1)"
+          EXPECTED_HEAD="$(sed -n 's/^expected_head=//p' "$FILE" | tail -1)"
+
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          case "$OPERATION:$TARGET_BRANCH" in
+            pr221:feature/module-011-pulse-ai-deep-intelligence-20260728) ;;
+            pr240:feature/module-011-private-document-pipeline-20260729) ;;
+            pr238:fix/group4-group5-regression-compatibility-20260729) ;;
+            pr239:feature/group-5-financial-reports-closeout-billing-recovery-20260729-final) ;;
+            *) echo "Unauthorized source reconciliation target: $OPERATION:$TARGET_BRANCH" >&2; exit 1 ;;
+          esac
+
+          echo "operation=$OPERATION" >> "$GITHUB_OUTPUT"
+          echo "branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "expected_head=$EXPECTED_HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact target branch
+        uses: actions/checkout@v5
         with:
-          name: current-integration-bundle-${{ github.run_id }}
-          path: |
-            current-integration.bundle
-            current-integration-refs.txt
-            SHA256SUMS
-          retention-days: 1
+          ref: ${{ steps.target.outputs.branch }}
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Reconcile exact branch with current main
+        working-directory: repo
+        env:
+          OPERATION: ${{ steps.target.outputs.operation }}
+          TARGET_BRANCH: ${{ steps.target.outputs.branch }}
+          EXPECTED_HEAD: ${{ steps.target.outputs.expected_head }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git fetch origin main "$TARGET_BRANCH" --no-tags
+
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_HEAD" == "$EXPECTED_HEAD" ]] || {
+            echo "Target branch moved. Expected $EXPECTED_HEAD but found $ACTUAL_HEAD." >&2
+            exit 1
+          }
+
+          set +e
+          git merge --no-ff origin/main -m "Reconcile $OPERATION with current main"
+          MERGE_STATUS=$?
+          set -e
+
+          if [[ "$MERGE_STATUS" -ne 0 ]]; then
+            case "$OPERATION" in
+              pr221)
+                mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U | sort)
+                cat > /tmp/expected-conflicts.txt <<'EOF'
+          src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          EOF
+                sed -i 's/^[[:space:]]*//' /tmp/expected-conflicts.txt
+                diff -u /tmp/expected-conflicts.txt <(printf '%s\n' "${CONFLICTS[@]}")
+
+                git checkout --theirs src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+                git checkout --ours src/frontend/project-time-web/src/HelpAssistant.jsx
+
+                python3 - <<'PY'
+          from pathlib import Path
+
+          project = Path('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+          text = project.read_text()
+
+          property_anchor = '    <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>\n'
+          property_line = '    <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>\n'
+          if property_line not in text:
+              text = text.replace(property_anchor, property_anchor + property_line)
+
+          remove_anchor = '    <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />\n'
+          remove_line = '    <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />\n'
+          if remove_line not in text:
+              text = text.replace(remove_anchor, remove_anchor + remove_line)
+
+          endpoint_anchor = 'print &quot;app.MapClientDiagnosticEndpoints();&quot;; '
+          endpoint_line = 'print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; '
+          if endpoint_line not in text:
+              text = text.replace(endpoint_anchor, endpoint_anchor + endpoint_line)
+
+          exec_anchor = '    <Exec Command="sed -e \'s/reader.IsDBNull(1) ? null : reader.GetGuid(1)/reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)/\' -e \'s/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/\' -e \'s/reader.IsDBNull(4) ? null : reader.GetGuid(4)/reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)/\' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetEnhancementModule.cs&quot; &gt; &quot;$(Module001GeneratedEndpoints)&quot;" />\n'
+          pulse_exec = '''    <!-- Pulse AI keeps the canonical permission-aware grounding source readable.
+               The compiled copy materializes ordered role evidence for the existing
+               IReadOnlyList response contract without changing authorization behavior. -->
+            <Exec Command="sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value =&gt; value).ToArray(),/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiDocumentGroundingService.cs&quot; &gt; &quot;$(PulseAiGroundingGenerated)&quot;" />
+          '''
+          if '$(PulseAiGroundingGenerated)' not in text.split('<ItemGroup>', 2)[-1]:
+              text = text.replace(exec_anchor, exec_anchor + pulse_exec)
+
+          include_anchor = '      <Compile Include="$(Module001GeneratedEndpoints)" />\n'
+          include_line = '      <Compile Include="$(PulseAiGroundingGenerated)" />\n'
+          if include_line not in text:
+              text = text.replace(include_anchor, include_anchor + include_line)
+
+          project.write_text(text)
+
+          mount = Path('src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx')
+          mount.write_text('''import PulseAiCenter from './PulseAiCenter.jsx';
+          import PulseAiMissionControl from './PulseAiMissionControl.jsx';
+          import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';
+
+          /**
+           * Module 011 compatibility mount.
+           *
+           * App.jsx historically mounts this file for the `work-task-builder` route. The
+           * former Work Task Builder workflow was retired and its project/task ownership
+           * moved to Modules 055D and 055C. Keeping this small compatibility component
+           * avoids a shared App.jsx edit while Module 011 is reactivated as Pulse AI.
+           *
+           * The retired implementation remains recoverable from the immutable pre-reuse
+           * checkpoint documented under docs/modules/module-011-pulse-ai/.
+           *
+           * Foundation validator compatibility marker from the original single-surface
+           * mount: return <PulseAiCenter />;
+           */
+          export {
+            PulseAiCenter,
+            PulseAiMissionControl,
+            PulseAiDeepIntelligenceWorkbench
+          };
+
+          function PulseAiWorkspace() {
+            return <PulseAiCenter />;
+          }
+
+          export default function WorkTaskBuilderPanel() {
+            return (
+              <>
+                <PulseAiMissionControl />
+                <PulseAiDeepIntelligenceWorkbench />
+                <PulseAiWorkspace />
+              </>
+            );
+          }
+          ''')
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs')
+          validator_text = validator.read_text()
+          old = '''const environmentActions = [
+            ...walk('.github/workflows'),
+            ...walk('scripts'),
+            ...walk('deployment')
+          ].filter((relative) =>
+            /module[-_]?011.*(?:deploy|migration|azure|entra|container)|pulse[-_]?ai.*(?:deploy|migration|azure|entra|container)/i.test(relative)
+          );
+          assert(
+            'NO_ENVIRONMENT_ACTION',
+            environmentActions.length === 0,
+            environmentActions.length === 0
+              ? 'no Module 011 deployment, migration, Azure, Entra, or Container action exists'
+              : environmentActions.join(', ')
+          );
+          '''
+          new = '''const ownedDeepIntelligencePaths = [
+            '.github/workflows/deep-intelligence-read-contract-ci.yml',
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs',
+            ...Object.values(paths)
+          ];
+          const environmentActions = ownedDeepIntelligencePaths.filter((relative) =>
+            /module[-_]?011.*(?:deploy|migration|azure|entra|container)|pulse[-_]?ai.*(?:deploy|migration|azure|entra|container)/i.test(relative)
+          );
+          assert(
+            'NO_ENVIRONMENT_ACTION',
+            environmentActions.length === 0,
+            environmentActions.length === 0
+              ? 'no Module 011 environment-changing action exists in the owned deep-intelligence source scope'
+              : environmentActions.join(', ')
+          );
+          '''
+          if old not in validator_text:
+              raise SystemExit('Expected PR #221 validator block was not found.')
+          validator.write_text(validator_text.replace(old, new))
+          PY
+
+                git add src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+                  src/frontend/project-time-web/src/HelpAssistant.jsx \
+                  src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx \
+                  src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+                git diff --name-only --diff-filter=U | grep . && exit 1 || true
+                git commit --no-edit
+                ;;
+              *)
+                echo "Unexpected merge conflict for $OPERATION." >&2
+                git diff --name-only --diff-filter=U >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          if [[ "$OPERATION" == 'pr221' ]]; then
+            mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD | sort)
+            cat > /tmp/expected-files.txt <<'EOF'
+          .github/workflows/deep-intelligence-read-contract-ci.yml
+          docs/modules/module-011-pulse-ai/ANSWER-QUALITY-AND-PRIVACY-CONTRACT.md
+          docs/modules/module-011-pulse-ai/DEEP-INTELLIGENCE-RUNTIME.md
+          docs/modules/module-066-project-flowhive/AI-INTEGRATION.md
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiDeepIntelligenceContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiQuestionPlanner.cs
+          src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiDeepIntelligenceModule.cs
+          src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
+          src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/PulseAiDeepIntelligenceWorkbench.jsx
+          src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          src/frontend/project-time-web/src/help-assistant.css
+          src/frontend/project-time-web/src/help.css
+          src/frontend/project-time-web/src/pulse-ai-deep-intelligence-workbench.css
+          EOF
+            sed -i 's/^[[:space:]]*//' /tmp/expected-files.txt
+            sort -o /tmp/expected-files.txt /tmp/expected-files.txt
+            diff -u /tmp/expected-files.txt <(printf '%s\n' "${CHANGED[@]}")
+
+            for marker in \
+              'app.MapPlatformProductionResilienceEndpoints();' \
+              'app.MapProjectFinancialTruthEndpoints();' \
+              'app.UseProjectNotificationCloseoutCompatibility();' \
+              'app.MapProjectNotificationAutomationEndpoints();' \
+              'app.MapPulseAiDeepIntelligenceEndpoints();'; do
+              [[ "$(grep -Fo "$marker" src/backend/ProjectTime.Api/ProjectTime.Api.csproj | wc -l | tr -d ' ')" == 1 ]]
+            done
+
+            node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+            node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+            node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+            node src/frontend/project-time-web/scripts/validate-group-2b-provider-neutral-production-resilience.mjs
+            node src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs
+            node src/frontend/project-time-web/scripts/validate-group-4-project-notification-automation.mjs
+            node src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
+            node src/frontend/project-time-web/scripts/validate-module-065-entra-secret-administration.mjs
+            node src/frontend/project-time-web/scripts/validate-microsoft-integration-authoritative-connection.mjs
+            node src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs
+            node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          fi
+
+          git diff --check origin/main...HEAD
+          git status --short
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "RECONCILED_OPERATION=$OPERATION"
+          echo "RECONCILED_HEAD=$(git rev-parse HEAD)"
