@@ -84,6 +84,11 @@ jobs:
           if first_widget_only_check in text:
               text = text.replace(first_widget_only_check, '    forbidden=(),\n', 1)
 
+          broad_temp_check = 'require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-",))'
+          scoped_temp_check = 'require(CF_GUARD, required=("projectpulse-019m-cf.XXXXXX",), forbidden=("/tmp/projectpulse-019m-cf-api", "/tmp/projectpulse-019m-cf-registry.json", "/tmp/projectpulse-019m-cf-engineer-denial.json"))'
+          if broad_temp_check in text:
+              text = text.replace(broad_temp_check, scoped_temp_check, 1)
+
           path.write_text(text, encoding='utf-8')
           print('SECURITY_REMEDIATION_POSTCONDITIONS=SCOPED')
           PY
