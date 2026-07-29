@@ -1,0 +1,252 @@
+name: Validate Pulse AI Private Document Pipeline
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-private-document-pipeline-*'
+  pull_request:
+    paths:
+      - '.github/workflows/private-document-pipeline-read-contract-ci.yml'
+      - 'docs/modules/module-011-pulse-ai/PRIVATE-DOCUMENT-PIPELINE.md'
+      - 'docs/modules/module-011-pulse-ai/PRIVATE-INDEX-SECURITY-CONTRACT.md'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'
+      - 'src/frontend/project-time-web/src/PulseAiPrivateDocumentPipelineWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-private-document-pipeline-workbench.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulse-ai-private-document-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact dependent source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          BASE_BRANCH="${GITHUB_BASE_REF:-feature/module-011-pulse-ai-deep-intelligence-20260728}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/private-document-pipeline-read-contract-ci\.yml|docs/modules/module-011-pulse-ai/(PRIVATE-DOCUMENT-PIPELINE|PRIVATE-INDEX-SECURITY-CONTRACT)\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateDocumentPipelineContracts|PulseAiPrivateDocumentExtractionService|PulseAiPrivateDocumentPipelineService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiPrivateDocumentPipelineModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateDocumentPipelineWorkbench\.jsx|pulse-ai-private-document-pipeline-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected private-document pipeline source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/backend/ProjectTime\.Api/(Ai/ProjectPulseAiConfiguration|Ai/ProjectPulseAiRemoteProviders|Ai/ProjectPulseAiSecretStore|Modules/AiProviderConfigurationModule)\.|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.|src/backend/ProjectTime\.Api/Modules/ProjectFinancialTruthModule\.cs|src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace\.)' <<<"$CHANGED"; then
+            echo 'The source package overlaps a migration, deployment, Module 064 provider implementation, or Group 3 financial implementation.' >&2
+            exit 1
+          fi
+
+          [[ "$(git merge-base "origin/$BASE_BRANCH" HEAD)" == "$(git rev-parse "origin/$BASE_BRANCH")" ]]
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo "PRIVATE_DOCUMENT_PIPELINE_BASE_BRANCH=$BASE_BRANCH"
+          echo 'PRIVATE_DOCUMENT_PIPELINE_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check validator syntax
+        run: node --check src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
+
+      - name: Validate the private document pipeline source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-module-011-private-document-pipeline.mjs > private-document-pipeline-source-contract.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload source-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-document-pipeline-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/private-document-pipeline-source-contract.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce source-contract result
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          cat private-document-pipeline-source-contract.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+
+      - name: Validate preserved Pulse AI and FlowHive contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node ./scripts/validate-module-066-project-flowhive.mjs
+
+      - name: Restore and build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > private-document-pipeline-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-document-pipeline-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: private-document-pipeline-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API-build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          tail -n 220 private-document-pipeline-api-build.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+          grep -Fq '0 Error(s)' private-document-pipeline-api-build.log
+          echo 'PRIVATE_DOCUMENT_PIPELINE_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > private-document-pipeline-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-document-pipeline-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/private-document-pipeline-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend-build result and UI markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          tail -n 200 private-document-pipeline-frontend-build.log
+          if [[ "$STATUS" != '0' ]]; then
+            exit "$STATUS"
+          fi
+
+          cat dist/assets/*.js > /tmp/private-document-pipeline.js
+          cat dist/assets/*.css > /tmp/private-document-pipeline.css
+
+          for marker in \
+            'Private Document Processing & Permission-Aware Index' \
+            'Pipeline Readiness' \
+            'Authorized Inventory' \
+            'Processing Preview' \
+            'Private by default' \
+            'Vector generation and index writes remain locked'; do
+            grep -Fq "$marker" /tmp/private-document-pipeline.js
+          done
+
+          grep -Fq '.pulse-ai-doc-workbench' /tmp/private-document-pipeline.css
+          grep -Fq '.pulse-ai-doc-inventory-grid' /tmp/private-document-pipeline.css
+          echo 'PRIVATE_DOCUMENT_PIPELINE_FRONTEND_BUILD=PASSED'
+
+      - name: Validate web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-private-document-pipeline:${GITHUB_SHA}" \
+            .
+          echo 'PRIVATE_DOCUMENT_PIPELINE_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish final validation summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Module 011 Pulse AI — Private Document Pipeline'
+            echo
+            echo '- Exact PR #221 parent scope: passed'
+            echo '- Private document source contract: passed'
+            echo '- Existing Module 011 foundation contract: passed'
+            echo '- Existing deep-intelligence contract: passed'
+            echo '- Existing FlowHive contract: passed'
+            echo '- .NET 10 API build: passed'
+            echo '- Complete frontend production build: passed'
+            echo '- Web container build context: passed'
+            echo '- Database migration or mutation: none'
+            echo '- OCR execution: none'
+            echo '- Embedding execution: none'
+            echo '- Vector-index write: none'
+            echo '- External model call: none'
+            echo '- Provider secret or route mutation: none'
+            echo '- Azure, Entra, Container App, or deployment operation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
