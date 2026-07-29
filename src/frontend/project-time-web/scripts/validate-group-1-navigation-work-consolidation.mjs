@@ -25,7 +25,10 @@ const paths = {
   capacity: 'src/frontend/project-time-web/src/CapacityPipelineForecastCenter.jsx',
   intakeHandoff: 'src/frontend/project-time-web/src/IntakeWorkTaskHandoffPanel.jsx',
   availabilityController: 'src/frontend/project-time-web/src/ModuleAvailabilityController.jsx',
-  packageJson: 'src/frontend/project-time-web/package.json'
+  packageJson: 'src/frontend/project-time-web/package.json',
+  pulseCenter: 'src/frontend/project-time-web/src/PulseAiCenter.jsx',
+  pulseCompatibility: 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx',
+  pulseRecovery: 'docs/modules/module-011-pulse-ai/LEGACY-WORK-TASK-BUILDER-RECOVERY.md'
 };
 
 for (const [key, relative] of Object.entries(paths)) {
@@ -44,6 +47,15 @@ const capacity = read(paths.capacity);
 const intakeHandoff = read(paths.intakeHandoff);
 const availabilityController = read(paths.availabilityController);
 const packageJson = read(paths.packageJson);
+const pulseCenter = read(paths.pulseCenter);
+const pulseCompatibility = read(paths.pulseCompatibility);
+const pulseRecovery = read(paths.pulseRecovery);
+
+const module011Start = registry.indexOf("moduleNumber: '011'");
+const module012Start = registry.indexOf("moduleNumber: '012'", module011Start);
+const module011Block = module011Start >= 0 && module012Start > module011Start
+  ? registry.slice(module011Start, module012Start)
+  : '';
 
 assert('MORE_MENU_TARGET', bridge.includes('#enterprise-more-navigation-menu.enterprise-more-dropdown')
   && bridge.includes('.enterprise-more-button')
@@ -133,7 +145,7 @@ assert('IDEMPOTENT_VISIBILITY_MUTATIONS', bridge.includes('if (!element.hidden) 
 assert('BODY_OWNED_NOTICE_BOUNDARY', bridge.includes("notice.dataset.projectpulseBodyOwned = 'true'")
   && bridge.includes('document.body.append(notice)')
   && bridge.includes("notice?.parentElement === document.body"),
-'the only created navigation notice is a direct body child outside #root and cannot conflict with React reconciliation');
+'the historical retirement notice remains outside #root and cannot conflict with React reconciliation');
 
 assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
   && registry.includes("displayName: 'Approval, Export & Audit Workflow'")
@@ -141,24 +153,40 @@ assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
   && app.includes('<ApprovalExportAuditWorkflowCenter />'),
 'Module 007 remains the post-time-entry approval, reconciliation, export, and audit workflow');
 
-assert('MODULE_011_RETIRED', registry.includes("moduleNumber: '011'")
-  && registry.includes("lifecycle: 'retired'")
-  && registry.includes('isRetired: true')
-  && registry.includes("replacementRoutes: Object.freeze(['work-register', 'create-work-register'])"),
-'Module 011 is retained as historical metadata but removed from active work ownership');
+assert('MODULE_011_PULSE_AI', module011Block.includes("displayName: 'Pulse AI'")
+  && module011Block.includes("group: 'AI & Automation'")
+  && module011Block.includes("lifecycle: 'source_foundation'")
+  && !module011Block.includes('isRetired: true'),
+'Module 011 is reactivated as the Pulse AI source foundation');
 
-assert('MODULE_011_DIRECT_ROUTE_REDIRECT', registry.includes("'work-task-builder': 'work-register'")
-  && bridge.includes("window.location.replace('#work-register')")
-  && bridge.includes('RETIRED_ROUTE_NOTICE_KEY'),
-'old Module 011 links redirect safely to Module 055C with a visible retirement notice');
+assert('MODULE_011_COMPATIBILITY_MOUNT', module011Block.includes("route: 'work-task-builder'")
+  && module011Block.includes('compatibilityRoute: true')
+  && !registry.includes("'work-task-builder': 'work-register'")
+  && app.includes("activeRoute === 'work-task-builder'")
+  && pulseCompatibility.includes("import PulseAiCenter from './PulseAiCenter.jsx';")
+  && pulseCompatibility.includes('return <PulseAiCenter />;'),
+'Pulse AI uses the preserved Module 011 route without redirecting active users to Module 055C');
 
-assert('MODULE_011_NAVIGATION_HIDDEN', css.includes('a[href="#work-task-builder"]')
-  && css.includes('[data-module-number="011"]')
+assert('MODULE_011_NAVIGATION_ACTIVE', !css.includes('a[href="#work-task-builder"]')
+  && !css.includes('button[data-route="work-task-builder"]')
+  && !css.includes('[data-module-number="011"]')
   && bridge.includes('RETIRED_MODULE_NUMBERS'),
-'Module 011 is hidden immediately from More, sidebar, dashboard, and module links');
+'Module 011 is no longer hard-hidden and remains governed by dynamic RBAC evidence');
 
-assert('MODULE_011_SOURCE_PRESERVED', app.includes('<WorkTaskBuilderPanel />'),
-'legacy source remains preserved for history/recovery even though the active route is retired');
+assert('LEGACY_WORK_TASK_BUILDER_RECOVERABLE', module011Block.includes('previousIdentity: Object.freeze({')
+  && module011Block.includes("displayName: 'Work Task Builder'")
+  && module011Block.includes("lifecycle: 'retired_non_destructively'")
+  && module011Block.includes("replacementRoutes: Object.freeze(['work-register', 'create-work-register'])")
+  && pulseRecovery.includes('ad9fa2c76f6aba8df9bbdd4ab6970dcb0748fbb2')
+  && pulseRecovery.includes('cd58f58b77d9fe0dc9660c5fed75b9a6bf431c39'),
+'legacy Work Task Builder source and replacement ownership remain recoverable from an immutable checkpoint');
+
+assert('MODULE_011_AI_SCOPE_ONLY', pulseCenter.includes('data-module="011"')
+  && pulseCenter.includes('<h1>Pulse AI</h1>')
+  && pulseCenter.includes('Module 064 remains the governed provider and inference gateway')
+  && !pulseCenter.includes('/api/work-tasks')
+  && !pulseCompatibility.includes('/api/work-tasks'),
+'Pulse AI owns AI lifecycle governance and does not reclaim former project/task APIs');
 
 assert('MODULE_020_DISTINCT_OWNER', registry.includes("moduleNumber: '020'")
   && registry.includes("displayName: 'Project Intake & Resource Handoff'")
@@ -173,13 +201,13 @@ assert('MODULE_020_HANDOFF_REACT_OWNED', intakeHandoff.includes('Project Intake 
   && intakeHandoff.includes('Module 011 Work Task Builder is retired')
   && intakeHandoff.includes('data-projectpulse-work-management-handoff="020-to-055d-055c"')
   && bridge.includes("setAttributeIfChanged(section, 'data-projectpulse-work-management-handoff', '020-to-055d-055c')"),
-'Module 020 owns its corrected handoff content in React source rather than through runtime child mutation');
+'Module 020 still describes the retired Work Task Builder identity while React owns its handoff content');
 
 assert('MODULE_055C_055D_OWNERSHIP', registry.includes("moduleNumber: '055C'")
   && registry.includes("moduleNumber: '055D'")
   && registry.includes('Authoritative workspace for editing existing project records')
   && registry.includes('Authoritative project-creation workflow'),
-'Modules 055C and 055D have explicit existing-project and project-creation ownership');
+'Modules 055C and 055D retain explicit existing-project and project-creation ownership');
 
 assert('MODULE_019_INDEPENDENT', !workspace.includes('work-task-builder')
   && !workspace.includes('/api/work-tasks')
@@ -197,14 +225,18 @@ assert('AVAILABILITY_PRESERVED', availabilityController.includes('/api/module-av
   && bridge.includes('data-module-availability-hidden'),
 'existing disabled-module handling and Super Administrator inspection remain compatible');
 
-assert('NO_DATABASE_CHANGE', !exists('database/migrations/050_group_1_navigation_work_consolidation.sql'),
-'Group 1 requires no migration and changes no module data');
-assert('NO_DEPLOYMENT_ACTION', !bridge.includes('az containerapp') && !bridge.includes('workflow_dispatch'),
+assert('NO_DATABASE_CHANGE', !exists('database/migrations/050_group_1_navigation_work_consolidation.sql')
+  && !exists('database/migrations/051_module_011_pulse_ai.sql'),
+'Group 1 and the Pulse AI foundation require no migration and change no module data');
+assert('NO_DEPLOYMENT_ACTION', !bridge.includes('az containerapp')
+  && !pulseCenter.includes('az containerapp')
+  && !pulseCenter.includes('workflow_dispatch'),
 'source contains no Azure or deployment execution');
 
 console.log(`GROUP1_VALIDATION_CHECKS=${checks.length}`);
 console.log('GROUP1_MODULE_007_DISPOSITION=RETAIN_APPROVAL_EXPORT_AUDIT_WORKFLOW');
-console.log('GROUP1_MODULE_011_DISPOSITION=RETIRED_NON_DESTRUCTIVELY');
+console.log('GROUP1_MODULE_011_DISPOSITION=REUSED_AS_PULSE_AI');
+console.log('GROUP1_LEGACY_WORK_TASK_BUILDER=RECOVERABLE_FROM_IMMUTABLE_CHECKPOINT');
 console.log('GROUP1_MODULE_020_DISPOSITION=RETAIN_PRE_PROJECT_INTAKE_RESOURCE_HANDOFF');
 console.log('GROUP1_MODULE_019_070_DEPENDENCY=MODULE_011_NOT_PRESENT');
 console.log('GROUP1_REACT_DOM_OWNERSHIP=CHILD_STRUCTURE_REACT_OWNED');

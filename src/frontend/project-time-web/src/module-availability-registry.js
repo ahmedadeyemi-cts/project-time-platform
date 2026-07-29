@@ -11,7 +11,22 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
   Object.freeze({ moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users', group: 'Administration' }),
-  Object.freeze({ moduleNumber: '011', route: 'work-task-builder', displayName: 'Work Task Builder', group: 'Project Delivery', lifecycle: 'retired', isRetired: true, replacementRoutes: Object.freeze(['work-register', 'create-work-register']), retirementReason: 'Project creation and project/task management moved to Modules 055D and 055C.' }),
+  Object.freeze({
+    moduleNumber: '011',
+    route: 'work-task-builder',
+    displayName: 'Pulse AI',
+    group: 'AI & Automation',
+    lifecycle: 'source_foundation',
+    description: 'Governed ProjectPulse workspace for knowledge sources, datasets, external training orchestration, evaluations, model registry, and controlled promotion through Module 064.',
+    compatibilityRoute: true,
+    previousIdentity: Object.freeze({
+      displayName: 'Work Task Builder',
+      lifecycle: 'retired_non_destructively',
+      replacementRoutes: Object.freeze(['work-register', 'create-work-register']),
+      recoveryCheckpoint: 'main@ad9fa2c76f6aba8df9bbdd4ab6970dcb0748fbb2',
+      retirementReason: 'Project creation and project/task management moved to Modules 055D and 055C.'
+    })
+  }),
   Object.freeze({ moduleNumber: '012', route: 'role-admin', displayName: 'Role Administration', group: 'Administration' }),
   Object.freeze({ moduleNumber: '013', route: 'service-control', displayName: 'System Health & API Diagnostics', group: 'Platform Operations', description: 'Provider-neutral first-response troubleshooting for platform identity, resource use, dependencies, integrations, workers, deployments, capabilities, and every registered API.' }),
   Object.freeze({ moduleNumber: '014', route: 'backup-dr', displayName: 'Backup & Disaster Recovery', group: 'Platform Operations' }),
@@ -74,8 +89,7 @@ const ROUTE_ALIASES = Object.freeze({
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
   'resource-assignment-handoff': 'signed-handoff',
-  'global-mail-configuration': 'entra-secret-administration',
-  'work-task-builder': 'work-register'
+  'global-mail-configuration': 'entra-secret-administration'
 });
 
 export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));
