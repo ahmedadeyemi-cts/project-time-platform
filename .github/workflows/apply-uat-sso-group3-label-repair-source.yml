@@ -1,0 +1,81 @@
+name: Apply UAT SSO Group 3 and Pulse AI Label Repair Source
+
+on:
+  push:
+    branches:
+      - fix/uat-sso-group3-module011-labels-20260729-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-uat-sso-group3-module011-labels-20260729-v2
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply verified source repair and remove bootstrap files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          EXPECTED_MAIN='34f63946e80bd17ce9fa33c72ae2674f62081bae'
+          PATCH_PAYLOAD='.projectpulse/uat-sso-group3-label-repair.patch.gz.b64'
+          BOOTSTRAP_WORKFLOW='.github/workflows/apply-uat-sso-group3-label-repair-source.yml'
+
+          git fetch origin main --no-tags
+          ACTUAL_MAIN="$(git rev-parse origin/main)"
+          [[ "$ACTUAL_MAIN" == "$EXPECTED_MAIN" ]] || {
+            echo "ERROR: main advanced before bootstrap application." >&2
+            echo "EXPECTED_MAIN=$EXPECTED_MAIN" >&2
+            echo "ACTUAL_MAIN=$ACTUAL_MAIN" >&2
+            exit 1
+          }
+
+          mapfile -t BOOTSTRAP_CHANGED < <(git diff --name-only "$EXPECTED_MAIN...HEAD" | sort)
+          mapfile -t EXPECTED_BOOTSTRAP < <(printf '%s\n' "$BOOTSTRAP_WORKFLOW" "$PATCH_PAYLOAD" | sort)
+          [[ "${#BOOTSTRAP_CHANGED[@]}" -eq 2 ]]
+          diff -u \
+            <(printf '%s\n' "${EXPECTED_BOOTSTRAP[@]}") \
+            <(printf '%s\n' "${BOOTSTRAP_CHANGED[@]}")
+
+          base64 --decode "$PATCH_PAYLOAD" | gzip --decompress > /tmp/uat-sso-group3-label-repair.patch
+          git apply --check /tmp/uat-sso-group3-label-repair.patch
+          git apply /tmp/uat-sso-group3-label-repair.patch
+
+          rm -f "$PATCH_PAYLOAD" "$BOOTSTRAP_WORKFLOW"
+          rmdir .projectpulse 2>/dev/null || true
+
+          cat > /tmp/expected-source-files.txt <<'EOF'
+          .github/workflows/uat-sso-group3-label-repair-ci.yml
+          src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs
+          src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs
+          src/backend/ProjectTime.Api/Program.cs
+          src/frontend/project-time-web/scripts/validate-group-3-project-financial-workspaces.mjs
+          src/frontend/project-time-web/scripts/validate-microsoft-sso-runtime-wiring.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/UnifiedProjectFinancialWorkspace.jsx
+          src/frontend/project-time-web/src/unified-project-financial-workspace.css
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-source-files.txt
+          sort -o /tmp/expected-source-files.txt /tmp/expected-source-files.txt
+
+          git add -A
+          git diff --cached --check
+          git diff --cached --name-only | sort > /tmp/actual-source-files.txt
+          diff -u /tmp/expected-source-files.txt /tmp/actual-source-files.txt
+
+          git config user.name 'ProjectPulse Integration Bot'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git commit -m 'Repair SSO callback origin and differentiate project workspaces'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
