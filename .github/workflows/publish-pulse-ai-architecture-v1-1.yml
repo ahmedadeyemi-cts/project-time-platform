@@ -1,4 +1,5 @@
 # Serialized branch publication; source and artifact validation remain deterministic.
+# Branch-only trigger merge emits the single publication push event.
 name: Publish US Signal Pulse AI Architecture v1.1
 
 on:
