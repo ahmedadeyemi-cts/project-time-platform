@@ -372,7 +372,7 @@ export default function HelpAssistant() {
               Module 011 — Pulse AI Workbench
             </button>
             <button className="help-report-defect-button" type="button" onClick={openDefectTracker}>
-              Module 076 — Report a Defect
+              Report a defect — Module 076
             </button>
           </div>
 
