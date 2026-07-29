@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - .github/workflows/temp-module006-current-source-bundle.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/module006-current-source-bundle-trigger
 
 permissions:
   contents: read
