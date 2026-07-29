@@ -1,7 +1,10 @@
 const SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog';
 const SCOPED_RBAC_CATALOG_MARKER = 'projectpulse-scoped-rbac-catalog-normalized';
 const MODULE_NAME_OVERRIDES = Object.freeze({
-  '006': 'Toyota & Hyundai Pipeline'
+  '006': 'Project Register'
+});
+const MODULE_ROUTE_OVERRIDES = Object.freeze({
+  '006': 'project-register'
 });
 
 function asArray(value) {
@@ -10,13 +13,21 @@ function asArray(value) {
 
 function normalizeModule(module = {}) {
   const moduleCode = String(module.moduleCode ?? module.ModuleCode ?? '').trim().toUpperCase();
-  const override = MODULE_NAME_OVERRIDES[moduleCode];
-  if (!override) return module;
+  const nameOverride = MODULE_NAME_OVERRIDES[moduleCode];
+  const routeOverride = MODULE_ROUTE_OVERRIDES[moduleCode];
+  if (!nameOverride && !routeOverride) return module;
+
   return {
     ...module,
-    ...(Object.prototype.hasOwnProperty.call(module, 'ModuleName') ? { ModuleName: override } : {}),
-    moduleName: override,
-    displayName: override
+    ...(nameOverride && Object.prototype.hasOwnProperty.call(module, 'ModuleName') ? { ModuleName: nameOverride } : {}),
+    ...(nameOverride ? { moduleName: nameOverride, displayName: nameOverride } : {}),
+    ...(routeOverride && Object.prototype.hasOwnProperty.call(module, 'Route') ? { Route: routeOverride } : {}),
+    ...(routeOverride && Object.prototype.hasOwnProperty.call(module, 'RouteKey') ? { RouteKey: routeOverride } : {}),
+    ...(routeOverride ? {
+      route: routeOverride,
+      routeKey: routeOverride,
+      href: `#${routeOverride}`
+    } : {})
   };
 }
 
@@ -41,8 +52,14 @@ function normalizeRolePolicyPayload(payload, pathname) {
   const modules = asArray(source.modules ?? source.Modules).map(normalizeModule);
   const legacyFallback = asArray(source.legacyFallback ?? source.LegacyFallback).map((entry) => {
     const moduleCode = String(entry?.moduleCode ?? entry?.ModuleCode ?? '').trim().toUpperCase();
-    const override = MODULE_NAME_OVERRIDES[moduleCode];
-    return override ? { ...entry, moduleName: override, ModuleName: override } : entry;
+    const nameOverride = MODULE_NAME_OVERRIDES[moduleCode];
+    const routeOverride = MODULE_ROUTE_OVERRIDES[moduleCode];
+    if (!nameOverride && !routeOverride) return entry;
+    return {
+      ...entry,
+      ...(nameOverride ? { moduleName: nameOverride, ModuleName: nameOverride, displayName: nameOverride } : {}),
+      ...(routeOverride ? { route: routeOverride, Route: routeOverride, routeKey: routeOverride, href: `#${routeOverride}` } : {})
+    };
   });
 
   return {
@@ -51,7 +68,8 @@ function normalizeRolePolicyPayload(payload, pathname) {
     ...(Object.prototype.hasOwnProperty.call(source, 'Modules') ? { Modules: modules } : {}),
     ...(legacyFallback.length || Object.prototype.hasOwnProperty.call(source, 'legacyFallback') ? { legacyFallback } : {}),
     compatibilityMarker: SCOPED_RBAC_CATALOG_MARKER,
-    moduleDisplayNameOverrides: MODULE_NAME_OVERRIDES
+    moduleDisplayNameOverrides: MODULE_NAME_OVERRIDES,
+    moduleRouteOverrides: MODULE_ROUTE_OVERRIDES
   };
 }
 
@@ -110,6 +128,7 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
 
 export {
   MODULE_NAME_OVERRIDES,
+  MODULE_ROUTE_OVERRIDES,
   normalizeCatalog,
   normalizeModule,
   normalizeRolePolicyPayload,
