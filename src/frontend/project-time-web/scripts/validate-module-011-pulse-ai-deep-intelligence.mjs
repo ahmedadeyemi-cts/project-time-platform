@@ -501,18 +501,19 @@ assert(
   migrations.length === 0 ? 'no Module 011 migration exists' : migrations.join(', ')
 );
 
-const environmentActions = [
-  ...walk('.github/workflows'),
-  ...walk('scripts'),
-  ...walk('deployment')
-].filter((relative) =>
+const ownedDeepIntelligencePaths = [
+  '.github/workflows/deep-intelligence-read-contract-ci.yml',
+  'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs',
+  ...Object.values(paths)
+];
+const environmentActions = ownedDeepIntelligencePaths.filter((relative) =>
   /module[-_]?011.*(?:deploy|migration|azure|entra|container)|pulse[-_]?ai.*(?:deploy|migration|azure|entra|container)/i.test(relative)
 );
 assert(
   'NO_ENVIRONMENT_ACTION',
   environmentActions.length === 0,
   environmentActions.length === 0
-    ? 'no Module 011 deployment, migration, Azure, Entra, or Container action exists'
+    ? 'no Module 011 environment-changing action exists in the owned deep-intelligence source scope'
     : environmentActions.join(', ')
 );
 

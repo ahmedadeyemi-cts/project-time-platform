@@ -22,12 +22,16 @@ export {
   PulseAiDeepIntelligenceWorkbench
 };
 
+function PulseAiWorkspace() {
+  return <PulseAiCenter />;
+}
+
 export default function WorkTaskBuilderPanel() {
   return (
     <>
       <PulseAiMissionControl />
       <PulseAiDeepIntelligenceWorkbench />
-      <PulseAiCenter />
+      <PulseAiWorkspace />
     </>
   );
 }

@@ -2033,9 +2033,9 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'work-task-builder',
     href: '#work-task-builder',
-    title: 'Work Task Builder',
+    title: 'Pulse AI',
     navLabel: 'MODULE 011',
-    description: 'Build, classify, and assign project, service request, open, and non-project work tasks with billing and utilization treatment.',
+    description: 'Governed AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion through Module 064.',
     permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -2489,7 +2489,7 @@ function getNavigationGroup(item) {
       return 'Security & Audit';
 
     case 'work-task-builder':
-      return 'Work Task Builder';
+      return 'Pulse AI';
 
     case 'user-admin':
     case 'azure-admin':
@@ -3485,11 +3485,11 @@ function getInstalledProjectPulseModuleRegistry() {
     },
     {
       route: 'work-task-builder',
-      title: 'Work Task Builder',
+      title: 'Pulse AI',
     navLabel: 'MODULE 011',
       status: 'Active',
       permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-      description: 'Defines work task categories, billing classification, utilization classification, and scoped project task assignment.'
+      description: 'Provides governed Pulse AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion while preserving Modules 055D and 055C project/task ownership.'
     },
     {
       route: 'role-admin',

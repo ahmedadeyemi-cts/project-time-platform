@@ -61,7 +61,7 @@ assert('MODULE_064_OPENAI_RESPONSES_API', providers.includes('"/responses"') && 
 assert('MODULE_064_CLAUDE_SONNET5_SAMPLING_SAFE', !providers.includes('temperature = request.Temperature') && !providers.includes('top_p') && !providers.includes('top_k'));
 assert('MODULE_064_GENERATION_HEALTH_PROBES', providers.includes('GenerationProbe') && providers.includes('ProbeRequest') && !providers.includes('HttpMethod.Get'));
 assert('MODULE_064_OPENAI_PROBE_TOKEN_MINIMUM', providers.includes('MaxOutputTokens: 16'));
-assert('MODULE_064_PROBE_TELEMETRY_ISOLATED', health.includes('ProbeSuccessCount') && health.includes('ProbeFailureCount') && !/RecordProbe[\\s\\S]*RecordSuccess/.test(health) && !/RecordProbe[\\s\\S]*RecordFailure/.test(health));
+assert('MODULE_064_PROBE_TELEMETRY_ISOLATED', health.includes('ProbeSuccessCount') && health.includes('ProbeFailureCount') && !/RecordProbe[\s\S]*RecordSuccess/.test(health) && !/RecordProbe[\s\S]*RecordFailure/.test(health));
 assert('MODULE_064_AVAILABILITY_USES_PROBE_STATUS', moduleBackend.includes('item.ProbeStatus == "available"') && center.includes('statusClass(health.probeStatus)'));
 assert('MODULE_064_SANITIZED_ATTEMPT_DIAGNOSTICS', router.includes('HttpStatus={HttpStatus}') && router.includes('RequestId={RequestId}') && !router.includes('result.Message'));
 assert('MODULE_064_MODEL_ALLOWLISTS', providers.includes('IsModelApproved') && configuration.includes('APPROVED_MODELS'));
@@ -94,13 +94,73 @@ assert('MODULE_064_APP_NAVIGATION', app.includes("route: 'ai-provider-configurat
 assert('MODULE_064_APP_ADMIN_ONLY', app.includes("activeRoute === 'ai-provider-configuration' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])"));
 assert('MODULE_064_TIMESHEET_PROVIDER_LABELS', app.includes("openai: 'OpenAI'") && app.includes("local_template: 'Governed local template fallback'"));
 assert('MODULE_064_BUILD_GUARD', packageJson.includes('validate:module064') && packageJson.includes('npm run validate:module064'));
+
+assert(
+  'MODULE_064_SECRET_LOADER_RECONCILES_HEALTH',
+  secretStore.includes('ProjectPulseAiSecretLoader(')
+    && secretStore.includes('ProjectPulseAiHealthRegistry health')
+    && secretStore.includes('health.ApplyConfiguration(configuration.Claude)')
+    && secretStore.includes('health.ApplyConfiguration(configuration.OpenAi)'),
+  'encrypted keys update the registry before routing and startup probes',
+);
+assert(
+  'MODULE_064_REPLICA_SYNC_REFRESHES_HEALTH',
+  secretStore.includes('ProjectPulseAiHealthCoordinator coordinator')
+    && secretStore.includes('await coordinator.RefreshAsync(false, stoppingToken)')
+    && secretStore.includes('synchronize provider configuration and health'),
+  'every replica refreshes unknown or stale provider readiness after shared configuration sync',
+);
+assert(
+  'MODULE_064_COORDINATOR_USES_LIVE_CONFIGURATION',
+  monitor.includes('var liveConfiguration = _configuration.Provider(provider.Code)')
+    && monitor.includes('_health.ApplyConfiguration(liveConfiguration)')
+    && monitor.includes('_health.ShouldProbe(provider.Code, maximumAge, force)')
+    && monitor.includes('_health.MarkProbeStarted(provider.Code)'),
+  'the probe decision is made after live secret/model/enabled hydration',
+);
+assert(
+  'MODULE_064_ROUTER_RECONCILES_BEFORE_SKIP',
+  router.indexOf('_health.ApplyConfiguration(_configuration.Provider(providerCode))')
+    < router.indexOf('if (!_health.CanAttempt(providerCode, out _))'),
+  'Module 001 cannot fall back because of a stale pre-secret health snapshot',
+);
+assert(
+  'MODULE_064_CONFIGURATION_LOAD_AUTO_PROBES',
+  moduleBackend.includes('ProjectPulseAiHealthCoordinator coordinator')
+    && moduleBackend.includes('var snapshots = await coordinator.RefreshAsync(false, cancellationToken)')
+    && moduleBackend.includes('healthCheckedAutomatically = true'),
+  'opening Module 064 automatically verifies unknown or stale providers',
+);
+assert(
+  'MODULE_064_SECRET_SAVE_AUTO_PROBES',
+  moduleBackend.includes('secret_replaced_and_verified')
+    && moduleBackend.includes('var snapshots = await coordinator.RefreshAsync(true, cancellationToken)')
+    && moduleBackend.includes('valueReturned = false'),
+  'new write-only keys are checked immediately without exposing values',
+);
+assert(
+  'MODULE_064_FRONTEND_BOUNDED_HEALTH_POLL',
+  center.includes('AUTOMATIC_HEALTH_POLL_MS = 2000')
+    && center.includes('AUTOMATIC_HEALTH_POLL_LIMIT = 10')
+    && center.includes("fetch('/api/ai-configuration/health'")
+    && center.includes('Checking automatically')
+    && center.includes('Automatic provider health is active.'),
+  'the page follows an in-progress startup check without issuing provider calls itself',
+);
+assert(
+  'MODULE_064_CHECKING_STATE_STYLED',
+  styles.includes('.ai-provider-center__status--checking')
+    && styles.includes('.ai-provider-center__automatic-health'),
+  'automatic checks are shown as active work instead of a stale degraded state',
+);
+
 assert(
   'MODULE_064_CONTAINER_BUILD_CONTEXT',
-  webDockerfile.includes('src/backend/ProjectTime.Api/Ai/') &&
-    webDockerfile.includes('AiProviderConfigurationModule.cs') &&
-    webDockerfile.includes('docs/modules/module-064-ai-provider-configuration/') &&
-    webDockerfile.includes('AUGUST_PRODUCTION_READINESS_TRACKER.md') &&
-    webDockerfile.includes('COPY deployment/containers/web/Dockerfile'),
+  webDockerfile.includes('src/backend/ProjectTime.Api/Ai/')
+    && webDockerfile.includes('AiProviderConfigurationModule.cs')
+    && webDockerfile.includes('docs/modules/module-064-ai-provider-configuration/')
+    && webDockerfile.includes('AUGUST_PRODUCTION_READINESS_TRACKER.md')
+    && webDockerfile.includes('COPY deployment/containers/web/Dockerfile'),
 );
 assert('MODULE_064_DOCUMENTATION_SET', readme.includes('Module 064') && contract.includes('/providers/{providerCode}/secret') && security.includes('AES-256-GCM'));
 assert('MODULE_064_GOVERNANCE_REGISTERED', workRegister.includes('| 064 |') && catalog.includes('| 064 |'));
@@ -110,6 +170,7 @@ assert('MODULE_064_NO_DATABASE_ARTIFACT', !fs.existsSync(path.join(repository, '
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log(`\nMODULE_064_VALIDATION_CHECKS=${assertions.length}`);
 console.log('MODULE_064_ROUTING=CLAUDE_OPENAI_LOCAL');
+console.log('MODULE_064_AUTOMATIC_HEALTH=STARTUP_PERIODIC_REPLICA_ROUTER');
 console.log('MODULE_064_SAFETY_REFUSAL_FAILOVER=BLOCKED');
 console.log('MODULE_064_SECRET_MUTATION=ADMIN_WRITE_ONLY_ENCRYPTED');
 console.log(`MODULE_064_CONTRACT=${failed.length === 0 ? 'PASSED' : 'FAILED'}`);
