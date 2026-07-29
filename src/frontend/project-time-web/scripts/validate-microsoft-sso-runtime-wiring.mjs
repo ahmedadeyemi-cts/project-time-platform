@@ -22,14 +22,20 @@ const runtimePath = 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoRuntimeComp
 const servicesPath = 'src/backend/ProjectTime.Api/Modules/MicrosoftServicesRuntimeCompatibility.cs';
 const continuityPath = 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityReadContinuityCompatibility.cs';
 const publicOriginPath = 'src/backend/ProjectTime.Api/Modules/ProjectPulsePublicOriginCompatibility.cs';
+const stateOriginRecoveryPath = 'src/backend/ProjectTime.Api/Modules/MicrosoftSsoStateOriginRecovery.cs';
+const programPath = 'src/backend/ProjectTime.Api/Program.cs';
 const runtimeAvailable = exists(runtimePath);
 const servicesAvailable = exists(servicesPath);
 const continuityAvailable = exists(continuityPath);
 const publicOriginAvailable = exists(publicOriginPath);
+const stateOriginRecoveryAvailable = exists(stateOriginRecoveryPath);
+const programAvailable = exists(programPath);
 const runtime = runtimeAvailable ? read(runtimePath) : '';
 const services = servicesAvailable ? read(servicesPath) : '';
 const continuity = continuityAvailable ? read(continuityPath) : '';
 const publicOrigin = publicOriginAvailable ? read(publicOriginPath) : '';
+const stateOriginRecovery = stateOriginRecoveryAvailable ? read(stateOriginRecoveryPath) : '';
+const program = programAvailable ? read(programPath) : '';
 
 assert('COMPILED_HANDLER_TENANT', csproj.includes("s/PROJECTPULSE_ENTRA_TENANT_ID/PROJECTPULSE_SSO_TENANT_ID/g"), 'compiled SSO handlers consume the active SSO tenant');
 assert('COMPILED_HANDLER_CLIENT', csproj.includes("s/PROJECTPULSE_ENTRA_CLIENT_ID/PROJECTPULSE_SSO_CLIENT_ID/g"), 'compiled SSO handlers consume the SSO App Registration client ID');
@@ -56,6 +62,41 @@ const publicOriginImplementation = !publicOriginAvailable || (
 );
 assert('FORWARDED_PUBLIC_ORIGIN', publicOriginRegistration && publicOriginImplementation,
 'Module 065 resolves a trusted HTTPS public proxy/browser origin before callback validation');
+
+const callbackStateRecovery = stateOriginRecoveryAvailable
+  && registrar.includes('MicrosoftSsoStateOriginRecovery.TryRecoverAsync')
+  && registrar.includes('MicrosoftSsoStateOriginRecovery.CallbackPath')
+  && registrar.includes('context.Request.Query["state"]')
+  && stateOriginRecovery.includes('SELECT redirect_uri')
+  && stateOriginRecovery.includes('consumed_at IS NULL')
+  && stateOriginRecovery.includes('expires_at > NOW()')
+  && stateOriginRecovery.includes('unconsumed_auth_sso_state_redirect_uri');
+assert('CALLBACK_STATE_ORIGIN_RECOVERY', callbackStateRecovery,
+'Microsoft callback origin can be recovered only from an unconsumed, unexpired auth_sso_state row');
+
+const storedRedirectValidation = stateOriginRecoveryAvailable
+  && stateOriginRecovery.includes('Uri.UriSchemeHttps')
+  && stateOriginRecovery.includes('CallbackPath')
+  && stateOriginRecovery.includes('stored_redirect_uri_user_info_rejected')
+  && stateOriginRecovery.includes('stored_redirect_uri_query_or_fragment_rejected')
+  && stateOriginRecovery.includes('stored_redirect_uri_port_rejected')
+  && stateOriginRecovery.includes('stored_redirect_uri_internal_host_rejected')
+  && stateOriginRecovery.includes('.onenecklab.com')
+  && stateOriginRecovery.includes('.ussignal.com')
+  && stateOriginRecovery.includes('stored_redirect_uri_environment_mismatch');
+assert('STORED_REDIRECT_FAIL_CLOSED', storedRedirectValidation,
+'stored callback requires HTTPS, exact callback path, approved environment host, matching environment, and no user-info, query, fragment, internal host, or unapproved port');
+
+const atomicConsumptionUsesStoredRedirect = programAvailable
+  && program.includes('UPDATE auth_sso_state')
+  && program.includes('consumed_at IS NULL')
+  && program.includes('expires_at > NOW()')
+  && program.includes('RETURNING nonce_token, requested_email, redirect_uri;')
+  && program.includes('MicrosoftSsoStateOriginRecovery.TryValidateStoredRedirectUri')
+  && program.includes('["redirect_uri"] = redirectUri')
+  && program.includes('ProjectPulseValidateMicrosoftIdTokenAsync(idToken, tenantId, clientId, nonce)');
+assert('ATOMIC_STATE_AND_NONCE_PRESERVED', atomicConsumptionUsesStoredRedirect,
+'callback atomically consumes state, reads its exact redirect URI, uses it for token exchange, and preserves nonce validation');
 if (!publicOriginAvailable) {
   console.log('MICROSOFT_SSO_RUNTIME_PUBLIC_ORIGIN_DEEP_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }

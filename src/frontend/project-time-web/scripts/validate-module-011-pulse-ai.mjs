@@ -126,6 +126,15 @@ assert(
 );
 
 assert(
+  'VISIBLE_APP_NAME',
+  app.includes("title: 'Pulse AI'")
+    && app.includes("case 'work-task-builder':")
+    && app.includes("return 'Pulse AI';")
+    && !app.includes("title: 'Work Task Builder'"),
+  'visible Module 011 navigation and registry labels are Pulse AI while the compatibility route remains unchanged'
+);
+
+assert(
   'APP_COMPATIBILITY_MOUNT',
   app.includes("import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';")
     && app.includes("activeRoute === 'work-task-builder'")

@@ -41,7 +41,7 @@ const helpTopics = [
   {
     keywords: ['project', 'task', 'assignment', 'customer', 'intake'],
     answer:
-      'Project Intake begins the delivery workflow. Project Workspace contains project context, documents, assignments, resource requests, and execution information. Work Task Builder creates eligible project tasks for assignment and time entry.'
+      'Project Intake begins the delivery workflow. Project Workspace contains project context, documents, assignments, resource requests, and execution information. Pulse AI provides governed AI lifecycle and private knowledge assistance. Modules 055D and 055C remain the project and task management authorities.'
   },
   {
     keywords: ['location', 'work location', 'timezone', 'resource profile'],
