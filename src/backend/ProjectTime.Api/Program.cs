@@ -26193,13 +26193,13 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
     var tenantId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_TENANT_ID");
     var clientId = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_ID");
     var clientSecret = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_CLIENT_SECRET");
-    var redirectUri = ProjectPulseRequiredEnv("PROJECTPULSE_ENTRA_REDIRECT_URI");
     var testDomain = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_TEST_DOMAIN") ?? "";
     var allowTestJit = string.Equals(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_ALLOW_TEST_JIT"), "true", StringComparison.OrdinalIgnoreCase);
     var mode = Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE") ?? "development";
 
     string nonce;
     string? requestedEmail;
+    string redirectUri;
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
@@ -26210,7 +26210,7 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
         WHERE state_token = @state_token
           AND consumed_at IS NULL
           AND expires_at > NOW()
-        RETURNING nonce_token, requested_email;
+        RETURNING nonce_token, requested_email, redirect_uri;
         """, connection))
     {
         stateCommand.Parameters.AddWithValue("state_token", state);
@@ -26224,6 +26224,22 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
 
         nonce = reader.GetString(0);
         requestedEmail = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var storedRedirectUri = reader.IsDBNull(2) ? null : reader.GetString(2);
+        if (!MicrosoftSsoStateOriginRecovery.TryValidateStoredRedirectUri(
+                storedRedirectUri,
+                httpContext,
+                out redirectUri,
+                out var recoveredPublicOrigin,
+                out var redirectFailureCode))
+        {
+            var encodedRedirectError = Uri.EscapeDataString(redirectFailureCode);
+            return Results.Redirect($"/#login?ssoError={encodedRedirectError}");
+        }
+
+        httpContext.Request.Scheme = recoveredPublicOrigin.Scheme;
+        httpContext.Request.Host = HostString.FromUriComponent(recoveredPublicOrigin.Authority);
+        httpContext.Items[ProjectPulsePublicOriginCompatibility.PublicOriginItem] = recoveredPublicOrigin;
+        httpContext.Items[ProjectPulsePublicOriginCompatibility.PublicOriginSourceItem] = "consumed_auth_sso_state_redirect_uri";
     }
 
     using var httpClient = new HttpClient();

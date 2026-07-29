@@ -60,14 +60,32 @@ public static class GlobalMailConfigurationModule
 
             if (!TryResolvePublicOrigin(context, out var publicOrigin, out var source))
             {
-                await Results.BadRequest(new
+                var isInteractiveCallback = path.Equals(
+                    MicrosoftSsoStateOriginRecovery.CallbackPath,
+                    StringComparison.OrdinalIgnoreCase);
+                var recovered = isInteractiveCallback
+                    ? await MicrosoftSsoStateOriginRecovery.TryRecoverAsync(
+                        context,
+                        context.Request.Query["state"].ToString(),
+                        context.RequestAborted)
+                    : MicrosoftSsoStateOriginRecovery.StateOriginResult.Fail("state_origin_recovery_not_applicable");
+
+                if (!recovered.Recovered || recovered.PublicOrigin is null)
                 {
-                    module = "065",
-                    status = "trusted_public_origin_unavailable",
-                    correlationId = context.TraceIdentifier,
-                    message = "ProjectPulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
-                }).ExecuteAsync(context);
-                return;
+                    await Results.BadRequest(new
+                    {
+                        module = "065",
+                        status = "trusted_public_origin_unavailable",
+                        correlationId = context.TraceIdentifier,
+                        originRecoveryCode = recovered.FailureCode,
+                        message = "ProjectPulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
+                    }).ExecuteAsync(context);
+                    return;
+                }
+
+                publicOrigin = recovered.PublicOrigin;
+                source = recovered.Source;
+                context.Items["ProjectPulseSsoStateRedirectUri"] = recovered.RedirectUri;
             }
 
             context.Request.Scheme = publicOrigin.Scheme;
