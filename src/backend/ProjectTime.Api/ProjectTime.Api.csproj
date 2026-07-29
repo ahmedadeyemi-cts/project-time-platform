@@ -15,6 +15,7 @@
     <Module001GeneratedEndpoints>$(IntermediateOutputPath)Module001TimesheetEnhancementModule.g.cs</Module001GeneratedEndpoints>
     <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
     <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>
+    <PulseAiQuestionPlannerGenerated>$(IntermediateOutputPath)PulseAiQuestionPlanner.g.cs</PulseAiQuestionPlannerGenerated>
     <ProjectFinancialTruthGeneratedModule>$(IntermediateOutputPath)ProjectFinancialTruthModule.g.cs</ProjectFinancialTruthGeneratedModule>
   </PropertyGroup>
 
@@ -42,6 +43,7 @@
     <Compile Remove="Modules/Module001TimesheetEnhancementModule.cs" />
     <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
     <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />
+    <Compile Remove="Ai/PulseAiQuestionPlanner.cs" />
     <Compile Remove="Modules/ProjectFinancialTruthModule.cs" />
   </ItemGroup>
 
@@ -73,6 +75,10 @@
          XLEventTracking constructor argument. Keep the canonical extractor easy
          to review while compiling an API-version-normalized copy. -->
     <Exec Command="sed -e 's/LoadOptions\.PreserveWhitespace/System.Xml.Linq.LoadOptions.PreserveWhitespace/g' -e 's/new XLWorkbook(source.StoragePath, XLEventTracking.Disabled)/new XLWorkbook(source.StoragePath)/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateDocumentExtractionService.cs&quot; &gt; &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <!-- Stable product-purpose questions should receive a direct answer rather
+         than the generic future multi-tool plan. The canonical planner remains
+         reviewable while the compiled copy composes the approved knowledge catalog. -->
+    <Exec Command="sed -e 's/var directAnswer = FindKnowledgeAnswer(normalized);/var directAnswer = PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized);/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiQuestionPlanner.cs&quot; &gt; &quot;$(PulseAiQuestionPlannerGenerated)&quot;" />
     <!-- Group 5 extends the authoritative Group 3 financial source through a partial
          bridge. The reviewable Group 3 source remains unchanged. -->
     <Exec Command="sed -e 's/public static class ProjectFinancialTruthModule/public static partial class ProjectFinancialTruthModule/' &quot;$(MSBuildProjectDirectory)/Modules/ProjectFinancialTruthModule.cs&quot; &gt; &quot;$(ProjectFinancialTruthGeneratedModule)&quot;" />
@@ -87,6 +93,7 @@
       <Compile Include="$(Module001GeneratedEndpoints)" />
       <Compile Include="$(PulseAiGroundingGenerated)" />
       <Compile Include="$(PulseAiPrivateExtractorGenerated)" />
+      <Compile Include="$(PulseAiQuestionPlannerGenerated)" />
       <Compile Include="$(ProjectFinancialTruthGeneratedModule)" />
     </ItemGroup>
   </Target>
