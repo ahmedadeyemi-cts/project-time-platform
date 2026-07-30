@@ -1,0 +1,137 @@
+name: Validate Group 7 AI Help and System User Guide
+
+on:
+  push:
+    branches:
+      - 'feature/group-7-ai-help-system-user-guide-*'
+  pull_request:
+    paths:
+      - '.github/workflows/group7-ai-help-system-guide-ci.yml'
+      - 'docs/modules/group-7-ai-help-system-guide/README.md'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-group-7-ai-help-system-guide.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-7-ai-help-system-guide.mjs'
+      - 'src/frontend/project-time-web/src/ai/**'
+      - 'src/frontend/project-time-web/src/help/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group7-ai-help-system-guide-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Group 7 stacked source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH='feature/group-6-enterprise-page-system-20260729'
+          git fetch origin "$BASE_BRANCH" main --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/group7-ai-help-system-guide-ci\.yml|docs/modules/group-7-ai-help-system-guide/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Group 7 source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(database/|src/backend/|deployment/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Group 7 overlaps database, backend, deployment, canonical App/main, or module-registry source.' >&2
+            exit 1
+          fi
+
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo 'GROUP_7_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Group 7 JavaScript syntax
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/src/ai/ai-provider-readiness-store.js
+          node --check src/frontend/project-time-web/src/help/help-answer-preferences.js
+          node --check src/frontend/project-time-web/scripts/inject-group-7-ai-help-system-guide.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-7-ai-help-system-guide.mjs
+
+      - name: Validate Group 7 source contract
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:group7-ai-help-system-guide
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Group 6 Module 064 Pulse AI Help and Module 999 compatibility
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:group6-enterprise-presentation
+          npm run validate:module064
+          npm run validate:module011
+          npm run validate:modules-directory
+          npm run validate:approval-access-compatibility
+          node ./scripts/validate-pulse-ai-help-chat-usability.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate compiled Group 7 markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat dist/assets/*.js > /tmp/group7-ai-help-system-guide.js
+          cat dist/assets/*.css > /tmp/group7-ai-help-system-guide.css
+
+          for marker in \
+            'Last verified AI provider readiness' \
+            'Retest providers' \
+            'Governed answer hierarchy' \
+            'System User Guide' \
+            'Module descriptions and API metadata' \
+            'Permission-aware AI repository search' \
+            'Answer detail preference' \
+            'Report an Issue' \
+            'Feature Request'; do
+            grep -Fq "$marker" /tmp/group7-ai-help-system-guide.js
+          done
+
+          for marker in \
+            '.group7-provider-readiness' \
+            '.group7-help-governance' \
+            '.group7-help-preferences' \
+            '.group7-system-guide-overview' \
+            '.help-answer-preference-evidence'; do
+            grep -Fq "$marker" /tmp/group7-ai-help-system-guide.css
+          done
+
+          echo 'GROUP_7_FRONTEND_BUILD=PASSED'
