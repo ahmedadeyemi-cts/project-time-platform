@@ -1,0 +1,247 @@
+name: Validate Pulse AI System Intelligence and Troubleshooting
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-system-intelligence-troubleshooting-*'
+  pull_request:
+    paths:
+      - '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+      - 'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+      - 'database/rollback/054_pulse_ai_system_intelligence_conversations_rollback.sql'
+      - 'tests/test-pulse-ai-system-intelligence-migration-054.sh'
+      - 'docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING.md'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemApiCatalogService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-group-7-ai-help-system-guide.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence.mjs'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-system-chat.css'
+      - 'src/frontend/project-time-web/src/PulseAiSystemIntelligenceWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-system-intelligence-workbench.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulse-ai-system-intelligence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_BASE='a932c5297eab2d3c18472c818c6574a895f265cc'
+          git cat-file -e "$EXPECTED_BASE^{commit}"
+          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
+          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/pulse-ai-system-intelligence-ci\.yml|database/migrations/054_pulse_ai_system_intelligence_conversations\.sql|database/rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiSystemIntelligenceContracts|PulseAiSystemKnowledgeCatalog|PulseAiSystemApiCatalogService|PulseAiSystemToolExecutor|PulseAiSystemIntelligenceRepository|PulseAiSystemIntelligenceService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-module-011-system-intelligence)\.mjs|src/frontend/project-time-web/src/(HelpAssistant\.jsx|pulse-ai-system-chat\.css|PulseAiSystemIntelligenceWorkbench\.jsx|pulse-ai-system-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Pulse AI system-intelligence source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            ! grep -Fxq "$protected" <<<"$CHANGED"
+          done
+
+          ! grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.)' <<<"$CHANGED"
+          git diff --check "$EXPECTED_BASE"...HEAD
+          echo "PULSE_AI_SYSTEM_INTELLIGENCE_BASE=$EXPECTED_BASE"
+          echo 'PULSE_AI_SYSTEM_INTELLIGENCE_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check ./scripts/inject-group-7-ai-help-system-guide.mjs
+          node --check ./scripts/validate-module-011-system-intelligence.mjs
+          node ./scripts/validate-module-011-system-intelligence.mjs
+
+      - name: Test migration 054 apply rollback and reapply
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-pulse-ai-system-intelligence-migration-054.sh
+          tests/test-pulse-ai-system-intelligence-migration-054.sh
+
+      - name: Validate preserved Pulse AI system operations and FlowHive contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node ./scripts/validate-module-011-private-document-pipeline.mjs
+          node ./scripts/validate-module-011-private-runtime-activation.mjs
+          node ./scripts/validate-module-011-private-rag-orchestration.mjs
+          node ./scripts/validate-pulse-ai-help-chat-usability.mjs
+          node ./scripts/validate-group-7-ai-help-system-guide.mjs
+          npm run validate:group2b-production-resilience
+          npm run validate:module068
+          npm run validate:module076
+          npm run validate:module077
+          npm run validate:module078
+          npm run validate:module998
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > pulse-ai-system-intelligence-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-ai-system-intelligence-api-${{ github.run_id }}-${{ github.run_attempt }}
+          path: pulse-ai-system-intelligence-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build and generated endpoint registration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          tail -n 320 pulse-ai-system-intelligence-api-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          grep -Fq '0 Error(s)' pulse-ai-system-intelligence-api-build.log
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name Program.ScopedRbac.g.cs -print -quit)"
+          test -n "$GENERATED"
+          grep -Fq 'app.MapPulseAiSystemIntelligenceEndpoints();' "$GENERATED"
+          echo "PULSE_AI_SYSTEM_INTELLIGENCE_GENERATED_PROGRAM=$GENERATED"
+          echo 'PULSE_AI_SYSTEM_INTELLIGENCE_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > pulse-ai-system-intelligence-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-ai-system-intelligence-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/pulse-ai-system-intelligence-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build and compiled experience markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          tail -n 300 pulse-ai-system-intelligence-frontend-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          cat dist/assets/*.js > /tmp/pulse-ai-system-intelligence.js
+          cat dist/assets/*.css > /tmp/pulse-ai-system-intelligence.css
+          for marker in \
+            'System Intelligence, Live API Discovery & Troubleshooting' \
+            'What APIs are running on the system?' \
+            'Troubleshoot the current platform and show me the strongest evidence.' \
+            'Future enhancement blueprint' \
+            'RETEST-PULSE-AI-SAFE-API' \
+            'Enter sends · Shift+Enter adds a line' \
+            'completed responses remain in conversation history'; do
+            grep -Fq "$marker" /tmp/pulse-ai-system-intelligence.js
+          done
+          for marker in \
+            '.pulse-ai-system-workbench' \
+            '.pulse-ai-system-answer' \
+            '.pulse-ai-conversation-toolbar' \
+            'overflow-y:scroll' \
+            'scrollbar-gutter:stable both-edges'; do
+            grep -Fq "$marker" /tmp/pulse-ai-system-intelligence.css
+          done
+          echo 'PULSE_AI_SYSTEM_INTELLIGENCE_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-system-intelligence:${GITHUB_SHA}" \
+            .
+          echo 'PULSE_AI_SYSTEM_INTELLIGENCE_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Module 011 Pulse AI — System Intelligence and Troubleshooting'
+            echo
+            echo '- Exact current-main source isolation: passed'
+            echo '- Migration 054 apply, rollback, idempotence, and reapply: passed'
+            echo '- Live ASP.NET API discovery contract: passed'
+            echo '- Governed troubleshooting tool boundary: passed'
+            echo '- Comprehensive direct-answer contract: passed'
+            echo '- Future enhancement blueprint: passed'
+            echo '- Durable conversation contract: passed'
+            echo '- Enter/Shift+Enter/Escape and visible scrolling: passed'
+            echo '- Existing Pulse AI, FlowHive, Help, platform operations, architecture, release, observability, defect, and diagnostics contracts: passed'
+            echo '- .NET 10 API build: passed'
+            echo '- Complete frontend production build: passed'
+            echo '- Production web-container context: passed'
+            echo '- Migration 054 applied to Test/Production: no'
+            echo '- External Claude/OpenAI call: none'
+            echo '- Module 064 provider route or secret change: none'
+            echo '- Azure, Entra, Container App, or deployment operation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
