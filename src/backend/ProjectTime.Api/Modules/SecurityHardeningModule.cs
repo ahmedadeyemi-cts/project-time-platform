@@ -1227,6 +1227,14 @@ public static class SecurityHardeningModule
             visibility = reader.GetString(1);
         }
 
+        // The most restricted document class is available only to PTC/admin
+        // organization-wide document managers. Project Managers and assigned
+        // engineers never inherit this visibility through project membership.
+        if (visibility == "ptc_admin_only")
+        {
+            return access.CanManageAllWorkRegisterDocuments;
+        }
+
         if (access.CanManageAllWorkRegisterDocuments)
         {
             return true;
