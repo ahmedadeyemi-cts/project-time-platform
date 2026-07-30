@@ -1,0 +1,82 @@
+/* Production approval hardening: one approval surface, legacy panels for returns only. */
+
+.production-approval-stage[type='button'] {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.production-approval-stage[type='button']:hover,
+.production-approval-stage[type='button']:focus-visible,
+.production-approval-stage[type='button'].active {
+  border-color: #007f90;
+  box-shadow: 0 0 0 3px rgba(0, 127, 144, 0.14);
+  outline: none;
+}
+
+.production-approval-return-guidance {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid #c9dce7;
+  border-left: 4px solid #416f91;
+  border-radius: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  background: #f6fafc;
+  color: #35566d;
+}
+
+.production-approval-return-guidance strong {
+  color: #123b5a;
+}
+
+.production-approval-dashboard-weeks button em {
+  grid-column: 1 / -1;
+  color: #8a5a00;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.production-approval-week header small {
+  display: block;
+  margin-top: 0.2rem;
+  color: #627b8f;
+}
+
+.production-approval-filters label small {
+  color: #627b8f;
+  font-weight: 500;
+}
+
+/*
+ * The production queue above is the only approval surface. The existing role
+ * panels remain available for return, unlock, exception, password, and history
+ * operations. Their legacy approval controls are intentionally retired.
+ */
+[data-production-approval-authoritative='true'] #manager-review .manager-bulk-actions,
+[data-production-approval-authoritative='true'] #manager-review .manager-row-actions .approve,
+[data-production-approval-authoritative='true'] #pm-review .manager-row-actions .approve,
+[data-production-approval-authoritative='true'] #pm-review .pm-approval-decision:not(.rejecting) {
+  display: none !important;
+}
+
+[data-production-approval-authoritative='true'] #manager-review .manager-approval-header::after,
+[data-production-approval-authoritative='true'] #pm-review .manager-approval-header::after {
+  content: 'Approvals are completed in Pending approval work above. This panel is for returns and exceptions.';
+  flex-basis: 100%;
+  border: 1px solid #d4e1ea;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  background: #f8fbfd;
+  color: #47677d;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .production-approval-stage[type='button'] {
+    min-height: 0;
+  }
+}

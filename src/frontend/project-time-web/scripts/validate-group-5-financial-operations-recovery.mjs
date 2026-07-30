@@ -237,7 +237,12 @@ const generatedApp = read(files.app);
 const generatedRegistry = read(files.registry);
 assert(count(generatedApp, "import FinancialOperationsRecoveryWorkspace from './FinancialOperationsRecoveryWorkspace.jsx';") === 1, 'Generated App must import Group 5 exactly once.');
 assert(count(generatedApp, 'GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START') === 1, 'Generated App must contain one Group 5 route block.');
-assert(count(generatedApp, '<FinancialOperationsRecoveryWorkspace mode="reporting" authSession={authSession} />') === 1, 'Module 030 mount must be unique.');
+const legacyModule030Mounts = count(generatedApp, '<FinancialOperationsRecoveryWorkspace mode="reporting" authSession={authSession} />');
+const analyticsModule030Mounts = count(generatedApp, '<AnalyticsCenter authSession={authSession} />');
+assert(legacyModule030Mounts + analyticsModule030Mounts === 1, 'Module 030 must have exactly one active reporting or Analytics Center mount.');
+if (analyticsModule030Mounts === 1) {
+  assert(count(generatedApp, "import AnalyticsCenter from './AnalyticsCenter.jsx';") === 1, 'Analytics Center must be imported exactly once when it owns Module 030.');
+}
 assert(count(generatedApp, '<FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />') === 1, 'Module 031 mount must be unique.');
 for (const moduleCode of ['039', '040', '041', '042']) assert(count(generatedApp, `<FinancialOperationsRecoveryWorkspace moduleCode="${moduleCode}" authSession={authSession} />`) === 1, `Module ${moduleCode} recovery panel must be unique.`);
 assert(count(generatedRegistry, "moduleNumber: '031'") === 1, 'Generated Module 031 registry entry must be unique.');
