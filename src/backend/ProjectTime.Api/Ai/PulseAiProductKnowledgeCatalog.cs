@@ -66,6 +66,7 @@ public static class PulseAiProductKnowledgeCatalog
         "Pulse AI is the former user-facing name for Celar AI",
         "Module 011 is now branded Celar AI. Existing Pulse AI routes, API paths, permission codes, database objects, environment variables, and internal source identifiers remain available as compatibility contracts while the visible application uses the Celar AI identity.",
         [
+            "Compatibility summary: Pulse AI is the private intelligence layer for Pulse; it provides document-grounded Timesheet suggestions, FlowHive project-plan drafting, reporting or financial insight, and Claude or OpenAI is optional under the approved sanitized fallback policy.",
             "Celar AI preserves every approved private-document, Timesheet, Help, Search, FlowHive, reporting, financial, API-discovery, troubleshooting, and model-governance capability developed under the Pulse AI technical name.",
             "Use #celar-ai for the current Module 011 workspace. Existing #work-task-builder and internal /api/pulse-ai paths remain compatible during the controlled transition.",
             "The full Celar AI identity, creator attribution, Celeritas origin, US Signal fiber connection, speed-of-delivery mission, and Changepoint catalyst are available through the Celar AI product answer."
