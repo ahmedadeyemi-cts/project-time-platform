@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - fix/module006-pipeline-modules-directory-superadmin-20260730-v2
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
@@ -14,7 +21,7 @@ concurrency:
 
 jobs:
   finalize:
-    if: github.actor == 'ahmedadeyemi-cts'
+    if: github.actor == 'ahmedadeyemi-cts' && github.event.pull_request.head.ref == 'fix/module006-pipeline-modules-directory-superadmin-20260730-v2'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
