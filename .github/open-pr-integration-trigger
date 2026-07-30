@@ -1,3 +1,3 @@
 operation=pr279
 target_branch=feature/module-011-private-runtime-activation-20260729
-expected_head=7f734ac9220263daec7a4c55b389066d3125ccf7
+expected_head=97fd4a83d9a879153a7f1363ade661b0d0cb7559
