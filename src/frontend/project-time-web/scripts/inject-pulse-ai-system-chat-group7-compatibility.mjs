@@ -5,14 +5,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const repositoryRoot = path.resolve(webRoot, '../../..');
+const containerContextRoot = path.join(webRoot, 'container-context');
 const helpPath = path.join(webRoot, 'src', 'HelpAssistant.jsx');
-const systemDocumentationPath = path.join(
-  repositoryRoot,
-  'docs',
-  'modules',
-  'module-011-pulse-ai',
-  'SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING.md'
-);
+
+const containerSourcePaths = [
+  'database/migrations/054_pulse_ai_system_intelligence_conversations.sql',
+  'database/rollback/054_pulse_ai_system_intelligence_conversations_rollback.sql',
+  'docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING.md',
+  'src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs',
+  'tests/test-pulse-ai-system-intelligence-migration-054.sh'
+];
 
 function count(source, marker) {
   return source.split(marker).length - 1;
@@ -23,35 +25,22 @@ function replaceRequired(source, anchor, replacement, label) {
   return source.replace(anchor, replacement);
 }
 
-function ensureSystemIntelligenceDocumentation() {
-  if (fs.existsSync(systemDocumentationPath)) {
-    console.log('PULSE_AI_SYSTEM_DOCUMENTATION=CANONICAL_PRESENT');
+function ensureContainerSourceMirror(relativePath) {
+  const normalized = relativePath.split('/').join(path.sep);
+  const target = path.join(repositoryRoot, normalized);
+  if (fs.existsSync(target)) {
+    console.log(`PULSE_AI_CONTAINER_SOURCE=CANONICAL_PRESENT path=${relativePath}`);
     return;
   }
 
-  const containerValidationContract = `# Module 011 System Intelligence — Container Validation Contract
+  const mirror = path.join(containerContextRoot, normalized);
+  if (!fs.existsSync(mirror)) {
+    throw new Error(`Pulse AI container source mirror is missing: ${relativePath}`);
+  }
 
-This file is created only inside the restricted production web-container build context when the canonical repository documentation directory is intentionally not copied into that build stage. It preserves the security and activation assertions required by the source validator; it does not replace the canonical repository document.
-
-The owning endpoint remains the authorization authority for every permission-scoped read.
-
-Pulse AI must answer the question directly and distinguish known, unknown, stale, unavailable, and unauthorized evidence.
-
-View-As does not transfer conversation or retest mutation authority.
-
-Raw private document chunks, embedding vectors, credentials, unrestricted tool bodies, and provider secrets are not returned.
-
-This source package does not:
-
-- apply migration 054;
-- deploy Test or Production;
-- change Azure, Entra, DNS, networking, storage, Container Apps, or Key Vault; or
-- automatically convert conversations into training data.
-`;
-
-  fs.mkdirSync(path.dirname(systemDocumentationPath), { recursive: true });
-  fs.writeFileSync(systemDocumentationPath, containerValidationContract, 'utf8');
-  console.log('PULSE_AI_SYSTEM_DOCUMENTATION=CONTAINER_VALIDATION_CONTRACT_CREATED');
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(mirror, target);
+  console.log(`PULSE_AI_CONTAINER_SOURCE=EXACT_MIRROR_HYDRATED path=${relativePath}`);
 }
 
 function prepareNativeSystemChat() {
@@ -216,7 +205,7 @@ function prepareNativeSystemChat() {
 }
 
 await import(pathToFileURL(path.join(scriptDirectory, 'inject-group-6-enterprise-presentation.mjs')).href);
-ensureSystemIntelligenceDocumentation();
+for (const relativePath of containerSourcePaths) ensureContainerSourceMirror(relativePath);
 prepareNativeSystemChat();
 await import(pathToFileURL(path.join(scriptDirectory, 'inject-group-7-ai-help-system-guide.mjs')).href);
 console.log('PULSE_AI_NATIVE_SYSTEM_CHAT_GROUP_7_COMPATIBILITY=PASS');

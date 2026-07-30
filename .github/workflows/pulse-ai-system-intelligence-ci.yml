@@ -22,6 +22,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/container-context/**'
       - 'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence.mjs'
@@ -64,7 +65,7 @@ jobs:
           CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/054_pulse_ai_system_intelligence_conversations\.sql|database/rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiSystemIntelligenceContracts|PulseAiSystemKnowledgeCatalog|PulseAiSystemApiCatalogService|PulseAiSystemToolExecutor|PulseAiSystemIntelligenceRepository|PulseAiSystemIntelligenceService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-pulse-ai|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(HelpAssistant\.jsx|pulse-ai-system-chat\.css|PulseAiSystemIntelligenceWorkbench\.jsx|pulse-ai-system-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          ALLOWED='^(\.github/workflows/(pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/054_pulse_ai_system_intelligence_conversations\.sql|database/rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql|tests/test-pulse-ai-system_intelligence_migration_054\.sh|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiSystemIntelligenceContracts|PulseAiSystemKnowledgeCatalog|PulseAiSystemApiCatalogService|PulseAiSystemToolExecutor|PulseAiSystemIntelligenceRepository|PulseAiSystemIntelligenceService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/container-context/(database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|tests/test-pulse-ai-system-intelligence-migration-054\.sh)|src/frontend/project-time-web/scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-pulse-ai|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(HelpAssistant\.jsx|pulse-ai-system-chat\.css|PulseAiSystemIntelligenceWorkbench\.jsx|pulse-ai-system-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Pulse AI system-intelligence source scope:' >&2
@@ -235,6 +236,7 @@ jobs:
             echo '## Module 011 Pulse AI — System Intelligence and Troubleshooting'
             echo
             echo '- Exact current-main source isolation: passed'
+            echo '- Exact container-source mirrors: validated'
             echo '- Migration 054 apply, rollback, idempotence, and reapply: passed'
             echo '- Live ASP.NET API discovery contract: passed'
             echo '- Governed troubleshooting tool boundary: passed'
