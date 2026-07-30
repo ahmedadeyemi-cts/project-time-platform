@@ -3,56 +3,56 @@ import path from 'node:path';
 
 const webRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const appPath = path.join(webRoot, 'src', 'App.Module001.g.jsx');
-
-if (!fs.existsSync(appPath)) {
-  throw new Error('Module 006 label injection requires the generated App.Module001.g.jsx source.');
-}
-
+if (!fs.existsSync(appPath)) throw new Error('Module 006 injection requires App.Module001.g.jsx.');
 let source = fs.readFileSync(appPath, 'utf8');
-const requiredBefore = [
-  "title: 'PSA Modules'",
-  '<p className="eyebrow">PSA platform modules</p>',
-  '<h2>Remaining sections foundation</h2>',
-  "'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'"
-];
 
-for (const marker of requiredBefore) {
-  if (!source.includes(marker)) {
-    throw new Error(`Module 006 label injection could not locate: ${marker}`);
-  }
-}
+const importAnchor = "import WorkRegisterCenter from './WorkRegisterCenter.jsx';";
+const centerImport = "import ProjectRegisterCenter from './ProjectRegisterCenter.jsx';";
+if (!source.includes(importAnchor)) throw new Error('Module 006 Work Register import anchor is missing.');
+if (!source.includes(centerImport)) source = source.replace(importAnchor, `${importAnchor}\n${centerImport}`);
 
-source = source
-  .replaceAll("title: 'PSA Modules'", "title: 'Toyota & Hyundai Pipeline'")
-  .replaceAll(
-    "description: 'Review project intake, resource scheduling, expense management, and executive reporting workflows.'",
-    "description: 'Review Toyota and Hyundai opportunity, intake, delivery, resourcing, expense, billing, and executive-readiness workflows.'"
-  )
-  .replaceAll('<p className="eyebrow">PSA platform modules</p>', '<p className="eyebrow">Toyota &amp; Hyundai pipeline</p>')
-  .replaceAll('<h2>Remaining sections foundation</h2>', '<h2>Toyota &amp; Hyundai Pipeline</h2>')
-  .replaceAll(
-    'These sections prepare the rest of Project Health Dashboard beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.',
-    'Track Toyota and Hyundai opportunity intake, project delivery, resource readiness, expenses, invoicing, and executive reporting through one governed pipeline.'
-  )
-  .replaceAll(
-    "'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'",
-    "'psa-modules': 'Tracks Toyota and Hyundai opportunity, delivery, resource, expense, invoice, and executive-readiness workflows as they are connected.'"
-  );
+const oldDefinition = /\{\s*\n\s*route: 'psa-modules',[\s\S]*?\n\s*\},/;
+const newDefinition = `  {
+  route: 'toyota-hyundai-pipelines',
+  href: '#toyota-hyundai-pipelines',
+  title: 'Toyota & Hyundai Pipelines',
+  navLabel: 'MODULE 006',
+  description: 'Track active and archived Toyota and Hyundai project delivery, ownership, engineering, SELL references, tasks, documents, financial context, and lifecycle evidence.',
+  permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+},`;
+if (!oldDefinition.test(source) || !source.includes("title: 'PSA Modules'")) throw new Error('Module 006 legacy registry block is missing.');
+source = source.replace(oldDefinition, newDefinition);
 
-for (const requiredAfter of [
-  "title: 'Toyota & Hyundai Pipeline'",
-  'Toyota &amp; Hyundai Pipeline',
-  'Toyota and Hyundai opportunity, intake, delivery, resourcing, expense, billing, and executive-readiness workflows.',
-  "'psa-modules': 'Tracks Toyota and Hyundai opportunity, delivery, resource, expense, invoice, and executive-readiness workflows as they are connected.'"
+const oldGuide = "'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'";
+const newGuide = "'toyota-hyundai-pipelines': 'Tracks the governed Toyota and Hyundai project pipeline with active, archived, ownership, task, document, SELL, financial, and audit context.',\n  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',\n  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'";
+if (!source.includes(oldGuide)) throw new Error('Module 006 legacy guide marker is missing.');
+source = source.replace(oldGuide, newGuide);
+
+const panelStart = "      {(activeRoute === 'dashboard') ? (\n<section id=\"psa-modules\"";
+const panelEnd = "\n\n\n      <section id=\"current-quarter-utilization\"";
+const start = source.indexOf(panelStart);
+const end = source.indexOf(panelEnd, start);
+if (start < 0 || end < 0) throw new Error('Module 006 legacy dashboard panel was not found.');
+const mount = `      {((activeRoute === 'toyota-hyundai-pipelines' || activeRoute === 'psa-modules' || activeRoute === 'project-register') && canViewPsaModules) ? (
+  <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
+    <ProjectRegisterCenter legacyRoute={activeRoute !== 'toyota-hyundai-pipelines'} />
+  </section>
+) : null}`;
+source = source.slice(0, start) + mount + source.slice(end);
+
+for (const required of [
+  centerImport,
+  "route: 'toyota-hyundai-pipelines'",
+  "href: '#toyota-hyundai-pipelines'",
+  "title: 'Toyota & Hyundai Pipelines'",
+  "activeRoute === 'toyota-hyundai-pipelines'",
+  '<ProjectRegisterCenter legacyRoute={activeRoute !== \'toyota-hyundai-pipelines\'} />'
 ]) {
-  if (!source.includes(requiredAfter)) {
-    throw new Error(`Generated Module 006 source is missing: ${requiredAfter}`);
-  }
+  if (!source.includes(required)) throw new Error(`Generated Module 006 source is missing: ${required}`);
 }
-
-if (source.includes("title: 'PSA Modules'") || source.includes('<h2>Remaining sections foundation</h2>')) {
-  throw new Error('Generated Module 006 source still exposes the retired PSA Modules title.');
+if (source.includes("title: 'PSA Modules'") || source.includes('<section id="psa-modules"')) {
+  throw new Error('Generated Module 006 source still exposes the retired PSA presentation.');
 }
 
 fs.writeFileSync(appPath, source, 'utf8');
-console.log('MODULE_006_TOYOTA_HYUNDAI_PIPELINE_GENERATION=PASS route=psa-modules module=006');
+console.log('MODULE_006_TOYOTA_HYUNDAI_PIPELINES_GENERATION=PASS route=toyota-hyundai-pipelines aliases=psa-modules,project-register');

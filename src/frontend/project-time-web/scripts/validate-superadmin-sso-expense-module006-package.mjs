@@ -210,7 +210,7 @@ requireAll(portalCss, [
 
 requireAll(moduleRegistry, [
   "moduleNumber: '006'",
-  "displayName: 'Toyota & Hyundai Pipeline'",
+  "displayName: 'Toyota & Hyundai Pipelines'",
   "group: 'Sales & Opportunities'"
 ], 'Module 006 registry rename');
 rejectAll(moduleRegistry, [
@@ -218,15 +218,15 @@ rejectAll(moduleRegistry, [
 ], 'retired Module 006 name');
 
 requireAll(module006Generator, [
-  'MODULE_006_TOYOTA_HYUNDAI_PIPELINE_GENERATION=PASS',
-  "title: 'Toyota & Hyundai Pipeline'",
-  'Toyota &amp; Hyundai Pipeline',
-  'Toyota and Hyundai opportunity, intake, delivery, resourcing, expense, billing, and executive-readiness workflows.',
+  'MODULE_006_TOYOTA_HYUNDAI_PIPELINES_GENERATION=PASS',
+  "title: 'Toyota & Hyundai Pipelines'",
+  "route: 'toyota-hyundai-pipelines'",
+  'aliases=psa-modules,project-register',
   "source.includes(\"title: 'PSA Modules'\")"
 ], 'Generated Module 006 rename');
 
 requireAll(rbacCompatibility, [
-  "'006': 'Toyota & Hyundai Pipeline'",
+  "'006': 'Toyota & Hyundai Pipelines'",
   '/api/rbac/v1/bootstrap',
   '/api/rbac/v1/matrix',
   '/api/rbac/v1/modules',
@@ -262,5 +262,5 @@ console.log('MODULE026_SUPERADMIN=PERMANENT_FULL_CONTROL_OWN_SESSION');
 console.log('MICROSOFT_SSO_REDIRECT=PUBLIC_ENVIRONMENT_HTTPS_ONLY');
 console.log('MODULE005_EXPENSE_DRAWER=COLLAPSED_NON_INVASIVE');
 console.log('MODULE005_EXPENSE_ACK=PM_PTC_ACCOUNTING_SUPERADMIN');
-console.log('MODULE006_NAME=TOYOTA_AND_HYUNDAI_PIPELINE');
+console.log('MODULE006_NAME=TOYOTA_AND_HYUNDAI_PIPELINES');
 console.log('PR212_MODULE003_TABLE=INCLUDED');

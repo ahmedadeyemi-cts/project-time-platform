@@ -1,7 +1,7 @@
 const SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog';
 const SCOPED_RBAC_CATALOG_MARKER = 'projectpulse-scoped-rbac-catalog-normalized';
 const MODULE_NAME_OVERRIDES = Object.freeze({
-  '006': 'Toyota & Hyundai Pipeline'
+  '006': 'Toyota & Hyundai Pipelines'
 });
 
 function asArray(value) {

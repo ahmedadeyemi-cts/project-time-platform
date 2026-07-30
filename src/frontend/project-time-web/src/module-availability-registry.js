@@ -6,7 +6,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '003', route: 'utilization', displayName: 'Utilization', group: 'Resource Management' }),
   Object.freeze({ moduleNumber: '004', route: 'holiday-admin', displayName: 'Holiday Administration', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '005', route: 'project-allocation-info', displayName: 'Project Expense Upload', group: 'Project Management' }),
-  Object.freeze({ moduleNumber: '006', route: 'psa-modules', displayName: 'Toyota & Hyundai Pipeline', group: 'Sales & Opportunities', description: 'Toyota and Hyundai opportunity, intake, delivery pipeline, resourcing, expense, billing, and executive readiness workspace.' }),
+  Object.freeze({ moduleNumber: '006', route: 'toyota-hyundai-pipelines', displayName: 'Toyota & Hyundai Pipelines', group: 'Sales & Opportunities', description: 'Governed Toyota and Hyundai project pipeline with active and archived delivery context, ownership, engineering assignments, SELL references, tasks, documents, financial context, and lifecycle evidence.' }),
   Object.freeze({ moduleNumber: '007', route: 'workflow', displayName: 'Approval, Export & Audit Workflow', group: 'Approvals', description: 'Post-time-entry approval, accounting reconciliation, export preparation, package download, preflight validation, and workflow audit evidence.' }),
   Object.freeze({ moduleNumber: '008', route: 'audit-history', displayName: 'Audit History', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '009', route: 'user-admin', displayName: 'User Administration', group: 'Administration' }),
@@ -86,6 +86,8 @@ export const RETIRED_PROJECTPULSE_MODULES = Object.freeze(
 );
 
 const ROUTE_ALIASES = Object.freeze({
+  'psa-modules': 'toyota-hyundai-pipelines',
+  'project-register': 'toyota-hyundai-pipelines',
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
   'resource-assignment-handoff': 'signed-handoff',
