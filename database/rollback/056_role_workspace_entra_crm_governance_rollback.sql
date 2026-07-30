@@ -36,6 +36,18 @@ WHERE feature_code IN (
     'CRM_ERP_OAUTH_PERSISTENCE'
 );
 
+-- These three permission definitions are owned entirely by migration 056.
+-- Remove any remaining relationship (including the Super Administrator
+-- full-control invariant grant) before dropping their catalog rows.
+DELETE FROM app_role_permissions relationship
+USING app_permissions permission
+WHERE relationship.app_permission_id = permission.app_permission_id
+  AND permission.permission_code IN (
+      'VIEW_ENTRA_SECRET_EXPIRATION',
+      'MANAGE_ENTRA_SECRET_EXPIRATION',
+      'ACKNOWLEDGE_ENTRA_SECRET_EXPIRATION'
+  );
+
 DROP TRIGGER IF EXISTS trg_role_workspace_permission_changes_056_immutable
     ON role_workspace_permission_changes_056;
 DROP TRIGGER IF EXISTS trg_crm_integration_token_refresh_events_immutable
@@ -63,21 +75,11 @@ DROP TABLE IF EXISTS role_workspace_permission_changes_056;
 
 DROP FUNCTION IF EXISTS projectpulse_056_block_immutable_mutation();
 
-DELETE FROM app_permissions permission
-WHERE permission.permission_code IN (
+DELETE FROM app_permissions
+WHERE permission_code IN (
     'VIEW_ENTRA_SECRET_EXPIRATION',
     'MANAGE_ENTRA_SECRET_EXPIRATION',
     'ACKNOWLEDGE_ENTRA_SECRET_EXPIRATION'
-)
-AND NOT EXISTS (
-    SELECT 1
-    FROM app_role_permissions relationship
-    WHERE relationship.app_permission_id = permission.app_permission_id
-)
-AND NOT EXISTS (
-    SELECT 1
-    FROM app_feature_catalog feature
-    WHERE feature.required_permission_code = permission.permission_code
 );
 
 DELETE FROM schema_migrations
