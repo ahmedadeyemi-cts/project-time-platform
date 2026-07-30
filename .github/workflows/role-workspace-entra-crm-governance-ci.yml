@@ -79,7 +79,27 @@ jobs:
       - name: Confirm compiled governance markers
         working-directory: src/frontend/project-time-web
         run: |
-          grep -R -q 'Microsoft Integration client secret' dist/assets
-          grep -R -q 'Signed in as' dist/assets
-          grep -R -q 'Automatic OAuth token renewal' dist/assets
-          grep -R -q 'Project Team Coordinator acknowledgement status' dist/assets
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const assets = path.resolve('dist/assets');
+          const javascript = fs.readdirSync(assets)
+            .filter((file) => file.endsWith('.js'))
+            .map((file) => fs.readFileSync(path.join(assets, file), 'utf8'))
+            .join('\n');
+
+          const markers = [
+            ['/api/entra-secret-expiration/status', 'global Entra expiration status API'],
+            ['/api/entra-secret-expiration/acknowledge', 'PTC acknowledgement API'],
+            ['/api/integrations/026/token-refresh/status', 'OAuth persistence status API'],
+            ['Signed in as', 'signed-in workspace identity']
+          ];
+
+          for (const [marker, label] of markers) {
+            if (!javascript.includes(marker)) {
+              throw new Error(`Compiled bundle is missing ${label}: ${marker}`);
+            }
+            console.log(`COMPILED_GOVERNANCE_MARKER=PASS label=${label}`);
+          }
+          NODE
