@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/module-011-system-intelligence-troubleshooting-*'
+      - 'feature/module-011-celar-ai-runtime-rebrand-*'
   pull_request:
     paths:
       - '.github/workflows/pulse-ai-system-intelligence-ci.yml'
@@ -23,6 +24,7 @@ on:
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/package.json'
       - 'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'
@@ -56,16 +58,24 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          EXPECTED_BASE='a932c5297eab2d3c18472c818c6574a895f265cc'
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+            EXPECTED_BASE='0abcbf5a1248d490a824ee4d987c8669344f0209'
+            ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
+            VALIDATION_MODE='CELAR_AI_INTEGRATION'
+          else
+            EXPECTED_BASE='a932c5297eab2d3c18472c818c6574a895f265cc'
+            ALLOWED='^(\.github/workflows/(pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/054_pulse_ai_system_intelligence_conversations\.sql|database/rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiSystemIntelligenceContracts|PulseAiSystemKnowledgeCatalog|PulseAiSystemApiCatalogService|PulseAiSystemToolExecutor|PulseAiSystemIntelligenceRepository|PulseAiSystemIntelligenceService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-pulse-ai|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(HelpAssistant\.jsx|pulse-ai-system-chat\.css|PulseAiSystemIntelligenceWorkbench\.jsx|pulse-ai-system-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+            VALIDATION_MODE='SYSTEM_INTELLIGENCE_SOURCE'
+          fi
+
           git cat-file -e "$EXPECTED_BASE^{commit}"
           [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
           CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
-
-          ALLOWED='^(\.github/workflows/(pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/054_pulse_ai_system_intelligence_conversations\.sql|database/rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiSystemIntelligenceContracts|PulseAiSystemKnowledgeCatalog|PulseAiSystemApiCatalogService|PulseAiSystemToolExecutor|PulseAiSystemIntelligenceRepository|PulseAiSystemIntelligenceService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiSystemIntelligenceModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(HelpAssistant\.jsx|pulse-ai-system-chat\.css|PulseAiSystemIntelligenceWorkbench\.jsx|pulse-ai-system-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Pulse AI system-intelligence source scope:' >&2
+            echo 'Unexpected Module 011 system-intelligence scope:' >&2
             printf '%s\n' "$UNEXPECTED" >&2
             exit 1
           fi
@@ -77,9 +87,10 @@ jobs:
             ! grep -Fxq "$protected" <<<"$CHANGED"
           done
 
-          ! grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.)' <<<"$CHANGED"
+          ! grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"
           git diff --check "$EXPECTED_BASE"...HEAD
           echo "PULSE_AI_SYSTEM_INTELLIGENCE_BASE=$EXPECTED_BASE"
+          echo "PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE=$VALIDATION_MODE"
           echo 'PULSE_AI_SYSTEM_INTELLIGENCE_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
@@ -158,6 +169,9 @@ jobs:
           GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name Program.ScopedRbac.g.cs -print -quit)"
           test -n "$GENERATED"
           grep -Fq 'app.MapPulseAiSystemIntelligenceEndpoints();' "$GENERATED"
+          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+            grep -Fq 'app.MapCelarAiBrandEndpoints();' "$GENERATED"
+          fi
           echo "PULSE_AI_SYSTEM_INTELLIGENCE_GENERATED_PROGRAM=$GENERATED"
           echo 'PULSE_AI_SYSTEM_INTELLIGENCE_API_BUILD=PASSED'
 
@@ -231,9 +245,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           {
-            echo '## Module 011 Pulse AI — System Intelligence and Troubleshooting'
+            echo '## Module 011 Pulse AI / Celar AI — System Intelligence and Troubleshooting'
             echo
-            echo '- Exact current-main source isolation: passed'
+            echo '- Exact source isolation: passed'
             echo '- Migration 054 apply, rollback, idempotence, and reapply: passed'
             echo '- Live ASP.NET API discovery contract: passed'
             echo '- Governed troubleshooting tool boundary: passed'
@@ -241,7 +255,7 @@ jobs:
             echo '- Future enhancement blueprint: passed'
             echo '- Durable conversation contract: passed'
             echo '- Enter/Shift+Enter/Escape and visible scrolling: passed'
-            echo '- Existing Pulse AI, FlowHive, Help, platform operations, architecture, release, observability, defect, and diagnostics contracts: passed'
+            echo '- Existing FlowHive, Help, platform operations, architecture, release, observability, defect, and diagnostics contracts: passed'
             echo '- .NET 10 API build: passed'
             echo '- Complete frontend production build: passed'
             echo '- Production web-container context: passed'
