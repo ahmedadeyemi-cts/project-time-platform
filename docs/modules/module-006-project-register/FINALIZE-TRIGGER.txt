@@ -1,0 +1,1 @@
+Finalize PR #276 through the owner-restricted GitHub Actions runner. This trigger is intentionally removed when the legacy documentation path is replaced by the Toyota & Hyundai Pipelines documentation path.
