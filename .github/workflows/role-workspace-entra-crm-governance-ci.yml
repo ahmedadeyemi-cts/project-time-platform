@@ -1,0 +1,85 @@
+name: Validate Role Workspaces, Entra Expiration, and CRM Persistence
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/role-workspace-entra-crm-governance-ci.yml'
+      - 'database/migrations/056_role_workspace_entra_crm_governance.sql'
+      - 'database/rollback/056_role_workspace_entra_crm_governance_rollback.sql'
+      - 'tests/test-role-workspace-entra-crm-governance-migration-056.sh'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/src/role-workspace-governance.js'
+      - 'src/frontend/project-time-web/src/EntraSecretExpirationGlobalWarning.jsx'
+      - 'src/frontend/project-time-web/src/EntraSecretExpirationGovernancePanel.jsx'
+      - 'src/frontend/project-time-web/src/entra-secret-expiration-governance.css'
+      - 'src/frontend/project-time-web/src/CrmErpTokenPersistencePanel.jsx'
+      - 'src/frontend/project-time-web/src/crm-erp-token-persistence.css'
+      - 'src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+      - 'docs/modules/module-065-entra-secret-administration/**'
+      - 'docs/modules/module-026-crm-erp-integrations/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: role-workspace-entra-crm-governance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-056:
+    name: Migration 056 apply, immutable evidence, rollback, reapply
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Validate migration 056
+        run: bash tests/test-role-workspace-entra-crm-governance-migration-056.sh
+
+  api-release-build:
+    name: ProjectTime API Release build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore API
+        run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+  frontend-production-build:
+    name: Frontend production build and source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+      - name: Confirm compiled governance markers
+        working-directory: src/frontend/project-time-web
+        run: |
+          grep -R -q 'Microsoft Integration client secret' dist/assets
+          grep -R -q 'Signed in as' dist/assets
+          grep -R -q 'Automatic OAuth token renewal' dist/assets
+          grep -R -q 'Project Team Coordinator acknowledgement status' dist/assets
