@@ -92,7 +92,7 @@
          compatibility copies against the authoritative migration-055 contract. -->
     <Exec Command="sed -e 's/migration_054_required/migration_055_required/g' -e 's/migration 054/migration 055/g' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterModule.cs&quot; &gt; &quot;$(AnalyticsCenterGeneratedModule)&quot;" />
     <Exec Command="sed -e 's/migration_054_required/migration_055_required/g' -e 's/migration 054/migration 055/g' -e 's/Enterprise Reporting/Analytics Center/g' &quot;$(MSBuildProjectDirectory)/Modules/EnterpriseReportingModule.cs&quot; &gt; &quot;$(EnterpriseReportingGeneratedModule)&quot;" />
-    <Exec Command="sed -e 's/054_enterprise_reporting_center/055_analytics_center/g' &quot;$(MSBuildProjectDirectory)/Modules/EnterpriseReportingRepository.cs&quot; &gt; &quot;$(EnterpriseReportingGeneratedRepository)&quot;" />
+    <Exec Command="sed -e 's/054_enterprise_reporting_center/055_analytics_center/g' -e 's/null, null, null, null, null, null, null, null, 500, false/null, null, null, null, null, null, null, 500, false/' &quot;$(MSBuildProjectDirectory)/Modules/EnterpriseReportingRepository.cs&quot; &gt; &quot;$(EnterpriseReportingGeneratedRepository)&quot;" />
     <ItemGroup>
       <Compile Include="$(ScopedRbacGeneratedProgram)" />
       <Compile Include="$(ScopedRbacGeneratedModule)" />
