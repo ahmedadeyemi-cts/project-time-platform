@@ -61,22 +61,17 @@ jobs:
           test -s "$FRONTEND_ROOT/package-lock.json"
           python3 scripts/security/validate-repository-security-posture.py
 
-      - name: Upgrade the vulnerable frontend build chain
+      - name: Upgrade the vulnerable frontend build chain atomically
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
           npm install \
-            --save-prod \
-            --save-exact \
-            --package-lock-only \
-            --ignore-scripts \
-            "@vitejs/plugin-react@$PATCHED_REACT_PLUGIN_VERSION"
-          npm install \
             --save-dev \
             --save-exact \
             --package-lock-only \
             --ignore-scripts \
+            "@vitejs/plugin-react@$PATCHED_REACT_PLUGIN_VERSION" \
             "vite@$PATCHED_VITE_VERSION" \
             "postcss@$PATCHED_POSTCSS_VERSION"
           npm ci --ignore-scripts --no-audit --no-fund
