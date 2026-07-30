@@ -72,7 +72,7 @@ public static class ProductionApprovalWorkflowHardening
             {
                 context.Response.Headers["X-ProjectPulse-Non-Project-Contract"] =
                     NonProjectContract;
-                context.Response.Headers.CacheControl = "no-store";
+                context.Response.Headers["Cache-Control"] = "no-store";
                 if (!await RequireImmutableNonProjectEvidenceAsync(context)) return;
 
                 var request = await ReadRequestAsync<
@@ -115,7 +115,7 @@ public static class ProductionApprovalWorkflowHardening
     {
         context.Response.Headers["X-ProjectPulse-Approval-Contract"] =
             ApprovalContract;
-        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Cache-Control"] = "no-store";
     }
 
     private static async Task<T?> ReadRequestAsync<T>(
