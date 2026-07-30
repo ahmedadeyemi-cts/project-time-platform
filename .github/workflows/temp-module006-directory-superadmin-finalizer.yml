@@ -1,0 +1,116 @@
+name: Temporary Module 006 and Modules Directory Finalizer
+
+on:
+  push:
+    branches:
+      - fix/module006-pipeline-modules-directory-superadmin-20260730-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: module006-directory-superadmin-finalizer
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/module006-pipeline-modules-directory-superadmin-20260730-v2
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Verify branch ancestry and protected paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor origin/main HEAD
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+          if grep -E '^(database/|deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/backend/)' <<<"$CHANGED"; then
+            echo 'Unexpected migration, backend, or deployment-control scope before source application.' >&2
+            exit 1
+          fi
+
+      - name: Apply reviewed Module 006 and Modules directory source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ProjectPulse Source Automation'
+          git config user.email 'projectpulse-source-automation@users.noreply.github.com'
+          bash scripts/temp-apply-module006-directory-fix.sh
+
+      - name: Validate API Release build
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate focused Module 006 and Modules directory contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run prebuild
+          npm run validate:module006-pipelines
+          npm run validate:modules-directory
+          npm run validate:module-availability
+          npm run validate:superadmin-sso-expense-module006
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Verify compiled UAT markers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat src/frontend/project-time-web/dist/assets/*.js > /tmp/module006-directory.js
+          cat src/frontend/project-time-web/dist/assets/*.css > /tmp/module006-directory.css
+          for marker in \
+            'Toyota & Hyundai Pipelines' \
+            'Ordinary ProjectPulse projects are intentionally excluded' \
+            'Full Control · Organization-wide' \
+            'Financial Operations Workbench' \
+            'Notification Delivery Monitor' \
+            'Project FlowHive'; do
+            grep -Fq "$marker" /tmp/module006-directory.js
+          done
+          for marker in \
+            '.project-register-pagination' \
+            '.project-register-timeline' \
+            '.modules-directory-card'; do
+            grep -Fq "$marker" /tmp/module006-directory.css
+          done
+
+      - name: Remove temporary finalizer and push validated source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git reset --hard HEAD
+          git rm \
+            .github/workflows/temp-module006-directory-superadmin-finalizer.yml \
+            scripts/temp-apply-module006-directory-fix.sh
+          git commit -m 'Remove temporary Module 006 source finalizer'
+          git push origin HEAD:fix/module006-pipeline-modules-directory-superadmin-20260730-v2
+          echo "FINAL_BRANCH_HEAD=$(git rev-parse HEAD)"
+          echo "FINAL_DIFF_BEGIN"
+          git diff --name-status origin/main...HEAD
+          echo "FINAL_DIFF_END"
