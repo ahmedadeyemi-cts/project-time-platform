@@ -32,21 +32,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify isolated Group 7 stacked source scope
+      - name: Verify owned Group 7 source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
-          BASE_BRANCH='feature/group-6-enterprise-page-system-20260729'
-          git fetch origin "$BASE_BRANCH" main --no-tags
-          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
-          ALLOWED='^(\.github/workflows/group7-ai-help-system-guide-ci\.yml|docs/modules/group-7-ai-help-system-guide/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Group 7 source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
+          if [[ "$HEAD_BRANCH" == feature/group-7-ai-help-system-user-guide-* ]]; then
+            ALLOWED='^(\.github/workflows/group7-ai-help-system-guide-ci\.yml|docs/modules/group-7-ai-help-system-guide/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$'
+            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Group 7 source scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+
+            if grep -E '^(database/|src/backend/|deployment/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+              echo 'Group 7 overlaps database, backend, deployment, canonical App/main, or module-registry source.' >&2
+              exit 1
+            fi
+
+            echo 'GROUP_7_SOURCE_ISOLATION=PASSED'
+          else
+            DIRECT_GROUP7="$(grep -E '^(docs/modules/group-7-ai-help-system-guide/|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$' <<<"$CHANGED" || true)"
+            if [[ -n "$DIRECT_GROUP7" ]]; then
+              echo 'An unrelated PR directly changes Group 7-owned source:' >&2
+              printf '%s\n' "$DIRECT_GROUP7" >&2
+              exit 1
+            fi
+            echo "GROUP_7_SOURCE_ISOLATION=REGRESSION_MODE branch=$HEAD_BRANCH"
           fi
 
           for protected in \
@@ -59,13 +76,7 @@ jobs:
             fi
           done
 
-          if grep -E '^(database/|src/backend/|deployment/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-            echo 'Group 7 overlaps database, backend, deployment, canonical App/main, or module-registry source.' >&2
-            exit 1
-          fi
-
-          git diff --check "origin/$BASE_BRANCH"...HEAD
-          echo 'GROUP_7_SOURCE_ISOLATION=PASSED'
+          git diff --check origin/main...HEAD
 
       - uses: actions/setup-node@v4
         with:
