@@ -66,10 +66,10 @@
          compiled partial delegates provider listing and management authority to
          the current editable administration experience. -->
     <Exec Command="sed -e 's/public static class CrmErpIntegrationModule/public static partial class CrmErpIntegrationModule/' -e 's/ListProvidersAsync(HttpContext context)/ListProvidersLegacyAsync(HttpContext context)/' -e 's/AuthorizeManageAsync(HttpContext context)/AuthorizeManageLegacyAsync(HttpContext context)/' -e 's/HasManageAuthorityAsync(HttpContext context)/HasManageAuthorityLegacyAsync(HttpContext context)/' &quot;$(MSBuildProjectDirectory)/Modules/CrmErpIntegrationModule.cs&quot; &gt; &quot;$(Module026GeneratedIntegration)&quot;" />
-    <!-- The optional Module 012 policy remains available for delegated roles,
-         while the compiled experience calls the actual-session-first authority
-         invariant implemented by CrmErpOAuthPersistence.cs. -->
-    <Exec Command="sed -e 's/ResolveManageAuthorityAsync(/ResolveManageAuthorityPolicyFirstAsync(/' &quot;$(MSBuildProjectDirectory)/Modules/CrmErpAdministrationExperience.cs&quot; &gt; &quot;$(CrmErpAdministrationExperienceGenerated)&quot;" />
+    <!-- Only the policy-first helper declaration is renamed. Its existing callers
+         continue to invoke ResolveManageAuthorityAsync, which is the actual-session
+         Super Administrator invariant implemented by CrmErpOAuthPersistence.cs. -->
+    <Exec Command="sed -e 's/private static async Task&lt;ManageAuthority&gt; ResolveManageAuthorityAsync(/private static async Task&lt;ManageAuthority&gt; ResolveManageAuthorityPolicyFirstAsync(/' &quot;$(MSBuildProjectDirectory)/Modules/CrmErpAdministrationExperience.cs&quot; &gt; &quot;$(CrmErpAdministrationExperienceGenerated)&quot;" />
     <Exec Command="sed -e 's/value.HasValue ? value.Value : DBNull.Value/value.HasValue ? (object)value.Value : DBNull.Value/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetContracts.cs&quot; &gt; &quot;$(Module001GeneratedContracts)&quot;" />
     <Exec Command="sed -e 's/if (value is Guid id) existingId = id;/if (value is Guid foundEntryId) existingId = foundEntryId;/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetData.cs&quot; &gt; &quot;$(Module001GeneratedData)&quot;" />
     <Exec Command="sed -e 's/reader.IsDBNull(1) ? null : reader.GetGuid(1)/reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1)/' -e 's/reader.IsDBNull(3) ? null : reader.GetGuid(3)/reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3)/' -e 's/reader.IsDBNull(4) ? null : reader.GetGuid(4)/reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4)/' &quot;$(MSBuildProjectDirectory)/Modules/Module001TimesheetEnhancementModule.cs&quot; &gt; &quot;$(Module001GeneratedEndpoints)&quot;" />
