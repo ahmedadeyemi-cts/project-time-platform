@@ -79,15 +79,26 @@ jobs:
           python scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs')
-          text = path.read_text(encoding='utf-8')
-          old = "timesheet.indexOf('_privateRag.GenerateTimesheetAsync') < timesheet.indexOf('_router.GenerateAsync')"
-          new = "timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')"
-          if old in text:
-              text = text.replace(old, new, 1)
-              path.write_text(text, encoding='utf-8')
-          elif new not in text:
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs')
+          validator_text = validator.read_text(encoding='utf-8')
+          old_order = "timesheet.indexOf('_privateRag.GenerateTimesheetAsync') < timesheet.indexOf('_router.GenerateAsync')"
+          new_order = "timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')"
+          if old_order in validator_text:
+              validator_text = validator_text.replace(old_order, new_order, 1)
+              validator.write_text(validator_text, encoding='utf-8')
+          elif new_order not in validator_text:
               raise SystemExit('Expected the Timesheet private-first ordering validator marker exactly once.')
+
+          migration_test = Path('tests/test-pulse-ai-private-rag-migration-053.sh')
+          migration_text = migration_test.read_text(encoding='utf-8')
+          old_boolean = 'assert_eq false "$(value "SELECT training_candidate FROM pulse_ai_answer_feedback LIMIT 1;")" feedback_not_training_by_default'
+          new_boolean = 'assert_eq f "$(value "SELECT training_candidate FROM pulse_ai_answer_feedback LIMIT 1;")" feedback_not_training_by_default'
+          if old_boolean in migration_text:
+              migration_text = migration_text.replace(old_boolean, new_boolean, 1)
+              migration_test.write_text(migration_text, encoding='utf-8')
+          elif new_boolean not in migration_text:
+              raise SystemExit('Expected the migration 053 boolean assertion exactly once.')
           PY
           git diff --check
 
@@ -164,7 +175,8 @@ jobs:
             src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs \
             src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs \
             src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx \
-            src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs
+            src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs \
+            tests/test-pulse-ai-private-rag-migration-053.sh
           if git diff --cached --quiet; then
             echo 'PULSE_AI_PRIVATE_RAG_REPAIR_ALREADY_CURRENT=YES'
             exit 0
