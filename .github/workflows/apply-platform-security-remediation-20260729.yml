@@ -13,6 +13,7 @@ on:
       - scripts/security/finalize-role-audit-legacy-20260729.py
       - scripts/security/finalize-role-audit-user-admin-20260729.py
       - scripts/security/finalize-role-audit-bulk-20260729.py
+      - scripts/security/finalize-safe-project-document-storage-20260730.py
       - src/backend/ProjectTime.Api/Program.cs
   workflow_dispatch:
 
@@ -50,23 +51,26 @@ jobs:
           test -s scripts/security/finalize-role-audit-legacy-20260729.py
           test -s scripts/security/finalize-role-audit-user-admin-20260729.py
           test -s scripts/security/finalize-role-audit-bulk-20260729.py
+          test -s scripts/security/finalize-safe-project-document-storage-20260730.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Apply transactional role-audit finalization
+      - name: Apply transactional role-audit and safe-storage finalization
         shell: bash
         run: |
           set -Eeuo pipefail
           python -m py_compile \
             scripts/security/finalize-role-audit-legacy-20260729.py \
             scripts/security/finalize-role-audit-user-admin-20260729.py \
-            scripts/security/finalize-role-audit-bulk-20260729.py
+            scripts/security/finalize-role-audit-bulk-20260729.py \
+            scripts/security/finalize-safe-project-document-storage-20260730.py
           python scripts/security/finalize-role-audit-legacy-20260729.py
           python scripts/security/finalize-role-audit-user-admin-20260729.py
           python scripts/security/finalize-role-audit-bulk-20260729.py
+          python scripts/security/finalize-safe-project-document-storage-20260730.py
           git diff --check
 
       - name: Validate hardened Python and shell sources
@@ -114,7 +118,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: Commit validated role-audit source
+      - name: Commit validated security source
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -123,11 +127,11 @@ jobs:
           git add src/backend/ProjectTime.Api/Program.cs
 
           if git diff --cached --quiet; then
-            echo 'SECURITY_ROLE_AUDIT_ALREADY_CURRENT=YES'
+            echo 'SECURITY_FINALIZATION_ALREADY_CURRENT=YES'
             exit 0
           fi
 
           git diff --cached --check
-          git commit -m 'Add transactional role-assignment audit records'
+          git commit -m 'Complete role audit and upload path hardening'
           git push origin "HEAD:$TARGET_BRANCH"
-          echo 'SECURITY_ROLE_AUDIT_SOURCE_COMMITTED=YES'
+          echo 'SECURITY_FINALIZED_SOURCE_COMMITTED=YES'
