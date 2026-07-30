@@ -1,0 +1,113 @@
+name: Temporary Module 006 Complete Source Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/module006-source-publish-trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-module006-complete-source-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_BRANCH: feature/module-006-project-register-20260729
+      EXPECTED_HEAD: 4a973e77902a1d3ca44e5491f2778a70798e8237
+      PATCH_SHA256: 158b8776bafbbeaf3a25eaa177c8bfef5bfeb4cce077dd34bd0f3c832daa2747
+
+    steps:
+      - name: Check out exact publication request and payload
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Authorize publication request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FILE='control/.github/module006-source-publish-trigger'
+          test -f "$FILE"
+          [[ "$(sed -n 's/^operation=//p' "$FILE" | tail -1)" == 'module006-complete-source' ]]
+          [[ "$(sed -n 's/^target_branch=//p' "$FILE" | tail -1)" == "$TARGET_BRANCH" ]]
+          [[ "$(sed -n 's/^expected_head=//p' "$FILE" | tail -1)" == "$EXPECTED_HEAD" ]]
+          test -s control/.github/module006-complete-source.patch.xz.b64
+
+      - name: Check out exact Module 006 source branch
+        uses: actions/checkout@v5
+        with:
+          ref: feature/module-006-project-register-20260729
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Apply reviewed complete Module 006 source package
+        working-directory: repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD" ]] || {
+            echo "Module 006 branch moved. Expected $EXPECTED_HEAD but found $(git rev-parse HEAD)." >&2
+            exit 1
+          }
+          base64 --decode ../control/.github/module006-complete-source.patch.xz.b64 \
+            | xz --decompress --stdout > /tmp/module006-complete.patch
+          echo "$PATCH_SHA256  /tmp/module006-complete.patch" | sha256sum --check
+          git apply --binary --index /tmp/module006-complete.patch
+          git diff --cached --check
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git commit -m 'Complete Module 006 Toyota and Hyundai pipelines'
+          echo "MODULE006_COMPLETE_SOURCE_HEAD=$(git rev-parse HEAD)"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: repo/src/frontend/project-time-web/package-lock.json
+
+      - name: Validate migration, workbook parser, source, and builds
+        working-directory: repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-module-006-migration-054.sh
+          tests/test-module-006-migration-054.sh
+          dotnet run --project tests/Module006WorkbookParserProbe/Module006WorkbookParserProbe.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          pushd src/frontend/project-time-web >/dev/null
+          node --check scripts/inject-module-006-toyota-hyundai-pipelines.mjs
+          node --check scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+          node scripts/generate-module-001-integrated-app.mjs
+          node scripts/inject-module-006-toyota-hyundai-pipelines.mjs
+          node scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+          node scripts/validate-superadmin-sso-expense-module006-package.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+          docker build -f deployment/containers/web/Dockerfile .
+          git diff --check HEAD^..HEAD
+
+      - name: Push completed Module 006 branch
+        working-directory: repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "MODULE006_COMPLETE_SOURCE_PUSHED=$(git rev-parse HEAD)"
