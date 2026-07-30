@@ -38,16 +38,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
-          MAIN_SHA="$(git rev-parse origin/main)"
-          [[ "$(git merge-base "$MAIN_SHA" HEAD)" == "$MAIN_SHA" ]]
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          EXPECTED_REPAIR_BASE='b579a56140e302c96ca4af363611fa1e2a9b9734'
+          git cat-file -e "$EXPECTED_REPAIR_BASE^{commit}"
+          [[ "$(git merge-base "$CURRENT_MAIN" HEAD)" == "$EXPECTED_REPAIR_BASE" ]] || {
+            echo "Repair branch no longer has the reviewed broken-main base $EXPECTED_REPAIR_BASE." >&2
+            exit 1
+          }
+          [[ "$(git merge-base "$EXPECTED_REPAIR_BASE" HEAD)" == "$EXPECTED_REPAIR_BASE" ]]
           test -s scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
           for protected in \
             '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
             '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
             'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
-            git diff --quiet "$MAIN_SHA"...HEAD -- "$protected"
+            git diff --quiet "$EXPECTED_REPAIR_BASE"...HEAD -- "$protected"
           done
-          echo "PULSE_AI_REPAIR_MAIN=$MAIN_SHA"
+          echo "PULSE_AI_REPAIR_CURRENT_MAIN=$CURRENT_MAIN"
+          echo "PULSE_AI_REPAIR_BASE=$EXPECTED_REPAIR_BASE"
           echo "PULSE_AI_REPAIR_HEAD=$(git rev-parse HEAD)"
 
       - uses: actions/setup-python@v5
