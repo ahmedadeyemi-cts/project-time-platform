@@ -6,6 +6,7 @@ public static class PulseAiSystemOperationsPolicy
     public const string MigrationId = "054_pulse_ai_system_operations_copilot";
     public const string FeatureCode = "system_operations_copilot";
     public const string UnifiedHelpFeatureCode = "live_help_answer";
+    public const string FutureEnhancementFeatureCode = "future_enhancement_planner";
     public const string SafeRetestConfirmation = "RETEST-PULSE-AI-SAFE-API";
 
     public const string AskPermission = "ASK_PULSE_AI_SYSTEM_OPERATIONS";
@@ -13,6 +14,7 @@ public static class PulseAiSystemOperationsPolicy
     public const string RetestPermission = "RETEST_PULSE_AI_SAFE_API";
     public const string HistoryPermission = "VIEW_PULSE_AI_OPERATIONS_HISTORY";
     public const string ExportPermission = "EXPORT_PULSE_AI_OPERATIONS_EVIDENCE";
+    public const string FutureEnhancementPermission = "PLAN_PULSE_AI_FUTURE_ENHANCEMENT";
 
     public static readonly string[] AdministratorRoles =
     [
@@ -61,6 +63,12 @@ public sealed record PulseAiSystemOperationsQuestionRequest(
     bool IncludeRecentEvidence = true);
 
 public sealed record PulseAiSystemOperationsRetestRequest(string? Confirmation);
+
+public sealed record PulseAiFutureEnhancementRequest(
+    string? Question,
+    string? DetailLevel = "comprehensive",
+    bool IncludeLiveApiEvidence = true,
+    bool PersistDraft = true);
 
 public sealed record PulseAiSystemOperationsClassification(
     string Intent,
@@ -302,3 +310,91 @@ public sealed record PulseAiSystemOperationsHistoryItem(
     string ReleaseSha,
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt);
+
+public sealed record PulseAiFutureEnhancementPlan(
+    Guid PlanId,
+    string Status,
+    string Title,
+    PulseAiPrivateDetailedAnswer Answer,
+    IReadOnlyList<PulseAiModuleKnowledge> AffectedModules,
+    IReadOnlyList<PulseAiSystemApiRecord> CurrentApis,
+    IReadOnlyList<string> CurrentCapabilities,
+    IReadOnlyList<string> CapabilityGaps,
+    IReadOnlyList<string> ProposedArchitecture,
+    IReadOnlyList<string> DataAndMigrationChanges,
+    IReadOnlyList<string> ApiAndIntegrationChanges,
+    IReadOnlyList<string> PermissionAndRoleChanges,
+    IReadOnlyList<string> PrivacyAndSecurityControls,
+    IReadOnlyList<string> ObservabilityAndAudit,
+    IReadOnlyList<string> TestingStrategy,
+    IReadOnlyList<string> ReleaseSequence,
+    IReadOnlyList<string> AcceptanceCriteria,
+    IReadOnlyList<string> Dependencies,
+    IReadOnlyList<string> Risks,
+    IReadOnlyList<string> EstimatedPhases,
+    DateTimeOffset CreatedAt,
+    bool Persisted)
+{
+    public object ToPublicResponse() => new
+    {
+        planId = PlanId,
+        status = Status,
+        featureCode = PulseAiSystemOperationsPolicy.FutureEnhancementFeatureCode,
+        title = Title,
+        answer = Answer,
+        affectedModules = AffectedModules,
+        currentApis = CurrentApis,
+        currentCapabilities = CurrentCapabilities,
+        capabilityGaps = CapabilityGaps,
+        proposedArchitecture = ProposedArchitecture,
+        dataAndMigrationChanges = DataAndMigrationChanges,
+        apiAndIntegrationChanges = ApiAndIntegrationChanges,
+        permissionAndRoleChanges = PermissionAndRoleChanges,
+        privacyAndSecurityControls = PrivacyAndSecurityControls,
+        observabilityAndAudit = ObservabilityAndAudit,
+        testingStrategy = TestingStrategy,
+        releaseSequence = ReleaseSequence,
+        acceptanceCriteria = AcceptanceCriteria,
+        dependencies = Dependencies,
+        risks = Risks,
+        estimatedPhases = EstimatedPhases,
+        createdAt = CreatedAt,
+        persisted = Persisted,
+        controls = new
+        {
+            implementationPerformed = false,
+            migrationApplied = false,
+            deploymentPerformed = false,
+            providerCalled = false,
+            productionChanged = false,
+            humanApprovalRequired = true
+        }
+    };
+}
+
+public sealed record PulseAiUnifiedAnswerResult(
+    string Mode,
+    string Status,
+    object Result,
+    string RoutingReason,
+    DateTimeOffset GeneratedAt)
+{
+    public object ToPublicResponse() => new
+    {
+        mode = Mode,
+        status = Status,
+        result = Result,
+        routingReason = RoutingReason,
+        generatedAt = GeneratedAt,
+        answerContract = new
+        {
+            directAnswerRequired = true,
+            comprehensiveDepthRequired = true,
+            sourceAndScopeDisclosureRequired = true,
+            unknownValuesPreserved = true,
+            unsupportedClaimsProhibited = true,
+            futureEnhancementGapAnalysisRequired = Mode == "future_enhancement",
+            liveOperationsEvidenceRequired = Mode == "system_operations"
+        }
+    };
+}
