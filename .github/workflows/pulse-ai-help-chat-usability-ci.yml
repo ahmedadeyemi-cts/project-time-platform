@@ -15,7 +15,6 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiQuestionPlanner.cs'
-      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
 
 permissions:
   contents: read
@@ -44,7 +43,14 @@ jobs:
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+          HOTFIX_RELEVANT='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs)$'
+          if ! grep -Eq "$HOTFIX_RELEVANT" <<<"$CHANGED"; then
+            git diff --check "origin/$BASE_BRANCH"...HEAD
+            echo 'PULSE_AI_HELP_CHAT_NOT_CHANGED=SKIPPED'
+            exit 0
+          fi
+
+          ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
