@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'fix/module-011-help-chat-usability-*'
+      - 'feature/module-011-system-intelligence-troubleshooting-*'
+      - 'feature/module-011-celar-ai-runtime-rebrand-*'
   pull_request:
     paths:
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
@@ -35,27 +37,47 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact hotfix source scope
+      - name: Verify hotfix or later Module 011 integration scope
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
-          fi
-
-          if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
-            echo 'The Help chat hotfix cannot include a migration or deployment operation.' >&2
-            exit 1
-          fi
+          case "$HEAD_BRANCH" in
+            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*)
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION'
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in later Module 011 Help integration:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              if grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The Help chat regression workflow cannot validate a deployment operation.' >&2
+                exit 1
+              fi
+              ;;
+            *)
+              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+              UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+              if [[ -n "$UNEXPECTED" ]]; then
+                echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
+                printf '%s\n' "$UNEXPECTED" >&2
+                exit 1
+              fi
+              if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The Help chat hotfix cannot include a migration or deployment operation.' >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=ORIGINAL_HOTFIX'
+              ;;
+          esac
 
           grep -Fq 'GROUP_5_VALIDATION_MODE=REGRESSION' .github/workflows/group5-financial-operations-recovery-ci.yml
           grep -Fq 'GROUP5_RUNTIME_OWNED' .github/workflows/group5-financial-operations-recovery-ci.yml
@@ -85,7 +107,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 6 -name PulseAiQuestionPlanner.g.cs -print -quit)"
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name PulseAiQuestionPlanner.g.cs -print -quit)"
           test -n "$GENERATED"
           grep -Fq 'PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized)' "$GENERATED"
           echo "PULSE_AI_HELP_CHAT_GENERATED_PLANNER=$GENERATED"
@@ -121,18 +143,17 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## Pulse AI Help Chat Usability'
+            echo '## Pulse AI / Celar AI Help Chat Usability'
             echo
             echo '- Conversation scrolling: restored'
             echo '- Enter submits: enabled'
             echo '- Shift+Enter newline: preserved'
             echo '- Escape closes: enabled'
-            echo '- Direct Pulse AI purpose answer: enabled'
-            echo '- Group 5 unrelated-PR regression mode: corrected'
+            echo '- Direct product-purpose answer: enabled'
+            echo '- Later Module 011 integration validation: supported'
             echo '- API build: passed'
             echo '- Complete frontend build: passed'
             echo '- Web container build: passed'
-            echo '- Database migration: none'
             echo '- Provider call added: none'
             echo '- Deployment performed: none'
           } >> "$GITHUB_STEP_SUMMARY"
