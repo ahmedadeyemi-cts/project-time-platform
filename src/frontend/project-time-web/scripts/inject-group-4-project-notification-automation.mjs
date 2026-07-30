@@ -110,10 +110,15 @@ function installApp() {
 function installRegistry() {
   if (!fs.existsSync(registryPath)) throw new Error('Group 4 module registry target is missing.');
   let source = fs.readFileSync(registryPath, 'utf8');
+  const legacyAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),";
+  const financialReportAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Financial Report Center', group: 'Reports & Workflow', description: 'Search, preview, run, export, and review history for actual role-scoped financial reports with independent source recovery.' }),";
+  const analyticsCenterAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Analytics Center', group: 'Reports & Workflow', description: 'Select and run role-scoped analytics with report-specific customer, project, Engineer, Project Manager, team, date, financial, delivery, and operational criteria.' }),";
   const module032 = "  Object.freeze({ moduleNumber: '032', route: 'notification-delivery-monitor', displayName: 'Notification Delivery Monitor', group: 'Reports & Workflow', description: 'Operational inbox for project notification dispatches, recipient derivation, Module 065 readiness, source failures, release, retry, and delivery evidence.' }),";
 
   if (!source.includes("moduleNumber: '032'")) {
-    const module030Anchor = source
+    const explicitAnchor = [analyticsCenterAnchor, financialReportAnchor, legacyAnchor]
+      .find((candidate) => source.includes(candidate));
+    const module030Anchor = explicitAnchor ?? source
       .split('\n')
       .find((line) => line.includes("moduleNumber: '030'") && line.includes("route: 'reporting'"));
     if (!module030Anchor) throw new Error('Group 4 registry anchor is missing.');
@@ -126,4 +131,4 @@ function installRegistry() {
 
 installApp();
 installRegistry();
-console.log('GROUP_4_NOTIFICATION_AUTOMATION_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=022,023,032,041,065 module030Identity=display-name-independent');
+console.log('GROUP_4_NOTIFICATION_AUTOMATION_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=022,023,032,041,065 module030Identity=reporting|financial-report-center|analytics-center');
