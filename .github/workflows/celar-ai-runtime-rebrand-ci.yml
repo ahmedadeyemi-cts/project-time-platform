@@ -1,0 +1,227 @@
+name: Validate Celar AI Runtime Rebrand and Demo Chat
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-celar-ai-runtime-rebrand-*'
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+      - 'docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND.md'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'
+      - 'src/frontend/project-time-web/src/CelarAiProviderBridgePanel.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-provider-bridge-panel.css'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-runtime-rebrand-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact stacked source isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_BASE='0abcbf5a1248d490a824ee4d987c8669344f0209'
+          git cat-file -e "$EXPECTED_BASE^{commit}"
+          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
+          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/celar-ai-runtime-rebrand-ci\.yml|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Celar AI runtime-rebrand source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            ! grep -Fxq "$protected" <<<"$CHANGED"
+          done
+
+          ! grep -E '^(deployment/|database/migrations/|database/rollback/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"
+          git diff --check "$EXPECTED_BASE"...HEAD
+          echo "CELAR_AI_RUNTIME_REBRAND_BASE=$EXPECTED_BASE"
+          echo 'CELAR_AI_RUNTIME_REBRAND_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate source syntax and preserved prebuild contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check ./scripts/inject-celar-ai-runtime-rebrand.mjs
+          node --check ./scripts/validate-celar-ai-runtime-rebrand.mjs
+          node --check ./scripts/validate-module-011-pulse-ai.mjs
+          node --check ./scripts/validate-group-1-navigation-work-consolidation.mjs
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-group-1-navigation-work-consolidation.mjs
+          node ./scripts/validate-pulse-ai-help-chat-usability.mjs
+          node ./scripts/validate-module-011-system-intelligence-package.mjs
+          echo 'CELAR_AI_PRESERVED_PREBUILD_CONTRACTS=PASSED'
+
+      - name: Verify durable conversation migration 054
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-pulse-ai-system-intelligence-migration-054.sh
+          tests/test-pulse-ai-system-intelligence-migration-054.sh
+
+      - name: Build ProjectTime API and verify Celar endpoint registration
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > celar-ai-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: celar-ai-api-${{ github.run_id }}-${{ github.run_attempt }}
+          path: celar-ai-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build and endpoint mapping
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          tail -n 360 celar-ai-api-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          grep -Fq '0 Error(s)' celar-ai-api-build.log
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name Program.ScopedRbac.g.cs -print -quit)"
+          test -n "$GENERATED"
+          grep -Fq 'app.MapPulseAiSystemIntelligenceEndpoints();' "$GENERATED"
+          grep -Fq 'app.MapCelarAiBrandEndpoints();' "$GENERATED"
+          echo "CELAR_AI_GENERATED_PROGRAM=$GENERATED"
+          echo 'CELAR_AI_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > celar-ai-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: celar-ai-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/celar-ai-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build and demo markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          tail -n 360 celar-ai-frontend-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          cat dist/assets/*.js > /tmp/celar-ai-runtime.js
+          cat dist/assets/*.css > /tmp/celar-ai-runtime.css
+          for marker in \
+            'Ask Celar AI' \
+            'Celar AI Workbench' \
+            'Speed of light. Speed of delivery.' \
+            '/api/celar-ai/v1/chat' \
+            'Private intelligence and governed provider routing' \
+            'Raw internal documents never use public providers' \
+            'Enter sends · Shift+Enter adds a line' \
+            'completed responses remain in conversation history'; do
+            grep -Fq "$marker" /tmp/celar-ai-runtime.js
+          done
+          for marker in \
+            '.celar-ai-provider-bridge' \
+            '.celar-ai-provider-bridge__route-grid' \
+            '.pulse-ai-conversation-messages' \
+            'overflow-y:scroll' \
+            'scrollbar-gutter:stable both-edges'; do
+            grep -Fq "$marker" /tmp/celar-ai-runtime.css
+          done
+          echo 'CELAR_AI_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-celar-ai:${GITHUB_SHA}" \
+            .
+          echo 'CELAR_AI_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Module 011 — Celar AI Runtime Rebrand and Demo Chat'
+            echo
+            echo '- Exact PR #323-dependent source isolation: passed'
+            echo '- Canonical Celar AI identity and creator narrative: passed'
+            echo '- Celeritas, speed-of-light, US Signal fiber, and speed-of-delivery story: passed'
+            echo '- Changepoint catalyst and unified operating model: passed'
+            echo '- Direct Celar identity answer and comprehensive system-question delegation: passed'
+            echo '- Enter sends, Shift+Enter newline, Escape close, independent scrolling, and durable history: passed'
+            echo '- Module 064 Celar AI/private-model provider bridge: passed'
+            echo '- Existing Pulse AI technical routes, permissions, database objects, and environment compatibility: passed'
+            echo '- Migration 054 apply/rollback/reapply: passed'
+            echo '- .NET 10 API build and generated endpoint registration: passed'
+            echo '- Complete frontend production build: passed'
+            echo '- Production web-container context: passed'
+            echo '- Migration applied to Test/Production by this PR: no'
+            echo '- Provider secret or route changed by this PR: no'
+            echo '- Azure, Entra, Container App, or deployment operation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
