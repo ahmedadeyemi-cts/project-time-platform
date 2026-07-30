@@ -1,0 +1,107 @@
+name: Repair PostCSS Security Advisory 2026-07-30
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - .github/workflows/npm-postcss-security-fix-20260730.yml
+      - scripts/security/validate-repository-security-posture.py
+      - src/frontend/project-time-web/package.json
+      - src/frontend/project-time-web/package-lock.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-postcss-lock-repair-20260730
+  cancel-in-progress: false
+
+jobs:
+  repair-lock:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'security/repository-posture-baseline-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_BRANCH: security/repository-posture-baseline-20260730
+      FRONTEND_ROOT: src/frontend/project-time-web
+      PATCHED_POSTCSS_VERSION: 8.5.18
+
+    steps:
+      - name: Check out exact security branch head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Guard exact branch and repair scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == "$TARGET_BRANCH" ]]
+          [[ "$(git rev-parse HEAD)" == "${{ github.event.pull_request.head.sha }}" ]]
+          test -s "$FRONTEND_ROOT/package.json"
+          test -s "$FRONTEND_ROOT/package-lock.json"
+          python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Pin the patched PostCSS release and regenerate the lock
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm install \
+            --save-dev \
+            --save-exact \
+            --package-lock-only \
+            --ignore-scripts \
+            "postcss@$PATCHED_POSTCSS_VERSION"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=high
+
+      - name: Validate exact package-only change
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          mapfile -t CHANGED < <(git diff --name-only | sort)
+          diff -u \
+            <(printf '%s\n' \
+              'src/frontend/project-time-web/package-lock.json' \
+              'src/frontend/project-time-web/package.json') \
+            <(printf '%s\n' "${CHANGED[@]}")
+          grep -Fq '"postcss": "8.5.18"' "$FRONTEND_ROOT/package.json"
+          grep -Fq '"version": "8.5.18"' "$FRONTEND_ROOT/package-lock.json"
+          echo "POSTCSS_SECURITY_LOCK_REPAIR=PASS"
+
+      - name: Commit the validated dependency repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/frontend/project-time-web/package.json \
+            src/frontend/project-time-web/package-lock.json
+          if git diff --cached --quiet; then
+            echo "POSTCSS_SECURITY_LOCK_ALREADY_CURRENT=YES"
+            exit 0
+          fi
+          git diff --cached --check
+          git commit -m 'Upgrade PostCSS to patched 8.5.18 release'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "POSTCSS_SECURITY_LOCK_PUSHED=YES"
