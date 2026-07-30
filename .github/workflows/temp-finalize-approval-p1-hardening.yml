@@ -8,8 +8,6 @@ on:
       - opened
       - synchronize
       - reopened
-    paths:
-      - .github/workflows/temp-finalize-approval-p1-hardening.yml
 
 permissions:
   contents: write
