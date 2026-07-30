@@ -128,7 +128,7 @@ expect_file_failure \
   'Migration 051A rollback blocked: later approval lifecycle statuses are in use' \
   guarded_rollback_blocks_live_lifecycle
 
-psql_exec "UPDATE timesheet_day_statuses SET status='manager_approved' WHERE work_date='2026-07-21';" >/dev/null
+psql_exec -c "UPDATE timesheet_day_statuses SET status='manager_approved' WHERE work_date='2026-07-21';" >/dev/null
 psql_exec -f "$ROLLBACK" >/dev/null
 
 assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='051a_pending_approval_day_status_lifecycle';")" rollback_removed_migration
@@ -140,7 +140,7 @@ expect_sql_failure \
 
 psql_exec -f "$MIGRATION" >/dev/null
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='051a_pending_approval_day_status_lifecycle';")" safe_reapply
-psql_exec "UPDATE timesheet_day_statuses SET status='pm_approved' WHERE work_date='2026-07-21';" >/dev/null
+psql_exec -c "UPDATE timesheet_day_statuses SET status='pm_approved' WHERE work_date='2026-07-21';" >/dev/null
 assert_eq pm_approved "$(value "SELECT status FROM timesheet_day_statuses WHERE work_date='2026-07-21';")" reapply_restored_pm_stage
 
 echo 'PENDING_APPROVAL_MIGRATION_051A=PASS'
