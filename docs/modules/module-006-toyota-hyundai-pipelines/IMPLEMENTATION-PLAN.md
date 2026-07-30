@@ -1,20 +1,20 @@
-# Module 006 — Project Register Implementation Plan
+# Module 006 — Toyota & Hyundai Pipelines Implementation Plan
 
 ## Status
 
 - Issue: #274
-- Branch: `feature/module-006-project-register-20260729`
+- Branch: `feature/module-006-toyota-hyundai-pipelines-20260729`
 - Current phase: read-only source foundation
-- Canonical route: `#project-register`
+- Canonical route: `#toyota-hyundai-pipelines`
 - Compatibility route: `#psa-modules`
 - Database migration: none in this phase
 - Deployment: none
 
 ## Problem being corrected
 
-Module 006 was previously exposed as the customer-specific **Toyota & Hyundai Pipeline** and inherited the older `PSA Modules` placeholder. The presentation was generated only into the dashboard and did not mount a dedicated Module 006 route. This did not provide an enterprise Project Register.
+Module 006 was previously exposed as the customer-specific **Toyota & Hyundai Pipeline** and inherited the older `PSA Modules` placeholder. The presentation was generated only into the dashboard and did not mount a dedicated Module 006 route. This did not provide an enterprise Toyota & Hyundai Pipelines.
 
-## Phase 1 — Read-only Project Register foundation
+## Phase 1 — Read-only Toyota & Hyundai Pipelines foundation
 
 This branch establishes the canonical Module 006 identity and a dedicated route. The initial register:
 
@@ -28,7 +28,7 @@ This branch establishes the canonical Module 006 identity and a dedicated route.
 - links authorized management actions to Module 055C; and
 - creates no alternate project, task, assignment, financial, customer, SELL, or audit system.
 
-The legacy `#psa-modules` address is normalized to the canonical `#project-register` route. The retired Toyota & Hyundai identity remains explicit history rather than an active enterprise label.
+The legacy `#psa-modules` address is normalized to the canonical `#toyota-hyundai-pipelines` route. The retired Toyota & Hyundai identity remains explicit history rather than an active enterprise label.
 
 ## Authority boundaries
 
@@ -83,7 +83,7 @@ A separate migration will be proposed only after the import and export schemas a
 
 - canonical Module 006 name and route in database-backed role-policy catalogs;
 - compatibility metadata for the retired route;
-- Project Register view/import/export permissions;
+- Toyota & Hyundai Pipelines view/import/export permissions;
 - import batches and import-row evidence;
 - export events and artifact evidence; and
 - immutable audit triggers.

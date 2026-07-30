@@ -949,6 +949,26 @@
     return Array.from(modules).sort();
   };
 
+  const projectPulse022DSafeActionUrl = (value) => {
+    const candidate = String(value || "").trim();
+    if (!candidate) return "";
+
+    if (candidate.startsWith("/") && !candidate.startsWith("//") && !candidate.includes("\\") && !/[\u0000-\u001f]/.test(candidate)) {
+      return candidate;
+    }
+
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "https:" && !parsed.username && !parsed.password) {
+        return parsed.href;
+      }
+    } catch (_) {
+      return "";
+    }
+
+    return "";
+  };
+
   const renderBody = () => {
     const root = ensureRoot();
     const body = root.querySelector(".projectpulse-022d-body");
@@ -1003,7 +1023,7 @@
                 ? `<span class="projectpulse-022d-pill projectpulse-022d-severity-success">Acknowledged</span>`
                 : `<button type="button" class="projectpulse-022d-button projectpulse-022d-primary" data-022d-ack="${escapeHtml(item.notificationId)}" ${isViewAs() ? "disabled" : ""}>Acknowledge</button>`
               }
-              ${item.actionUrl ? `<a class="projectpulse-022d-button" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}
+              ${projectPulse022DSafeActionUrl(item.actionUrl) ? `<a class="projectpulse-022d-button" href="${escapeHtml(projectPulse022DSafeActionUrl(item.actionUrl))}" rel="noopener noreferrer">Open related page</a>` : ""}
             </div>
           </div>
         `).join("")
@@ -1521,6 +1541,31 @@
 
   const isViewAs = () => !!getViewAsUserId();
 
+  const projectPulse022DTopbarSafeActionUrl = (value) => {
+  const candidate = String(value || "").trim();
+  if (!candidate) return "";
+
+  if (
+    candidate.startsWith("/")
+    && !candidate.startsWith("//")
+    && !candidate.includes(String.fromCharCode(92))
+    && !Array.from(candidate).some((character) => character.charCodeAt(0) < 32)
+  ) {
+    return candidate;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === "https:" && !parsed.username && !parsed.password) {
+      return parsed.href;
+    }
+  } catch (_) {
+    return "";
+  }
+
+  return "";
+};
+
   const apiFetch = async (path, options = {}) => {
     const token = getSessionToken();
     if (!token) {
@@ -1943,7 +1988,7 @@
                   ? `<span class="projectpulse-022d-topbar-pill projectpulse-022d-topbar-success">Acknowledged</span>`
                   : `<button type="button" class="projectpulse-022d-topbar-action projectpulse-022d-topbar-primary" data-022d-ack="${escapeHtml(notificationId)}" ${isViewAs() ? "disabled" : ""}>Acknowledge</button>`
                 }
-                ${item.actionUrl ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(item.actionUrl)}">Open related page</a>` : ""}
+                ${projectPulse022DTopbarSafeActionUrl(item.actionUrl) ? `<a class="projectpulse-022d-topbar-action" href="${escapeHtml(projectPulse022DTopbarSafeActionUrl(item.actionUrl))}" rel="noopener noreferrer">Open related page</a>` : ""}
               </div>
             </div>
           `;

@@ -1799,7 +1799,28 @@ function updateRosterEngineer(task, index, field, value) {
     }
 
     if (reference) {
-      window.open(reference, '_blank', 'noopener,noreferrer');
+      let safeReference = '';
+      const candidate = String(reference).trim();
+
+      if (candidate.startsWith('/') && !candidate.startsWith('//') && !candidate.includes('\\') && !/[\u0000-\u001f]/.test(candidate)) {
+        safeReference = candidate;
+      } else {
+        try {
+          const parsed = new URL(candidate);
+          if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) {
+            safeReference = parsed.href;
+          }
+        } catch (_) {
+          safeReference = '';
+        }
+      }
+
+      if (!safeReference) {
+        setDocumentStatus('Blocked an unsafe document reference. Only relative Project Pulse routes and HTTPS links are allowed.');
+        return;
+      }
+
+      window.open(safeReference, '_blank', 'noopener,noreferrer');
     }
   }
 

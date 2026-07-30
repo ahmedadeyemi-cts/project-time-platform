@@ -1,0 +1,726 @@
+.pulse-ai-runtime-workbench {
+  --runtime-navy: #072d59;
+  --runtime-blue: #1769aa;
+  --runtime-cyan: #13a9d1;
+  --runtime-green: #0d8a65;
+  --runtime-amber: #a96608;
+  --runtime-red: #a32929;
+  --runtime-ink: var(--text-primary, #17243b);
+  --runtime-muted: var(--text-secondary, #61708a);
+  --runtime-panel: var(--panel-bg, #ffffff);
+  --runtime-soft: #f3f8fc;
+  --runtime-line: rgba(64, 98, 137, 0.23);
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 1680px);
+  margin: 1rem auto;
+  padding: 1rem;
+  color: var(--runtime-ink);
+}
+
+.pulse-ai-runtime-workbench *,
+.pulse-ai-runtime-workbench *::before,
+.pulse-ai-runtime-workbench *::after {
+  box-sizing: border-box;
+}
+
+.pulse-ai-runtime-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  overflow: hidden;
+  padding: clamp(1.1rem, 2.3vw, 1.8rem);
+  border: 1px solid rgba(23, 105, 170, 0.3);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(19, 169, 209, 0.22), transparent 33%),
+    linear-gradient(135deg, #061a35 0%, #0b315e 58%, #0c5c8d 100%);
+  color: #ffffff;
+  box-shadow: 0 20px 46px rgba(7, 45, 89, 0.17);
+}
+
+.pulse-ai-runtime-header h2,
+.pulse-ai-runtime-panel-heading h3,
+.pulse-ai-runtime-result-hero h4,
+.pulse-ai-runtime-form h4,
+.pulse-ai-runtime-action-dialog h3 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.pulse-ai-runtime-header h2 {
+  max-width: 980px;
+  font-size: clamp(1.45rem, 2.7vw, 2.25rem);
+  color: #ffffff;
+}
+
+.pulse-ai-runtime-header p:not(.pulse-ai-runtime-eyebrow) {
+  max-width: 1050px;
+  margin: 0.55rem 0 0;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.pulse-ai-runtime-eyebrow {
+  margin: 0 0 0.28rem;
+  color: var(--runtime-blue);
+  font-size: 0.69rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pulse-ai-runtime-header .pulse-ai-runtime-eyebrow {
+  color: #7bdcf0;
+}
+
+.pulse-ai-runtime-private-pill,
+.pulse-ai-runtime-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.pulse-ai-runtime-private-pill {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.pulse-ai-runtime-warning,
+.pulse-ai-runtime-error,
+.pulse-ai-runtime-notice,
+.pulse-ai-runtime-loading {
+  border: 1px solid var(--runtime-line);
+  border-radius: 13px;
+  padding: 0.8rem 0.95rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.pulse-ai-runtime-warning {
+  border-color: rgba(169, 102, 8, 0.34);
+  background: #fff8e8;
+  color: #744207;
+}
+
+.pulse-ai-runtime-error {
+  border-color: rgba(163, 41, 41, 0.35);
+  background: #fff1f1;
+  color: #8c2020;
+}
+
+.pulse-ai-runtime-notice {
+  border-color: rgba(13, 138, 101, 0.34);
+  background: #eaf8f3;
+  color: #08684d;
+}
+
+.pulse-ai-runtime-loading {
+  background: var(--runtime-soft);
+  color: var(--runtime-muted);
+}
+
+.pulse-ai-runtime-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.65rem;
+  border: 1px solid var(--runtime-line);
+  border-radius: 17px;
+  background: var(--runtime-panel);
+  box-shadow: 0 8px 22px rgba(20, 48, 82, 0.05);
+}
+
+.pulse-ai-runtime-tabs button {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 66px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: transparent;
+  color: var(--runtime-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pulse-ai-runtime-tabs button:hover,
+.pulse-ai-runtime-tabs button:focus-visible {
+  border-color: rgba(23, 105, 170, 0.33);
+  background: var(--runtime-soft);
+  outline: none;
+}
+
+.pulse-ai-runtime-tabs button.is-active {
+  border-color: #54a5d7;
+  background: linear-gradient(135deg, #e9f5ff, #edfbff);
+  color: #0b507f;
+  box-shadow: inset 4px 0 0 var(--runtime-blue);
+}
+
+.pulse-ai-runtime-tabs strong {
+  font-size: 0.82rem;
+}
+
+.pulse-ai-runtime-tabs span {
+  color: var(--runtime-muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.pulse-ai-runtime-panel {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(0.95rem, 2vw, 1.35rem);
+  border: 1px solid var(--runtime-line);
+  border-radius: 18px;
+  background: var(--runtime-panel);
+  box-shadow: 0 10px 28px rgba(20, 48, 82, 0.06);
+}
+
+.pulse-ai-runtime-panel-heading,
+.pulse-ai-runtime-result-hero,
+.pulse-ai-runtime-job-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pulse-ai-runtime-panel-heading {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--runtime-line);
+}
+
+.pulse-ai-runtime-panel-heading h3 {
+  color: var(--runtime-ink);
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+}
+
+.pulse-ai-runtime-panel-heading p:last-child,
+.pulse-ai-runtime-result-hero p,
+.pulse-ai-runtime-form p,
+.pulse-ai-runtime-card p,
+.pulse-ai-runtime-list-block p {
+  margin: 0.35rem 0 0;
+  color: var(--runtime-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.pulse-ai-runtime-panel-heading button,
+.pulse-ai-runtime-form button,
+.pulse-ai-runtime-filter-form button,
+.pulse-ai-runtime-job-actions button,
+.pulse-ai-runtime-action-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid rgba(23, 105, 170, 0.34);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  background: #edf6fd;
+  color: #155b8d;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pulse-ai-runtime-panel-heading button:hover,
+.pulse-ai-runtime-form button:hover,
+.pulse-ai-runtime-filter-form button:hover,
+.pulse-ai-runtime-job-actions button:hover,
+.pulse-ai-runtime-action-dialog button:hover,
+.pulse-ai-runtime-panel-heading button:focus-visible,
+.pulse-ai-runtime-form button:focus-visible,
+.pulse-ai-runtime-filter-form button:focus-visible,
+.pulse-ai-runtime-job-actions button:focus-visible,
+.pulse-ai-runtime-action-dialog button:focus-visible {
+  border-color: var(--runtime-blue);
+  outline: 3px solid rgba(23, 105, 170, 0.13);
+  outline-offset: 2px;
+}
+
+.pulse-ai-runtime-panel-heading button:disabled,
+.pulse-ai-runtime-form button:disabled,
+.pulse-ai-runtime-filter-form button:disabled,
+.pulse-ai-runtime-action-dialog button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pulse-ai-runtime-result-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.pulse-ai-runtime-result-hero,
+.pulse-ai-runtime-card,
+.pulse-ai-runtime-privacy-card,
+.pulse-ai-runtime-form,
+.pulse-ai-runtime-filter-form,
+.pulse-ai-runtime-job-grid article,
+.pulse-ai-runtime-list-block,
+.pulse-ai-runtime-evidence {
+  border: 1px solid var(--runtime-line);
+  border-radius: 14px;
+  background: var(--runtime-panel);
+}
+
+.pulse-ai-runtime-result-hero,
+.pulse-ai-runtime-card,
+.pulse-ai-runtime-privacy-card,
+.pulse-ai-runtime-form,
+.pulse-ai-runtime-filter-form {
+  padding: 0.9rem;
+}
+
+.pulse-ai-runtime-result-hero {
+  background: linear-gradient(135deg, var(--runtime-soft), var(--runtime-panel));
+}
+
+.pulse-ai-runtime-result-hero h4,
+.pulse-ai-runtime-card h5,
+.pulse-ai-runtime-list-block h5 {
+  color: var(--runtime-ink);
+}
+
+.pulse-ai-runtime-result-hero h4 {
+  font-size: 1.05rem;
+}
+
+.pulse-ai-runtime-status {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  padding: 0.3rem 0.52rem;
+}
+
+.pulse-ai-runtime-status.is-ready {
+  border-color: rgba(13, 138, 101, 0.28);
+  background: #e5f7f0;
+  color: #086f52;
+}
+
+.pulse-ai-runtime-status.is-failed {
+  border-color: rgba(163, 41, 41, 0.28);
+  background: #fff0f0;
+  color: #942323;
+}
+
+.pulse-ai-runtime-status.is-waiting {
+  border-color: rgba(169, 102, 8, 0.28);
+  background: #fff6df;
+  color: #915706;
+}
+
+.pulse-ai-runtime-status.is-neutral {
+  border-color: rgba(93, 113, 139, 0.28);
+  background: #edf2f7;
+  color: #536279;
+}
+
+.pulse-ai-runtime-key-values {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.pulse-ai-runtime-key-values > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.58rem;
+  border-radius: 9px;
+  background: var(--runtime-soft);
+}
+
+.pulse-ai-runtime-key-values dt {
+  color: var(--runtime-muted);
+  font-size: 0.63rem;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.pulse-ai-runtime-key-values dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--runtime-ink);
+  font-size: 0.73rem;
+  font-weight: 730;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.pulse-ai-runtime-list-block {
+  padding: 0.8rem;
+  background: var(--runtime-soft);
+}
+
+.pulse-ai-runtime-list-block h5,
+.pulse-ai-runtime-card h5,
+.pulse-ai-runtime-privacy-card h5 {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.pulse-ai-runtime-list-block ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1rem;
+  color: var(--runtime-muted);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.pulse-ai-runtime-privacy-card {
+  border-color: rgba(13, 138, 101, 0.28);
+  background: #ecf9f5;
+  color: #095f49;
+}
+
+.pulse-ai-runtime-privacy-card p {
+  color: inherit;
+}
+
+.pulse-ai-runtime-job-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.pulse-ai-runtime-job-grid article {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.85rem;
+}
+
+.pulse-ai-runtime-job-heading strong,
+.pulse-ai-runtime-job-heading span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-job-heading strong {
+  color: var(--runtime-ink);
+  font-size: 0.85rem;
+}
+
+.pulse-ai-runtime-job-heading span {
+  margin-top: 0.18rem;
+  color: var(--runtime-muted);
+  font-size: 0.7rem;
+}
+
+.pulse-ai-runtime-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pulse-ai-runtime-diagnostic {
+  margin: 0;
+  border-left: 3px solid #d99a32;
+  padding: 0.45rem 0.6rem;
+  background: #fff8e9;
+  color: #744207;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.pulse-ai-runtime-form,
+.pulse-ai-runtime-filter-form {
+  display: grid;
+  gap: 0.7rem;
+  background: linear-gradient(180deg, var(--runtime-panel), var(--runtime-soft));
+}
+
+.pulse-ai-runtime-filter-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.pulse-ai-runtime-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.pulse-ai-runtime-form label,
+.pulse-ai-runtime-filter-form label,
+.pulse-ai-runtime-action-dialog label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--runtime-ink);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.pulse-ai-runtime-form input,
+.pulse-ai-runtime-form textarea,
+.pulse-ai-runtime-filter-form input,
+.pulse-ai-runtime-action-dialog input,
+.pulse-ai-runtime-action-dialog textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(64, 98, 137, 0.34);
+  border-radius: 9px;
+  padding: 0.62rem 0.68rem;
+  background: var(--input-bg, #ffffff);
+  color: var(--runtime-ink);
+  font: inherit;
+  font-size: 0.77rem;
+}
+
+.pulse-ai-runtime-form input:focus,
+.pulse-ai-runtime-form textarea:focus,
+.pulse-ai-runtime-filter-form input:focus,
+.pulse-ai-runtime-action-dialog input:focus,
+.pulse-ai-runtime-action-dialog textarea:focus {
+  border-color: var(--runtime-blue);
+  outline: 3px solid rgba(23, 105, 170, 0.13);
+}
+
+.pulse-ai-runtime-form small,
+.pulse-ai-runtime-action-dialog small {
+  color: var(--runtime-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-history {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.pulse-ai-runtime-history > div {
+  display: grid;
+  grid-template-columns: auto minmax(140px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  border-radius: 9px;
+  background: var(--runtime-soft);
+  font-size: 0.72rem;
+}
+
+.pulse-ai-runtime-history span:last-child {
+  color: var(--runtime-muted);
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-evidence {
+  overflow: hidden;
+}
+
+.pulse-ai-runtime-evidence summary {
+  padding: 0.7rem 0.85rem;
+  color: var(--runtime-blue);
+  font-size: 0.74rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.pulse-ai-runtime-evidence pre {
+  max-height: 480px;
+  overflow: auto;
+  margin: 0;
+  padding: 0.9rem;
+  background: #071a30;
+  color: #dceefc;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-empty {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--runtime-line);
+  border-radius: 12px;
+  background: var(--runtime-soft);
+  color: var(--runtime-muted);
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.pulse-ai-runtime-action-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(4, 18, 36, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.pulse-ai-runtime-action-dialog {
+  display: grid;
+  gap: 0.75rem;
+  width: min(100%, 620px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid rgba(23, 105, 170, 0.35);
+  border-radius: 16px;
+  background: var(--runtime-panel);
+  color: var(--runtime-ink);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
+}
+
+.pulse-ai-runtime-action-dialog p {
+  margin: 0;
+  color: var(--runtime-muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-runtime-action-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-workbench,
+.dark .pulse-ai-runtime-workbench {
+  --runtime-ink: #e8f1fb;
+  --runtime-muted: #a8b8cc;
+  --runtime-panel: #142238;
+  --runtime-soft: #1a2b43;
+  --runtime-line: rgba(148, 163, 184, 0.24);
+}
+
+[data-theme="dark"] .pulse-ai-runtime-warning,
+.dark .pulse-ai-runtime-warning {
+  background: #3b2b12;
+  color: #ffe2aa;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-error,
+.dark .pulse-ai-runtime-error {
+  background: #411d24;
+  color: #ffc7cc;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-notice,
+.dark .pulse-ai-runtime-notice,
+[data-theme="dark"] .pulse-ai-runtime-privacy-card,
+.dark .pulse-ai-runtime-privacy-card {
+  background: #14392f;
+  color: #c7f5e4;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-tabs button.is-active,
+.dark .pulse-ai-runtime-tabs button.is-active {
+  background: #193a58;
+  color: #d9efff;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-diagnostic,
+.dark .pulse-ai-runtime-diagnostic {
+  background: #3b2b12;
+  color: #ffe2aa;
+}
+
+[data-theme="dark"] .pulse-ai-runtime-form input,
+.dark .pulse-ai-runtime-form input,
+[data-theme="dark"] .pulse-ai-runtime-form textarea,
+.dark .pulse-ai-runtime-form textarea,
+[data-theme="dark"] .pulse-ai-runtime-filter-form input,
+.dark .pulse-ai-runtime-filter-form input,
+[data-theme="dark"] .pulse-ai-runtime-action-dialog input,
+.dark .pulse-ai-runtime-action-dialog input,
+[data-theme="dark"] .pulse-ai-runtime-action-dialog textarea,
+.dark .pulse-ai-runtime-action-dialog textarea {
+  background: #0f1c2f;
+  color: #eef7ff;
+}
+
+@media (max-width: 1200px) {
+  .pulse-ai-runtime-tabs,
+  .pulse-ai-runtime-key-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pulse-ai-runtime-job-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .pulse-ai-runtime-workbench {
+    padding: 0.65rem;
+  }
+
+  .pulse-ai-runtime-header,
+  .pulse-ai-runtime-panel-heading,
+  .pulse-ai-runtime-result-hero {
+    flex-direction: column;
+  }
+
+  .pulse-ai-runtime-tabs,
+  .pulse-ai-runtime-key-values,
+  .pulse-ai-runtime-two-column,
+  .pulse-ai-runtime-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-ai-runtime-panel-heading button,
+  .pulse-ai-runtime-private-pill {
+    width: 100%;
+  }
+
+  .pulse-ai-runtime-filter-form {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-ai-runtime-history > div {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}
+
+@media (max-width: 560px) {
+  .pulse-ai-runtime-panel {
+    padding: 0.75rem;
+  }
+
+  .pulse-ai-runtime-job-actions,
+  .pulse-ai-runtime-action-dialog > div {
+    flex-direction: column;
+  }
+
+  .pulse-ai-runtime-job-actions button,
+  .pulse-ai-runtime-action-dialog button {
+    width: 100%;
+  }
+}

@@ -5,17 +5,20 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
 {
     private readonly ProjectPulseAiRouter _router;
     private readonly PulseAiDocumentGroundingService _grounding;
+    private readonly PulseAiPrivateRagService _privateRag;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<ProjectPulseAiTimeEntrySuggestionService> _logger;
 
     public ProjectPulseAiTimeEntrySuggestionService(
         ProjectPulseAiRouter router,
         PulseAiDocumentGroundingService grounding,
+        PulseAiPrivateRagService privateRag,
         IHttpContextAccessor httpContextAccessor,
         ILogger<ProjectPulseAiTimeEntrySuggestionService> logger)
     {
         _router = router;
         _grounding = grounding;
+        _privateRag = privateRag;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
@@ -24,6 +27,23 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         ProjectPulseAiTimeEntrySuggestionRequest request,
         CancellationToken cancellationToken = default)
     {
+        var privateRag = await GeneratePrivateRagAsync(request, cancellationToken);
+        if (privateRag is not null)
+        {
+            if (privateRag.Citations.Count > 0)
+            {
+                var privateDescription = CleanSuggestion(privateRag.Answer?.DirectConclusion);
+                if (privateDescription.Length == 0)
+                {
+                    privateDescription = BuildLocalSuggestion(request);
+                }
+                return new ProjectPulseAiTimeEntrySuggestionResult(
+                    privateDescription,
+                    ProjectPulseAiProviders.Local,
+                    BuildPrivateRagWarning(privateRag));
+            }
+        }
+
         var grounding = await BuildGroundingAsync(request, cancellationToken);
 
         if (grounding?.Authorized == true && grounding.HasReadyPrivateContext)
@@ -48,6 +68,52 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             CleanSuggestion(routed.Content),
             routed.Provider,
             MergeWarnings(routed.Warning, BuildGroundingReadinessWarning(grounding)));
+    }
+
+    private async Task<PulseAiPrivateRagAnswer?> GeneratePrivateRagAsync(
+        ProjectPulseAiTimeEntrySuggestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var context = _httpContextAccessor.HttpContext;
+        var effectiveUserId = EffectiveUserId(context);
+        if (effectiveUserId is null) return null;
+        var actualUserId = ActualUserId(context) ?? effectiveUserId.Value;
+        if (string.IsNullOrWhiteSpace(request.ProjectCode)
+            && string.IsNullOrWhiteSpace(request.ProjectName))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _privateRag.GenerateTimesheetAsync(
+                actualUserId,
+                effectiveUserId.Value,
+                new PulseAiPrivateTimesheetRequest(
+                    request.WorkDate,
+                    request.TimeType,
+                    request.RowType,
+                    request.RowLabel,
+                    request.ProjectCode,
+                    request.ProjectName,
+                    request.TaskCode,
+                    request.TaskName,
+                    request.CategoryCode,
+                    request.CurrentDescription,
+                    "standard"),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Pulse AI private RAG Timesheet suggestion failed without logging the Engineer note or private source text.");
+            return null;
+        }
     }
 
     private async Task<PulseAiGroundingContext?> BuildGroundingAsync(
@@ -85,6 +151,22 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
                 "Pulse AI timesheet document grounding failed. The existing non-document suggestion path remains available without exposing source details.");
             return null;
         }
+    }
+
+    private static Guid? ActualUserId(HttpContext? context)
+    {
+        if (context is null) return null;
+        if (context.Items.TryGetValue("ProjectPulseActualUserId", out var actual)
+            && actual is Guid actualUserId)
+        {
+            return actualUserId;
+        }
+        if (context.Items.TryGetValue("ProjectPulseSessionUserId", out var session)
+            && session is Guid sessionUserId)
+        {
+            return sessionUserId;
+        }
+        return null;
     }
 
     private static Guid? EffectiveUserId(HttpContext? context)
@@ -196,6 +278,15 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             : string.Empty;
 
         return $"Private Pulse AI grounding used {ready.Length} approved document context source(s) at {grounding.GeneratedAt:O}. Sources: {sourceText}. Coverage: {grounding.CoverageLevel} ({grounding.CoverageScore:P0}). Raw document text and extracted summaries were not sent to Claude or OpenAI. The Engineer must confirm that the suggestion describes only work actually performed.{conflicts}{missing}";
+    }
+
+    private static string BuildPrivateRagWarning(PulseAiPrivateRagAnswer privateRag)
+    {
+        var sourceCount = privateRag.Citations.Count;
+        var diagnostic = string.IsNullOrWhiteSpace(privateRag.DiagnosticCode)
+            ? string.Empty
+            : $" Diagnostic: {privateRag.DiagnosticCode}.";
+        return $"Pulse AI used {sourceCount} authorized private source citation(s) as of {privateRag.DataAsOf:O}; no private document text was sent to Claude or OpenAI. Engineer must review and explicitly apply the proposed description. Hours, project, task, save, submission, and approval were not changed.{diagnostic}";
     }
 
     private static string? BuildGroundingReadinessWarning(PulseAiGroundingContext? grounding)

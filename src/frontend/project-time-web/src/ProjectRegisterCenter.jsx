@@ -108,7 +108,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
       setPayload({
         loading: false,
         data: null,
-        error: error instanceof Error ? error.message : 'Unable to load the Project Register.'
+        error: error instanceof Error ? error.message : 'Unable to load Toyota & Hyundai Pipelines.'
       });
     }
   }
@@ -116,6 +116,12 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (legacyRoute && typeof window !== 'undefined' && window.location.hash !== '#toyota-hyundai-pipelines') {
+      window.history.replaceState(window.history.state, '', '#toyota-hyundai-pipelines');
+    }
+  }, [legacyRoute]);
 
   const projects = useMemo(
     () => (Array.isArray(payload.data?.workItems) ? payload.data.workItems : [])
@@ -215,17 +221,16 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
     <section
       className="project-register-center projectpulse-module-standard"
       data-module="006"
-      data-module-name="Project Register"
-      data-canonical-route="project-register"
+      data-module-name="Toyota & Hyundai Pipelines"
+      data-canonical-route="toyota-hyundai-pipelines"
       data-project-register-contract="authoritative-work-register-composition-v1"
     >
       <header className="project-register-hero">
         <div>
-          <p className="eyebrow">MODULE 006 · PROJECT OPERATIONS</p>
-          <h2>Project Register</h2>
+          <p className="eyebrow">MODULE 006 · GOVERNED PROJECT PIPELINE</p>
+          <h2>Toyota &amp; Hyundai Pipelines</h2>
           <p>
-            Search the authoritative ProjectPulse project inventory, separate active work from archived history,
-            and open the existing project-management workspace without creating a second project system.
+            Track Toyota and Hyundai delivery records through one governed project pipeline, separate active work from archived history, and open the authoritative project-management workspace without creating a second project system.
           </p>
         </div>
         <div className="project-register-hero-actions">
@@ -240,13 +245,13 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
       {legacyRoute ? (
         <div className="project-register-banner warning">
-          The legacy <code>#psa-modules</code> link is being honored temporarily. The canonical Module 006 route is <code>#project-register</code>.
+          A compatibility Module 006 link was used. The canonical route is <code>#toyota-hyundai-pipelines</code>; <code>#psa-modules</code> and <code>#project-register</code> now redirect here.
         </div>
       ) : null}
 
       {payload.error ? <div className="project-register-banner error">{payload.error}</div> : null}
 
-      <div className="project-register-summary" aria-label="Project Register summary">
+      <div className="project-register-summary" aria-label="Toyota & Hyundai Pipelines summary">
         <article><span>Total projects</span><strong>{payload.loading ? '…' : summary.total}</strong><small>{filteredProjects.length} shown</small></article>
         <article><span>Active</span><strong>{payload.loading ? '…' : summary.active}</strong><small>Current delivery records</small></article>
         <article><span>Historical</span><strong>{payload.loading ? '…' : summary.historical}</strong><small>{summary.archived} archived</small></article>
@@ -399,10 +404,10 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
       {selectedProject ? (
         <div className="project-register-drawer-backdrop" role="presentation">
-          <aside className="project-register-drawer" role="dialog" aria-modal="true" aria-label="Project Register project detail">
+          <aside className="project-register-drawer" role="dialog" aria-modal="true" aria-label="Toyota & Hyundai Pipelines project detail">
             <header>
               <div>
-                <p className="eyebrow">PROJECT REGISTER DETAIL</p>
+                <p className="eyebrow">TOYOTA & HYUNDAI PIPELINES DETAIL</p>
                 <h3>{selectedProject.workName || selectedProject.projectName}</h3>
                 <p>{selectedProject.customerName || 'No customer linked'} · {selectedProject.projectCode || selectedProject.workId}</p>
               </div>

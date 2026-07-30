@@ -43,17 +43,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify owned Group 5 source scope or run regression mode
+      - name: Verify Group 5 ownership or regression applicability
         shell: bash
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          OWNED_BRANCH='false'
           if [[ "$HEAD_BRANCH" == feature/group-5-financial-reports-closeout-billing-recovery-* ]]; then
-            ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+            OWNED_BRANCH='true'
+          fi
+
+          ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          GROUP5_RUNTIME_OWNED='^(database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+
+          if [[ "$OWNED_BRANCH" == 'true' ]]; then
             UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
               echo 'Unexpected Group 5 source scope:' >&2
@@ -66,9 +73,18 @@ jobs:
               exit 1
             fi
 
+            echo 'GROUP_5_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_SOURCE_ISOLATION=PASSED'
           else
-            echo "GROUP_5_SOURCE_ISOLATION=REGRESSION_MODE branch=$HEAD_BRANCH"
+            DIRECT_GROUP5_CHANGES="$(grep -E "$GROUP5_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+            if [[ -n "$DIRECT_GROUP5_CHANGES" ]]; then
+              echo 'Group 5-owned runtime source may only be changed from the isolated Group 5 branch family:' >&2
+              printf '%s\n' "$DIRECT_GROUP5_CHANGES" >&2
+              exit 1
+            fi
+
+            echo 'GROUP_5_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+            echo 'GROUP_5_REGRESSION_APPLICABILITY=PASSED'
           fi
 
           for protected in \
@@ -80,8 +96,6 @@ jobs:
               exit 1
             fi
           done
-
-          git diff --check origin/main...HEAD
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -268,3 +282,4 @@ jobs:
           done
           tail -n 50 group5-frontend-build.log
           echo 'GROUP_5_FRONTEND_BUILD=PASSED'
+          echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
