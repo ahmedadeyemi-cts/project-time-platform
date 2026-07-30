@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -21,17 +22,33 @@ function write(filePath, source) {
   fs.writeFileSync(filePath, source.endsWith('\n') ? source : `${source}\n`, 'utf8');
 }
 
+function ensureGroup5ReportingIntegration() {
+  let source = fs.readFileSync(appPath, 'utf8');
+  if (source.includes(importAnchor) && source.includes(legacyGroup5Mount)) return source;
+
+  const group5Installer = path.join(scriptDirectory, 'inject-group-5-financial-operations-recovery.mjs');
+  if (!fs.existsSync(group5Installer)) {
+    throw new Error('Analytics Center requires the Group 5 reporting installer.');
+  }
+  execFileSync(process.execPath, [group5Installer], {
+    cwd: webRoot,
+    stdio: 'inherit'
+  });
+  source = fs.readFileSync(appPath, 'utf8');
+  if (!source.includes(importAnchor)) {
+    throw new Error('Analytics Center could not establish the Group 5 reporting integration anchor.');
+  }
+  return source;
+}
+
 function installApp() {
   if (!fs.existsSync(appPath)) throw new Error('Analytics Center App.jsx target is missing.');
-  let source = fs.readFileSync(appPath, 'utf8');
+  let source = ensureGroup5ReportingIntegration();
 
   source = source
     .replace(/^import EnterpriseReportingCenter from '\.\/EnterpriseReportingCenter\.jsx';\n?/gm, '')
     .replace(/^import AnalyticsCenter from '\.\/AnalyticsCenter\.jsx';\n?/gm, '');
 
-  if (!source.includes(importAnchor)) {
-    throw new Error('Analytics Center requires the Group 5 reporting integration anchor.');
-  }
   source = source.replace(importAnchor, `${importAnchor}\n${importLine}`);
 
   if (source.includes(formerEnterpriseMount)) {
