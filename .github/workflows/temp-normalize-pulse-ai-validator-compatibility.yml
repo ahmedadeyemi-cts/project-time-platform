@@ -22,7 +22,7 @@ jobs:
   normalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
 
@@ -32,24 +32,33 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Normalize validators for reviewed later phases
+      - name: Normalize validators and focused source guards for reviewed later phases
         shell: bash
         run: |
           set -Eeuo pipefail
           python - <<'PY'
           from pathlib import Path
 
+          def replace_exact(path, old, new, marker):
+              text = path.read_text(encoding='utf-8')
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding='utf-8')
+                  return
+              if marker not in text:
+                  raise SystemExit(f'Missing normalization anchor: {path} :: {marker}')
+
           private_path = Path('src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs')
-          private_text = private_path.read_text(encoding='utf-8')
-          old_private = """const migrationMatches = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document|vector[-_]?index)/i.test(relative));
+          replace_exact(
+              private_path,
+              """const migrationMatches = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document|vector[-_]?index)/i.test(relative));
           assert(
             'NO_MIGRATION',
             migrationMatches.length === 0,
             migrationMatches.length === 0
               ? 'no Module 011 private-document, embedding, or vector-index migration exists'
               : `unexpected migration paths: ${migrationMatches.join(', ')}`
-          );"""
-          new_private = """const allowedLaterMigrations = new Set([
+          );""",
+              """const allowedLaterMigrations = new Set([
             'database/migrations/052_document_intelligence_runtime.sql',
             'database/migrations/053_intelligence_answer_orchestration.sql',
             'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
@@ -62,33 +71,139 @@ jobs:
             unexpectedMigrations.length === 0
               ? 'the historical preview remains read-only while reviewed migrations 052, 053, and 054 support later separately gated phases'
               : `unexpected migration paths: ${unexpectedMigrations.join(', ')}`
-          );"""
-          if old_private in private_text:
-              private_text = private_text.replace(old_private, new_private)
-              private_path.write_text(private_text, encoding='utf-8')
-          elif 'KNOWN_LATER_MIGRATIONS_ONLY' not in private_text:
-              raise SystemExit('Private document validator migration anchor was not found.')
+          );""",
+              'KNOWN_LATER_MIGRATIONS_ONLY')
 
-          system_path = Path('src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs')
-          system_text = system_path.read_text(encoding='utf-8')
-          old_system = """  && s.documentation.includes('owning endpoint remains the authorization authority'),"""
-          new_system = """  && (
+          system_validator = Path('src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs')
+          replace_exact(
+              system_validator,
+              """  && s.documentation.includes('owning endpoint remains the authorization authority'),""",
+              """  && (
             s.documentation.includes('owning endpoint remains the authorization authority')
             || s.documentation.includes('The owning endpoint still applies its own authorization before returning evidence')
-          ),"""
-          if old_system in system_text:
-              system_text = system_text.replace(old_system, new_system)
-              system_path.write_text(system_text, encoding='utf-8')
-          elif 'The owning endpoint still applies its own authorization before returning evidence' not in system_text:
-              raise SystemExit('System-intelligence authorization marker was not found.')
+          ),""",
+              'The owning endpoint still applies its own authorization before returning evidence')
+
+          deep_path = Path('src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs')
+          replace_exact(
+              deep_path,
+              """assert(
+            'GLOBAL_HELP',
+            includesAll(source.help, [
+              "'/api/pulse-ai/v1/help-search/plan'",
+              'DetailedAssistantAnswer',
+              'Automatic multi-tool execution is not yet enabled',
+              'fallbackAnswer',
+              'retired Work Task Builder no longer owns project or task creation'
+            ]),
+            'global Help renders detailed guidance and a corrected fallback'
+          );""",
+              """const legacyGlobalHelp = includesAll(source.help, [
+            "'/api/pulse-ai/v1/help-search/plan'",
+            'DetailedAssistantAnswer',
+            'Automatic multi-tool execution is not yet enabled',
+            'fallbackAnswer',
+            'retired Work Task Builder no longer owns project or task creation'
+          ]);
+          const currentSystemHelp = includesAll(source.help, [
+            "'/api/pulse-ai/v1/help-search/plan'",
+            'function SystemAnswer',
+            'LegacyPlanAnswer',
+            'System intelligence is not active in this runtime',
+            "'/api/pulse-ai/v1/system/questions'"
+          ]) || includesAll(source.help, [
+            "'/api/pulse-ai/v1/help-search/plan'",
+            'function SystemAnswer',
+            'LegacyPlanAnswer',
+            "'/api/celar-ai/v1/chat'"
+          ]);
+          assert(
+            'GLOBAL_HELP',
+            legacyGlobalHelp || currentSystemHelp,
+            'global Help renders comprehensive system answers and a source-grounded compatibility fallback'
+          );""",
+              'const currentSystemHelp =')
+
+          replace_exact(
+              deep_path,
+              """const migrations = walk('database/migrations')
+            .filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|deep[-_]?intelligence)/i.test(relative));
+          assert(
+            'NO_MIGRATION',
+            migrations.length === 0,
+            migrations.length === 0 ? 'no Module 011 migration exists' : migrations.join(', ')
+          );""",
+              """const reviewedLaterMigrations = new Set([
+            'database/migrations/052_document_intelligence_runtime.sql',
+            'database/migrations/053_intelligence_answer_orchestration.sql',
+            'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+          ]);
+          const migrations = walk('database/migrations')
+            .filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|deep[-_]?intelligence|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+          const unexpectedMigrations = migrations.filter((relative) => !reviewedLaterMigrations.has(relative));
+          assert(
+            'KNOWN_LATER_MIGRATIONS_ONLY',
+            unexpectedMigrations.length === 0,
+            unexpectedMigrations.length === 0
+              ? 'the read-only deep-intelligence foundation is preserved while reviewed later phases use migrations 052, 053, and 054'
+              : unexpectedMigrations.join(', ')
+          );""",
+              'const reviewedLaterMigrations =')
+
+          help_path = Path('src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs')
+          replace_exact(
+              help_path,
+              """    && help.includes('onSubmit={(event) => {')
+            && help.includes('void submitQuestion();'),""",
+              """    && (
+              (help.includes('onSubmit={(event) => {') && help.includes('void submitQuestion();'))
+              || help.includes('onSubmit={submitQuestion}')
+            ),""",
+              "help.includes('onSubmit={submitQuestion}')")
+
+          system_workflow = Path('.github/workflows/pulse-ai-system-intelligence-ci.yml')
+          if system_workflow.exists():
+              text = system_workflow.read_text(encoding='utf-8')
+              path_anchor = "      - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'\n"
+              path_addition = path_anchor + "      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'\n      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs'\n      - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'\n"
+              if 'validate-module-011-pulse-ai-deep-intelligence.mjs' not in text.split('permissions:', 1)[0]:
+                  if path_anchor not in text:
+                      raise SystemExit('Missing system-intelligence workflow path anchor.')
+                  text = text.replace(path_anchor, path_addition, 1)
+              old_group = 'scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package)\\.mjs'
+              new_group = 'scripts/(inject-pulse-ai-system-chat-group7-compatibility|validate-module-011-system-intelligence|validate-module-011-system-intelligence-package|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-pulse-ai-help-chat-usability)\\.mjs'
+              if old_group in text:
+                  text = text.replace(old_group, new_group, 1)
+              elif new_group not in text:
+                  raise SystemExit('Missing system-intelligence workflow source-scope anchor.')
+              system_workflow.write_text(text, encoding='utf-8')
+
+          celar_workflow = Path('.github/workflows/celar-ai-runtime-rebrand-ci.yml')
+          if celar_workflow.exists():
+              text = celar_workflow.read_text(encoding='utf-8')
+              path_anchor = "      - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'\n"
+              path_addition = path_anchor + "      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'\n      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs'\n      - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'\n      - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'\n"
+              if 'validate-module-011-pulse-ai-deep-intelligence.mjs' not in text.split('permissions:', 1)[0]:
+                  if path_anchor not in text:
+                      raise SystemExit('Missing Celar workflow path anchor.')
+                  text = text.replace(path_anchor, path_addition, 1)
+              old_group = 'scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation)\\.mjs'
+              new_group = 'scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\\.mjs'
+              if old_group in text:
+                  text = text.replace(old_group, new_group, 1)
+              elif new_group not in text:
+                  raise SystemExit('Missing Celar workflow source-scope anchor.')
+              celar_workflow.write_text(text, encoding='utf-8')
 
           print('PULSE_AI_VALIDATOR_COMPATIBILITY_NORMALIZATION=PASSED')
           PY
           node --check src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
           node --check src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node --check src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs
           git diff --check
 
-      - name: Commit normalized validators
+      - name: Commit normalized validators and focused scope guards
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -96,10 +211,14 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
             src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs \
-            src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+            src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs \
+            src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs \
+            src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs
+          test ! -f .github/workflows/pulse-ai-system-intelligence-ci.yml || git add .github/workflows/pulse-ai-system-intelligence-ci.yml
+          test ! -f .github/workflows/celar-ai-runtime-rebrand-ci.yml || git add .github/workflows/celar-ai-runtime-rebrand-ci.yml
           if git diff --cached --quiet; then
             echo 'PULSE_AI_VALIDATORS_ALREADY_NORMALIZED=YES'
             exit 0
           fi
-          git commit -m 'Reconcile Pulse AI validators with reviewed later phases'
+          git commit -m 'Reconcile Module 011 validators with functional later phases'
           git push origin "HEAD:${TARGET_BRANCH}"
