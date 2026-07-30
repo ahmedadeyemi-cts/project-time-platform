@@ -1,13 +1,13 @@
 # Module 011 — Celar AI Runtime Rebrand
 
-**Platform:** Pulse  
-**Visible intelligence brand:** Celar AI  
-**Technical compatibility identity:** Pulse AI  
-**Module:** 011  
-**Source branch:** `feature/module-011-celar-ai-runtime-rebrand-20260730`  
-**Exact source base:** `feature/module-011-system-intelligence-troubleshooting-20260730@0abcbf5a1248d490a824ee4d987c8669344f0209`  
-**Classification:** US Signal Internal — Confidential  
-**Phase:** Runtime presentation, functional chat, and Module 064 relationship
+- **Platform:** Pulse
+- **Visible intelligence brand:** Celar AI
+- **Technical compatibility identity:** Pulse AI
+- **Module:** 011
+- **Source branch:** `feature/module-011-celar-ai-runtime-rebrand-20260730`
+- **Exact source base:** `feature/module-011-system-intelligence-troubleshooting-20260730@0abcbf5a1248d490a824ee4d987c8669344f0209`
+- **Classification:** US Signal Internal — Confidential
+- **Phase:** Runtime presentation, functional chat, and Module 064 relationship
 
 ## Purpose
 
