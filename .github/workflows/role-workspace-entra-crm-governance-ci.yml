@@ -5,8 +5,11 @@ on:
     paths:
       - '.github/workflows/role-workspace-entra-crm-governance-ci.yml'
       - 'database/migrations/056_role_workspace_entra_crm_governance.sql'
+      - 'database/migrations/056a_role_workspace_permission_scope_guard.sql'
       - 'database/rollback/056_role_workspace_entra_crm_governance_rollback.sql'
+      - 'database/rollback/056a_role_workspace_permission_scope_guard_rollback.sql'
       - 'tests/test-role-workspace-entra-crm-governance-migration-056.sh'
+      - 'tests/test-role-workspace-permission-scope-migration-056a.sh'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
       - 'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
@@ -40,6 +43,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Validate migration 056
         run: bash tests/test-role-workspace-entra-crm-governance-migration-056.sh
+
+  migration-056a:
+    name: Migration 056A least-privilege guard, rollback, restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Validate migration 056A
+        run: bash tests/test-role-workspace-permission-scope-migration-056a.sh
 
   api-release-build:
     name: ProjectTime API Release build
