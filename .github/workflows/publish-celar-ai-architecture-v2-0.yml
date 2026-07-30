@@ -1,0 +1,150 @@
+name: Publish US Signal Celar AI Architecture v2.0
+
+on:
+  push:
+    branches:
+      - docs/celar-ai-architecture-v2-0-20260730
+    paths:
+      - .github/workflows/publish-celar-ai-architecture-v2-0.yml
+      - docs/modules/module-011-pulse-ai/architecture/v2.0/source/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-celar-ai-architecture-v2-0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET_BRANCH: docs/celar-ai-architecture-v2-0-20260730
+      ROOT: docs/modules/module-011-pulse-ai/architecture/v2.0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Enforce documentation-only source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
+          test -s "$ROOT/source/generate_celar_architecture_v2_0.py"
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install document-generation dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libreoffice-writer \
+            poppler-utils \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0
+          python -m pip install --upgrade pip
+          python -m pip install python-docx reportlab cairosvg pillow pypdf
+
+      - name: Generate the Celar AI architecture package
+        shell: bash
+        working-directory: docs/modules/module-011-pulse-ai/architecture/v2.0/source
+        run: |
+          set -Eeuo pipefail
+          python generate_celar_architecture_v2_0.py | tee ../generation.log
+
+      - name: Validate documents, diagrams, story, and checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FILES=(
+            'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.docx'
+            'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf'
+            'US_Signal_Celar_AI_Architecture_Diagrams_v2.0.pdf'
+            'US_Signal_Celar_AI_Logical_Architecture_v2.0.png'
+            'US_Signal_Celar_AI_Logical_Architecture_v2.0.svg'
+            'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.png'
+            'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.svg'
+            'CELAR-AI-IDENTITY-AND-ORIGIN.md'
+            'README.md'
+            'SHA256SUMS.txt'
+          )
+          for file in "${FILES[@]}"; do
+            test -s "$ROOT/$file"
+          done
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from PIL import Image
+          from pypdf import PdfReader
+
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v2.0')
+          docx = root / 'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.docx'
+          main_pdf = root / 'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf'
+          diagram_pdf = root / 'US_Signal_Celar_AI_Architecture_Diagrams_v2.0.pdf'
+
+          assert len(PdfReader(str(main_pdf)).pages) >= 30
+          assert len(PdfReader(str(diagram_pdf)).pages) == 2
+          with ZipFile(docx) as archive:
+              assert '[Content_Types].xml' in archive.namelist()
+              xml = '\n'.join(
+                  archive.read(name).decode('utf-8', 'ignore')
+                  for name in archive.namelist()
+                  if name.endswith('.xml')
+              )
+              assert 'Celar AI Private Intelligence Architecture' in xml
+              assert 'Dr. Ahmed Adeyemi' in xml
+              assert 'Changepoint struggle' in xml
+              assert 'USSI-CELAR-AI-ARCH-001' in xml
+              assert 'USSI-PULSE-AI-ARCH-001' not in xml
+          assert Image.open(root / 'US_Signal_Celar_AI_Logical_Architecture_v2.0.png').width >= 3000
+          assert Image.open(root / 'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.png').width >= 4000
+          for svg in [
+              root / 'US_Signal_Celar_AI_Logical_Architecture_v2.0.svg',
+              root / 'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.svg'
+          ]:
+              text = svg.read_text(encoding='utf-8')
+              assert 'CELAR AI ARCHITECTURE' in text
+              assert 'Private Celar AI' in text
+              assert 'PULSE AI ARCHITECTURE' not in text
+          identity = (root / 'CELAR-AI-IDENTITY-AND-ORIGIN.md').read_text(encoding='utf-8')
+          for marker in [
+              'Dr. Ahmed Adeyemi', 'Manager of Professional Services', 'Celeritas',
+              'speed of delivery', 'Changepoint', 'US Signal Solution Provider division'
+          ]:
+              assert marker in identity
+          print('CELAR_AI_ARCHITECTURE_V2_VALIDATION=PASSED')
+          PY
+          pdftotext "$ROOT/US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf" - | grep -F 'Dr. Ahmed Adeyemi'
+          pdftotext "$ROOT/US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf" - | grep -F 'speed of delivery'
+          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
+          git diff --check -- . ':(exclude,glob)**/*.pdf'
+
+      - name: Commit the generated Celar AI artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'CELAR_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
+            exit 0
+          fi
+          git commit -m 'Publish US Signal Celar AI architecture package v2.0'
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo 'CELAR_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
