@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import './system-user-guide.css';
 import { compareProjectPulseModules } from './module-ordering.js';
+import { SystemUserGuideGovernancePanel } from './help/HelpGovernancePanel.jsx';
+import USSignalLogo from './enterprise/USSignalLogo.jsx';
 
 const roleOptions = [
   'All roles',
@@ -986,9 +988,11 @@ export default function SystemUserGuide({ modules = [] }) {
   return (
     <div className="system-user-guide" data-module="999" data-route="user-guide">
       <header className="system-user-guide-hero">
+        {/* GROUP_7_SYSTEM_GUIDE_LOGO */}
+        <USSignalLogo size="large" />
         <div>
           <p>MODULE 999</p>
-          <h1>ProjectPulse Complete User Guide</h1>
+          <h1>System User Guide</h1>
           <span>
             Searchable documentation for every global function and every installed
             ProjectPulse module. The guide is visible to all authenticated users;
@@ -1000,6 +1004,10 @@ export default function SystemUserGuide({ modules = [] }) {
           <button type="button" onClick={() => window.print()}>Print guide</button>
         </div>
       </header>
+
+      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_START */}
+      <SystemUserGuideGovernancePanel />
+      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_END */}
 
       <section className="system-user-guide-principles" aria-label="Guide principles">
         <article>
@@ -1022,7 +1030,7 @@ export default function SystemUserGuide({ modules = [] }) {
 
       <section className="system-user-guide-controls" aria-label="Guide search and filters">
         <label className="system-user-guide-search">
-          <span>Search the complete guide</span>
+          <span>Search the System User Guide</span>
           <input
             type="search"
             value={query}

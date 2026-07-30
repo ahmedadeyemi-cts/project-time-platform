@@ -38,6 +38,7 @@ const approvalCss = [
 const guidedMove = read('src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx');
 const guidedMoveCss = read('src/frontend/project-time-web/src/module001/ptc-guided-move.css');
 const compositionGate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
+const workflowOperations = read('src/frontend/project-time-web/src/ApprovalExportAuditWorkflowCenter.jsx');
 
 for (const token of [
   'approval-work-production-v2-2026-07-30',
@@ -131,7 +132,7 @@ if (!leanWebBuildContext) {
     'An empty selection can never approve an entire week',
     'aggregationComplete = true',
     "'project_scope'::text AS approval_unit_type",
-    "approval.approval_stage = 'project_manager'",
+    'The current approval cycle is represented by the current entry status.',
     "pending.status = 'manager_approved'",
     'AND project_entry.project_id IS NOT NULL',
     'IsNonProjectOnlyDayAsync',
@@ -156,6 +157,10 @@ if (!leanWebBuildContext) {
     '/api/manager/approvals/bulk-approve',
     '/api/workflow/approval-items/action',
     'pm_approve',
+    'accounting_ready',
+    'RetiredWorkflowApprovalActions',
+    'NormalizeRequestPath',
+    "path.EndsWith('/')",
     '/api/scoped-approval/delegated',
     '/api/scoped-approval/ptc-final',
     'legacy_approval_route_retired',
@@ -171,6 +176,15 @@ if (!leanWebBuildContext) {
   rejectText(productionBackend, 'LIMIT 5000', 'Production approval backend');
   rejectText(productionBackend, 'detail: exception.Message', 'Production approval backend');
   rejectText(productionBackend, 'INSERT INTO project_tasks', 'Non-project activity backend');
+  rejectText(productionBackend, "approval.approval_stage = 'project_manager'", 'Historical PM approval gating');
+  rejectText(productionBackend, "existing.approval_stage = 'project_manager'", 'Historical PM approval gating');
+  rejectText(productionBackend, 'existing.approval_stage = @approval_stage', 'Historical stage approval gating');
+
+  requireText(workflowOperations, 'Approval decisions are completed only in Pending approval work.', 'Post-approval operations workspace');
+  requireText(workflowOperations, "runAction(item, 'reconcile')", 'Post-approval operations workspace');
+  requireText(workflowOperations, "runAction(item, 'lock')", 'Post-approval operations workspace');
+  rejectText(workflowOperations, "runAction(item, 'pm_approve')", 'Post-approval operations workspace');
+  rejectText(workflowOperations, "runAction(item, 'accounting_ready')", 'Post-approval operations workspace');
 
   for (const token of [
     '/api/approval-work/pending',
@@ -225,6 +239,9 @@ console.log('PENDING_TIME_WORKFLOW_VALIDATION=PASS');
 console.log('PENDING_APPROVAL_AGGREGATES_COMPLETE=PASS');
 console.log('EMPTY_SELECTION_APPROVES_NOTHING=PASS');
 console.log('LEGACY_APPROVAL_WRITES_RETIRED=PASS');
+console.log('LEGACY_ACCOUNTING_READY_RETIRED=PASS');
+console.log('TRAILING_SLASH_APPROVAL_GUARDS=PASS');
+console.log('CURRENT_SUBMISSION_CYCLE_APPROVALS=PASS');
 console.log('SEARCH_RELOADS_OPEN_WEEKS=PASS');
 console.log('MANAGER_PM_PTC_BULK_APPROVAL=PASS');
 console.log('NON_PROJECT_MANAGER_TO_PTC_ROUTE=PASS');

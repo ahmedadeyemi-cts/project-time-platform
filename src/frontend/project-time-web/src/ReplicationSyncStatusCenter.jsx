@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './replication-sync-status-center.css';
+import PlatformResiliencePlanningPanel from './PlatformResiliencePlanningPanel.jsx';
 
 const statusLabels = {
   ready: 'Ready',
@@ -217,6 +218,9 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
 
   return (
     <section id="replication-sync-center" className="panel timesheet-page replication-sync-page">
+      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_START */}
+      <PlatformResiliencePlanningPanel moduleCode="017" authSession={authSession} />
+      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_END */}
       <section className="replication-sync-hero">
         <div>
           <p className="replication-sync-eyebrow">System Operations</p>

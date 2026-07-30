@@ -833,13 +833,6 @@ public static class ProductionApprovalWorkModule
                             AND project.project_manager_user_id = @effective_user_id
                         )
                   )
-                  AND NOT EXISTS (
-                        SELECT 1
-                        FROM approval_records approval
-                        WHERE approval.time_entry_id = entry.time_entry_id
-                          AND approval.approval_stage = 'project_manager'
-                          AND approval.approval_status = 'approved'
-                  )
                 GROUP BY
                     pending.timesheet_id,
                     pending.user_id,
@@ -1113,6 +1106,8 @@ public static class ProductionApprovalWorkModule
             connection, transaction, item.TimesheetId, item.WorkDate, cancellationToken);
         if (currentStatus != "manager_approved") return false;
 
+        // The current approval cycle is represented by the current entry status.
+        // Immutable approval_records remain history and never suppress corrected, resubmitted work.
         var entryIds = new List<Guid>();
         await using (var selectEntries = new NpgsqlCommand("""
             SELECT entry.time_entry_id
@@ -1125,13 +1120,6 @@ public static class ProductionApprovalWorkModule
               AND (
                     @organization_scope
                     OR project.project_manager_user_id = @effective_user_id
-              )
-              AND NOT EXISTS (
-                    SELECT 1
-                    FROM approval_records approval
-                    WHERE approval.time_entry_id = entry.time_entry_id
-                      AND approval.approval_stage = 'project_manager'
-                      AND approval.approval_status = 'approved'
               )
             ORDER BY entry.time_entry_id
             FOR UPDATE OF entry;
@@ -1162,14 +1150,7 @@ public static class ProductionApprovalWorkModule
                 @actor_user_id,
                 @reason
             FROM time_entries entry
-            WHERE entry.time_entry_id = ANY(@entry_ids)
-              AND NOT EXISTS (
-                    SELECT 1
-                    FROM approval_records existing
-                    WHERE existing.time_entry_id = entry.time_entry_id
-                      AND existing.approval_stage = 'project_manager'
-                      AND existing.approval_status = 'approved'
-              );
+            WHERE entry.time_entry_id = ANY(@entry_ids);
             """, connection, transaction))
         {
             approvals.Parameters.AddWithValue("actor_user_id", access.ActualUserId);
@@ -1197,13 +1178,7 @@ public static class ProductionApprovalWorkModule
                 WHERE entry.timesheet_id = @timesheet_id
                   AND entry.work_date = @work_date
                   AND entry.project_id IS NOT NULL
-                  AND NOT EXISTS (
-                        SELECT 1
-                        FROM approval_records approval
-                        WHERE approval.time_entry_id = entry.time_entry_id
-                          AND approval.approval_stage = 'project_manager'
-                          AND approval.approval_status = 'approved'
-                  )
+                  AND entry.status = 'manager_approved'
             );
             """, connection, transaction))
         {
@@ -1354,14 +1329,7 @@ public static class ProductionApprovalWorkModule
                 @reason
             FROM time_entries entry
             WHERE entry.timesheet_id = @timesheet_id
-              AND entry.work_date = @work_date
-              AND NOT EXISTS (
-                    SELECT 1
-                    FROM approval_records existing
-                    WHERE existing.time_entry_id = entry.time_entry_id
-                      AND existing.approval_stage = @approval_stage
-                      AND existing.approval_status = 'approved'
-              );
+              AND entry.work_date = @work_date;
             """, connection, transaction);
         command.Parameters.AddWithValue("approval_stage", approvalStage);
         command.Parameters.AddWithValue("actor_user_id", actorUserId);

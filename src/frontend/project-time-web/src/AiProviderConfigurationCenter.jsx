@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './ai-provider-configuration-center.css';
 import './projectpulse-module-standard.css';
+import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
 
 const PROVIDER_LABELS = {
   claude: 'Claude',
@@ -218,6 +219,9 @@ export default function AiProviderConfigurationCenter() {
         </button>
       </header>
 
+      {/* GROUP_7_MODULE_064_READINESS_PANEL_START */}
+      <AiProviderReadinessPanel />
+      {/* GROUP_7_MODULE_064_READINESS_PANEL_END */}
       <div className="ai-provider-center__automatic-health" role="status">
         <strong>Automatic provider health is active.</strong>
         <span>

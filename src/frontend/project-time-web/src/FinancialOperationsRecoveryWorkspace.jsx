@@ -292,15 +292,53 @@ function ReportCenter({ authSession }) {
     }
   }
 
-  function downloadRun(runId) {
+  /* GROUP_5_AUTHENTICATED_REPORT_EXPORT_START */
+  async function downloadRun(runId) {
     if (!runId) return;
-    const link = document.createElement('a');
-    link.href = `/api/financial-operations/reports/runs/${runId}/export`;
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    setResultState((current) => ({ ...current, error: '' }));
+    try {
+      const response = await fetch(`/api/financial-operations/reports/runs/${runId}/export`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: requestHeaders(authSession)
+      });
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type') ?? '';
+        const payload = contentType.includes('application/json')
+          ? await response.json().catch(() => null)
+          : await response.text().catch(() => '');
+        throw new Error(
+          payload?.message
+          ?? payload?.detail
+          ?? payload?.status
+          ?? (typeof payload === 'string' && payload)
+          ?? `Report export returned HTTP ${response.status}.`
+        );
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+      const fileName = match?.[1]
+        ? decodeURIComponent(match[1].replaceAll('"', ''))
+        : `projectpulse-financial-report-${runId}.csv`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setResultState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : 'Unable to export the report.'
+      }));
+    }
   }
+  /* GROUP_5_AUTHENTICATED_REPORT_EXPORT_END */
 
   return (
     <div className="group5-report-layout">

@@ -28,12 +28,19 @@ public static class ProductionApprovalWorkflowHardening
             "/api/scoped-approval/ptc-final"
         };
 
+    private static readonly HashSet<string> RetiredWorkflowApprovalActions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "pm_approve",
+            "accounting_ready"
+        };
+
     public static WebApplication UseProductionApprovalWorkflowHardening(
         this WebApplication app)
     {
         app.Use(async (context, next) =>
         {
-            var path = context.Request.Path.Value ?? string.Empty;
+            var path = NormalizeRequestPath(context.Request.Path.Value);
             var method = context.Request.Method;
 
             if (HttpMethods.IsGet(method)
@@ -99,7 +106,7 @@ public static class ProductionApprovalWorkflowHardening
                 && path.Equals(
                     "/api/workflow/approval-items/action",
                     StringComparison.OrdinalIgnoreCase)
-                && await IsLegacyProjectManagerApprovalAsync(context))
+                && await IsRetiredLegacyApprovalActionAsync(context))
             {
                 await WriteRetiredApprovalRouteAsync(context);
                 return;
@@ -109,6 +116,16 @@ public static class ProductionApprovalWorkflowHardening
         });
 
         return app;
+    }
+
+    private static string NormalizeRequestPath(string? value)
+    {
+        var path = string.IsNullOrWhiteSpace(value) ? "/" : value.Trim();
+        while (path.Length > 1 && path.EndsWith('/'))
+        {
+            path = path[..^1];
+        }
+        return path;
     }
 
     private static void SetApprovalHeaders(HttpContext context)
@@ -158,7 +175,7 @@ public static class ProductionApprovalWorkflowHardening
         }
     }
 
-    private static async Task<bool> IsLegacyProjectManagerApprovalAsync(
+    private static async Task<bool> IsRetiredLegacyApprovalActionAsync(
         HttpContext context)
     {
         context.Request.EnableBuffering();
@@ -175,10 +192,8 @@ public static class ProductionApprovalWorkflowHardening
                 return false;
             }
 
-            return string.Equals(
-                action.GetString()?.Trim(),
-                "pm_approve",
-                StringComparison.OrdinalIgnoreCase);
+            return RetiredWorkflowApprovalActions.Contains(
+                action.GetString()?.Trim() ?? string.Empty);
         }
         catch (JsonException)
         {
