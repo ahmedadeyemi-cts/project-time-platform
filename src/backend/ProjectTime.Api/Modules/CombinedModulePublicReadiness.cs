@@ -6,10 +6,11 @@ public static partial class ScopedRolePolicyModule
 {
     public static WebApplication MapCombinedModulePublicReadinessEndpoint(this WebApplication app)
     {
-        // Route the historical PR #284 URLs through the production contract
-        // before their compatibility endpoint definitions are mapped. This keeps
-        // existing browser clients safe while the new v2 routes remain directly
-        // available to the upgraded UI.
+        // Execute every current and compatibility approval request through one
+        // hardened contract before historical endpoint handlers can be selected.
+        // The hardening layer explicitly executes IResult responses, retires old
+        // approval writes, and fails closed when immutable evidence is unavailable.
+        app.UseProductionApprovalWorkflowHardening();
         app.UseProductionApprovalWorkCompatibility();
         app.MapProductionApprovalWorkEndpoints();
 
@@ -78,7 +79,23 @@ public static partial class ScopedRolePolicyModule
                          'project_expense_mail_outbox',
                          'certify_connection_profiles',
                          'certify_expense_import_runs')),
-                    (SELECT COUNT(*) FROM non_project_time_categories WHERE is_active=TRUE);
+                    (SELECT COUNT(*) FROM non_project_time_categories WHERE is_active=TRUE),
+                    EXISTS (
+                        SELECT 1
+                        FROM pg_trigger trigger_row
+                        WHERE trigger_row.tgrelid = to_regclass('public.scoped_approval_stage_events')
+                          AND trigger_row.tgname = 'trg_projectpulse040_approval_audit_immutable'
+                          AND trigger_row.tgenabled <> 'D'
+                          AND NOT trigger_row.tgisinternal
+                    ),
+                    EXISTS (
+                        SELECT 1
+                        FROM pg_trigger trigger_row
+                        WHERE trigger_row.tgrelid = to_regclass('public.scoped_role_policy_audit_events')
+                          AND trigger_row.tgname = 'trg_projectpulse040_policy_audit_immutable'
+                          AND trigger_row.tgenabled <> 'D'
+                          AND NOT trigger_row.tgisinternal
+                    );
                 """, connection);
             await using var reader = await command.ExecuteReaderAsync();
             await reader.ReadAsync();
@@ -93,6 +110,8 @@ public static partial class ScopedRolePolicyModule
             var expenseMigrationCount = Convert.ToInt32(reader.GetInt64(7));
             var expenseTableCount = Convert.ToInt32(reader.GetInt64(8));
             var nonProjectCategoryCount = Convert.ToInt32(reader.GetInt64(9));
+            var immutableStageEvidenceReady = reader.GetBoolean(10);
+            var immutableBatchEvidenceReady = reader.GetBoolean(11);
 
             var roleContractReady = roleCount == 12;
             var moduleContractReady = moduleCount == 70;
@@ -104,6 +123,8 @@ public static partial class ScopedRolePolicyModule
             var expenseMigrationsReady = expenseMigrationCount == 2;
             var expenseTablesReady = expenseTableCount == 6;
             var nonProjectCategoriesReady = nonProjectCategoryCount > 0;
+            var immutableApprovalAuditReady = immutableStageEvidenceReady
+                && immutableBatchEvidenceReady;
             var ready = roleContractReady
                 && moduleContractReady
                 && publishedPolicyReady
@@ -113,7 +134,8 @@ public static partial class ScopedRolePolicyModule
                 && foundationalMigrationsReady
                 && expenseMigrationsReady
                 && expenseTablesReady
-                && nonProjectCategoriesReady;
+                && nonProjectCategoriesReady
+                && immutableApprovalAuditReady;
 
             return Results.Json(new
             {
@@ -130,7 +152,11 @@ public static partial class ScopedRolePolicyModule
                 expenseMigrationsReady,
                 expenseTablesReady,
                 nonProjectCategoriesReady,
-                productionApprovalRoutingReady = true,
+                immutableStageEvidenceReady,
+                immutableBatchEvidenceReady,
+                immutableApprovalAuditReady,
+                productionApprovalRoutingReady = immutableApprovalAuditReady,
+                legacyApprovalWriteRoutesRetired = true,
                 projectScopedPmApproval = true,
                 nonProjectRoute = "manager_then_ptc",
                 modules = new[] { "001", "005", "012", "037", "038" },
