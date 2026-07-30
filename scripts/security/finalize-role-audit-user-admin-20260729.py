@@ -6,17 +6,28 @@ path = root / "src/backend/ProjectTime.Api/Program.cs"
 text = path.read_text(encoding="utf-8")
 
 
-def replace_once(old: str, new: str, label: str) -> None:
+def replace_in_section(start: str, end: str, old: str, new: str, label: str) -> None:
     global text
-    count = text.count(old)
+    start_index = text.index(start)
+    end_index = text.index(end, start_index)
+    section = text[start_index:end_index]
+    count = section.count(old)
     if count != 1:
-        raise RuntimeError(f"{label}: expected one match, found {count}")
-    text = text.replace(old, new, 1)
+        raise RuntimeError(f"{label}: expected one section match, found {count}")
+    section = section.replace(old, new, 1)
+    text = text[:start_index] + section + text[end_index:]
 
+
+single_start = 'app.MapPost("/api/admin/user-admin/users/roles"'
+single_end = 'app.MapPost("/api/admin/user-admin/local-password"'
+local_start = 'app.MapPost("/api/admin/user-admin/users/local"'
+local_end = 'app.MapPost("/api/admin/user-admin/users/deactivate"'
 
 if '''"user_roles_updated",
             string.IsNullOrWhiteSpace(request.Reason)''' not in text:
-    replace_once(
+    replace_in_section(
+        single_start,
+        single_end,
         '''        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
@@ -46,7 +57,9 @@ if '''"user_roles_updated",
         "single role Administrator boundary",
     )
 
-    replace_once(
+    replace_in_section(
+        single_start,
+        single_end,
         '''            .Distinct()
             .ToList();
 
@@ -88,7 +101,9 @@ if '''"user_roles_updated",
         "single role old-state and Super Administrator protection",
     )
 
-    replace_once(
+    replace_in_section(
+        single_start,
+        single_end,
         '''        await transaction.CommitAsync();
 
         return Results.Ok(new
@@ -118,7 +133,9 @@ if '''"user_roles_updated",
     )
 
 if "local_user_created_with_roles" not in text:
-    replace_once(
+    replace_in_section(
+        local_start,
+        local_end,
         '''        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
@@ -142,7 +159,9 @@ if "local_user_created_with_roles" not in text:
         "local user Administrator boundary",
     )
 
-    replace_once(
+    replace_in_section(
+        local_start,
+        local_end,
         '''        if (cleanRoleCodes.Count == 0)
         {
             cleanRoleCodes.Add("ENGINEERING");
@@ -174,7 +193,9 @@ if "local_user_created_with_roles" not in text:
         "local user Super Administrator parity",
     )
 
-    replace_once(
+    replace_in_section(
+        local_start,
+        local_end,
         '''        await transaction.CommitAsync();
 
         return Results.Ok(new
