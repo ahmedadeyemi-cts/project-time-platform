@@ -1,4 +1,4 @@
-name: Repair PostCSS Security Advisory 2026-07-30
+name: Repair Frontend Build Supply Chain 2026-07-30
 
 on:
   pull_request:
@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: projectpulse-postcss-lock-repair-20260730
+  group: projectpulse-frontend-supply-chain-repair-20260730
   cancel-in-progress: false
 
 jobs:
@@ -28,11 +28,13 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'security/repository-posture-baseline-20260730'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     env:
       TARGET_BRANCH: security/repository-posture-baseline-20260730
       FRONTEND_ROOT: src/frontend/project-time-web
       PATCHED_POSTCSS_VERSION: 8.5.18
+      PATCHED_VITE_VERSION: 8.2.0
+      PATCHED_REACT_PLUGIN_VERSION: 6.0.2
 
     steps:
       - name: Check out exact security branch head
@@ -59,19 +61,27 @@ jobs:
           test -s "$FRONTEND_ROOT/package-lock.json"
           python3 scripts/security/validate-repository-security-posture.py
 
-      - name: Pin the patched PostCSS release and regenerate the lock
+      - name: Upgrade the vulnerable frontend build chain
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
           npm install \
+            --save-prod \
+            --save-exact \
+            --package-lock-only \
+            --ignore-scripts \
+            "@vitejs/plugin-react@$PATCHED_REACT_PLUGIN_VERSION"
+          npm install \
             --save-dev \
             --save-exact \
             --package-lock-only \
             --ignore-scripts \
+            "vite@$PATCHED_VITE_VERSION" \
             "postcss@$PATCHED_POSTCSS_VERSION"
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --audit-level=high
+          npm run build
 
       - name: Validate exact package-only change
         shell: bash
@@ -84,9 +94,12 @@ jobs:
               'src/frontend/project-time-web/package-lock.json' \
               'src/frontend/project-time-web/package.json') \
             <(printf '%s\n' "${CHANGED[@]}")
+          grep -Fq '"@vitejs/plugin-react": "6.0.2"' "$FRONTEND_ROOT/package.json"
           grep -Fq '"postcss": "8.5.18"' "$FRONTEND_ROOT/package.json"
+          grep -Fq '"vite": "8.2.0"' "$FRONTEND_ROOT/package.json"
           grep -Fq '"version": "8.5.18"' "$FRONTEND_ROOT/package-lock.json"
-          echo "POSTCSS_SECURITY_LOCK_REPAIR=PASS"
+          grep -Fq '"version": "8.2.0"' "$FRONTEND_ROOT/package-lock.json"
+          echo "FRONTEND_SUPPLY_CHAIN_REPAIR=PASS"
 
       - name: Commit the validated dependency repair
         shell: bash
@@ -98,10 +111,10 @@ jobs:
             src/frontend/project-time-web/package.json \
             src/frontend/project-time-web/package-lock.json
           if git diff --cached --quiet; then
-            echo "POSTCSS_SECURITY_LOCK_ALREADY_CURRENT=YES"
+            echo "FRONTEND_SUPPLY_CHAIN_ALREADY_CURRENT=YES"
             exit 0
           fi
           git diff --cached --check
-          git commit -m 'Upgrade PostCSS to patched 8.5.18 release'
+          git commit -m 'Upgrade vulnerable frontend build dependencies'
           git push origin "HEAD:$TARGET_BRANCH"
-          echo "POSTCSS_SECURITY_LOCK_PUSHED=YES"
+          echo "FRONTEND_SUPPLY_CHAIN_PUSHED=YES"
