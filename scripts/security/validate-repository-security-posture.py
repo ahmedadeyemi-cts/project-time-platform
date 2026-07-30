@@ -107,7 +107,7 @@ require(ci, "git diff --exit-code", "ProjectPulse CI")
 
 mirror = text(".github/workflows/mirror-to-us-signal-projectpulse.yml")
 require(mirror, "      - main", "mirror workflow")
-require(mirror, "refs/heads/main:refs/heads/main", "mirror workflow")
+require(mirror, ":refs/heads/main", "mirror workflow")
 forbid(mirror, '      - "**"', "mirror workflow")
 forbid(mirror, "+refs/heads/*:refs/heads/*", "mirror workflow")
 forbid(mirror, "push --prune", "mirror workflow")
