@@ -1,4 +1,4 @@
-name: Repair Frontend Build Supply Chain 2026-07-30
+name: Converge Frontend Build Source 2026-07-30
 
 on:
   pull_request:
@@ -13,22 +13,35 @@ on:
       - scripts/security/validate-repository-security-posture.py
       - src/frontend/project-time-web/package.json
       - src/frontend/project-time-web/package-lock.json
+      - src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx
+      - src/frontend/project-time-web/src/App.jsx
+      - src/frontend/project-time-web/src/BackupDrCenter.jsx
+      - src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx
+      - src/frontend/project-time-web/src/HelpAssistant.jsx
+      - src/frontend/project-time-web/src/ProjectManagerWorkloadCenter.jsx
+      - src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx
+      - src/frontend/project-time-web/src/RateCardAdministrationCenter.jsx
+      - src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx
+      - src/frontend/project-time-web/src/RestoreValidationCenter.jsx
+      - src/frontend/project-time-web/src/SalesInsightsDashboard.jsx
+      - src/frontend/project-time-web/src/SystemUserGuide.jsx
+      - src/frontend/project-time-web/src/module-availability-registry.js
 
 permissions:
   contents: write
 
 concurrency:
-  group: projectpulse-frontend-supply-chain-repair-20260730
+  group: projectpulse-frontend-source-convergence-20260730
   cancel-in-progress: false
 
 jobs:
-  repair-lock:
+  converge-source:
     if: >-
       github.actor == 'ahmedadeyemi-cts' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'security/repository-posture-baseline-20260730'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       TARGET_BRANCH: security/repository-posture-baseline-20260730
       FRONTEND_ROOT: src/frontend/project-time-web
@@ -51,7 +64,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Guard exact branch and repair scope
+      - name: Guard exact branch and convergence scope
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -76,40 +89,87 @@ jobs:
             "postcss@$PATCHED_POSTCSS_VERSION"
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --audit-level=high
-          npm run build
 
-      - name: Validate exact package-only change
+      - name: Build twice and prove deterministic source convergence
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build
+          FIRST_DIFF_SHA="$(git -C ../../.. diff --binary | sha256sum | awk '{print $1}')"
+          npm run build
+          SECOND_DIFF_SHA="$(git -C ../../.. diff --binary | sha256sum | awk '{print $1}')"
+          [[ "$FIRST_DIFF_SHA" == "$SECOND_DIFF_SHA" ]]
+          echo "FRONTEND_BUILD_SOURCE_DIFF_SHA=$FIRST_DIFF_SHA"
+          echo "FRONTEND_SECOND_BUILD_IDEMPOTENT=YES"
+
+      - name: Validate exact canonical-source change
         shell: bash
         run: |
           set -Eeuo pipefail
           git diff --check
           mapfile -t CHANGED < <(git diff --name-only | sort)
-          diff -u \
-            <(printf '%s\n' \
-              'src/frontend/project-time-web/package-lock.json' \
-              'src/frontend/project-time-web/package.json') \
-            <(printf '%s\n' "${CHANGED[@]}")
+
+          if [[ ${#CHANGED[@]} -eq 0 ]]; then
+            echo "FRONTEND_SOURCE_ALREADY_CONVERGED=YES"
+            exit 0
+          fi
+
+          cat > /tmp/expected-frontend-convergence-files.txt <<'EOF'
+          src/frontend/project-time-web/package-lock.json
+          src/frontend/project-time-web/package.json
+          src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/BackupDrCenter.jsx
+          src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/ProjectManagerWorkloadCenter.jsx
+          src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx
+          src/frontend/project-time-web/src/RateCardAdministrationCenter.jsx
+          src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx
+          src/frontend/project-time-web/src/RestoreValidationCenter.jsx
+          src/frontend/project-time-web/src/SalesInsightsDashboard.jsx
+          src/frontend/project-time-web/src/SystemUserGuide.jsx
+          src/frontend/project-time-web/src/module-availability-registry.js
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-frontend-convergence-files.txt
+          sort -o /tmp/expected-frontend-convergence-files.txt /tmp/expected-frontend-convergence-files.txt
+          diff -u /tmp/expected-frontend-convergence-files.txt <(printf '%s\n' "${CHANGED[@]}")
+
           grep -Fq '"@vitejs/plugin-react": "6.0.2"' "$FRONTEND_ROOT/package.json"
           grep -Fq '"postcss": "8.5.18"' "$FRONTEND_ROOT/package.json"
           grep -Fq '"vite": "8.2.0"' "$FRONTEND_ROOT/package.json"
           grep -Fq '"version": "8.5.18"' "$FRONTEND_ROOT/package-lock.json"
           grep -Fq '"version": "8.2.0"' "$FRONTEND_ROOT/package-lock.json"
-          echo "FRONTEND_SUPPLY_CHAIN_REPAIR=PASS"
+          echo "FRONTEND_CANONICAL_SOURCE_CONVERGENCE=PASS"
 
-      - name: Commit the validated dependency repair
+      - name: Commit the validated canonical source
         shell: bash
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            src/frontend/project-time-web/package-lock.json \
             src/frontend/project-time-web/package.json \
-            src/frontend/project-time-web/package-lock.json
+            src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/BackupDrCenter.jsx \
+            src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx \
+            src/frontend/project-time-web/src/HelpAssistant.jsx \
+            src/frontend/project-time-web/src/ProjectManagerWorkloadCenter.jsx \
+            src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx \
+            src/frontend/project-time-web/src/RateCardAdministrationCenter.jsx \
+            src/frontend/project-time-web/src/ReplicationSyncStatusCenter.jsx \
+            src/frontend/project-time-web/src/RestoreValidationCenter.jsx \
+            src/frontend/project-time-web/src/SalesInsightsDashboard.jsx \
+            src/frontend/project-time-web/src/SystemUserGuide.jsx \
+            src/frontend/project-time-web/src/module-availability-registry.js
           if git diff --cached --quiet; then
-            echo "FRONTEND_SUPPLY_CHAIN_ALREADY_CURRENT=YES"
+            echo "FRONTEND_CANONICAL_SOURCE_ALREADY_CURRENT=YES"
             exit 0
           fi
           git diff --cached --check
-          git commit -m 'Upgrade vulnerable frontend build dependencies'
+          git commit -m 'Converge frontend build source and dependencies'
           git push origin "HEAD:$TARGET_BRANCH"
-          echo "FRONTEND_SUPPLY_CHAIN_PUSHED=YES"
+          echo "FRONTEND_CANONICAL_SOURCE_PUSHED=YES"
