@@ -1,66 +1,105 @@
-# Module 030 — Enterprise Reporting Center
+# Module 030 — Analytics Center
 
 ## Purpose
 
-Module 030 is the enterprise reporting system for ProjectPulse. It replaces the narrow financial-report presentation with one dynamic, role-scoped report catalog across project delivery, customers, financials, time, utilization, engineers, Project Managers, sales, billing, closeout, notifications, operational controls, security-adjacent evidence, governance, and customer acceptance.
+Module 030 is the ProjectPulse **Analytics Center**. It replaces the former Financial Report Center, Enterprise Reporting Center label, and the legacy Reporting / Accounting / Invoicing / Analytics command page with one intuitive, role-scoped analytics experience.
 
-The implementation contains **24 report types** and is designed so additional governed source tables introduced by Groups 8–11 become reportable without rebuilding the page.
+The page follows a simple workflow:
 
-## Report-specific filters
+1. Select a report.
+2. Configure only the criteria that apply to that report.
+3. Preview the result or run and save immutable evidence.
+4. Export a saved run to XLSX, CSV, or JSON.
+5. Review run history and independent source status.
 
-The user chooses a report before configuring filters. Each report publishes only the filters that apply to that report, such as:
+The initial catalog contains **24 report types** across project delivery, customers, financials, time, utilization, Engineers, Project Managers, teams, sales, billing, closeout, notifications, qualifications, on-call coverage, issue and feature management, release controls, service health, governance, customer acceptance, secure project information, and PMO controls.
 
-- customer;
-- project;
+## User-interface corrections
+
+The Analytics Center does not expose the former technical closeout checklist or the legacy 030A–030Q command-center structure. It removes:
+
+- Fiscal Period, because Start Date and End Date provide the required reporting range;
+- Organization, because Customer is the governed business dimension;
+- the 030Q Reporting Readiness Closeout checklist;
+- Build Export Layout;
+- Save Report Definition Preview;
+- browser-only readiness validation controls; and
+- the obsolete `/api/reports/030/filter-options` request path.
+
+The page uses the official Group 6 US Signal enterprise presentation components and contains no independent page scroll trap. Only naturally wide result tables scroll horizontally.
+
+## Report-specific criteria
+
+The selected report publishes its own criteria. The page does not display one large unrelated filter form for every report.
+
+Available criteria include, only where applicable:
+
+- Start Date and End Date;
+- Customer;
+- Project;
+- Engineer;
 - Project Manager;
-- engineer;
-- project status;
-- budget status;
-- contract type;
-- billable status;
-- date range;
-- workflow status;
-- severity;
-- module;
+- Team;
+- Project Status;
+- Budget Status;
+- Contract Type;
+- Billable status;
+- Workflow status;
+- Severity;
+- Module;
 - source status;
 - free-text search; and
-- maximum rows.
+- maximum result rows.
 
-Filter options are generated from server-authorized records. The browser never receives an organization-wide person, project, customer, or financial option merely because a user can open Module 030.
+Customer, Project, Engineer, Project Manager, and Team choices are populated by the API from current role-authorized ProjectPulse data. Customer choices originate from the Customer Directory `clients` table. Team choices originate from active `teams` and current `team_memberships`. Project and people choices are limited to the effective user's authorized project portfolio.
+
+Selecting a Customer, Project, or Team refreshes dependent criteria so unrelated Project, Engineer, and Project Manager choices are removed.
+
+## Contract types
+
+Analytics uses the same canonical contract types as Modules 055C and 055D:
+
+- Fixed Price;
+- Time and Material;
+- Pre-Sales;
+- Internal;
+- Non-billable; and
+- Other.
+
+Legacy aliases such as `T&M`, `TM`, `FP`, `Fixed Fee`, and `Pre-Sales` are normalized to the same reporting values before filtering.
 
 ## Role and record scope
 
 ### Engineer
 
-An Engineer can run reports only for:
+An Engineer can analyze only:
 
 - the Engineer's own time and utilization;
-- projects assigned to the Engineer;
-- project teams and delivery records visible through those assignments; and
-- financial fields already made visible by the authoritative project-financial model.
+- projects and tasks assigned to the Engineer;
+- delivery records visible through those assignments; and
+- financial fields already authorized by the project-financial model.
 
-The `engineerUserId` filter is locked to the effective user for an Engineer-only session.
+The `engineerUserId` criterion is locked to the effective user for an Engineer-only session. A browser-provided Engineer identifier never expands scope.
 
 ### Project Manager
 
-A Project Manager can run reports only for:
+A Project Manager can analyze only:
 
 - projects managed by the effective Project Manager;
-- engineers assigned to those projects;
-- time, delivery, budget, billing, closeout, and customer records associated with those projects; and
+- customers connected to those projects;
+- Engineers and teams assigned to those projects;
+- related time, delivery, budget, billing, closeout, and notification evidence; and
 - role-appropriate financial fields.
 
-The `projectManagerUserId` filter is locked to the effective user for a non-broad Project Manager session.
+The `projectManagerUserId` criterion is locked to the effective user for a non-broad Project Manager session.
 
 ### Broader roles
 
-Accounting, Project Team Coordinator, executive, platform, and administrative roles can receive broader choices only where their existing server roles and permissions provide that scope. Report permissions do not create project, customer, person, or field access.
+Accounting, Project Team Coordinator, executive, management, sales, platform, and administrative roles receive broader choices only where their existing server roles and permissions grant the underlying records and fields. Analytics authority does not create customer, project, person, or financial-field access.
 
-View-As remains read-only. A preview may use the effective user scope, but report-run persistence, saved-view changes, and export audit writes require the actual user outside View-As.
+View-As remains preview-only. Persisting a run and creating export evidence require the actual user outside View-As.
 
 ## Report catalog
-
-The initial catalog includes:
 
 1. Project Portfolio
 2. Project Financial Health
@@ -87,86 +126,74 @@ The initial catalog includes:
 23. Secure Project Information
 24. Enterprise PMO Project Controls
 
-Reports 18–24 automatically begin returning rows as their separately governed source migrations are installed. Before then, the source is identified precisely as unavailable rather than represented as an empty production inventory.
+Reports backed by later Group 8–11 tables identify the exact unavailable source until those separately governed migrations exist. They never display a fabricated empty production inventory.
 
-## Enterprise reporting actions
+## Working actions
 
-Authorized users can:
+The Analytics Center buttons call registered APIs:
 
-- search the report catalog;
-- select a category;
-- load report-specific filter choices;
-- preview without persistence;
-- run and create an immutable execution record;
-- save personal report views;
-- review run history;
-- export XLSX, CSV, or JSON; and
-- inspect independent source status and diagnostic codes.
+- Refresh Analytics → catalog, history, and active filter refresh;
+- Reset criteria → restores the selected report's defaults;
+- Refresh filter lists → reloads current server-authorized choices;
+- Preview report → `/api/analytics/preview`;
+- Run & save → `/api/analytics/run`;
+- Export XLSX/CSV/JSON → immutable saved-run export; and
+- Refresh history → `/api/analytics/history`.
 
-Every XLSX, CSV, or JSON export creates immutable evidence containing the run, actual actor, format, row count, timestamp, and SHA-256 checksum.
+The compatibility `/api/enterprise-reporting` API remains registered for internal migration safety, but the Module 030 page uses `/api/analytics`.
 
 ## Source isolation
 
-Every report source publishes:
+Every report source publishes its key, friendly name, required/optional state, health, role-scoped record count, friendly message, sanitized diagnostic code, and observation timestamp.
 
-- source key;
-- friendly name;
-- required or optional status;
-- health state;
-- role-scoped record count;
-- friendly message;
-- sanitized diagnostic code; and
-- observation timestamp.
-
-One unavailable source does not blank rows returned by healthy sources. Report states are:
+One unavailable optional source does not blank rows returned by healthy sources. Result states are:
 
 - `complete`;
 - `partial`;
 - `no_data`;
 - `source_unavailable`; and
-- `failed` for persisted evidence if a future execution stage records it.
+- `failed` for persisted execution evidence when applicable.
 
-## Migration 054
+## Migration 054 and immutable evidence
 
-`054_enterprise_reporting_center.sql` creates:
+`054_enterprise_reporting_center.sql` remains the compatibility-stable migration identifier. It creates:
 
-- `enterprise_report_runs` — immutable report execution evidence;
-- `enterprise_report_saved_views` — editable personal views with versioning; and
-- `enterprise_report_exports` — immutable export evidence.
+- `enterprise_report_runs` — immutable analytics execution evidence;
+- `enterprise_report_saved_views` — editable personal definitions with versioning; and
+- `enterprise_report_exports` — immutable export evidence with SHA-256 checksum.
 
-It adds:
+Existing permission codes remain compatibility-stable:
 
 - `VIEW_ENTERPRISE_REPORTING`;
 - `RUN_ENTERPRISE_REPORTING`;
 - `EXPORT_ENTERPRISE_REPORTING`; and
 - `MANAGE_ENTERPRISE_REPORTING`.
 
-The migration grants run/export access to delivery roles, but all records and sensitive fields remain constrained by the existing authoritative sources.
-
 ## Shared-file overlap
 
-The source package modifies two established shared integration points:
+The package changes only established additive integration points:
 
-- `src/backend/ProjectTime.Api/ProjectTime.Api.csproj` to register `MapEnterpriseReportingEndpoints()` in the generated Program before `app.Run()`; and
-- `src/frontend/project-time-web/package.json` to run the Module 030 injector and validator after Groups 5–7.
+- `ProjectTime.Api.csproj` registers `MapEnterpriseReportingEndpoints()` for compatibility and `MapAnalyticsCenterEndpoints()` for the current page;
+- frontend `package.json` runs the Module 030 injector and validator after Groups 5–7.
 
-Canonical `App.jsx` and `module-availability-registry.js` are not committed. The idempotent injector replaces only the generated Group 5 Module 030 mount, preserves Module 031 Financial Operations Workbench, and updates the generated Module 030 identity to **Enterprise Reporting Center**.
+Canonical `App.jsx` and `module-availability-registry.js` are not committed. The idempotent injector replaces the generated Module 030 reporting mount with `AnalyticsCenter`, preserves Module 031, and changes the generated Module 030 identity to **Analytics Center**.
 
 ## Validation
 
 Validation covers:
 
-- migration apply, idempotence, permissions, immutable evidence, rollback, and reapply;
+- migration 054 apply, idempotence, permissions, immutable evidence, rollback, and reapply;
 - at least 24 report definitions;
-- report-specific filters;
+- report-specific criteria;
+- Customer Directory, Project, Engineer, Project Manager, and Team option sources;
+- Modules 055C and 055D contract-type alignment;
+- removal of Fiscal Period, Organization, and 030Q;
 - Engineer self-scope and Project Manager own-portfolio locks;
 - source-isolated loading;
-- actual/effective-session evidence;
-- preview, run, history, saved views, and XLSX/CSV/JSON exports;
+- preview, run, immutable history, and XLSX/CSV/JSON export;
 - API Release build;
 - complete frontend production build;
-- Group 3 financial-truth compatibility;
-- Groups 5–7 regression validation; and
+- Groups 3 and 5–7 compatibility; and
 - full ProjectPulse CI.
 
 ## Explicit exclusions
@@ -175,5 +202,5 @@ Validation covers:
 - No migration execution against Test or Production.
 - No Azure or Container Apps change.
 - No provider credential change.
-- No direct expansion of project, customer, person, or financial-field access.
+- No direct expansion of customer, project, person, or financial-field access.
 - No More-menu security change.
