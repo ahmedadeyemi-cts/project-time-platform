@@ -110,22 +110,20 @@ function installApp() {
 function installRegistry() {
   if (!fs.existsSync(registryPath)) throw new Error('Group 4 module registry target is missing.');
   let source = fs.readFileSync(registryPath, 'utf8');
-  const legacyAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),";
-  const financialReportAnchor = "  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Financial Report Center', group: 'Reports & Workflow', description: 'Search, preview, run, export, and review history for actual role-scoped financial reports with independent source recovery.' }),";
   const module032 = "  Object.freeze({ moduleNumber: '032', route: 'notification-delivery-monitor', displayName: 'Notification Delivery Monitor', group: 'Reports & Workflow', description: 'Operational inbox for project notification dispatches, recipient derivation, Module 065 readiness, source failures, release, retry, and delivery evidence.' }),";
+
   if (!source.includes("moduleNumber: '032'")) {
-    const anchor = source.includes(financialReportAnchor)
-      ? financialReportAnchor
-      : source.includes(legacyAnchor)
-        ? legacyAnchor
-        : null;
-    if (!anchor) throw new Error('Group 4 registry anchor is missing.');
-    source = source.replace(anchor, `${anchor}\n${module032}`);
+    const module030Anchor = source
+      .split('\n')
+      .find((line) => line.includes("moduleNumber: '030'") && line.includes("route: 'reporting'"));
+    if (!module030Anchor) throw new Error('Group 4 registry anchor is missing.');
+    source = source.replace(module030Anchor, `${module030Anchor}\n${module032}`);
   }
+
   if (count(source, "moduleNumber: '032'") !== 1) throw new Error('Group 4 Module 032 registry entry must appear exactly once.');
   write(registryPath, source);
 }
 
 installApp();
 installRegistry();
-console.log('GROUP_4_NOTIFICATION_AUTOMATION_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=022,023,032,041,065');
+console.log('GROUP_4_NOTIFICATION_AUTOMATION_INJECTION=PASS files=App.jsx,module-availability-registry.js modules=022,023,032,041,065 module030Identity=display-name-independent');
