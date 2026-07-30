@@ -23,6 +23,8 @@ import csv
 import os
 import subprocess
 import sys
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 APP_ROOT = Path("/opt/project-time-platform")
@@ -68,9 +70,26 @@ def main() -> int:
         for row in reader:
             if not row.get("holiday_date") or not row.get("holiday_name"):
                 continue
-            if not row["holiday_date"].startswith(f"{year}-"):
-                print(f"Skipping {row['holiday_date']} because it is not in {year}")
+            try:
+                holiday_date = date.fromisoformat(row["holiday_date"].strip())
+            except ValueError as exc:
+                raise SystemExit(f"Invalid holiday_date: {row['holiday_date']}") from exc
+
+            if holiday_date.year != year:
+                print(f"Skipping {holiday_date.isoformat()} because it is not in {year}")
                 continue
+
+            raw_hours = (row.get("auto_populate_hours") or "8.00").strip()
+            try:
+                validated_hours = Decimal(raw_hours)
+            except InvalidOperation as exc:
+                raise SystemExit(f"Invalid auto_populate_hours: {raw_hours}") from exc
+
+            if not validated_hours.is_finite() or validated_hours < 0 or validated_hours > 24:
+                raise SystemExit(f"auto_populate_hours must be between 0 and 24: {raw_hours}")
+
+            row["holiday_date"] = holiday_date.isoformat()
+            row["_validated_auto_populate_hours"] = format(validated_hours, "f")
             rows.append(row)
 
     if not rows:
@@ -135,7 +154,7 @@ def main() -> int:
         sql_lines.append(
             "SELECT "
             f"DATE {q(row['holiday_date'])}, {q(row['holiday_name'])}, 'HOLIDAY', {q(row.get('holiday_type') or 'company_paid')}, "
-            f"{'TRUE' if truthy(row.get('is_floating_holiday')) else 'FALSE'}, {row.get('auto_populate_hours') or '8.00'}, holiday_upload_batch_id FROM batch "
+            f"{'TRUE' if truthy(row.get('is_floating_holiday')) else 'FALSE'}, {row['_validated_auto_populate_hours']}, holiday_upload_batch_id FROM batch "
             "ON CONFLICT (holiday_date) DO UPDATE "
             "SET holiday_name = EXCLUDED.holiday_name, holiday_type = EXCLUDED.holiday_type, is_floating_holiday = EXCLUDED.is_floating_holiday, auto_populate_hours = EXCLUDED.auto_populate_hours, is_active = TRUE, source_batch_id = EXCLUDED.source_batch_id, updated_at = NOW();"
         )

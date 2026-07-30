@@ -4,6 +4,9 @@ set -Eeuo pipefail
 REPO_ROOT="/opt/project-time-platform/app/project-time-platform"
 cd "$REPO_ROOT"
 
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/projectpulse-019m-cf.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
 echo "===== 019M-CF VALIDATION: PRODUCTION WORDING + COMPATIBILITY GUARD ====="
 echo "Started: $(date -Is)"
 
@@ -150,7 +153,7 @@ fi
 
 echo
 echo "===== API RESPONSE WORDING GUARD ====="
-mkdir -p /tmp/projectpulse-019m-cf-api
+mkdir -p "$TMP_ROOT/api"
 
 declare -a API_PATHS=(
   "/api/time-compliance/settings"
@@ -173,7 +176,7 @@ declare -a API_PATHS=(
 
 for path in "${API_PATHS[@]}"; do
   safe_name="$(echo "$path" | tr '/?&=' '____' | tr -cd 'A-Za-z0-9_')"
-  out="/tmp/projectpulse-019m-cf-api/${safe_name}.json"
+  out="$TMP_ROOT/api/${safe_name}.json"
 
   echo
   echo "--- $path ---"
@@ -208,9 +211,9 @@ echo "API response wording guard passed."
 
 echo
 echo "===== TIME COMPLIANCE PREVIEW FIELD CONTRACT ====="
-PREVIEW_JSON="/tmp/projectpulse-019m-cf-api/_api_time-compliance_preview.json"
+PREVIEW_JSON="$TMP_ROOT/api/_api_time-compliance_preview.json"
 if [ ! -f "$PREVIEW_JSON" ]; then
-  PREVIEW_JSON="$(find /tmp/projectpulse-019m-cf-api -type f -name '*time_compliance_preview*' | head -1)"
+  PREVIEW_JSON="$(find "$TMP_ROOT/api" -type f -name '*time_compliance_preview*' | head -1)"
 fi
 
 cat "$PREVIEW_JSON" | jq '{
@@ -262,11 +265,11 @@ do
   echo "--- $path ---"
   HTTP_CODE=$(curl -sS --max-time 45 "http://127.0.0.1:5080$path" \
     -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-    -o /tmp/projectpulse-019m-cf-registry.json \
+    -o $TMP_ROOT/registry.json \
     -w "%{http_code}")
 
-  echo "HTTP $HTTP_CODE bytes $(wc -c < /tmp/projectpulse-019m-cf-registry.json)"
-  cat /tmp/projectpulse-019m-cf-registry.json | jq .
+  echo "HTTP $HTTP_CODE bytes $(wc -c < $TMP_ROOT/registry.json)"
+  cat $TMP_ROOT/registry.json | jq .
 
   if [ "$HTTP_CODE" != "200" ]; then
     echo "Dashboard/navigation/registry validation failed for $path"
@@ -324,11 +327,11 @@ do
   HTTP_CODE=$(curl -sS --max-time 45 "http://127.0.0.1:5080$path" \
     -H "X-ProjectPulse-Session: $SSO_TOKEN" \
     -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
-    -o /tmp/projectpulse-019m-cf-engineer-denial.json \
+    -o $TMP_ROOT/engineer-denial.json \
     -w "%{http_code}")
 
-  echo "HTTP $HTTP_CODE bytes $(wc -c < /tmp/projectpulse-019m-cf-engineer-denial.json)"
-  cat /tmp/projectpulse-019m-cf-engineer-denial.json | jq . || true
+  echo "HTTP $HTTP_CODE bytes $(wc -c < $TMP_ROOT/engineer-denial.json)"
+  cat $TMP_ROOT/engineer-denial.json | jq . || true
 
   if [ "$HTTP_CODE" != "403" ]; then
     echo "Engineer negative access failed for $path"

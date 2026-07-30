@@ -3,6 +3,9 @@ set -Eeuo pipefail
 
 cd /opt/project-time-platform/app/project-time-platform
 
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/projectpulse-019m-bl-bu.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
 SSO_RESPONSE=$(curl -sS --max-time 20 -X POST http://127.0.0.1:5080/api/auth/sso/dev-login \
   -H "Content-Type: application/json" \
   -d '{"email":"ahmed.adeyemi@ussignal.com"}')
@@ -33,18 +36,18 @@ for path in "${ENDPOINTS[@]}"; do
   echo "--- $path ---"
   HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
     -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-    -o /tmp/019m-bl-bu-endpoint.json \
+    -o $TMP_ROOT/endpoint.json \
     -w "%{http_code}")
 
-  echo "HTTP $HTTP_CODE bytes $(wc -c < /tmp/019m-bl-bu-endpoint.json)"
-  cat /tmp/019m-bl-bu-endpoint.json | jq '{
+  echo "HTTP $HTTP_CODE bytes $(wc -c < $TMP_ROOT/endpoint.json)"
+  cat $TMP_ROOT/endpoint.json | jq '{
     status: .status,
     module: .module,
     count: .count,
     summary: .summary,
     access: .access,
     firstItem: (.events[0] // .contracts[0] // .packages[0] // .checks[0] // .productionPanels[0] // .rules[0] // null)
-  }' 2>/dev/null || head -c 1200 /tmp/019m-bl-bu-endpoint.json
+  }' 2>/dev/null || head -c 1200 $TMP_ROOT/endpoint.json
 
   if [ "$HTTP_CODE" != "200" ]; then
     echo "Endpoint validation failed for $path"
@@ -59,11 +62,11 @@ HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080/api/workflow/preflight
   -H "X-ProjectPulse-Session: $SSO_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"accounting_reconciliation_review","weekStart":"2026-06-21","weekEnd":"2026-07-04"}' \
-  -o /tmp/019m-bl-bu-preflight-run.json \
+  -o $TMP_ROOT/preflight-run.json \
   -w "%{http_code}")
 
-echo "HTTP $HTTP_CODE bytes $(wc -c < /tmp/019m-bl-bu-preflight-run.json)"
-cat /tmp/019m-bl-bu-preflight-run.json | jq .
+echo "HTTP $HTTP_CODE bytes $(wc -c < $TMP_ROOT/preflight-run.json)"
+cat $TMP_ROOT/preflight-run.json | jq .
 
 if [ "$HTTP_CODE" != "200" ]; then
   echo "Production preflight validation run failed."
@@ -117,18 +120,18 @@ if [ -n "$ENGINEER_ONLY_ID" ]; then
         -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
         -H "Content-Type: application/json" \
         -d '{"action":"accounting_reconciliation_review"}' \
-        -o /tmp/019m-bl-bu-engineer.json \
+        -o $TMP_ROOT/engineer.json \
         -w "%{http_code}")
     else
       HTTP_CODE=$(curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
         -H "X-ProjectPulse-Session: $SSO_TOKEN" \
         -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
-        -o /tmp/019m-bl-bu-engineer.json \
+        -o $TMP_ROOT/engineer.json \
         -w "%{http_code}")
     fi
 
-    echo "HTTP $HTTP_CODE bytes $(wc -c < /tmp/019m-bl-bu-engineer.json)"
-    cat /tmp/019m-bl-bu-engineer.json | jq . 2>/dev/null || head -c 1000 /tmp/019m-bl-bu-engineer.json
+    echo "HTTP $HTTP_CODE bytes $(wc -c < $TMP_ROOT/engineer.json)"
+    cat $TMP_ROOT/engineer.json | jq . 2>/dev/null || head -c 1000 $TMP_ROOT/engineer.json
 
     if [ "$HTTP_CODE" != "403" ]; then
       echo "Engineer negative access check failed for $path"

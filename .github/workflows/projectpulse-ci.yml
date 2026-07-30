@@ -119,6 +119,9 @@ jobs:
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 
+      - name: Validate July 29 platform security remediation
+        run: python3 scripts/validate-platform-security-remediation-20260729.py
+
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
