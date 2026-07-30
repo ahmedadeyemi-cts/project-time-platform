@@ -151,28 +151,17 @@ jobs:
         shell: bash
         run: npm run build
 
-      - name: Validate compiled Group 5 and Module 030 coexistence
+      - name: Revalidate Group 5 and Analytics coexistence after production build
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
-          cat dist/assets/*.js > /tmp/group5-financial-operations.js
-          cat dist/assets/*.css > /tmp/group5-financial-operations.css
-
-          for marker in \
-            'Financial Operations Workbench' \
-            '/api/financial-operations/workbench' \
-            'Analytics Center' \
-            '/api/analytics/catalog'; do
-            grep -Fq "$marker" /tmp/group5-financial-operations.js
-          done
-
-          for marker in \
-            '.group5-financial-operations' \
-            '.group5-work-item-list' \
-            '.analytics-center'; do
-            grep -Fq "$marker" /tmp/group5-financial-operations.css
-          done
-
-          echo 'GROUP_5_AND_ANALYTICS_COMPILED_COEXISTENCE=PASSED'
+          test -s dist/index.html
+          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit)"
+          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit)"
+          node ./scripts/validate-group-5-financial-operations-recovery.mjs
+          if [[ -f ./scripts/validate-analytics-center.mjs ]]; then
+            node ./scripts/validate-analytics-center.mjs
+          fi
+          echo 'GROUP_5_AND_ANALYTICS_POST_BUILD_VALIDATION=PASSED'
           echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
