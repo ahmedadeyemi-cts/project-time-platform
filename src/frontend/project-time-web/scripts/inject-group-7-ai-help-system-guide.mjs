@@ -82,89 +82,9 @@ function installProviderPanel() {
   write(target.filePath, source);
 }
 
-function installNativeSystemHelp(source) {
-  const governanceImport = "import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';";
-  const preferenceImport = "import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';";
-  const importAnchor = "import './help-assistant.css';";
-  if (!source.includes(governanceImport)) {
-    if (!source.includes(importAnchor)) throw new Error('Group 7 native Help import anchor is missing.');
-    source = source.replace(importAnchor, `${importAnchor}\n${governanceImport}\n${preferenceImport}`);
-  }
-
-  const preferenceCall = '  const answerPreferences = applyHelpAnswerPreferences(url, question);';
-  if (!source.includes(preferenceCall)) {
-    source = replaceRequired(
-      source,
-      "  url.searchParams.set('question', question);",
-      "  url.searchParams.set('question', question);\n  const answerPreferences = applyHelpAnswerPreferences(url, question);",
-      'Group 7 native Help preference query'
-    );
-  }
-  if (!source.includes('return { ...payload, answerPreferences };')) {
-    source = replaceRequired(
-      source,
-      '  return getJson(`${url.pathname}${url.search}`);',
-      '  const payload = await getJson(`${url.pathname}${url.search}`);\n  return { ...payload, answerPreferences };',
-      'Group 7 native Help preference response'
-    );
-  }
-
-  if (!source.includes('GROUP_7_HELP_ANSWER_DETAIL_START')) {
-    source = replaceRequired(
-      source,
-      'function SystemAnswer({ result, close }) {\n  const answer = result?.answer ?? {};',
-      [
-        'function SystemAnswer({ result, close }) {',
-        '  const answer = result?.answer ?? {};',
-        '  /* GROUP_7_HELP_ANSWER_DETAIL_START */',
-        "  const detailLevel = result?.detailLevel ?? result?.answerPreferences?.detailLevel ?? 'comprehensive';",
-        '  /* GROUP_7_HELP_ANSWER_DETAIL_END */'
-      ].join('\n'),
-      'Group 7 native Help detail level'
-    );
-  }
-  if (!source.includes('data-answer-detail={detailLevel}')) {
-    source = replaceRequired(
-      source,
-      '    <div className="help-detailed-answer pulse-ai-system-answer">',
-      '    <div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>',
-      'Group 7 native Help detail marker'
-    );
-  }
-
-  if (!source.includes('GROUP_7_HELP_GOVERNANCE_PANEL_START')) {
-    const anchor = '          <div\n            ref={messagesRef}';
-    if (!source.includes(anchor)) throw new Error('Group 7 native Help conversation anchor is missing.');
-    source = source.replace(anchor, [
-      '          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}',
-      '          <HelpGovernancePanel />',
-      '          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}',
-      '',
-      anchor
-    ].join('\n'));
-  }
-
-  source = source.replaceAll('>Complete User Guide</button>', '>Module 999 — System User Guide</button>');
-  source = source.replaceAll('Module 999 — Complete User Guide', 'Module 999 — System User Guide');
-
-  if (count(source, governanceImport) !== 1 || count(source, preferenceImport) !== 1) throw new Error('Group 7 native Help imports must appear once.');
-  if (count(source, preferenceCall) !== 1) throw new Error('Group 7 native Help preference application must appear once.');
-  if (count(source, '<HelpGovernancePanel />') !== 1) throw new Error('Group 7 native Help governance panel must mount once.');
-  if (count(source, 'data-answer-detail={detailLevel}') !== 1) throw new Error('Group 7 native Help detail marker must appear once.');
-  return source;
-}
-
 function installHelp() {
   const target = read('HelpAssistant.jsx');
   let source = target.source;
-  if (source.includes("import './pulse-ai-system-chat.css';")) {
-    source = installNativeSystemHelp(source);
-    write(target.filePath, source);
-    return;
-  }
-
-  // Legacy compatibility path retained for branches that have not yet adopted
-  // the native system-intelligence conversation experience.
   const governanceImport = "import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';";
   const preferenceImport = "import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';";
   const importAnchor = "import './help-assistant.css';";
@@ -172,26 +92,124 @@ function installHelp() {
     if (!source.includes(importAnchor)) throw new Error('Group 7 Help import anchor is missing.');
     source = source.replace(importAnchor, `${importAnchor}\n${governanceImport}\n${preferenceImport}`);
   }
+
   const preferenceCall = '  const answerPreferences = applyHelpAnswerPreferences(url, question);';
   if (!source.includes(preferenceCall)) {
-    source = replaceRequired(source, "  url.searchParams.set('question', question);", "  url.searchParams.set('question', question);\n  const answerPreferences = applyHelpAnswerPreferences(url, question);", 'Group 7 Help query');
+    const anchor = "  url.searchParams.set('question', question);";
+    source = replaceRequired(source, anchor, `${anchor}\n${preferenceCall}`, 'Group 7 Help query');
   }
+
   if (!source.includes('return { ...payload, answerPreferences };')) {
-    source = replaceRequired(source, '  return payload;\n}\n\nfunction navigateTo', '  return { ...payload, answerPreferences };\n}\n\nfunction navigateTo', 'Group 7 Help answer-preference response');
+    const anchor = '  return payload;\n}\n\nfunction navigateTo';
+    source = replaceRequired(
+      source,
+      anchor,
+      '  return { ...payload, answerPreferences };\n}\n\nfunction navigateTo',
+      'Group 7 Help answer-preference response'
+    );
   }
+
   if (!source.includes('GROUP_7_HELP_ANSWER_DETAIL_START')) {
     const anchor = '  const answerContract = payload?.answerContract ?? {};';
-    source = replaceRequired(source, anchor, [anchor, '  /* GROUP_7_HELP_ANSWER_DETAIL_START */', "  const answerPreferences = payload?.answerPreferences ?? { detailLevel: 'standard' };", "  const detailLevel = answerPreferences.detailLevel ?? 'standard';", '  /* GROUP_7_HELP_ANSWER_DETAIL_END */'].join('\n'), 'Group 7 Help answer-detail state');
+    source = replaceRequired(source, anchor, [
+      anchor,
+      '  /* GROUP_7_HELP_ANSWER_DETAIL_START */',
+      "  const answerPreferences = payload?.answerPreferences ?? { detailLevel: 'standard' };",
+      "  const detailLevel = answerPreferences.detailLevel ?? 'standard';",
+      "  const conciseAnswer = detailLevel === 'concise';",
+      "  const executiveAnswer = detailLevel === 'executive';",
+      "  const expandedAnswer = ['detailed', 'highly_detailed', 'technical', 'step_by_step'].includes(detailLevel);",
+      "  const technicalAnswer = ['highly_detailed', 'technical'].includes(detailLevel);",
+      '  /* GROUP_7_HELP_ANSWER_DETAIL_END */'
+    ].join('\n'), 'Group 7 Help answer-detail state');
   }
+
   if (!source.includes('data-answer-detail={detailLevel}')) {
-    source = replaceRequired(source, '    <div className="help-detailed-answer">', '    <div className="help-detailed-answer" data-answer-detail={detailLevel}>', 'Group 7 Help answer-detail marker');
+    source = replaceRequired(
+      source,
+      '    <div className="help-detailed-answer">',
+      '    <div className="help-detailed-answer" data-answer-detail={detailLevel}>',
+      'Group 7 Help answer-detail marker'
+    );
   }
+
+  const conditionalReplacements = [
+    [
+      '          <AnswerList heading="Detailed procedure" values={direct.detailedSteps} />',
+      '          {!executiveAnswer ? <AnswerList heading="Detailed procedure" values={direct.detailedSteps} /> : null}'
+    ],
+    [
+      '          <AnswerList heading="Important rules" values={direct.importantRules} />',
+      '          {!conciseAnswer ? <AnswerList heading="Important rules" values={direct.importantRules} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Required evidence" values={plan.requiredEvidence} />',
+      '           {expandedAnswer ? <AnswerList heading="Required evidence" values={plan.requiredEvidence} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Filters that must be resolved" values={plan.filtersToResolve} />',
+      '           {technicalAnswer ? <AnswerList heading="Filters that must be resolved" values={plan.filtersToResolve} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Deterministic calculations" values={plan.deterministicCalculations} />',
+      '           {expandedAnswer ? <AnswerList heading="Deterministic calculations" values={plan.deterministicCalculations} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Required answer sections" values={plan.answerSections} />',
+      '           {!conciseAnswer ? <AnswerList heading="Required answer sections" values={plan.answerSections} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Detailed execution sequence" values={plan.executionSteps} />',
+      '           {expandedAnswer ? <AnswerList heading="Detailed execution sequence" values={plan.executionSteps} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Privacy controls" values={plan.privacyControls} />',
+      '           {!conciseAnswer ? <AnswerList heading="Privacy controls" values={plan.privacyControls} /> : null}'
+    ],
+    [
+      '           <AnswerList heading="Missing inputs before exact execution" values={plan.missingInputs} />',
+      '           {!conciseAnswer ? <AnswerList heading="Missing inputs before exact execution" values={plan.missingInputs} /> : null}'
+    ]
+  ];
+  conditionalReplacements.forEach(([anchor, replacement]) => {
+    if (source.includes(anchor)) source = source.replace(anchor, replacement);
+  });
+
+  if (!source.includes('Answer detail: {titleFrom(detailLevel)}')) {
+    const anchor = '      <details className="help-answer-contract">';
+    source = replaceRequired(source, anchor, [
+      '      <div className="help-answer-preference-evidence">',
+      '        <span>Answer detail: {titleFrom(detailLevel)}</span>',
+      '        <span>Preference source: {titleFrom(answerPreferences.preferenceSource ?? \'saved_preference\')}</span>',
+      '        {answerPreferences.includeRepositoryContext ? <span>Repository context requested</span> : null}',
+      '        {answerPreferences.includeAssumptions ? <span>Assumptions requested</span> : null}',
+      '        {answerPreferences.includeSourceCitations ? <span>Source citations requested</span> : null}',
+      '      </div>',
+      '      {technicalAnswer ? (',
+      anchor
+    ].join('\n'), 'Group 7 Help preference evidence');
+    source = replaceRequired(
+      source,
+      '      </details>\n    </div>',
+      '      </details>\n      ) : null}\n    </div>',
+      'Group 7 Help technical answer contract'
+    );
+  }
+
   if (!source.includes('GROUP_7_HELP_GOVERNANCE_PANEL_START')) {
     const anchor = '          <div className="help-messages">';
     if (!source.includes(anchor)) throw new Error('Group 7 Help panel mount anchor is missing.');
-    source = source.replace(anchor, ['          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}', '          <HelpGovernancePanel />', '          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}', anchor].join('\n'));
+    source = source.replace(anchor, [
+      '          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}',
+      '          <HelpGovernancePanel />',
+      '          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}',
+      anchor
+    ].join('\n'));
   }
+
   source = source.replaceAll('Module 999 — Complete User Guide', 'Module 999 — System User Guide');
+  source = source.replaceAll('Use the complete ProjectPulse guide', 'Use the System User Guide');
+
   if (count(source, governanceImport) !== 1 || count(source, preferenceImport) !== 1) throw new Error('Group 7 Help imports must appear once.');
   if (count(source, preferenceCall) !== 1) throw new Error('Group 7 Help preference application must appear once.');
   if (count(source, '<HelpGovernancePanel />') !== 1) throw new Error('Group 7 Help governance panel must mount once.');
@@ -217,11 +235,19 @@ function installSystemGuide() {
     if (!source.includes(anchor)) throw new Error('Group 7 System User Guide header anchor is missing.');
     source = source.replace(anchor, '      <header className="system-user-guide-hero">\n        {/* GROUP_7_SYSTEM_GUIDE_LOGO */}\n        <USSignalLogo size="large" />\n        <div>');
   }
+
   if (!source.includes('GROUP_7_SYSTEM_GUIDE_GOVERNANCE_START')) {
     const anchor = '      <section className="system-user-guide-principles" aria-label="Guide principles">';
     if (!source.includes(anchor)) throw new Error('Group 7 System User Guide governance anchor is missing.');
-    source = source.replace(anchor, ['      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_START */}', '      <SystemUserGuideGovernancePanel />', '      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_END */}', '', anchor].join('\n'));
+    source = source.replace(anchor, [
+      '      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_START */}',
+      '      <SystemUserGuideGovernancePanel />',
+      '      {/* GROUP_7_SYSTEM_GUIDE_GOVERNANCE_END */}',
+      '',
+      anchor
+    ].join('\n'));
   }
+
   if (count(source, governanceImport) !== 1 || count(source, logoImport) !== 1) throw new Error('Group 7 System User Guide imports must appear once.');
   if (count(source, '<SystemUserGuideGovernancePanel />') !== 1) throw new Error('Group 7 System User Guide governance panel must mount once.');
   if (count(source, '<USSignalLogo size="large" />') !== 1) throw new Error('Group 7 System User Guide official logo must mount once.');
@@ -245,4 +271,4 @@ installProviderPanel();
 installHelp();
 installSystemGuide();
 installRegistry();
-console.log('GROUP_7_AI_HELP_SYSTEM_GUIDE_INJECTION=PASS modules=064,999 help=governed preferences=saved-query-overridable native-system-chat=compatible');
+console.log('GROUP_7_AI_HELP_SYSTEM_GUIDE_INJECTION=PASS modules=064,999 help=governed preferences=saved-query-overridable');
