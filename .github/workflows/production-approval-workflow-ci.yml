@@ -1,0 +1,98 @@
+name: Validate Production Approval and PTC Move Time
+
+on:
+  push:
+    branches:
+      - 'feature/approval-workflow-production-grade-ptc-usability-*'
+  pull_request:
+    paths:
+      - '.github/workflows/production-approval-workflow-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'
+      - 'src/frontend/project-time-web/scripts/validate-pending-time-workflow.mjs'
+      - 'src/frontend/project-time-web/src/ProductionApprovalWorkPortal.jsx'
+      - 'src/frontend/project-time-web/src/production-approval-work.css'
+      - 'src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx'
+      - 'src/frontend/project-time-web/src/module001/ptc-guided-move.css'
+      - 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-approval-workflow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Verify isolated source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          git diff --check origin/main...HEAD
+          git diff --name-only origin/main...HEAD
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate approval and PTC contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          node ./scripts/validate-pending-time-workflow.mjs
+          node ./scripts/validate-module-001-ptc-time-steward.mjs
+          node ./scripts/validate-module-001-ptc-timer-dom-ownership.mjs
+          node ./scripts/validate-runtime-role-policy-ptc-data.mjs
+          node ./scripts/validate-role-permission-timesheet-stabilization.mjs
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Verify compiled production markers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat src/frontend/project-time-web/dist/assets/*.js > /tmp/production-approval.js
+          cat src/frontend/project-time-web/dist/assets/*.css > /tmp/production-approval.css
+          for marker in \
+            'Time approvals across all weeks' \
+            'Move Time wizard' \
+            'Approve entire week' \
+            'Manager then PTC approval; PM not required' \
+            '/api/approval-work/v2/pending' \
+            '/api/approval-work/v2/bulk-complete'; do
+            grep -Fq "$marker" /tmp/production-approval.js
+          done
+          for marker in \
+            '.production-approval-center' \
+            '.production-approval-project-scope' \
+            '.ptc-guided-launcher' \
+            '.ptc-guided-destination-groups'; do
+            grep -Fq "$marker" /tmp/production-approval.css
+          done
+          echo 'PRODUCTION_APPROVAL_COMPILED_MARKERS=PASS'
