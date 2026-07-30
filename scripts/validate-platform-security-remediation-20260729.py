@@ -202,8 +202,8 @@ checks = [
     ("2622824", "CSV export neutralizes spreadsheet formulas", lambda: require(
         "CSV formula", PROGRAM,
         "SECURITY_20260729_CSV_FORMULA_NEUTRALIZATION",
-        'formulaCandidate.StartsWith("=")',
-        'formulaCandidate.StartsWith("@")')),
+        'formulaCandidate.StartsWith("=", StringComparison.Ordinal)',
+        'formulaCandidate.StartsWith("@", StringComparison.Ordinal)')),
     ("2622762", "SSO identity never falls back to the login hint", lambda: (
         require("SSO identity", PROGRAM, "SECURITY_20260729_NO_LOGIN_HINT_IDENTITY_FALLBACK"),
         forbid("SSO identity", PROGRAM, "preferredUsername ?? requestedEmail")
