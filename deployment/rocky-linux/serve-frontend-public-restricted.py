@@ -56,6 +56,13 @@ class RestrictedFrontendProxyHandler(module.FrontendProxyHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def do_HEAD(self):
+        if not self.client_is_allowed():
+            self.reject_client()
+            return
+
+        super().do_HEAD()
+
     def do_GET(self):
         if not self.client_is_allowed():
             self.reject_client()

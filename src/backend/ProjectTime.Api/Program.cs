@@ -187,6 +187,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseProjectPulseSecurityHardening();
 app.UseWorkRegisterAuthorization();
 
 
@@ -5370,7 +5371,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", a
         || documentType is "sow" or "gsd";
 
     var safeOriginalFileName = Path.GetFileName(file.FileName);
-    var storedFileName = $"{documentType}_{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";
+    var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}"; // SECURITY_20260729_SAFE_DOCUMENT_PATH_COMPONENT
     var uploadRoot = GetProjectPulseUploadRoot();
     var requestFolder = Path.Combine(uploadRoot, "project-intake", intakeId.ToString("N"));
     Directory.CreateDirectory(requestFolder);
@@ -15980,6 +15981,18 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request,
         }
 
         var userId = sessionUserId.Value;
+
+        /* SECURITY_20260729_HOLIDAY_IMPORT_AUTHORITY */
+        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "access_denied",
+                message = "Holiday imports are restricted to Administrators and Project Team Coordinators."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
         Guid batchId;
 
         await using (var batchCommand = new NpgsqlCommand("""
@@ -17065,7 +17078,7 @@ app.MapGet("/api/admin/roles", async () =>
     return Results.Ok(new { count = roles.Count, roles });
 });
 
-app.MapGet("/api/admin/users", async () =>
+app.MapGet("/api/admin/users", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -17073,6 +17086,16 @@ app.MapGet("/api/admin/users", async () =>
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+
+    /* SECURITY_20260729_ADMIN_USER_DIRECTORY */
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "admin_required",
+            message = "The user directory is restricted to Administrators and Super Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
 
     var users = new List<object>();
     await using var command = new NpgsqlCommand("""
@@ -17143,6 +17166,49 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, 
         }
 
         var adminUserId = sessionAdminUserId.Value;
+
+        /* SECURITY_20260729_LEGACY_ROLE_ASSIGNMENT_AUTHORITY */
+        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "admin_required",
+                message = "Role assignment is restricted to Administrators and Super Administrators."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (roleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
+            && !await ProjectPulseViewAsUserHasRoleAsync(connection, adminUserId, "SUPER_ADMINISTRATOR"))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_required",
+                message = "Only a Super Administrator can grant the Super Administrator role."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        await using (var roleValidationCommand = new NpgsqlCommand("""
+            SELECT COUNT(*)
+            FROM app_roles
+            WHERE is_active = TRUE
+              AND role_code = ANY(@role_codes);
+            """, connection, transaction))
+        {
+            roleValidationCommand.Parameters.AddWithValue("role_codes", roleCodes);
+            var knownRoleCount = Convert.ToInt32(await roleValidationCommand.ExecuteScalarAsync() ?? 0);
+            if (knownRoleCount != roleCodes.Length)
+            {
+                await transaction.RollbackAsync();
+                return Results.BadRequest(new
+                {
+                    status = "unknown_role_code",
+                    message = "One or more supplied role codes are unknown or inactive."
+                });
+            }
+        }
+
         Guid targetUserId;
 
         await using (var userCommand = new NpgsqlCommand("SELECT user_id FROM app_users WHERE lower(email) = lower(@email);", connection, transaction))
@@ -17151,9 +17217,29 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, 
             var result = await userCommand.ExecuteScalarAsync();
             if (result is null)
             {
+                await transaction.RollbackAsync();
                 return Results.NotFound(new { status = "not_found", message = $"No user found for {request.Email}." });
             }
             targetUserId = (Guid)result;
+        }
+
+        var previousRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { targetUserId });
+        var previousRoleCodes = previousRoleCodesByUser[targetUserId];
+        var actorRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { adminUserId });
+        var actorIsSuperAdministrator = actorRoleCodesByUser[adminUserId]
+            .Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase);
+
+        if (previousRoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
+            && !actorIsSuperAdministrator)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_target_protected",
+                message = "Only a Super Administrator can change roles for an existing Super Administrator."
+            }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         await using (var deactivateCommand = new NpgsqlCommand("""
@@ -17187,6 +17273,21 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, 
             assignCommand.Parameters.AddWithValue("role_code", roleCode);
             await assignCommand.ExecuteNonQueryAsync();
         }
+
+        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { targetUserId });
+        await InsertProjectPulseRoleAuditAsync(
+            connection,
+            transaction,
+            adminUserId,
+            targetUserId,
+            "user_roles_updated_legacy",
+            string.IsNullOrWhiteSpace(request.Reason)
+                ? "Role updated from Project Pulse role administration"
+                : request.Reason.Trim(),
+            previousRoleCodes,
+            currentRoleCodesByUser[targetUserId],
+            httpContext);
 
         await transaction.CommitAsync();
         return Results.Ok(new { status = "roles_updated", email = request.Email.Trim(), roleCodes });
@@ -17289,10 +17390,10 @@ async Task<bool> ApplyProjectPulseViewAsContextAsync(HttpContext context, Projec
     }
     /* 052B_ALLOW_SUPER_ADMINISTRATOR_VIEW_AS_END */
 
+    /* SECURITY_20260729_VIEW_AS_ALL_WRITES_BLOCKED */
     if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
         && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase)
-        && !path.StartsWith("/api/auth/", StringComparison.OrdinalIgnoreCase))
+        && !string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         await context.Response.WriteAsJsonAsync(new
@@ -18097,7 +18198,7 @@ app.MapPost("/api/auth/password-reset/request", async (PasswordResetRequest requ
     }
 });
 
-app.MapGet("/api/auth/local-accounts", async () =>
+app.MapGet("/api/auth/local-accounts", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -18105,6 +18206,16 @@ app.MapGet("/api/auth/local-accounts", async () =>
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+
+    /* SECURITY_20260729_ADMIN_LOCAL_ACCOUNT_DIRECTORY */
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    {
+        return Results.Json(new
+        {
+            status = "admin_required",
+            message = "Local account administration is restricted to Administrators and Super Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
 
     var accounts = new List<object>();
     await using var command = new NpgsqlCommand("""
@@ -20880,18 +20991,58 @@ app.MapPost("/api/admin/user-admin/users/roles", async (UserAdminRoleUpdateReque
 
     try
     {
-        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
-            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Json(new
+            {
+                status = "admin_required",
+                message = "Role assignment is restricted to Administrators and Super Administrators."
+            }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+        if (sessionUserId is null)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
         var cleanRoleCodes = (request.RoleCodes ?? new List<string>())
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .Select(code => code.Trim().ToUpperInvariant())
             .Distinct()
             .ToList();
+
+        var previousRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { request.UserId });
+        var previousRoleCodes = previousRoleCodesByUser[request.UserId];
+        var actorRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { sessionUserId.Value });
+        var actorIsSuperAdministrator = actorRoleCodesByUser[sessionUserId.Value]
+            .Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase);
+
+        if (previousRoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
+            && !actorIsSuperAdministrator)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_target_protected",
+                message = "Only a Super Administrator can change roles for an existing Super Administrator."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (cleanRoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
+            && !actorIsSuperAdministrator)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_required",
+                message = "Only a Super Administrator can grant the Super Administrator role."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
 
         if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
@@ -20947,6 +21098,19 @@ app.MapPost("/api/admin/user-admin/users/roles", async (UserAdminRoleUpdateReque
             await roleCommand.ExecuteNonQueryAsync();
         }
 
+        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { request.UserId });
+        await InsertProjectPulseRoleAuditAsync(
+            connection,
+            transaction,
+            sessionUserId.Value,
+            request.UserId,
+            "user_roles_updated",
+            string.IsNullOrWhiteSpace(request.Reason) ? "Updated from User Administration" : request.Reason.Trim(),
+            previousRoleCodes,
+            currentRoleCodesByUser[request.UserId],
+            httpContext);
+
         await transaction.CommitAsync();
 
         return Results.Ok(new
@@ -20988,9 +21152,37 @@ app.MapPost("/api/admin/user-admin/local-password", async (UserAdminLocalPasswor
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    /* SECURITY_20260729_LOCAL_PASSWORD_ADMIN_AND_BREAK_GLASS */
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
     {
-        return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new
+        {
+            status = "admin_required",
+            message = "Local password changes are restricted to Administrators and Super Administrators."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    var breakGlassAccount = Environment.GetEnvironmentVariable("PROJECTPULSE_BREAK_GLASS_ACCOUNT")
+        ?? "ahmed.adeyemi@ussignal.local";
+
+    await using (var breakGlassCommand = new NpgsqlCommand("""
+        SELECT email
+        FROM app_users
+        WHERE user_id = @user_id
+        LIMIT 1;
+        """, connection))
+    {
+        breakGlassCommand.Parameters.AddWithValue("user_id", request.UserId);
+        var targetEmail = (await breakGlassCommand.ExecuteScalarAsync())?.ToString() ?? string.Empty;
+
+        if (targetEmail.Equals(breakGlassAccount, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new
+            {
+                status = "break_glass_password_protected",
+                message = "The break-glass account password can only be changed through the approved offline recovery procedure."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
     }
 
     var passwordHash = HashProjectPulsePassword(request.TemporaryPassword);
@@ -21088,10 +21280,14 @@ app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreate
 
     try
     {
-        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
-            return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Json(new
+            {
+                status = "admin_required",
+                message = "Local user creation is restricted to Administrators and Super Administrators."
+            }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
@@ -21127,6 +21323,22 @@ app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreate
         if (cleanRoleCodes.Count == 0)
         {
             cleanRoleCodes.Add("ENGINEERING");
+        }
+
+        var actorRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { sessionUserId.Value });
+        var actorIsSuperAdministrator = actorRoleCodesByUser[sessionUserId.Value]
+            .Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase);
+
+        if (cleanRoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)
+            && !actorIsSuperAdministrator)
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_required",
+                message = "Only a Super Administrator can create another Super Administrator."
+            }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         await using (var userCommand = new NpgsqlCommand("""
@@ -21229,6 +21441,19 @@ app.MapPost("/api/admin/user-admin/users/local", async (UserAdminLocalUserCreate
             roleCommand.Parameters.AddWithValue("role_code", roleCode);
             await roleCommand.ExecuteNonQueryAsync();
         }
+
+        var createdRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { userId });
+        await InsertProjectPulseRoleAuditAsync(
+            connection,
+            transaction,
+            sessionUserId.Value,
+            userId,
+            "local_user_created_with_roles",
+            "Created from User Administration local user workflow.",
+            Array.Empty<string>(),
+            createdRoleCodesByUser[userId],
+            httpContext);
 
         await transaction.CommitAsync();
 
@@ -21622,18 +21847,22 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
-    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
     {
         return Results.Json(new
         {
-            status = "access_denied",
-            message = "User Administration is restricted to administrators and project/team coordinators."
+            status = "admin_required",
+            message = "Bulk role updates are restricted to Administrators and Super Administrators."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
 
-    if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))
+    if (userIds.Contains(sessionUserId.Value))
     {
         if (roleMode == "replace" && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))
         {
@@ -21658,6 +21887,36 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
     try
     {
+        var previousRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, userIds);
+        var actorRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            connection, transaction, new[] { sessionUserId.Value });
+        var actorIsSuperAdministrator = actorRoleCodesByUser[sessionUserId.Value]
+            .Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase);
+
+        if (!actorIsSuperAdministrator
+            && previousRoleCodesByUser.Values.Any(roleCodes =>
+                roleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase)))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_target_protected",
+                message = "Only a Super Administrator can bulk-modify an existing Super Administrator."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!actorIsSuperAdministrator
+            && cleanRoleCodes.Contains("SUPER_ADMINISTRATOR", StringComparer.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync();
+            return Results.Json(new
+            {
+                status = "super_administrator_required",
+                message = "Only a Super Administrator can grant the Super Administrator role."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
         await using (var profileCommand = new NpgsqlCommand("""
             UPDATE app_users
             SET job_title = CASE WHEN @apply_job_title THEN NULLIF(@job_title, '') ELSE job_title END,
@@ -21756,6 +22015,28 @@ app.MapPost("/api/admin/user-admin/users/bulk-update", async (UserAdminBulkUpdat
 
                     await roleCommand.ExecuteNonQueryAsync();
                 }
+            }
+        }
+
+        if (roleMode != "none")
+        {
+            var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+                connection, transaction, userIds);
+
+            foreach (var userId in userIds)
+            {
+                await InsertProjectPulseRoleAuditAsync(
+                    connection,
+                    transaction,
+                    sessionUserId.Value,
+                    userId,
+                    "user_roles_bulk_updated",
+                    string.IsNullOrWhiteSpace(request.Reason)
+                        ? "Bulk update from User Administration"
+                        : request.Reason.Trim(),
+                    previousRoleCodesByUser[userId],
+                    currentRoleCodesByUser[userId],
+                    httpContext);
             }
         }
 
@@ -24544,7 +24825,7 @@ app.MapPost("/api/project-allocation-info/documents/upload", async (HttpContext 
     Directory.CreateDirectory(projectFolder);
 
     var originalFileName = SanitizeProjectPulseFileName(file.FileName);
-    var storedFileName = $"{documentType}_{Guid.NewGuid():N}_{originalFileName}";
+    var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(originalFileName)}"; // SECURITY_20260729_SAFE_PROJECT_DOCUMENT_PATH_COMPONENT
     var storagePath = Path.Combine(projectFolder, storedFileName);
 
     await using (var stream = File.Create(storagePath))
@@ -26300,7 +26581,7 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
 
     var objectId = ProjectPulseJsonString(payload, "oid") ?? "";
     var preferredUsername = ProjectPulseJsonString(payload, "preferred_username");
-    var email = ProjectPulseJsonString(payload, "email") ?? preferredUsername ?? requestedEmail ?? "";
+    var email = ProjectPulseJsonString(payload, "email") ?? preferredUsername ?? ""; // SECURITY_20260729_NO_LOGIN_HINT_IDENTITY_FALLBACK
     var displayName = ProjectPulseJsonString(payload, "name") ?? email;
 
     if (string.IsNullOrWhiteSpace(objectId) || string.IsNullOrWhiteSpace(email))
@@ -32063,11 +32344,25 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         previewUrl += "&weekStart=" + Uri.EscapeDataString(weekStart.Value.ToString("yyyy-MM-dd"));
     }
 
-    var baseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
+    /* SECURITY_20260729_FIXED_INTERNAL_API_ORIGIN */
+    var internalApiBaseUrl = Environment.GetEnvironmentVariable("PROJECTPULSE_INTERNAL_API_BASE_URL")
+        ?? "http://127.0.0.1:5080";
+
+    if (!Uri.TryCreate(internalApiBaseUrl, UriKind.Absolute, out var internalApiBaseUri)
+        || (internalApiBaseUri.Scheme != Uri.UriSchemeHttp && internalApiBaseUri.Scheme != Uri.UriSchemeHttps)
+        || !string.IsNullOrEmpty(internalApiBaseUri.UserInfo))
+    {
+        return Results.Json(new
+        {
+            status = "internal_api_origin_invalid",
+            message = "The configured internal API origin is invalid."
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
     using var client = new HttpClient();
     client.DefaultRequestHeaders.Add("X-ProjectPulse-Session", httpContext.Request.Headers["X-ProjectPulse-Session"].FirstOrDefault() ?? "");
 
-    var previewJson = await client.GetStringAsync(baseUrl + previewUrl);
+    var previewJson = await client.GetStringAsync(new Uri(internalApiBaseUri, previewUrl));
     using var previewDocument = JsonDocument.Parse(previewJson);
     var previewRoot = previewDocument.RootElement;
 
@@ -33734,6 +34029,16 @@ app.MapPost("/api/production/notifications/system", async (HttpContext httpConte
     var body = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
     var sourceRoute = root.TryGetProperty("sourceRoute", out var routeElement) ? routeElement.GetString() ?? "" : "";
     var actionUrl = root.TryGetProperty("actionUrl", out var actionElement) ? actionElement.GetString() ?? "" : "";
+
+    /* SECURITY_20260729_NOTIFICATION_URL_ALLOWLIST */
+    if (!SecurityHardeningModule.IsSafeActionUrl(actionUrl))
+    {
+        return Results.Json(new
+        {
+            status = "unsafe_url_rejected",
+            message = "Only same-origin relative routes or explicit HTTPS destinations are allowed."
+        }, statusCode: StatusCodes.Status400BadRequest);
+    }
 
     var targetRoleCodes = new List<string>();
     if (root.TryGetProperty("targetRoleCodes", out var rolesElement) && rolesElement.ValueKind == JsonValueKind.Array)
@@ -36953,6 +37258,13 @@ static async System.Threading.Tasks.Task<(bool Sent, string Status, string Detai
     return (false, "queued_not_sent_missing_mailer", "No SMTP host or sendmail binary is configured. Message was written to the closeout email outbox.", outboxPath);
 }
 
+static string ProjectPulse041ASanitizeHeaderValue(string? value)
+{
+    return System.Text.RegularExpressions.Regex
+        .Replace(value ?? string.Empty, @"[\r\n]+", " ")
+        .Trim();
+}
+
 static string ProjectPulse041ABuildRawEmail(
     System.Collections.Generic.List<(string Role, string Name, string Email)> recipients,
     System.Collections.Generic.List<(string Role, string Name, string Email)> ccRecipients,
@@ -36962,15 +37274,15 @@ static string ProjectPulse041ABuildRawEmail(
 {
     var builder = new System.Text.StringBuilder();
 
-    builder.AppendLine($"From: {from}");
-    builder.AppendLine($"To: {string.Join(", ", recipients.Select(recipient => recipient.Email))}");
+    builder.AppendLine($"From: {ProjectPulse041ASanitizeHeaderValue(from)}");
+    builder.AppendLine($"To: {string.Join(", ", recipients.Select(recipient => ProjectPulse041ASanitizeHeaderValue(recipient.Email)))}");
 
     if (ccRecipients.Count > 0)
     {
-        builder.AppendLine($"Cc: {string.Join(", ", ccRecipients.Select(recipient => recipient.Email))}");
+        builder.AppendLine($"Cc: {string.Join(", ", ccRecipients.Select(recipient => ProjectPulse041ASanitizeHeaderValue(recipient.Email)))}");
     }
 
-    builder.AppendLine($"Subject: {subject}");
+    builder.AppendLine($"Subject: {ProjectPulse041ASanitizeHeaderValue(subject)}");
     builder.AppendLine("MIME-Version: 1.0");
     builder.AppendLine("Content-Type: text/plain; charset=utf-8");
     builder.AppendLine();
@@ -37134,6 +37446,17 @@ static string ProjectPulseCsvField(object? value)
     };
 
     text = text.Replace("\r", " ").Replace("\n", " ").Replace("\"", "\"\"");
+
+    /* SECURITY_20260729_CSV_FORMULA_NEUTRALIZATION */
+    var formulaCandidate = text.TrimStart();
+    if (formulaCandidate.StartsWith("=", StringComparison.Ordinal)
+        || formulaCandidate.StartsWith("+", StringComparison.Ordinal)
+        || formulaCandidate.StartsWith("-", StringComparison.Ordinal)
+        || formulaCandidate.StartsWith("@", StringComparison.Ordinal))
+    {
+        text = "'" + text;
+    }
+
     return $"\"{text}\"";
 }
 
@@ -39441,6 +39764,88 @@ async Task<ProjectPulseAdministratorContext> ResolveProjectPulseAdministratorCon
     return new ProjectPulseAdministratorContext(isAdministrator, userId, email);
 }
 
+async Task<Dictionary<Guid, string[]>> LoadProjectPulseActiveRoleCodesAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction transaction,
+    IEnumerable<Guid> userIds)
+{
+    var normalizedUserIds = userIds.Distinct().ToArray();
+    var rolesByUser = normalizedUserIds.ToDictionary(userId => userId, _ => new List<string>());
+
+    if (normalizedUserIds.Length == 0)
+    {
+        return new Dictionary<Guid, string[]>();
+    }
+
+    await using var command = new NpgsqlCommand("""
+        SELECT ura.user_id, r.role_code
+        FROM app_user_role_assignments ura
+        JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
+        WHERE ura.user_id = ANY(@user_ids)
+          AND ura.is_active = TRUE
+        ORDER BY ura.user_id, r.display_order, r.role_code;
+        """, connection, transaction);
+    command.Parameters.AddWithValue("user_ids", normalizedUserIds);
+
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        rolesByUser[reader.GetGuid(0)].Add(reader.GetString(1));
+    }
+
+    return rolesByUser.ToDictionary(
+        pair => pair.Key,
+        pair => pair.Value.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(roleCode => roleCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray());
+}
+
+async Task InsertProjectPulseRoleAuditAsync(
+    NpgsqlConnection connection,
+    NpgsqlTransaction transaction,
+    Guid actorUserId,
+    Guid targetUserId,
+    string action,
+    string reason,
+    IEnumerable<string> oldRoleCodes,
+    IEnumerable<string> newRoleCodes,
+    HttpContext httpContext)
+{
+    var oldValue = JsonSerializer.Serialize(new
+    {
+        roleCodes = oldRoleCodes.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(roleCode => roleCode, StringComparer.OrdinalIgnoreCase).ToArray()
+    });
+    var newValue = JsonSerializer.Serialize(new
+    {
+        roleCodes = newRoleCodes.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(roleCode => roleCode, StringComparer.OrdinalIgnoreCase).ToArray(),
+        reason,
+        route = httpContext.Request.Path.Value ?? string.Empty
+    });
+
+    await using var command = new NpgsqlCommand("""
+        INSERT INTO audit_logs (
+            actor_user_id, action, entity_type, entity_id,
+            old_value, new_value, ip_address, user_agent
+        )
+        VALUES (
+            @actor_user_id, @action, 'app_user_roles', @entity_id,
+            CAST(@old_value AS jsonb), CAST(@new_value AS jsonb),
+            NULLIF(@ip_address, '')::inet, @user_agent
+        );
+        """, connection, transaction);
+    command.Parameters.AddWithValue("actor_user_id", actorUserId);
+    command.Parameters.AddWithValue("action", action);
+    command.Parameters.AddWithValue("entity_id", targetUserId);
+    command.Parameters.AddWithValue("old_value", oldValue);
+    command.Parameters.AddWithValue("new_value", newValue);
+    command.Parameters.AddWithValue("ip_address", httpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+    command.Parameters.AddWithValue("user_agent", httpContext.Request.Headers.UserAgent.ToString());
+    await command.ExecuteNonQueryAsync();
+}
+
+// SECURITY_20260729_TRANSACTIONAL_ROLE_AUDIT_HELPERS
 async Task InsertProjectPulseAuditEventAsync(
     NpgsqlConnection connection,
     Guid? actorUserId,

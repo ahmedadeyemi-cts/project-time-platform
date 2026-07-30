@@ -2,6 +2,7 @@
 import json
 import os
 import smtplib
+import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -13,11 +14,23 @@ if len(sys.argv) != 5:
 
 subject, to_recipients, cc_recipients, body_file = sys.argv[1:]
 
+
 def split_recipients(value):
     return [item.strip() for item in (value or "").replace(";", ",").split(",") if item.strip()]
 
+
+def reject_header_injection(value, field_name):
+    if "\r" in value or "\n" in value:
+        print(f"Invalid {field_name}: email header values cannot contain line breaks.", file=sys.stderr)
+        sys.exit(13)
+
+
 to_list = split_recipients(to_recipients)
 cc_list = split_recipients(cc_recipients)
+
+reject_header_injection(subject, "subject")
+for recipient in to_list + cc_list:
+    reject_header_injection(recipient, "recipient")
 
 if not to_list:
     print("No email recipients provided.", file=sys.stderr)
@@ -94,6 +107,16 @@ if not sender:
     print("SMTP sender/from address is not configured.", file=sys.stderr)
     sys.exit(11)
 
+reject_header_injection(sender, "sender")
+
+if username and not password:
+    print("SMTP username is configured without a password.", file=sys.stderr)
+    sys.exit(14)
+
+if (username or password) and not use_tls:
+    print("Credentialed SMTP requires verified TLS and cannot use plaintext transport.", file=sys.stderr)
+    sys.exit(15)
+
 message = EmailMessage()
 message["From"] = sender
 message["To"] = ", ".join(to_list)
@@ -105,7 +128,8 @@ message.set_content(body)
 with smtplib.SMTP(host, port, timeout=30) as smtp:
     smtp.ehlo()
     if use_tls:
-        smtp.starttls()
+        tls_context = ssl.create_default_context()
+        smtp.starttls(context=tls_context)
         smtp.ehlo()
     if username:
         smtp.login(username, password)

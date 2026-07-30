@@ -12,7 +12,9 @@ check_url() {
   local url="$2"
   local expected="$3"
 
-  local body_file="/tmp/projectpulse-021-smoke-body.txt"
+  local body_file
+  body_file="$(mktemp "${TMPDIR:-/tmp}/projectpulse-021-smoke-body.XXXXXX")"
+  trap 'rm -f "$body_file"' RETURN
   local code
   local preview
 
