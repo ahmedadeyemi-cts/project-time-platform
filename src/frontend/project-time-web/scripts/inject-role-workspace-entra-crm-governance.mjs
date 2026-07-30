@@ -133,9 +133,9 @@ function injectEntra(source) {
   if (!source.includes('ENTRA_EXPIRATION_GOVERNANCE_PANEL_MOUNT')) {
     source = replaceOnce(
       source,
-      '      <div className="entra-admin-panel">',
-      `      {/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_MOUNT */}\n      <EntraSecretExpirationGovernancePanel />\n\n      <div className="entra-admin-panel">`,
-      'Entra administration panel',
+      '      <section className="entra-secret-gate-grid" aria-label="Credential mutation gates">',
+      `      {/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_MOUNT */}\n      <EntraSecretExpirationGovernancePanel />\n\n      <section className="entra-secret-gate-grid" aria-label="Credential mutation gates">`,
+      'Entra credential mutation gate grid',
     );
   }
 
