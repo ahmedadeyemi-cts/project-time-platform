@@ -6,6 +6,11 @@ public static partial class ScopedRolePolicyModule
 {
     public static WebApplication MapCombinedModulePublicReadinessEndpoint(this WebApplication app)
     {
+        // This combined-module composition root is already registered exactly once
+        // before app.Run(). Register the additive Module 001/002 operational routes
+        // here so the generated Program source does not need another cross-cutting edit.
+        app.MapPendingApprovalWorkEndpoints();
+        app.MapModule001NonProjectTaskEndpoints();
         app.MapGet("/health/combined-modules", CombinedPublicReadinessAsync);
         app.MapGet("/api/public/combined-modules/readiness", CombinedPublicReadinessAsync);
         return app;
