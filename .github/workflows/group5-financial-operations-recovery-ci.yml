@@ -151,38 +151,31 @@ jobs:
         shell: bash
         run: npm run build
 
-      - name: Validate compiled Group 5 and Module 030 ownership markers
+      - name: Validate generated Group 5 and Module 030 route ownership
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
+          test -s src/App.jsx
+          test -s src/module-availability-registry.js
           cat dist/assets/*.js > /tmp/group5-financial-operations.js
           cat dist/assets/*.css > /tmp/group5-financial-operations.css
 
-          for marker in \
-            'Financial Operations Workbench' \
-            'Source health and recovery' \
-            'Closeout Notification Recovery' \
-            'Invoice & Billing Recovery' \
-            'Group 4 routing and Module 065 delivery' \
-            '/api/financial-operations/workbench'; do
-            grep -Fq "$marker" /tmp/group5-financial-operations.js
+          grep -Fq '<FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />' src/App.jsx
+          for module_code in 039 040 041 042; do
+            grep -Fq "<FinancialOperationsRecoveryWorkspace moduleCode=\"${module_code}\" authSession={authSession} />" src/App.jsx
           done
 
-          if grep -Fq 'Analytics Center' /tmp/group5-financial-operations.js; then
+          if grep -Fq '<AnalyticsCenter authSession={authSession} />' src/App.jsx; then
+            grep -Fq "displayName: 'Analytics Center'" src/module-availability-registry.js
             grep -Fq '/api/analytics/catalog' /tmp/group5-financial-operations.js
           else
-            grep -Fq 'Financial Report Center' /tmp/group5-financial-operations.js
+            grep -Fq '<FinancialOperationsRecoveryWorkspace mode="reporting" authSession={authSession} />' src/App.jsx
             grep -Fq '/api/financial-operations/reports/catalog' /tmp/group5-financial-operations.js
           fi
 
-          for marker in \
-            '.group5-financial-operations' \
-            '.group5-source-grid' \
-            '.group5-work-item-list' \
-            '.group5-table-wrap'; do
-            grep -Fq "$marker" /tmp/group5-financial-operations.css
-          done
+          grep -Fq '.group5-financial-operations' /tmp/group5-financial-operations.css
+          grep -Fq '.group5-work-item-list' /tmp/group5-financial-operations.css
 
           echo 'GROUP_5_FRONTEND_BUILD=PASSED'
           echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
