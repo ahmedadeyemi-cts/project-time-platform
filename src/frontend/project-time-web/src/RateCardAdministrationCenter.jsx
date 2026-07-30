@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import './rate-card-administration-center.css';
-import UnifiedProjectFinancialWorkspace from './UnifiedProjectFinancialWorkspace.jsx';
 
 const emptyCardForm = {
   rateCardId: '',
@@ -367,9 +366,6 @@ export default function RateCardAdministrationCenter() {
 
   return (
     <section className="rate-card-admin-center">
-      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
-      <UnifiedProjectFinancialWorkspace workspace="rate-card" />
-      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="rate-card-admin-header">
         <div>
           <p className="eyebrow">Rate Card Administration</p>

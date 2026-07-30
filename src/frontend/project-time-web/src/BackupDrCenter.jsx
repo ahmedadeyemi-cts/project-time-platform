@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import './backup-dr-center.css';
-import PlatformResiliencePlanningPanel from './PlatformResiliencePlanningPanel.jsx';
 
 
 /* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_FRONTEND_START */
@@ -453,9 +452,6 @@ function BackupDrCenter({
 
   return (
     <section id="backup-dr-center" className="panel backup-dr-center">
-      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_START */}
-      <PlatformResiliencePlanningPanel moduleCode="014" authSession={authSession} />
-      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_END */}
       {/* 043C_PROFILE_PREFERENCES_BACKUP_READINESS_UI_START */}
       <section className="profile-preferences-backup-readiness-card">
         <div>

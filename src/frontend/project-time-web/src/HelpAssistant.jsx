@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
-import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
-import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
 
 const fallbackTopics = [
   {
@@ -14,7 +12,7 @@ const fallbackTopics = [
   },
   {
     keywords: ['guide', 'help', 'manual', 'documentation', 'module 999', '999'],
-    title: 'Use the System User Guide',
+    title: 'Use the complete ProjectPulse guide',
     summary:
       'Module 999 is the authoritative user guide for global functions, installed modules, role expectations, page controls, step-by-step workflows, statuses, troubleshooting, and navigation. Pulse AI uses approved documentation and current permission evidence when the detailed Help service is available.',
     navigationTargets: ['#user-guide', '#work-task-builder']
@@ -118,7 +116,6 @@ function unique(values) {
 async function loadPulseAiPlan(question) {
   const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
   url.searchParams.set('question', question);
-  const answerPreferences = applyHelpAnswerPreferences(url, question);
   const response = await fetch(`${url.pathname}${url.search}`, {
     method: 'GET',
     cache: 'no-store',
@@ -128,7 +125,7 @@ async function loadPulseAiPlan(question) {
   if (!response.ok) {
     throw new Error(payload.message || `Pulse AI Help returned HTTP ${response.status}.`);
   }
-  return { ...payload, answerPreferences };
+  return payload;
 }
 
 function navigateTo(target, close) {
@@ -172,17 +169,9 @@ function DetailedAssistantAnswer({ payload, close }) {
   const semanticQuery = plan.semanticQuery ?? {};
   const runtime = payload?.runtimeExecution ?? {};
   const answerContract = payload?.answerContract ?? {};
-  /* GROUP_7_HELP_ANSWER_DETAIL_START */
-  const answerPreferences = payload?.answerPreferences ?? { detailLevel: 'standard' };
-  const detailLevel = answerPreferences.detailLevel ?? 'standard';
-  const conciseAnswer = detailLevel === 'concise';
-  const executiveAnswer = detailLevel === 'executive';
-  const expandedAnswer = ['detailed', 'highly_detailed', 'technical', 'step_by_step'].includes(detailLevel);
-  const technicalAnswer = ['highly_detailed', 'technical'].includes(detailLevel);
-  /* GROUP_7_HELP_ANSWER_DETAIL_END */
 
   return (
-    <div className="help-detailed-answer" data-answer-detail={detailLevel}>
+    <div className="help-detailed-answer">
       {direct ? (
         <>
           <div className="help-answer-heading">
@@ -190,8 +179,8 @@ function DetailedAssistantAnswer({ payload, close }) {
             <strong>{direct.title}</strong>
           </div>
           <p className="help-answer-summary">{direct.summary}</p>
-          {!executiveAnswer ? <AnswerList heading="Detailed procedure" values={direct.detailedSteps} /> : null}
-          {!conciseAnswer ? <AnswerList heading="Important rules" values={direct.importantRules} /> : null}
+          <AnswerList heading="Detailed procedure" values={direct.detailedSteps} />
+          <AnswerList heading="Important rules" values={direct.importantRules} />
           <div className="help-answer-evidence">
             <span>Source modules: {unique(direct.sourceModules).join(', ') || 'Not recorded'}</span>
             <span>Generated: {plan.generatedAt ? new Date(plan.generatedAt).toLocaleString() : 'Not recorded'}</span>
@@ -236,21 +225,12 @@ function DetailedAssistantAnswer({ payload, close }) {
         </>
       )}
 
-      <div className="help-answer-preference-evidence">
-        <span>Answer detail: {titleFrom(detailLevel)}</span>
-        <span>Preference source: {titleFrom(answerPreferences.preferenceSource ?? 'saved_preference')}</span>
-        {answerPreferences.includeRepositoryContext ? <span>Repository context requested</span> : null}
-        {answerPreferences.includeAssumptions ? <span>Assumptions requested</span> : null}
-        {answerPreferences.includeSourceCitations ? <span>Source citations requested</span> : null}
-      </div>
-      {technicalAnswer ? (
       <details className="help-answer-contract">
         <summary>Answer quality contract</summary>
         <AnswerList heading="Minimum sections" values={answerContract.minimumSections} />
         <AnswerList heading="Required qualities" values={answerContract.mustInclude} />
         {answerContract.unsupportedClaimPolicy ? <p><strong>Unsupported claims:</strong> {answerContract.unsupportedClaimPolicy}</p> : null}
       </details>
-      ) : null}
     </div>
   );
 }
@@ -386,7 +366,7 @@ export default function HelpAssistant() {
 
           <div className="help-quick-actions">
             <button className="help-full-guide-button" type="button" onClick={openCompleteGuide}>
-              Module 999 — System User Guide
+              Module 999 — Complete User Guide
             </button>
             <button className="help-pulse-ai-button" type="button" onClick={openPulseAi}>
               Module 011 — Pulse AI Workbench
@@ -396,9 +376,6 @@ export default function HelpAssistant() {
             </button>
           </div>
 
-          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}
-          <HelpGovernancePanel />
-          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}
           <div className="help-messages">
             {messages.map((message, index) => (
               message.role === 'user' ? (
