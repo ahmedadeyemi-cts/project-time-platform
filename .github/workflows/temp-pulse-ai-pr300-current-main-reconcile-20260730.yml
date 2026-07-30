@@ -42,7 +42,8 @@ jobs:
           CURRENT_MAIN="$(git rev-parse origin/main)"
           EXPECTED_REPAIR_BASE='b579a56140e302c96ca4af363611fa1e2a9b9734'
           git cat-file -e "$EXPECTED_REPAIR_BASE^{commit}"
-          [[ "$(git merge-base "$CURRENT_MAIN" HEAD)" == "$EXPECTED_REPAIR_BASE" ]]
+          git merge-base --is-ancestor "$EXPECTED_REPAIR_BASE" HEAD
+          git merge-base --is-ancestor "$EXPECTED_REPAIR_BASE" "$CURRENT_MAIN"
           test ! -e .github/workflows/repair-pulse-ai-private-rag-post-merge-20260730.yml
           test ! -e scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
           test ! -e scripts/repair-pulse-ai-private-rag-post-merge-trigger.txt
