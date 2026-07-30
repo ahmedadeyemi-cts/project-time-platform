@@ -38,6 +38,7 @@ function rebrandVisibleText(content) {
 
 const visibleFiles = [
   'App.jsx',
+  'App.Module001.g.jsx',
   'HelpAssistant.jsx',
   'PulseAiCenter.jsx',
   'PulseAiMissionControl.jsx',
@@ -156,8 +157,11 @@ function rebrandCelarValue(value) {
     `      setResult(payload.result);`,
     `      setResult(rebrandCelarValue(payload.result));`,
     'workbench_answer_rebrand');
-  content = content.replaceAll(`setConversationDetail(await getJson(`, `setConversationDetail(rebrandCelarValue(await getJson(`);
-  content = content.replaceAll(`encodeURIComponent(id)}\`));`, `encodeURIComponent(id)}\`)));`);
+  content = replaceRequired(
+    content,
+    `    try { setConversationDetail(await getJson(\`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(id)}\`)); }`,
+    `    try { setConversationDetail(rebrandCelarValue(await getJson(\`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(id)}\`))); }`,
+    'workbench_history_rebrand');
   save(relative, content);
 }
 
