@@ -18,6 +18,7 @@ const BODY_NOTICE_ID = 'projectpulse-module-011-retirement-notice';
 const RETIRED_MODULE_NUMBERS = new Set(
   RETIRED_PROJECTPULSE_MODULES.map((module) => module.moduleNumber.toUpperCase())
 );
+const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);
 
 function isSameOriginApiRequest(input) {
   try {
@@ -79,7 +80,11 @@ function installPermissionNavigationGuard(nativeFetch) {
 
   let deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
   let permissionEvidenceState = sessionToken() ? 'loading' : 'anonymous';
-  let effectiveActor = { roleCodes: [], isViewAs: Boolean(activeViewAs()) };
+  let effectiveActor = {
+    roleCodes: [],
+    isViewAs: Boolean(activeViewAs()),
+    permanentFullControl: false
+  };
   let observer = null;
   let applyTimer = 0;
   let moreSearchValue = '';
@@ -275,6 +280,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       state: permissionEvidenceState,
       isViewAs: effectiveActor.isViewAs,
       roleCodes: [...effectiveActor.roleCodes],
+      permanentFullControl: Boolean(effectiveActor.permanentFullControl),
       deniedModuleNumbers: [...deniedModuleNumbers],
       retiredModuleNumbers: [...RETIRED_MODULE_NUMBERS],
       evidenceContract: 'projectpulse-rbac-v1',
@@ -311,7 +317,8 @@ function installPermissionNavigationGuard(nativeFetch) {
       return {
         permissionEvidenceState,
         search: moreSearchValue,
-        isViewAs: effectiveActor.isViewAs
+        isViewAs: effectiveActor.isViewAs,
+        permanentFullControl: Boolean(effectiveActor.permanentFullControl)
       };
     }
   };
@@ -321,7 +328,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     if (!token) {
       deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
       permissionEvidenceState = 'anonymous';
-      effectiveActor = { roleCodes: [], isViewAs: false };
+      effectiveActor = { roleCodes: [], isViewAs: false, permanentFullControl: false };
       applyVisibility();
       publishNavigationState();
       return;
@@ -360,18 +367,19 @@ function installPermissionNavigationGuard(nativeFetch) {
       let actorRoles = normalizedRoleCodes(bootstrap?.actor?.roleCodes);
       if (viewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs.roleCodes);
       const roleSet = new Set(actorRoles);
+      const actualSuperAdministrator = !viewAs
+        && actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode));
       const activeModuleNumbers = new Set(matrix.modules
         .map((module) => String(module?.moduleCode || '').trim().toUpperCase())
         .filter(Boolean));
       const denied = new Set(RETIRED_MODULE_NUMBERS);
 
-      for (const module of PROJECTPULSE_MODULES) {
-        const number = String(module.moduleNumber || '').trim().toUpperCase();
-        if (number && !activeModuleNumbers.has(number)) denied.add(number);
-      }
-
-      const actualSuperAdministrator = !viewAs && roleSet.has('SUPER_ADMINISTRATOR');
       if (!actualSuperAdministrator) {
+        for (const module of PROJECTPULSE_MODULES) {
+          const number = String(module.moduleNumber || '').trim().toUpperCase();
+          if (number && !activeModuleNumbers.has(number)) denied.add(number);
+        }
+
         matrix.grants
           .filter((grant) => roleSet.has(String(grant.roleCode || '').toUpperCase()))
           .filter((grant) => String(grant.actionCode || '').toUpperCase() === 'MODULE_ACCESS')
@@ -381,13 +389,21 @@ function installPermissionNavigationGuard(nativeFetch) {
 
       deniedModuleNumbers = denied;
       permissionEvidenceState = 'ready';
-      effectiveActor = { roleCodes: actorRoles, isViewAs: Boolean(viewAs) };
+      effectiveActor = {
+        roleCodes: actorRoles,
+        isViewAs: Boolean(viewAs),
+        permanentFullControl: actualSuperAdministrator
+      };
       applyVisibility();
       publishNavigationState();
     } catch {
       deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
       permissionEvidenceState = 'unavailable';
-      effectiveActor = { roleCodes: [], isViewAs: Boolean(activeViewAs()) };
+      effectiveActor = {
+        roleCodes: [],
+        isViewAs: Boolean(activeViewAs()),
+        permanentFullControl: false
+      };
       applyVisibility();
       publishNavigationState();
     }
