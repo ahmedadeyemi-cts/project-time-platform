@@ -77,6 +77,18 @@ jobs:
           set -Eeuo pipefail
           python -m py_compile scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
           python scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = "timesheet.indexOf('_privateRag.GenerateTimesheetAsync') < timesheet.indexOf('_router.GenerateAsync')"
+          new = "timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')"
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('Expected the Timesheet private-first ordering validator marker exactly once.')
+          PY
           git diff --check
 
       - name: Validate private RAG and preserved Module 011 contracts
