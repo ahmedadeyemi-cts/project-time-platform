@@ -7,12 +7,15 @@ on:
       - feature/module-011-celar-ai-runtime-rebrand-20260730
     paths:
       - .github/workflows/temp-normalize-pulse-ai-validator-compatibility.yml
+  pull_request:
+    paths:
+      - .github/workflows/temp-normalize-pulse-ai-validator-compatibility.yml
 
 permissions:
   contents: write
 
 concurrency:
-  group: temp-normalize-pulse-ai-validator-${{ github.ref }}
+  group: temp-normalize-pulse-ai-validator-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -20,12 +23,14 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Normalize validators for reviewed later phases
         shell: bash
@@ -97,4 +102,4 @@ jobs:
             exit 0
           fi
           git commit -m 'Reconcile Pulse AI validators with reviewed later phases'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${TARGET_BRANCH}"
