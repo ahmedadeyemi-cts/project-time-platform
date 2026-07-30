@@ -14,7 +14,6 @@ WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 ERRORS: list[str] = []
 
 ALLOWED_CONTENT_WRITE_WORKFLOWS = {
-    "npm-postcss-security-fix-20260730.yml",
     "publish-pulse-ai-architecture-v1-1.yml",
 }
 CRITICAL_PINNED_WORKFLOWS = {
