@@ -9,6 +9,7 @@ on:
       - '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
       - '.github/workflows/pulse-ai-system-intelligence-ci.yml'
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+      - 'tests/test-pulse-ai-system-intelligence-migration-054.sh'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND.md'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
@@ -55,7 +56,7 @@ jobs:
           CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
+          ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Celar AI runtime-rebrand source scope:' >&2
