@@ -15,6 +15,18 @@ cat .github/module006-payload/part-* > "$WORK/payload.b64"
 base64 -d "$WORK/payload.b64" > "$WORK/payload.tar.gz"
 tar -xzf "$WORK/payload.tar.gz" -C .
 
+python3 - <<'PY'
+from pathlib import Path
+
+path = Path('src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs')
+source = path.read_text()
+old = "    moduleNumber: registryModule?.moduleNumber || moduleNumberForRoute(route, moduleNumberSource),"
+new = "    moduleNumber: moduleNumberForRoute(route, moduleNumberSource),"
+if old not in source:
+    raise SystemExit('Expected authoritative Module 006 directory projection marker was not found.')
+path.write_text(source.replace(old, new, 1))
+PY
+
 node --check src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs
 node --check src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
 for file in src/frontend/project-time-web/src/toyota-hyundai-pipeline-*.js; do
