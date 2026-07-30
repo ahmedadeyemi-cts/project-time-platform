@@ -1,7 +1,7 @@
 # ProjectPulse Platform Security Posture Baseline
 
-**Baseline date:** 2026-07-30  
-**Reviewed source:** `052aa1fcfa1909a0437969fe7ddcf753c7c7b2d9`  
+**Baseline date:** 2026-07-30
+**Reviewed source:** `052aa1fcfa1909a0437969fe7ddcf753c7c7b2d9`
 **Scope:** repository governance, CI/CD, identity and session handling, application authorization, dependencies, containers, migrations, mirroring, rollback, and operational evidence.
 
 ## Executive assessment
@@ -19,12 +19,15 @@ This baseline:
 3. adds an always-on repository posture workflow for pull requests and `main`;
 4. makes the primary CI workflow run on `main` pushes;
 5. adds NuGet and npm vulnerability gates;
-6. pins Actions used by critical CI, mirror, and rollback workflows to full commit SHAs;
-7. prevents CI/build validators from silently changing tracked source;
-8. restricts the corporate mirror to `main` and release tags without force/prune;
-9. limits rollback to immutable, existing API and web digests in the approved ACR;
-10. adds browser security headers at the web edge;
-11. prevents growth in the existing backend source-transform and frontend injector debt.
+6. upgrades the frontend build chain to patched Vite, React-plugin, and PostCSS releases;
+7. pins Actions used by critical CI, mirror, rollback, and module-regression workflows to full commit SHAs;
+8. prevents CI/build validators from silently changing tracked source;
+9. converts deterministic frontend build output into canonical reviewed source and proves subsequent builds are idempotent;
+10. restricts the corporate mirror to `main` and release tags without force/prune;
+11. limits rollback to immutable, existing API and web digests in the approved ACR;
+12. adds browser security headers at the web edge;
+13. prevents growth in the existing backend source-transform and frontend injector debt;
+14. makes specialized module validators distinguish owned-source, central-security convergence, and ordinary regression modes.
 
 ## Confirmed strengths
 
@@ -38,6 +41,8 @@ This baseline:
 - Test deployments use exact source commits and immutable image digests.
 - Migrations 051A, 052, and 053 were checksum-pinned, applied, and independently verified without changing operational row counts.
 - The private Pulse AI worker and private RAG remained disabled during the cumulative Test deployment.
+- NuGet and npm high-severity dependency checks run before release builds.
+- Frontend production builds are required to leave tracked source unchanged.
 
 ## P0 administrator actions
 
@@ -116,7 +121,7 @@ Until that migration is complete, the CSP and URL/output controls remain critica
 
 The backend project currently excludes canonical source files and compiles transformed copies created with shell commands. The frontend prebuild also runs multiple tracked-source injectors.
 
-This creates review/build divergence and contributed directly to stacked-merge and compile failures. The target state is:
+This creates review/build divergence and contributed directly to stacked-merge and compile failures. This baseline makes the current frontend output deterministic and idempotent, but the long-term target remains:
 
 - canonical source compiled directly;
 - generated code produced by a typed generator or source generator;
