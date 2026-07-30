@@ -85,6 +85,23 @@ jobs:
           missing = set(wanted) - found
           if missing:
               raise SystemExit(f'Reviewed finalizer steps not found: {sorted(missing)}')
+
+          reconcile_path = Path('/tmp/module006-reconcile.sh')
+          reconcile = reconcile_path.read_text()
+          anchor = 'fi\n\nmkdir -p docs/modules/module-006-toyota-hyundai-pipelines'
+          replacement = '''fi
+
+git checkout origin/main -- \
+  .github/workflows/group5-financial-operations-recovery-ci.yml \
+  src/frontend/project-time-web/package.json \
+  src/frontend/project-time-web/src/module-availability-registry.js \
+  src/frontend/project-time-web/src/scoped-rbac-catalog-compatibility.js \
+  src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs
+
+mkdir -p docs/modules/module-006-toyota-hyundai-pipelines'''
+          if anchor not in reconcile:
+              raise SystemExit('Module 006 shared-file restoration anchor was not found.')
+          reconcile_path.write_text(reconcile.replace(anchor, replacement, 1))
           PY
           bash -n /tmp/module006-reconcile.sh
           bash -n /tmp/module006-validate.sh
@@ -110,6 +127,7 @@ jobs:
             echo
             echo '- Source branch: feature/module-006-project-register-20260729'
             echo '- Current main reconciliation: completed'
+            echo '- Shared integration files restored from current main before reviewed Module 006 changes: yes'
             echo '- Visible identity: Toyota & Hyundai Pipelines'
             echo '- Canonical route: #toyota-hyundai-pipelines'
             echo '- API Release build: passed'
