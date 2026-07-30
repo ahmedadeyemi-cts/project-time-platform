@@ -1,0 +1,3 @@
+operation=pr284
+target_branch=feature/pending-approval-work-ptc-non-project-tasks-20260729
+expected_head=8bd7e33dccfd661b7cf717e1262ff41fa30990b2
