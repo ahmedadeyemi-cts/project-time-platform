@@ -153,19 +153,23 @@ assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
   && app.includes('<ApprovalExportAuditWorkflowCenter />'),
 'Module 007 remains the post-time-entry approval, reconciliation, export, and audit workflow');
 
-assert('MODULE_011_PULSE_AI', module011Block.includes("displayName: 'Pulse AI'")
+assert('MODULE_011_CELAR_AI', module011Block.includes("displayName: 'Celar AI'")
   && module011Block.includes("group: 'AI & Automation'")
-  && module011Block.includes("lifecycle: 'source_foundation'")
+  && module011Block.includes("lifecycle: 'active_operational_intelligence'")
+  && module011Block.includes("technicalIdentity: 'Pulse AI'")
   && !module011Block.includes('isRetired: true'),
-'Module 011 is reactivated as the Pulse AI source foundation');
+'Module 011 is visibly rebranded as Celar AI while its technical compatibility identity remains explicit');
 
 assert('MODULE_011_COMPATIBILITY_MOUNT', module011Block.includes("route: 'work-task-builder'")
   && module011Block.includes('compatibilityRoute: true')
+  && module011Block.includes("publicAlias: 'celar-ai'")
+  && registry.includes("'celar-ai': 'work-task-builder'")
+  && registry.includes("'pulse-ai': 'work-task-builder'")
   && !registry.includes("'work-task-builder': 'work-register'")
   && app.includes("activeRoute === 'work-task-builder'")
   && pulseCompatibility.includes("import PulseAiCenter from './PulseAiCenter.jsx';")
   && pulseCompatibility.includes('return <PulseAiCenter />;'),
-'Pulse AI uses the preserved Module 011 route without redirecting active users to Module 055C');
+'Celar AI uses the preserved Module 011 compatibility mount without redirecting users to Module 055C');
 
 assert('MODULE_011_NAVIGATION_ACTIVE', !css.includes('a[href="#work-task-builder"]')
   && !css.includes('button[data-route="work-task-builder"]')
@@ -182,11 +186,11 @@ assert('LEGACY_WORK_TASK_BUILDER_RECOVERABLE', module011Block.includes('previous
 'legacy Work Task Builder source and replacement ownership remain recoverable from an immutable checkpoint');
 
 assert('MODULE_011_AI_SCOPE_ONLY', pulseCenter.includes('data-module="011"')
-  && pulseCenter.includes('<h1>Pulse AI</h1>')
+  && (pulseCenter.includes('<h1>Pulse AI</h1>') || pulseCenter.includes('<h1>Celar AI</h1>'))
   && pulseCenter.includes('Module 064 remains the governed provider and inference gateway')
   && !pulseCenter.includes('/api/work-tasks')
   && !pulseCompatibility.includes('/api/work-tasks'),
-'Pulse AI owns AI lifecycle governance and does not reclaim former project/task APIs');
+'Celar AI owns AI lifecycle governance and does not reclaim former project/task APIs');
 
 assert('MODULE_020_DISTINCT_OWNER', registry.includes("moduleNumber: '020'")
   && registry.includes("displayName: 'Project Intake & Resource Handoff'")
@@ -227,7 +231,7 @@ assert('AVAILABILITY_PRESERVED', availabilityController.includes('/api/module-av
 
 assert('NO_DATABASE_CHANGE', !exists('database/migrations/050_group_1_navigation_work_consolidation.sql')
   && !exists('database/migrations/051_module_011_pulse_ai.sql'),
-'Group 1 and the Pulse AI foundation require no migration and change no module data');
+'Group 1 and the visible Celar AI rebrand require no Group 1 migration and change no module data');
 assert('NO_DEPLOYMENT_ACTION', !bridge.includes('az containerapp')
   && !pulseCenter.includes('az containerapp')
   && !pulseCenter.includes('workflow_dispatch'),
@@ -235,7 +239,8 @@ assert('NO_DEPLOYMENT_ACTION', !bridge.includes('az containerapp')
 
 console.log(`GROUP1_VALIDATION_CHECKS=${checks.length}`);
 console.log('GROUP1_MODULE_007_DISPOSITION=RETAIN_APPROVAL_EXPORT_AUDIT_WORKFLOW');
-console.log('GROUP1_MODULE_011_DISPOSITION=REUSED_AS_PULSE_AI');
+console.log('GROUP1_MODULE_011_DISPOSITION=REBRANDED_AS_CELAR_AI');
+console.log('GROUP1_MODULE_011_TECHNICAL_IDENTITY=PULSE_AI_COMPATIBILITY_RETAINED');
 console.log('GROUP1_LEGACY_WORK_TASK_BUILDER=RECOVERABLE_FROM_IMMUTABLE_CHECKPOINT');
 console.log('GROUP1_MODULE_020_DISPOSITION=RETAIN_PRE_PROJECT_INTAKE_RESOURCE_HANDOFF');
 console.log('GROUP1_MODULE_019_070_DEPENDENCY=MODULE_011_NOT_PRESENT');
