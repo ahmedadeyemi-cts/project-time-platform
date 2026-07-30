@@ -11,6 +11,9 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
       - 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/package-lock.json'
+      - 'src/frontend/project-time-web/src/App.jsx'
       - 'src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx'
       - 'src/frontend/project-time-web/src/ai-provider-configuration-center.css'
       - 'src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs'
@@ -20,43 +23,91 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: module064-automatic-provider-health-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Verify isolated Module 064 scope
+      - name: Verify Module 064 ownership or regression applicability
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/module064-automatic-provider-health-ci\.yml|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Module 064 source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          OWNED_BRANCH='false'
+          CENTRAL_SECURITY_BRANCH='false'
+          if [[ "$HEAD_BRANCH" == fix/module-064-automatic-provider-health-routing-* ]]; then
+            OWNED_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
+            CENTRAL_SECURITY_BRANCH='true'
           fi
 
-          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime.Api/Modules/(Microsoft|CustomerDirectory|CrmErp)|src/frontend/project-time-web/src/(Microsoft|CrmErp|CustomerDirectory))' <<<"$CHANGED"; then
-            echo 'Module 064 overlaps a database, deployment, Microsoft, CRM, or customer-directory surface.' >&2
-            exit 1
-          fi
-          echo 'MODULE_064_SOURCE_ISOLATION=PASSED'
+          ALLOWED='^(\.github/workflows/module064-automatic-provider-health-ci\.yml|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
+          MODULE064_RUNTIME_OWNED='^(src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
+          CENTRAL_MODULE064_CONVERGENCE='^src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx$'
 
-      - uses: actions/setup-dotnet@v4
+          if [[ "$OWNED_BRANCH" == 'true' ]]; then
+            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Module 064 source scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+
+            if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime.Api/Modules/(Microsoft|CustomerDirectory|CrmErp)|src/frontend/project-time-web/src/(Microsoft|CrmErp|CustomerDirectory))' <<<"$CHANGED"; then
+              echo 'Module 064 overlaps a database, deployment, Microsoft, CRM, or customer-directory surface.' >&2
+              exit 1
+            fi
+
+            echo 'MODULE_064_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+            echo 'MODULE_064_SOURCE_ISOLATION=PASSED'
+          elif [[ "$CENTRAL_SECURITY_BRANCH" == 'true' ]]; then
+            DIRECT_MODULE064="$(grep -E "$MODULE064_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+            UNAPPROVED_MODULE064="$(grep -Ev "$CENTRAL_MODULE064_CONVERGENCE" <<<"$DIRECT_MODULE064" || true)"
+            if [[ -n "$UNAPPROVED_MODULE064" ]]; then
+              echo 'The central security posture branch changed Module 064 source outside the reviewed canonical-source convergence boundary:' >&2
+              printf '%s\n' "$UNAPPROVED_MODULE064" >&2
+              exit 1
+            fi
+
+            echo 'MODULE_064_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
+            echo 'MODULE_064_CENTRAL_SECURITY_CONVERGENCE=PASSED'
+          else
+            DIRECT_MODULE064="$(grep -E "$MODULE064_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+            if [[ -n "$DIRECT_MODULE064" ]]; then
+              echo 'Module 064-owned runtime source may only be changed from the isolated Module 064 branch family:' >&2
+              printf '%s\n' "$DIRECT_MODULE064" >&2
+              exit 1
+            fi
+
+            echo 'MODULE_064_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+            echo 'MODULE_064_REGRESSION_APPLICABILITY=PASSED'
+          fi
+
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -111,12 +162,12 @@ jobs:
           exit 0
 
       - name: Upload API build diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && steps.api_build.outcome != 'skipped'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: module064-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: module064-api-build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Enforce API build result
@@ -153,14 +204,14 @@ jobs:
 
       - name: Upload frontend build diagnostics
         if: always() && steps.frontend_build.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: module064-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/module064-frontend-build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
-      - name: Enforce frontend build result
+      - name: Enforce frontend build result and source idempotence
         if: steps.frontend_build.outcome != 'skipped'
         working-directory: src/frontend/project-time-web
         shell: bash
@@ -171,5 +222,8 @@ jobs:
             tail -n 160 module064-frontend-build.log >&2
             exit "$STATUS"
           fi
+          git -C ../../.. diff --check
+          git -C ../../.. diff --exit-code
           tail -n 50 module064-frontend-build.log
           echo 'MODULE_064_FRONTEND_BUILD=PASSED'
+          echo "MODULE_064_VALIDATION_MODE=${MODULE_064_VALIDATION_MODE:-UNKNOWN}"
