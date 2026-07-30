@@ -10,6 +10,7 @@ const ACCOUNTING_ROLES = new Set(['ACCOUNTING']);
 const BILLING_ROLES = new Set(['ACCOUNTING_BILLING', 'BILLING', 'FINANCE']);
 const SALES_ROLES = new Set(['SALES', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'SALES_MANAGER']);
 const INSIDE_SALES_ROLES = new Set(['INSIDE_SALES', 'RESALE']);
+const COORDINATOR_ROLES = new Set(['PROJECT_TEAM_COORDINATOR', 'PROJECT_COORDINATOR', 'PTC']);
 const ENGINEERING_OR_OPERATIONS_ROLES = new Set([
   'ENGINEER',
   'ENGINEERING',
@@ -20,6 +21,7 @@ const ENGINEERING_OR_OPERATIONS_ROLES = new Set([
   'PEOPLE_MANAGER',
   'PROJECT_TEAM_COORDINATOR',
   'PROJECT_COORDINATOR',
+  'PTC',
   'SOLUTION_ARCHITECT',
   'ARCHITECT',
   'SA',
@@ -70,6 +72,9 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'sales-coverage-alignment',
     'oem-vendor-directory',
     'user-guide'
+  ]),
+  coordinator: Object.freeze([
+    'entra-secret-administration'
   ])
 });
 
@@ -131,7 +136,7 @@ export function getRoleWorkspaceName(value) {
   if (hasAny(roleCodes, BILLING_ROLES)) return 'Billing';
   if (hasAny(roleCodes, INSIDE_SALES_ROLES)) return 'Inside Sales';
   if (hasAny(roleCodes, SALES_ROLES)) return 'Sales';
-  if (roleCodes.includes('PROJECT_TEAM_COORDINATOR')) return 'Project Team Coordinator';
+  if (hasAny(roleCodes, COORDINATOR_ROLES)) return 'Project Team Coordinator';
   if (roleCodes.includes('EXECUTIVE')) return 'Executive';
   if (roleCodes.some((code) => ['MANAGER', 'PEOPLE_MANAGER'].includes(code))) return 'Management';
   if (roleCodes.some((code) => ['ENGINEERING_LEAD', 'ENGINEERING_MANAGER', 'ENGINEERING_TEAM_LEAD'].includes(code))) {
@@ -161,14 +166,20 @@ export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, mo
   const projectManagement = hasAny(roleCodes, PROJECT_MANAGEMENT_ROLES);
   const accountingBilling = hasAny(roleCodes, ACCOUNTING_ROLES) || hasAny(roleCodes, BILLING_ROLES);
   const sales = hasAny(roleCodes, SALES_ROLES) || hasAny(roleCodes, INSIDE_SALES_ROLES);
+  const coordinator = hasAny(roleCodes, COORDINATOR_ROLES);
 
   const baselineRoutes = new Set();
   if (projectManagement) ROLE_WORKSPACE_BASELINES.projectManagement.forEach((route) => baselineRoutes.add(route));
   if (accountingBilling) ROLE_WORKSPACE_BASELINES.accountingBilling.forEach((route) => baselineRoutes.add(route));
   if (sales) ROLE_WORKSPACE_BASELINES.sales.forEach((route) => baselineRoutes.add(route));
+  if (coordinator) ROLE_WORKSPACE_BASELINES.coordinator.forEach((route) => baselineRoutes.add(route));
 
   for (const module of moduleRegistry ?? []) {
-    if (baselineRoutes.has(module.route) && canUseRegistryModule(module, roleCodes)) routes.add(module.route);
+    const coordinatorAcknowledgementModule = coordinator && module.route === 'entra-secret-administration';
+    if (baselineRoutes.has(module.route)
+        && (coordinatorAcknowledgementModule || canUseRegistryModule(module, roleCodes))) {
+      routes.add(module.route);
+    }
   }
 
   const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
