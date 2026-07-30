@@ -123,7 +123,9 @@ assert_eq 4 "$(value "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' A
 assert_eq 7 "$(value "SELECT COUNT(*) FROM app_permissions WHERE permission_code IN ('ASK_PULSE_AI_SYSTEM_INTELLIGENCE','VIEW_PULSE_AI_API_INVENTORY','USE_PULSE_AI_SYSTEM_TROUBLESHOOTING','USE_PULSE_AI_ENHANCEMENT_ADVISOR','VIEW_PULSE_AI_CONVERSATION_HISTORY','RETEST_PULSE_AI_SAFE_API','VIEW_PULSE_AI_SYSTEM_AUDIT');")" permissions_created
 assert_eq 5 "$(value "SELECT COUNT(*) FROM app_feature_catalog WHERE feature_code IN ('PULSE_AI_SYSTEM_INTELLIGENCE','PULSE_AI_API_DISCOVERY','PULSE_AI_SYSTEM_TROUBLESHOOTING','PULSE_AI_ENHANCEMENT_ADVISOR','PULSE_AI_CONVERSATIONS');")" features_created
 assert_eq 7 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SUPER_ADMINISTRATOR' AND p.module_code='011';")" super_admin_permissions
-assert_eq 6 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ENGINEERING_LEAD' AND p.module_code='011';")" engineering_lead_permissions
+# Engineering Lead receives the six read-only intelligence capabilities plus the
+# separately granted safe GET retest capability, for seven total permissions.
+assert_eq 7 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ENGINEERING_LEAD' AND p.module_code='011';")" engineering_lead_permissions
 assert_eq 3 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='ENGINEERING' AND p.module_code='011';")" engineer_permissions
 
 psql_exec <<'SQL'
