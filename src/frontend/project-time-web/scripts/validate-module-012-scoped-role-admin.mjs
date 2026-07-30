@@ -188,13 +188,13 @@ requireAll(navigation, [
   "actionCode || '').toUpperCase() === 'MODULE_ACCESS'",
   "grantEffect || '').toUpperCase() === 'DENY'",
   "window.location.hash = '#dashboard'",
-  'const actualSuperAdministrator = !viewAs &&',
+  "const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);",
+  'const actualSuperAdministrator = !viewAs',
+  'actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode))',
+  'if (!actualSuperAdministrator) {',
+  'permanentFullControl: actualSuperAdministrator',
   "headers['X-ProjectPulse-View-As-User']"
 ], 'No Access navigation enforcement');
-requireOneOf(navigation, [
-  "actorRoles.has('SUPER_ADMINISTRATOR')",
-  "roleSet.has('SUPER_ADMINISTRATOR')"
-], 'Super Administrator navigation bypass');
 
 requireAll(compatibility, [
   "SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog'",
