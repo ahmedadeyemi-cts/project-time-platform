@@ -116,6 +116,24 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash /tmp/module006-reconcile.sh
+          python - <<'PY'
+          from pathlib import Path
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs')
+          source = validator.read_text()
+          html_marker = "  'Toyota &amp; Hyundai Pipelines',\n"
+          legacy_description = "  'Toyota and Hyundai opportunity, intake, delivery, resourcing, expense, billing, and executive-readiness workflows.',\n"
+          if html_marker not in source:
+              raise SystemExit('Expected retired Module 006 HTML marker was not found in the cross-module validator.')
+          if legacy_description not in source:
+              raise SystemExit('Expected retired Module 006 description marker was not found in the cross-module validator.')
+          source = source.replace(html_marker, "  \"route: 'toyota-hyundai-pipelines'\",\n", 1)
+          source = source.replace(legacy_description, "  'aliases=psa-modules,project-register',\n", 1)
+          validator.write_text(source)
+          PY
+          git add src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs
+          git diff --cached --check
+          git commit --amend --no-edit
           bash /tmp/module006-validate.sh
           bash /tmp/module006-push.sh
 
@@ -128,6 +146,7 @@ jobs:
             echo '- Source branch: feature/module-006-project-register-20260729'
             echo '- Current main reconciliation: completed'
             echo '- Shared integration files restored from current main before reviewed Module 006 changes: yes'
+            echo '- Cross-module validator updated for the canonical Module 006 route and aliases: yes'
             echo '- Visible identity: Toyota & Hyundai Pipelines'
             echo '- Canonical route: #toyota-hyundai-pipelines'
             echo '- API Release build: passed'
