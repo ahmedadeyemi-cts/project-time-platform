@@ -1,0 +1,1 @@
+Execute the temporary Module 006 finalizer bridge against PR #276. This trigger PR is not intended to merge.
