@@ -25,6 +25,7 @@ public static class PulseAiPrivateRuntimeModule
         endpoints.MapPost(
             "/api/pulse-ai/v1/documents/runtime/jobs/{jobId:guid}/retry",
             (Func<Guid, PulseAiRetryDocumentJobRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)RetryAsync);
+        endpoints.MapPulseAiPrivateRagEndpoints();
         return endpoints;
     }
 

@@ -281,7 +281,7 @@ SQL
 
 assert_eq 1 "$(value "SELECT COUNT(*) FROM pulse_ai_answer_runs WHERE answer_status='completed' AND retrieval_mode='hybrid';")" answer_run_recorded
 assert_eq 1 "$(value "SELECT COUNT(*) FROM pulse_ai_answer_citations WHERE citation_anchor='page:1' AND rank_order=1;")" citation_recorded
-assert_eq false "$(value "SELECT training_candidate FROM pulse_ai_answer_feedback LIMIT 1;")" feedback_not_training_by_default
+assert_eq f "$(value "SELECT training_candidate FROM pulse_ai_answer_feedback LIMIT 1;")" feedback_not_training_by_default
 assert_eq 1 "$(value "SELECT COUNT(*) FROM pulse_ai_retrieval_events WHERE event_code='private_retrieval_completed';")" retrieval_event_recorded
 expect_sql_failure "UPDATE pulse_ai_retrieval_events SET event_status='failed';" 'Pulse AI retrieval event evidence is immutable.' immutable_retrieval_event_update
 expect_sql_failure "DELETE FROM pulse_ai_retrieval_events;" 'Pulse AI retrieval event evidence is immutable.' immutable_retrieval_event_delete

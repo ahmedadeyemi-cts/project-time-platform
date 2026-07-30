@@ -215,7 +215,7 @@ assert(
 assert(
   'TIMESHEET_PRIVATE_FIRST',
   timesheet.includes('_privateRag.GenerateTimesheetAsync')
-    && timesheet.indexOf('_privateRag.GenerateTimesheetAsync') < timesheet.indexOf('_router.CompleteAsync')
+    && timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')
     && timesheet.includes('if (privateRag.Citations.Count > 0)')
     && timesheet.includes('no private document text was sent to Claude or OpenAI')
     && timesheet.includes('Engineer must review and explicitly apply'),
