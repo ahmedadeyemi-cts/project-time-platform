@@ -1,0 +1,3 @@
+operation=deploy
+release_commit=289628ded2ec91ea0710d3cb7ee7cf16bca1f012
+confirmation=DEPLOY-CURRENT-MAIN-289628-TO-TEST
