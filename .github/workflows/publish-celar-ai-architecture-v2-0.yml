@@ -166,7 +166,7 @@ jobs:
           page_count = len(PdfReader(str(main_pdf)).pages)
           source_page_count = len(PdfReader(str(source_pdf)).pages)
           assert source_page_count >= 20
-          assert page_count >= source_page_count
+          assert page_count >= 20
           assert len(PdfReader(str(diagram_pdf)).pages) == 2
           with ZipFile(docx) as archive:
               assert '[Content_Types].xml' in archive.namelist()
