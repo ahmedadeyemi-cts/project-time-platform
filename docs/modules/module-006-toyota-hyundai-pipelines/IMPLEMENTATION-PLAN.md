@@ -83,6 +83,10 @@ Administrator View-As remains safe:
 - availability changes remain disabled during View-As; and
 - the backend continues to require the actual user to be Super Administrator for availability mutations.
 
+## Exact-head validation
+
+The temporary source finalizer is removed before the branch is considered ready. The resulting exact PR head must complete the permanent ProjectPulse CI workflow with only the reviewed Module 006 and Modules-directory source files in its comparison to `main`.
+
 ## Explicit exclusions
 
 This repair does not:
