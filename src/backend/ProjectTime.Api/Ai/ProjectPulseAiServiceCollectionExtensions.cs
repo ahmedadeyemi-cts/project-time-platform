@@ -46,6 +46,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiPrivateRetrievalService>();
         services.AddSingleton<PulseAiPrivateModelClient>();
         services.AddSingleton<PulseAiPrivateRagService>();
+        services.AddSingleton<PulseAiSystemOperationsIntentClassifier>();
+        services.AddSingleton<PulseAiSystemOperationsRepository>();
+        services.AddSingleton<PulseAiSystemOperationsService>();
+        services.AddSingleton<PulseAiFutureEnhancementPlanner>();
+        services.AddSingleton<PulseAiUnifiedAnswerService>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();
         services.AddHostedService<ProjectPulseAiHealthMonitor>();
         return services;
