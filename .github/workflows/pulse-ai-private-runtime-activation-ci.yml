@@ -45,13 +45,16 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact source isolation
+      - name: Verify exact source isolation on current main
         shell: bash
         run: |
           set -Eeuo pipefail
-          EXPECTED_BASE='56dd3df02a26aa0c07c0a92dd2ac9dd9f3a3d747'
-          git cat-file -e "$EXPECTED_BASE^{commit}"
-          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
+          git fetch origin main --no-tags
+          EXPECTED_BASE="$(git rev-parse origin/main)"
+          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]] || {
+            echo "Private runtime branch is behind current main $EXPECTED_BASE." >&2
+            exit 1
+          }
           CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
           ALLOWED='^(\.github/workflows/pulse-ai-private-runtime-activation-ci\.yml|database/migrations/052_document_intelligence_runtime\.sql|database/rollback/052_document_intelligence_runtime_rollback\.sql|tests/test-pulse-ai-private-document-runtime-migration-052\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRuntimeContracts|PulseAiPrivateMalwareScanner|PulseAiPrivateOcrClient|PulseAiPrivateEmbeddingClient|PulseAiPrivateRuntimeSourceResolver|PulseAiPrivateDocumentRuntimeRepository|PulseAiPrivateDocumentRuntimeService|PulseAiPrivateDocumentRuntimeWorker|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRuntimeModule|PulseAiPrivateDocumentPipelineModule)\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRuntimeWorkbench\.jsx|pulse-ai-private-runtime-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
