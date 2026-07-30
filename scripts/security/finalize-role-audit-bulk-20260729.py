@@ -16,7 +16,7 @@ def replace_once(old: str, new: str, label: str) -> None:
 
 if "user_roles_bulk_updated" not in text:
     replace_once(
-        """    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        '''    if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
     {
         return Results.Json(new
         {
@@ -27,8 +27,8 @@ if "user_roles_bulk_updated" not in text:
 
     var sessionUserId = GetProjectPulseSessionUserId(httpContext);
 
-    if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))""",
-        """    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+    if (sessionUserId is not null && userIds.Contains(sessionUserId.Value))''',
+        '''    if (!await RequestUserIsAdministratorAsync(httpContext, connection))
     {
         return Results.Json(new
         {
@@ -43,15 +43,15 @@ if "user_roles_bulk_updated" not in text:
         return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    if (userIds.Contains(sessionUserId.Value))""",
+    if (userIds.Contains(sessionUserId.Value))''',
         "bulk Administrator boundary",
     )
 
     replace_once(
-        """    try
+        '''    try
     {
-        await using (var profileCommand = new NpgsqlCommand("""""",
-        """    try
+        await using (var profileCommand = new NpgsqlCommand("""''',
+        '''    try
     {
         var previousRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
             connection, transaction, userIds);
@@ -83,17 +83,17 @@ if "user_roles_bulk_updated" not in text:
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        await using (var profileCommand = new NpgsqlCommand("""""",
+        await using (var profileCommand = new NpgsqlCommand("""''',
         "bulk old-state and Super Administrator protection",
     )
 
     replace_once(
-        """        await transaction.CommitAsync();
+        '''        await transaction.CommitAsync();
 
         return Results.Ok(new
         {
-            status = "bulk_user_update_completed",""",
-        """        if (roleMode != "none")
+            status = "bulk_user_update_completed",''',
+        '''        if (roleMode != "none")
         {
             var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
                 connection, transaction, userIds);
@@ -119,7 +119,7 @@ if "user_roles_bulk_updated" not in text:
 
         return Results.Ok(new
         {
-            status = "bulk_user_update_completed",""",
+            status = "bulk_user_update_completed",''',
         "bulk transactional role audit",
     )
 
