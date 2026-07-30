@@ -60,8 +60,7 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'ProjectPulse Source Automation'
           git config user.email 'projectpulse-source-automation@users.noreply.github.com'
-          GITHUB_REF_NAME='fix/module006-pipeline-modules-directory-superadmin-20260730-v2' \
-            bash scripts/temp-apply-module006-directory-fix.sh
+          bash scripts/temp-apply-module006-directory-fix.sh
 
       - name: Validate API Release build
         shell: bash
@@ -113,9 +112,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           git reset --hard HEAD
-          git rm \
+          git rm -r \
             .github/workflows/temp-module006-directory-superadmin-finalizer.yml \
-            scripts/temp-apply-module006-directory-fix.sh
+            scripts/temp-apply-module006-directory-fix.sh \
+            .github/module006-payload
           git commit -m 'Remove temporary Module 006 source finalizer'
           git push origin HEAD:fix/module006-pipeline-modules-directory-superadmin-20260730-v2
           echo "FINAL_BRANCH_HEAD=$(git rev-parse HEAD)"
