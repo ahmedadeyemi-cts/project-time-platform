@@ -32,9 +32,21 @@ function requireCount(content, value, expected, label) {
   }
 }
 
+function requireOrdered(content, values, label) {
+  let cursor = -1;
+  for (const value of values) {
+    const next = content.indexOf(value, cursor + 1);
+    if (next < 0) {
+      throw new Error(`${label} is missing ordered contract: ${value}`);
+    }
+    cursor = next;
+  }
+}
+
 const roleGovernance = read('src/frontend/project-time-web/src/role-workspace-governance.js');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const welcome = read('src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx');
+const moduleAvailabilityBridge = read('src/frontend/project-time-web/src/module-availability-bridge.js');
 const entraCenter = read('src/frontend/project-time-web/src/EntraSecretAdministrationCenter.jsx');
 const entraPanel = read('src/frontend/project-time-web/src/EntraSecretExpirationGovernancePanel.jsx');
 const entraWarning = read('src/frontend/project-time-web/src/EntraSecretExpirationGlobalWarning.jsx');
@@ -98,6 +110,26 @@ requireExcludes(welcome, [
   "String(displayName || 'there').trim().split(/\\s+/)[0]",
   '<small>{titleCase(persona)} workspace</small>',
 ], 'role welcome dashboard');
+
+requireIncludes(moduleAvailabilityBridge, [
+  "const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);",
+  'const actualSuperAdministrator = !viewAs',
+  '&& actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode));',
+  'if (!actualSuperAdministrator) {',
+  'permanentFullControl: actualSuperAdministrator',
+  'permanentFullControl: Boolean(effectiveActor.permanentFullControl)',
+], 'Super Administrator full-control navigation invariant');
+requireOrdered(moduleAvailabilityBridge, [
+  'const actualSuperAdministrator = !viewAs',
+  'if (!actualSuperAdministrator) {',
+  'for (const module of PROJECTPULSE_MODULES)',
+  'matrix.grants',
+  'deniedModuleNumbers = denied;',
+  'permanentFullControl: actualSuperAdministrator',
+], 'Super Administrator full-control navigation invariant');
+requireExcludes(moduleAvailabilityBridge, [
+  "const actualSuperAdministrator = !viewAs && roleSet.has('SUPER_ADMINISTRATOR');",
+], 'Super Administrator full-control navigation invariant');
 
 requireIncludes(entraCenter, [
   'ENTRA_EXPIRATION_GOVERNANCE_PANEL_IMPORT',
