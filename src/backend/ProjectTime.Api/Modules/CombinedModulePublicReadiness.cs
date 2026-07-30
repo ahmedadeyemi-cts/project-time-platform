@@ -6,6 +6,13 @@ public static partial class ScopedRolePolicyModule
 {
     public static WebApplication MapCombinedModulePublicReadinessEndpoint(this WebApplication app)
     {
+        // Route the historical PR #284 URLs through the production contract
+        // before their compatibility endpoint definitions are mapped. This keeps
+        // existing browser clients safe while the new v2 routes remain directly
+        // available to the upgraded UI.
+        app.UseProductionApprovalWorkCompatibility();
+        app.MapProductionApprovalWorkEndpoints();
+
         // This combined-module composition root is already registered exactly once
         // before app.Run(). Register the additive Module 001/002 operational routes
         // here so the generated Program source does not need another cross-cutting edit.
@@ -112,6 +119,7 @@ public static partial class ScopedRolePolicyModule
             {
                 status = ready ? "combined_module_runtime_ready" : "combined_module_runtime_incomplete",
                 contractVersion = "combined-modules-001-005-012-037-038-public-v1",
+                approvalWorkContractVersion = "approval-work-production-v2-2026-07-30",
                 roleContractReady,
                 moduleContractReady,
                 publishedPolicyReady,
@@ -122,6 +130,9 @@ public static partial class ScopedRolePolicyModule
                 expenseMigrationsReady,
                 expenseTablesReady,
                 nonProjectCategoriesReady,
+                productionApprovalRoutingReady = true,
+                projectScopedPmApproval = true,
+                nonProjectRoute = "manager_then_ptc",
                 modules = new[] { "001", "005", "012", "037", "038" },
                 operationalCountsReturned = false
             }, statusCode: ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
@@ -132,6 +143,7 @@ public static partial class ScopedRolePolicyModule
             {
                 status = "combined_module_runtime_unavailable",
                 contractVersion = "combined-modules-001-005-012-037-038-public-v1",
+                approvalWorkContractVersion = "approval-work-production-v2-2026-07-30",
                 message = "The combined runtime could not complete its readiness check.",
                 operationalCountsReturned = false
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
