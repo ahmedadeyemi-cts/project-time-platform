@@ -1,4 +1,4 @@
-name: Apply Platform Security Remediation Follow-up 2026-07-29
+name: Finalize Platform Security Remediation 2026-07-29
 
 on:
   pull_request:
@@ -10,15 +10,17 @@ on:
       - reopened
     paths:
       - .github/workflows/apply-platform-security-remediation-20260729.yml
-      - scripts/security/apply-platform-security-followup-20260729.py
-      - src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+      - scripts/security/finalize-role-audit-legacy-20260729.py
+      - scripts/security/finalize-role-audit-user-admin-20260729.py
+      - scripts/security/finalize-role-audit-bulk-20260729.py
+      - src/backend/ProjectTime.Api/Program.cs
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: platform-security-remediation-followup-20260729
+  group: platform-security-finalization-20260729
   cancel-in-progress: false
 
 jobs:
@@ -45,20 +47,26 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             test "$GITHUB_HEAD_REF" = "$TARGET_BRANCH"
           fi
-          test -s scripts/security/apply-platform-security-followup-20260729.py
-          test -s src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+          test -s scripts/security/finalize-role-audit-legacy-20260729.py
+          test -s scripts/security/finalize-role-audit-user-admin-20260729.py
+          test -s scripts/security/finalize-role-audit-bulk-20260729.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Apply fail-closed privilege and object-scope corrections
+      - name: Apply transactional role-audit finalization
         shell: bash
         run: |
           set -Eeuo pipefail
-          python -m py_compile scripts/security/apply-platform-security-followup-20260729.py
-          python scripts/security/apply-platform-security-followup-20260729.py
+          python -m py_compile \
+            scripts/security/finalize-role-audit-legacy-20260729.py \
+            scripts/security/finalize-role-audit-user-admin-20260729.py \
+            scripts/security/finalize-role-audit-bulk-20260729.py
+          python scripts/security/finalize-role-audit-legacy-20260729.py
+          python scripts/security/finalize-role-audit-user-admin-20260729.py
+          python scripts/security/finalize-role-audit-bulk-20260729.py
           git diff --check
 
       - name: Validate hardened Python and shell sources
@@ -68,8 +76,7 @@ jobs:
           python -m py_compile \
             deployment/rocky-linux/import-company-holidays.py \
             deployment/rocky-linux/serve-frontend-public-restricted.py \
-            ops/projectpulse/scripts/projectpulse-send-backup-email.py \
-            scripts/security/apply-platform-security-followup-20260729.py
+            ops/projectpulse/scripts/projectpulse-send-backup-email.py
           bash -n ops/projectpulse/scripts/projectpulse-sync-status-export.sh
           bash -n ops/projectpulse/scripts/projectpulse-restore-validation-export.sh
           bash -n scripts/021-release-smoke.sh
@@ -107,22 +114,20 @@ jobs:
           npm ci
           npm run build
 
-      - name: Commit validated follow-up source
+      - name: Commit validated role-audit source
         shell: bash
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            scripts/security/apply-platform-security-followup-20260729.py \
-            src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+          git add src/backend/ProjectTime.Api/Program.cs
 
           if git diff --cached --quiet; then
-            echo 'SECURITY_FOLLOWUP_ALREADY_CURRENT=YES'
+            echo 'SECURITY_ROLE_AUDIT_ALREADY_CURRENT=YES'
             exit 0
           fi
 
           git diff --cached --check
-          git commit -m 'Close residual security privilege and object-scope gaps'
+          git commit -m 'Add transactional role-assignment audit records'
           git push origin "HEAD:$TARGET_BRANCH"
-          echo 'SECURITY_FOLLOWUP_SOURCE_COMMITTED=YES'
+          echo 'SECURITY_ROLE_AUDIT_SOURCE_COMMITTED=YES'
