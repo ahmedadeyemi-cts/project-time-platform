@@ -4,15 +4,18 @@ on:
   push:
     branches:
       - 'feature/approval-workflow-production-grade-ptc-usability-*'
+      - 'fix/approval-workflow-intuitive-hardening-*'
   pull_request:
     paths:
       - '.github/workflows/production-approval-workflow-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkflowHardening.cs'
       - 'src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs'
       - 'src/frontend/project-time-web/scripts/validate-pending-time-workflow.mjs'
       - 'src/frontend/project-time-web/src/ProductionApprovalWorkPortal.jsx'
       - 'src/frontend/project-time-web/src/production-approval-work.css'
+      - 'src/frontend/project-time-web/src/production-approval-work-hardening.css'
       - 'src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx'
       - 'src/frontend/project-time-web/src/module001/ptc-guided-move.css'
       - 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'
@@ -52,6 +55,8 @@ jobs:
           git fetch origin main --no-tags
           git diff --check origin/main...HEAD
           git diff --name-only origin/main...HEAD
+          test ! -e .github/approval-production-payload/part-00.b64
+          test ! -e .github/approval-production-payload/part-02.b64
 
       - name: Build API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
@@ -81,6 +86,7 @@ jobs:
           cat src/frontend/project-time-web/dist/assets/*.css > /tmp/production-approval.css
           for marker in \
             'Time approvals across all weeks' \
+            'This is the only approval surface' \
             'Move Time wizard' \
             'Approve entire week' \
             'Manager then PTC approval; PM not required' \
@@ -91,6 +97,7 @@ jobs:
           for marker in \
             '.production-approval-center' \
             '.production-approval-project-scope' \
+            '.production-approval-return-guidance' \
             '.ptc-guided-launcher' \
             '.ptc-guided-destination-groups'; do
             grep -Fq "$marker" /tmp/production-approval.css
