@@ -1,9 +1,13 @@
 name: Temporary Finalize Approval P1 Hardening
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/approval-workflow-intuitive-hardening-20260730
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
     paths:
       - .github/workflows/temp-finalize-approval-p1-hardening.yml
 
@@ -16,7 +20,7 @@ concurrency:
 
 jobs:
   finalize:
-    if: github.actor == 'ahmedadeyemi-cts'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/approval-workflow-intuitive-hardening-20260730'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
