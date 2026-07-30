@@ -113,7 +113,10 @@ assert('ALLOWLISTED_SAME_ORIGIN_TOOLS',
 
 assert('SESSION_AND_VIEW_AS_FORWARDING',
   all(s.executor, ['Authorization','Cookie','X-ProjectPulse-Session','X-Project-Pulse-Session','X-Session-Token','X-ProjectPulse-View-As-User'])
-  && s.documentation.includes('owning endpoint remains the authorization authority'),
+  && (
+  s.documentation.includes('owning endpoint remains the authorization authority')
+  || s.documentation.includes('The owning endpoint still applies its own authorization before returning evidence')
+),
   'owning endpoints re-evaluate the effective user before returning evidence');
 
 const tools = [

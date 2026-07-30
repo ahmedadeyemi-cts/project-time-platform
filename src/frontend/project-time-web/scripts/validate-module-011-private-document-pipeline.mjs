@@ -343,13 +343,19 @@ assert(
   'documents remain untrusted evidence and activation requires frozen authorization, retrieval, security, and lifecycle tests'
 );
 
-const migrationMatches = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document|vector[-_]?index)/i.test(relative));
+const allowedLaterMigrations = new Set([
+  'database/migrations/052_document_intelligence_runtime.sql',
+  'database/migrations/053_intelligence_answer_orchestration.sql',
+  'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+]);
+const migrationMatches = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|private[-_]?document|vector[-_]?index|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+const unexpectedMigrations = migrationMatches.filter((relative) => !allowedLaterMigrations.has(relative));
 assert(
-  'NO_MIGRATION',
-  migrationMatches.length === 0,
-  migrationMatches.length === 0
-    ? 'no Module 011 private-document, embedding, or vector-index migration exists'
-    : `unexpected migration paths: ${migrationMatches.join(', ')}`
+  'KNOWN_LATER_MIGRATIONS_ONLY',
+  unexpectedMigrations.length === 0,
+  unexpectedMigrations.length === 0
+    ? 'the historical preview remains read-only while reviewed migrations 052, 053, and 054 support later separately gated phases'
+    : `unexpected migration paths: ${unexpectedMigrations.join(', ')}`
 );
 
 const ownedPrivateDocumentPaths = [
