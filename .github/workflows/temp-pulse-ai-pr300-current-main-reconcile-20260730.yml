@@ -1,0 +1,87 @@
+name: Temporary Pulse AI PR 300 Current-Main Reconciler 2026-07-30
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-pulse-ai-pr300-current-main-reconcile-20260730
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.number == 300 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/pulse-ai-private-rag-post-merge-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact PR 300 head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
+
+      - name: Verify repair completion and protected boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          EXPECTED_REPAIR_BASE='b579a56140e302c96ca4af363611fa1e2a9b9734'
+          git cat-file -e "$EXPECTED_REPAIR_BASE^{commit}"
+          [[ "$(git merge-base "$CURRENT_MAIN" HEAD)" == "$EXPECTED_REPAIR_BASE" ]]
+          test ! -e .github/workflows/repair-pulse-ai-private-rag-post-merge-20260730.yml
+          test ! -e scripts/repair-pulse-ai-private-rag-post-merge-20260730.py
+          test ! -e scripts/repair-pulse-ai-private-rag-post-merge-trigger.txt
+          grep -Fq 'AddSingleton<PulseAiPrivateRagService>()' src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          grep -Fq 'endpoints.MapPulseAiPrivateRagEndpoints();' src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs
+          grep -Fq '_privateRag.GenerateTimesheetAsync' src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
+          grep -Fq '<PulseAiPrivateRagWorkbench />' src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            git diff --quiet "$EXPECTED_REPAIR_BASE"...HEAD -- "$protected"
+          done
+          echo "PR300_RECONCILE_CURRENT_MAIN=$CURRENT_MAIN"
+          echo "PR300_RECONCILE_HEAD=$(git rev-parse HEAD)"
+
+      - name: Merge current main and push only PR 300 branch
+        shell: bash
+        env:
+          TARGET_BRANCH: fix/pulse-ai-private-rag-post-merge-20260730
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit origin/main
+          git diff --check origin/main...HEAD
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "PR300_RECONCILED_HEAD=$(git rev-parse HEAD)"
+
+      - name: Publish reconciliation evidence
+        shell: bash
+        run: |
+          {
+            echo '## PR #300 current-main reconciliation'
+            echo
+            echo '- Reviewed repaired source markers: present'
+            echo '- One-time branch-local repair files: absent'
+            echo '- Protected deployment files: unchanged'
+            echo '- Current main merged without force push: yes'
+            echo '- Connected migration execution: none'
+            echo '- Deployment: none'
+          } >> "$GITHUB_STEP_SUMMARY"
