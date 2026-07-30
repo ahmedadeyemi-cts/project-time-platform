@@ -31,10 +31,12 @@ function rejectText(source, token, label) {
 }
 
 const approvalPortal = read('src/frontend/project-time-web/src/ProductionApprovalWorkPortal.jsx');
-const approvalCss = read('src/frontend/project-time-web/src/production-approval-work.css');
+const approvalCss = [
+  read('src/frontend/project-time-web/src/production-approval-work.css'),
+  read('src/frontend/project-time-web/src/production-approval-work-hardening.css')
+].join('\n');
 const guidedMove = read('src/frontend/project-time-web/src/module001/PtcGuidedMovePortal.jsx');
 const guidedMoveCss = read('src/frontend/project-time-web/src/module001/ptc-guided-move.css');
-const nonProjectPortal = read('src/frontend/project-time-web/src/module001/PtcNonProjectTaskPortal.jsx');
 const compositionGate = read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx');
 
 for (const token of [
@@ -42,16 +44,22 @@ for (const token of [
   '/api/approval-work/v2/pending',
   '/api/approval-work/v2/bulk-complete',
   'Time approvals across all weeks',
+  'This is the only approval surface',
   'Approve selected',
   'Approve entire week',
   "mode: 'selected'",
-  "complete(week, 'week')",
+  "mode: 'week'",
   'Project time: Manager → assigned PM → PTC',
   'Non-project time: Manager → PTC',
   'PM approves this project only',
   'Non-project · PM not required',
+  'SEARCH_DEBOUNCE_MS',
+  'requestTokenByWeek',
+  'previousSearch.current',
+  'Search applies to every expanded week',
+  'query: searchQuery',
+  'setSelected(new Set())',
   'projectpulse:approval-queue-changed',
-  'existingTimeRow',
   'production-approval-center-host'
 ]) {
   requireText(approvalPortal, token, 'Production approval portal');
@@ -62,7 +70,10 @@ for (const token of [
   '.production-approval-stage-grid',
   '.production-approval-week-actions',
   '.production-approval-project-scope',
-  '.production-approval-badges'
+  '.production-approval-badges',
+  '.production-approval-return-guidance',
+  "[data-production-approval-authoritative='true'] #manager-review .manager-bulk-actions",
+  "[data-production-approval-authoritative='true'] #pm-review .manager-row-actions .approve"
 ]) {
   requireText(approvalCss, token, 'Production approval styles');
 }
@@ -91,22 +102,11 @@ for (const token of [
 }
 
 for (const token of [
-  'Create non-project task',
-  'not tied to a project',
-  'projectpulse:permissions-changed',
-  'It is not an approval comment',
-  'utilizationClassification'
-]) {
-  requireText(nonProjectPortal, token, 'Existing non-project activity launcher');
-}
-
-for (const token of [
   "import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';",
   "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
   '<ProductionApprovalWorkPortal />',
   '<PtcGuidedMovePortal />',
   '<PtcTimesheetManagementPortal />',
-  '<PtcNonProjectTaskPortal />',
   'if (state.active && !state.allowed) return null;'
 ]) {
   requireText(compositionGate, token, 'Frontend composition gate');
@@ -115,9 +115,11 @@ for (const token of [
 rejectText(approvalPortal, 'window.prompt', 'Production approval portal');
 rejectText(guidedMove, 'window.prompt', 'Guided PTC Move Time portal');
 rejectText(compositionGate, '<PendingApprovalWorkPortal />', 'Retired approval portal mount');
+rejectText(compositionGate, 'PtcNonProjectTaskPortal', 'Duplicate non-project creation launcher');
 
 if (!leanWebBuildContext) {
   const productionBackend = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs');
+  const hardeningBackend = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkflowHardening.cs');
   const compatibility = read('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkCompatibility.cs');
   const endpointCompositionRoot = read('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs');
   const migration002 = read('database/migrations/002_non_project_time_and_hour_types.sql');
@@ -146,6 +148,26 @@ if (!leanWebBuildContext) {
     requireText(productionBackend, token, 'Production approval backend');
   }
 
+  for (const token of [
+    'UseProductionApprovalWorkflowHardening',
+    '/api/approval-work/v2/pending',
+    '/api/approval-work/v2/bulk-complete',
+    '/api/manager/approvals/approve',
+    '/api/manager/approvals/bulk-approve',
+    '/api/workflow/approval-items/action',
+    'pm_approve',
+    '/api/scoped-approval/delegated',
+    '/api/scoped-approval/ptc-final',
+    'legacy_approval_route_retired',
+    'RequireImmutableApprovalEvidenceAsync',
+    'RequireImmutableNonProjectEvidenceAsync',
+    'trg_projectpulse040_approval_audit_immutable',
+    'trg_projectpulse040_policy_audit_immutable',
+    'await result.ExecuteAsync(context)'
+  ]) {
+    requireText(hardeningBackend, token, 'Production approval hardening');
+  }
+
   rejectText(productionBackend, 'LIMIT 5000', 'Production approval backend');
   rejectText(productionBackend, 'detail: exception.Message', 'Production approval backend');
   rejectText(productionBackend, 'INSERT INTO project_tasks', 'Non-project activity backend');
@@ -162,10 +184,13 @@ if (!leanWebBuildContext) {
   }
 
   for (const token of [
+    'app.UseProductionApprovalWorkflowHardening();',
     'app.UseProductionApprovalWorkCompatibility();',
     'app.MapProductionApprovalWorkEndpoints();',
     'app.MapPendingApprovalWorkEndpoints();',
     'app.MapModule001NonProjectTaskEndpoints();',
+    'immutableApprovalAuditReady',
+    'legacyApprovalWriteRoutesRetired = true',
     'projectScopedPmApproval = true',
     'nonProjectRoute = "manager_then_ptc"'
   ]) {
@@ -181,6 +206,15 @@ if (!leanWebBuildContext) {
     requireText(migration002, token, 'Existing non-project data model');
   }
 
+  for (const payloadPath of [
+    '.github/approval-production-payload/part-00.b64',
+    '.github/approval-production-payload/part-02.b64'
+  ]) {
+    if (exists(payloadPath)) {
+      throw new Error(`Temporary payload artifact must not be committed: ${payloadPath}`);
+    }
+  }
+
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=PASS');
 } else {
   console.log('PRODUCTION_APPROVAL_BACKEND_VALIDATION=SKIPPED_LEAN_WEB_CONTEXT');
@@ -190,6 +224,8 @@ console.log(`PENDING_TIME_WORKFLOW_CONTEXT=${leanWebBuildContext ? 'LEAN_WEB_BUI
 console.log('PENDING_TIME_WORKFLOW_VALIDATION=PASS');
 console.log('PENDING_APPROVAL_AGGREGATES_COMPLETE=PASS');
 console.log('EMPTY_SELECTION_APPROVES_NOTHING=PASS');
+console.log('LEGACY_APPROVAL_WRITES_RETIRED=PASS');
+console.log('SEARCH_RELOADS_OPEN_WEEKS=PASS');
 console.log('MANAGER_PM_PTC_BULK_APPROVAL=PASS');
 console.log('NON_PROJECT_MANAGER_TO_PTC_ROUTE=PASS');
 console.log('PM_PROJECT_SCOPE_ISOLATION=PASS');
