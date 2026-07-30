@@ -1,0 +1,120 @@
+name: Temporary Module 006 Finalizer Trigger Bridge 2026-07-30
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-module006-finalizer-trigger-bridge-20260730
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'tooling/run-module006-finalizer-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+
+    steps:
+      - name: Check out current deployment controls
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          path: control
+
+      - name: Check out current PR 276 source branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/module-006-project-register-20260729
+          fetch-depth: 0
+          persist-credentials: true
+          path: work
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: work/src/frontend/project-time-web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Extract the reviewed finalizer steps
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --disable-pip-version-check --quiet pyyaml
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(Path('control/.github/workflows/temp-module006-finalize-20260730.yml').read_text())
+          steps = workflow['jobs']['finalize']['steps']
+          wanted = {
+              'Reconcile Module 006 onto current main': '/tmp/module006-reconcile.sh',
+              'Validate exact Module 006 source': '/tmp/module006-validate.sh',
+              'Push reconciled PR 276 branch': '/tmp/module006-push.sh',
+          }
+          found = set()
+          for step in steps:
+              name = step.get('name')
+              if name not in wanted:
+                  continue
+              run = step.get('run')
+              if not isinstance(run, str) or not run.strip():
+                  raise SystemExit(f'Missing reviewed run block: {name}')
+              path = Path(wanted[name])
+              path.write_text('#!/usr/bin/env bash\n' + run)
+              path.chmod(0o700)
+              found.add(name)
+          missing = set(wanted) - found
+          if missing:
+              raise SystemExit(f'Reviewed finalizer steps not found: {sorted(missing)}')
+          PY
+          bash -n /tmp/module006-reconcile.sh
+          bash -n /tmp/module006-validate.sh
+          bash -n /tmp/module006-push.sh
+          echo 'MODULE006_FINALIZER_EXTRACTION=PASS'
+
+      - name: Reconcile, validate, and push PR 276
+        working-directory: work
+        shell: bash
+        env:
+          TARGET_BRANCH: feature/module-006-project-register-20260729
+        run: |
+          set -Eeuo pipefail
+          bash /tmp/module006-reconcile.sh
+          bash /tmp/module006-validate.sh
+          bash /tmp/module006-push.sh
+
+      - name: Publish bridge evidence
+        shell: bash
+        run: |
+          {
+            echo '## Module 006 finalizer trigger bridge'
+            echo
+            echo '- Source branch: feature/module-006-project-register-20260729'
+            echo '- Current main reconciliation: completed'
+            echo '- Visible identity: Toyota & Hyundai Pipelines'
+            echo '- Canonical route: #toyota-hyundai-pipelines'
+            echo '- API Release build: passed'
+            echo '- Complete frontend production build: passed'
+            echo '- Web-container build: passed'
+            echo '- Connected migration: none'
+            echo '- Test deployment: none'
+          } >> "$GITHUB_STEP_SUMMARY"
