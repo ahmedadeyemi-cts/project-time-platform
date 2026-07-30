@@ -16,6 +16,7 @@
     <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
     <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>
     <PulseAiQuestionPlannerGenerated>$(IntermediateOutputPath)PulseAiQuestionPlanner.g.cs</PulseAiQuestionPlannerGenerated>
+    <PulseAiSystemIntelligenceGenerated>$(IntermediateOutputPath)PulseAiSystemIntelligenceService.g.cs</PulseAiSystemIntelligenceGenerated>
     <ProjectFinancialTruthGeneratedModule>$(IntermediateOutputPath)ProjectFinancialTruthModule.g.cs</ProjectFinancialTruthGeneratedModule>
   </PropertyGroup>
 
@@ -44,6 +45,7 @@
     <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
     <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />
     <Compile Remove="Ai/PulseAiQuestionPlanner.cs" />
+    <Compile Remove="Ai/PulseAiSystemIntelligenceService.cs" />
     <Compile Remove="Modules/ProjectFinancialTruthModule.cs" />
   </ItemGroup>
 
@@ -79,6 +81,10 @@
          than the generic future multi-tool plan. The canonical planner remains
          reviewable while the compiled copy composes the approved knowledge catalog. -->
     <Exec Command="sed -e 's/var directAnswer = FindKnowledgeAnswer(normalized);/var directAnswer = PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized);/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiQuestionPlanner.cs&quot; &gt; &quot;$(PulseAiQuestionPlannerGenerated)&quot;" />
+    <!-- The conditional fallback tuple literals in the system-intelligence service
+         must retain the repository's tuple element names so MessageId remains
+         available in both persisted and non-persisted execution paths. -->
+    <Exec Command="sed -e 's/: (Guid.NewGuid(), 1);/: (MessageId: Guid.NewGuid(), SequenceNumber: 1);/' -e 's/: (Guid.NewGuid(), 2);/: (MessageId: Guid.NewGuid(), SequenceNumber: 2);/g' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiSystemIntelligenceService.cs&quot; &gt; &quot;$(PulseAiSystemIntelligenceGenerated)&quot;" />
     <!-- Group 5 extends the authoritative Group 3 financial source through a partial
          bridge. The reviewable Group 3 source remains unchanged. -->
     <Exec Command="sed -e 's/public static class ProjectFinancialTruthModule/public static partial class ProjectFinancialTruthModule/' &quot;$(MSBuildProjectDirectory)/Modules/ProjectFinancialTruthModule.cs&quot; &gt; &quot;$(ProjectFinancialTruthGeneratedModule)&quot;" />
@@ -94,6 +100,7 @@
       <Compile Include="$(PulseAiGroundingGenerated)" />
       <Compile Include="$(PulseAiPrivateExtractorGenerated)" />
       <Compile Include="$(PulseAiQuestionPlannerGenerated)" />
+      <Compile Include="$(PulseAiSystemIntelligenceGenerated)" />
       <Compile Include="$(ProjectFinancialTruthGeneratedModule)" />
     </ItemGroup>
   </Target>
