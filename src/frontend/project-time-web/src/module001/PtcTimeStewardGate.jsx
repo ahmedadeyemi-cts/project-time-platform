@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';
 import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';
-import PtcNonProjectTaskPortal from './PtcNonProjectTaskPortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
 
 const ALLOWED_ROLES = new Set([
@@ -60,7 +59,6 @@ export default function PtcTimeStewardGate() {
       <PtcTimesheetManagementPortal />
       <PtcGuidedMovePortal />
       <ProductionApprovalWorkPortal />
-      <PtcNonProjectTaskPortal />
     </>
   );
 }
