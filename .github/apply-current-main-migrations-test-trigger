@@ -1,0 +1,3 @@
+operation=apply-migrations
+release_commit=289628ded2ec91ea0710d3cb7ee7cf16bca1f012
+confirmation=APPLY-CURRENT-MAIN-MIGRATIONS-051A-052-053-TO-TEST
