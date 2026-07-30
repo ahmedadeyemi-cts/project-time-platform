@@ -17,10 +17,14 @@ ALLOWED_CONTENT_WRITE_WORKFLOWS = {
     "publish-pulse-ai-architecture-v1-1.yml",
 }
 CRITICAL_PINNED_WORKFLOWS = {
-    "projectpulse-ci.yml",
-    "security-posture-ci.yml",
+    "group5-financial-operations-recovery-ci.yml",
+    "group7-ai-help-system-guide-ci.yml",
     "mirror-to-us-signal-projectpulse.yml",
+    "module064-automatic-provider-health-ci.yml",
+    "projectpulse-ci.yml",
     "projectpulse-rollback.yml",
+    "pulse-ai-help-chat-usability-ci.yml",
+    "security-posture-ci.yml",
 }
 STALE_BRANCH_WRITERS = {
     "temp-open-pr-integration.yml",
@@ -118,6 +122,37 @@ require(rollback, "@sha256:", "rollback workflow")
 require(rollback, "project-health-dashboard-api", "rollback workflow")
 require(rollback, "project-health-dashboard-web", "rollback workflow")
 
+applicability_contracts = {
+    ".github/workflows/group5-financial-operations-recovery-ci.yml": (
+        "GROUP_5_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE",
+        "GROUP_5_VALIDATION_MODE=REGRESSION",
+        "CENTRAL_GROUP5_CONVERGENCE",
+        "if-no-files-found: warn",
+        "git -C ../../.. diff --exit-code",
+    ),
+    ".github/workflows/pulse-ai-help-chat-usability-ci.yml": (
+        "PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE",
+        "PULSE_AI_HELP_CHAT_VALIDATION_MODE=REGRESSION",
+        "CENTRAL_HELP_CONVERGENCE",
+        "git -C ../../.. diff --exit-code",
+    ),
+    ".github/workflows/group7-ai-help-system-guide-ci.yml": (
+        "GROUP_7_VALIDATION_MODE=REGRESSION",
+        "git -C ../../.. diff --exit-code",
+    ),
+    ".github/workflows/module064-automatic-provider-health-ci.yml": (
+        "MODULE_064_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE",
+        "MODULE_064_VALIDATION_MODE=REGRESSION",
+        "CENTRAL_MODULE064_CONVERGENCE",
+        "if-no-files-found: warn",
+        "git -C ../../.. diff --exit-code",
+    ),
+}
+for workflow_path, tokens in applicability_contracts.items():
+    workflow_text = text(workflow_path)
+    for token in tokens:
+        require(workflow_text, token, f"specialized workflow applicability: {workflow_path}")
+
 nginx = text("deployment/containers/web/default.conf.template")
 for header in (
     "X-Content-Type-Options",
@@ -193,3 +228,4 @@ print(f"BACKEND_COMPILE_REMOVE_BASELINE={compile_removes}")
 print(f"BACKEND_SOURCE_TRANSFORM_BASELINE={source_transforms}")
 print("TEMPORARY_BRANCH_WRITERS_PRESENT=NO")
 print("CRITICAL_ACTION_REFERENCES_PINNED=YES")
+print("SPECIALIZED_REGRESSION_APPLICABILITY=ENFORCED")
