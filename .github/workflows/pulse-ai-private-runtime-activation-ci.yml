@@ -1,0 +1,221 @@
+name: Validate Pulse AI Private Runtime Activation
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-private-runtime-activation-*'
+  pull_request:
+    paths:
+      - '.github/workflows/pulse-ai-private-runtime-activation-ci.yml'
+      - 'database/migrations/052_document_intelligence_runtime.sql'
+      - 'database/rollback/052_document_intelligence_runtime_rollback.sql'
+      - 'tests/test-pulse-ai-private-document-runtime-migration-052.sh'
+      - 'docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION.md'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiPrivateDocumentPipelineModule.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation.mjs'
+      - 'src/frontend/project-time-web/src/PulseAiPrivateRuntimeWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/pulse-ai-private-runtime-workbench.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulse-ai-private-runtime-activation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source isolation on current main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          EXPECTED_BASE="$(git rev-parse origin/main)"
+          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]] || {
+            echo "Private runtime branch is behind current main $EXPECTED_BASE." >&2
+            exit 1
+          }
+          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          ALLOWED='^(\.github/workflows/pulse-ai-private-runtime-activation-ci\.yml|database/migrations/052_document_intelligence_runtime\.sql|database/rollback/052_document_intelligence_runtime_rollback\.sql|tests/test-pulse-ai-private-document-runtime-migration-052\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRuntimeContracts|PulseAiPrivateMalwareScanner|PulseAiPrivateOcrClient|PulseAiPrivateEmbeddingClient|PulseAiPrivateRuntimeSourceResolver|PulseAiPrivateDocumentRuntimeRepository|PulseAiPrivateDocumentRuntimeService|PulseAiPrivateDocumentRuntimeWorker|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRuntimeModule|PulseAiPrivateDocumentPipelineModule)\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRuntimeWorkbench\.jsx|pulse-ai-private-runtime-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Pulse AI private-runtime source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            ! grep -Fxq "$protected" <<<"$CHANGED"
+          done
+          ! grep -E '^(deployment/|scripts/.*deploy|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.)' <<<"$CHANGED"
+          git diff --check "$EXPECTED_BASE"...HEAD
+          echo "PULSE_AI_PRIVATE_RUNTIME_BASE=$EXPECTED_BASE"
+          echo 'PULSE_AI_PRIVATE_RUNTIME_SOURCE_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check ./scripts/validate-module-011-private-runtime-activation.mjs
+          node ./scripts/validate-module-011-private-runtime-activation.mjs
+
+      - name: Test migration 052 apply, rollback, and reapply
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-pulse-ai-private-document-runtime-migration-052.sh
+          tests/test-pulse-ai-private-document-runtime-migration-052.sh
+
+      - name: Validate preserved Pulse AI and FlowHive contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node ./scripts/validate-module-011-private-document-pipeline.mjs
+          node ./scripts/validate-module-066-project-flowhive.mjs
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > pulse-ai-private-runtime-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-ai-private-runtime-api-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: pulse-ai-private-runtime-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          tail -n 260 pulse-ai-private-runtime-api-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          grep -Fq '0 Error(s)' pulse-ai-private-runtime-api-build.log
+          echo 'PULSE_AI_PRIVATE_RUNTIME_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > pulse-ai-private-runtime-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-ai-private-runtime-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/pulse-ai-private-runtime-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build and runtime markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          tail -n 220 pulse-ai-private-runtime-frontend-build.log
+          if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          cat dist/assets/*.js > /tmp/pulse-ai-private-runtime.js
+          cat dist/assets/*.css > /tmp/pulse-ai-private-runtime.css
+          for marker in \
+            'Private Document Runtime & Permission-Scoped Hybrid Index' \
+            'Runtime Readiness' \
+            'Processing Jobs' \
+            'Queue Document' \
+            'Document State' \
+            'QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING'; do
+            grep -Fq "$marker" /tmp/pulse-ai-private-runtime.js
+          done
+          grep -Fq '.pulse-ai-runtime-workbench' /tmp/pulse-ai-private-runtime.css
+          grep -Fq '.pulse-ai-runtime-action-overlay' /tmp/pulse-ai-private-runtime.css
+          echo 'PULSE_AI_PRIVATE_RUNTIME_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web container build context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-private-runtime:${GITHUB_SHA}" \
+            .
+          echo 'PULSE_AI_PRIVATE_RUNTIME_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## Module 011 Pulse AI — Phase 011C'
+            echo
+            echo '- Exact current-main source isolation: passed'
+            echo '- Migration 052 apply, rollback, and reapply: passed'
+            echo '- Private runtime source contract: passed'
+            echo '- Existing Module 011 foundation, deep-intelligence, document-preview, and FlowHive contracts: passed'
+            echo '- .NET 10 API build: passed'
+            echo '- Complete frontend build: passed'
+            echo '- Production web-container context: passed'
+            echo '- Migration applied to Test/Production: no'
+            echo '- Worker enabled by source: no'
+            echo '- Private OCR/embedding endpoint configured by source: no'
+            echo '- Claude/OpenAI call: none'
+            echo '- Module 064 route or secret change: none'
+            echo '- Azure, Entra, Container App, or deployment operation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
