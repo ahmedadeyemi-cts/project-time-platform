@@ -1,0 +1,102 @@
+.help-panel.pulse-ai-help-panel {
+  /* A definite block size is required for the minmax(0, 1fr) conversation row
+     to become a real scroll container. max-height alone allows the grid track
+     to size to content and the panel then clips the conversation. */
+  height: min(820px, calc(100vh - 112px));
+  height: min(820px, calc(100dvh - 112px));
+  max-height: min(820px, calc(100vh - 112px));
+  max-height: min(820px, calc(100dvh - 112px));
+  min-height: min(520px, calc(100vh - 112px));
+  min-height: min(520px, calc(100dvh - 112px));
+  contain: layout paint;
+}
+
+.help-panel.pulse-ai-help-panel .help-messages {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.help-panel.pulse-ai-help-panel .help-messages:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 18%, transparent);
+  outline-offset: -3px;
+}
+
+.help-panel.pulse-ai-help-panel .help-message.assistant.is-detailed {
+  overflow: visible;
+}
+
+.help-panel.pulse-ai-help-panel .help-suggestions {
+  min-height: 0;
+  overscroll-behavior-x: contain;
+}
+
+.help-panel.pulse-ai-help-panel .help-input-row {
+  position: relative;
+  grid-template-rows: auto auto;
+  flex: 0 0 auto;
+}
+
+.help-panel.pulse-ai-help-panel .pulse-ai-help-keyboard-hint {
+  grid-column: 1 / -1;
+  margin-top: -3px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.help-panel.pulse-ai-help-panel .help-input-row textarea {
+  resize: none;
+  overflow-y: auto;
+}
+
+@media (max-width: 760px) {
+  .help-panel.pulse-ai-help-panel {
+    height: calc(100vh - 88px);
+    height: calc(100dvh - 88px);
+    max-height: calc(100vh - 88px);
+    max-height: calc(100dvh - 88px);
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .help-panel.pulse-ai-help-panel {
+    height: calc(100vh - 76px);
+    height: calc(100dvh - 76px);
+    max-height: calc(100vh - 76px);
+    max-height: calc(100dvh - 76px);
+  }
+
+  .help-panel.pulse-ai-help-panel .pulse-ai-help-keyboard-hint {
+    text-align: center;
+  }
+}
+
+@media (max-height: 640px) {
+  .help-panel.pulse-ai-help-panel {
+    top: 8px;
+    bottom: 8px;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .help-panel.pulse-ai-help-panel .help-quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 8px;
+  }
+
+  .help-panel.pulse-ai-help-panel .help-header,
+  .help-panel.pulse-ai-help-panel .help-input-row {
+    padding: 10px 12px;
+  }
+}
