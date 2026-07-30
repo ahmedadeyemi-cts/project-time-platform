@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './project-workspace-center.css';
+import UnifiedProjectFinancialWorkspace from './UnifiedProjectFinancialWorkspace.jsx';
 
 function getStoredProjectPulseAuthSession() {
   try {
@@ -205,6 +206,9 @@ export default function ProjectWorkspaceCenter() {
 
   return (
     <section className="project-workspace-center">
+      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
+      <UnifiedProjectFinancialWorkspace workspace="engineering" />
+      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       {viewAsUsers.length > 0 ? (
         <div className="admin-view-as-panel">
           <div>

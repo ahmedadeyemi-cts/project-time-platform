@@ -76,11 +76,12 @@
     "validate:module006-pipelines": "node ./scripts/validate-module-006-toyota-hyundai-pipelines.mjs"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "vite": "^5.4.21"
+    "@vitejs/plugin-react": "6.0.2",
+    "postcss": "8.5.18",
+    "vite": "8.2.0"
   }
 }
