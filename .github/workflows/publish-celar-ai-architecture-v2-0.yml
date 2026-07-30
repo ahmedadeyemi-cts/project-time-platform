@@ -7,13 +7,19 @@ on:
     paths:
       - .github/workflows/publish-celar-ai-architecture-v2-0.yml
       - docs/modules/module-011-pulse-ai/architecture/v2.0/source/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-celar-ai-architecture-v2-0.yml
+      - docs/modules/module-011-pulse-ai/architecture/v2.0/source/**
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: publish-celar-ai-architecture-v2-0
+  group: publish-celar-ai-architecture-v2-0-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -22,20 +28,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      TARGET_BRANCH: docs/celar-ai-architecture-v2-0-20260730
+      TARGET_BRANCH: ${{ github.head_ref || 'docs/celar-ai-architecture-v2-0-20260730' }}
       ROOT: docs/modules/module-011-pulse-ai/architecture/v2.0
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Enforce documentation-only source boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
+          [[ "$TARGET_BRANCH" == "docs/celar-ai-architecture-v2-0-20260730" ]]
           test -s "$ROOT/source/generate_celar_architecture_v2_0.py"
           test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
           test -s docs/modules/module-011-pulse-ai/architecture/v1.1/US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx
