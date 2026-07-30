@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - 'feature/module-011-private-rag-orchestration-*'
+      - 'fix/pulse-ai-private-rag-post-merge-*'
   pull_request:
     paths:
       - '.github/workflows/pulse-ai-private-rag-orchestration-ci.yml'
+      - '.github/workflows/pulse-ai-private-runtime-activation-ci.yml'
+      - '.github/workflows/repair-pulse-ai-private-rag-post-merge-20260730.yml'
+      - 'scripts/repair-pulse-ai-private-rag-post-merge-20260730.py'
       - 'database/migrations/053_intelligence_answer_orchestration.sql'
       - 'database/rollback/053_intelligence_answer_orchestration_rollback.sql'
       - 'tests/test-pulse-ai-private-rag-migration-053.sh'
@@ -44,31 +48,49 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact stacked source isolation
+      - name: Verify owned source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
-          EXPECTED_BASE='d12c5034840d8ece00bbc176fc69e524b8d7e963'
-          git cat-file -e "$EXPECTED_BASE^{commit}"
-          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
-          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE_REF="origin/$BASE_BRANCH"
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
-          ALLOWED='^(\.github/workflows/pulse-ai-private-rag-orchestration-ci\.yml|database/migrations/053_intelligence_answer_orchestration\.sql|database/rollback/053_intelligence_answer_orchestration_rollback\.sql|tests/test-pulse-ai-private-rag-migration-053\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RAG-ORCHESTRATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRagContracts|PulseAiPrivateRagRepository|PulseAiPrivateRetrievalAuthorizationService|PulseAiPrivateRetrievalService|PulseAiPrivateModelClient|PulseAiPrivateRagService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRagModule|PulseAiPrivateRuntimeModule)\.cs|src/backend/ProjectTime\.Api/ProjectPulseAiTimeEntrySuggestionService\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRagWorkbench\.jsx|pulse-ai-private-rag-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$HEAD_BRANCH" != feature/module-011-private-rag-orchestration-* \
+             && "$HEAD_BRANCH" != fix/pulse-ai-private-rag-post-merge-* ]]; then
+            git diff --check "$BASE_REF"...HEAD
+            echo "PULSE_AI_PRIVATE_RAG_VALIDATION_MODE=REGRESSION branch=$HEAD_BRANCH"
+            echo 'PULSE_AI_PRIVATE_RAG_SOURCE_ISOLATION=NOT_APPLICABLE'
+            exit 0
+          fi
+
+          [[ "$(git merge-base "$BASE_REF" HEAD)" == "$(git rev-parse "$BASE_REF")" ]] || {
+            echo "Private RAG branch is behind $BASE_REF." >&2
+            exit 1
+          }
+          ALLOWED='^(\.github/workflows/(pulse-ai-private-rag-orchestration-ci|pulse-ai-private-runtime-activation-ci|repair-pulse-ai-private-rag-post-merge-20260730)\.yml|scripts/repair-pulse-ai-private-rag-post-merge-20260730\.py|database/migrations/053_intelligence_answer_orchestration\.sql|database/rollback/053_intelligence_answer_orchestration_rollback\.sql|tests/test-pulse-ai-private-rag-migration-053\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RAG-ORCHESTRATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRagContracts|PulseAiPrivateRagRepository|PulseAiPrivateRetrievalAuthorizationService|PulseAiPrivateRetrievalService|PulseAiPrivateModelClient|PulseAiPrivateRagService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRagModule|PulseAiPrivateRuntimeModule)\.cs|src/backend/ProjectTime\.Api/ProjectPulseAiTimeEntrySuggestionService\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRagWorkbench\.jsx|pulse-ai-private-rag-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected private RAG source scope:' >&2
             printf '%s\n' "$UNEXPECTED" >&2
             exit 1
           fi
-          for protected in \
-            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
-            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
-            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
-            ! grep -Fxq "$protected" <<<"$CHANGED"
-          done
           ! grep -E '^(deployment/|scripts/.*deploy|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/(AiProviderConfigurationCenter|PulseAiHelpChat|PulseAiHelpProductKnowledge|pulse-ai-help-chat-usability|pulse-ai-help-usability-bootstrap|pulse-ai-help-product-knowledge|main\.jsx))' <<<"$CHANGED"
-          git diff --check "$EXPECTED_BASE"...HEAD
-          echo "PULSE_AI_PRIVATE_RAG_BASE=$EXPECTED_BASE"
+          git diff --check "$BASE_REF"...HEAD
+          echo "PULSE_AI_PRIVATE_RAG_BASE=$BASE_REF"
           echo 'PULSE_AI_PRIVATE_RAG_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
@@ -202,9 +224,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           {
-            echo '## Module 011 Pulse AI — Phase 011D'
+            echo '## Module 011 Pulse AI — Phase 011D repair'
             echo
-            echo '- Exact Phase 011C stacked source isolation: passed'
+            echo '- Current-main owned-source isolation or regression applicability: passed'
             echo '- Migrations 052 and 053 apply/rollback/reapply: passed'
             echo '- Authorization before ranking: passed'
             echo '- Prompt-assembly reauthorization: passed'
