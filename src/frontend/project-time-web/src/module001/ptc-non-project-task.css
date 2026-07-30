@@ -1,0 +1,210 @@
+#ptc-non-project-task-host {
+  margin-left: auto;
+}
+
+.ptc-non-project-task-launcher {
+  display: grid;
+  justify-items: end;
+  gap: 0.3rem;
+}
+
+.ptc-non-project-task-launcher > button {
+  border: 1px solid #007886;
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.85rem;
+  background: #007f90;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ptc-non-project-task-launcher > button:hover,
+.ptc-non-project-task-launcher > button:focus-visible {
+  background: #006c79;
+  outline: 3px solid rgba(0, 127, 144, 0.2);
+}
+
+.ptc-non-project-task-launcher > small {
+  max-width: 280px;
+  color: #42677a;
+  text-align: right;
+}
+
+.ptc-non-project-task-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(6, 24, 42, 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.ptc-non-project-task-modal > article {
+  width: min(760px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  display: grid;
+  gap: 1rem;
+  border-radius: 1rem;
+  padding: 1.2rem;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(3, 18, 33, 0.34);
+}
+
+.ptc-non-project-task-modal header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ptc-non-project-task-modal header h2 {
+  margin: 0.15rem 0 0.35rem;
+  color: #0c3155;
+}
+
+.ptc-non-project-task-modal header p {
+  margin: 0;
+  color: #566f82;
+}
+
+.ptc-non-project-task-modal .close {
+  border: 0;
+  background: transparent;
+  color: #466176;
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ptc-non-project-task-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.ptc-non-project-task-modal label {
+  display: grid;
+  gap: 0.35rem;
+  color: #183b57;
+  font-weight: 800;
+}
+
+.ptc-non-project-task-modal label small {
+  color: #6a8090;
+  font-weight: 500;
+}
+
+.ptc-non-project-task-modal input,
+.ptc-non-project-task-modal select,
+.ptc-non-project-task-modal textarea {
+  width: 100%;
+  border: 1px solid #c4d3dd;
+  border-radius: 0.65rem;
+  padding: 0.7rem;
+  background: #ffffff;
+  color: #153650;
+  font: inherit;
+  font-weight: 500;
+}
+
+.ptc-non-project-task-modal textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.ptc-non-project-task-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  align-self: end;
+  min-height: 44px;
+  border: 1px solid #d5e1e9;
+  border-radius: 0.65rem;
+  padding: 0.65rem;
+  background: #f8fbfc;
+}
+
+.ptc-non-project-task-checkbox input {
+  width: auto;
+}
+
+.ptc-non-project-task-modal aside {
+  border-left: 4px solid #0c8493;
+  border-radius: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  background: #edf8fa;
+  color: #335f6a;
+  line-height: 1.45;
+}
+
+.ptc-non-project-task-alert {
+  margin: 0;
+  border-radius: 0.65rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.ptc-non-project-task-alert.error {
+  background: #fff0f1;
+  color: #991b32;
+}
+
+.ptc-non-project-task-modal footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.ptc-non-project-task-modal footer button {
+  border-radius: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ptc-non-project-task-modal footer button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ptc-non-project-task-modal .primary-action {
+  border: 1px solid #006c79;
+  background: #007f90;
+  color: #ffffff;
+}
+
+.ptc-non-project-task-modal .secondary-action {
+  border: 1px solid #bdcdd8;
+  background: #ffffff;
+  color: #173b58;
+}
+
+@media (max-width: 720px) {
+  #ptc-non-project-task-host {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .ptc-non-project-task-launcher {
+    justify-items: stretch;
+  }
+
+  .ptc-non-project-task-launcher > button {
+    width: 100%;
+  }
+
+  .ptc-non-project-task-launcher > small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .ptc-non-project-task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ptc-non-project-task-modal footer {
+    display: grid;
+  }
+}
