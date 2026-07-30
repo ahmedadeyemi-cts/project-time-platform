@@ -1,0 +1,171 @@
+name: Temporary Open PR Exact-Head Integration
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/open-pr-integration-trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-open-pr-integration
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact integration request
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Parse and authorize request
+        id: request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FILE='trigger/.github/open-pr-integration-trigger'
+          test -f "$FILE"
+          OPERATION="$(sed -n 's/^operation=//p' "$FILE" | tail -1)"
+          TARGET_BRANCH="$(sed -n 's/^target_branch=//p' "$FILE" | tail -1)"
+          EXPECTED_HEAD="$(sed -n 's/^expected_head=//p' "$FILE" | tail -1)"
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          case "$OPERATION:$TARGET_BRANCH" in
+            pending284:feature/pending-approval-work-ptc-non-project-tasks-20260729) ;;
+            *) echo "Unauthorized integration request: $OPERATION:$TARGET_BRANCH" >&2; exit 1 ;;
+          esac
+          echo "operation=$OPERATION" >> "$GITHUB_OUTPUT"
+          echo "target_branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "expected_head=$EXPECTED_HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact target branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.request.outputs.target_branch }}
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: repo/src/frontend/project-time-web/package-lock.json
+
+      - name: Reconcile PR 284 with current main
+        working-directory: repo
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ steps.request.outputs.target_branch }}
+          EXPECTED_HEAD: ${{ steps.request.outputs.expected_head }}
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git fetch origin main "$TARGET_BRANCH" --no-tags
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD" ]] || {
+            echo "Target branch moved. Expected $EXPECTED_HEAD but found $(git rev-parse HEAD)." >&2
+            exit 1
+          }
+
+          set +e
+          git merge --no-ff origin/main -m 'Reconcile PR #284 with current main'
+          MERGE_STATUS=$?
+          set -e
+
+          if [[ "$MERGE_STATUS" -ne 0 ]]; then
+            mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U | sort)
+            printf 'PR284_CONFLICT=%s\n' "${CONFLICTS[@]}"
+            for conflict in "${CONFLICTS[@]}"; do
+              case "$conflict" in
+                src/frontend/project-time-web/package.json|src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs)
+                  git checkout --theirs -- "$conflict"
+                  ;;
+                *)
+                  echo "Unexpected PR #284 conflict: $conflict" >&2
+                  exit 1
+                  ;;
+              esac
+            done
+
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_path = Path('src/frontend/project-time-web/package.json')
+          package = json.loads(package_path.read_text())
+          scripts = package.setdefault('scripts', {})
+          scripts['validate:pending-time-workflow'] = 'node ./scripts/validate-pending-time-workflow.mjs'
+          build = scripts.get('build', '')
+          marker = 'npm run validate:module001-ptc-time-steward'
+          pending = 'npm run validate:pending-time-workflow'
+          if pending not in build:
+              if marker not in build:
+                  raise SystemExit('Unable to locate pending-time build insertion anchor.')
+              build = build.replace(marker, marker + ' && ' + pending, 1)
+          scripts['build'] = build
+          package_path.write_text(json.dumps(package, indent=2) + '\n')
+
+          composition = Path('src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs')
+          text = composition.read_text()
+          anchor = '        app.MapGet("/health/combined-modules", CombinedPublicReadinessAsync);\n'
+          addition = (
+              '        // Additive pending-time and PTC non-project task routes.\n'
+              '        app.MapPendingApprovalWorkEndpoints();\n'
+              '        app.MapModule001NonProjectTaskEndpoints();\n'
+          )
+          if 'app.MapPendingApprovalWorkEndpoints();' not in text:
+              if anchor not in text:
+                  raise SystemExit('Combined-module composition anchor was not found.')
+              text = text.replace(anchor, addition + anchor, 1)
+          composition.write_text(text)
+          PY
+
+            git add src/frontend/project-time-web/package.json \
+              src/backend/ProjectTime.Api/Modules/CombinedModulePublicReadiness.cs
+            test -z "$(git diff --name-only --diff-filter=U)"
+            git diff --cached --check
+            git commit --no-edit
+          fi
+
+          git diff --check origin/main...HEAD
+
+      - name: Validate migration 051a and source package
+        working-directory: repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-pending-approval-migration-051a.sh
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          pushd src/frontend/project-time-web >/dev/null
+          node --check scripts/validate-pending-time-workflow.mjs
+          node scripts/validate-pending-time-workflow.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+          docker build -f deployment/containers/web/Dockerfile .
+
+      - name: Push exact reconciled PR 284 branch
+        working-directory: repo
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ steps.request.outputs.target_branch }}
+        run: |
+          set -Eeuo pipefail
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "PR284_RECONCILED_HEAD=$(git rev-parse HEAD)"
