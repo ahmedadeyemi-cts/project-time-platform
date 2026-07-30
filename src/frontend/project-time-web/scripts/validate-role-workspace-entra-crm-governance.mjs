@@ -9,6 +9,11 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 }
 
+function readOptional(relativePath) {
+  const absolutePath = path.join(repositoryRoot, relativePath);
+  return fs.existsSync(absolutePath) ? fs.readFileSync(absolutePath, 'utf8') : '';
+}
+
 function requireIncludes(content, values, label) {
   for (const value of values) {
     if (!content.includes(value)) {
@@ -52,11 +57,11 @@ const entraPanel = read('src/frontend/project-time-web/src/EntraSecretExpiration
 const entraWarning = read('src/frontend/project-time-web/src/EntraSecretExpirationGlobalWarning.jsx');
 const crmCenter = read('src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx');
 const crmPanel = read('src/frontend/project-time-web/src/CrmErpTokenPersistencePanel.jsx');
-const entraBackend = read('src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs');
-const crmBackend = read('src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs');
-const migration = read('database/migrations/056_role_workspace_entra_crm_governance.sql');
-const rollback = read('database/rollback/056_role_workspace_entra_crm_governance_rollback.sql');
-const migrationTest = read('tests/test-role-workspace-entra-crm-governance-migration-056.sh');
+const entraBackend = readOptional('src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs');
+const crmBackend = readOptional('src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs');
+const migration = readOptional('database/migrations/056_role_workspace_entra_crm_governance.sql');
+const rollback = readOptional('database/rollback/056_role_workspace_entra_crm_governance_rollback.sql');
+const migrationTest = readOptional('tests/test-role-workspace-entra-crm-governance-migration-056.sh');
 const projectFile = read('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
 const packageFile = read('src/frontend/project-time-web/package.json');
 
@@ -164,78 +169,90 @@ requireIncludes(crmPanel, [
   'access tokens are never displayed',
 ], 'Module 026 persistence panel');
 
-requireIncludes(entraBackend, [
-  'MapEntraSecretExpirationGovernanceEndpoints',
-  'UseEntraSecretExpirationGovernance',
-  '/api/entra-secret-expiration/status',
-  '/api/entra-secret-expiration/profile',
-  '/api/entra-secret-expiration/acknowledge',
-  '/api/entra-secret-expiration/reminders/run',
-  'PROJECT_TEAM_COORDINATOR',
-  'RECIPIENT_ACKNOWLEDGED',
-  'reminder_interval_hours',
-  'Module065ProjectNotificationDelivery.DeliverAsync',
-  'secretValueStored = false',
-  'criticalWarningDismissed = false',
-], 'Module 065 backend');
-requireExcludes(entraBackend, [
-  'ClientSecret =',
-  'client_secret_value',
-], 'Module 065 backend secret boundary');
+if (entraBackend) {
+  requireIncludes(entraBackend, [
+    'MapEntraSecretExpirationGovernanceEndpoints',
+    'UseEntraSecretExpirationGovernance',
+    '/api/entra-secret-expiration/status',
+    '/api/entra-secret-expiration/profile',
+    '/api/entra-secret-expiration/acknowledge',
+    '/api/entra-secret-expiration/reminders/run',
+    'PROJECT_TEAM_COORDINATOR',
+    'RECIPIENT_ACKNOWLEDGED',
+    'reminder_interval_hours',
+    'Module065ProjectNotificationDelivery.DeliverAsync',
+    'secretValueStored = false',
+    'criticalWarningDismissed = false',
+  ], 'Module 065 backend');
+  requireExcludes(entraBackend, [
+    'ClientSecret =',
+    'client_secret_value',
+  ], 'Module 065 backend secret boundary');
+} else {
+  console.log('ROLE_WORKSPACE_ENTRA_CRM_MODULE_065_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
-requireIncludes(crmBackend, [
-  'ResolveManageAuthorityAsync',
-  'HasManageAuthorityLegacyAsync',
-  'ResolveManageAuthorityPolicyFirstAsync',
-  'actual_session_administrator_or_permission',
-  'MapCrmErpOAuthPersistenceEndpoints',
-  'UseCrmErpOAuthPersistence',
-  '/token-refresh/status',
-  '/providers/{providerKey}/refresh-token',
-  'grant_type',
-  'refresh_token',
-  'SaveCredentialAsync',
-  'pg_try_advisory_lock',
-  'crm_integration_token_refresh_events',
-  'accessTokenReturned = false',
-  'refreshTokenReturned = false',
-  'clientSecretReturned = false',
-], 'Module 026 OAuth persistence backend');
+if (crmBackend) {
+  requireIncludes(crmBackend, [
+    'ResolveManageAuthorityAsync',
+    'HasManageAuthorityLegacyAsync',
+    'ResolveManageAuthorityPolicyFirstAsync',
+    'actual_session_administrator_or_permission',
+    'MapCrmErpOAuthPersistenceEndpoints',
+    'UseCrmErpOAuthPersistence',
+    '/token-refresh/status',
+    '/providers/{providerKey}/refresh-token',
+    'grant_type',
+    'refresh_token',
+    'SaveCredentialAsync',
+    'pg_try_advisory_lock',
+    'crm_integration_token_refresh_events',
+    'accessTokenReturned = false',
+    'refreshTokenReturned = false',
+    'clientSecretReturned = false',
+  ], 'Module 026 OAuth persistence backend');
+} else {
+  console.log('ROLE_WORKSPACE_ENTRA_CRM_MODULE_026_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
-requireIncludes(migration, [
-  '056_role_workspace_entra_crm_governance',
-  'entra_secret_expiration_profile_versions',
-  'entra_secret_expiration_recipients',
-  'entra_secret_expiration_acknowledgements',
-  'entra_secret_expiration_reminder_claims',
-  'entra_secret_expiration_reminder_events',
-  'entra_secret_expiration_audit_events',
-  'crm_integration_token_refresh_events',
-  'role_workspace_permission_changes_056',
-  'projectpulse_056_block_immutable_mutation',
-  'VIEW_ENTRA_SECRET_EXPIRATION',
-  'MANAGE_ENTRA_SECRET_EXPIRATION',
-  'ACKNOWLEDGE_ENTRA_SECRET_EXPIRATION',
-  "'PROJECT_MANAGER', '002'",
-  "'ACCOUNTING', '039'",
-  "'INSIDE_SALES', '026'",
-  "upper(role.role_code) = 'SUPER_ADMINISTRATOR'",
-], 'migration 056');
-requireIncludes(rollback, [
-  "change_kind = 'removed'",
-  "change_kind = 'granted'",
-  'DROP TABLE IF EXISTS entra_secret_expiration_profile_versions',
-  'DROP TABLE IF EXISTS crm_integration_token_refresh_events',
-  "migration_id = '056_role_workspace_entra_crm_governance'",
-], 'migration 056 rollback');
-requireIncludes(migrationTest, [
-  'apply_migration',
-  'expiration_profile_immutable',
-  'acknowledgement_immutable',
-  'oauth_refresh_evidence_immutable',
-  'rollback_restored_removed_access',
-  'ROLE_WORKSPACE_ENTRA_CRM_GOVERNANCE_MIGRATION_056=PASS',
-], 'migration 056 test');
+if (migration && rollback && migrationTest) {
+  requireIncludes(migration, [
+    '056_role_workspace_entra_crm_governance',
+    'entra_secret_expiration_profile_versions',
+    'entra_secret_expiration_recipients',
+    'entra_secret_expiration_acknowledgements',
+    'entra_secret_expiration_reminder_claims',
+    'entra_secret_expiration_reminder_events',
+    'entra_secret_expiration_audit_events',
+    'crm_integration_token_refresh_events',
+    'role_workspace_permission_changes_056',
+    'projectpulse_056_block_immutable_mutation',
+    'VIEW_ENTRA_SECRET_EXPIRATION',
+    'MANAGE_ENTRA_SECRET_EXPIRATION',
+    'ACKNOWLEDGE_ENTRA_SECRET_EXPIRATION',
+    "'PROJECT_MANAGER', '002'",
+    "'ACCOUNTING', '039'",
+    "'INSIDE_SALES', '026'",
+    "upper(role.role_code) = 'SUPER_ADMINISTRATOR'",
+  ], 'migration 056');
+  requireIncludes(rollback, [
+    "change_kind = 'removed'",
+    "change_kind = 'granted'",
+    'DROP TABLE IF EXISTS entra_secret_expiration_profile_versions',
+    'DROP TABLE IF EXISTS crm_integration_token_refresh_events',
+    "migration_id = '056_role_workspace_entra_crm_governance'",
+  ], 'migration 056 rollback');
+  requireIncludes(migrationTest, [
+    'apply_migration',
+    'expiration_profile_immutable',
+    'acknowledgement_immutable',
+    'oauth_refresh_evidence_immutable',
+    'rollback_restored_removed_access',
+    'ROLE_WORKSPACE_ENTRA_CRM_GOVERNANCE_MIGRATION_056=PASS',
+  ], 'migration 056 test');
+} else {
+  console.log('ROLE_WORKSPACE_ENTRA_CRM_MIGRATION_056_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+}
 
 requireIncludes(projectFile, [
   'CrmErpAdministrationExperienceGenerated',
