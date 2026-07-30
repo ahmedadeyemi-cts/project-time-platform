@@ -118,6 +118,7 @@ jobs:
           bash /tmp/module006-reconcile.sh
           python - <<'PY'
           from pathlib import Path
+          import re
 
           validator = Path('src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs')
           source = validator.read_text()
@@ -130,8 +131,24 @@ jobs:
           source = source.replace(html_marker, "  \"route: 'toyota-hyundai-pipelines'\",\n", 1)
           source = source.replace(legacy_description, "  'aliases=psa-modules,project-register',\n", 1)
           validator.write_text(source)
+
+          injector = Path('src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs')
+          injector_source = injector.read_text()
+          pattern = r"const oldDefinition = `\s*\{[\s\S]*?permissions: \[[^\n]+\]\n\s*\},`;"
+          replacement = "const oldDefinition = /\\{\\s*\\n\\s*route: 'psa-modules',[\\s\\S]*?\\n\\s*\\},/;"
+          injector_source, count = re.subn(pattern, replacement, injector_source, count=1)
+          if count != 1:
+              raise SystemExit('Expected exact Module 006 legacy definition template was not found in the injector.')
+          expected_guard = "if (!source.includes(oldDefinition)) throw new Error('Module 006 legacy registry block is missing.');"
+          replacement_guard = "if (!oldDefinition.test(source) || !source.includes(\"title: 'PSA Modules'\")) throw new Error('Module 006 legacy registry block is missing.');"
+          if expected_guard not in injector_source:
+              raise SystemExit('Expected Module 006 injector guard was not found.')
+          injector_source = injector_source.replace(expected_guard, replacement_guard, 1)
+          injector.write_text(injector_source)
           PY
-          git add src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs
+          git add \
+            src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs \
+            src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs
           git diff --cached --check
           git commit --amend --no-edit
           bash /tmp/module006-validate.sh
@@ -146,6 +163,7 @@ jobs:
             echo '- Source branch: feature/module-006-project-register-20260729'
             echo '- Current main reconciliation: completed'
             echo '- Shared integration files restored from current main before reviewed Module 006 changes: yes'
+            echo '- Generated Module 006 legacy-block matching is formatting resilient: yes'
             echo '- Cross-module validator updated for the canonical Module 006 route and aliases: yes'
             echo '- Visible identity: Toyota & Hyundai Pipelines'
             echo '- Canonical route: #toyota-hyundai-pipelines'
