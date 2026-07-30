@@ -1,0 +1,164 @@
+name: Temporary Open PR Source Integrator 2026-07-30
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/open-pr-integration-trigger'
+      - '.github/open-pr-integration-script.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectpulse-open-pr-source-integration
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact integration control
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Parse and authorize target
+        id: target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTROL='trigger/.github/open-pr-integration-trigger'
+          SCRIPT='trigger/.github/open-pr-integration-script.py'
+          test -s "$CONTROL"
+          test -s "$SCRIPT"
+          OPERATION="$(sed -n 's/^operation=//p' "$CONTROL" | tail -1)"
+          TARGET_BRANCH="$(sed -n 's/^target_branch=//p' "$CONTROL" | tail -1)"
+          EXPECTED_HEAD="$(sed -n 's/^expected_head=//p' "$CONTROL" | tail -1)"
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          case "$OPERATION:$TARGET_BRANCH" in
+            pr285:security/platform-findings-remediation-20260729) ;;
+            pr284:feature/pending-approval-work-ptc-non-project-tasks-20260729) ;;
+            pr279:feature/module-011-private-runtime-activation-20260729) ;;
+            pr287:feature/module-011-private-rag-orchestration-20260729) ;;
+            pr276:feature/module-006-project-register-20260729) ;;
+            *) echo "Unauthorized target: $OPERATION:$TARGET_BRANCH" >&2; exit 1 ;;
+          esac
+          echo "operation=$OPERATION" >> "$GITHUB_OUTPUT"
+          echo "branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "expected_head=$EXPECTED_HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact source branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: repo/src/frontend/project-time-web/package-lock.json
+
+      - name: Reconcile and patch reviewed source
+        working-directory: repo
+        env:
+          OPERATION: ${{ steps.target.outputs.operation }}
+          TARGET_BRANCH: ${{ steps.target.outputs.branch }}
+          EXPECTED_HEAD: ${{ steps.target.outputs.expected_head }}
+          PATCH_SCRIPT: ${{ github.workspace }}/trigger/.github/open-pr-integration-script.py
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ProjectPulse Source Integration'
+          git config user.email 'projectpulse-integration@users.noreply.github.com'
+          git fetch origin main "$TARGET_BRANCH" --no-tags
+          ORIGINAL_HEAD="$(git rev-parse HEAD)"
+          [[ "$ORIGINAL_HEAD" == "$EXPECTED_HEAD" ]] || {
+            echo "Target moved. Expected $EXPECTED_HEAD, found $ORIGINAL_HEAD." >&2
+            exit 1
+          }
+          export ORIGINAL_HEAD
+          export CURRENT_MAIN="$(git rev-parse origin/main)"
+          export MERGE_BASE="$(git merge-base "$ORIGINAL_HEAD" origin/main)"
+          echo "ORIGINAL_HEAD=$ORIGINAL_HEAD"
+          echo "CURRENT_MAIN=$CURRENT_MAIN"
+          echo "MERGE_BASE=$MERGE_BASE"
+
+          set +e
+          git merge --no-ff origin/main -m "Reconcile $OPERATION with current main"
+          MERGE_STATUS=$?
+          set -e
+          if [[ "$MERGE_STATUS" -ne 0 ]]; then
+            mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U)
+            printf 'REVIEWED_CONFLICTS_BEGIN\n%s\nREVIEWED_CONFLICTS_END\n' "${CONFLICTS[*]}"
+            for file in "${CONFLICTS[@]}"; do
+              git checkout --theirs -- "$file"
+              git add "$file"
+            done
+            test -z "$(git diff --name-only --diff-filter=U)"
+            git commit --no-edit
+          fi
+
+          python "$PATCH_SCRIPT"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git commit -m "Complete $OPERATION reconciliation and corrections"
+          fi
+
+      - name: Validate corrected exact head
+        working-directory: repo
+        env:
+          OPERATION: ${{ steps.target.outputs.operation }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          case "$OPERATION" in
+            pr285)
+              python scripts/validate-platform-security-remediation-20260729.py
+              ;;
+            pr284)
+              node src/frontend/project-time-web/scripts/validate-pending-time-workflow.mjs
+              ;;
+            pr279)
+              node src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation.mjs
+              ;;
+            pr287)
+              node src/frontend/project-time-web/scripts/validate-module-011-private-rag-orchestration.mjs
+              ;;
+            pr276)
+              node src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+              ;;
+          esac
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          pushd src/frontend/project-time-web >/dev/null
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+          git diff --check origin/main...HEAD
+
+      - name: Push exact reconciled source
+        working-directory: repo
+        env:
+          TARGET_BRANCH: ${{ steps.target.outputs.branch }}
+          OPERATION: ${{ steps.target.outputs.operation }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git push origin HEAD:"$TARGET_BRANCH"
+          echo "${OPERATION}_RECONCILED_HEAD=$(git rev-parse HEAD)"
