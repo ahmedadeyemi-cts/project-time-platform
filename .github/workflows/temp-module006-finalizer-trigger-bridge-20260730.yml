@@ -136,7 +136,7 @@ jobs:
           injector_source = injector.read_text()
           pattern = r"const oldDefinition = `\s*\{[\s\S]*?permissions: \[[^\n]+\]\n\s*\},`;"
           replacement = "const oldDefinition = /\\{\\s*\\n\\s*route: 'psa-modules',[\\s\\S]*?\\n\\s*\\},/;"
-          injector_source, count = re.subn(pattern, replacement, injector_source, count=1)
+          injector_source, count = re.subn(pattern, lambda _match: replacement, injector_source, count=1)
           if count != 1:
               raise SystemExit('Expected exact Module 006 legacy definition template was not found in the injector.')
           expected_guard = "if (!source.includes(oldDefinition)) throw new Error('Module 006 legacy registry block is missing.');"
