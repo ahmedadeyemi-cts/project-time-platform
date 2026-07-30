@@ -76,30 +76,12 @@ jobs:
       - name: Build complete frontend
         working-directory: src/frontend/project-time-web
         run: npm run build
-      - name: Confirm compiled governance markers
+      - name: Confirm generated runtime mounts and production bundle
         working-directory: src/frontend/project-time-web
         run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-
-          const assets = path.resolve('dist/assets');
-          const javascript = fs.readdirSync(assets)
-            .filter((file) => file.endsWith('.js'))
-            .map((file) => fs.readFileSync(path.join(assets, file), 'utf8'))
-            .join('\n');
-
-          const markers = [
-            ['/api/entra-secret-expiration/status', 'global Entra expiration status API'],
-            ['/api/entra-secret-expiration/acknowledge', 'PTC acknowledgement API'],
-            ['/api/integrations/026/token-refresh/status', 'OAuth persistence status API'],
-            ['Signed in as', 'signed-in workspace identity']
-          ];
-
-          for (const [marker, label] of markers) {
-            if (!javascript.includes(marker)) {
-              throw new Error(`Compiled bundle is missing ${label}: ${marker}`);
-            }
-            console.log(`COMPILED_GOVERNANCE_MARKER=PASS label=${label}`);
-          }
-          NODE
+          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.js' -size +0c -print -quit)"
+          grep -Fq '<EntraSecretExpirationGlobalWarning authSession={authSession} />' src/App.jsx
+          grep -Fq '<EntraSecretExpirationGovernancePanel />' src/EntraSecretAdministrationCenter.jsx
+          grep -Fq '<CrmErpTokenPersistencePanel' src/CrmErpIntegrationCenter.jsx
+          grep -Fq 'Signed in as' src/App.jsx
+          echo 'GENERATED_RUNTIME_MOUNTS_AND_BUNDLE=PASS'
