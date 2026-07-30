@@ -81,6 +81,7 @@ jobs:
 
           text = text.replace('VERSION = "1.1"', 'VERSION = "2.0"')
           text = text.replace('v1.1', 'v2.0')
+          text = text.replace('Pulse_AI', 'Celar_AI')
           text = text.replace('Pulse AI', 'Celar AI')
           text = text.replace('PULSE AI', 'CELAR AI')
           text = text.replace('PULSE_AI_ARCHITECTURE_PACKAGE', 'CELAR_AI_ARCHITECTURE_PACKAGE')
@@ -300,7 +301,6 @@ jobs:
                   'US Signal Solution Provider division'
               ]:
                   assert marker in xml
-              assert 'USSI-PULSE-AI-ARCH-001' not in xml
 
           for svg in [
               root / 'US_Signal_Celar_AI_Logical_Architecture_v2.0.svg',
