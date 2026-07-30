@@ -14,6 +14,10 @@ public static class ProjectPulseAiServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromMinutes(3);
         });
+        services.AddHttpClient("PulseAiPrivateInference", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
         services.AddSingleton<ProjectPulseAiConfiguration>();
         services.AddSingleton<ProjectPulseAiSecretStore>();
         services.AddHostedService<ProjectPulseAiSecretLoader>();
@@ -37,6 +41,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiPrivateDocumentRuntimeRepository>();
         services.AddSingleton<PulseAiPrivateDocumentRuntimeService>();
         services.AddHostedService<PulseAiPrivateDocumentRuntimeWorker>();
+        services.AddSingleton<PulseAiPrivateRagRepository>();
+        services.AddSingleton<PulseAiPrivateRetrievalAuthorizationService>();
+        services.AddSingleton<PulseAiPrivateRetrievalService>();
+        services.AddSingleton<PulseAiPrivateModelClient>();
+        services.AddSingleton<PulseAiPrivateRagService>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();
         services.AddHostedService<ProjectPulseAiHealthMonitor>();
         return services;

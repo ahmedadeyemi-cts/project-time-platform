@@ -568,9 +568,6 @@ public sealed class PulseAiPrivateRagRepository
             var rank = 1;
             foreach (var citation in answer.Citations)
             {
-                var chunk = citation.CitationId > 0
-                    ? query.CorrelationId
-                    : string.Empty;
                 const string citationSql = """
                     INSERT INTO pulse_ai_answer_citations (
                         pulse_ai_answer_run_id,chunk_id,project_intake_document_id,
@@ -588,17 +585,23 @@ public sealed class PulseAiPrivateRagRepository
                     FROM pulse_ai_document_chunks ch
                     JOIN project_intake_documents d
                       ON d.project_intake_document_id = ch.project_intake_document_id
-                    WHERE ch.chunk_id = @chunk_id
+                    WHERE ch.project_intake_document_id = @document_id
+                      AND ch.source_sha256 = @source_sha256
+                      AND ch.text_sha256 = @text_sha256
+                      AND ch.is_active = TRUE
+                    ORDER BY ch.processed_at DESC
+                    LIMIT 1
                     ON CONFLICT (pulse_ai_answer_run_id, rank_order) DO NOTHING;
                     """;
                 await using var citationCommand = new NpgsqlCommand(citationSql, connection, transaction);
                 citationCommand.Parameters.AddWithValue("answer_run_id", answer.AnswerRunId);
                 citationCommand.Parameters.AddWithValue("rank_order", rank);
                 citationCommand.Parameters.AddWithValue("combined_score", citation.RelevanceScore);
-                citationCommand.Parameters.AddWithValue("chunk_id", FindChunkId(citation, answer));
+                citationCommand.Parameters.AddWithValue("document_id", citation.DocumentId);
+                citationCommand.Parameters.AddWithValue("source_sha256", citation.SourceSha256);
+                citationCommand.Parameters.AddWithValue("text_sha256", citation.TextSha256);
                 await citationCommand.ExecuteNonQueryAsync(cancellationToken);
                 rank++;
-                _ = chunk;
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -729,9 +732,9 @@ public sealed class PulseAiPrivateRagRepository
                 featureCode = reader.GetString(1),
                 purposeCode = reader.GetString(2),
                 status = reader.GetString(3),
-                actualUserId = reader.IsDBNull(4) ? null : reader.GetGuid(4),
-                effectiveUserId = reader.IsDBNull(5) ? null : reader.GetGuid(5),
-                projectId = reader.IsDBNull(6) ? null : reader.GetGuid(6),
+                actualUserId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4),
+                effectiveUserId = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5),
+                projectId = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6),
                 projectCode = reader.GetString(7),
                 detailLevel = reader.GetString(8),
                 modelProvider = reader.GetString(9),
@@ -754,7 +757,7 @@ public sealed class PulseAiPrivateRagRepository
                 diagnosticCode = reader.GetString(26),
                 dataAsOf = reader.GetFieldValue<DateTimeOffset>(27),
                 requestedAt = reader.GetFieldValue<DateTimeOffset>(28),
-                completedAt = reader.IsDBNull(29) ? null : reader.GetFieldValue<DateTimeOffset>(29)
+                completedAt = reader.IsDBNull(29) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(29)
             };
             await reader.CloseAsync();
             var citations = await LoadCitationAuditAsync(connection, answerRunId, cancellationToken);
@@ -800,26 +803,6 @@ public sealed class PulseAiPrivateRagRepository
         return selected;
     }
 
-    private static string FindChunkId(
-        PulseAiPrivateAnswerCitation citation,
-        PulseAiPrivateRagAnswer answer)
-    {
-        var matching = answer.Citations.FirstOrDefault(item => item.CitationId == citation.CitationId);
-        if (matching is null) return string.Empty;
-        return matching.SourceSha256.Length == 64 && matching.TextSha256.Length == 64
-            ? FindChunkIdFromDatabaseIdentity(matching)
-            : string.Empty;
-    }
-
-    private static string FindChunkIdFromDatabaseIdentity(PulseAiPrivateAnswerCitation citation)
-    {
-        // The source chunk ID is deterministic but is intentionally not exposed in
-        // the public citation contract. Rebuild the database lookup key through the
-        // exact source hashes in CompleteAnswerRunAsync's INSERT ... SELECT path.
-        // A placeholder cannot match and therefore prevents an incorrect citation.
-        return $"citation:{citation.CitationId}:{citation.TextSha256}";
-    }
-
     private static async Task<IReadOnlyList<object>> LoadCitationAuditAsync(
         NpgsqlConnection connection,
         Guid answerRunId,
@@ -843,15 +826,15 @@ public sealed class PulseAiPrivateRagRepository
         {
             rows.Add(new
             {
-                documentId = reader.IsDBNull(0) ? null : reader.GetGuid(0),
-                projectId = reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                documentId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),
+                projectId = reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1),
                 sourceType = reader.GetString(2),
                 sourceModule = reader.GetString(3),
                 documentCategory = reader.GetString(4),
                 documentVersion = reader.GetString(5),
                 originalFileName = reader.GetString(6),
                 citationAnchor = reader.GetString(7),
-                pageNumber = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                pageNumber = reader.IsDBNull(8) ? (int?)null : reader.GetInt32(8),
                 sheetName = reader.IsDBNull(9) ? null : reader.GetString(9),
                 rankOrder = reader.GetInt32(10),
                 lexicalScore = reader.GetDecimal(11),
@@ -859,7 +842,7 @@ public sealed class PulseAiPrivateRagRepository
                 combinedScore = reader.GetDecimal(13),
                 sourceSha256 = reader.GetString(14),
                 textSha256 = reader.GetString(15),
-                sourceProcessedAt = reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16)
+                sourceProcessedAt = reader.IsDBNull(16) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(16)
             });
         }
         return rows;

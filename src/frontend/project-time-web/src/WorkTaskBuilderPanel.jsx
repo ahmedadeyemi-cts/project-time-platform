@@ -3,6 +3,7 @@ import PulseAiMissionControl from './PulseAiMissionControl.jsx';
 import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';
 import PulseAiPrivateDocumentPipelineWorkbench from './PulseAiPrivateDocumentPipelineWorkbench.jsx';
 import PulseAiPrivateRuntimeWorkbench from './PulseAiPrivateRuntimeWorkbench.jsx';
+import PulseAiPrivateRagWorkbench from './PulseAiPrivateRagWorkbench.jsx';
 
 /**
  * Module 011 compatibility mount.
@@ -23,7 +24,8 @@ export {
   PulseAiMissionControl,
   PulseAiDeepIntelligenceWorkbench,
   PulseAiPrivateDocumentPipelineWorkbench,
-  PulseAiPrivateRuntimeWorkbench
+  PulseAiPrivateRuntimeWorkbench,
+  PulseAiPrivateRagWorkbench
 };
 
 function PulseAiWorkspace() {
@@ -35,6 +37,7 @@ export default function WorkTaskBuilderPanel() {
     <>
       <PulseAiMissionControl />
       <PulseAiPrivateRuntimeWorkbench />
+      <PulseAiPrivateRagWorkbench />
       <PulseAiPrivateDocumentPipelineWorkbench />
       <PulseAiDeepIntelligenceWorkbench />
       <PulseAiWorkspace />

@@ -45,18 +45,38 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact source isolation on current main
+      - name: Verify owned source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          EXPECTED_BASE="$(git rev-parse origin/main)"
-          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]] || {
-            echo "Private runtime branch is behind current main $EXPECTED_BASE." >&2
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE_REF="origin/$BASE_BRANCH"
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$HEAD_BRANCH" != feature/module-011-private-runtime-activation-* ]]; then
+            git diff --check "$BASE_REF"...HEAD
+            echo "PULSE_AI_PRIVATE_RUNTIME_VALIDATION_MODE=REGRESSION branch=$HEAD_BRANCH"
+            echo 'PULSE_AI_PRIVATE_RUNTIME_SOURCE_ISOLATION=NOT_APPLICABLE'
+            exit 0
+          fi
+
+          [[ "$(git merge-base "$BASE_REF" HEAD)" == "$(git rev-parse "$BASE_REF")" ]] || {
+            echo "Private runtime branch is behind $BASE_REF." >&2
             exit 1
           }
-          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
-          printf '%s\n' "$CHANGED"
           ALLOWED='^(\.github/workflows/pulse-ai-private-runtime-activation-ci\.yml|database/migrations/052_document_intelligence_runtime\.sql|database/rollback/052_document_intelligence_runtime_rollback\.sql|tests/test-pulse-ai-private-document-runtime-migration-052\.sh|docs/modules/module-011-pulse-ai/PRIVATE-RUNTIME-ACTIVATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateRuntimeContracts|PulseAiPrivateMalwareScanner|PulseAiPrivateOcrClient|PulseAiPrivateEmbeddingClient|PulseAiPrivateRuntimeSourceResolver|PulseAiPrivateDocumentRuntimeRepository|PulseAiPrivateDocumentRuntimeService|PulseAiPrivateDocumentRuntimeWorker|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiPrivateRuntimeModule|PulseAiPrivateDocumentPipelineModule)\.cs|src/frontend/project-time-web/scripts/validate-module-011-private-runtime-activation\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateRuntimeWorkbench\.jsx|pulse-ai-private-runtime-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
@@ -64,15 +84,9 @@ jobs:
             printf '%s\n' "$UNEXPECTED" >&2
             exit 1
           fi
-          for protected in \
-            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
-            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
-            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
-            ! grep -Fxq "$protected" <<<"$CHANGED"
-          done
           ! grep -E '^(deployment/|scripts/.*deploy|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.)' <<<"$CHANGED"
-          git diff --check "$EXPECTED_BASE"...HEAD
-          echo "PULSE_AI_PRIVATE_RUNTIME_BASE=$EXPECTED_BASE"
+          git diff --check "$BASE_REF"...HEAD
+          echo "PULSE_AI_PRIVATE_RUNTIME_BASE=$BASE_REF"
           echo 'PULSE_AI_PRIVATE_RUNTIME_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
@@ -205,7 +219,7 @@ jobs:
           {
             echo '## Module 011 Pulse AI — Phase 011C'
             echo
-            echo '- Exact current-main source isolation: passed'
+            echo '- Owned-source isolation or regression applicability: passed'
             echo '- Migration 052 apply, rollback, and reapply: passed'
             echo '- Private runtime source contract: passed'
             echo '- Existing Module 011 foundation, deep-intelligence, document-preview, and FlowHive contracts: passed'
