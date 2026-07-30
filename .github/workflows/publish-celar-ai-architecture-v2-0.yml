@@ -66,7 +66,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install python-docx reportlab cairosvg pillow pypdf
 
-      - name: Normalize the generator for historical revision-table shapes
+      - name: Normalize the generator for historical document shapes
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -75,8 +75,9 @@ jobs:
 
           path = Path('docs/modules/module-011-pulse-ai/architecture/v2.0/source/generate_celar_architecture_v2_0.py')
           text = path.read_text(encoding='utf-8')
-          old = " rev=d.tables[3].add_row(); [setattr(rev.cells[i],'text',x) for i,x in enumerate(['2.0',DATE,'US Signal','Rebranded Module 011 architecture from Pulse AI to Celar AI; added creator attribution, Celeritas origin, fiber alignment, Changepoint catalyst, speed-of-delivery mission, canonical answer, and brand-governance note.'])]"
-          new = "\n".join([
+
+          old_revision = " rev=d.tables[3].add_row(); [setattr(rev.cells[i],'text',x) for i,x in enumerate(['2.0',DATE,'US Signal','Rebranded Module 011 architecture from Pulse AI to Celar AI; added creator attribution, Celeritas origin, fiber alignment, Changepoint catalyst, speed-of-delivery mission, canonical answer, and brand-governance note.'])]"
+          new_revision = "\n".join([
               " if len(d.tables)>3:",
               "  rev=d.tables[3].add_row()",
               "  values=['2.0',DATE,'US Signal','Rebranded Module 011 architecture from Pulse AI to Celar AI; added creator attribution, Celeritas origin, fiber alignment, Changepoint catalyst, speed-of-delivery mission, canonical answer, and brand-governance note.']",
@@ -89,13 +90,29 @@ jobs:
               "  elif len(rev.cells)==1:",
               "   rev.cells[0].text=' — '.join(values)",
           ])
-          if old in text:
-              text = text.replace(old, new)
-              path.write_text(text, encoding='utf-8')
+          if old_revision in text:
+              text = text.replace(old_revision, new_revision)
           elif 'if len(d.tables)>3:' not in text:
               raise SystemExit('The Celar AI revision-table normalization anchor is missing.')
-          compile(path.read_text(encoding='utf-8'), str(path), 'exec')
-          print('CELAR_AI_GENERATOR_REVISION_TABLE_NORMALIZATION=PASSED')
+
+          old_target = " target=next(p for p in d.paragraphs if p.text.strip()=='Primary business capabilities')"
+          new_target = "\n".join([
+              " target=next((p for p in d.paragraphs if p.text.strip()=='Primary business capabilities'),None)",
+              " if target is None:",
+              "  target=next((p for p in d.paragraphs if p.text.strip().startswith('2.') and getattr(p.style,'name','').startswith('Heading')),None)",
+              " if target is None:",
+              "  target=next((p for p in d.paragraphs if p.text.strip().startswith('2.')),None)",
+              " if target is None:",
+              "  target=d.paragraphs[-1]",
+          ])
+          if old_target in text:
+              text = text.replace(old_target, new_target)
+          elif "target=next((p for p in d.paragraphs" not in text:
+              raise SystemExit('The Celar AI identity insertion normalization anchor is missing.')
+
+          path.write_text(text, encoding='utf-8')
+          compile(text, str(path), 'exec')
+          print('CELAR_AI_GENERATOR_DOCUMENT_SHAPE_NORMALIZATION=PASSED')
           PY
 
       - name: Generate the Celar AI architecture package
