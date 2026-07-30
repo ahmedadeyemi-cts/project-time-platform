@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+      - '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+      - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND.md'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
@@ -17,6 +19,10 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
       - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'
       - 'src/frontend/project-time-web/src/CelarAiProviderBridgePanel.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-provider-bridge-panel.css'
       - 'src/frontend/project-time-web/src/module-availability-registry.js'
@@ -49,7 +55,7 @@ jobs:
           CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/celar-ai-runtime-rebrand-ci\.yml|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
+          ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Celar AI runtime-rebrand source scope:' >&2
@@ -92,6 +98,8 @@ jobs:
           node ./scripts/validate-group-1-navigation-work-consolidation.mjs
           node ./scripts/validate-pulse-ai-help-chat-usability.mjs
           node ./scripts/validate-module-011-system-intelligence-package.mjs
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node ./scripts/validate-module-011-private-document-pipeline.mjs
           echo 'CELAR_AI_PRESERVED_PREBUILD_CONTRACTS=PASSED'
 
       - name: Verify durable conversation migration 054
