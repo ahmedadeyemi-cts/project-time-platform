@@ -3,6 +3,9 @@ set -Eeuo pipefail
 
 cd /opt/project-time-platform/app/project-time-platform
 
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/projectpulse-019m-az-bj.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
 SSO_RESPONSE=$(curl -sS --max-time 20 -X POST http://127.0.0.1:5080/api/auth/sso/dev-login \
   -H "Content-Type: application/json" \
   -d '{"email":"ahmed.adeyemi@ussignal.com"}')
@@ -35,17 +38,17 @@ for path in "${ENDPOINTS[@]}"; do
   echo "--- $path ---"
   curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
     -H "X-ProjectPulse-Session: $SSO_TOKEN" \
-    -o /tmp/019m-az-bj-endpoint.json \
+    -o $TMP_ROOT/endpoint.json \
     -w "HTTP %{http_code} bytes %{size_download}\n"
 
-  cat /tmp/019m-az-bj-endpoint.json | jq '{
+  cat $TMP_ROOT/endpoint.json | jq '{
     status: .status,
     module: .module,
     count: .count,
     summary: .summary,
     access: .access,
     firstItem: (.events[0] // .expectations[0] // .packages[0] // .groups[0] // .lockedItems[0] // .matrix[0] // .checks[0] // .rules[0] // null)
-  }' 2>/dev/null || head -c 1200 /tmp/019m-az-bj-endpoint.json
+  }' 2>/dev/null || head -c 1200 $TMP_ROOT/endpoint.json
 done
 
 echo
@@ -55,10 +58,10 @@ curl -sS --max-time 30 "http://127.0.0.1:5080/api/workflow/actions/dry-run" \
   -H "X-ProjectPulse-Session: $SSO_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"accounting_reconcile","weekStart":"2026-06-21","weekEnd":"2026-07-04"}' \
-  -o /tmp/019m-az-bj-dry-run.json \
+  -o $TMP_ROOT/dry-run.json \
   -w "HTTP %{http_code} bytes %{size_download}\n"
 
-cat /tmp/019m-az-bj-dry-run.json | jq .
+cat $TMP_ROOT/dry-run.json | jq .
 
 echo
 echo "--- Engineer denial checks ---"
@@ -107,17 +110,17 @@ if [ -n "$ENGINEER_ONLY_ID" ]; then
         -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
         -H "Content-Type: application/json" \
         -d '{"action":"accounting_reconcile"}' \
-        -o /tmp/019m-az-bj-engineer.json \
+        -o $TMP_ROOT/engineer.json \
         -w "HTTP %{http_code} bytes %{size_download}\n"
     else
       curl -sS --max-time 30 "http://127.0.0.1:5080$path" \
         -H "X-ProjectPulse-Session: $SSO_TOKEN" \
         -H "X-ProjectPulse-View-As-User: $ENGINEER_ONLY_ID" \
-        -o /tmp/019m-az-bj-engineer.json \
+        -o $TMP_ROOT/engineer.json \
         -w "HTTP %{http_code} bytes %{size_download}\n"
     fi
 
-    cat /tmp/019m-az-bj-engineer.json | jq . 2>/dev/null || head -c 800 /tmp/019m-az-bj-engineer.json
+    cat $TMP_ROOT/engineer.json | jq . 2>/dev/null || head -c 800 $TMP_ROOT/engineer.json
   done
 fi
 

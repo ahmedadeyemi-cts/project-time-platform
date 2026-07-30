@@ -88,12 +88,29 @@ def add_check(checks, key, name, category, status, detail, evidence=None):
         "evidence": evidence or ""
     })
 
-def safe_members(tar):
+def unsafe_members(tar, destination):
+    root = destination.resolve()
     unsafe = []
+
     for member in tar.getmembers():
         name = member.name
-        if name.startswith("/") or ".." in Path(name).parts:
+        member_path = Path(name)
+
+        if (
+            member_path.is_absolute()
+            or ".." in member_path.parts
+            or member.issym()
+            or member.islnk()
+            or member.isdev()
+            or member.isfifo()
+        ):
             unsafe.append(name)
+            continue
+
+        target = (root / member_path).resolve()
+        if target != root and root not in target.parents:
+            unsafe.append(name)
+
     return unsafe
 
 def newest_bundle():
@@ -249,7 +266,7 @@ else:
 
         try:
             with tarfile.open(bundle, "r:gz") as tar:
-                unsafe = safe_members(tar)
+                unsafe = unsafe_members(tar, tmp_path)
 
                 if unsafe:
                     add_check(
@@ -271,7 +288,10 @@ else:
                         "Backup archive paths are safe to extract."
                     )
 
-                tar.extractall(tmp_path)
+                if unsafe:
+                    raise ValueError("Backup archive contains unsafe members and was not extracted.")
+
+                tar.extractall(tmp_path, members=tar.getmembers())
 
             add_check(
                 checks,
