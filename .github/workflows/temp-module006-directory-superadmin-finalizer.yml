@@ -60,7 +60,8 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'ProjectPulse Source Automation'
           git config user.email 'projectpulse-source-automation@users.noreply.github.com'
-          bash scripts/temp-apply-module006-directory-fix.sh
+          GITHUB_REF_NAME='fix/module006-pipeline-modules-directory-superadmin-20260730-v2' \
+            bash scripts/temp-apply-module006-directory-fix.sh
 
       - name: Validate API Release build
         shell: bash
