@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import PendingApprovalWorkPortal from '../PendingApprovalWorkPortal.jsx';
-import PtcNonProjectTaskPortal from './PtcNonProjectTaskPortal.jsx';
+import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';
+import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
 
 const ALLOWED_ROLES = new Set([
@@ -50,15 +50,15 @@ export default function PtcTimeStewardGate() {
   }, []);
 
   // Preserve the existing fail-closed View-As boundary for Module 001. Actual
-  // Manager and PM sessions still render the approval portal; PTC-only surfaces
-  // remain protected by their authoritative backend access checks.
+  // Manager and PM sessions still render the production approval portal; PTC-only
+  // surfaces remain protected by their authoritative backend access checks.
   if (state.active && !state.allowed) return null;
 
   return (
     <>
       <PtcTimesheetManagementPortal />
-      <PendingApprovalWorkPortal />
-      <PtcNonProjectTaskPortal />
+      <PtcGuidedMovePortal />
+      <ProductionApprovalWorkPortal />
     </>
   );
 }
