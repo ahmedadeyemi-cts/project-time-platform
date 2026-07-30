@@ -24825,7 +24825,7 @@ app.MapPost("/api/project-allocation-info/documents/upload", async (HttpContext 
     Directory.CreateDirectory(projectFolder);
 
     var originalFileName = SanitizeProjectPulseFileName(file.FileName);
-    var storedFileName = $"{documentType}_{Guid.NewGuid():N}_{originalFileName}";
+    var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(originalFileName)}"; // SECURITY_20260729_SAFE_PROJECT_DOCUMENT_PATH_COMPONENT
     var storagePath = Path.Combine(projectFolder, storedFileName);
 
     await using (var stream = File.Create(storagePath))
