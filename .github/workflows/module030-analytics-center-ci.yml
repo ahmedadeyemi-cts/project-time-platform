@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/module030-analytics-center-ci.yml'
       - '.github/workflows/group5-financial-operations-recovery-ci.yml'
+      - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
       - 'database/migrations/055_analytics_center.sql'
       - 'database/rollback/055_analytics_center_rollback.sql'
       - 'docs/modules/module-030-analytics-center/README.md'
@@ -49,7 +50,7 @@ jobs:
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|group5-financial-operations-recovery-ci)\.yml|database/migrations/055_analytics_center\.sql|database/rollback/055_analytics_center_rollback\.sql|docs/modules/module-030-analytics-center/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsCenter(Contracts|DirectoryLoader|Module)|EnterpriseReporting(Contracts|Catalog|Engine|SourceLoader|Repository|Module))\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-analytics-center|inject-group-4-project-notification-automation|validate-analytics-center|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css)|tests/test-analytics-center-migration-055\.sh)$'
+          ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|group5-financial-operations-recovery-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/055_analytics_center\.sql|database/rollback/055_analytics_center_rollback\.sql|docs/modules/module-030-analytics-center/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsCenter(Contracts|DirectoryLoader|Module)|EnterpriseReporting(Contracts|Catalog|Engine|SourceLoader|Repository|Module))\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-analytics-center|inject-group-4-project-notification-automation|validate-analytics-center|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css)|tests/test-analytics-center-migration-055\.sh)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
             echo 'Unexpected Module 030 Analytics Center source scope:' >&2
