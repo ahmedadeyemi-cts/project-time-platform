@@ -124,8 +124,8 @@ function injectEntra(source) {
   if (!source.includes('ENTRA_EXPIRATION_GOVERNANCE_PANEL_IMPORT')) {
     source = replaceOnce(
       source,
-      "import './entra-secret-administration.css';",
-      `/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_IMPORT */\nimport EntraSecretExpirationGovernancePanel from './EntraSecretExpirationGovernancePanel.jsx';\nimport './entra-secret-administration.css';`,
+      "import './entra-secret-administration-center.css';",
+      `/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_IMPORT */\nimport EntraSecretExpirationGovernancePanel from './EntraSecretExpirationGovernancePanel.jsx';\nimport './entra-secret-administration-center.css';`,
       'Entra administration stylesheet import',
     );
   }
