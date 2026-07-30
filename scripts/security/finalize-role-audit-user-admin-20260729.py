@@ -14,17 +14,18 @@ def replace_once(old: str, new: str, label: str) -> None:
     text = text.replace(old, new, 1)
 
 
-if "user_roles_updated\"" not in text:
+if '''"user_roles_updated",
+            string.IsNullOrWhiteSpace(request.Reason)''' not in text:
     replace_once(
-        """        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        '''        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
             return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
-        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())""",
-        """        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())''',
+        '''        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
             return Results.Json(new
@@ -41,16 +42,16 @@ if "user_roles_updated\"" not in text:
             return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())""",
+        var cleanRoleCodes = (request.RoleCodes ?? new List<string>())''',
         "single role Administrator boundary",
     )
 
     replace_once(
-        """            .Distinct()
+        '''            .Distinct()
             .ToList();
 
-        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))""",
-        """            .Distinct()
+        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))''',
+        '''            .Distinct()
             .ToList();
 
         var previousRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
@@ -83,18 +84,18 @@ if "user_roles_updated\"" not in text:
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))""",
+        if (sessionUserId == request.UserId && !(cleanRoleCodes.Contains("SUPER_ADMINISTRATOR") || cleanRoleCodes.Contains("ADMINISTRATOR")))''',
         "single role old-state and Super Administrator protection",
     )
 
     replace_once(
-        """        await transaction.CommitAsync();
+        '''        await transaction.CommitAsync();
 
         return Results.Ok(new
         {
             status = "user_roles_updated",
-            roleCodes = cleanRoleCodes,""",
-        """        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            roleCodes = cleanRoleCodes,''',
+        '''        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
             connection, transaction, new[] { request.UserId });
         await InsertProjectPulseRoleAuditAsync(
             connection,
@@ -112,21 +113,21 @@ if "user_roles_updated\"" not in text:
         return Results.Ok(new
         {
             status = "user_roles_updated",
-            roleCodes = cleanRoleCodes,""",
+            roleCodes = cleanRoleCodes,''',
         "single role transactional audit",
     )
 
 if "local_user_created_with_roles" not in text:
     replace_once(
-        """        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
+        '''        if (!await RequestUserCanAccessUserAdministrationAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
             return Results.Json(new { status = "access_denied", message = "User Administration is restricted to administrators and project/team coordinators." }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
-        if (sessionUserId is null)""",
-        """        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
+        if (sessionUserId is null)''',
+        '''        if (!await RequestUserIsAdministratorAsync(httpContext, connection))
         {
             await transaction.RollbackAsync();
             return Results.Json(new
@@ -137,18 +138,18 @@ if "local_user_created_with_roles" not in text:
         }
 
         var sessionUserId = GetProjectPulseSessionUserId(httpContext);
-        if (sessionUserId is null)""",
+        if (sessionUserId is null)''',
         "local user Administrator boundary",
     )
 
     replace_once(
-        """        if (cleanRoleCodes.Count == 0)
+        '''        if (cleanRoleCodes.Count == 0)
         {
             cleanRoleCodes.Add("ENGINEERING");
         }
 
-        await using (var userCommand = new NpgsqlCommand("""""",
-        """        if (cleanRoleCodes.Count == 0)
+        await using (var userCommand = new NpgsqlCommand("""''',
+        '''        if (cleanRoleCodes.Count == 0)
         {
             cleanRoleCodes.Add("ENGINEERING");
         }
@@ -169,19 +170,19 @@ if "local_user_created_with_roles" not in text:
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        await using (var userCommand = new NpgsqlCommand("""""",
+        await using (var userCommand = new NpgsqlCommand("""''',
         "local user Super Administrator parity",
     )
 
     replace_once(
-        """        await transaction.CommitAsync();
+        '''        await transaction.CommitAsync();
 
         return Results.Ok(new
         {
             status = "local_user_created",
             userId,
-            email,""",
-        """        var createdRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+            email,''',
+        '''        var createdRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
             connection, transaction, new[] { userId });
         await InsertProjectPulseRoleAuditAsync(
             connection,
@@ -200,13 +201,12 @@ if "local_user_created_with_roles" not in text:
         {
             status = "local_user_created",
             userId,
-            email,""",
+            email,''',
         "local user transactional role audit",
     )
 
 for marker in (
     "Role assignment is restricted to Administrators and Super Administrators.",
-    "user_roles_updated",
     "local_user_created_with_roles",
     "Only a Super Administrator can create another Super Administrator.",
 ):
