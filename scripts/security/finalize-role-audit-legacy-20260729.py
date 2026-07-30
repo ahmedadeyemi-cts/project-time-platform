@@ -16,9 +16,9 @@ def replace_once(old: str, new: str, label: str) -> None:
 
 if "SECURITY_20260729_TRANSACTIONAL_ROLE_AUDIT_HELPERS" not in text:
     replace_once(
-        """async Task InsertProjectPulseAuditEventAsync(
-    NpgsqlConnection connection,""",
-        """async Task<Dictionary<Guid, string[]>> LoadProjectPulseActiveRoleCodesAsync(
+        '''async Task InsertProjectPulseAuditEventAsync(
+    NpgsqlConnection connection,''',
+        '''async Task<Dictionary<Guid, string[]>> LoadProjectPulseActiveRoleCodesAsync(
     NpgsqlConnection connection,
     NpgsqlTransaction transaction,
     IEnumerable<Guid> userIds)
@@ -101,21 +101,21 @@ async Task InsertProjectPulseRoleAuditAsync(
 
 // SECURITY_20260729_TRANSACTIONAL_ROLE_AUDIT_HELPERS
 async Task InsertProjectPulseAuditEventAsync(
-    NpgsqlConnection connection,""",
+    NpgsqlConnection connection,''',
         "role audit helpers",
     )
 
 if "user_roles_updated_legacy" not in text:
     replace_once(
-        """            if (result is null)
+        '''            if (result is null)
             {
                 return Results.NotFound(new { status = "not_found", message = $"No user found for {request.Email}." });
             }
             targetUserId = (Guid)result;
         }
 
-        await using (var deactivateCommand = new NpgsqlCommand("""""",
-        """            if (result is null)
+        await using (var deactivateCommand = new NpgsqlCommand("""''',
+        '''            if (result is null)
             {
                 await transaction.RollbackAsync();
                 return Results.NotFound(new { status = "not_found", message = $"No user found for {request.Email}." });
@@ -142,12 +142,12 @@ if "user_roles_updated_legacy" not in text:
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        await using (var deactivateCommand = new NpgsqlCommand("""""",
+        await using (var deactivateCommand = new NpgsqlCommand("""''',
         "legacy role pre-mutation audit state",
     )
 
     replace_once(
-        """        await transaction.CommitAsync();
+        '''        await transaction.CommitAsync();
         return Results.Ok(new { status = "roles_updated", email = request.Email.Trim(), roleCodes });
     }
     catch (Exception ex)
@@ -159,8 +159,8 @@ if "user_roles_updated_legacy" not in text:
 
 
 
-const int ProjectPulseSessionMinutes""",
-        """        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
+const int ProjectPulseSessionMinutes''',
+        '''        var currentRoleCodesByUser = await LoadProjectPulseActiveRoleCodesAsync(
             connection, transaction, new[] { targetUserId });
         await InsertProjectPulseRoleAuditAsync(
             connection,
@@ -187,7 +187,7 @@ const int ProjectPulseSessionMinutes""",
 
 
 
-const int ProjectPulseSessionMinutes""",
+const int ProjectPulseSessionMinutes''',
         "legacy role audit insert",
     )
 
