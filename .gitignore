@@ -23,6 +23,27 @@ src/frontend/project-time-web/src/SystemUserGuide.Module001.g.jsx
 .env
 .env.*
 *.env
+*.key
+*.p12
+*.pfx
+*.kdbx
+*.jks
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+.npmrc
+.pypirc
+secrets/
+credentials/
+*.kubeconfig
+*.tfstate
+*.tfstate.*
+
+# Database exports and local evidence
+*.dump
+*.sql.gz
+*.bak
 
 # OS/editor files
 .DS_Store
