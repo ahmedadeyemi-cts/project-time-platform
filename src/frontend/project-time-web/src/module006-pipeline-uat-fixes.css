@@ -1,0 +1,170 @@
+.project-register-center .project-register-table-wrap {
+  max-height: min(36rem, 62vh);
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+}
+
+.project-register-center .project-register-table {
+  min-width: 88rem;
+}
+
+.project-register-center .project-register-notes-cell {
+  min-width: 22rem;
+  max-width: 32rem;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.project-register-center .project-register-totalbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+}
+
+.project-register-center .project-register-totalbar select {
+  min-height: 2rem;
+  border: 1px solid rgba(8, 64, 104, 0.22);
+  border-radius: 0.45rem;
+  background: var(--input-bg, #fff);
+  color: inherit;
+}
+
+.project-register-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(8, 64, 104, 0.14);
+  border-radius: 0.75rem;
+  background: rgba(8, 64, 104, 0.035);
+}
+
+.project-register-pagination button {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(0, 159, 227, 0.32);
+  border-radius: 0.55rem;
+  background: var(--panel-bg, #fff);
+  color: inherit;
+  font-weight: 700;
+}
+
+.project-register-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.project-register-detail-section dl {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.project-register-detail-section dl > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.7rem;
+}
+
+.project-register-detail-section dt {
+  font-weight: 700;
+}
+
+.project-register-detail-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .project-register-center .project-register-table-wrap {
+    max-height: 56vh;
+  }
+
+  .project-register-pagination {
+    justify-content: stretch;
+  }
+
+  .project-register-pagination button {
+    flex: 1 1 42%;
+  }
+
+  .project-register-pagination span {
+    width: 100%;
+    text-align: center;
+  }
+
+  .project-register-detail-section dl > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .project-register-center,
+  .project-register-center * {
+    visibility: visible !important;
+  }
+
+  .project-register-center {
+    position: absolute;
+    inset: 0;
+    display: block;
+    padding: 0.25in;
+    color: #10233f;
+    background: #fff;
+  }
+
+  .project-register-hero {
+    border: 0;
+    border-bottom: 3px solid #003b64;
+    border-radius: 0;
+    background: #fff;
+  }
+
+  .project-register-hero-actions,
+  .project-register-toolbar,
+  .project-register-pagination,
+  .project-register-governance-grid,
+  .project-register-row-action,
+  .project-register-drawer-backdrop {
+    display: none !important;
+  }
+
+  .project-register-table-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0;
+  }
+
+  .project-register-table {
+    min-width: 0 !important;
+    font-size: 8pt;
+  }
+
+  .project-register-table th,
+  .project-register-table td {
+    padding: 0.15in 0.08in;
+  }
+
+  .project-register-table thead th {
+    position: static;
+    color: #fff;
+    background: #003b64;
+  }
+
+  .project-register-center::after {
+    content: 'US Signal confidential · Toyota & Hyundai Pipelines · Generated ' attr(data-generated-at);
+    display: block;
+    margin-top: 0.2in;
+    padding-top: 0.08in;
+    border-top: 1px solid #7d8c9a;
+    font-size: 8pt;
+  }
+}
