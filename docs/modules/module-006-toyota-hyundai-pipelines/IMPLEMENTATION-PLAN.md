@@ -1,119 +1,104 @@
-# Module 006 — Toyota & Hyundai Pipelines Implementation Plan
+# Module 006 — Toyota & Hyundai Pipelines UAT Repair
 
 ## Status
 
-- Issue: #274
-- Branch: `feature/module-006-toyota-hyundai-pipelines-20260729`
-- Current phase: read-only source foundation
 - Canonical route: `#toyota-hyundai-pipelines`
-- Compatibility route: `#psa-modules`
-- Database migration: none in this phase
-- Deployment: none
+- Compatibility routes: `#psa-modules`, `#project-register`
+- Source package: Toyota/Hyundai-only reviewed workbook snapshot
+- Database migration: none in this repair
+- Test deployment: separate guarded action after merge
+- Production: unchanged
 
-## Problem being corrected
+## Problems corrected
 
-Module 006 was previously exposed as the customer-specific **Toyota & Hyundai Pipeline** and inherited the older `PSA Modules` placeholder. The presentation was generated only into the dashboard and did not mount a dedicated Module 006 route. This did not provide an enterprise Toyota & Hyundai Pipelines.
+The previously deployed Module 006 read the general `/api/work-register/overview` portfolio. That caused ordinary ProjectPulse projects to appear in the Toyota & Hyundai Pipelines workspace. The table also rendered every matching project at once, creating an unnecessarily long page.
 
-## Phase 1 — Read-only Toyota & Hyundai Pipelines foundation
+The Modules directory had a separate hard-coded route-to-number map and preferred stale sidebar labels before authoritative registry metadata. That produced **Module number unavailable** on valid modules and could display the wrong number, such as `055B` for Project FlowHive instead of `066`.
 
-This branch establishes the canonical Module 006 identity and a dedicated route. The initial register:
+## Reviewed workbook snapshot
 
-- reads the existing `/api/work-register/overview` contract;
-- keeps only authoritative `projects` records;
-- provides Active, Archived / Historical, and All views;
-- supports project, customer, status, Project Manager, engineer, and SELL-reference search;
-- displays project ownership, dates, task/document counts, allocated and used hours, cost, remaining cost, and burn state;
-- loads project details and lifecycle history from the existing Work Register and lifecycle APIs;
-- preserves archived projects as read-only evidence;
-- links authorized management actions to Module 055C; and
-- creates no alternate project, task, assignment, financial, customer, SELL, or audit system.
+This repair uses the two Beck workbooks supplied for Module 006 as the immediate Test data source:
 
-The legacy `#psa-modules` address is normalized to the canonical `#toyota-hyundai-pipelines` route. The retired Toyota & Hyundai identity remains explicit history rather than an active enterprise label.
+- `beck_active_export_2026-07-29.xlsx`
+- `beck_archive_export_2026-07-29.xlsx`
+
+The source-controlled snapshot contains:
+
+- **26 active** Toyota or Hyundai records;
+- **12 archived / closed** Toyota or Hyundai records;
+- **387** historical update events associated with those 38 current records;
+- a deterministic immutable UUID for each pipeline record;
+- the recognizable workbook Project ID such as `P.0008`;
+- customer, business unit, USS owner, project name, quote text, parsed quote numbers, estimated value, update dates, review dates, latest note, first-seen date, and last-import date; and
+- historical owner, project-name, quote, review-date, and note context from `Logs` and `Logs History`.
+
+The following source rows are deliberately excluded from active presentation and retained in export evidence for administrator review:
+
+- `P.0051` — Turion, outside the Toyota/Hyundai scope;
+- `P.0045` — archived row containing only the placeholder `No Updates`;
+- `P.0049` — archived row containing only the placeholder `No Updates`.
+
+## User experience
+
+The workspace now provides:
+
+- Active, Archived / Historical, and All Toyota & Hyundai views;
+- customer, status, USS owner, and free-text filters;
+- explicit 10, 15, or 25 row pagination;
+- a bounded vertically scrollable table rather than an endless page;
+- a bounded historical-update timeline per project;
+- a multi-sheet Excel-compatible export containing Summary, Active Projects, Archived and Closed, Logs and Audit, Quotes and SELL, and Export Evidence;
+- a US Signal print presentation for browser **Save as PDF**; and
+- a link to Module 055C for authoritative project/task management.
 
 ## Authority boundaries
 
 | Concern | Authority |
 |---|---|
 | Project creation | Module 055D |
-| Existing-project mutation | Module 055C |
-| Project/customer records | Existing Work Register and Module 021 |
-| SELL/customer synchronization | Module 026 |
-| Lifecycle and immutable change evidence | Existing lifecycle and Module 008 audit contracts |
-| Enterprise reports | Module 030 |
-| Module 006 | Scoped project inventory, navigation, future reviewed import, and scoped export |
+| Existing-project and task mutation | Module 055C |
+| Customer records | Module 021 |
+| SELL synchronization and credentials | Module 026 |
+| Audit and lifecycle evidence | Module 008 and owning project systems |
+| Module 006 | Toyota/Hyundai workbook pipeline presentation, reviewed snapshot, filtering, history, and scoped export |
 
-Module 006 is read-only in Phase 1. View-As remains read-only because the backend continues to enforce actual/effective-user and project scope.
+This repair does not silently create ProjectPulse projects or tasks. Assigned Project Managers use Module 055C after an administrator maps a workbook record to its authoritative ProjectPulse project.
 
-## Phase 2 — Beck workbook import
+## Modules directory and Super Administrator authority
 
-This phase cannot start from assumptions about the workbook. The exact workbook must be available for column-level review. The source package will then add:
+The production build now reconciles module cards against `PROJECTPULSE_MODULES` after all source injectors have registered their modules. The authoritative registry determines:
 
-- an upload and parsing boundary for the approved file type;
-- a versioned field-mapping contract;
-- preview rows before persistence;
-- valid, warning, duplicate, unresolved, and rejected classifications;
-- idempotent matching by authoritative project/customer identifiers;
-- no silent project creation;
-- source file name, checksum, sheet, row, actor, timestamp, decision, and resulting project identity;
-- import batches and immutable row-level evidence; and
-- a rollback/recovery process for an interrupted import.
+- module number;
+- canonical route;
+- display name;
+- category; and
+- description.
 
-No workbook row will persist until a reviewer accepts the mapping and row decisions.
+An effective `SUPER_ADMINISTRATOR` receives the complete active registry, including modules not present in a stale or collapsed sidebar. Every card displays the authoritative number and **Full Control · Organization-wide**. Disabled modules remain visible to the Super Administrator.
 
-## Phase 3 — US Signal Excel and PDF exports
+Administrator View-As remains safe:
 
-The export package will be source-controlled and auditable. It will include:
+- the selected user’s effective roles determine the visible module catalog;
+- the underlying administrator’s Super Administrator catalog is not retained;
+- availability changes remain disabled during View-As; and
+- the backend continues to require the actual user to be Super Administrator for availability mutations.
 
-- current user/project scope;
-- current register filters;
-- active or historical view selection;
-- as-of timestamp;
-- release and export schema version;
-- row count and source identity;
-- approved US Signal branding;
-- Excel workbook output;
-- PDF register output; and
-- immutable export audit evidence.
+## Exact-head validation
 
-The current interface keeps import and export controls disabled until the database evidence schema and artifact validation are reviewed.
+The temporary source finalizer is removed before the branch is considered ready. The resulting exact PR head must complete the permanent ProjectPulse CI workflow with only the reviewed Module 006 and Modules-directory source files in its comparison to `main`.
 
-## Phase 4 — Database metadata and permissions
+## Explicit exclusions
 
-A separate migration will be proposed only after the import and export schemas are reviewed. It is expected to address:
+This repair does not:
 
-- canonical Module 006 name and route in database-backed role-policy catalogs;
-- compatibility metadata for the retired route;
-- Toyota & Hyundai Pipelines view/import/export permissions;
-- import batches and import-row evidence;
-- export events and artifact evidence; and
-- immutable audit triggers.
+- add a database-backed workbook import;
+- persist reviewer decisions or row fingerprints;
+- create a new task repository;
+- perform a SELL write or add another SELL credential;
+- create immutable database export events;
+- apply a migration;
+- change Azure or Container Apps;
+- deploy to Production; or
+- modify the separately active Time Approval PR.
 
-The migration must pass apply, idempotence, rollback, reapply, permission, and immutability tests before it can be authorized for Test.
-
-## Validation gates
-
-Phase 1 requires:
-
-- Module 006 source validator;
-- generated App route and mount validation;
-- complete frontend production build;
-- Module 012/037 name and route regression;
-- Modules 055C/055D ownership regression;
-- Modules 021/026 customer and SELL regression;
-- active/archive behavior;
-- project-scope behavior;
-- responsive and dark-theme behavior; and
-- no migration, deployment, or environment mutation.
-
-Later phases add workbook fixtures, duplicate/idempotence tests, database migration tests, Excel/PDF structure checks, branding checks, audit immutability, guarded Test deployment, and authenticated UAT.
-
-## Explicit exclusions from Phase 1
-
-- no database change;
-- no workbook persistence;
-- no Excel or PDF generation;
-- no project/task mutation;
-- no customer or SELL mutation;
-- no Module 030 report duplication;
-- no Azure or Container Apps operation;
-- no Test or Production deployment.
+The later database-backed phase will add reviewed import batches, row-level decisions, authoritative project linkage, append-only persistence, immutable export evidence, and assigned-Project-Manager task actions through the existing task authority.

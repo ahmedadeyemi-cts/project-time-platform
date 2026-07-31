@@ -105,10 +105,18 @@ assert('ALLOWLISTED_SAME_ORIGIN_TOOLS',
     'ValidRelativeApiPath',
     'Uri.TryCreate(path, UriKind.Absolute',
     'cleanPath.StartsWith("/api/"',
+    'TryBuildTrustedTarget',
+    'PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_BASE_URI',
+    'AllowedSameOriginHosts',
+    'tool_origin_rejected',
     'ForwardSessionHeaders'
   ])
+  && s.executor.indexOf('TryBuildTrustedTarget(definition.Path')
+    < s.executor.indexOf('ForwardSessionHeaders(context, request)')
+  && !s.executor.includes('context.Request.Host.Host')
   && !s.executor.includes('request.Url')
-  && !s.executor.includes('request.Endpoint'),
+  && !s.executor.includes('request.Endpoint')
+  && all(s.services, ['AllowAutoRedirect = false','UseCookies = false']),
   'no arbitrary URL, model-selected URL, or mutation tool');
 
 assert('SESSION_AND_VIEW_AS_FORWARDING',
@@ -248,8 +256,25 @@ assert('VIEW_AS_BOUNDARY',
   s.module.includes('identities.Value.Actual != identities.Value.Effective')
   && s.module.includes('ViewAsMutationBlocked')
   && s.module.includes('mutationAuthorityTransferred = false')
+  && s.service.includes('actualUserId == effectiveUserId')
+  && s.service.includes('access.CanViewConversations')
   && s.documentation.includes('View-As does not transfer conversation or retest mutation authority'),
-  'View-As cannot create another user’s conversation or run a safe retest');
+  'View-As cannot create another user’s conversation, persist inquiry evidence, or run a safe retest');
+
+assert('PERMISSION_SCOPED_SYSTEM_EVIDENCE',
+  all(s.service, [
+    'IReadOnlyList<PulseAiSystemApiDescriptor> apis = access.CanViewApis',
+    'summary = access.CanViewApis ? _apiCatalog.Summary(apis) : null',
+    'request.IncludeApiInventory && access.CanViewApis',
+    'lacks VIEW_PULSE_AI_API_INVENTORY',
+    'var persistenceAuthorized = actualUserId == effectiveUserId',
+    '&& access.CanViewConversations',
+    'if (persisted)',
+    'SaveToolEventAsync',
+    'CompleteInquiryRunAsync'
+  ])
+  && !s.service.includes('plan.WantsApiInventory || access.CanViewApis'),
+  'readiness, question API inventory, and durable conversation/tool evidence require their dedicated permissions');
 
 assert('NO_ARBITRARY_SQL_OR_MUTATION_TOOL',
   s.contracts.includes('arbitrarySqlAllowed = false')

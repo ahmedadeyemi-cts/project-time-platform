@@ -1,0 +1,15 @@
+name: Retired PR 323 Security Finalizer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm retirement
+        run: echo 'The temporary PR #323 security finalizer was retired after the reviewed source merged.'

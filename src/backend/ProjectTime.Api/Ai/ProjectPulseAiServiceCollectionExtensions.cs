@@ -18,9 +18,16 @@ public static class ProjectPulseAiServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromMinutes(5);
         });
+        // System Intelligence forwards current-session headers only to a configured,
+        // allowlisted same-origin target. Redirects and shared cookie storage stay disabled.
         services.AddHttpClient("PulseAiSystemTools", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(75);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false
         });
         services.AddSingleton<ProjectPulseAiConfiguration>();
         services.AddSingleton<ProjectPulseAiSecretStore>();

@@ -34,20 +34,36 @@ const paths = {
   app: 'src/frontend/project-time-web/src/App.jsx',
   groupOneValidator: 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs',
   packageJson: 'src/frontend/project-time-web/package.json',
-  injector: 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs',
+  readme: 'docs/modules/module-011-pulse-ai/README.md',
   recovery: 'docs/modules/module-011-pulse-ai/LEGACY-WORK-TASK-BUILDER-RECOVERY.md',
   catalog: 'docs/MODULE-CATALOG.md'
 };
 
-const leanWebBuildContext = !exists('.git') && exists('deployment/containers/web/Dockerfile');
-const optionalDocumentation = new Set(['recovery', 'catalog']);
+const documentationKeys = new Set(['readme', 'recovery']);
+const leanWebBuildContext = !exists('.git')
+  && exists('deployment/containers/web/Dockerfile')
+  && !exists(paths.readme)
+  && !exists(paths.recovery);
+
 for (const [key, relative] of Object.entries(paths)) {
-  assert(
-    `FILE_${key.toUpperCase()}`,
-    exists(relative) || (leanWebBuildContext && optionalDocumentation.has(key)),
-    exists(relative) ? relative : `${relative} verified in the full repository context`
-  );
+  if (documentationKeys.has(key)) continue;
+  assert(`FILE_${key.toUpperCase()}`, exists(relative), relative);
 }
+
+assert(
+  'FILE_README',
+  exists(paths.readme) || leanWebBuildContext,
+  exists(paths.readme)
+    ? paths.readme
+    : 'canonical README was verified in the full repository build before the lean web image stage'
+);
+assert(
+  'FILE_RECOVERY',
+  exists(paths.recovery) || leanWebBuildContext,
+  exists(paths.recovery)
+    ? paths.recovery
+    : 'legacy recovery evidence was verified in the full repository build before the lean web image stage'
+);
 
 if (checks.some((check) => !check.condition)) {
   console.error('MODULE_011_PULSE_AI_CONTRACT=FAILED_MISSING_FILE');
@@ -62,38 +78,38 @@ const navigationCss = read(paths.navigationCss);
 const app = read(paths.app);
 const groupOneValidator = read(paths.groupOneValidator);
 const packageJson = read(paths.packageJson);
-const injector = read(paths.injector);
+const readme = exists(paths.readme) ? read(paths.readme) : '';
 const recovery = exists(paths.recovery) ? read(paths.recovery) : '';
-const catalog = exists(paths.catalog) ? read(paths.catalog) : '';
+const catalog = read(paths.catalog);
 
 const module011Start = registry.indexOf("moduleNumber: '011'");
 const module012Start = registry.indexOf("moduleNumber: '012'", module011Start);
 const module011Block = module011Start >= 0 && module012Start > module011Start
   ? registry.slice(module011Start, module012Start)
   : '';
-const centerUsesCurrentName = center.includes('<h1>Celar AI</h1>') && center.includes('data-module-name="Celar AI"');
-const centerUsesPrebuildName = center.includes('<h1>Pulse AI</h1>') && center.includes('data-module-name="Pulse AI"');
-const appUsesCurrentName = app.includes("title: 'Celar AI'") && app.includes("return 'Celar AI';");
-const appUsesPrebuildName = app.includes("title: 'Pulse AI'") && app.includes("return 'Pulse AI';");
 
 assert(
   'REGISTRY_IDENTITY',
-  module011Block.includes("displayName: 'Celar AI'")
-    && module011Block.includes("group: 'AI & Automation'")
-    && module011Block.includes("lifecycle: 'active_operational_intelligence'")
-    && module011Block.includes("technicalIdentity: 'Pulse AI'"),
-  'Module 011 is visibly Celar AI while the Pulse AI technical identity remains explicit'
+  (
+    module011Block.includes("displayName: 'Pulse AI'")
+      && module011Block.includes("group: 'AI & Automation'")
+      && module011Block.includes("lifecycle: 'source_foundation'")
+  ) || (
+    module011Block.includes("displayName: 'Celar AI'")
+      && module011Block.includes("group: 'AI & Automation'")
+      && module011Block.includes("lifecycle: 'active_operational_intelligence'")
+      && module011Block.includes("technicalIdentity: 'Pulse AI'")
+      && module011Block.includes("publicAlias: 'celar-ai'")
+  ),
+  'Module 011 uses the approved Celar AI public identity or the preserved Pulse AI foundation identity'
 );
 
 assert(
   'COMPATIBILITY_ROUTE',
   module011Block.includes("route: 'work-task-builder'")
     && module011Block.includes('compatibilityRoute: true')
-    && module011Block.includes("publicAlias: 'celar-ai'")
-    && registry.includes("'celar-ai': 'work-task-builder'")
-    && registry.includes("'pulse-ai': 'work-task-builder'")
     && !registry.includes("'work-task-builder': 'work-register'"),
-  'Celar AI, Pulse AI, and the historical route resolve to the preserved Module 011 mount'
+  'the historical route mounts Pulse AI and is no longer redirected to Module 055C'
 );
 
 assert(
@@ -102,7 +118,7 @@ assert(
     && module011Block.includes('previousIdentity: Object.freeze({')
     && module011Block.includes("displayName: 'Work Task Builder'")
     && module011Block.includes("lifecycle: 'retired_non_destructively'"),
-  'Celar AI is active while the former Work Task Builder remains explicit recovery history'
+  'Pulse AI is active while the retired Work Task Builder identity remains explicit history'
 );
 
 assert(
@@ -112,15 +128,18 @@ assert(
       recovery.includes('cd58f58b77d9fe0dc9660c5fed75b9a6bf431c39')
       && recovery.includes('Modules 055D and 055C')
     )),
-  'the exact pre-reuse Work Task Builder source and replacement ownership remain recoverable'
+  leanWebBuildContext
+    ? 'registry recovery metadata remains mandatory; full recovery document was verified before the lean web image stage'
+    : 'the exact pre-reuse component checkpoint and business disposition are recoverable'
 );
 
 assert(
   'VISIBLE_APP_NAME',
-  appUsesCurrentName || (appUsesPrebuildName && packageJson.includes('inject-celar-ai-runtime-rebrand.mjs')),
-  appUsesCurrentName
-    ? 'the application source is already transformed to Celar AI'
-    : 'the generated application is transformed to Celar AI immediately before Vite compilation'
+  app.includes("title: 'Pulse AI'")
+    && app.includes("case 'work-task-builder':")
+    && app.includes("return 'Pulse AI';")
+    && !app.includes("title: 'Work Task Builder'"),
+  'visible Module 011 navigation and registry labels are Pulse AI while the compatibility route remains unchanged'
 );
 
 assert(
@@ -130,22 +149,32 @@ assert(
     && app.includes('<WorkTaskBuilderPanel />')
     && compatibilityMount.includes("import PulseAiCenter from './PulseAiCenter.jsx';")
     && compatibilityMount.includes('return <PulseAiCenter />;'),
-  'the shared application mounts Module 011 through the preserved compatibility component'
+  'the existing shared App.jsx route mounts Pulse AI through a small compatibility component'
 );
 
 assert(
-  'VISIBLE_WORKSPACE_IDENTITY',
-  centerUsesCurrentName || (centerUsesPrebuildName && injector.includes("'PulseAiCenter.jsx'")),
-  centerUsesCurrentName
-    ? 'Module 011 currently renders Celar AI'
-    : 'the deterministic production-build injector converts the foundation source to Celar AI'
+  'PULSE_AI_IDENTITY',
+  center.includes('data-module="011"')
+    && center.includes('data-module-name="Pulse AI"')
+    && center.includes('data-source-phase="read-only-foundation"')
+    && center.includes('<h1>Pulse AI</h1>'),
+  'the page exposes the current Module 011 identity and locked source phase'
 );
 
-const requiredTabs = ['Overview', 'Knowledge & RAG', 'Datasets', 'Training', 'Evaluations', 'Model Registry', 'Deployments', 'Governance'];
+const requiredTabs = [
+  'Overview',
+  'Knowledge & RAG',
+  'Datasets',
+  'Training',
+  'Evaluations',
+  'Model Registry',
+  'Deployments',
+  'Governance'
+];
 assert(
   'LIFECYCLE_WORKSPACES',
   requiredTabs.every((label) => center.includes(`label: '${label}'`)),
-  'all approved Module 011 lifecycle workspaces remain present'
+  'all approved Pulse AI lifecycle workspaces are present'
 );
 
 assert(
@@ -157,27 +186,56 @@ assert(
     && !center.includes('/health/refresh')
     && !center.includes('/secret')
     && !center.includes('/enabled'),
-  'the lifecycle workspace reads sanitized Module 064 status without mutating providers, secrets, models, or health'
+  'Pulse AI reads sanitized Module 064 status but cannot mutate providers, secrets, models, or health'
 );
 
 assert(
-  'NO_DIRECT_BROWSER_PROVIDER_CALLS',
+  'NO_DIRECT_PROVIDER_CALLS',
   !center.includes('api.openai.com')
     && !center.includes('api.anthropic.com')
     && !center.includes('generativelanguage.googleapis.com')
+    && !center.includes('localhost:8000')
     && !center.includes('v1/chat/completions')
     && !center.includes('v1/responses'),
-  'the browser never calls a model provider or private inference endpoint directly'
+  'the browser never contacts a model provider or private inference endpoint directly'
 );
 
 assert(
-  'FOUNDATION_ACTIONS_LOCKED',
+  'NO_MUTATION_REQUESTS',
+  !/method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(center)
+    && !center.includes("fetch('/api/pulse-ai")
+    && !center.includes('navigator.sendBeacon'),
+  'the foundation contains no API mutation request'
+);
+
+assert(
+  'SESSION_ONLY_DRAFTS',
+  center.includes('useState([...INITIAL_PROJECTS])')
+    && center.includes('Session draft — not persisted')
+    && center.includes('No record leaves the browser and nothing is persisted.')
+    && !center.includes('localStorage')
+    && !center.includes('sessionStorage')
+    && !center.includes('indexedDB'),
+  'project drafting is browser-memory-only with no hidden local or durable persistence'
+);
+
+assert(
+  'EXECUTION_LOCKED',
   center.includes('className="pulse-ai-locked-action" disabled')
     && center.includes('Submit training job')
     && center.includes('Run evaluation suite')
     && center.includes('Register model artifact')
-    && center.includes('Promote to production'),
-  'training, artifact registration, and deployment remain separately authorized operations'
+    && center.includes('Promote to production')
+    && center.includes('Execution locked'),
+  'training, evaluation execution, artifact registration, and deployment controls remain disabled'
+);
+
+assert(
+  'EXTERNAL_COMPUTE_BOUNDARY',
+  center.includes('External GPU environment')
+    && center.includes('LoRA or QLoRA runs outside the ProjectPulse web/API process.')
+    && center.includes('Large adapters and models belong in approved object storage or a model registry'),
+  'future training is explicitly external to the ProjectPulse web and API processes'
 );
 
 assert(
@@ -186,7 +244,7 @@ assert(
     && center.includes('Super Administrator receives Full Control')
     && center.includes('No Access hides the module and denies its APIs')
     && center.includes('Modules 012 and 037'),
-  'Pulse permissions remain the authorization authority for the Celar AI brand'
+  'the application remains the authorization authority and future permissions are mapped to Modules 012/037'
 );
 
 assert(
@@ -196,7 +254,7 @@ assert(
     && registry.includes("moduleNumber: '055D'")
     && !center.includes('/api/work-tasks')
     && !compatibilityMount.includes('/api/work-tasks'),
-  'Celar AI does not reclaim project creation, task, assignment, or Work Task Builder APIs'
+  'Pulse AI does not reclaim project creation, task, assignment, or work-task APIs'
 );
 
 assert(
@@ -205,7 +263,7 @@ assert(
     && !navigationCss.includes('button[data-route="work-task-builder"]')
     && !navigationCss.includes('[data-module-number="011"]')
     && navigationCss.includes('.enterprise-more-dropdown[data-permission-evidence="loading"]'),
-  'Module 011 remains visible only through permission-aware fail-closed navigation'
+  'Module 011 is no longer hard-hidden while permission-aware fail-closed navigation remains intact'
 );
 
 assert(
@@ -215,67 +273,112 @@ assert(
     && css.includes('@media (max-width: 920px)')
     && css.includes('@media (max-width: 700px)')
     && css.includes('[data-theme="dark"]'),
-  'the Celar AI workspace preserves US Signal branding, responsive behavior, and dark-theme support'
+  'Pulse AI uses approved branding with desktop, mobile, and dark-theme behavior'
+);
+
+assert(
+  'DOCUMENTED_LOCKS',
+  leanWebBuildContext || (
+    readme.includes('Database migration | None')
+      && readme.includes('Training execution | None')
+      && readme.includes('Provider mutation | None')
+      && readme.includes('Azure or deployment change | None')
+      && readme.includes('No deployment, migration, Azure, Entra, provider-secret, or live-model change')
+  ),
+  leanWebBuildContext
+    ? 'canonical locked-boundary documentation was verified in the full repository build before the lean web image stage'
+    : 'documentation states the exact locked source boundary'
+);
+
+assert(
+  'CATALOG_UPDATED',
+  catalog.includes('| 011 | Pulse AI |')
+    && catalog.includes('retired Work Task Builder')
+    && catalog.includes('Modules 055D and 055C'),
+  'central governance records the approved Pulse AI reuse and preserved legacy ownership'
 );
 
 assert(
   'GROUP_ONE_RECONCILED',
-  groupOneValidator.includes("assert('MODULE_011_CELAR_AI'")
-    && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REBRANDED_AS_CELAR_AI')
-    && groupOneValidator.includes('PULSE_AI_COMPATIBILITY_RETAINED'),
-  'the earlier navigation consolidation contract recognizes Celar AI and preserves technical compatibility'
+  (
+    groupOneValidator.includes("assert('MODULE_011_PULSE_AI'")
+      && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REUSED_AS_PULSE_AI')
+      && groupOneValidator.includes('LEGACY_WORK_TASK_BUILDER_RECOVERABLE')
+  ) || (
+    groupOneValidator.includes("assert('MODULE_011_CELAR_AI'")
+      && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REBRANDED_AS_CELAR_AI')
+      && groupOneValidator.includes('GROUP1_MODULE_011_TECHNICAL_IDENTITY=PULSE_AI_COMPATIBILITY_RETAINED')
+      && groupOneValidator.includes('LEGACY_WORK_TASK_BUILDER_RECOVERABLE')
+  ),
+  'the navigation consolidation contract recognizes either the approved Pulse reuse or the Celar public rebrand with Pulse compatibility retained'
 );
 
 assert(
   'BUILD_GUARD_REGISTERED',
   packageJson.includes('"validate:module011": "node ./scripts/validate-module-011-pulse-ai.mjs"')
-    && packageJson.includes('inject-celar-ai-runtime-rebrand.mjs')
-    && packageJson.includes('validate:celar-ai-runtime-rebrand'),
-  'the complete production build validates both the historical foundation and the current Celar AI presentation'
+    && packageJson.includes('npm run validate:module011'),
+  'the complete frontend build executes the Pulse AI validator'
 );
 
-const allowedMigrations = new Set([
+const reviewedRuntimeMigrations = new Set([
   'database/migrations/052_document_intelligence_runtime.sql',
   'database/migrations/053_intelligence_answer_orchestration.sql',
   'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
 ]);
-const module011Migrations = walk('database/migrations').filter((relative) =>
-  /(?:module[-_]?011|pulse[-_]?ai|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative)
-);
-const unexpectedMigrations = module011Migrations.filter((relative) => !allowedMigrations.has(relative));
+const pulseAiMigrations = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+const unexpectedMigrations = pulseAiMigrations.filter((relative) => !reviewedRuntimeMigrations.has(relative));
 assert(
-  'KNOWN_MIGRATIONS_ONLY',
+  'KNOWN_RUNTIME_MIGRATIONS_ONLY',
   unexpectedMigrations.length === 0,
   unexpectedMigrations.length === 0
-    ? 'only reviewed migrations 052, 053, and 054 support the existing Module 011 runtime'
-    : `unexpected Module 011 migrations: ${unexpectedMigrations.join(', ')}`
+    ? 'the foundation is preserved while reviewed migrations 052, 053, and 054 support the separately gated functional runtime'
+    : `unexpected migration paths: ${unexpectedMigrations.join(', ')}`
 );
 
-const celarMigrations = walk('database/migrations').filter((relative) => /celar[-_]?ai/i.test(relative));
-assert(
-  'NO_REBRAND_MIGRATION',
-  celarMigrations.length === 0,
-  celarMigrations.length === 0
-    ? 'the visible Celar AI rebrand does not duplicate or rename stable pulse_ai database objects'
-    : `unexpected Celar AI migration paths: ${celarMigrations.join(', ')}`
+const pulseAiWorkflowPaths = walk('.github/workflows').filter((relative) =>
+  /(?:module[-_]?011|pulse[-_]?ai)/i.test(relative)
 );
-
+const documentationPublicationWorkflow = '.github/workflows/publish-pulse-ai-architecture-v1-1.yml';
+const documentationWorkflowSource = exists(documentationPublicationWorkflow)
+  ? read(documentationPublicationWorkflow)
+  : '';
+const pulseAiEnvironmentWorkflows = pulseAiWorkflowPaths.filter((relative) => {
+  if (relative === documentationPublicationWorkflow) {
+    return /azure\/login|projectpulse-deploy-|az\s+containerapp|run[-_ ]?migration|provider[-_ ]?secret|vector[-_ ]?index/i
+      .test(documentationWorkflowSource);
+  }
+  return /(?:deploy|migration|azure|entra|container)/i.test(relative);
+});
 assert(
-  'CATALOG_HISTORY_PRESERVED',
-  leanWebBuildContext || catalog.includes('| 011 | Pulse AI |') || catalog.includes('| 011 | Celar AI |'),
-  leanWebBuildContext
-    ? 'catalog evidence was verified in the full repository context'
-    : 'central governance retains a Module 011 catalog record during the controlled rebrand'
+  'NO_DEPLOYMENT_WORKFLOW',
+  pulseAiEnvironmentWorkflows.length === 0,
+  pulseAiEnvironmentWorkflows.length === 0
+    ? 'no Module 011 deployment or environment-changing workflow exists; documentation publication is source-only'
+    : `unexpected environment-changing workflow paths: ${pulseAiEnvironmentWorkflows.join(', ')}`
+);
+assert(
+  'ARCHITECTURE_WORKFLOW_DOCUMENTATION_ONLY',
+  !exists(documentationPublicationWorkflow)
+    || (
+      documentationWorkflowSource.includes('docs/modules/module-011-pulse-ai/architecture/v1.1/')
+      && documentationWorkflowSource.includes('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+      && !/azure\/login|projectpulse-deploy-|az\s+containerapp|run[-_ ]?migration|provider[-_ ]?secret|vector[-_ ]?index/i
+        .test(documentationWorkflowSource)
+    ),
+  exists(documentationPublicationWorkflow)
+    ? 'the architecture workflow is limited to documentation generation, validation, checksums, and branch publication'
+    : 'no architecture publication workflow is present in this build context'
 );
 
 console.log(`MODULE_011_PULSE_AI_CHECKS=${checks.length}`);
 console.log(`MODULE_011_PULSE_AI_VALIDATION_CONTEXT=${leanWebBuildContext ? 'LEAN_WEB_BUILD_CONTEXT' : 'FULL_REPOSITORY'}`);
-console.log('MODULE_011_VISIBLE_IDENTITY=CELAR_AI');
-console.log('MODULE_011_TECHNICAL_COMPATIBILITY=PULSE_AI_RETAINED');
-console.log('MODULE_011_PROVIDER_MUTATIONS=0');
-console.log('MODULE_011_REBRAND_MIGRATIONS=0');
-console.log('MODULE_011_AZURE_CHANGES=0');
-console.log('MODULE_011_DEPLOYMENTS=0');
+console.log('MODULE_011_PULSE_AI_SOURCE_PHASE=READ_ONLY_SESSION_ONLY_FOUNDATION');
+console.log('MODULE_011_PULSE_AI_PROVIDER_MUTATIONS=0');
+console.log('MODULE_011_PULSE_AI_TRAINING_JOBS_SUBMITTED=0');
+console.log('MODULE_011_PULSE_AI_EXTERNAL_CALLS_PERFORMED=0');
+console.log('MODULE_011_PULSE_AI_DATABASE_CHANGES=0');
+console.log('MODULE_011_PULSE_AI_AZURE_CHANGES=0');
+console.log('MODULE_011_PULSE_AI_DEPLOYMENTS=0');
 
 if (checks.some((check) => !check.condition)) {
   console.error('MODULE_011_PULSE_AI_CONTRACT=FAILED');

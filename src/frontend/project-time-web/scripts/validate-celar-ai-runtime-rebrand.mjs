@@ -137,11 +137,12 @@ assert(
   'GLOBAL_CHAT_BRAND',
   help.includes('Ask Celar AI')
     && help.includes('aria-label="Celar AI system intelligence assistant"')
-    && help.includes('<strong>Celar AI</strong>')
+    && help.includes('<strong>Celar AI Help & Search</strong>')
+    && !help.includes('<strong>Pulse AI Help & Search</strong>')
     && help.includes('Celar AI Workbench')
     && help.includes("const path = '/api/celar-ai/v1/chat';")
     && help.includes("openRoute('celar-ai')"),
-  'the global chat is visibly Celar AI and submits through the new user-facing endpoint'
+  'the global chat preserves the Group 7 Help & Search title under the Celar AI brand and submits through the user-facing endpoint'
 );
 
 assert(

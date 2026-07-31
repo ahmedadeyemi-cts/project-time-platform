@@ -1,0 +1,131 @@
+name: Temporary PR 343 Current-Main Reconciliation Analyzer
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/pr343-reconciliation-trigger.txt'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: temporary-pr343-reconciliation-analyzer
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact PR #343 head
+        uses: actions/checkout@v4
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Analyze merge with current main
+        id: merge_analysis
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          git config user.name 'projectpulse-reconciliation-analyzer'
+          git config user.email 'projectpulse-reconciliation-analyzer@users.noreply.github.com'
+
+          HEAD_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          MERGE_BASE="$(git merge-base origin/main HEAD)"
+
+          set +e
+          git merge --no-commit --no-ff origin/main > /tmp/pr343-merge.log 2>&1
+          STATUS=$?
+          set -e
+
+          cat /tmp/pr343-merge.log
+          CONFLICTS="$(git diff --name-only --diff-filter=U || true)"
+
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "main_sha=$MAIN_SHA"
+            echo "merge_base=$MERGE_BASE"
+            echo "merge_status=$STATUS"
+            echo 'conflicts<<PR343_CONFLICTS_EOF'
+            printf '%s\n' "$CONFLICTS"
+            echo 'PR343_CONFLICTS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ -n "$CONFLICTS" ]]; then
+            echo 'PR343_RECONCILIATION_CONFLICTS_BEGIN'
+            printf '%s\n' "$CONFLICTS"
+            echo 'PR343_RECONCILIATION_CONFLICTS_END'
+            echo 'PR343_RECONCILIATION_STATUS=CONFLICTS_FOUND'
+          else
+            git diff --check --cached
+            echo 'PR343_RECONCILIATION_STATUS=CLEAN_MERGE'
+          fi
+
+          git merge --abort >/dev/null 2>&1 || true
+
+      - name: Publish reconciliation evidence to PR #343
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          ANALYZED_HEAD: ${{ steps.merge_analysis.outputs.head_sha }}
+          ANALYZED_MAIN: ${{ steps.merge_analysis.outputs.main_sha }}
+          ANALYZED_BASE: ${{ steps.merge_analysis.outputs.merge_base }}
+          MERGE_STATUS: ${{ steps.merge_analysis.outputs.merge_status }}
+          CONFLICTS: ${{ steps.merge_analysis.outputs.conflicts }}
+        with:
+          script: |
+            const marker = '<!-- pr343-current-main-reconciliation -->';
+            const conflicts = (process.env.CONFLICTS || '').trim();
+            const clean = process.env.MERGE_STATUS === '0' && !conflicts;
+            const body = [
+              marker,
+              '## PR #343 current-main reconciliation analysis',
+              '',
+              `- Head analyzed: \`${process.env.ANALYZED_HEAD || 'not recorded'}\``,
+              `- Current main: \`${process.env.ANALYZED_MAIN || 'not recorded'}\``,
+              `- Merge base: \`${process.env.ANALYZED_BASE || 'not recorded'}\``,
+              `- Result: **${clean ? 'clean merge' : 'conflicts found'}**`,
+              '',
+              clean
+                ? 'The exact head can be merged with current main without a textual conflict.'
+                : ['Conflicting paths:', '', '```text', conflicts || 'Merge failed before Git produced a path list.', '```'].join('\n'),
+              '',
+              'This analyzer is read-only. It did not push, merge, deploy, apply migration 054, or change Azure/Test/Production resources.'
+            ].join('\n');
+
+            const parameters = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            };
+            const comments = await github.paginate(github.rest.issues.listComments, parameters);
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({ ...parameters, body });
+            }
+
+      - name: Enforce clean reconciliation result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test '${{ steps.merge_analysis.outputs.merge_status }}' = '0'
+          test -z '${{ steps.merge_analysis.outputs.conflicts }}'

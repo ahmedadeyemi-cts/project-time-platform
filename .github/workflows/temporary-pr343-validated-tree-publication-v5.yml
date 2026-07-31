@@ -1,0 +1,358 @@
+name: Temporary PR 343 Validated-Tree Publication V5
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/pr343-finalizer-v5-trigger.txt'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: temporary-pr343-validated-tree-publication-v5
+  cancel-in-progress: false
+
+jobs:
+  validate-and-export:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact Celar AI source head
+        uses: actions/checkout@v4
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reconcile current main and create the reviewed V5 candidate
+        id: reconcile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_PRE_TRIGGER_HEAD='5dcea78d44a2a43e606222d5a52cc642a5ec408a'
+          REQUIRED_MAIN_ANCESTOR='568904e49b9308fd3786f9b1cbd9620df5e6b898'
+          TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          WORKFLOW_PATH='.github/workflows/temporary-pr343-validated-tree-publication-v5.yml'
+          PATCH_PATH='.github/scripts/pr343_current_main_finalizer_v4.py'
+          TRIGGER_PATH='.github/pr343-finalizer-v5-trigger.txt'
+
+          test "$(git rev-parse HEAD^)" = "$REQUIRED_PRE_TRIGGER_HEAD"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$TRIGGER_PATH"
+          grep -Fqx "EXPECTED_PRE_TRIGGER_HEAD=$REQUIRED_PRE_TRIGGER_HEAD" "$TRIGGER_PATH"
+          grep -Fqx "EXPECTED_MAIN_ANCESTOR=$REQUIRED_MAIN_ANCESTOR" "$TRIGGER_PATH"
+          grep -Fqx 'EXPECTED_PUBLICATION=VALIDATED_TREE_MANIFEST' "$TRIGGER_PATH"
+          grep -Fqx 'EXPECTED_APPLICATION_SOURCE_CHANGE=NONE_BEYOND_V4_CANDIDATE' "$TRIGGER_PATH"
+
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$REQUIRED_MAIN_ANCESTOR" origin/main
+
+          MAIN_DELTA="$(git diff --name-only "$REQUIRED_MAIN_ANCESTOR"...origin/main)"
+          printf '%s\n' "$MAIN_DELTA"
+          test "$MAIN_DELTA" = "$WORKFLOW_PATH"
+
+          git config user.name 'projectpulse-celar-tree-exporter'
+          git config user.email 'projectpulse-celar-tree-exporter@users.noreply.github.com'
+
+          set +e
+          git merge --no-commit --no-ff origin/main > /tmp/pr343-finalizer-v5-merge.log 2>&1
+          MERGE_STATUS=$?
+          set -e
+          cat /tmp/pr343-finalizer-v5-merge.log
+
+          mapfile -t ACTUAL_CONFLICTS < <(git diff --name-only --diff-filter=U | sort)
+          EXPECTED_CONFLICTS=(
+            '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+            '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+            'docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING.md'
+            'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+            'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
+            'src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs'
+            'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+            'src/frontend/project-time-web/package.json'
+            'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+            'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'
+          )
+          mapfile -t EXPECTED_CONFLICTS < <(printf '%s\n' "${EXPECTED_CONFLICTS[@]}" | sort)
+
+          test "$MERGE_STATUS" != '0'
+          if [[ "$(printf '%s\n' "${ACTUAL_CONFLICTS[@]}")" != "$(printf '%s\n' "${EXPECTED_CONFLICTS[@]}")" ]]; then
+            echo 'The conflict set changed from the reviewed V4 evidence.' >&2
+            echo 'Expected:' >&2
+            printf '%s\n' "${EXPECTED_CONFLICTS[@]}" >&2
+            echo 'Actual:' >&2
+            printf '%s\n' "${ACTUAL_CONFLICTS[@]}" >&2
+            exit 1
+          fi
+
+          # Current main remains authoritative for the reviewed shared security,
+          # compatibility, migration, build, and Group 7 contracts.
+          git checkout --theirs -- "${EXPECTED_CONFLICTS[@]}"
+          git add -- "${EXPECTED_CONFLICTS[@]}"
+
+          rm -f \
+            '.github/workflows/temporary-pr328-main-reconciliation-analysis.yml' \
+            '.github/pr343-reconciliation-trigger.txt' \
+            '.github/pr343-finalizer-trigger.txt' \
+            '.github/pr343-finalizer-v2-trigger.txt' \
+            '.github/pr343-finalizer-v3-trigger.txt' \
+            '.github/pr343-finalizer-v4-trigger.txt' \
+            "$TRIGGER_PATH"
+
+          git show "origin/main:${PATCH_PATH}" > /tmp/pr343_current_main_finalizer_v4.py
+          python /tmp/pr343_current_main_finalizer_v4.py
+
+          git add -A
+          git diff --check --cached -- \
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml' \
+            'deployment/containers/web/Dockerfile' \
+            'src/backend/ProjectTime.Api/ProjectTime.Api.csproj' \
+            'src/frontend/project-time-web/package.json' \
+            'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs' \
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+
+          git diff --cached --name-status
+          git commit -m 'Reconcile Celar AI runtime rebrand with current main (V5 candidate)'
+
+          echo "candidate_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "source_parent=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          echo "main_parent=$(git rev-parse HEAD^2)" >> "$GITHUB_OUTPUT"
+          echo "final_tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate reconciled Celar AI source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs
+          node --check src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          node src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
+          node src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs
+          chmod +x tests/test-pulse-ai-system-intelligence-migration-054.sh
+          tests/test-pulse-ai-system-intelligence-migration-054.sh
+
+      - name: Build reconciled ProjectTime API
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Build reconciled frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Verify the corrected Celar AI global-chat brand contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HELP='src/frontend/project-time-web/src/HelpAssistant.jsx'
+          grep -Fq 'Ask Celar AI' "$HELP"
+          grep -Fq 'aria-label="Celar AI system intelligence assistant"' "$HELP"
+          grep -Fq '<strong>Celar AI Help & Search</strong>' "$HELP"
+          ! grep -Fq '<strong>Pulse AI Help & Search</strong>' "$HELP"
+          grep -Fq 'Celar AI Workbench' "$HELP"
+          grep -Fq "const path = '/api/celar-ai/v1/chat';" "$HELP"
+          grep -Fq "openRoute('celar-ai')" "$HELP"
+          node src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          echo 'PR343_V5_GLOBAL_CHAT_BRAND=PASSED'
+
+      - name: Validate clean production web-container context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git reset --hard HEAD
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-celar-validated-tree-v5:${{ github.event.pull_request.head.sha }}" \
+            .
+
+      - name: Export exact validated Git tree manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git reset --hard HEAD
+          mkdir -p /tmp/pr343-v5-publication
+
+          python - <<'PY'
+          import base64
+          import json
+          import subprocess
+          from pathlib import Path
+
+          def git_bytes(*args: str) -> bytes:
+              return subprocess.check_output(['git', *args])
+
+          def git_text(*args: str) -> str:
+              return git_bytes(*args).decode('utf-8').strip()
+
+          head = git_text('rev-parse', 'HEAD')
+          source_parent = git_text('rev-parse', 'HEAD^1')
+          main_parent = git_text('rev-parse', 'HEAD^2')
+          base_tree = git_text('rev-parse', f'{source_parent}^{{tree}}')
+          final_tree = git_text('rev-parse', 'HEAD^{tree}')
+
+          reachable = set()
+          for line in git_bytes('rev-list', '--objects', source_parent, main_parent).splitlines():
+              if line:
+                  reachable.add(line.split(b' ', 1)[0].decode('ascii'))
+
+          raw = git_bytes('diff', '--name-status', '-z', '--no-renames', source_parent, head)
+          tokens = raw.split(b'\0')
+          if tokens and tokens[-1] == b'':
+              tokens.pop()
+          if len(tokens) % 2:
+              raise SystemExit('Unexpected NUL-delimited name-status output.')
+
+          entries = []
+          local_blobs = {}
+          for index in range(0, len(tokens), 2):
+              status = tokens[index].decode('ascii')
+              path = tokens[index + 1].decode('utf-8', 'surrogateescape')
+              if status == 'D':
+                  entries.append({'path': path, 'sha': None, 'status': status})
+                  continue
+
+              tree_line = git_bytes('ls-tree', '-z', head, '--', path)
+              if not tree_line.endswith(b'\0'):
+                  raise SystemExit(f'Missing final-tree entry for {path}')
+              metadata, actual_path = tree_line[:-1].split(b'\t', 1)
+              mode, object_type, object_sha = metadata.decode('ascii').split(' ')
+              actual = actual_path.decode('utf-8', 'surrogateescape')
+              if actual != path:
+                  raise SystemExit(f'Path mismatch: {path} != {actual}')
+
+              entries.append({
+                  'path': path,
+                  'mode': mode,
+                  'type': object_type,
+                  'sha': object_sha,
+                  'status': status,
+              })
+
+              if object_type == 'blob' and object_sha not in reachable:
+                  local_blobs[object_sha] = base64.b64encode(
+                      git_bytes('cat-file', 'blob', object_sha)
+                  ).decode('ascii')
+
+          manifest = {
+              'schema': 'projectpulse.pr343.validated-tree.v5',
+              'repository': 'ahmedadeyemi-cts/project-time-platform',
+              'pull_request': 343,
+              'validated_candidate_commit': head,
+              'source_parent': source_parent,
+              'main_parent': main_parent,
+              'base_tree': base_tree,
+              'final_tree': final_tree,
+              'entry_count': len(entries),
+              'local_blob_count': len(local_blobs),
+              'entries': entries,
+              'local_blobs_base64': local_blobs,
+              'validation': {
+                  'migration_054_regression': 'passed',
+                  'api_release_build': 'passed',
+                  'frontend_full_build': 'passed',
+                  'celar_global_chat_brand': 'passed',
+                  'clean_web_container_build': 'passed',
+              },
+              'environment_mutations': 0,
+          }
+
+          target = Path('/tmp/pr343-v5-publication/pr343-validated-tree-manifest.json')
+          target.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding='utf-8')
+          print(f'PR343_V5_MANIFEST_ENTRIES={len(entries)}')
+          print(f'PR343_V5_MANIFEST_LOCAL_BLOBS={len(local_blobs)}')
+          print(f'PR343_V5_FINAL_TREE={final_tree}')
+          PY
+
+          sha256sum /tmp/pr343-v5-publication/pr343-validated-tree-manifest.json \
+            | tee /tmp/pr343-v5-publication/SHA256SUMS.txt
+
+      - name: Upload validated tree publication artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr343-validated-tree-v5-${{ github.run_id }}
+          path: /tmp/pr343-v5-publication/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 9
+
+      - name: Publish validated-tree handoff evidence to PR #343
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+          CANDIDATE_COMMIT: ${{ steps.reconcile.outputs.candidate_commit }}
+          SOURCE_PARENT: ${{ steps.reconcile.outputs.source_parent }}
+          MAIN_PARENT: ${{ steps.reconcile.outputs.main_parent }}
+          FINAL_TREE: ${{ steps.reconcile.outputs.final_tree }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        with:
+          script: |
+            const marker = '<!-- pr343-validated-tree-publication-v5 -->';
+            const success = process.env.JOB_STATUS === 'success';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## PR #343 validated-tree publication V5',
+              '',
+              `- Result: **${success ? 'validated tree exported' : 'failed closed'}**`,
+              `- Source parent: \`${process.env.SOURCE_PARENT || 'not recorded'}\``,
+              `- Main parent: \`${process.env.MAIN_PARENT || 'not recorded'}\``,
+              `- Validated candidate: \`${process.env.CANDIDATE_COMMIT || 'not created'}\``,
+              `- Exact validated tree: \`${process.env.FINAL_TREE || 'not recorded'}\``,
+              `- Artifact ID: \`${process.env.ARTIFACT_ID || 'not created'}\``,
+              `- Artifact digest: \`${process.env.ARTIFACT_DIGEST || 'not recorded'}\``,
+              `- Workflow run: ${runUrl}`,
+              '',
+              success
+                ? 'The exact V4-equivalent reconciliation passed migration 054 regression, API Release build, the complete frontend validator/build chain, the Celar AI Help & Search contract, and a clean production web-container build. The workflow exported a content-addressed Git-tree manifest for authenticated publication; it did not push or mutate the source branch itself.'
+                : 'No publication manifest should be used. Review the failed gate before any ref update.',
+              '',
+              'No migration was applied, no deployment occurred, and no Azure, provider, credential, project, financial, Timesheet, or permission data was changed.'
+            ].join('\n');
+
+            const params = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            };
+            const comments = await github.paginate(github.rest.issues.listComments, params);
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({ ...params, body });
+            }

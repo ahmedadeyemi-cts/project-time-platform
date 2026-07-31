@@ -43,6 +43,9 @@ COPY src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs \
 COPY src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs \
      src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
 
+COPY src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
+     src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
+
 COPY src/backend/ProjectTime.Api/Modules/EntraSecretAdministrationModule.cs \
      src/backend/ProjectTime.Api/Modules/EntraSecretAdministrationModule.cs
 

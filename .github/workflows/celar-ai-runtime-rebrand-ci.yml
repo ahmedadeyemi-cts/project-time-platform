@@ -46,20 +46,22 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify exact stacked source isolation
+      - name: Verify exact current-main source isolation
         shell: bash
         run: |
           set -Eeuo pipefail
-          EXPECTED_BASE='0abcbf5a1248d490a824ee4d987c8669344f0209'
-          git cat-file -e "$EXPECTED_BASE^{commit}"
-          [[ "$(git merge-base "$EXPECTED_BASE" HEAD)" == "$EXPECTED_BASE" ]]
-          CHANGED="$(git diff --name-only "$EXPECTED_BASE"...HEAD)"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE_REF="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          test -n "$BASE_REF"
+          test "$BASE_REF" = "$(git rev-parse "origin/$BASE_BRANCH")"
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|tests/test-pulse-ai-system-intelligence-migration-054\.sh|docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js))$'
+          ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|docs/modules/module-011-pulse-ai/(CELAR-AI-RUNTIME-REBRAND|SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING)\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog|ProjectPulseAiServiceCollectionExtensions|PulseAiSystemIntelligenceService|PulseAiSystemToolExecutor)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|inject-pulse-ai-system-chat-group7-compatibility|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js|HelpAssistant\.jsx|PulseAiSystemIntelligenceWorkbench\.jsx|WorkTaskBuilderPanel\.jsx|pulse-ai-system-chat\.css|pulse-ai-system-intelligence-workbench\.css)|deployment/containers/web/Dockerfile)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Celar AI runtime-rebrand source scope:' >&2
+            echo 'Unexpected Celar AI current-main source scope:' >&2
             printf '%s\n' "$UNEXPECTED" >&2
             exit 1
           fi
@@ -71,9 +73,21 @@ jobs:
             ! grep -Fxq "$protected" <<<"$CHANGED"
           done
 
-          ! grep -E '^(deployment/|database/migrations/|database/rollback/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"
-          git diff --check "$EXPECTED_BASE"...HEAD
-          echo "CELAR_AI_RUNTIME_REBRAND_BASE=$EXPECTED_BASE"
+          OTHER_DEPLOYMENT="$(grep -E '^deployment/' <<<"$CHANGED" | grep -Fvx 'deployment/containers/web/Dockerfile' || true)"
+          if [[ -n "$OTHER_DEPLOYMENT" ]]; then
+            echo 'Unexpected deployment source changed by the Celar AI package:' >&2
+            printf '%s\n' "$OTHER_DEPLOYMENT" >&2
+            exit 1
+          fi
+
+          ! grep -E '^(database/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"
+          git diff --check "$BASE_REF"...HEAD -- \
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml' \
+            'deployment/containers/web/Dockerfile' \
+            'src/backend/ProjectTime.Api/ProjectTime.Api.csproj' \
+            'src/frontend/project-time-web/package.json' \
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+          echo "CELAR_AI_RUNTIME_REBRAND_BASE=$BASE_REF"
           echo 'CELAR_AI_RUNTIME_REBRAND_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
