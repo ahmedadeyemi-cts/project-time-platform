@@ -1,0 +1,322 @@
+name: Temporary PR 343 Independent Review Fix
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    paths:
+      - '.github/workflows/temporary-pr343-review-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-pr343-independent-review-fix
+  cancel-in-progress: false
+
+jobs:
+  apply-validate-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact review-fix trigger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify temporary tooling isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_PARENT='7d174f08b4c2988cecd1f4061c201f17951ea281'
+          test "$(git rev-parse HEAD^)" = "$REQUIRED_PARENT"
+          mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_PARENT"...HEAD | sort)
+          EXPECTED=( '.github/workflows/temporary-pr343-review-fix.yml' )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${CHANGED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          echo 'PR343_REVIEW_FIX_TOOLING_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply deterministic review corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          profile = Path('src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs')
+          replace_once(
+              profile,
+              '''        return IdentityQuestionRegex().IsMatch(value)
+                  || value.Equals("celar ai", StringComparison.OrdinalIgnoreCase)
+                  || value.Length <= 32;''',
+              '''        return IdentityQuestionRegex().IsMatch(value)
+                  || value.Equals("celar ai", StringComparison.OrdinalIgnoreCase)
+                  || value.Equals("celar", StringComparison.OrdinalIgnoreCase);''',
+              'identity intent routing',
+          )
+
+          module = Path('src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs')
+          replace_once(
+              module,
+              '''public static class CelarAiBrandModule
+          {
+              public static IEndpointRouteBuilder MapCelarAiBrandEndpoints''',
+              '''public static class CelarAiBrandModule
+          {
+              private static readonly HashSet<string> Module064AdministratorRoles =
+                  new(StringComparer.OrdinalIgnoreCase)
+                  {
+                      "SUPER_ADMINISTRATOR",
+                      "SYSTEM_ADMINISTRATOR",
+                      "ADMINISTRATOR"
+                  };
+
+              public static IEndpointRouteBuilder MapCelarAiBrandEndpoints''',
+              'Module 064 administrator roles',
+          )
+          replace_once(
+              module,
+              '''        var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
+                  if (!access.IsActive) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+                  var privateOptions = PulseAiPrivateRagOptions.FromEnvironment();''',
+              '''        var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
+                  if (!access.IsActive) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+                  var actualAccess = identities.Value.Actual == identities.Value.Effective
+                      ? access
+                      : await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
+                  if (!actualAccess.IsActive
+                      || !actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains))
+                      return Forbidden("MODULE_064_ADMINISTRATOR");
+                  var privateOptions = PulseAiPrivateRagOptions.FromEnvironment();''',
+              'provider readiness actual-session authorization',
+          )
+          replace_once(
+              module,
+              '''                context,
+                          repository,
+                          cancellationToken);''',
+              '''                context,
+                          repository,
+                          access.CanViewConversations,
+                          cancellationToken);''',
+              'identity persistence access parameter',
+          )
+          replace_once(
+              module,
+              '''        HttpContext context,
+                  PulseAiSystemIntelligenceRepository repository,
+                  CancellationToken cancellationToken)''',
+              '''        HttpContext context,
+                  PulseAiSystemIntelligenceRepository repository,
+                  bool canViewConversations,
+                  CancellationToken cancellationToken)''',
+              'identity answer signature',
+          )
+          replace_once(
+              module,
+              '''        var mayPersist = actualUserId == effectiveUserId;''',
+              '''        var mayPersist = actualUserId == effectiveUserId && canViewConversations;''',
+              'conversation persistence authority',
+          )
+          replace_once(
+              module,
+              '''            Warnings: persisted
+                          ? []
+                          : ["The answer completed, but migration 054 conversation persistence was not available for this request."],''',
+              '''            Warnings: persisted
+                          ? []
+                          : [actualUserId != effectiveUserId
+                              ? "View-As questions are read-only and are not persisted."
+                              : !canViewConversations
+                                  ? "Conversation history permission is required to persist completed messages."
+                                  : "The answer completed, but migration 054 conversation persistence was not available for this request."],''',
+              'conversation persistence warning',
+          )
+
+          deep_ci = Path('.github/workflows/deep-intelligence-read-contract-ci.yml')
+          replace_once(
+              deep_ci,
+              '''          HELP_TITLE='Pulse AI Help & Search'
+                    if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+                      HELP_TITLE='Celar AI Help & Search'
+                    fi''',
+              '''          HELP_TITLE='Pulse AI Help & Search'
+                    if [[ -f ./scripts/inject-celar-ai-runtime-rebrand.mjs ]] \\
+                      && grep -Fq 'Celar AI Help & Search' ./scripts/inject-celar-ai-runtime-rebrand.mjs; then
+                      HELP_TITLE='Celar AI Help & Search'
+                    fi''',
+              'post-merge Help title marker',
+          )
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs')
+          replace_once(
+              validator,
+              '''  injector: 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs',
+            packageJson: 'src/frontend/project-time-web/package.json',
+            architectureIdentity:''',
+              '''  injector: 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs',
+            packageJson: 'src/frontend/project-time-web/package.json',
+            deepWorkflow: '.github/workflows/deep-intelligence-read-contract-ci.yml',
+            architectureIdentity:''',
+              'validator deep workflow source',
+          )
+          replace_once(
+              validator,
+              '''const packageJson = read(files.packageJson);
+          const architectureIdentity =''',
+              '''const packageJson = read(files.packageJson);
+          const deepWorkflow = read(files.deepWorkflow);
+          const architectureIdentity =''',
+              'validator deep workflow read',
+          )
+          insert_anchor = '''assert(
+            'CANONICAL_ANSWER_DEPTH','''
+          review_checks = '''assert(
+            'IDENTITY_INTENT_ROUTING',
+            profile.includes('value.Equals("celar", StringComparison.OrdinalIgnoreCase)')
+              && !profile.includes('value.Length <= 32'),
+            'only explicit Celar identity intent receives the static brand answer; operational Celar questions continue to live system intelligence'
+          );
+
+          assert(
+            'PROVIDER_READINESS_AUTHORIZATION',
+            moduleSource.includes('Module064AdministratorRoles')
+              && moduleSource.includes('service.LoadAccessAsync(identities.Value.Actual, cancellationToken)')
+              && moduleSource.includes('actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains)'),
+            'Module 064 provider-readiness metadata requires actual-session administrator authority'
+          );
+
+          assert(
+            'CONVERSATION_PERSISTENCE_AUTHORITY',
+            moduleSource.includes('access.CanViewConversations')
+              && moduleSource.includes('actualUserId == effectiveUserId && canViewConversations')
+              && moduleSource.includes('Conversation history permission is required to persist completed messages.'),
+            'identity answers persist only for the current user when conversation-history permission is present'
+          );
+
+          assert(
+            'POST_MERGE_MARKER_COMPATIBILITY',
+            deepWorkflow.includes("grep -Fq 'Celar AI Help & Search' ./scripts/inject-celar-ai-runtime-rebrand.mjs")
+              && deepWorkflow.includes("HELP_TITLE='Celar AI Help & Search'"),
+            'deep-intelligence CI derives the visible Help title from checked-out source state after the rebrand reaches main'
+          );
+
+          '''
+          text = validator.read_text(encoding='utf-8')
+          if text.count(insert_anchor) != 1:
+              raise SystemExit('validator review-check insertion anchor mismatch')
+          validator.write_text(text.replace(insert_anchor, review_checks + insert_anchor, 1), encoding='utf-8')
+          PY
+
+          git diff --check -- \
+            .github/workflows/deep-intelligence-read-contract-ci.yml \
+            src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
+            src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+
+          mapfile -t PATCHED < <(git diff --name-only | sort)
+          EXPECTED=(
+            '.github/workflows/deep-intelligence-read-contract-ci.yml'
+            'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
+            'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+            'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
+          )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${PATCHED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/deep-intelligence-read-contract-ci.yml')"
+          node --check src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          echo 'PR343_REVIEW_FIX_PATCH_CONTRACT=PASSED'
+
+      - name: Validate corrected Celar AI source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-celar-ai-runtime-rebrand.mjs
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          node ./scripts/validate-pulse-ai-help-chat-usability.mjs
+          node ./scripts/validate-module-011-system-intelligence-package.mjs
+          node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node ./scripts/validate-module-011-private-document-pipeline.mjs
+          echo 'PR343_REVIEW_FIX_SOURCE_VALIDATION=PASSED'
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          echo 'PR343_REVIEW_FIX_API_BUILD=PASSED'
+
+      - name: Build frontend twice and validate post-merge markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          npm run build
+          cat dist/assets/*.js > /tmp/pr343-review-fix.js
+          cat dist/assets/*.css > /tmp/pr343-review-fix.css
+          grep -Fq 'Celar AI Help & Search' /tmp/pr343-review-fix.js
+          ! grep -Fq 'Pulse AI Help & Search' /tmp/pr343-review-fix.js
+          grep -Fq '.help-panel.pulse-ai-system-chat .help-messages' /tmp/pr343-review-fix.css
+          echo 'PR343_REVIEW_FIX_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web-container context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-pr343-review-fix:${GITHUB_SHA}" \
+            .
+          echo 'PR343_REVIEW_FIX_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Commit and push validated corrections
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          git config user.name 'projectpulse-pr343-review-fix'
+          git config user.email 'projectpulse-pr343-review-fix@users.noreply.github.com'
+
+          git rm .github/workflows/temporary-pr343-review-fix.yml
+          git add \
+            .github/workflows/deep-intelligence-read-contract-ci.yml \
+            src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
+            src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          git diff --check --cached -- \
+            .github/workflows/deep-intelligence-read-contract-ci.yml \
+            src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
+            src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          git commit -m 'Fix Celar AI authorization and CI review findings'
+
+          git fetch origin "$TARGET_BRANCH" --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo "PR343_REVIEW_FIX_COMMIT=$(git rev-parse HEAD)"
