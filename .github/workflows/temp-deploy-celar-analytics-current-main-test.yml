@@ -162,6 +162,7 @@ jobs:
           node ./scripts/validate-module-011-pulse-ai.mjs
           node ./scripts/validate-pulse-ai-help-chat-usability.mjs
           node ./scripts/validate-module-011-system-intelligence-package.mjs
+          node ./scripts/inject-celar-ai-runtime-rebrand.mjs
           node ./scripts/validate-celar-ai-runtime-rebrand.mjs
           node ./scripts/validate-analytics-center.mjs
           npm ci --no-audit --no-fund
