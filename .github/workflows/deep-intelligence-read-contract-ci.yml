@@ -241,15 +241,23 @@ jobs:
           cat dist/assets/*.js > /tmp/deep-intelligence.js
           cat dist/assets/*.css > /tmp/deep-intelligence.css
 
+          HELP_TITLE='Pulse AI Help & Search'
+          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+            HELP_TITLE='Celar AI Help & Search'
+          fi
+
           for marker in \
             'Build comprehensive, source-grounded answers—not surface summaries' \
             'Timesheet Grounding' \
             'FlowHive Planning' \
             'Reports & Financials' \
-            'Pulse AI Help & Search' \
+            "$HELP_TITLE" \
             'Automatic multi-tool execution is not yet enabled'; do
             grep -Fq "$marker" /tmp/deep-intelligence.js
           done
+          if [[ "$HELP_TITLE" == 'Celar AI Help & Search' ]]; then
+            ! grep -Fq 'Pulse AI Help & Search' /tmp/deep-intelligence.js
+          fi
 
           grep -Fq '.pulse-ai-deep-workbench' /tmp/deep-intelligence.css
           grep -Fq '.help-detailed-answer' /tmp/deep-intelligence.css

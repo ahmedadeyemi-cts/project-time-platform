@@ -133,13 +133,17 @@ assert(
     : 'the exact pre-reuse component checkpoint and business disposition are recoverable'
 );
 
+const approvedVisibleAppName = (
+  app.includes("title: 'Pulse AI'") && app.includes("return 'Pulse AI';")
+) || (
+  app.includes("title: 'Celar AI'") && app.includes("return 'Celar AI';")
+);
 assert(
   'VISIBLE_APP_NAME',
-  app.includes("title: 'Pulse AI'")
+  approvedVisibleAppName
     && app.includes("case 'work-task-builder':")
-    && app.includes("return 'Pulse AI';")
     && !app.includes("title: 'Work Task Builder'"),
-  'visible Module 011 navigation and registry labels are Pulse AI while the compatibility route remains unchanged'
+  'visible Module 011 navigation uses the approved Pulse AI foundation or Celar AI public identity while the compatibility route remains unchanged'
 );
 
 assert(
@@ -152,13 +156,17 @@ assert(
   'the existing shared App.jsx route mounts Pulse AI through a small compatibility component'
 );
 
+const approvedCenterIdentity = (
+  center.includes('data-module-name="Pulse AI"') && center.includes('<h1>Pulse AI</h1>')
+) || (
+  center.includes('data-module-name="Celar AI"') && center.includes('<h1>Celar AI</h1>')
+);
 assert(
   'PULSE_AI_IDENTITY',
   center.includes('data-module="011"')
-    && center.includes('data-module-name="Pulse AI"')
-    && center.includes('data-source-phase="read-only-foundation"')
-    && center.includes('<h1>Pulse AI</h1>'),
-  'the page exposes the current Module 011 identity and locked source phase'
+    && approvedCenterIdentity
+    && center.includes('data-source-phase="read-only-foundation"'),
+  'the page exposes the approved Pulse AI foundation or Celar AI public identity and locked source phase'
 );
 
 const requiredTabs = [
