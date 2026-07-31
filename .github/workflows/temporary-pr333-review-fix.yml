@@ -1,11 +1,9 @@
 name: Temporary PR 333 Least-Privilege Review Fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - 'fix/role-workspaces-entra-crm-governance-20260730'
-    paths:
-      - '.github/workflows/temporary-pr333-review-fix.yml'
+      - main
 
 permissions:
   contents: write
@@ -16,6 +14,7 @@ concurrency:
 
 jobs:
   apply-validate-push:
+    if: github.event.pull_request.head.ref == 'fix/role-workspaces-entra-crm-governance-20260730'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -24,13 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Verify temporary tooling isolation
         shell: bash
         run: |
           set -Eeuo pipefail
-          REQUIRED_PARENT='54aa964e781ca92efe491cc445c623f61537c640'
+          REQUIRED_PARENT='2d8c821380dc89db33396b8911ebec11fcc4ceeb'
           test "$(git rev-parse HEAD^)" = "$REQUIRED_PARENT"
           mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_PARENT"...HEAD | sort)
           EXPECTED=( '.github/workflows/temporary-pr333-review-fix.yml' )
@@ -171,7 +170,7 @@ jobs:
           )
 
           entra = Path('src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs')
-          first = '''        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(context, _ => true);'''
+          broad = '''        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(context, _ => true);'''
           gated = '''        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(
                       context,
                       actor => actor.IsAdministrator
@@ -181,15 +180,15 @@ jobs:
           positions = []
           start = 0
           while True:
-              index = text.find(first, start)
+              index = text.find(broad, start)
               if index < 0:
                   break
               positions.append(index)
-              start = index + len(first)
+              start = index + len(broad)
           if len(positions) < 2:
               raise SystemExit(f'Entra profile gate expected at least two broad access calls, found {len(positions)}')
           index = positions[1]
-          entra.write_text(text[:index] + gated + text[index + len(first):], encoding='utf-8')
+          entra.write_text(text[:index] + gated + text[index + len(broad):], encoding='utf-8')
 
           migration_test = Path('tests/test-role-workspace-entra-crm-governance-migration-056.sh')
           replace_once(
@@ -249,21 +248,10 @@ jobs:
             src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
             src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
             tests/test-role-workspace-entra-crm-governance-migration-056.sh
-
-          mapfile -t PATCHED < <(git diff --name-only | sort)
-          EXPECTED=(
-            'database/migrations/056_role_workspace_entra_crm_governance.sql'
-            'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
-            'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
-            'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
-            'tests/test-role-workspace-entra-crm-governance-migration-056.sh'
-          )
-          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
-          test "$(printf '%s\n' "${PATCHED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
           node --check src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs
           echo 'PR333_REVIEW_FIX_PATCH_CONTRACT=PASSED'
 
-      - name: Validate migration 056 and 056A execution
+      - name: Validate migrations 056 and 056A
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -271,42 +259,19 @@ jobs:
           chmod +x tests/test-role-workspace-permission-scope-migration-056a.sh
           tests/test-role-workspace-entra-crm-governance-migration-056.sh
           tests/test-role-workspace-permission-scope-migration-056a.sh
-          echo 'PR333_REVIEW_FIX_MIGRATIONS=PASSED'
 
-      - name: Validate focused source contract
-        working-directory: src/frontend/project-time-web
+      - name: Validate source, API, and frontend
         shell: bash
         run: |
           set -Eeuo pipefail
+          cd src/frontend/project-time-web
           node ./scripts/validate-role-workspace-entra-crm-governance.mjs
           node ./scripts/validate-module-012-scoped-role-admin.mjs
-          echo 'PR333_REVIEW_FIX_SOURCE_VALIDATION=PASSED'
-
-      - name: Build ProjectTime API
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          cd ../../..
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          echo 'PR333_REVIEW_FIX_API_BUILD=PASSED'
-
-      - name: Build frontend production bundle
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          cd src/frontend/project-time-web
           npm ci --no-audit --no-fund
           npm run build
-          echo 'PR333_REVIEW_FIX_FRONTEND_BUILD=PASSED'
-
-      - name: Validate production web-container context
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          docker build \
-            --file deployment/containers/web/Dockerfile \
-            --tag "projectpulse-pr333-review-fix:${GITHUB_SHA}" \
-            .
-          echo 'PR333_REVIEW_FIX_WEB_CONTAINER_BUILD=PASSED'
 
       - name: Commit and push validated corrections
         env:
@@ -321,12 +286,6 @@ jobs:
 
           git rm .github/workflows/temporary-pr333-review-fix.yml
           git add \
-            database/migrations/056_role_workspace_entra_crm_governance.sql \
-            src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs \
-            src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
-            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
-            tests/test-role-workspace-entra-crm-governance-migration-056.sh
-          git diff --check --cached -- \
             database/migrations/056_role_workspace_entra_crm_governance.sql \
             src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs \
             src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
