@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - 'tooling/pr343-ci-applicability-fix-artifact-20260731'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/pr343_ci_applicability_fix.py'
+      - '.github/workflows/temporary-pr343-ci-applicability-fix-artifact.yml'
 
 permissions:
   contents: read
