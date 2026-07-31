@@ -54,8 +54,8 @@ jobs:
               '## Remaining PR release train started',
               '',
               `- Workflow run: ${runUrl}`,
-              `- Trigger head: `${context.payload.pull_request.head.sha}``,
-              `- Main pinned by event: `${context.payload.pull_request.base.sha}``,
+              `- Trigger head: \`${context.payload.pull_request.head.sha}\``,
+              `- Main pinned by event: \`${context.payload.pull_request.base.sha}\``,
               '- Required merge order: `#330 → #333 → #338`',
               '',
               'The controller fails closed before a branch update or merge whenever an exact-head, migration, build, dependency, source-cleanliness, container, or merge gate fails.'
