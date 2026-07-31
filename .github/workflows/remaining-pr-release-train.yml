@@ -110,13 +110,45 @@ jobs:
           base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$RUNNER_TEMP/remaining_pr_release_train.py"
           python3 "$RUNNER_TEMP/remaining_pr_release_train.py"
 
+      - name: Capture exact failed reconciliation diagnostics
+        if: failure()
+        working-directory: repo
+        shell: bash
+        run: |
+          set +e
+          mkdir -p artifacts
+          {
+            echo '=== git status --short ==='
+            git status --short
+            echo
+            echo '=== git diff --cached --check ==='
+            git diff --cached --check
+            echo
+            echo '=== git diff --check ==='
+            git diff --check
+            echo
+            echo '=== staged filenames ==='
+            git diff --cached --name-status
+            echo
+            echo '=== unstaged filenames ==='
+            git diff --name-status
+            echo
+            echo '=== current branch and HEAD ==='
+            git branch --show-current
+            git rev-parse HEAD
+          } > artifacts/remaining-pr-release-train-diagnostics.txt 2>&1
+          cat artifacts/remaining-pr-release-train-diagnostics.txt
+          exit 0
+
       - name: Upload immutable release-train evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: remaining-pr-release-train-${{ github.run_id }}-${{ github.run_attempt }}
-          path: repo/artifacts/remaining-pr-release-train.json
-          if-no-files-found: error
+          path: |
+            repo/artifacts/remaining-pr-release-train.json
+            repo/artifacts/remaining-pr-release-train-diagnostics.txt
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Close the one-time trigger PR after successful release train
