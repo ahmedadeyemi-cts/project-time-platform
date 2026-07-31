@@ -2,7 +2,7 @@ name: Remaining PR Release Train
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/remaining-pr-release-train-trigger.txt'
 
@@ -21,15 +21,15 @@ jobs:
     if: >-
       github.actor == 'ahmedadeyemi-cts' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release/run-remaining-pr-release-train-20260731'
+      github.event.pull_request.head.ref == 'release/run-remaining-pr-release-train-20260731-attempt-5'
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Check out exact current-main release controls
+      - name: Check out live main release controls
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: main
           path: repo
           fetch-depth: 0
           token: ${{ github.token }}
@@ -43,6 +43,28 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Capture exact control and trigger pins
+        id: pins
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          control_sha="$(git -C repo rev-parse HEAD)"
+          trigger_sha="$(git -C trigger rev-parse HEAD)"
+          remote_main_sha="$(git -C repo ls-remote origin refs/heads/main | awk '{print $1}')"
+
+          test -n "$control_sha"
+          test -n "$trigger_sha"
+          test -n "$remote_main_sha"
+          test "$trigger_sha" = "${{ github.event.pull_request.head.sha }}"
+
+          if [[ "$control_sha" != "$remote_main_sha" ]]; then
+            echo "::error::Live main advanced while the release controls were being pinned: checkout=$control_sha remote=$remote_main_sha"
+            exit 1
+          fi
+
+          echo "control_sha=$control_sha" >> "$GITHUB_OUTPUT"
+          echo "trigger_sha=$trigger_sha" >> "$GITHUB_OUTPUT"
+
       - name: Publish observable release-train run
         uses: actions/github-script@v7
         with:
@@ -54,8 +76,8 @@ jobs:
               '## Remaining PR release train started',
               '',
               `- Workflow run: ${runUrl}`,
-              `- Trigger head: \`${context.payload.pull_request.head.sha}\``,
-              `- Main pinned by event: \`${context.payload.pull_request.base.sha}\``,
+              `- Trigger head: \`${{ steps.pins.outputs.trigger_sha }}\``,
+              `- Main/control SHA pinned by checkout: \`${{ steps.pins.outputs.control_sha }}\``,
               '- Required merge order: `#330 → #333 → #338`',
               '',
               'The controller fails closed before a branch update or merge whenever an exact-head, migration, build, dependency, source-cleanliness, container, or merge gate fails.'
