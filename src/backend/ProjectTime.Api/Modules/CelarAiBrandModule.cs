@@ -6,6 +6,14 @@ namespace ProjectTime.Api.Modules;
 
 public static class CelarAiBrandModule
 {
+    private static readonly HashSet<string> Module064AdministratorRoles =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "SUPER_ADMINISTRATOR",
+            "SYSTEM_ADMINISTRATOR",
+            "ADMINISTRATOR"
+        };
+
     public static IEndpointRouteBuilder MapCelarAiBrandEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
@@ -57,6 +65,12 @@ public static class CelarAiBrandModule
         if (identities is null) return SessionRequired();
         var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
         if (!access.IsActive) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+        var actualAccess = identities.Value.Actual == identities.Value.Effective
+            ? access
+            : await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
+        if (!actualAccess.IsActive
+            || !actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains))
+            return Forbidden("MODULE_064_ADMINISTRATOR");
         var privateOptions = PulseAiPrivateRagOptions.FromEnvironment();
         var privateModelReady = privateOptions.Enabled && privateOptions.InferenceConfigured;
         return Results.Ok(new
@@ -146,6 +160,7 @@ public static class CelarAiBrandModule
                 identities.Value.Effective,
                 context,
                 repository,
+                access.CanViewConversations,
                 cancellationToken);
         }
         else
@@ -187,12 +202,13 @@ public static class CelarAiBrandModule
         Guid effectiveUserId,
         HttpContext context,
         PulseAiSystemIntelligenceRepository repository,
+        bool canViewConversations,
         CancellationToken cancellationToken)
     {
         var dataAsOf = DateTimeOffset.UtcNow;
         var detailLevel = NormalizeDetailLevel(request.DetailLevel);
         var correlationId = CorrelationId(context);
-        var mayPersist = actualUserId == effectiveUserId;
+        var mayPersist = actualUserId == effectiveUserId && canViewConversations;
         var conversation = mayPersist
             ? await repository.EnsureConversationAsync(
                 request.ConversationId,
