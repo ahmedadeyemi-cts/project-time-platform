@@ -40,7 +40,7 @@ public static partial class CelarAiBrandProfile
         if (!value.Contains("celar", StringComparison.OrdinalIgnoreCase)) return false;
         return IdentityQuestionRegex().IsMatch(value)
             || value.Equals("celar ai", StringComparison.OrdinalIgnoreCase)
-            || value.Length <= 32;
+            || value.Equals("celar", StringComparison.OrdinalIgnoreCase);
     }
 
     public static PulseAiSystemDetailedAnswer CreateDetailedAnswer(DateTimeOffset dataAsOf) => new(
