@@ -82,7 +82,7 @@ jobs:
             ALLOWED='^(\.github/workflows/(deep-intelligence-read-contract-ci|private-document-pipeline-read-contract-ci)\.yml|docs/modules/module-011-pulse-ai/(PRIVATE-DOCUMENT-PIPELINE|PRIVATE-INDEX-SECURITY-CONTRACT)\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiPrivateDocumentPipelineContracts|PulseAiPrivateDocumentExtractionService|PulseAiPrivateDocumentPipelineService|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/PulseAiPrivateDocumentPipelineModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline\.mjs|src/frontend/project-time-web/src/(PulseAiPrivateDocumentPipelineWorkbench\.jsx|pulse-ai-private-document-pipeline-workbench\.css|WorkTaskBuilderPanel\.jsx))$'
             SCOPE_LABEL='PRIVATE_DOCUMENT_PIPELINE'
           elif [[ "$HEAD_BRANCH" == feature/module-011-pulse-ai-deep-intelligence-* ]]; then
-            ALLOWED='^(\.github/workflows/deep-intelligence-read-contract-ci\.yml|docs/modules/module-011-pulse-ai/(DEEP-INTELLIGENCE-RUNTIME|ANSWER-QUALITY-AND-PRIVACY-CONTRACT)\.md|docs/modules/module-066-project-flowhive/AI-INTEGRATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiDeepIntelligenceContracts|PulseAiDocumentGroundingService|PulseAiQuestionPlanner|PulseAiEscalationSanitizer|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiDeepIntelligenceModule|ProjectFlowHiveAiRequestFactory)\.cs|src/backend/ProjectTime\.Api/ProjectPulseAiTimeEntrySuggestionService\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence\.mjs|src/frontend/project-time-web/src/(PulseAiDeepIntelligenceWorkbench\.jsx|pulse-ai-deep-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx|HelpAssistant\.jsx|help\.css|help-assistant\.css))$'
+            ALLOWED='^(\.github/workflows/deep-intelligence-read-contract-ci\.yml|docs/modules/module-011-pulse-ai/(DEEP-INTELLIGENCE-RUNTIME|ANSWER-QUALITY-AND-PRIVACY-CONTRACT)\.md|docs/modules/module-066-project-flowhive/AI-INTEGRATION\.md|src/backend/ProjectTime\.Api/Ai/(PulseAiDeepIntelligenceContracts|PulseAiDocumentGroundingService|PulseAiQuestionPlanner|PulseAiEscalationSanitizer|ProjectPulseAiServiceCollectionExtensions)\.cs|src/backend/ProjectTime\.Api/Modules/(PulseAiDeepIntelligenceModule|ProjectFlowHiveAiRequestFactory)\.cs|src/backend/ProjectTime\.Api/ProjectPulseAiTimeEntrySuggestionService\.cs|src/backend/ProjectTime\.Api/ProjectTime.Api.csproj|src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence\.mjs|src/frontend/project-time-web/src/(PulseAiDeepIntelligenceWorkbench\.jsx|pulse-ai-deep-intelligence-workbench\.css|WorkTaskBuilderPanel\.jsx|HelpAssistant\.jsx|help\.css|help-assistant\.css))$'
             SCOPE_LABEL='DEEP_INTELLIGENCE'
           else
             echo "DEEP_INTELLIGENCE_VALIDATION_MODE=REGRESSION branch=$HEAD_BRANCH"
@@ -241,12 +241,6 @@ jobs:
           cat dist/assets/*.js > /tmp/deep-intelligence.js
           cat dist/assets/*.css > /tmp/deep-intelligence.css
 
-          HELP_TITLE='Pulse AI Help & Search'
-          if [[ -f ./scripts/inject-celar-ai-runtime-rebrand.mjs ]] \
-            && grep -Fq 'Celar AI Help & Search' ./scripts/inject-celar-ai-runtime-rebrand.mjs; then
-            HELP_TITLE='Celar AI Help & Search'
-          fi
-
           assert_js_marker() {
             local marker="$1"
             if ! grep -Fq "$marker" /tmp/deep-intelligence.js; then
@@ -263,6 +257,17 @@ jobs:
             fi
           }
 
+          # Validate the approved identity from the built artifact rather than
+          # guessing it from a source injector that may use replacement fragments.
+          if grep -Fq 'Celar AI Help & Search' /tmp/deep-intelligence.js; then
+            HELP_TITLE='Celar AI Help & Search'
+          elif grep -Fq 'Pulse AI Help & Search' /tmp/deep-intelligence.js; then
+            HELP_TITLE='Pulse AI Help & Search'
+          else
+            echo '::error::Deep-intelligence production bundle is missing both approved Help & Search titles.' >&2
+            exit 1
+          fi
+
           # Avoid a brittle non-ASCII exact match while still proving both sides of
           # the approved workbench heading survived production minification.
           assert_js_marker 'Build comprehensive, source-grounded answers'
@@ -275,6 +280,7 @@ jobs:
 
           assert_css_marker '.pulse-ai-deep-workbench'
           assert_css_marker '.help-detailed-answer'
+          echo "DEEP_INTELLIGENCE_HELP_TITLE=$HELP_TITLE"
           echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
