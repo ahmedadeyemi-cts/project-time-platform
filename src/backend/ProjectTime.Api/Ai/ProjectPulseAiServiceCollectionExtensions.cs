@@ -21,6 +21,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddHttpClient("PulseAiSystemTools", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(75);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false
         });
         services.AddSingleton<ProjectPulseAiConfiguration>();
         services.AddSingleton<ProjectPulseAiSecretStore>();

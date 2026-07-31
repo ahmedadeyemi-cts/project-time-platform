@@ -44,7 +44,9 @@ public sealed class PulseAiSystemIntelligenceService
         var options = Options();
         var repository = await _repository.GetReadinessAsync(cancellationToken);
         var privateRag = await _privateRag.GetReadinessAsync(cancellationToken);
-        var apis = _apiCatalog.List(limit: options.MaximumApiResults);
+        IReadOnlyList<PulseAiSystemApiDescriptor> apis = access.CanViewApis
+            ? _apiCatalog.List(limit: options.MaximumApiResults)
+            : Array.Empty<PulseAiSystemApiDescriptor>();
         return new
         {
             status = access.CanAsk
@@ -69,8 +71,12 @@ public sealed class PulseAiSystemIntelligenceService
             privateRag,
             liveApiCatalog = new
             {
-                summary = _apiCatalog.Summary(apis),
-                endpointDataSourceReadAtRequestTime = true,
+                authorized = access.CanViewApis,
+                summary = access.CanViewApis ? _apiCatalog.Summary(apis) : null,
+                unauthorizedReason = access.CanViewApis
+                    ? string.Empty
+                    : "VIEW_PULSE_AI_API_INVENTORY is required for route and endpoint metadata.",
+                endpointDataSourceReadAtRequestTime = access.CanViewApis,
                 sourceCodeDocumentationUsedAsRuntimeAuthority = false
             },
             toolRegistry = new
@@ -173,14 +179,20 @@ public sealed class PulseAiSystemIntelligenceService
 
         var plan = PulseAiSystemKnowledgeCatalog.Analyze(question);
         var requestedMode = NormalizeMode(request.Mode, plan.Mode);
-        var conversation = await _repository.EnsureConversationAsync(
-            request.ConversationId,
-            actualUserId,
-            effectiveUserId,
-            requestedMode,
-            cancellationToken);
-        var conversationId = conversation?.ConversationId ?? request.ConversationId ?? Guid.NewGuid();
-        var persisted = conversation is not null;
+        var persistenceAuthorized = actualUserId == effectiveUserId
+            && access.CanViewConversations;
+        var conversation = persistenceAuthorized
+            ? await _repository.EnsureConversationAsync(
+                request.ConversationId,
+                actualUserId,
+                effectiveUserId,
+                requestedMode,
+                cancellationToken)
+            : null;
+        var conversationId = conversation?.ConversationId
+            ?? (persistenceAuthorized ? request.ConversationId : null)
+            ?? Guid.NewGuid();
+        var persisted = persistenceAuthorized && conversation is not null;
 
         var userMessage = persisted
             ? await _repository.AppendMessageAsync(
@@ -224,6 +236,7 @@ public sealed class PulseAiSystemIntelligenceService
 
         try
         {
+            var accessWarnings = new List<string>();
             var apiLimit = Math.Clamp(
                 options.MaximumApiResults,
                 25,
@@ -231,7 +244,7 @@ public sealed class PulseAiSystemIntelligenceService
             var apiSearch = Clean(request.ApiSearch, 500);
             var apiModule = Clean(request.ModuleCode, 20);
             IReadOnlyList<PulseAiSystemApiDescriptor> relevantApis = [];
-            if (request.IncludeApiInventory && (plan.WantsApiInventory || access.CanViewApis))
+            if (request.IncludeApiInventory && access.CanViewApis)
             {
                 relevantApis = _apiCatalog.List(
                     search: apiSearch.Length > 0 ? apiSearch : null,
@@ -247,6 +260,13 @@ public sealed class PulseAiSystemIntelligenceService
                         plan.RelevantModuleCodes,
                         100);
                 }
+            }
+            else if (request.IncludeApiInventory
+                && plan.WantsApiInventory
+                && !access.CanViewApis)
+            {
+                accessWarnings.Add(
+                    "API inventory evidence was not included because the current effective user lacks VIEW_PULSE_AI_API_INVENTORY.");
             }
 
             var maximumTools = Math.Clamp(
@@ -264,13 +284,16 @@ public sealed class PulseAiSystemIntelligenceService
                 selectedTools,
                 options,
                 cancellationToken);
-            foreach (var toolResult in toolResults)
+            if (persisted)
             {
-                await _repository.SaveToolEventAsync(
-                    inquiryRunId,
-                    toolResult,
-                    options.PersistToolResponseBodies,
-                    cancellationToken);
+                foreach (var toolResult in toolResults)
+                {
+                    await _repository.SaveToolEventAsync(
+                        inquiryRunId,
+                        toolResult,
+                        options.PersistToolResponseBodies,
+                        cancellationToken);
+                }
             }
 
             PulseAiPrivateRagAnswer? privateRagAnswer = null;
@@ -307,7 +330,7 @@ public sealed class PulseAiSystemIntelligenceService
             var finalAnswer = deterministic;
             var modelProvider = string.Empty;
             var modelName = string.Empty;
-            var warnings = new List<string>();
+            var warnings = new List<string>(accessWarnings);
             if (request.UsePrivateModelWhenAvailable
                 && options.EnablePrivateModelSynthesis)
             {
@@ -400,16 +423,19 @@ public sealed class PulseAiSystemIntelligenceService
                     cancellationToken)
                 : (Guid.NewGuid(), 2);
 
-            await _repository.CompleteInquiryRunAsync(
-                inquiryRunId,
-                assistantMessage.MessageId,
-                assistantStatus,
-                selectedTools,
-                toolResults,
-                relevantApis.Count,
-                finalAnswer.Confidence,
-                string.Empty,
-                cancellationToken);
+            if (persisted)
+            {
+                await _repository.CompleteInquiryRunAsync(
+                    inquiryRunId,
+                    assistantMessage.MessageId,
+                    assistantStatus,
+                    selectedTools,
+                    toolResults,
+                    relevantApis.Count,
+                    finalAnswer.Confidence,
+                    string.Empty,
+                    cancellationToken);
+            }
 
             return new PulseAiSystemQuestionResult(
                 ConversationId: conversationId,
@@ -459,16 +485,19 @@ public sealed class PulseAiSystemIntelligenceService
                     DateTimeOffset.UtcNow,
                     cancellationToken)
                 : (Guid.NewGuid(), 2);
-            await _repository.CompleteInquiryRunAsync(
-                inquiryRunId,
-                assistantMessage.MessageId,
-                "failed",
-                [],
-                [],
-                0,
-                0m,
-                Diagnostic(exception),
-                cancellationToken);
+            if (persisted)
+            {
+                await _repository.CompleteInquiryRunAsync(
+                    inquiryRunId,
+                    assistantMessage.MessageId,
+                    "failed",
+                    [],
+                    [],
+                    0,
+                    0m,
+                    Diagnostic(exception),
+                    cancellationToken);
+            }
             return new PulseAiSystemQuestionResult(
                 conversationId,
                 userMessage.MessageId,

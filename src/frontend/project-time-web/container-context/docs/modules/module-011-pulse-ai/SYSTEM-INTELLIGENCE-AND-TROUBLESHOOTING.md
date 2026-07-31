@@ -294,3 +294,10 @@ This source package does not:
 - automatically convert conversations into training data.
 
 Migration application, environment deployment, private-model configuration, production promotion, and any future mutating tool require separate guarded operations and validation.
+
+
+## Trusted same-origin tool destination
+
+Credential-bearing System Intelligence tool requests do not trust the browser or proxy `Host` header. The API requires `PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_BASE_URI` to identify the trusted internal application origin and requires that exact host or host-and-port in `PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_HOST_ALLOWLIST`. HTTPS is required except for an explicitly configured loopback development URI. Missing, malformed, or non-allowlisted configuration fails closed before Authorization, Cookie, session, or View-As headers are attached. The dedicated HTTP client does not follow redirects and does not retain a cookie container.
+
+API inventory evidence requires `VIEW_PULSE_AI_API_INVENTORY`, including the readiness summary and question-driven catalog lookup. Durable conversations, messages, inquiry runs, and tool events require `VIEW_PULSE_AI_CONVERSATION_HISTORY` and are disabled whenever the actual and effective user differ during View-As.

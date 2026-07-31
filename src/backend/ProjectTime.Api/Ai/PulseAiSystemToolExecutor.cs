@@ -81,7 +81,21 @@ public sealed class PulseAiSystemToolExecutor
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(options.ToolTimeoutSeconds));
-            var target = BuildTarget(context, definition.Path);
+            if (!TryBuildTrustedTarget(definition.Path, options, out var target, out var targetDiagnostic))
+            {
+                stopwatch.Stop();
+                return Result(
+                    definition,
+                    "skipped",
+                    0,
+                    stopwatch,
+                    0,
+                    "tool_origin_rejected",
+                    string.Empty,
+                    [targetDiagnostic],
+                    observedAt);
+            }
+
             using var request = new HttpRequestMessage(HttpMethod.Get, target);
             ForwardSessionHeaders(context, request);
             request.Headers.TryAddWithoutValidation("X-Pulse-AI-System-Tool", definition.Code);
@@ -259,21 +273,94 @@ public sealed class PulseAiSystemToolExecutor
             EvidenceSummary: evidence,
             ObservedAt: observedAt);
 
-    private static Uri BuildTarget(HttpContext context, string relativePath)
+    private static bool TryBuildTrustedTarget(
+        string relativePath,
+        PulseAiSystemIntelligenceOptions options,
+        out Uri target,
+        out string diagnostic)
     {
-        var queryIndex = relativePath.IndexOf('?');
-        var path = queryIndex >= 0 ? relativePath[..queryIndex] : relativePath;
-        var query = queryIndex >= 0 ? relativePath[(queryIndex + 1)..] : string.Empty;
-        var builder = new UriBuilder(
-            context.Request.Scheme,
-            context.Request.Host.Host,
-            context.Request.Host.Port ?? -1,
-            path)
+        target = null!;
+        diagnostic = "The governed same-origin tool base URI is not configured.";
+        var configured = Environment.GetEnvironmentVariable(
+            "PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_BASE_URI")?.Trim();
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var trustedBase))
         {
-            Query = query
-        };
-        return builder.Uri;
+            diagnostic = "The governed same-origin tool base URI is missing or malformed.";
+            return false;
+        }
+
+        var isHttps = string.Equals(
+            trustedBase.Scheme,
+            Uri.UriSchemeHttps,
+            StringComparison.OrdinalIgnoreCase);
+        var isLoopbackHttp = string.Equals(
+                trustedBase.Scheme,
+                Uri.UriSchemeHttp,
+                StringComparison.OrdinalIgnoreCase)
+            && trustedBase.IsLoopback;
+        if ((!isHttps && !isLoopbackHttp)
+            || !string.IsNullOrEmpty(trustedBase.UserInfo)
+            || !string.IsNullOrEmpty(trustedBase.Query)
+            || !string.IsNullOrEmpty(trustedBase.Fragment)
+            || !string.IsNullOrEmpty(trustedBase.AbsolutePath.Trim('/')))
+        {
+            diagnostic = "The governed same-origin tool base URI must be an HTTPS origin, or an explicit loopback HTTP development origin, without credentials, path, query, or fragment.";
+            return false;
+        }
+
+        if (!AllowedSameOriginHost(trustedBase, options.AllowedSameOriginHosts))
+        {
+            diagnostic = "The configured same-origin tool base URI is outside PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_HOST_ALLOWLIST.";
+            return false;
+        }
+
+        var normalizedPath = relativePath.StartsWith("/", StringComparison.Ordinal)
+            ? relativePath
+            : $"/{relativePath}";
+        target = new Uri(trustedBase, normalizedPath);
+        if (!string.Equals(target.Scheme, trustedBase.Scheme, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(target.IdnHost, trustedBase.IdnHost, StringComparison.OrdinalIgnoreCase)
+            || target.Port != trustedBase.Port)
+        {
+            target = null!;
+            diagnostic = "The resolved tool target escaped the configured same-origin authority.";
+            return false;
+        }
+
+        diagnostic = string.Empty;
+        return true;
     }
+
+    private static bool AllowedSameOriginHost(
+        Uri trustedBase,
+        IReadOnlyList<string> allowedHosts)
+    {
+        if (allowedHosts.Count == 0) return false;
+        var expectedAuthority = TrustedAuthority(trustedBase);
+        foreach (var rawValue in allowedHosts)
+        {
+            var candidate = rawValue?.Trim() ?? string.Empty;
+            if (candidate.Length == 0) continue;
+            if (candidate.Contains("://", StringComparison.Ordinal)
+                && Uri.TryCreate(candidate, UriKind.Absolute, out var candidateUri))
+            {
+                candidate = TrustedAuthority(candidateUri);
+            }
+            else
+            {
+                candidate = candidate.TrimEnd('/').ToLowerInvariant();
+            }
+
+            if (string.Equals(candidate, expectedAuthority, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string TrustedAuthority(Uri value) =>
+        value.IsDefaultPort
+            ? value.IdnHost.ToLowerInvariant()
+            : $"{value.IdnHost.ToLowerInvariant()}:{value.Port}";
 
     private static bool ValidRelativeApiPath(string path)
     {
