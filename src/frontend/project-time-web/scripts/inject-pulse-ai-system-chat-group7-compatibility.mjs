@@ -167,13 +167,18 @@ function prepareNativeSystemChat() {
     );
   }
 
-  if (!source.includes('<strong>Pulse AI Help & Search</strong>')) {
-    source = replaceRequired(
-      source,
-      '<strong>Pulse AI</strong>',
-      '<strong>Pulse AI Help & Search</strong>',
-      'Pulse AI deep-intelligence Help title'
-    );
+  const pulseHelpTitle = '<strong>Pulse AI Help & Search</strong>';
+  const celarHelpTitle = '<strong>Celar AI Help & Search</strong>';
+  if (!source.includes(pulseHelpTitle) && !source.includes(celarHelpTitle)) {
+    const pulseTitle = '<strong>Pulse AI</strong>';
+    const celarTitle = '<strong>Celar AI</strong>';
+    if (source.includes(pulseTitle)) {
+      source = source.replace(pulseTitle, pulseHelpTitle);
+    } else if (source.includes(celarTitle)) {
+      source = source.replace(celarTitle, celarHelpTitle);
+    } else {
+      throw new Error('Pulse/Celar AI deep-intelligence Help title anchor is missing.');
+    }
   }
 
   const legacySummary = '<p className="help-answer-summary">The detailed system-intelligence API could not be reached. Pulse prepared a read-only evidence plan, but it did not invent live values.</p>';
@@ -197,7 +202,8 @@ function prepareNativeSystemChat() {
   if (count(source, "destination.searchParams.set('defectSource', 'help')") !== 1) throw new Error('Pulse AI Module 076 defect source must appear once.');
   if (count(source, "destination.hash = 'defect-tracker'") !== 1) throw new Error('Pulse AI Module 076 route must appear once.');
   if (count(source, 'Report a defect — Module 076') !== 1) throw new Error('Pulse AI Module 076 action must appear once.');
-  if (count(source, 'Pulse AI Help & Search') < 1) throw new Error('Pulse AI Help & Search compatibility title is missing.');
+  const brandedHelpTitleCount = count(source, pulseHelpTitle) + count(source, celarHelpTitle);
+  if (brandedHelpTitleCount !== 1) throw new Error('Pulse/Celar AI Help & Search compatibility title must appear exactly once.');
   if (count(source, 'Automatic multi-tool execution is not yet enabled') !== 1) throw new Error('Pulse AI deep-intelligence compatibility statement must appear once.');
 
   fs.writeFileSync(helpPath, source.endsWith('\n') ? source : `${source}\n`, 'utf8');
