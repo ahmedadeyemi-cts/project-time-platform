@@ -1,0 +1,48 @@
+name: Temporary PR 328 Main Reconciliation Analysis
+
+on:
+  push:
+    branches:
+      - feature/module-011-celar-ai-runtime-rebrand-20260730
+    paths:
+      - .github/workflows/temporary-pr328-main-reconciliation-analysis.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-pr328-main-reconciliation-analysis
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/module-011-celar-ai-runtime-rebrand-20260730
+          fetch-depth: 0
+
+      - name: Analyze merge with current main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          echo "PR328_HEAD=$(git rev-parse HEAD)"
+          echo "CURRENT_MAIN=$(git rev-parse origin/main)"
+          set +e
+          git merge --no-commit --no-ff origin/main
+          STATUS=$?
+          set -e
+          echo "MERGE_STATUS=$STATUS"
+          CONFLICTS="$(git diff --name-only --diff-filter=U || true)"
+          if [[ -n "$CONFLICTS" ]]; then
+            echo 'PR328_RECONCILIATION_CONFLICTS_BEGIN'
+            printf '%s\n' "$CONFLICTS"
+            echo 'PR328_RECONCILIATION_CONFLICTS_END'
+            git status --short
+            exit 1
+          fi
+          git diff --check --cached
+          echo 'PR328_RECONCILIATION_CAN_MERGE_CLEANLY=YES'
