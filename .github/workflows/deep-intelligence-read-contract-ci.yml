@@ -247,18 +247,34 @@ jobs:
             HELP_TITLE='Celar AI Help & Search'
           fi
 
-          for marker in \
-            'Build comprehensive, source-grounded answers—not surface summaries' \
-            'Timesheet Grounding' \
-            'FlowHive Planning' \
-            'Reports & Financials' \
-            "$HELP_TITLE" \
-            'Automatic multi-tool execution is not yet enabled'; do
-            grep -Fq "$marker" /tmp/deep-intelligence.js
-          done
+          assert_js_marker() {
+            local marker="$1"
+            if ! grep -Fq "$marker" /tmp/deep-intelligence.js; then
+              echo "::error::Deep-intelligence production bundle is missing required JavaScript marker: $marker" >&2
+              return 1
+            fi
+          }
 
-          grep -Fq '.pulse-ai-deep-workbench' /tmp/deep-intelligence.css
-          grep -Fq '.help-detailed-answer' /tmp/deep-intelligence.css
+          assert_css_marker() {
+            local marker="$1"
+            if ! grep -Fq "$marker" /tmp/deep-intelligence.css; then
+              echo "::error::Deep-intelligence production bundle is missing required CSS marker: $marker" >&2
+              return 1
+            fi
+          }
+
+          # Avoid a brittle non-ASCII exact match while still proving both sides of
+          # the approved workbench heading survived production minification.
+          assert_js_marker 'Build comprehensive, source-grounded answers'
+          assert_js_marker 'surface summaries'
+          assert_js_marker 'Timesheet Grounding'
+          assert_js_marker 'FlowHive Planning'
+          assert_js_marker 'Reports & Financials'
+          assert_js_marker "$HELP_TITLE"
+          assert_js_marker 'Automatic multi-tool execution is not yet enabled'
+
+          assert_css_marker '.pulse-ai-deep-workbench'
+          assert_css_marker '.help-detailed-answer'
           echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
