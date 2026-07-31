@@ -1,0 +1,148 @@
+name: Temporary PR 343 CI Applicability Fix Artifact
+
+on:
+  push:
+    branches:
+      - 'tooling/pr343-ci-applicability-fix-artifact-20260731'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-pr343-ci-applicability-fix-artifact
+  cancel-in-progress: false
+
+jobs:
+  patch-validate-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact tooling commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact source parent and tooling-only commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_BASE='052818ac455b7b3bce7b927fb91a8b56fcd4e33d'
+          git merge-base --is-ancestor "$REQUIRED_BASE" HEAD
+          mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_BASE"...HEAD | sort)
+          EXPECTED=(
+            '.github/scripts/pr343_ci_applicability_fix.py'
+            '.github/workflows/temporary-pr343-ci-applicability-fix-artifact.yml'
+          )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${CHANGED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          echo 'PR343_CI_FIX_TOOLING_ISOLATION=PASSED'
+
+      - name: Apply deterministic PR 343 corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m py_compile .github/scripts/pr343_ci_applicability_fix.py
+          python .github/scripts/pr343_ci_applicability_fix.py
+          git diff --check
+          mapfile -t PATCHED < <(git diff --name-only | sort)
+          EXPECTED=(
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+            '.github/workflows/deep-intelligence-read-contract-ci.yml'
+            '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+            '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+            'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
+          )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          if [[ "$(printf '%s\n' "${PATCHED[@]}")" != "$(printf '%s\n' "${EXPECTED[@]}")" ]]; then
+            echo 'Unexpected patched path set:' >&2
+            printf '%s\n' "${PATCHED[@]}" >&2
+            exit 1
+          fi
+          ruby -e "require 'yaml'; %w[.github/workflows/celar-ai-runtime-rebrand-ci.yml .github/workflows/deep-intelligence-read-contract-ci.yml .github/workflows/pulse-ai-help-chat-usability-ci.yml .github/workflows/pulse-ai-system-intelligence-ci.yml].each { |p| YAML.load_file(p) }"
+          node --check src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs
+          grep -Fq "Celar AI Help & Search" src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs
+          grep -Fq '.help-panel.pulse-ai-system-chat .help-messages' .github/workflows/celar-ai-runtime-rebrand-ci.yml
+          grep -Fq 'deployment/containers/web/Dockerfile' .github/workflows/pulse-ai-help-chat-usability-ci.yml
+          grep -Fq 'CELAR_ALLOWED=' .github/workflows/pulse-ai-system-intelligence-ci.yml
+          grep -Fq "HELP_TITLE='Celar AI Help & Search'" .github/workflows/deep-intelligence-read-contract-ci.yml
+          echo 'PR343_CI_FIX_PATCH_CONTRACT=PASSED'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate clean and repeated frontend builds
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          npm run build
+          cat dist/assets/*.js > /tmp/pr343-celar-runtime.js
+          cat dist/assets/*.css > /tmp/pr343-celar-runtime.css
+          for marker in \
+            'Ask Celar AI' \
+            'Celar AI Help & Search' \
+            'Celar AI Workbench' \
+            '/api/celar-ai/v1/chat' \
+            'Private intelligence and governed provider routing' \
+            'Raw internal documents never use public providers'; do
+            grep -Fq "$marker" /tmp/pr343-celar-runtime.js
+          done
+          for marker in \
+            '.celar-ai-provider-bridge' \
+            '.celar-ai-provider-bridge__route-grid' \
+            '.help-panel.pulse-ai-system-chat .help-messages' \
+            'overflow-y:scroll' \
+            'scrollbar-gutter:stable both-edges'; do
+            grep -Fq "$marker" /tmp/pr343-celar-runtime.css
+          done
+          ! grep -Fq 'Pulse AI Help & Search' /tmp/pr343-celar-runtime.js
+          echo 'PR343_CI_FIX_REPEATED_FRONTEND_BUILD=PASSED'
+
+      - name: Validate clean production web-container context after repeated build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-pr343-ci-fix:${GITHUB_SHA}" \
+            .
+          echo 'PR343_CI_FIX_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Export exact patched files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET='/tmp/pr343-ci-fix-artifact'
+          mkdir -p "$TARGET"
+          FILES=(
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+            '.github/workflows/deep-intelligence-read-contract-ci.yml'
+            '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+            '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+            'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
+          )
+          for path in "${FILES[@]}"; do
+            mkdir -p "$TARGET/$(dirname "$path")"
+            cp "$path" "$TARGET/$path"
+          done
+          (
+            cd "$TARGET"
+            find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          )
+          echo 'PR343_CI_FIX_ARTIFACT_READY=YES'
+
+      - name: Upload exact patched files
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr343-ci-applicability-fix-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr343-ci-fix-artifact
+          if-no-files-found: error
+          retention-days: 7
