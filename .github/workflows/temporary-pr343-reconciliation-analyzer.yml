@@ -1,0 +1,59 @@
+name: Temporary PR 343 Current-Main Reconciliation Analyzer
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/pr343-reconciliation-trigger.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-pr343-reconciliation-analyzer
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact PR #343 head
+        uses: actions/checkout@v4
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Analyze merge with current main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          echo "PR343_HEAD=$(git rev-parse HEAD)"
+          echo "CURRENT_MAIN=$(git rev-parse origin/main)"
+          echo "MERGE_BASE=$(git merge-base origin/main HEAD)"
+
+          set +e
+          git merge --no-commit --no-ff origin/main > /tmp/pr343-merge.log 2>&1
+          STATUS=$?
+          set -e
+          cat /tmp/pr343-merge.log
+          echo "MERGE_STATUS=$STATUS"
+
+          CONFLICTS="$(git diff --name-only --diff-filter=U || true)"
+          if [[ -n "$CONFLICTS" ]]; then
+            echo 'PR343_RECONCILIATION_CONFLICTS_BEGIN'
+            printf '%s\n' "$CONFLICTS"
+            echo 'PR343_RECONCILIATION_CONFLICTS_END'
+            echo 'PR343_RECONCILIATION_STATUS=CONFLICTS_FOUND'
+            exit 1
+          fi
+
+          git diff --check --cached
+          echo 'PR343_RECONCILIATION_STATUS=CLEAN_MERGE'
