@@ -2,4 +2,4 @@ operation=apply-migrations-and-deploy
 release_commit=1722b6476845e23ab5d6fc63b630420dcbf9a97c
 migrations=054,055
 confirmation=DEPLOY-CELAR-ANALYTICS-1722B647-TO-TEST
-retry=2
+retry=3
