@@ -16,6 +16,7 @@
     <PulseAiGroundingGenerated>$(IntermediateOutputPath)PulseAiDocumentGroundingService.g.cs</PulseAiGroundingGenerated>
     <PulseAiPrivateExtractorGenerated>$(IntermediateOutputPath)PulseAiPrivateDocumentExtractionService.g.cs</PulseAiPrivateExtractorGenerated>
     <PulseAiQuestionPlannerGenerated>$(IntermediateOutputPath)PulseAiQuestionPlanner.g.cs</PulseAiQuestionPlannerGenerated>
+    <PulseAiSystemIntelligenceGenerated>$(IntermediateOutputPath)PulseAiSystemIntelligenceService.g.cs</PulseAiSystemIntelligenceGenerated>
     <ProjectFinancialTruthGeneratedModule>$(IntermediateOutputPath)ProjectFinancialTruthModule.g.cs</ProjectFinancialTruthGeneratedModule>
     <AnalyticsCenterGeneratedModule>$(IntermediateOutputPath)AnalyticsCenterModule.g.cs</AnalyticsCenterGeneratedModule>
     <EnterpriseReportingGeneratedModule>$(IntermediateOutputPath)EnterpriseReportingModule.g.cs</EnterpriseReportingGeneratedModule>
@@ -47,6 +48,7 @@
     <Compile Remove="Ai/PulseAiDocumentGroundingService.cs" />
     <Compile Remove="Ai/PulseAiPrivateDocumentExtractionService.cs" />
     <Compile Remove="Ai/PulseAiQuestionPlanner.cs" />
+    <Compile Remove="Ai/PulseAiSystemIntelligenceService.cs" />
     <Compile Remove="Modules/ProjectFinancialTruthModule.cs" />
     <Compile Remove="Modules/AnalyticsCenterModule.cs" />
     <Compile Remove="Modules/EnterpriseReportingModule.cs" />
@@ -55,7 +57,7 @@
 
   <Target Name="GenerateScopedRbacSources" BeforeTargets="CoreCompile">
     <MakeDir Directories="$(IntermediateOutputPath)" />
-    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.UsePlatformOperationsTelemetry();&quot;; print &quot;app.MapPlatformOperationsEndpoints();&quot;; print &quot;app.MapPlatformProductionResilienceEndpoints();&quot;; print &quot;app.MapProjectFinancialTruthEndpoints();&quot;; print &quot;app.UseProjectNotificationCloseoutCompatibility();&quot;; print &quot;app.MapProjectNotificationAutomationEndpoints();&quot;; print &quot;app.MapFinancialOperationsRecoveryEndpoints();&quot;; print &quot;app.MapEnterpriseReportingEndpoints();&quot;; print &quot;app.MapAnalyticsCenterEndpoints();&quot;; print &quot;app.MapAdminAuditHistoryEndpoints();&quot;; print &quot;app.MapUserAdministrationTeamScopeEndpoints();&quot;; print &quot;app.UseModuleAvailabilityEnforcement();&quot;; print &quot;app.MapModuleAvailabilityEndpoints();&quot;; print &quot;app.MapModuleAvailabilityOverrideEndpoints();&quot;; print &quot;app.MapClientDiagnosticEndpoints();&quot;; print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; print &quot;app.MapPulseAiPrivateDocumentPipelineEndpoints();&quot;; print &quot;app.MapScopedRolePolicyEndpoints();&quot;; print &quot;app.UsePtcTimeStewardRoleBoundary();&quot;; print &quot;app.UseModule001ResultExecutionCompatibility();&quot;; print &quot;app.MapModule001TimeStewardV2Endpoints();&quot;; print &quot;app.MapModule001TimesheetEnhancementEndpoints();&quot;; print &quot;app.MapModule001TimerTargetEndpoints();&quot;; print &quot;app.MapModule001PtcTimesheetManagementEndpoints();&quot;; print &quot;app.MapRuntimeDataCompatibilityEndpoints();&quot;; print &quot;app.MapCombinedModuleRuntimeEndpoints();&quot;; print &quot;app.MapCombinedModulePublicReadinessEndpoint();&quot;; print &quot;app.UseProjectExpenseBillingReadinessContinuitySafe();&quot;; print &quot;app.MapModule005ProjectExpenseUploadEndpointsSafe();&quot;; print &quot;app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();&quot;; print &quot;app.MapModule038CertifyConnectionEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="awk 'BEGIN { print &quot;#nullable enable&quot;; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;app.UsePlatformOperationsTelemetry();&quot;; print &quot;app.MapPlatformOperationsEndpoints();&quot;; print &quot;app.MapPlatformProductionResilienceEndpoints();&quot;; print &quot;app.MapProjectFinancialTruthEndpoints();&quot;; print &quot;app.UseProjectNotificationCloseoutCompatibility();&quot;; print &quot;app.MapProjectNotificationAutomationEndpoints();&quot;; print &quot;app.MapFinancialOperationsRecoveryEndpoints();&quot;; print &quot;app.MapEnterpriseReportingEndpoints();&quot;; print &quot;app.MapAnalyticsCenterEndpoints();&quot;; print &quot;app.MapAdminAuditHistoryEndpoints();&quot;; print &quot;app.MapUserAdministrationTeamScopeEndpoints();&quot;; print &quot;app.UseModuleAvailabilityEnforcement();&quot;; print &quot;app.MapModuleAvailabilityEndpoints();&quot;; print &quot;app.MapModuleAvailabilityOverrideEndpoints();&quot;; print &quot;app.MapClientDiagnosticEndpoints();&quot;; print &quot;app.MapPulseAiDeepIntelligenceEndpoints();&quot;; print &quot;app.MapPulseAiPrivateDocumentPipelineEndpoints();&quot;; print &quot;app.MapPulseAiSystemIntelligenceEndpoints();&quot;; print &quot;app.MapScopedRolePolicyEndpoints();&quot;; print &quot;app.UsePtcTimeStewardRoleBoundary();&quot;; print &quot;app.UseModule001ResultExecutionCompatibility();&quot;; print &quot;app.MapModule001TimeStewardV2Endpoints();&quot;; print &quot;app.MapModule001TimesheetEnhancementEndpoints();&quot;; print &quot;app.MapModule001TimerTargetEndpoints();&quot;; print &quot;app.MapModule001PtcTimesheetManagementEndpoints();&quot;; print &quot;app.MapRuntimeDataCompatibilityEndpoints();&quot;; print &quot;app.MapCombinedModuleRuntimeEndpoints();&quot;; print &quot;app.MapCombinedModulePublicReadinessEndpoint();&quot;; print &quot;app.UseProjectExpenseBillingReadinessContinuitySafe();&quot;; print &quot;app.MapModule005ProjectExpenseUploadEndpointsSafe();&quot;; print &quot;app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();&quot;; print &quot;app.MapModule038CertifyConnectionEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Program.cs&quot; &gt; &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <!-- The canonical Program.cs retains the historic generic Entra names for reviewability.
          The compiled SSO handlers consume the separate active SSO profile, while Graph,
          calendar, identity, and Module 010 continue using their existing services variables. -->
@@ -85,6 +87,10 @@
          than the generic future multi-tool plan. The canonical planner remains
          reviewable while the compiled copy composes the approved knowledge catalog. -->
     <Exec Command="sed -e 's/var directAnswer = FindKnowledgeAnswer(normalized);/var directAnswer = PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized);/' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiQuestionPlanner.cs&quot; &gt; &quot;$(PulseAiQuestionPlannerGenerated)&quot;" />
+    <!-- The conditional fallback tuple literals in the system-intelligence service
+         must retain the repository's tuple element names so MessageId remains
+         available in both persisted and non-persisted execution paths. -->
+    <Exec Command="sed -e 's/: (Guid.NewGuid(), 1);/: (MessageId: Guid.NewGuid(), SequenceNumber: 1);/' -e 's/: (Guid.NewGuid(), 2);/: (MessageId: Guid.NewGuid(), SequenceNumber: 2);/g' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiSystemIntelligenceService.cs&quot; &gt; &quot;$(PulseAiSystemIntelligenceGenerated)&quot;" />
     <!-- Group 5 extends the authoritative Group 3 financial source through a partial
          bridge. The reviewable Group 3 source remains unchanged. -->
     <Exec Command="sed -e 's/public static class ProjectFinancialTruthModule/public static partial class ProjectFinancialTruthModule/' &quot;$(MSBuildProjectDirectory)/Modules/ProjectFinancialTruthModule.cs&quot; &gt; &quot;$(ProjectFinancialTruthGeneratedModule)&quot;" />
@@ -105,6 +111,7 @@
       <Compile Include="$(PulseAiGroundingGenerated)" />
       <Compile Include="$(PulseAiPrivateExtractorGenerated)" />
       <Compile Include="$(PulseAiQuestionPlannerGenerated)" />
+      <Compile Include="$(PulseAiSystemIntelligenceGenerated)" />
       <Compile Include="$(ProjectFinancialTruthGeneratedModule)" />
       <Compile Include="$(AnalyticsCenterGeneratedModule)" />
       <Compile Include="$(EnterpriseReportingGeneratedModule)" />

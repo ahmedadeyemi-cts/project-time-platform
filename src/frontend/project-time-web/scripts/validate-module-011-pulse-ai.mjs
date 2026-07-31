@@ -305,13 +305,19 @@ assert(
   'the complete frontend build executes the Pulse AI validator'
 );
 
-const pulseAiMigrations = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai)/i.test(relative));
+const reviewedRuntimeMigrations = new Set([
+  'database/migrations/052_document_intelligence_runtime.sql',
+  'database/migrations/053_intelligence_answer_orchestration.sql',
+  'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+]);
+const pulseAiMigrations = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+const unexpectedMigrations = pulseAiMigrations.filter((relative) => !reviewedRuntimeMigrations.has(relative));
 assert(
-  'NO_MIGRATION',
-  pulseAiMigrations.length === 0,
-  pulseAiMigrations.length === 0
-    ? 'no Module 011 or Pulse AI migration exists'
-    : `unexpected migration paths: ${pulseAiMigrations.join(', ')}`
+  'KNOWN_RUNTIME_MIGRATIONS_ONLY',
+  unexpectedMigrations.length === 0,
+  unexpectedMigrations.length === 0
+    ? 'the foundation is preserved while reviewed migrations 052, 053, and 054 support the separately gated functional runtime'
+    : `unexpected migration paths: ${unexpectedMigrations.join(', ')}`
 );
 
 const pulseAiWorkflowPaths = walk('.github/workflows').filter((relative) =>
