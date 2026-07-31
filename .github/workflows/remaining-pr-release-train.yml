@@ -68,7 +68,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 .github/scripts/remaining_pr_release_train.py
+          base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$RUNNER_TEMP/remaining_pr_release_train.py"
+          python3 "$RUNNER_TEMP/remaining_pr_release_train.py"
 
       - name: Upload immutable release-train evidence
         if: always()
