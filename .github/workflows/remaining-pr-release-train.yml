@@ -1,0 +1,93 @@
+name: Remaining PR Release Train
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/remaining-pr-release-train-trigger.txt'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+concurrency:
+  group: projectpulse-remaining-pr-release-train
+  cancel-in-progress: false
+
+jobs:
+  reconcile-validate-and-merge:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/run-remaining-pr-release-train-20260731'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out exact current-main release controls
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Check out exact release-train trigger
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: repo/src/frontend/project-time-web/package-lock.json
+
+      - name: Reconcile, validate, and merge PRs 330, 333, and 338 in order
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TRAIN_TRIGGER: ${{ github.workspace }}/trigger/.github/remaining-pr-release-train-trigger.txt
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$RUNNER_TEMP/remaining_pr_release_train.py"
+          python3 "$RUNNER_TEMP/remaining_pr_release_train.py"
+
+      - name: Upload immutable release-train evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remaining-pr-release-train-${{ github.run_id }}-${{ github.run_attempt }}
+          path: repo/artifacts/remaining-pr-release-train.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Close the one-time trigger PR after successful release train
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: 'closed'
+            });
