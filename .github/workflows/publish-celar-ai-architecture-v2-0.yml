@@ -1,0 +1,343 @@
+name: Publish US Signal Celar AI Architecture v2.0
+
+on:
+  push:
+    branches:
+      - docs/celar-ai-architecture-v2-0-20260730
+    paths:
+      - .github/workflows/publish-celar-ai-architecture-v2-0.yml
+      - docs/modules/module-011-pulse-ai/architecture/v2.0/source/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-celar-ai-architecture-v2-0.yml
+      - docs/modules/module-011-pulse-ai/architecture/v2.0/source/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-celar-ai-architecture-v2-0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET_BRANCH: ${{ github.head_ref || 'docs/celar-ai-architecture-v2-0-20260730' }}
+      ROOT: docs/modules/module-011-pulse-ai/architecture/v2.0
+      SOURCE_ROOT: docs/modules/module-011-pulse-ai/architecture/v1.1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Enforce documentation-only source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$TARGET_BRANCH" == "docs/celar-ai-architecture-v2-0-20260730" ]]
+          test -s "$SOURCE_ROOT/source/generate_pulse_architecture_v1_1.py"
+          test -s "$SOURCE_ROOT/source/US_Signal_Logo.jpg"
+          mkdir -p "$ROOT/source"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install document-generation dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            poppler-utils
+          python -m pip install --upgrade pip
+          python -m pip install python-docx reportlab cairosvg pillow pypdf
+
+      - name: Prepare the full Celar AI architecture generator
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cp "$SOURCE_ROOT/source/generate_pulse_architecture_v1_1.py" \
+             "$ROOT/source/generate_celar_architecture_v2_0.py"
+          cp "$SOURCE_ROOT/source/US_Signal_Logo.jpg" \
+             "$ROOT/source/US_Signal_Logo.jpg"
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/modules/module-011-pulse-ai/architecture/v2.0/source/generate_celar_architecture_v2_0.py')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace('VERSION = "1.1"', 'VERSION = "2.0"')
+          text = text.replace('v1.1', 'v2.0')
+          text = text.replace('Pulse_AI', 'Celar_AI')
+          text = text.replace('Pulse AI', 'Celar AI')
+          text = text.replace('PULSE AI', 'CELAR AI')
+          text = text.replace('PULSE_AI_ARCHITECTURE_PACKAGE', 'CELAR_AI_ARCHITECTURE_PACKAGE')
+          text = text.replace(
+              'Private-first document intelligence, governed live-data reasoning, and controlled external LLM escalation',
+              'Celeritas: speed of light. Celar AI: speed of delivery. Private-first intelligence for unified solution-provider operations')
+          text = text.replace(
+              'US Signal • Pulse • Module 011 • Version {VERSION}',
+              'US Signal • Pulse • Module 011 • Celeritas to speed of delivery • Version {VERSION}')
+          text = text.replace(
+              'Celar AI Private-First Logical Architecture',
+              'Celar AI Private-First Logical Architecture — Speed of Delivery')
+
+          executive_anchor = '    ("1. Executive Summary", [\n'
+          executive_identity = '''    ("1. Executive Summary", [
+              "Celar AI is the unified operational intelligence system for the US Signal Solution Provider division. It was conceived and engineered under the direction of Dr. Ahmed Adeyemi, Manager of Professional Services, as the central intersection where consulting teams convene, collaborate, and exchange critical project information.",
+              "The name draws from celeritas—the Latin concept of swiftness or speed—and from the conventional symbol c for the speed of light in E=mc². This connection honors US Signal's fiber-network heritage while defining the Professional Services mission to translate the speed of light into the speed of delivery.",
+              "Celar AI emerged from the operational friction experienced with legacy Changepoint workflows: siloed information, rigid navigation, repetitive administration, slow SOW preparation, fragmented task handoffs, time-entry burden, and delayed financial visibility.",
+              "From a solution-provider perspective, Celar AI unifies authorized documents, live system data, delivery workflows, troubleshooting evidence, reports, and financial context so teams can scope, execute, troubleshoot, report, and invoice work faster without abandoning security, governance, source-system ownership, or human accountability.",
+          '''
+          if executive_anchor not in text:
+              raise SystemExit('The full architecture Executive Summary anchor is missing.')
+          text = text.replace(executive_anchor, executive_identity, 1)
+
+          section_anchor = '\n]\n\nFEATURE_ROUTES = ['
+          identity_section = '''
+              ("22. Celar AI Identity, Origin, and Operating Narrative", [
+                  "Core identity: Celar AI is the unified operational intelligence system for the US Signal Solution Provider division. Conceived and engineered under the direction of Dr. Ahmed Adeyemi, Manager of Professional Services, it creates one governed intersection for Sales, Professional Services, Project Management, Engineering, Finance, Operations, Security, and leadership.",
+                  "Meaning behind the name: Celar AI draws from celeritas, the Latin concept of swiftness or speed, and from c, the conventional symbol for the speed of light in E=mc². The name connects US Signal's fiber-optic network foundation to a Professional Services promise of faster delivery.",
+                  "Speed-of-delivery mission: Celar AI reduces the elapsed time required to scope, prepare and review SOWs, hand work to delivery teams, plan projects, record time, resolve operational questions, understand financial health, support invoices, and close work.",
+                  "Changepoint catalyst: Changepoint provided a functional legacy PSA and system of record, but siloed data, rigid navigation, repetitive administration, and manual transfers created an administration tax and a speed bottleneck for consulting teams.",
+                  "Celar AI does not remove governance. It replaces fragmented administration with permission-aware retrieval, deterministic tools, private reasoning, complete audit evidence, and human-reviewed actions.",
+                  "Canonical response: Celar AI is the unified operational intelligence system for the US Signal Solution Provider division. It was conceived and engineered under the direction of Dr. Ahmed Adeyemi, Manager of Professional Services, to create a central intersection where consulting teams convene, collaborate, and exchange project, delivery, operational, and financial information. Its name draws from celeritas and the speed-of-light symbol c, reflecting US Signal's fiber heritage and its mission to turn speed of light into speed of delivery. The system addresses the operational drag associated with legacy Changepoint workflows by unifying authorized documents, data, workflows, and AI-assisted reasoning so teams can scope, execute, troubleshoot, report, and invoice work more quickly.",
+                  "Transition boundary: Version 2.0 establishes Celar AI as the target documentation brand. Existing Pulse AI runtime labels, routes, APIs, source directories, database objects, permissions, feature codes, environment variables, Module 064 settings, and deployed resources remain unchanged until a separate application-rebrand package is approved.",
+                  "Brand governance: Celar AI is strategically aligned with US Signal's fiber and solution-provider mission, but Celar is not globally unique. Public marketing, trademark filing, domain acquisition, or customer-facing launch requires formal US Signal Legal and Marketing clearance.",
+              ]),
+          ]
+
+          FEATURE_ROUTES = ['''
+          if section_anchor not in text:
+              raise SystemExit('The full architecture section-list anchor is missing.')
+          text = text.replace(section_anchor, identity_section, 1)
+
+          text = text.replace(
+              'This architecture package is created and owned by US Signal and uses the exact supplied US Signal logo.',
+              'This architecture package is created and owned by US Signal. Celar AI was conceived and engineered under the direction of Dr. Ahmed Adeyemi, Manager of Professional Services, and uses the supplied US Signal logo.')
+
+          path.write_text(text, encoding='utf-8')
+          compile(text, str(path), 'exec')
+          print('CELAR_AI_FULL_SOURCE_GENERATOR=PREPARED')
+          PY
+
+      - name: Generate the complete Celar AI architecture package
+        shell: bash
+        working-directory: docs/modules/module-011-pulse-ai/architecture/v2.0/source
+        run: |
+          set -Eeuo pipefail
+          python generate_celar_architecture_v2_0.py | tee /tmp/celar-ai-architecture-generation.log
+
+      - name: Add the canonical Celar AI identity and package index
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v2.0')
+          identity = '''# Celar AI Identity and Origin
+
+          **Owner:** US Signal  
+          **Platform:** Pulse  
+          **Module:** 011  
+          **Target brand:** Celar AI  
+          **Creator and engineering direction:** Dr. Ahmed Adeyemi, Manager of Professional Services  
+          **Status:** Documentation-first rebrand baseline  
+          **Classification:** US Signal Internal — Confidential
+
+          ## Core identity
+
+          Celar AI is the unified operational intelligence system for the US Signal Solution Provider division. Conceived and engineered under the direction of **Dr. Ahmed Adeyemi, Manager of Professional Services**, the system was built to serve as the central intersection where consulting teams convene, collaborate, and exchange critical project information.
+
+          ## Meaning behind the name
+
+          The name draws from **Celeritas**, the Latin concept of swiftness or speed, and from the conventional symbol **c** for the speed of light in `E=mc²`.
+
+          - **US Signal connection:** The identity pays homage to US Signal's fiber-network and digital-infrastructure foundation.
+          - **Professional Services mission:** Celar AI translates the speed of light into the **speed of delivery**, reducing the elapsed time required to scope, plan, execute, troubleshoot, report, and invoice customer solutions.
+
+          ## Catalyst: overcoming the Changepoint struggle
+
+          Changepoint served as a functional legacy professional-services automation platform and system of record, but it also created operational drag:
+
+          - **Siloed information:** Teams often worked across disconnected sources and manually transferred context.
+          - **Administration tax:** Consultants spent technical time navigating rigid menus to enter time, maintain tasks, or understand project financial health.
+          - **Speed bottleneck:** SOW drafting, project handoff, task assignment, time administration, billing readiness, and invoice routing depended on slower manual workflows.
+
+          Celar AI addresses this struggle by unifying authorized documents, live system data, workflows, troubleshooting evidence, reporting, financial context, and AI-assisted reasoning inside one governed operating layer.
+
+          ## Canonical response: What is Celar AI?
+
+          > Celar AI is the unified operational intelligence system for the US Signal Solution Provider division. It was conceived and engineered under the direction of Dr. Ahmed Adeyemi, Manager of Professional Services, to create a central intersection where consulting teams can convene, collaborate, and exchange project, delivery, operational, and financial information. The name draws from celeritas—the Latin concept of swiftness or speed—and from the conventional symbol c for the speed of light in E=mc². That connection reflects US Signal's fiber-network heritage and Celar AI's mission: translate the speed of light into the speed of delivery. From a solution-provider perspective, Celar AI reduces the operational drag associated with legacy Changepoint workflows, including siloed information, repetitive administration, slow SOW creation, fragmented task handoffs, time-entry friction, and delayed financial visibility. It unifies authorized documents, live system data, workflows, and AI-assisted reasoning so teams can scope, execute, troubleshoot, report, and invoice work more quickly without abandoning security, governance, or human accountability.
+
+          ## Transition boundary
+
+          This package establishes the target documentation brand. The current Pulse AI runtime name and technical identifiers remain unchanged until a separate application-rebrand package is reviewed and approved.
+
+          ## Brand governance
+
+          Celar AI is strategically aligned with US Signal's fiber and solution-provider mission, but `Celar` is not globally unique. Before public marketing, trademark filing, domain acquisition, or customer-facing launch, US Signal Legal and Marketing should complete name-clearance, trademark, pronunciation, and digital-identity review.
+          '''
+          identity = '\n'.join(line[10:] if line.startswith('          ') else line for line in identity.splitlines()).strip() + '\n'
+          (root / 'CELAR-AI-IDENTITY-AND-ORIGIN.md').write_text(identity, encoding='utf-8')
+
+          readme = '''# US Signal Celar AI Architecture Package — Version 2.0
+
+          **Owner:** US Signal  
+          **Platform:** Pulse  
+          **Module:** 011 — Celar AI target brand  
+          **Classification:** US Signal Internal — Confidential  
+          **Architecture status:** Documentation-first rebrand baseline  
+          **Published:** July 30, 2026
+
+          ## Purpose
+
+          This directory contains the US Signal-branded Celar AI architecture package. It updates the Module 011 architecture and diagrams before any runtime rebrand and preserves Version 1.1 as the historical Pulse AI baseline.
+
+          Version 2.0 adds:
+
+          - the Celar AI core identity;
+          - Dr. Ahmed Adeyemi creator and engineering-direction attribution;
+          - the Celeritas and speed-of-light name origin;
+          - the US Signal fiber and digital-infrastructure connection;
+          - the Professional Services speed-of-delivery mission;
+          - the Changepoint business catalyst;
+          - the canonical answer to “What is Celar AI?”;
+          - updated logical and deployment/network diagrams; and
+          - a documented brand-clearance boundary.
+
+          ## Canonical target-brand package
+
+          ```text
+          docs/modules/module-011-pulse-ai/architecture/v2.0/
+          ```
+
+          ## Historical architecture package
+
+          ```text
+          docs/modules/module-011-pulse-ai/architecture/v1.1/
+          ```
+
+          ## Transition boundary
+
+          The business platform remains Pulse. This package changes documentation and diagrams only. Runtime labels, routes, APIs, source directories, database objects, permission codes, feature codes, environment variables, Module 064 configuration, models, credentials, Test resources, and Production resources remain unchanged.
+
+          ## Brand-governance note
+
+          `Celar` is already used by other organizations. External use requires US Signal Legal and Marketing name-clearance, trademark, pronunciation, domain, and digital-identity review.
+          '''
+          readme = '\n'.join(line[10:] if line.startswith('          ') else line for line in readme.splitlines()).strip() + '\n'
+          (root / 'README.md').write_text(readme, encoding='utf-8')
+          PY
+
+          (
+            cd "$ROOT"
+            sha256sum \
+              US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.docx \
+              US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf \
+              US_Signal_Celar_AI_Architecture_Diagrams_v2.0.pdf \
+              US_Signal_Celar_AI_Logical_Architecture_v2.0.png \
+              US_Signal_Celar_AI_Logical_Architecture_v2.0.svg \
+              US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.png \
+              US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.svg \
+              CELAR-AI-IDENTITY-AND-ORIGIN.md \
+              README.md \
+              source/US_Signal_Logo.jpg \
+              source/generate_celar_architecture_v2_0.py \
+              > SHA256SUMS.txt
+          )
+
+      - name: Validate documents, diagrams, identity, and checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from PIL import Image
+          from pypdf import PdfReader
+
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v2.0')
+          docx = root / 'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.docx'
+          main_pdf = root / 'US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf'
+          diagram_pdf = root / 'US_Signal_Celar_AI_Architecture_Diagrams_v2.0.pdf'
+          logical_png = root / 'US_Signal_Celar_AI_Logical_Architecture_v2.0.png'
+          deployment_png = root / 'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.png'
+
+          page_count = len(PdfReader(str(main_pdf)).pages)
+          assert page_count >= 25
+          assert len(PdfReader(str(diagram_pdf)).pages) == 2
+          assert Image.open(logical_png).width >= 2000
+          assert Image.open(deployment_png).width >= 2400
+
+          with ZipFile(docx) as archive:
+              assert '[Content_Types].xml' in archive.namelist()
+              xml = '\n'.join(
+                  archive.read(name).decode('utf-8', 'ignore')
+                  for name in archive.namelist()
+                  if name.endswith('.xml')
+              )
+              for marker in [
+                  'Celar AI Private Intelligence Architecture',
+                  'Dr. Ahmed Adeyemi',
+                  'Manager of Professional Services',
+                  'celeritas',
+                  'speed of delivery',
+                  'Changepoint',
+                  'US Signal Solution Provider division'
+              ]:
+                  assert marker in xml
+
+          for svg in [
+              root / 'US_Signal_Celar_AI_Logical_Architecture_v2.0.svg',
+              root / 'US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.svg'
+          ]:
+              text = svg.read_text(encoding='utf-8')
+              assert 'Celar AI' in text
+              assert 'Private Celar AI' in text
+              assert 'data:image/jpeg;base64,' in text
+
+          identity = (root / 'CELAR-AI-IDENTITY-AND-ORIGIN.md').read_text(encoding='utf-8')
+          for marker in [
+              'Dr. Ahmed Adeyemi', 'Manager of Professional Services', 'Celeritas',
+              'speed of delivery', 'Changepoint', 'US Signal Solution Provider division'
+          ]:
+              assert marker in identity
+
+          print(f'CELAR_AI_ARCHITECTURE_MAIN_PAGES={page_count}')
+          print('CELAR_AI_ARCHITECTURE_V2_VALIDATION=PASSED')
+          PY
+
+          pdftotext "$ROOT/US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf" - | grep -F 'Dr. Ahmed Adeyemi'
+          pdftotext "$ROOT/US_Signal_Celar_AI_Private_Intelligence_Architecture_v2.0.pdf" - | grep -F 'speed of delivery'
+          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
+          git diff --check -- . ':(exclude,glob)**/*.pdf'
+
+      - name: Commit the generated Celar AI artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'CELAR_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
+            exit 0
+          fi
+          git commit -m 'Publish US Signal Celar AI architecture package v2.0'
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo 'CELAR_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
