@@ -38,6 +38,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
+          git config user.name 'projectpulse-reconciliation-analyzer'
+          git config user.email 'projectpulse-reconciliation-analyzer@users.noreply.github.com'
 
           HEAD_SHA="$(git rev-parse HEAD)"
           MAIN_SHA="$(git rev-parse origin/main)"
