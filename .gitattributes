@@ -1,0 +1,7 @@
+# Generated architecture deliverables are binary evidence, not line-oriented source.
+docs/modules/module-011-pulse-ai/architecture/v2.0/*.pdf binary
+
+# These two metadata blocks intentionally use Markdown two-space hard breaks.
+# Keep every other whitespace class and every other Markdown/source path guarded.
+docs/modules/module-011-pulse-ai/architecture/v2.0/CELAR-AI-IDENTITY-AND-ORIGIN.md whitespace=-trailing-space
+docs/modules/module-011-pulse-ai/architecture/v2.0/README.md whitespace=-trailing-space
