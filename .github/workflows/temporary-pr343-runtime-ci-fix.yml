@@ -6,13 +6,18 @@ on:
       - 'feature/module-011-celar-ai-runtime-rebrand-20260730'
     paths:
       - '.github/workflows/temporary-pr343-runtime-ci-fix.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temporary-pr343-runtime-ci-fix.yml'
 
 permissions:
   contents: write
 
 concurrency:
   group: temporary-pr343-runtime-ci-fix
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-validate-push:
@@ -24,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify temporary tooling isolation
         shell: bash
@@ -191,6 +196,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          SOURCE_SHA="$(git rev-parse HEAD)"
           git config user.name 'projectpulse-pr343-runtime-ci-fix'
           git config user.email 'projectpulse-pr343-runtime-ci-fix@users.noreply.github.com'
 
@@ -205,7 +211,7 @@ jobs:
           git commit -m 'Align Celar AI repeat builds and CI applicability'
 
           git fetch origin "$TARGET_BRANCH" --no-tags
-          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:${TARGET_BRANCH}"
           echo "PR343_RUNTIME_CI_FIX_COMMIT=$(git rev-parse HEAD)"
