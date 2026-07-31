@@ -1,0 +1,254 @@
+name: Temporary PR 343 Current-Main Finalizer V4
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/pr343-finalizer-v4-trigger.txt'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: temporary-pr343-current-main-finalizer-v4
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact Celar AI source head
+        uses: actions/checkout@v4
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reconcile current main and create the reviewed V4 merge commit
+        id: reconcile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          REQUIRED_PRE_TRIGGER_HEAD='ac2a74ad3329833ee22a56313bba257273e7dd10'
+          REQUIRED_MAIN_ANCESTOR='2736af0a6e607bd4283bb11b92b49cc920b232f9'
+          REQUIRED_V3_PATCH_BLOB='bffd3590e8ab2dd218650b549dc2b8173c210245'
+          TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          WORKFLOW_PATH='.github/workflows/temporary-pr343-current-main-finalizer-v4.yml'
+          PATCH_PATH='.github/scripts/pr343_current_main_finalizer_v4.py'
+          V3_PATCH_PATH='.github/scripts/pr343_current_main_finalizer_v3.py'
+          TRIGGER_PATH='.github/pr343-finalizer-v4-trigger.txt'
+
+          test "$(git rev-parse HEAD^)" = "$REQUIRED_PRE_TRIGGER_HEAD"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$TRIGGER_PATH"
+          grep -Fqx "EXPECTED_PRE_TRIGGER_HEAD=$REQUIRED_PRE_TRIGGER_HEAD" "$TRIGGER_PATH"
+          grep -Fqx "EXPECTED_MAIN_ANCESTOR=$REQUIRED_MAIN_ANCESTOR" "$TRIGGER_PATH"
+          grep -Fqx 'EXPECTED_FAILED_ASSERTION=CELAR_AI_GLOBAL_CHAT_BRAND' "$TRIGGER_PATH"
+          grep -Fqx 'EXPECTED_GROUP7_TITLE=Celar AI Help & Search' "$TRIGGER_PATH"
+          grep -Fqx 'EXPECTED_CORRECTION=VALIDATOR_ONLY' "$TRIGGER_PATH"
+
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$REQUIRED_MAIN_ANCESTOR" origin/main
+          test "$(git rev-parse "origin/main:${V3_PATCH_PATH}")" = "$REQUIRED_V3_PATCH_BLOB"
+
+          MAIN_DELTA="$(git diff --name-only "$REQUIRED_MAIN_ANCESTOR"...origin/main)"
+          printf '%s\n' "$MAIN_DELTA"
+          UNEXPECTED_MAIN="$(grep -Ev "^(${WORKFLOW_PATH//./\\.}|${PATCH_PATH//./\\.})$" <<<"$MAIN_DELTA" || true)"
+          if [[ -n "$UNEXPECTED_MAIN" ]]; then
+            echo 'Current main moved outside the reviewed V4 finalizer delta:' >&2
+            printf '%s\n' "$UNEXPECTED_MAIN" >&2
+            exit 1
+          fi
+          test "$(printf '%s\n' "$MAIN_DELTA" | sed '/^$/d' | wc -l | tr -d ' ')" = '2'
+
+          git config user.name 'projectpulse-celar-main-finalizer'
+          git config user.email 'projectpulse-celar-main-finalizer@users.noreply.github.com'
+
+          set +e
+          git merge --no-commit --no-ff origin/main > /tmp/pr343-finalizer-v4-merge.log 2>&1
+          MERGE_STATUS=$?
+          set -e
+          cat /tmp/pr343-finalizer-v4-merge.log
+
+          mapfile -t ACTUAL_CONFLICTS < <(git diff --name-only --diff-filter=U | sort)
+          EXPECTED_CONFLICTS=(
+            '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+            '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+            'docs/modules/module-011-pulse-ai/SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING.md'
+            'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+            'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
+            'src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs'
+            'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+            'src/frontend/project-time-web/package.json'
+            'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs'
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+            'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'
+          )
+          mapfile -t EXPECTED_CONFLICTS < <(printf '%s\n' "${EXPECTED_CONFLICTS[@]}" | sort)
+
+          test "$MERGE_STATUS" != '0'
+          if [[ "$(printf '%s\n' "${ACTUAL_CONFLICTS[@]}")" != "$(printf '%s\n' "${EXPECTED_CONFLICTS[@]}")" ]]; then
+            echo 'The conflict set changed from the reviewed reconciliation evidence.' >&2
+            echo 'Expected:' >&2
+            printf '%s\n' "${EXPECTED_CONFLICTS[@]}" >&2
+            echo 'Actual:' >&2
+            printf '%s\n' "${ACTUAL_CONFLICTS[@]}" >&2
+            exit 1
+          fi
+
+          # Current main remains authoritative for security-sensitive shared
+          # implementation and compatibility contracts.
+          git checkout --theirs -- "${EXPECTED_CONFLICTS[@]}"
+          git add -- "${EXPECTED_CONFLICTS[@]}"
+
+          rm -f \
+            '.github/workflows/temporary-pr328-main-reconciliation-analysis.yml' \
+            '.github/pr343-reconciliation-trigger.txt' \
+            '.github/pr343-finalizer-trigger.txt' \
+            '.github/pr343-finalizer-v2-trigger.txt' \
+            '.github/pr343-finalizer-v3-trigger.txt' \
+            "$TRIGGER_PATH"
+
+          git show "origin/main:${PATCH_PATH}" > /tmp/pr343_current_main_finalizer_v4.py
+          python /tmp/pr343_current_main_finalizer_v4.py
+
+          git add -A
+          git diff --check --cached -- \
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml' \
+            'deployment/containers/web/Dockerfile' \
+            'src/backend/ProjectTime.Api/ProjectTime.Api.csproj' \
+            'src/frontend/project-time-web/package.json' \
+            'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs' \
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+
+          git diff --cached --name-status
+          git commit -m 'Reconcile Celar AI runtime rebrand with current main (V4)'
+          echo "merge_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate reconciled Celar AI source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs
+          node --check src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          node src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs
+          node src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs
+          chmod +x tests/test-pulse-ai-system-intelligence-migration-054.sh
+          tests/test-pulse-ai-system-intelligence-migration-054.sh
+
+      - name: Build reconciled ProjectTime API
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Build reconciled frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Verify the corrected V4 global-chat brand contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HELP='src/frontend/project-time-web/src/HelpAssistant.jsx'
+          grep -Fq 'Ask Celar AI' "$HELP"
+          grep -Fq 'aria-label="Celar AI system intelligence assistant"' "$HELP"
+          grep -Fq '<strong>Celar AI Help & Search</strong>' "$HELP"
+          ! grep -Fq '<strong>Pulse AI Help & Search</strong>' "$HELP"
+          grep -Fq 'Celar AI Workbench' "$HELP"
+          grep -Fq "const path = '/api/celar-ai/v1/chat';" "$HELP"
+          grep -Fq "openRoute('celar-ai')" "$HELP"
+          node src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          echo 'PR343_V4_GLOBAL_CHAT_BRAND=PASSED'
+
+      - name: Validate clean production web-container context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git reset --hard HEAD
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-celar-current-main-v4:${{ github.event.pull_request.head.sha }}" \
+            .
+
+      - name: Push the validated reconciliation commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+      - name: Publish finalizer evidence to PR #343
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          MERGE_COMMIT: ${{ steps.reconcile.outputs.merge_commit }}
+          MAIN_SHA: ${{ steps.reconcile.outputs.main_sha }}
+          FINALIZER_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const marker = '<!-- pr343-current-main-finalizer-v4 -->';
+            const success = process.env.FINALIZER_STATUS === 'success';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## PR #343 current-main finalizer V4',
+              '',
+              `- Result: **${success ? 'validated and pushed' : 'failed closed'}**`,
+              `- Main reconciled: \`${process.env.MAIN_SHA || 'not recorded'}\``,
+              `- Reconciliation commit: \`${process.env.MERGE_COMMIT || 'not created'}\``,
+              `- Workflow run: ${runUrl}`,
+              '',
+              success
+                ? 'Current main remained authoritative for the reviewed security and compatibility files. V4 corrected only the confirmed global-chat validator false negative: the Group 7 header remains “Celar AI Help & Search,” the former Pulse AI title is absent, and the user-facing Celar AI chat route, Workbench route, keyboard behavior, durable history, migration 054, API build, frontend build, and clean web-container build all passed before the branch update.'
+                : 'The source branch was not pushed. V4 failed closed before any branch update; review the failed gate before changing the reconciliation contract.',
+              '',
+              'No migration was applied to Test or Production, and no Azure, provider, credential, project, financial, Timesheet, or permission mutation was performed.'
+            ].join('\n');
+
+            const parameters = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            };
+            const comments = await github.paginate(github.rest.issues.listComments, parameters);
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({ ...parameters, body });
+            }
