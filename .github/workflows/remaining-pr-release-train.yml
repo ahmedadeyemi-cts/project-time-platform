@@ -21,7 +21,7 @@ jobs:
     if: >-
       github.actor == 'ahmedadeyemi-cts' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release/run-remaining-pr-release-train-20260731-attempt-5'
+      github.event.pull_request.head.ref == 'release/run-remaining-pr-release-train-20260731-attempt-6'
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
@@ -64,6 +64,18 @@ jobs:
 
           echo "control_sha=$control_sha" >> "$GITHUB_OUTPUT"
           echo "trigger_sha=$trigger_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify path-scoped whitespace classification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pdf_path='docs/modules/module-011-pulse-ai/architecture/v2.0/US_Signal_Celar_AI_Architecture_Diagrams_v2.0.pdf'
+          identity_path='docs/modules/module-011-pulse-ai/architecture/v2.0/CELAR-AI-IDENTITY-AND-ORIGIN.md'
+          readme_path='docs/modules/module-011-pulse-ai/architecture/v2.0/README.md'
+
+          test "$(git -C repo check-attr diff -- "$pdf_path")" = "$pdf_path: diff: unset"
+          test "$(git -C repo check-attr whitespace -- "$identity_path")" = "$identity_path: whitespace: -trailing-space"
+          test "$(git -C repo check-attr whitespace -- "$readme_path")" = "$readme_path: whitespace: -trailing-space"
 
       - name: Publish observable release-train run
         uses: actions/github-script@v7
