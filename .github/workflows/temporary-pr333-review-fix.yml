@@ -1,0 +1,341 @@
+name: Temporary PR 333 Least-Privilege Review Fix
+
+on:
+  push:
+    branches:
+      - 'fix/role-workspaces-entra-crm-governance-20260730'
+    paths:
+      - '.github/workflows/temporary-pr333-review-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-pr333-least-privilege-review-fix
+  cancel-in-progress: false
+
+jobs:
+  apply-validate-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact review-fix trigger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify temporary tooling isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_PARENT='54aa964e781ca92efe491cc445c623f61537c640'
+          test "$(git rev-parse HEAD^)" = "$REQUIRED_PARENT"
+          mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_PARENT"...HEAD | sort)
+          EXPECTED=( '.github/workflows/temporary-pr333-review-fix.yml' )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${CHANGED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          echo 'PR333_REVIEW_FIX_TOOLING_ISOLATION=PASSED'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply deterministic least-privilege corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          migration = Path('database/migrations/056_role_workspace_entra_crm_governance.sql')
+          replace_once(
+              migration,
+              '''INSERT INTO projectpulse_056_candidate_grants (role_code, permission_code)
+          SELECT DISTINCT baseline.role_code, permission.permission_code
+          FROM projectpulse_056_role_module_baseline baseline
+          JOIN app_permissions permission
+            ON upper(permission.module_code) = upper(baseline.module_code)
+          UNION
+          SELECT DISTINCT baseline.role_code, feature.required_permission_code
+          FROM projectpulse_056_role_module_baseline baseline
+          JOIN app_feature_catalog feature
+            ON upper(feature.module_code) = upper(baseline.module_code)
+          WHERE feature.is_active = TRUE
+            AND feature.required_permission_code IS NOT NULL
+          ON CONFLICT DO NOTHING;''',
+              '''INSERT INTO projectpulse_056_candidate_grants (role_code, permission_code)
+          SELECT DISTINCT baseline.role_code, permission.permission_code
+          FROM projectpulse_056_role_module_baseline baseline
+          JOIN app_permissions permission
+            ON upper(permission.module_code) = upper(baseline.module_code)
+          WHERE upper(permission.permission_code) LIKE 'VIEW\\_%' ESCAPE '\\'
+             OR upper(permission.permission_code) LIKE 'READ\\_%' ESCAPE '\\'
+             OR upper(permission.permission_code) LIKE 'EXPORT\\_%' ESCAPE '\\'
+             OR upper(permission.permission_code) IN (
+                 'MODULE_ACCESS',
+                 'MODULE_VIEW',
+                 'ACCESS_EXPLAIN'
+             )
+          UNION
+          SELECT DISTINCT baseline.role_code, feature.required_permission_code
+          FROM projectpulse_056_role_module_baseline baseline
+          JOIN app_feature_catalog feature
+            ON upper(feature.module_code) = upper(baseline.module_code)
+          JOIN app_permissions permission
+            ON permission.permission_code = feature.required_permission_code
+          WHERE feature.is_active = TRUE
+            AND feature.required_permission_code IS NOT NULL
+            AND (
+                upper(permission.permission_code) LIKE 'VIEW\\_%' ESCAPE '\\'
+                OR upper(permission.permission_code) LIKE 'READ\\_%' ESCAPE '\\'
+                OR upper(permission.permission_code) LIKE 'EXPORT\\_%' ESCAPE '\\'
+                OR upper(permission.permission_code) IN (
+                    'MODULE_ACCESS',
+                    'MODULE_VIEW',
+                    'ACCESS_EXPLAIN'
+                )
+            )
+          ON CONFLICT DO NOTHING;''',
+              'migration 056 safe workspace grants',
+          )
+
+          invariant_anchor = '''INSERT INTO role_workspace_permission_changes_056 (role_code, permission_code, change_kind)
+          SELECT role.role_code, permission.permission_code, 'granted' '''
+          invariant = '''DO $assert_candidate_least_privilege$
+          DECLARE
+              unsafe_count INTEGER;
+          BEGIN
+              SELECT COUNT(*)
+              INTO unsafe_count
+              FROM projectpulse_056_candidate_grants candidate
+              WHERE upper(candidate.role_code) IN (
+                  'PROJECT_MANAGER',
+                  'PROJECT_MANAGEMENT',
+                  'PROJECT_MANAGEMENT_LEAD',
+                  'PROJECT_MANAGEMENT_TEAM_LEAD',
+                  'PM_TEAM_LEAD',
+                  'ACCOUNTING',
+                  'ACCOUNTING_BILLING',
+                  'BILLING',
+                  'FINANCE',
+                  'SALES',
+                  'INSIDE_SALES',
+                  'RESALE',
+                  'ACCOUNT_EXECUTIVE',
+                  'ACCOUNT_EXECUTIVES',
+                  'SALES_MANAGER'
+              )
+                AND upper(candidate.permission_code) IN (
+                    'MANAGE_INTEGRATIONS_026',
+                    'MANAGE_ALL',
+                    'SYSTEM_ADMINISTRATION'
+                );
+
+              IF unsafe_count <> 0 THEN
+                  RAISE EXCEPTION 'Migration 056 least-privilege invariant failed: % unsafe workspace candidates.', unsafe_count;
+              END IF;
+          END;
+          $assert_candidate_least_privilege$;
+
+          '''
+          text = migration.read_text(encoding='utf-8')
+          if text.count(invariant_anchor) != 1:
+              raise SystemExit('migration 056 invariant anchor mismatch')
+          migration.write_text(text.replace(invariant_anchor, invariant + invariant_anchor, 1), encoding='utf-8')
+
+          oauth = Path('src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs')
+          replace_once(
+              oauth,
+              '''              AND token.expires_at IS NOT NULL
+                        AND token.expires_at <= NOW() + (@window_minutes * INTERVAL '1 minute')''',
+              '''              AND (
+                            token.expires_at IS NULL
+                            OR token.expires_at <= NOW() + (@window_minutes * INTERVAL '1 minute')
+                          )''',
+              'unknown-expiry OAuth scheduling',
+          )
+
+          entra = Path('src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs')
+          first = '''        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(context, _ => true);'''
+          gated = '''        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(
+                      context,
+                      actor => actor.IsAdministrator
+                          || actor.Permissions.Contains("VIEW_ENTRA_SECRET_EXPIRATION")
+                          || actor.Permissions.Contains("MANAGE_ENTRA_SECRET_EXPIRATION"));'''
+          text = entra.read_text(encoding='utf-8')
+          positions = []
+          start = 0
+          while True:
+              index = text.find(first, start)
+              if index < 0:
+                  break
+              positions.append(index)
+              start = index + len(first)
+          if len(positions) < 2:
+              raise SystemExit(f'Entra profile gate expected at least two broad access calls, found {len(positions)}')
+          index = positions[1]
+          entra.write_text(text[:index] + gated + text[index + len(first):], encoding='utf-8')
+
+          migration_test = Path('tests/test-role-workspace-entra-crm-governance-migration-056.sh')
+          replace_once(
+              migration_test,
+              '''assert_eq 1 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SALES' AND p.permission_code='VIEW_INTEGRATIONS_026';")" sales_crm_status_granted
+          assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SALES' AND p.permission_code IN ('VIEW_TIME_ENTRY','VIEW_APPROVAL_INBOX','VIEW_OWN_UTILIZATION','VIEW_PROJECT_WORKSPACE');")" sales_engineering_access_removed''',
+              '''assert_eq 1 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SALES' AND p.permission_code='VIEW_INTEGRATIONS_026';")" sales_crm_status_granted
+          assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SALES' AND p.permission_code='MANAGE_INTEGRATIONS_026';")" sales_crm_management_not_granted_by_056
+          assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles r JOIN app_role_permissions rp USING(app_role_id) JOIN app_permissions p USING(app_permission_id) WHERE r.role_code='SALES' AND p.permission_code IN ('VIEW_TIME_ENTRY','VIEW_APPROVAL_INBOX','VIEW_OWN_UTILIZATION','VIEW_PROJECT_WORKSPACE');")" sales_engineering_access_removed''',
+              'migration 056 direct least-privilege assertion',
+          )
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs')
+          replace_once(
+              validator,
+              '''    'criticalWarningDismissed = false',
+            ], 'Module 065 backend');''',
+              '''    'criticalWarningDismissed = false',
+              'actor.Permissions.Contains("VIEW_ENTRA_SECRET_EXPIRATION")',
+              'actor.Permissions.Contains("MANAGE_ENTRA_SECRET_EXPIRATION")',
+            ], 'Module 065 backend');''',
+              'Module 065 view-authority validator',
+          )
+          replace_once(
+              validator,
+              '''    'clientSecretReturned = false',
+            ], 'Module 026 OAuth persistence backend');''',
+              '''    'clientSecretReturned = false',
+              'token.expires_at IS NULL',
+            ], 'Module 026 OAuth persistence backend');''',
+              'Module 026 unknown-expiry validator',
+          )
+          replace_once(
+              validator,
+              '''    "upper(role.role_code) = 'SUPER_ADMINISTRATOR'",
+            ], 'migration 056');''',
+              '''    "upper(role.role_code) = 'SUPER_ADMINISTRATOR'",
+              '$assert_candidate_least_privilege$',
+              "'MANAGE_INTEGRATIONS_026'",
+            ], 'migration 056');''',
+              'migration 056 least-privilege validator',
+          )
+          replace_once(
+              validator,
+              '''    'rollback_restored_removed_access',
+              'ROLE_WORKSPACE_ENTRA_CRM_GOVERNANCE_MIGRATION_056=PASS',''',
+              '''    'rollback_restored_removed_access',
+              'sales_crm_management_not_granted_by_056',
+              'ROLE_WORKSPACE_ENTRA_CRM_GOVERNANCE_MIGRATION_056=PASS',''',
+              'migration test validator',
+          )
+          PY
+
+          git diff --check -- \
+            database/migrations/056_role_workspace_entra_crm_governance.sql \
+            src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs \
+            src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
+            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+            tests/test-role-workspace-entra-crm-governance-migration-056.sh
+
+          mapfile -t PATCHED < <(git diff --name-only | sort)
+          EXPECTED=(
+            'database/migrations/056_role_workspace_entra_crm_governance.sql'
+            'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
+            'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
+            'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+            'tests/test-role-workspace-entra-crm-governance-migration-056.sh'
+          )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${PATCHED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          node --check src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs
+          echo 'PR333_REVIEW_FIX_PATCH_CONTRACT=PASSED'
+
+      - name: Validate migration 056 and 056A execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-role-workspace-entra-crm-governance-migration-056.sh
+          chmod +x tests/test-role-workspace-permission-scope-migration-056a.sh
+          tests/test-role-workspace-entra-crm-governance-migration-056.sh
+          tests/test-role-workspace-permission-scope-migration-056a.sh
+          echo 'PR333_REVIEW_FIX_MIGRATIONS=PASSED'
+
+      - name: Validate focused source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/validate-role-workspace-entra-crm-governance.mjs
+          node ./scripts/validate-module-012-scoped-role-admin.mjs
+          echo 'PR333_REVIEW_FIX_SOURCE_VALIDATION=PASSED'
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          echo 'PR333_REVIEW_FIX_API_BUILD=PASSED'
+
+      - name: Build frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          echo 'PR333_REVIEW_FIX_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web-container context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-pr333-review-fix:${GITHUB_SHA}" \
+            .
+          echo 'PR333_REVIEW_FIX_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Commit and push validated corrections
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_BRANCH='fix/role-workspaces-entra-crm-governance-20260730'
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          git config user.name 'projectpulse-pr333-review-fix'
+          git config user.email 'projectpulse-pr333-review-fix@users.noreply.github.com'
+
+          git rm .github/workflows/temporary-pr333-review-fix.yml
+          git add \
+            database/migrations/056_role_workspace_entra_crm_governance.sql \
+            src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs \
+            src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
+            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+            tests/test-role-workspace-entra-crm-governance-migration-056.sh
+          git diff --check --cached -- \
+            database/migrations/056_role_workspace_entra_crm_governance.sql \
+            src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs \
+            src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs \
+            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+            tests/test-role-workspace-entra-crm-governance-migration-056.sh
+          git commit -m 'Fix role workspace least privilege and OAuth renewal'
+
+          git fetch origin "$TARGET_BRANCH" --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo "PR333_REVIEW_FIX_COMMIT=$(git rev-parse HEAD)"
