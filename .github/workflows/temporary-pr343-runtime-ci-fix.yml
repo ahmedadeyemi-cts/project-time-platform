@@ -1,0 +1,211 @@
+name: Temporary PR 343 Runtime CI Fix
+
+on:
+  push:
+    branches:
+      - 'feature/module-011-celar-ai-runtime-rebrand-20260730'
+    paths:
+      - '.github/workflows/temporary-pr343-runtime-ci-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-pr343-runtime-ci-fix
+  cancel-in-progress: false
+
+jobs:
+  apply-validate-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact trigger commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify temporary tooling isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_PARENT='3d35567eacde811ddd6655a3ddcffb914281380c'
+          test "$(git merge-base "$REQUIRED_PARENT" HEAD)" = "$REQUIRED_PARENT"
+          mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_PARENT"...HEAD | sort)
+          EXPECTED=( '.github/workflows/temporary-pr343-runtime-ci-fix.yml' )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${CHANGED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+          echo 'PR343_TEMPORARY_TOOLING_ISOLATION=PASSED'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply deterministic runtime and CI corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin tooling/pr343-ci-applicability-fix-artifact-20260731 --no-tags
+          git show FETCH_HEAD:.github/scripts/pr343_ci_applicability_fix.py > /tmp/pr343_ci_fix.py
+          test "$(git hash-object /tmp/pr343_ci_fix.py)" = 'fe3660993cc91736eed4e9add5bcdd769953713f'
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/pr343_ci_fix.py')
+          source = path.read_text(encoding='utf-8')
+          injector_start = source.index('\ninjector = Path("src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs")')
+          print_start = source.index('\nprint("PR343_CI_APPLICABILITY_FIX=APPLIED")')
+
+          validator_patch = r"""
+          module_validator = Path("src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs")
+          replace_once(
+              module_validator,
+              '''assert(
+            'VISIBLE_APP_NAME',
+            app.includes("title: 'Pulse AI'")
+              && app.includes("case 'work-task-builder':")
+              && app.includes("return 'Pulse AI';")
+              && !app.includes("title: 'Work Task Builder'"),
+            'visible Module 011 navigation and registry labels are Pulse AI while the compatibility route remains unchanged'
+          );''',
+              '''const approvedVisibleAppName = (
+            app.includes("title: 'Pulse AI'") && app.includes("return 'Pulse AI';")
+          ) || (
+            app.includes("title: 'Celar AI'") && app.includes("return 'Celar AI';")
+          );
+          assert(
+            'VISIBLE_APP_NAME',
+            approvedVisibleAppName
+              && app.includes("case 'work-task-builder':")
+              && !app.includes("title: 'Work Task Builder'"),
+            'visible Module 011 navigation uses the approved Pulse AI foundation or Celar AI public identity while the compatibility route remains unchanged'
+          );''',
+              "Module 011 repeat-build visible identity",
+          )
+          replace_once(
+              module_validator,
+              '''assert(
+            'PULSE_AI_IDENTITY',
+            center.includes('data-module="011"')
+              && center.includes('data-module-name="Pulse AI"')
+              && center.includes('data-source-phase="read-only-foundation"')
+              && center.includes('<h1>Pulse AI</h1>'),
+            'the page exposes the current Module 011 identity and locked source phase'
+          );''',
+              '''const approvedCenterIdentity = (
+            center.includes('data-module-name="Pulse AI"') && center.includes('<h1>Pulse AI</h1>')
+          ) || (
+            center.includes('data-module-name="Celar AI"') && center.includes('<h1>Celar AI</h1>')
+          );
+          assert(
+            'PULSE_AI_IDENTITY',
+            center.includes('data-module="011"')
+              && approvedCenterIdentity
+              && center.includes('data-source-phase="read-only-foundation"'),
+            'the page exposes the approved Pulse AI foundation or Celar AI public identity and locked source phase'
+          );''',
+              "Module 011 repeat-build center identity",
+          )
+          """
+
+          source = source[:injector_start] + '\n' + validator_patch + source[print_start:]
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          python -m py_compile /tmp/pr343_ci_fix.py
+          python /tmp/pr343_ci_fix.py
+          git diff --check
+
+          mapfile -t PATCHED < <(git diff --name-only | sort)
+          EXPECTED=(
+            '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
+            '.github/workflows/deep-intelligence-read-contract-ci.yml'
+            '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+            '.github/workflows/pulse-ai-system-intelligence-ci.yml'
+            'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
+          )
+          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "$(printf '%s\n' "${PATCHED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
+
+          ruby -e "require 'yaml'; %w[.github/workflows/celar-ai-runtime-rebrand-ci.yml .github/workflows/deep-intelligence-read-contract-ci.yml .github/workflows/pulse-ai-help-chat-usability-ci.yml .github/workflows/pulse-ai-system-intelligence-ci.yml].each { |p| YAML.load_file(p) }"
+          node --check src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          node --check src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs
+          grep -Fq "Celar AI Help & Search" src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs
+          grep -Fq '.help-panel.pulse-ai-system-chat .help-messages' .github/workflows/celar-ai-runtime-rebrand-ci.yml
+          grep -Fq 'CELAR_ALLOWED=' .github/workflows/pulse-ai-system-intelligence-ci.yml
+          grep -Fq "HELP_TITLE='Celar AI Help & Search'" .github/workflows/deep-intelligence-read-contract-ci.yml
+          grep -Fq 'approvedVisibleAppName' src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          grep -Fq 'approvedCenterIdentity' src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          echo 'PR343_RUNTIME_CI_PATCH_CONTRACT=PASSED'
+
+      - name: Validate clean and repeated frontend builds
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          npm run build
+          npm run build
+          node ./scripts/validate-module-011-pulse-ai.mjs
+          cat dist/assets/*.js > /tmp/pr343-celar-runtime.js
+          cat dist/assets/*.css > /tmp/pr343-celar-runtime.css
+          for marker in \
+            'Ask Celar AI' \
+            'Celar AI Help & Search' \
+            'Celar AI Workbench' \
+            '/api/celar-ai/v1/chat' \
+            'Private intelligence and governed provider routing' \
+            'Raw internal documents never use public providers'; do
+            grep -Fq "$marker" /tmp/pr343-celar-runtime.js
+          done
+          for marker in \
+            '.celar-ai-provider-bridge' \
+            '.celar-ai-provider-bridge__route-grid' \
+            '.help-panel.pulse-ai-system-chat .help-messages' \
+            'overflow-y:scroll' \
+            'scrollbar-gutter:stable both-edges'; do
+            grep -Fq "$marker" /tmp/pr343-celar-runtime.css
+          done
+          ! grep -Fq 'Pulse AI Help & Search' /tmp/pr343-celar-runtime.js
+          echo 'PR343_RUNTIME_CI_REPEATED_FRONTEND_BUILD=PASSED'
+
+      - name: Validate production web-container context after repeated build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-pr343-runtime-ci-fix:${GITHUB_SHA}" \
+            .
+          echo 'PR343_RUNTIME_CI_WEB_CONTAINER_BUILD=PASSED'
+
+      - name: Commit and push validated corrections
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TARGET_BRANCH='feature/module-011-celar-ai-runtime-rebrand-20260730'
+          git config user.name 'projectpulse-pr343-runtime-ci-fix'
+          git config user.email 'projectpulse-pr343-runtime-ci-fix@users.noreply.github.com'
+
+          git rm .github/workflows/temporary-pr343-runtime-ci-fix.yml
+          git add \
+            .github/workflows/celar-ai-runtime-rebrand-ci.yml \
+            .github/workflows/deep-intelligence-read-contract-ci.yml \
+            .github/workflows/pulse-ai-help-chat-usability-ci.yml \
+            .github/workflows/pulse-ai-system-intelligence-ci.yml \
+            src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs
+          git diff --check --cached
+          git commit -m 'Align Celar AI repeat builds and CI applicability'
+
+          git fetch origin "$TARGET_BRANCH" --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo "PR343_RUNTIME_CI_FIX_COMMIT=$(git rev-parse HEAD)"
