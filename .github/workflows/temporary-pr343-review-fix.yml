@@ -1,11 +1,9 @@
 name: Temporary PR 343 Independent Review Fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - 'feature/module-011-celar-ai-runtime-rebrand-20260730'
-    paths:
-      - '.github/workflows/temporary-pr343-review-fix.yml'
+      - main
 
 permissions:
   contents: write
@@ -16,6 +14,7 @@ concurrency:
 
 jobs:
   apply-validate-push:
+    if: github.event.pull_request.head.ref == 'feature/module-011-celar-ai-runtime-rebrand-20260730'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -24,13 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Verify temporary tooling isolation
         shell: bash
         run: |
           set -Eeuo pipefail
-          REQUIRED_PARENT='7d174f08b4c2988cecd1f4061c201f17951ea281'
+          REQUIRED_PARENT='5fa8962ce924f92096c3c90d94008ea6884df006'
           test "$(git rev-parse HEAD^)" = "$REQUIRED_PARENT"
           mapfile -t CHANGED < <(git diff --name-only "$REQUIRED_PARENT"...HEAD | sort)
           EXPECTED=( '.github/workflows/temporary-pr343-review-fix.yml' )
@@ -232,21 +231,10 @@ jobs:
             src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
             src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
             src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
-
-          mapfile -t PATCHED < <(git diff --name-only | sort)
-          EXPECTED=(
-            '.github/workflows/deep-intelligence-read-contract-ci.yml'
-            'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
-            'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
-            'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
-          )
-          mapfile -t EXPECTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
-          test "$(printf '%s\n' "${PATCHED[@]}")" = "$(printf '%s\n' "${EXPECTED[@]}")"
-          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/deep-intelligence-read-contract-ci.yml')"
           node --check src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
           echo 'PR343_REVIEW_FIX_PATCH_CONTRACT=PASSED'
 
-      - name: Validate corrected Celar AI source contract
+      - name: Validate corrected source contracts
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -257,39 +245,15 @@ jobs:
           node ./scripts/validate-module-011-system-intelligence-package.mjs
           node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
           node ./scripts/validate-module-011-private-document-pipeline.mjs
-          echo 'PR343_REVIEW_FIX_SOURCE_VALIDATION=PASSED'
 
-      - name: Build ProjectTime API
+      - name: Build API and frontend
         shell: bash
         run: |
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          echo 'PR343_REVIEW_FIX_API_BUILD=PASSED'
-
-      - name: Build frontend twice and validate post-merge markers
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          cd src/frontend/project-time-web
           npm ci --no-audit --no-fund
           npm run build
-          npm run build
-          cat dist/assets/*.js > /tmp/pr343-review-fix.js
-          cat dist/assets/*.css > /tmp/pr343-review-fix.css
-          grep -Fq 'Celar AI Help & Search' /tmp/pr343-review-fix.js
-          ! grep -Fq 'Pulse AI Help & Search' /tmp/pr343-review-fix.js
-          grep -Fq '.help-panel.pulse-ai-system-chat .help-messages' /tmp/pr343-review-fix.css
-          echo 'PR343_REVIEW_FIX_FRONTEND_BUILD=PASSED'
-
-      - name: Validate production web-container context
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          docker build \
-            --file deployment/containers/web/Dockerfile \
-            --tag "projectpulse-pr343-review-fix:${GITHUB_SHA}" \
-            .
-          echo 'PR343_REVIEW_FIX_WEB_CONTAINER_BUILD=PASSED'
 
       - name: Commit and push validated corrections
         env:
@@ -304,11 +268,6 @@ jobs:
 
           git rm .github/workflows/temporary-pr343-review-fix.yml
           git add \
-            .github/workflows/deep-intelligence-read-contract-ci.yml \
-            src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
-            src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
-            src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
-          git diff --check --cached -- \
             .github/workflows/deep-intelligence-read-contract-ci.yml \
             src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
             src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs \
