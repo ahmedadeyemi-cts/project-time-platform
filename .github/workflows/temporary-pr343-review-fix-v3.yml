@@ -1,4 +1,4 @@
-name: Temporary PR 343 Security Review Fix V3
+name: Temporary PR 343 Security Review Fix V4
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: temporary-pr343-security-review-fix-v3
+  group: temporary-pr343-security-review-fix-v4
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD^)" = 'ce388813258660a67b8bbea590b004efe199c8e2'
+          test "$(git rev-parse HEAD^)" = 'dff4993d965e3ba4919f49db746070e4968d1eae'
           test "$(git diff --name-only HEAD^...HEAD)" = '.github/workflows/temporary-pr343-review-fix-v3.yml'
 
       - uses: actions/setup-dotnet@v4
@@ -143,16 +143,23 @@ jobs:
             .github/workflows/deep-intelligence-read-contract-ci.yml \
             src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
             src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
-
           grep -Fq 'value.Equals("celar", StringComparison.OrdinalIgnoreCase)' src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs
           ! grep -Fq 'value.Length <= 32' src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs
           grep -Fq 'actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains)' src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
           grep -Fq 'access.CanViewConversations' src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
           grep -Fq 'actualUserId == effectiveUserId && canViewConversations' src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
           grep -Fq "grep -Fq 'Celar AI Help & Search' ./scripts/inject-celar-ai-runtime-rebrand.mjs" .github/workflows/deep-intelligence-read-contract-ci.yml
-          echo 'PR343_REVIEW_CORRECTIONS=APPLIED'
 
-      - name: Validate Module 011 source contracts
+      - name: Install dependencies and run deterministic production build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          echo 'PR343_REVIEW_FIX_FIRST_BUILD=PASSED'
+
+      - name: Validate corrected Module 011 source contracts
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -163,22 +170,23 @@ jobs:
           node ./scripts/validate-module-011-system-intelligence-package.mjs
           node ./scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
           node ./scripts/validate-module-011-private-document-pipeline.mjs
+          echo 'PR343_REVIEW_FIX_SOURCE_CONTRACTS=PASSED'
 
-      - name: Build API and frontend twice
+      - name: Build API and repeat frontend build
         shell: bash
         run: |
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
           cd src/frontend/project-time-web
-          npm ci --no-audit --no-fund
           npm run build
-          npm run build
+          echo 'PR343_REVIEW_FIX_REPEAT_BUILD=PASSED'
 
       - name: Validate production web container
         shell: bash
         run: |
           set -Eeuo pipefail
-          docker build --file deployment/containers/web/Dockerfile --tag "projectpulse-pr343-review-v3:${GITHUB_SHA}" .
+          docker build --file deployment/containers/web/Dockerfile --tag "projectpulse-pr343-review-v4:${GITHUB_SHA}" .
+          echo 'PR343_REVIEW_FIX_WEB_CONTAINER=PASSED'
 
       - name: Commit and push validated corrections
         env:
@@ -195,8 +203,10 @@ jobs:
             .github/workflows/deep-intelligence-read-contract-ci.yml \
             src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs \
             src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
+          git diff --check --cached
           git commit -m 'Fix Celar AI authorization and CI review findings'
           git fetch origin "$TARGET_BRANCH" --no-tags
           test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:${TARGET_BRANCH}"
+          echo "PR343_REVIEW_FIX_COMMIT=$(git rev-parse HEAD)"
