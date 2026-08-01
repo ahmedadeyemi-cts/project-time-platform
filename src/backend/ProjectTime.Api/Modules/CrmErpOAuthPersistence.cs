@@ -375,9 +375,11 @@ public static partial class CrmErpIntegrationModule
              AND secret.credential_kind = 'oauth_client_secret'
             WHERE provider.auth_model = 'oauth2'
               AND provider.is_enabled = TRUE
-              AND token.expires_at IS NOT NULL
-              AND token.expires_at <= NOW() + (@window_minutes * INTERVAL '1 minute')
-            ORDER BY token.expires_at, provider.provider_key;
+              AND (
+                    token.expires_at IS NULL
+                    OR token.expires_at <= NOW() + (@window_minutes * INTERVAL '1 minute')
+                  )
+            ORDER BY token.expires_at NULLS FIRST, provider.provider_key;
             """, connection);
         command.Parameters.AddWithValue("window_minutes", OAuthRefreshWindowMinutes);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

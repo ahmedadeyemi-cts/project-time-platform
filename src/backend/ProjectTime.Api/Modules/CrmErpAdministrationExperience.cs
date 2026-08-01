@@ -264,7 +264,7 @@ public static partial class CrmErpIntegrationModule
     private static async Task<bool> HasManageAuthorityAsync(HttpContext context) =>
         (await ResolveManageAuthorityAsync(context)).Allowed;
 
-    private static async Task<ManageAuthority> ResolveManageAuthorityAsync(
+    private static async Task<ManageAuthority> ResolveManageAuthorityPolicyFirstAsync(
         HttpContext context)
     {
         if (IsViewAs(context))

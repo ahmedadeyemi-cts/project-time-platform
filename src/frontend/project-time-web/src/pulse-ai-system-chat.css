@@ -1,0 +1,544 @@
+.help-panel.pulse-ai-help-panel.pulse-ai-system-chat {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  width: min(1180px, calc(100vw - 32px));
+  height: min(900px, calc(100dvh - 108px));
+  max-height: min(900px, calc(100dvh - 108px));
+  min-height: min(620px, calc(100dvh - 108px));
+}
+
+.pulse-ai-conversation-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto minmax(160px, auto);
+  align-items: end;
+  gap: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, #e6f4ff 6%);
+}
+
+.pulse-ai-conversation-toolbar label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pulse-ai-conversation-toolbar select,
+.pulse-ai-conversation-toolbar button,
+.pulse-ai-system-api-toolbar input {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.pulse-ai-conversation-toolbar select {
+  width: 100%;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.pulse-ai-conversation-toolbar button {
+  cursor: pointer;
+  color: var(--brand-blue-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.pulse-ai-conversation-toolbar button:hover,
+.pulse-ai-conversation-toolbar button:focus-visible,
+.pulse-ai-conversation-toolbar select:focus-visible,
+.pulse-ai-system-api-toolbar input:focus-visible {
+  border-color: var(--brand-blue);
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 16%, transparent);
+  outline-offset: 1px;
+}
+
+.pulse-ai-conversation-toolbar > span {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.help-panel.pulse-ai-system-chat .help-messages {
+  display: block;
+  min-height: 0;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable both-edges;
+  padding: 1rem;
+}
+
+.help-panel.pulse-ai-system-chat .help-message {
+  margin-bottom: 0.7rem;
+}
+
+.help-panel.pulse-ai-system-chat .help-message.assistant.is-detailed {
+  max-width: 100%;
+  border-radius: 18px;
+}
+
+.pulse-ai-system-answer {
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.pulse-ai-system-answer .help-answer-heading > strong {
+  font-size: 1.02rem;
+  line-height: 1.5;
+}
+
+.pulse-ai-system-answer .help-answer-summary {
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.pulse-ai-system-evidence-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pulse-ai-system-evidence-badges span {
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 28%, var(--border));
+  border-radius: 999px;
+  padding: 0.3rem 0.5rem;
+  background: color-mix(in srgb, var(--surface) 91%, #d9efff 9%);
+  color: var(--brand-blue-strong);
+  font-size: 0.62rem;
+  font-weight: 850;
+}
+
+.pulse-ai-system-section,
+.pulse-ai-system-blueprint,
+.pulse-ai-system-api-inventory,
+.pulse-ai-system-sources,
+.pulse-ai-system-tools {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-strong);
+}
+
+.pulse-ai-system-section > summary,
+.pulse-ai-system-blueprint > summary,
+.pulse-ai-system-api-inventory > summary,
+.pulse-ai-system-sources > summary,
+.pulse-ai-system-tools > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.68rem 0.75rem;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.pulse-ai-system-section > summary::-webkit-details-marker,
+.pulse-ai-system-blueprint > summary::-webkit-details-marker,
+.pulse-ai-system-api-inventory > summary::-webkit-details-marker,
+.pulse-ai-system-sources > summary::-webkit-details-marker,
+.pulse-ai-system-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pulse-ai-system-section > summary::before,
+.pulse-ai-system-blueprint > summary::before,
+.pulse-ai-system-api-inventory > summary::before,
+.pulse-ai-system-sources > summary::before,
+.pulse-ai-system-tools > summary::before {
+  flex: 0 0 auto;
+  color: var(--brand-blue);
+  content: '▸';
+}
+
+.pulse-ai-system-section[open] > summary::before,
+.pulse-ai-system-blueprint[open] > summary::before,
+.pulse-ai-system-api-inventory[open] > summary::before,
+.pulse-ai-system-sources[open] > summary::before,
+.pulse-ai-system-tools[open] > summary::before {
+  content: '▾';
+}
+
+.pulse-ai-system-section > summary span,
+.pulse-ai-system-blueprint > summary,
+.pulse-ai-system-api-inventory > summary,
+.pulse-ai-system-sources > summary,
+.pulse-ai-system-tools > summary {
+  flex: 1 1 auto;
+}
+
+.pulse-ai-system-section > summary small,
+.pulse-ai-system-api-inventory > summary small,
+.pulse-ai-system-sources > summary small,
+.pulse-ai-system-tools > summary small {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.15rem 0.4rem;
+  background: color-mix(in srgb, var(--brand-blue) 12%, transparent);
+  color: var(--brand-blue-strong);
+  font-size: 0.6rem;
+}
+
+.pulse-ai-system-section > ul,
+.pulse-ai-system-section > ol {
+  display: grid;
+  gap: 0.42rem;
+  margin: 0;
+  padding: 0 1rem 0.8rem 2rem;
+  color: var(--text);
+  font-size: 0.73rem;
+  line-height: 1.55;
+}
+
+.pulse-ai-system-section > ol {
+  padding-left: 2.2rem;
+}
+
+.pulse-ai-system-blueprint {
+  border-color: color-mix(in srgb, #0f8a68 38%, var(--border));
+  background: color-mix(in srgb, var(--surface) 95%, #e1f8ef 5%);
+}
+
+.pulse-ai-system-blueprint-body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0 0.75rem 0.8rem;
+}
+
+.pulse-ai-system-blueprint-body h5,
+.pulse-ai-system-blueprint-body p {
+  margin: 0;
+}
+
+.pulse-ai-system-blueprint-body h5 {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.pulse-ai-system-blueprint-body p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.pulse-ai-system-api-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: end;
+  gap: 0.6rem;
+  padding: 0 0.75rem 0.65rem;
+}
+
+.pulse-ai-system-api-toolbar label {
+  display: grid;
+  gap: 0.22rem;
+  color: var(--muted);
+  font-size: 0.63rem;
+  font-weight: 850;
+}
+
+.pulse-ai-system-api-toolbar span {
+  padding-bottom: 0.55rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 750;
+}
+
+.pulse-ai-system-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  scrollbar-gutter: stable;
+}
+
+.pulse-ai-system-table-wrap table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 0.65rem;
+}
+
+.pulse-ai-system-table-wrap th,
+.pulse-ai-system-table-wrap td {
+  padding: 0.48rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.pulse-ai-system-table-wrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--surface-strong) 88%, #d9efff 12%);
+  color: var(--brand-blue-strong);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pulse-ai-system-table-wrap code,
+.pulse-ai-system-answer-footer code {
+  color: var(--brand-blue-strong);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-system-source-grid,
+.pulse-ai-system-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.pulse-ai-system-source-grid article,
+.pulse-ai-system-tool-grid article {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: var(--surface);
+}
+
+.pulse-ai-system-tool-grid article.is-success {
+  border-left: 4px solid #14815f;
+}
+
+.pulse-ai-system-tool-grid article.is-warning {
+  border-left: 4px solid #b36a08;
+}
+
+.pulse-ai-system-source-grid article > div,
+.pulse-ai-system-tool-grid article > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pulse-ai-system-source-grid h6,
+.pulse-ai-system-source-grid p,
+.pulse-ai-system-source-grid small,
+.pulse-ai-system-tool-grid p,
+.pulse-ai-system-tool-grid small {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pulse-ai-system-source-grid strong,
+.pulse-ai-system-source-grid span,
+.pulse-ai-system-tool-grid strong,
+.pulse-ai-system-tool-grid span {
+  color: var(--text);
+  font-size: 0.66rem;
+}
+
+.pulse-ai-system-source-grid h6,
+.pulse-ai-system-tool-grid strong {
+  color: var(--brand-blue-strong);
+  font-size: 0.7rem;
+}
+
+.pulse-ai-system-source-grid p,
+.pulse-ai-system-tool-grid p {
+  color: var(--text);
+  font-size: 0.64rem;
+}
+
+.pulse-ai-system-source-grid small,
+.pulse-ai-system-tool-grid small,
+.pulse-ai-system-tool-grid li {
+  color: var(--muted);
+  font-size: 0.61rem;
+  line-height: 1.4;
+}
+
+.pulse-ai-system-tool-grid ul {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+}
+
+.pulse-ai-system-answer-footer {
+  display: grid;
+  gap: 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.65rem;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.help-panel.pulse-ai-system-chat .help-suggestions {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  scrollbar-gutter: stable;
+}
+
+.help-panel.pulse-ai-system-chat .help-suggestions button {
+  flex: 0 0 auto;
+  max-width: 300px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.42rem 0.65rem;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.63rem;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.help-panel.pulse-ai-system-chat .help-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--surface);
+}
+
+.help-panel.pulse-ai-system-chat .help-input-row textarea {
+  min-height: 70px;
+  max-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.help-panel.pulse-ai-system-chat .help-input-row > button {
+  align-self: stretch;
+  min-width: 92px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
+  background: var(--brand-blue);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.help-panel.pulse-ai-system-chat .help-input-row > button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.help-panel.pulse-ai-system-chat .pulse-ai-help-keyboard-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .help-panel.pulse-ai-help-panel.pulse-ai-system-chat {
+    right: 10px;
+    bottom: 76px;
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 92px);
+    max-height: calc(100dvh - 92px);
+    min-height: 0;
+  }
+
+  .pulse-ai-conversation-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pulse-ai-conversation-toolbar > span {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .pulse-ai-system-source-grid,
+  .pulse-ai-system-tool-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .help-panel.pulse-ai-help-panel.pulse-ai-system-chat {
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .help-panel.pulse-ai-system-chat .help-header,
+  .help-panel.pulse-ai-system-chat .help-input-row {
+    padding: 0.65rem;
+  }
+
+  .pulse-ai-conversation-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .pulse-ai-conversation-toolbar > span {
+    grid-column: auto;
+  }
+
+  .help-panel.pulse-ai-system-chat .help-quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0.5rem;
+  }
+
+  .help-panel.pulse-ai-system-chat .help-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .help-panel.pulse-ai-system-chat .help-input-row > button {
+    min-height: 42px;
+  }
+
+  .pulse-ai-system-api-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-ai-system-api-toolbar span {
+    padding-bottom: 0;
+  }
+
+  .pulse-ai-system-answer {
+    padding: 0.72rem;
+  }
+}

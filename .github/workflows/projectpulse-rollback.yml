@@ -9,12 +9,15 @@ on:
         type: choice
         options: [test, production]
       api_image:
+        description: Immutable approved-ACR API image digest
         required: true
         type: string
       web_image:
+        description: Immutable approved-ACR web image digest
         required: true
         type: string
       reason:
+        description: Auditable rollback reason
         required: true
         type: string
 
@@ -28,38 +31,139 @@ concurrency:
 
 jobs:
   rollback:
+    if: github.ref == 'refs/heads/main'
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ROLLBACK_API_IMAGE: ${{ inputs.api_image }}
+      ROLLBACK_WEB_IMAGE: ${{ inputs.web_image }}
+      ROLLBACK_REASON: ${{ inputs.reason }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+      AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+
     steps:
-      - uses: azure/login@v2
+      - name: Check out exact protected workflow source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate immutable rollback request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$AZURE_RESOURCE_GROUP" && -n "$AZURE_API_APP" && -n "$AZURE_WEB_APP" && -n "$AZURE_ACR_NAME" ]]
+          [[ "$PUBLIC_URL" == https://*.onenecklab.com || "$PUBLIC_URL" == https://*.ussignal.com ]]
+          [[ ${#ROLLBACK_REASON} -ge 12 ]]
+
+          ACR_SERVER="$AZURE_ACR_NAME.azurecr.io"
+          API_PREFIX="$ACR_SERVER/project-health-dashboard-api@sha256:"
+          WEB_PREFIX="$ACR_SERVER/project-health-dashboard-web@sha256:"
+
+          [[ "$ROLLBACK_API_IMAGE" == "$API_PREFIX"* ]]
+          [[ "$ROLLBACK_WEB_IMAGE" == "$WEB_PREFIX"* ]]
+
+          API_DIGEST="${ROLLBACK_API_IMAGE#"$API_PREFIX"}"
+          WEB_DIGEST="${ROLLBACK_WEB_IMAGE#"$WEB_PREFIX"}"
+          [[ "$API_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$WEB_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+
+          echo "ROLLBACK_IMAGE_GUARD=PASS"
+          echo "ROLLBACK_REASON_LENGTH=${#ROLLBACK_REASON}"
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Roll back API
+      - name: Verify requested digests exist in the approved registry
+        shell: bash
         run: |
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            --image '${{ inputs.api_image }}' \
-            --revision-suffix "manual-rb-api-${GITHUB_RUN_ID}" \
-            --output none
+          set -Eeuo pipefail
+          API_RELATIVE="${ROLLBACK_API_IMAGE#"$AZURE_ACR_NAME.azurecr.io/"}"
+          WEB_RELATIVE="${ROLLBACK_WEB_IMAGE#"$AZURE_ACR_NAME.azurecr.io/"}"
+          [[ "$(az acr repository show --name "$AZURE_ACR_NAME" --image "$API_RELATIVE" --query digest -o tsv --only-show-errors)" == sha256:* ]]
+          [[ "$(az acr repository show --name "$AZURE_ACR_NAME" --image "$WEB_RELATIVE" --query digest -o tsv --only-show-errors)" == sha256:* ]]
+          echo "ROLLBACK_DIGEST_EXISTENCE=PASS"
 
-      - name: Validate API
+      - name: Roll back API and web with candidate-only recovery
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          WAIT_SCRIPT="scripts/wait-containerapp-ready-revision.sh"
+          test -s "$WAIT_SCRIPT"
+
+          CURRENT_API_IMAGE="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          CURRENT_WEB_IMAGE="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
+          API_SUFFIX="manual-rb-api-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          WEB_SUFFIX="manual-rb-web-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          API_REVISION="$AZURE_API_APP--$API_SUFFIX"
+          WEB_REVISION="$AZURE_WEB_APP--$WEB_SUFFIX"
+          API_STARTED=0
+          WEB_STARTED=0
+
+          cleanup() {
+            local status=$?
+            trap - EXIT INT TERM
+            if (( status != 0 )); then
+              set +e
+              if (( WEB_STARTED == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+                  --image "$CURRENT_WEB_IMAGE" \
+                  --revision-suffix "manual-rb-web-recover-${GITHUB_RUN_ID}" \
+                  --output none --only-show-errors
+              fi
+              if (( API_STARTED == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+                  --image "$CURRENT_API_IMAGE" \
+                  --revision-suffix "manual-rb-api-recover-${GITHUB_RUN_ID}" \
+                  --output none --only-show-errors
+              fi
+              set -e
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT INT TERM
+
+          az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --image "$ROLLBACK_API_IMAGE" \
+            --revision-suffix "$API_SUFFIX" \
+            --output none --only-show-errors
+          API_STARTED=1
+          bash "$WAIT_SCRIPT" "$AZURE_RESOURCE_GROUP" "$AZURE_API_APP" "$API_REVISION" "$ROLLBACK_API_IMAGE" 60 10
+
           for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
-            case "$STATUS" in 200|401) exit 0 ;; esac
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/health" || true)"
+            [[ "$STATUS" == 200 ]] && break
+            [[ "$attempt" == 30 ]] && exit 1
             sleep 10
           done
-          exit 1
 
-      - name: Roll back web
-        run: |
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ inputs.web_image }}' \
-            --revision-suffix "manual-rb-web-${GITHUB_RUN_ID}" \
-            --output none
+          az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --image "$ROLLBACK_WEB_IMAGE" \
+            --revision-suffix "$WEB_SUFFIX" \
+            --output none --only-show-errors
+          WEB_STARTED=1
+          bash "$WAIT_SCRIPT" "$AZURE_RESOURCE_GROUP" "$AZURE_WEB_APP" "$WEB_REVISION" "$ROLLBACK_WEB_IMAGE" 60 10
+
+          for attempt in $(seq 1 30); do
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/health" || true)"
+            [[ "$STATUS" == 200 ]] && break
+            [[ "$attempt" == 30 ]] && exit 1
+            sleep 10
+          done
+
+          trap - EXIT INT TERM
+          echo "PROJECTPULSE_ROLLBACK=COMPLETE"
+          echo "PROJECTPULSE_ROLLBACK_API_IMAGE=$ROLLBACK_API_IMAGE"
+          echo "PROJECTPULSE_ROLLBACK_WEB_IMAGE=$ROLLBACK_WEB_IMAGE"

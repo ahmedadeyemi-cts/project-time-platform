@@ -90,7 +90,15 @@ public static class EntraSecretExpirationGovernanceModule
 
     private static async Task<IResult> GetProfileAsync(HttpContext context)
     {
-        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(context, _ => true);
+        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && (
+                actor.IsAdministrator
+                || actor.Roles.Contains("PROJECT_TEAM_COORDINATOR")
+                || actor.Roles.Contains("PROJECT_COORDINATOR")
+                || actor.Roles.Contains("PTC")
+                || actor.Permissions.Contains("VIEW_ENTRA_SECRET_EXPIRATION")
+                || actor.Permissions.Contains("MANAGE_ENTRA_SECRET_EXPIRATION")));
         if (access.Failure is not null) return access.Failure;
         await using var connection = access.Connection!;
         var actor = access.Actor!;

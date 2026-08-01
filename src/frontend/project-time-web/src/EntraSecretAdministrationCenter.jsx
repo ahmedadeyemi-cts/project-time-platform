@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
+/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_IMPORT */
+import EntraSecretExpirationGovernancePanel from './EntraSecretExpirationGovernancePanel.jsx';
 import './entra-secret-administration-center.css';
 import './projectpulse-module-standard.css';
 
@@ -140,6 +142,9 @@ export default function EntraSecretAdministrationCenter({ authSession }) {
           Tenant metadata source: <strong>{sentence(state.metadata?.tenantMetadataSource)}</strong>. Module 010 remains the owner of Entra tenant settings and user synchronization.
         </div>
       </section>
+
+      {/* ENTRA_EXPIRATION_GOVERNANCE_PANEL_MOUNT */}
+      <EntraSecretExpirationGovernancePanel />
 
       <section className="entra-secret-gate-grid" aria-label="Credential mutation gates">
         <article className={gate.mutationSwitchEnabled ? 'ready' : ''}><span>01</span><div><strong>Mutation switch</strong><small>{gate.mutationSwitchEnabled ? 'Enabled' : 'Disabled'}</small></div></article>

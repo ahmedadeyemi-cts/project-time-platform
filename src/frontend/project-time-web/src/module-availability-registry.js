@@ -14,11 +14,14 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({
     moduleNumber: '011',
     route: 'work-task-builder',
-    displayName: 'Pulse AI',
+    displayName: 'Celar AI',
     group: 'AI & Automation',
-    lifecycle: 'source_foundation',
-    description: 'Governed ProjectPulse workspace for knowledge sources, datasets, external training orchestration, evaluations, model registry, and controlled promotion through Module 064.',
+    lifecycle: 'active_operational_intelligence',
+    description: 'Unified operational intelligence for the US Signal Solution Provider division, combining authorized documents, live Pulse data, API discovery, troubleshooting, Timesheet assistance, FlowHive planning, reporting insight, and governed model lifecycle through Module 064.',
     compatibilityRoute: true,
+    publicAlias: 'celar-ai',
+    tagline: 'Speed of light. Speed of delivery.',
+    technicalIdentity: 'Pulse AI',
     previousIdentity: Object.freeze({
       displayName: 'Work Task Builder',
       lifecycle: 'retired_non_destructively',
@@ -88,6 +91,8 @@ export const RETIRED_PROJECTPULSE_MODULES = Object.freeze(
 const ROUTE_ALIASES = Object.freeze({
   'psa-modules': 'toyota-hyundai-pipelines',
   'project-register': 'toyota-hyundai-pipelines',
+  'celar-ai': 'work-task-builder',
+  'pulse-ai': 'work-task-builder',
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
   'resource-assignment-handoff': 'signed-handoff',

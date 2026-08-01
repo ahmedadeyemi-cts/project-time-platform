@@ -59,6 +59,7 @@ const crmCenter = read('src/frontend/project-time-web/src/CrmErpIntegrationCente
 const crmPanel = read('src/frontend/project-time-web/src/CrmErpTokenPersistencePanel.jsx');
 const entraBackend = readOptional('src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs');
 const crmBackend = readOptional('src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs');
+const crmAdministration = readOptional('src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs');
 const migration = readOptional('database/migrations/056_role_workspace_entra_crm_governance.sql');
 const rollback = readOptional('database/rollback/056_role_workspace_entra_crm_governance_rollback.sql');
 const migrationTest = readOptional('tests/test-role-workspace-entra-crm-governance-migration-056.sh');
@@ -183,6 +184,8 @@ if (entraBackend) {
     'Module065ProjectNotificationDelivery.DeliverAsync',
     'secretValueStored = false',
     'criticalWarningDismissed = false',
+    'actor.Roles.Contains(\"PROJECT_TEAM_COORDINATOR\")',
+    'actor.Permissions.Contains(\"VIEW_ENTRA_SECRET_EXPIRATION\")',
   ], 'Module 065 backend');
   requireExcludes(entraBackend, [
     'ClientSecret =',
@@ -210,6 +213,8 @@ if (crmBackend) {
     'accessTokenReturned = false',
     'refreshTokenReturned = false',
     'clientSecretReturned = false',
+    'token.expires_at IS NULL',
+    'ORDER BY token.expires_at NULLS FIRST',
   ], 'Module 026 OAuth persistence backend');
 } else {
   console.log('ROLE_WORKSPACE_ENTRA_CRM_MODULE_026_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
@@ -234,6 +239,8 @@ if (migration && rollback && migrationTest) {
     "'ACCOUNTING', '039'",
     "'INSIDE_SALES', '026'",
     "upper(role.role_code) = 'SUPER_ADMINISTRATOR'",
+    'assert_056_least_privilege',
+    "'MANAGE_INTEGRATIONS_026', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'",
   ], 'migration 056');
   requireIncludes(rollback, [
     "change_kind = 'removed'",
@@ -255,15 +262,15 @@ if (migration && rollback && migrationTest) {
 }
 
 requireIncludes(projectFile, [
-  'CrmErpAdministrationExperienceGenerated',
-  'ResolveManageAuthorityPolicyFirstAsync',
   'MapCrmErpOAuthPersistenceEndpoints',
   'UseCrmErpOAuthPersistence',
   'MapEntraSecretExpirationGovernanceEndpoints',
   'UseEntraSecretExpirationGovernance',
 ], 'API project integration');
+if (crmAdministration) {
+  requireIncludes(crmAdministration, ['ResolveManageAuthorityPolicyFirstAsync'], 'Module 026 direct-source authority integration');
+}
 requireIncludes(packageFile, [
-  'inject-role-workspace-entra-crm-governance.mjs',
   'validate:role-workspace-entra-crm-governance',
   'validate-role-workspace-entra-crm-governance.mjs',
 ], 'frontend package integration');

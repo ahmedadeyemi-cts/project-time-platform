@@ -90,10 +90,18 @@ const module011Block = module011Start >= 0 && module012Start > module011Start
 
 assert(
   'REGISTRY_IDENTITY',
-  module011Block.includes("displayName: 'Pulse AI'")
-    && module011Block.includes("group: 'AI & Automation'")
-    && module011Block.includes("lifecycle: 'source_foundation'"),
-  'Module 011 is registered as the Pulse AI source foundation'
+  (
+    module011Block.includes("displayName: 'Pulse AI'")
+      && module011Block.includes("group: 'AI & Automation'")
+      && module011Block.includes("lifecycle: 'source_foundation'")
+  ) || (
+    module011Block.includes("displayName: 'Celar AI'")
+      && module011Block.includes("group: 'AI & Automation'")
+      && module011Block.includes("lifecycle: 'active_operational_intelligence'")
+      && module011Block.includes("technicalIdentity: 'Pulse AI'")
+      && module011Block.includes("publicAlias: 'celar-ai'")
+  ),
+  'Module 011 uses the approved Celar AI public identity or the preserved Pulse AI foundation identity'
 );
 
 assert(
@@ -125,13 +133,17 @@ assert(
     : 'the exact pre-reuse component checkpoint and business disposition are recoverable'
 );
 
+const approvedVisibleAppName = (
+  app.includes("title: 'Pulse AI'") && app.includes("return 'Pulse AI';")
+) || (
+  app.includes("title: 'Celar AI'") && app.includes("return 'Celar AI';")
+);
 assert(
   'VISIBLE_APP_NAME',
-  app.includes("title: 'Pulse AI'")
+  approvedVisibleAppName
     && app.includes("case 'work-task-builder':")
-    && app.includes("return 'Pulse AI';")
     && !app.includes("title: 'Work Task Builder'"),
-  'visible Module 011 navigation and registry labels are Pulse AI while the compatibility route remains unchanged'
+  'visible Module 011 navigation uses the approved Pulse AI foundation or Celar AI public identity while the compatibility route remains unchanged'
 );
 
 assert(
@@ -144,13 +156,17 @@ assert(
   'the existing shared App.jsx route mounts Pulse AI through a small compatibility component'
 );
 
+const approvedCenterIdentity = (
+  center.includes('data-module-name="Pulse AI"') && center.includes('<h1>Pulse AI</h1>')
+) || (
+  center.includes('data-module-name="Celar AI"') && center.includes('<h1>Celar AI</h1>')
+);
 assert(
   'PULSE_AI_IDENTITY',
   center.includes('data-module="011"')
-    && center.includes('data-module-name="Pulse AI"')
-    && center.includes('data-source-phase="read-only-foundation"')
-    && center.includes('<h1>Pulse AI</h1>'),
-  'the page exposes the current Module 011 identity and locked source phase'
+    && approvedCenterIdentity
+    && center.includes('data-source-phase="read-only-foundation"'),
+  'the page exposes the approved Pulse AI foundation or Celar AI public identity and locked source phase'
 );
 
 const requiredTabs = [
@@ -292,10 +308,17 @@ assert(
 
 assert(
   'GROUP_ONE_RECONCILED',
-  groupOneValidator.includes("assert('MODULE_011_PULSE_AI'")
-    && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REUSED_AS_PULSE_AI')
-    && groupOneValidator.includes('LEGACY_WORK_TASK_BUILDER_RECOVERABLE'),
-  'the earlier navigation consolidation contract recognizes the approved Module 011 reuse'
+  (
+    groupOneValidator.includes("assert('MODULE_011_PULSE_AI'")
+      && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REUSED_AS_PULSE_AI')
+      && groupOneValidator.includes('LEGACY_WORK_TASK_BUILDER_RECOVERABLE')
+  ) || (
+    groupOneValidator.includes("assert('MODULE_011_CELAR_AI'")
+      && groupOneValidator.includes('GROUP1_MODULE_011_DISPOSITION=REBRANDED_AS_CELAR_AI')
+      && groupOneValidator.includes('GROUP1_MODULE_011_TECHNICAL_IDENTITY=PULSE_AI_COMPATIBILITY_RETAINED')
+      && groupOneValidator.includes('LEGACY_WORK_TASK_BUILDER_RECOVERABLE')
+  ),
+  'the navigation consolidation contract recognizes either the approved Pulse reuse or the Celar public rebrand with Pulse compatibility retained'
 );
 
 assert(
@@ -305,13 +328,19 @@ assert(
   'the complete frontend build executes the Pulse AI validator'
 );
 
-const pulseAiMigrations = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai)/i.test(relative));
+const reviewedRuntimeMigrations = new Set([
+  'database/migrations/052_document_intelligence_runtime.sql',
+  'database/migrations/053_intelligence_answer_orchestration.sql',
+  'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+]);
+const pulseAiMigrations = walk('database/migrations').filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+const unexpectedMigrations = pulseAiMigrations.filter((relative) => !reviewedRuntimeMigrations.has(relative));
 assert(
-  'NO_MIGRATION',
-  pulseAiMigrations.length === 0,
-  pulseAiMigrations.length === 0
-    ? 'no Module 011 or Pulse AI migration exists'
-    : `unexpected migration paths: ${pulseAiMigrations.join(', ')}`
+  'KNOWN_RUNTIME_MIGRATIONS_ONLY',
+  unexpectedMigrations.length === 0,
+  unexpectedMigrations.length === 0
+    ? 'the foundation is preserved while reviewed migrations 052, 053, and 054 support the separately gated functional runtime'
+    : `unexpected migration paths: ${unexpectedMigrations.join(', ')}`
 );
 
 const pulseAiWorkflowPaths = walk('.github/workflows').filter((relative) =>

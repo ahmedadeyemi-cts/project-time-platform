@@ -1,0 +1,11 @@
+# Generated architecture deliverables are binary evidence, not line-oriented source.
+docs/modules/module-011-pulse-ai/architecture/v2.0/*.pdf binary
+
+# These two metadata blocks intentionally use Markdown two-space hard breaks.
+# Keep every other whitespace class and every other Markdown/source path guarded.
+docs/modules/module-011-pulse-ai/architecture/v2.0/CELAR-AI-IDENTITY-AND-ORIGIN.md whitespace=-trailing-space
+docs/modules/module-011-pulse-ai/architecture/v2.0/README.md whitespace=-trailing-space
+
+# Backend *.g.cs files are deterministic compile mirrors of reviewed canonical C#.
+# Preserve all other whitespace/conflict-marker checks while ignoring inherited EOL spaces.
+src/backend/ProjectTime.Api/*.g.cs whitespace=-trailing-space

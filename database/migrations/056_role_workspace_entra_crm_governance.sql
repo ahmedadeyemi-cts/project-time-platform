@@ -334,6 +334,10 @@ SELECT DISTINCT baseline.role_code, permission.permission_code
 FROM projectpulse_056_role_module_baseline baseline
 JOIN app_permissions permission
   ON upper(permission.module_code) = upper(baseline.module_code)
+WHERE upper(permission.permission_code) LIKE 'VIEW\_%' ESCAPE '\'
+   OR upper(permission.permission_code) LIKE 'READ\_%' ESCAPE '\'
+   OR upper(permission.permission_code) LIKE 'EXPORT\_%' ESCAPE '\'
+   OR upper(permission.permission_code) IN ('MODULE_ACCESS', 'MODULE_VIEW', 'ACCESS_EXPLAIN')
 UNION
 SELECT DISTINCT baseline.role_code, feature.required_permission_code
 FROM projectpulse_056_role_module_baseline baseline
@@ -341,6 +345,12 @@ JOIN app_feature_catalog feature
   ON upper(feature.module_code) = upper(baseline.module_code)
 WHERE feature.is_active = TRUE
   AND feature.required_permission_code IS NOT NULL
+  AND (
+      upper(feature.required_permission_code) LIKE 'VIEW\_%' ESCAPE '\'
+      OR upper(feature.required_permission_code) LIKE 'READ\_%' ESCAPE '\'
+      OR upper(feature.required_permission_code) LIKE 'EXPORT\_%' ESCAPE '\'
+      OR upper(feature.required_permission_code) IN ('MODULE_ACCESS', 'MODULE_VIEW', 'ACCESS_EXPLAIN')
+  )
 ON CONFLICT DO NOTHING;
 
 -- Required legacy permissions whose historical module_code predates numeric
@@ -512,6 +522,32 @@ CROSS JOIN app_permissions permission
 WHERE upper(role.role_code) = 'SUPER_ADMINISTRATOR'
   AND role.is_active = TRUE
 ON CONFLICT DO NOTHING;
+
+-- Direct migration-056 invariant: the role workspace migration itself must never
+-- introduce connector-administration or platform-administration authority for
+-- Accounting, Billing, Sales, Inside Sales, or Resale role families.
+DO $assert_056_least_privilege$
+DECLARE
+    unsafe_count INTEGER;
+BEGIN
+    SELECT COUNT(*)
+    INTO unsafe_count
+    FROM role_workspace_permission_changes_056 change
+    WHERE change.change_kind = 'granted'
+      AND upper(change.role_code) IN (
+          'ACCOUNTING', 'ACCOUNTING_BILLING', 'BILLING', 'FINANCE',
+          'SALES', 'INSIDE_SALES', 'RESALE',
+          'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'SALES_MANAGER'
+      )
+      AND upper(change.permission_code) IN (
+          'MANAGE_INTEGRATIONS_026', 'MANAGE_ALL', 'SYSTEM_ADMINISTRATION'
+      );
+
+    IF unsafe_count <> 0 THEN
+        RAISE EXCEPTION 'Migration 056 least-privilege invariant failed: % unsafe business-role grants were introduced.', unsafe_count;
+    END IF;
+END;
+$assert_056_least_privilege$;
 
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (

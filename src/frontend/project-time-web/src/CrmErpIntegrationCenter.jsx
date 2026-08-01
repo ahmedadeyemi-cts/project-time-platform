@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './projectpulse-module-standard.css';
+/* CRM_ERP_TOKEN_PERSISTENCE_PANEL_IMPORT */
+import CrmErpTokenPersistencePanel from './CrmErpTokenPersistencePanel.jsx';
 import './crm-erp-integration-center.css';
 
 const EMPTY_PROVIDER = {
@@ -505,6 +507,13 @@ export default function CrmErpIntegrationCenter() {
         <article><span>Available</span><strong>{availableCount}</strong><small>Latest explicit connection test</small></article>
         <article><span>Your access</span><strong>{canManage ? 'Configure' : 'View status'}</strong><small>{state.payload?.access?.isViewAs ? 'View-As is read-only' : 'Actual ProjectPulse session'}</small></article>
       </div>
+
+      {/* CRM_ERP_TOKEN_PERSISTENCE_PANEL_MOUNT */}
+      <CrmErpTokenPersistencePanel
+        provider={selected}
+        canManage={canManage}
+        onRefresh={() => load(selected?.providerKey)}
+      />
 
       <section className="crm-erp-platform-overview" aria-label="Core integration platforms">
         <div className="crm-erp-section-copy">

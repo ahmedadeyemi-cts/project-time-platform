@@ -2,6 +2,9 @@ name: ProjectPulse CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -14,21 +17,49 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 90
 
-      - uses: actions/setup-dotnet@v4
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Restore and build API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Restore API dependencies
+        run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+
+      - name: Audit NuGet dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet list src/backend/ProjectTime.Api/ProjectTime.Api.csproj package \
+            --vulnerable \
+            --include-transitive \
+            --no-restore | tee /tmp/projectpulse-nuget-vulnerabilities.log
+          if grep -Eiq '(^|[[:space:]])(high|critical)([[:space:]]|$)' /tmp/projectpulse-nuget-vulnerabilities.log; then
+            echo "High or critical NuGet vulnerability detected." >&2
+            exit 1
+          fi
+          echo "NUGET_HIGH_CRITICAL_VULNERABILITIES=NONE"
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
 
       - name: Test scoped RBAC migration 040 apply and rollback
         shell: bash
@@ -41,7 +72,7 @@ jobs:
 
       - name: Upload migration 040 diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: scoped-rbac-migration-040-diagnostics
           path: /tmp/scoped-rbac-migration-040.log
@@ -58,7 +89,7 @@ jobs:
 
       - name: Upload Module 001 migration 041 diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: module-001-migration-041-diagnostics
           path: /tmp/module-001-migration-041.log
@@ -75,7 +106,7 @@ jobs:
 
       - name: Upload PTC migration 043 diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ptc-time-steward-migration-043-diagnostics
           path: /tmp/ptc-time-steward-migration-043.log
@@ -93,7 +124,7 @@ jobs:
 
       - name: Upload Module 005 parser diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: module005-parser-test-diagnostics
           path: /tmp/module005-parser-tests.log
@@ -110,7 +141,7 @@ jobs:
 
       - name: Upload Module 005 migration diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: project-expense-migration-044-diagnostics
           path: /tmp/project-expense-migration-044.log
@@ -124,7 +155,11 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-fund
+
+      - name: Audit npm dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm audit --audit-level=high
 
       - name: Build frontend
         working-directory: src/frontend/project-time-web
@@ -138,11 +173,18 @@ jobs:
 
       - name: Upload frontend build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: projectpulse-frontend-build-diagnostics
           path: /tmp/projectpulse-frontend-build.log
           retention-days: 7
+
+      - name: Ensure validation did not mutate tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
 
       - name: Validate PR55 test deployment guard
         run: scripts/validate-pr55-test-deployment.sh
@@ -211,7 +253,8 @@ jobs:
           }
           JSON
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: projectpulse-release-manifest
           path: artifacts/release-manifest.json

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+/* ROLE_WORKSPACE_WELCOME_IMPORT */
+import { getRoleWorkspaceLabel, getRoleWorkspaceName } from './role-workspace-governance.js';
 import './role-welcome-dashboard.css';
 
 const TIME_ENTRY_ROLES = new Set([
@@ -23,7 +25,13 @@ const TIME_ENTRY_EXCLUDED_ROLES = new Set([
   'ACCOUNT_EXECUTIVE',
   'SALES_MANAGER',
   'EXECUTIVE',
-  'PROJECT_TEAM_COORDINATOR'
+  'PROJECT_TEAM_COORDINATOR',
+  /* ROLE_WORKSPACE_TIME_ENTRY_EXCLUSIONS */
+  'ACCOUNTING',
+  'ACCOUNTING_BILLING',
+  'BILLING',
+  'FINANCE',
+  'RESALE'
 ]);
 
 const ROLE_ACTIONS = {
@@ -184,7 +192,7 @@ export default function RoleWelcomeDashboard({
   }, [normalizedRoles.join('|')]);
 
   const showTimeEntry = clientShowTimeEntry && state.data?.showTimeEntry !== false;
-  const firstName = String(displayName || 'there').trim().split(/\s+/)[0] || 'there';
+  const welcomeDisplayName = String(displayName || 'there').trim() || 'there';
   const todayLabel = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -217,12 +225,12 @@ export default function RoleWelcomeDashboard({
       <header className="welcome-dashboard-hero">
         <div>
           <p className="eyebrow">Project Health Platform</p>
-          <h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {firstName}</h1>
+          <h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {welcomeDisplayName}</h1>
           <p>Here is what needs your attention today.</p>
         </div>
         <div className="welcome-dashboard-date">
           <span>{todayLabel}</span>
-          <small>{titleCase(persona)} workspace</small>
+          <small>{getRoleWorkspaceLabel(normalizedRoles)}</small>
         </div>
         <nav className="welcome-quick-actions" aria-label="Recommended actions">
           {actions.map((action) => (
@@ -269,7 +277,7 @@ export default function RoleWelcomeDashboard({
             <div className="welcome-card-heading">
               <div>
                 <span>Today&apos;s priorities</span>
-                <h2>{titleCase(persona)} operations</h2>
+                <h2>{getRoleWorkspaceName(normalizedRoles)} operations</h2>
               </div>
             </div>
             <p className="welcome-card-copy">
