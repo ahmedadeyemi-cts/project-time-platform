@@ -1,0 +1,199 @@
+name: Diagnose Dependency Web-Only Test Release 707f31b8
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/diagnose-dependency-web-test-707f31b8.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: diagnose-dependency-web-test-707f31b8
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Capture current read-only Test release state
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnose/dependency-web-test-707f31b8-20260801'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_SHA: 707f31b88df173d9543b292a9cc19d6ec01ca6ac
+      PRIOR_API_RELEASE_SHA: 4673c185f7fe885dd202dbbd07579182be32d572
+      DIAGNOSTIC_BRANCH: diagnose/dependency-web-test-707f31b8-20260801
+      DIAGNOSTIC_PATH: .github/workflows/diagnose-dependency-web-test-707f31b8.yml
+
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard diagnostic source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == "$DIAGNOSTIC_BRANCH" ]]
+          git fetch origin main --no-tags
+          BASE_REF="$(git merge-base origin/main HEAD)"
+          [[ "$BASE_REF" == "$(git rev-parse origin/main)" ]]
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$DIAGNOSTIC_PATH" ]]
+          git diff --check "$BASE_REF"...HEAD
+          echo 'PROJECTPULSE_DEPENDENCY_DIAGNOSTIC_SOURCE_ISOLATION=PASSED'
+
+      - name: Sign in to Azure using Test OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current ACR and Container App state
+        id: state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ACR='${{ vars.AZURE_ACR_NAME }}'
+          REGISTRY="$ACR.azurecr.io"
+          RESOURCE_GROUP='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          WEB_TAG="dependency-web-$RELEASE_SHA"
+          API_TAG="release-$PRIOR_API_RELEASE_SHA"
+
+          WEB_TAG_DIGEST="$(az acr repository show \
+            --name "$ACR" \
+            --image "project-health-dashboard-web:$WEB_TAG" \
+            --query digest -o tsv --only-show-errors 2>/dev/null || true)"
+          API_TAG_DIGEST="$(az acr repository show \
+            --name "$ACR" \
+            --image "project-health-dashboard-api:$API_TAG" \
+            --query digest -o tsv --only-show-errors 2>/dev/null || true)"
+
+          WEB_IMAGE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_IMAGE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          WEB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          API_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+
+          BASE='${{ vars.PUBLIC_URL }}'
+          BASE="${BASE%/}"
+          API_HTTP="$(curl -sS -o /tmp/projectpulse-diagnostic-api -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            "$BASE/api/health?diagnostic=$RELEASE_SHA" || true)"
+          WEB_HTTP="$(curl -sS -o /tmp/projectpulse-diagnostic-web -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            "$BASE/?diagnostic=$RELEASE_SHA" || true)"
+
+          printf '%s\n' \
+            "PROJECTPULSE_DIAGNOSTIC_RELEASE_SHA=$RELEASE_SHA" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_TAG_DIGEST=${WEB_TAG_DIGEST:-MISSING}" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_IMAGE=$WEB_IMAGE" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_SOURCE=${WEB_SOURCE:-MISSING}" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_REVISION=$WEB_READY/$WEB_LATEST" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_MODE=$WEB_MODE" \
+            "PROJECTPULSE_DIAGNOSTIC_API_TAG_DIGEST=${API_TAG_DIGEST:-MISSING}" \
+            "PROJECTPULSE_DIAGNOSTIC_API_IMAGE=$API_IMAGE" \
+            "PROJECTPULSE_DIAGNOSTIC_API_SOURCE=${API_SOURCE:-MISSING}" \
+            "PROJECTPULSE_DIAGNOSTIC_API_REVISION=$API_READY/$API_LATEST" \
+            "PROJECTPULSE_DIAGNOSTIC_API_MODE=$API_MODE" \
+            "PROJECTPULSE_DIAGNOSTIC_API_HTTP=$API_HTTP" \
+            "PROJECTPULSE_DIAGNOSTIC_WEB_HTTP=$WEB_HTTP"
+
+          echo "web_tag_digest=${WEB_TAG_DIGEST:-MISSING}" >> "$GITHUB_OUTPUT"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "web_source=${WEB_SOURCE:-MISSING}" >> "$GITHUB_OUTPUT"
+          echo "web_ready=$WEB_READY" >> "$GITHUB_OUTPUT"
+          echo "web_latest=$WEB_LATEST" >> "$GITHUB_OUTPUT"
+          echo "api_tag_digest=${API_TAG_DIGEST:-MISSING}" >> "$GITHUB_OUTPUT"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "api_source=${API_SOURCE:-MISSING}" >> "$GITHUB_OUTPUT"
+          echo "api_ready=$API_READY" >> "$GITHUB_OUTPUT"
+          echo "api_latest=$API_LATEST" >> "$GITHUB_OUTPUT"
+          echo "api_http=$API_HTTP" >> "$GITHUB_OUTPUT"
+          echo "web_http=$WEB_HTTP" >> "$GITHUB_OUTPUT"
+
+      - name: Create diagnostic artifact
+        shell: bash
+        env:
+          WEB_TAG_DIGEST: ${{ steps.state.outputs.web_tag_digest }}
+          WEB_IMAGE: ${{ steps.state.outputs.web_image }}
+          WEB_SOURCE: ${{ steps.state.outputs.web_source }}
+          WEB_READY: ${{ steps.state.outputs.web_ready }}
+          WEB_LATEST: ${{ steps.state.outputs.web_latest }}
+          API_TAG_DIGEST: ${{ steps.state.outputs.api_tag_digest }}
+          API_IMAGE: ${{ steps.state.outputs.api_image }}
+          API_SOURCE: ${{ steps.state.outputs.api_source }}
+          API_READY: ${{ steps.state.outputs.api_ready }}
+          API_LATEST: ${{ steps.state.outputs.api_latest }}
+          API_HTTP: ${{ steps.state.outputs.api_http }}
+          WEB_HTTP: ${{ steps.state.outputs.web_http }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p diagnostic-evidence
+          python3 - <<'PY' > diagnostic-evidence/dependency-web-test-state.json
+          import json
+          import os
+          from datetime import datetime, timezone
+          print(json.dumps({
+              'releaseSha': os.environ['RELEASE_SHA'],
+              'webTagDigest': os.environ['WEB_TAG_DIGEST'],
+              'webImage': os.environ['WEB_IMAGE'],
+              'webSourceCommit': os.environ['WEB_SOURCE'],
+              'webReadyRevision': os.environ['WEB_READY'],
+              'webLatestRevision': os.environ['WEB_LATEST'],
+              'apiExpectedReleaseSha': os.environ['PRIOR_API_RELEASE_SHA'],
+              'apiTagDigest': os.environ['API_TAG_DIGEST'],
+              'apiImage': os.environ['API_IMAGE'],
+              'apiSourceCommit': os.environ['API_SOURCE'],
+              'apiReadyRevision': os.environ['API_READY'],
+              'apiLatestRevision': os.environ['API_LATEST'],
+              'apiHttpStatus': os.environ['API_HTTP'],
+              'webHttpStatus': os.environ['WEB_HTTP'],
+              'capturedAt': datetime.now(timezone.utc).isoformat(),
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum diagnostic-evidence/dependency-web-test-state.json \
+            > diagnostic-evidence/SHA256SUMS
+          sha256sum --check diagnostic-evidence/SHA256SUMS
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-dependency-web-test-diagnostic-${{ github.run_id }}
+          path: diagnostic-evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
