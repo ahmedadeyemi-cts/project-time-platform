@@ -67,7 +67,7 @@ jobs:
           test "$confirmation" = "RECONCILE-VALIDATE-MERGE-PR338-EXACT-HEAD"
           test "$expected_main" = "6e66a8bbaf93c8e62fba4dbc62028df90ccc27a3"
           test "$source_base" = "7df1bad3d4f37f92e91f5b202c83e31b94d6f983"
-          test "$source_head" = "ef29da625fbc3a55dfe55a5cf2cb5ef0c42d60a8"
+          test "$source_head" = "ed4debe07ab4b57aa7448873ee9c831d66b6957a"
           test "$source_branch" = "feature/module-001-multi-timer-document-grounded-ai-20260730"
 
           control_sha="$(git -C repo rev-parse HEAD)"
@@ -175,10 +175,56 @@ jobs:
               'actions/setup-node@v4': 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
           }
           for old, new in replacements.items():
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'Expected exactly one {old}; found {count}')
+              old_count = text.count(old)
+              new_count = text.count(new)
+              if old_count == 1 and new_count == 0:
+                  text = text.replace(old, new, 1)
+              elif old_count == 0 and new_count == 1:
+                  continue
+              else:
+                  raise SystemExit(
+                      f'Expected exactly one unpinned or pinned action reference for {old}; '
+                      f'found old={old_count}, pinned={new_count}'
+                  )
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              "      module001Api(`/api/timesheet/timers/history-v2?weekStart=${encodeURIComponent(selectedWeekStart)}`, {\n"
+              "        requiredCollections: ['timers']\n"
+              "      }),"
+          )
+          new = (
+              "      (async () => {\n"
+              "        const encodedWeekStart = encodeURIComponent(selectedWeekStart);\n"
+              "        try {\n"
+              "          return await module001Api(`/api/timesheet/timers/history-v2?weekStart=${encodedWeekStart}`, {\n"
+              "            requiredCollections: ['timers']\n"
+              "          });\n"
+              "        } catch (error) {\n"
+              "          if (error?.status !== 404 && error?.status !== 405) throw error;\n"
+              "          return module001Api(`/api/timesheet/timers/history?weekStart=${encodedWeekStart}`, {\n"
+              "            requiredCollections: ['timers']\n"
+              "          });\n"
+              "        }\n"
+              "      })(),"
+          )
+          old_count = text.count(old)
+          new_count = text.count('/api/timesheet/timers/history?weekStart=')
+          if old_count == 1 and new_count == 0:
               text = text.replace(old, new, 1)
+          elif old_count == 0 and new_count == 1:
+              pass
+          else:
+              raise SystemExit(
+                  'Expected exactly one V2 history request or one reconciled legacy fallback; '
+                  f'found old={old_count}, fallback={new_count}'
+              )
           path.write_text(text, encoding='utf-8')
           PY
 
@@ -296,4 +342,5 @@ jobs:
             echo "- Original PR head: \`${{ steps.pins.outputs.source_head }}\`"
             echo "- Reconciled candidate: \`${{ steps.candidate.outputs.sha }}\`"
             echo '- Migration 057, API build/startup, focused validators, complete frontend build, security posture, and deterministic source convergence passed.'
+            echo '- The legacy timer-history endpoint remains a guarded fallback for environments that have not yet activated the V2 history route.'
           } >> "$GITHUB_STEP_SUMMARY"
