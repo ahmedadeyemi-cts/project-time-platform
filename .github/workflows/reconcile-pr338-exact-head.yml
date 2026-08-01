@@ -182,7 +182,7 @@ jobs:
 
           npm ci --no-audit --no-fund --prefix src/frontend/project-time-web
           dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
-          npm run prebuild --prefix src/frontend/project-time-web
+          npm run build --prefix src/frontend/project-time-web
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
 
           mapfile -t dirty < <(
@@ -210,7 +210,7 @@ jobs:
           git commit -m "Reconcile PR #338 with current main and complete release gates"
           candidate_sha="$(git rev-parse HEAD)"
 
-          npm run prebuild --prefix src/frontend/project-time-web
+          npm run build --prefix src/frontend/project-time-web
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
           test -z "$(git status --porcelain=v1)"
 
