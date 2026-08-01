@@ -1,0 +1,4 @@
+operation=apply-migrations-and-deploy
+release_commit=b38a670bce6975fe0860849e25a6497c6e2de36c
+environment=test
+confirmation=APPLY-056-056A-057-AND-DEPLOY-B38A670-TO-TEST
