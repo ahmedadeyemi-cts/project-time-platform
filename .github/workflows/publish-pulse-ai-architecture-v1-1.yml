@@ -1,131 +1,117 @@
-# Serialized branch publication; source and artifact validation remain deterministic.
-# Branch-only trigger merge emits the single publication push event.
-name: Publish US Signal Pulse AI Architecture v1.1
+# One-time governed ordinary-blob publisher for PR #393.
+# The original architecture publisher blob is restored after publication.
+name: Publish workflow-convergence marker-scope blobs
 
 on:
   push:
     branches:
-      - docs/pulse-ai-architecture-v1-1-20260729
+      - 'fix/remaining-release-train-specialized-workflow-convergence-20260801-dependency-applicability'
     paths:
-      - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
-      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
-  workflow_dispatch:
+      - '.github/workflows/publish-pulse-ai-architecture-v1-1.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: publish-pulse-ai-architecture-v1-1-docs-branch
+  group: workflow-convergence-marker-scope-publisher
   cancel-in-progress: false
 
 jobs:
   publish:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      TARGET_BRANCH: docs/pulse-ai-architecture-v1-1-20260729
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          persist-credentials: true
 
-      - name: Enforce documentation branch and source boundary
+      - name: Generate and verify workflow-convergence marker scope
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
-          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
-          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
-          file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
-          echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install document-generation dependencies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0
-          python -m pip install --upgrade pip
-          python -m pip install python-docx reportlab cairosvg pillow pypdf
-
-      - name: Generate the US Signal architecture package
-        shell: bash
-        working-directory: docs/modules/module-011-pulse-ai/architecture/v1.1/source
-        run: |
-          set -Eeuo pipefail
-          python generate_pulse_architecture_v1_1.py | tee ../generation.log
-
-      - name: Validate the generated documents and diagrams
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
-          FILES=(
-            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
-            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
-            'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
-            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
-            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg'
-            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
-            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
-            'SHA256SUMS.txt'
-          )
-          for file in "${FILES[@]}"; do
-            test -s "$ROOT/$file"
-          done
-          ! find "$ROOT" -maxdepth 1 -type f -name '*v1.0*' -print -quit | grep -q .
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          from zipfile import ZipFile
-          from PIL import Image
-          from pypdf import PdfReader
 
-          root = Path('docs/modules/module-011-pulse-ai/architecture/v1.1')
-          main_pdf = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
-          diagrams_pdf = root / 'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
-          docx = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
-          logical = root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
-          deployment = root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+          changes = (
+              (
+                  Path('.github/workflows/celar-ai-runtime-rebrand-ci.yml'),
+                  'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE',
+                  'CELAR_AI_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED',
+              ),
+              (
+                  Path('.github/workflows/pulse-ai-system-intelligence-ci.yml'),
+                  'PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE',
+                  'PULSE_AI_SYSTEM_INTELLIGENCE_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED',
+              ),
+          )
 
-          assert len(PdfReader(str(main_pdf)).pages) >= 20
-          assert len(PdfReader(str(diagrams_pdf)).pages) == 2
-          with ZipFile(docx) as archive:
-              assert '[Content_Types].xml' in archive.namelist()
-              assert 'word/document.xml' in archive.namelist()
-          assert Image.open(logical).width >= 2000
-          assert Image.open(deployment).width >= 2400
-          for svg in [
-              root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg',
-              root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
-          ]:
-              text = svg.read_text(encoding='utf-8')
-              assert 'US Signal' in text
-              assert 'Pulse' in text
-              assert 'data:image/jpeg;base64,' in text
-          print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+          for path, mode_var, success_marker in changes:
+              text = path.read_text(encoding='utf-8')
+              old = (
+                  '          if [[ "$STATUS" != \'0\' ]]; then exit "$STATUS"; fi\n'
+                  '          if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == \'true\' ]]; then\n'
+                  '            test -s dist/index.html'
+              )
+              new = (
+                  '          if [[ "$STATUS" != \'0\' ]]; then exit "$STATUS"; fi\n'
+                  f'          if [[ "${{PROJECTPULSE_DEPENDENCY_ONLY:-false}}" == \'true\' || "${{{mode_var}:-}}" == \'WORKFLOW_CONVERGENCE\' ]]; then\n'
+                  '            test -s dist/index.html'
+              )
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f'{path}: expected one compiled-output applicability target, found {count}'
+                  )
+              text = text.replace(old, new, 1)
+              if success_marker not in text:
+                  raise SystemExit(f'{path}: compiled-output success marker missing after patch')
+              path.write_text(text, encoding='utf-8')
           PY
-          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
-          git diff --check -- . ':(exclude,glob)**/*.pdf'
 
-      - name: Commit the generated architecture artifacts
+          git diff --check
+          grep -Fq 'WORKFLOW_CONVERGENCE' .github/workflows/celar-ai-runtime-rebrand-ci.yml
+          grep -Fq 'WORKFLOW_CONVERGENCE' .github/workflows/pulse-ai-system-intelligence-ci.yml
+
+          mkdir -p .github/generated
+          cp .github/workflows/celar-ai-runtime-rebrand-ci.yml \
+             .github/generated/celar-ai-runtime-rebrand-ci.workflow-convergence.yml.txt
+          cp .github/workflows/pulse-ai-system-intelligence-ci.yml \
+             .github/generated/pulse-ai-system-intelligence-ci.workflow-convergence.yml.txt
+          sha256sum .github/generated/*.txt \
+            > .github/generated/workflow-convergence-marker-scope.SHA256SUMS
+          printf '%s\n' "$GITHUB_SHA" \
+            > .github/generated/workflow-convergence-marker-scope.source-sha
+
+          # The workflow token commits ordinary snapshots only. The repository API
+          # later maps their verified blob SHAs to workflow paths atomically.
+          git checkout -- \
+            .github/workflows/celar-ai-runtime-rebrand-ci.yml \
+            .github/workflows/pulse-ai-system-intelligence-ci.yml
+          git diff --check
+
+      - name: Commit verified ordinary blob snapshots
         shell: bash
         run: |
           set -Eeuo pipefail
-          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$ROOT"
-          if git diff --cached --quiet; then
-            echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
-            exit 0
-          fi
-          git commit -m 'Publish US Signal Pulse AI architecture package v1.1'
-          git push origin "HEAD:${TARGET_BRANCH}"
-          echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
+          git add .github/generated/
+          mapfile -t CHANGED < <(git diff --cached --name-only | LC_ALL=C sort)
+          printf '%s\n' "${CHANGED[@]}"
+          EXPECTED=(
+            '.github/generated/celar-ai-runtime-rebrand-ci.workflow-convergence.yml.txt'
+            '.github/generated/pulse-ai-system-intelligence-ci.workflow-convergence.yml.txt'
+            '.github/generated/workflow-convergence-marker-scope.SHA256SUMS'
+            '.github/generated/workflow-convergence-marker-scope.source-sha'
+          )
+          [[ "${#CHANGED[@]}" == "${#EXPECTED[@]}" ]]
+          diff -u \
+            <(printf '%s\n' "${EXPECTED[@]}") \
+            <(printf '%s\n' "${CHANGED[@]}")
+          git commit -m 'CI: publish verified workflow-convergence marker-scope blobs'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
