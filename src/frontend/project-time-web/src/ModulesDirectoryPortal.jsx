@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { replaceTimesheetLabel } from './module-availability-registry.js';
+import { PROJECTPULSE_MODULES, canonicalModuleRoute, moduleForRoute, replaceTimesheetLabel } from './module-availability-registry.js';
+// MODULE_006_AUTHORITATIVE_MODULE_DIRECTORY_PATCH
 import './modules-directory-page.css';
 import './module-availability.css';
 
@@ -92,7 +93,8 @@ function moduleNumberFromLabel(label) {
 }
 
 function moduleNumberForRoute(route, source) {
-  return moduleNumberFromLabel(source)
+  return moduleForRoute(route)?.moduleNumber
+    || moduleNumberFromLabel(source)
     || CANONICAL_MODULE_NUMBER_BY_ROUTE[route]
     || '';
 }
@@ -197,7 +199,8 @@ function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
   if (!route || route === 'dashboard' || route === MODULES_ROUTE || seenRoutes.has(route)) return;
 
   const rawLabel = cleanText(anchor.querySelector('.enterprise-nav-label')?.textContent || anchor.textContent);
-  const label = canonicalDisplayLabel(route, rawLabel);
+  const registryModule = moduleForRoute(route);
+  const label = registryModule?.displayName || canonicalDisplayLabel(route, rawLabel);
   if (!label) return;
 
   const moduleNumberSource = [
@@ -212,8 +215,9 @@ function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
     route,
     href,
     label,
+    description: registryModule?.description || '',
     moduleNumber: moduleNumberForRoute(route, moduleNumberSource),
-    group: groupName,
+    group: registryModule?.group || groupName,
     order: modules.length
   });
 }
@@ -242,6 +246,25 @@ function collectAuthorizedModules() {
   }
 
   return modules;
+}
+
+function superAdministratorModuleCatalog(authorizedModules) {
+  const authorizedByRoute = new Map(
+    authorizedModules.map((module) => [canonicalModuleRoute(module.route), module])
+  );
+  return PROJECTPULSE_MODULES.map((registryModule, index) => {
+    const current = authorizedByRoute.get(registryModule.route);
+    return {
+      ...(current || {}),
+      route: registryModule.route,
+      href: current?.href || `#${registryModule.route}`,
+      label: registryModule.displayName,
+      description: registryModule.description || current?.description || '',
+      moduleNumber: registryModule.moduleNumber,
+      group: registryModule.group,
+      order: index
+    };
+  });
 }
 
 function moduleListsMatch(left, right) {
@@ -460,9 +483,14 @@ export default function ModulesDirectoryPortal() {
     ? availability.access.effectiveRoles
     : [];
 
+  const directoryModules = useMemo(
+    () => isSuperAdministrator ? superAdministratorModuleCatalog(modules) : modules,
+    [isSuperAdministrator, modules]
+  );
+
   const enrichedModules = useMemo(
-    () => modules.map((module) => effectiveModuleState(module, availability)),
-    [modules, availability]
+    () => directoryModules.map((module) => effectiveModuleState(module, availability)),
+    [directoryModules, availability]
   );
 
   const visibleModules = useMemo(() => {
@@ -577,7 +605,8 @@ export default function ModulesDirectoryPortal() {
                 ) : <small>{module.group}</small>}
               </div>
               <h2>{module.label}</h2>
-              <p>Open the {module.label} workspace available to your current access scope.</p>
+              <p>{module.description || `Open the ${module.label} workspace available to your current access scope.`}</p>
+              {isSuperAdministrator ? <div className="module-authority-full-control">Full Control · Organization-wide</div> : null}
               <div className="modules-directory-card-actions">
                 <a href={module.href}>Open module →</a>
                 {canManage ? (

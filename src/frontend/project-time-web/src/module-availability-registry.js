@@ -48,7 +48,9 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '027', route: 'signed-handoff', displayName: 'Signed Handoff', group: 'Project Delivery' }),
   Object.freeze({ moduleNumber: '028', route: 'ai-time-entry', displayName: 'AI Time Entry', group: 'Time Management' }),
   Object.freeze({ moduleNumber: '029', route: 'uat-validation', displayName: 'UAT Validation', group: 'Platform Operations' }),
-  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Reporting', group: 'Reports & Workflow' }),
+  Object.freeze({ moduleNumber: '030', route: 'reporting', displayName: 'Analytics Center', group: 'Reports & Workflow', description: 'Select and run role-scoped analytics with report-specific customer, project, Engineer, Project Manager, team, date, financial, delivery, and operational criteria.' }),
+  Object.freeze({ moduleNumber: '031', route: 'financial-operations-workbench', displayName: 'Financial Operations Workbench', group: 'Reports & Workflow', description: 'Accountable queue for source failures, billing and closeout blockers, reconciliation exceptions, notification failures, retry, and resolution evidence.' }),
+  Object.freeze({ moduleNumber: '032', route: 'notification-delivery-monitor', displayName: 'Notification Delivery Monitor', group: 'Reports & Workflow', description: 'Operational inbox for project notification dispatches, recipient derivation, Module 065 readiness, source failures, release, retry, and delivery evidence.' }),
   Object.freeze({ moduleNumber: '036', route: 'sales-insights', displayName: 'Sales Insights Dashboard', group: 'Sales & Opportunities' }),
   Object.freeze({ moduleNumber: '037', route: 'roles-permissions-matrix', displayName: 'Roles & Permissions Matrix', group: 'Administration' }),
   Object.freeze({ moduleNumber: '038', route: 'certify-integration', displayName: 'Certify Connection & Sync Center', group: 'Integrations' }),
@@ -81,7 +83,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '080', route: 'customer-delivery-acceptance', displayName: 'Customer Delivery & Acceptance Portal', group: 'Project Operations' }),
   Object.freeze({ moduleNumber: '997', route: 'security-operations', displayName: 'Security Operations, Threat Intelligence & Response Center', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '998', route: 'system-diagnostics', displayName: 'System Diagnostic & Controlled Remediation Center', group: 'Platform Operations' }),
-  Object.freeze({ moduleNumber: '999', route: 'user-guide', displayName: 'ProjectPulse Complete User Guide', group: 'Help & Documentation' }),
+  Object.freeze({ moduleNumber: '999', route: 'user-guide', displayName: 'System User Guide', group: 'Help & Documentation' }),
 ]);
 
 export const RETIRED_PROJECTPULSE_MODULES = Object.freeze(

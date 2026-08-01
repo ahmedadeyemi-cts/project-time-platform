@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './sales-insights-dashboard.css';
+import UnifiedProjectFinancialWorkspace from './UnifiedProjectFinancialWorkspace.jsx';
 
 function getStoredProjectPulseAuthSession() {
   try {
@@ -285,6 +286,9 @@ export default function SalesInsightsDashboard() {
 
   return (
     <section className="sales-insights-dashboard">
+      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
+      <UnifiedProjectFinancialWorkspace workspace="sales" />
+      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="sales-insights-header">
         <div>
           <p className="eyebrow">Module 036</p>

@@ -6,16 +6,16 @@ const PRIMARY_INTELLIGENCE_MODES = Object.freeze([
     title: 'Document-grounded timesheet suggestions',
     audience: 'Engineers · Module 001',
     description:
-      'When an engineer selects Regular Tasks or Requests / Service Request and chooses Generate AI suggestion, Pulse AI will resolve the project, task, assignment, and request; retrieve the approved SOW, GSD, and engineering-visible project documents; and produce a description that aligns with the documented scope.',
+      'When an engineer selects Regular Tasks or Requests / Service Request and chooses Generate AI suggestion, Celar AI will resolve the project, task, assignment, and request; retrieve the approved SOW, GSD, and engineering-visible project documents; and produce a description that aligns with the documented scope.',
     sources: ['Engineer rough note', 'Selected task or service request', 'Project assignment', 'Approved SOW and GSD', 'Related engineering documents'],
-    output: 'A reviewable description only. Pulse AI cannot change hours, save, submit, approve, or create work.'
+    output: 'A reviewable description only. Celar AI cannot change hours, save, submit, approve, or create work.'
   }),
   Object.freeze({
     code: 'ASK PROJECTPULSE',
     title: 'System-wide Help and Search',
     audience: 'Every authorized ProjectPulse user',
     description:
-      'Users can ask questions about how the application works or about live information already available to their role. Pulse AI will search approved documentation and use permission-filtered read-only tools to answer across modules, projects, users, workflows, operations, reports, and current status.',
+      'Users can ask questions about how the application works or about live information already available to their role. Celar AI will search approved documentation and use permission-filtered read-only tools to answer across modules, projects, users, workflows, operations, reports, and current status.',
     sources: ['Module 999 and approved help', 'Module catalog and operating documentation', 'Current module APIs', 'Role and project scope', 'Audit and status evidence'],
     output: 'A sourced answer with scope, as-of time, assumptions, and clear uncertainty when evidence is incomplete.'
   }),
@@ -24,7 +24,7 @@ const PRIMARY_INTELLIGENCE_MODES = Object.freeze([
     title: 'SOW/GSD-driven project planning',
     audience: 'Project Managers and Engineers · Module 066',
     description:
-      'Pulse AI will read the approved SOW, GSD, architecture, order, and supporting project documents; combine them with project constraints, calendars, capacity, and templates; and draft a WBS, tasks, dependencies, milestones, risks, assumptions, and proposed timeline.',
+      'Celar AI will read the approved SOW, GSD, architecture, order, and supporting project documents; combine them with project constraints, calendars, capacity, and templates; and draft a WBS, tasks, dependencies, milestones, risks, assumptions, and proposed timeline.',
     sources: ['Approved SOW and GSD', 'Architecture and order documents', 'Project constraints', 'Resource capacity and calendars', 'Approved planning templates'],
     output: 'A PM-presentable draft that the Engineer can modify. It cannot baseline the plan, assign resources, or commit customer dates.'
   }),
@@ -33,7 +33,7 @@ const PRIMARY_INTELLIGENCE_MODES = Object.freeze([
     title: 'Reports, financials, and deep system insight',
     audience: 'Role-scoped operational, financial, and executive users',
     description:
-      'Pulse AI will answer analytical questions across time, utilization, projects, customers, expenses, rates, contracts, billing readiness, invoices, revenue, cost, margin, opportunities, system health, and workflow evidence. Exact values will come from governed calculations and read-only semantic tools—not model guesses.',
+      'Celar AI will answer analytical questions across time, utilization, projects, customers, expenses, rates, contracts, billing readiness, invoices, revenue, cost, margin, opportunities, system health, and workflow evidence. Exact values will come from governed calculations and read-only semantic tools—not model guesses.',
     sources: ['Reporting semantic layer', 'Approved financial calculations', 'Permission-filtered module tools', 'Live operational evidence', 'Saved report definitions'],
     output: 'A cited explanation with formula, period, currency, filters, record count, freshness, and any material assumptions.'
   })
@@ -99,7 +99,7 @@ const NON_NEGOTIABLE_PRIVACY_RULES = Object.freeze([
   'Financial questions use deterministic calculations first; the model explains the result but does not invent formulas or values.',
   'Every retrieval and tool call follows the current effective user’s role, module, project, customer, and record scope.',
   'Answers show evidence and uncertainty. A confident tone never replaces missing source support.',
-  'Pulse AI may improve from approved feedback, but it cannot rewrite its own policy, retrain itself, or promote itself to production.'
+  'Celar AI may improve from approved feedback, but it cannot rewrite its own policy, retrain itself, or promote itself to production.'
 ]);
 
 export default function PulseAiMissionControl() {
@@ -116,10 +116,10 @@ export default function PulseAiMissionControl() {
           <p className="pulse-ai-mission-eyebrow">Authoritative Module 011 operating mission</p>
           <h2 id="pulse-ai-authoritative-mission-title">One private intelligence layer for the entire ProjectPulse system</h2>
           <p>
-            Pulse AI is not limited to model training. Its primary purpose is to understand approved internal documents and live ProjectPulse data so it can support timesheets, Help and Search, FlowHive planning, reports, financial analysis, and future role-authorized use cases.
+            Celar AI is not limited to model training. Its primary purpose is to understand approved internal documents and live ProjectPulse data so it can support timesheets, Help and Search, FlowHive planning, reports, financial analysis, and future role-authorized use cases.
           </p>
         </div>
-        <div className="pulse-ai-mission-badges" aria-label="Pulse AI privacy state">
+        <div className="pulse-ai-mission-badges" aria-label="Celar AI privacy state">
           <span>Private-first</span>
           <span>Permission-aware</span>
           <span>Read-only foundation</span>
@@ -129,7 +129,7 @@ export default function PulseAiMissionControl() {
       <div className="pulse-ai-mission-alert" role="note">
         <strong>Internal-document boundary</strong>
         <p>
-          Raw SOW and GSD files stay inside the private ProjectPulse AI environment. Claude or OpenAI can be used only as a governed reasoning fallback with a sanitized, minimal problem capsule unless a separately approved policy explicitly allows more.
+          Raw SOW and GSD files stay inside the private ProjectCelar AI environment. Claude or OpenAI can be used only as a governed reasoning fallback with a sanitized, minimal problem capsule unless a separately approved policy explicitly allows more.
         </p>
       </div>
 
@@ -137,7 +137,7 @@ export default function PulseAiMissionControl() {
         <div className="pulse-ai-mission-section-heading">
           <div>
             <p className="pulse-ai-mission-eyebrow">Primary intelligence modes</p>
-            <h3 id="pulse-ai-primary-modes-title">What Pulse AI must do</h3>
+            <h3 id="pulse-ai-primary-modes-title">What Celar AI must do</h3>
           </div>
           <span>All outputs remain governed drafts or sourced answers</span>
         </div>
@@ -167,7 +167,7 @@ export default function PulseAiMissionControl() {
         <div className="pulse-ai-mission-section-heading">
           <div>
             <p className="pulse-ai-mission-eyebrow">Private-first orchestration</p>
-            <h3 id="pulse-ai-reasoning-path-title">How Pulse AI reaches an answer without leaking internal documents</h3>
+            <h3 id="pulse-ai-reasoning-path-title">How Celar AI reaches an answer without leaking internal documents</h3>
           </div>
           <span>Local verification remains authoritative</span>
         </div>
@@ -209,7 +209,7 @@ export default function PulseAiMissionControl() {
         <div className="pulse-ai-mission-section-heading">
           <div>
             <p className="pulse-ai-mission-eyebrow">Platform required for the complete system</p>
-            <h3 id="pulse-ai-private-platform-title">Additional private AI services Pulse AI will need</h3>
+            <h3 id="pulse-ai-private-platform-title">Additional private AI services Celar AI will need</h3>
           </div>
           <span>Provider-neutral architecture</span>
         </div>
@@ -229,7 +229,7 @@ export default function PulseAiMissionControl() {
           <p className="pulse-ai-mission-eyebrow">Non-negotiable contract</p>
           <h3 id="pulse-ai-privacy-contract-title">Self-sustaining means continuously maintained—not autonomous or uncontrolled</h3>
           <p>
-            Pulse AI can automatically index approved changes, refresh stale knowledge, measure answer quality, capture accepted corrections, and prepare training candidates. Humans still approve datasets, training jobs, model versions, feature activation, and production promotion.
+            Celar AI can automatically index approved changes, refresh stale knowledge, measure answer quality, capture accepted corrections, and prepare training candidates. Humans still approve datasets, training jobs, model versions, feature activation, and production promotion.
           </p>
         </div>
         <ul>

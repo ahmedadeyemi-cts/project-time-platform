@@ -1,5 +1,5 @@
 export const QUARTER_HOUR_SECONDS = 15 * 60;
-export const MAX_TIMER_SECONDS = 12 * 60 * 60;
+export const MAX_TIMER_SECONDS = 24 * 60 * 60;
 
 function assertFiniteNonNegative(value, label) {
   if (!Number.isFinite(value) || value < 0) {

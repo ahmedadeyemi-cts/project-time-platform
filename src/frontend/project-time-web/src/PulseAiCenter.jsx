@@ -122,7 +122,7 @@ const MODEL_REGISTRY_FIELDS = Object.freeze([
 ]);
 
 const CAPABILITIES = Object.freeze([
-  ['View Pulse AI', 'See non-secret projects, model status, and approved evidence.'],
+  ['View Celar AI', 'See non-secret projects, model status, and approved evidence.'],
   ['Manage Knowledge Sources', 'Register and refresh permission-aware RAG sources.'],
   ['Create Training Datasets', 'Build draft examples without approving them.'],
   ['Approve Training Datasets', 'Authorize an exact immutable dataset version.'],
@@ -307,7 +307,7 @@ export default function PulseAiCenter() {
     <main
       className="pulse-ai-center projectpulse-module-standard"
       data-module="011"
-      data-module-name="Pulse AI"
+      data-module-name="Celar AI"
       data-route="work-task-builder"
       data-source-phase="read-only-foundation"
     >
@@ -315,8 +315,8 @@ export default function PulseAiCenter() {
         <div className="pulse-ai-hero-brand">
           <img src={usSignalLogoDataUrl} alt="US Signal" />
           <div>
-            <p className="pulse-ai-eyebrow">Module 011 · ProjectPulse AI lifecycle control plane</p>
-            <h1>Pulse AI</h1>
+            <p className="pulse-ai-eyebrow">Module 011 · ProjectCelar AI lifecycle control plane</p>
+            <h1>Celar AI</h1>
             <p>
               Prepare knowledge, datasets, evaluations, and model versions inside ProjectPulse while Module 064 remains the governed provider and inference gateway.
             </p>
@@ -340,7 +340,7 @@ export default function PulseAiCenter() {
 
       {notice ? <div className="pulse-ai-notice" role="status">{notice}</div> : null}
 
-      <section className="pulse-ai-metrics" aria-label="Pulse AI summary">
+      <section className="pulse-ai-metrics" aria-label="Celar AI summary">
         <article>
           <span>Model projects</span>
           <strong>{projects.length}</strong>
@@ -405,7 +405,7 @@ export default function PulseAiCenter() {
       </section>
 
       <div className="pulse-ai-workspace">
-        <nav className="pulse-ai-tabs" aria-label="Pulse AI workspaces">
+        <nav className="pulse-ai-tabs" aria-label="Celar AI workspaces">
           {PULSE_AI_TABS.map((tab) => (
             <button
               type="button"
@@ -422,7 +422,7 @@ export default function PulseAiCenter() {
 
         <section className="pulse-ai-tab-panel" aria-labelledby={`pulse-ai-tab-${activeTab}`}>
           <div className="pulse-ai-current-tab">
-            <p className="pulse-ai-eyebrow">Pulse AI workspace</p>
+            <p className="pulse-ai-eyebrow">Celar AI workspace</p>
             <h2 id={`pulse-ai-tab-${activeTab}`}>{activeTabDefinition.label}</h2>
             <p>{activeTabDefinition.description}</p>
           </div>
@@ -432,7 +432,7 @@ export default function PulseAiCenter() {
               <SectionHeading
                 eyebrow="Operating model"
                 title="ProjectPulse controls the lifecycle; specialized compute does the training"
-                copy="Pulse AI prepares and governs model work. Module 064 controls inference routing. Future GPU training runs outside the ProjectPulse API process."
+                copy="Celar AI prepares and governs model work. Module 064 controls inference routing. Future GPU training runs outside the ProjectPulse API process."
               />
               <div className="pulse-ai-architecture-grid">
                 <article>
@@ -442,7 +442,7 @@ export default function PulseAiCenter() {
                 </article>
                 <article>
                   <span>2</span>
-                  <h3>Pulse AI governance</h3>
+                  <h3>Celar AI governance</h3>
                   <p>Version knowledge sources, datasets, evaluations, approvals, model records, and audit evidence.</p>
                 </article>
                 <article>
@@ -591,7 +591,7 @@ export default function PulseAiCenter() {
               <SectionHeading
                 eyebrow="Training data"
                 title="Build small, reviewed, purpose-specific datasets"
-                copy="Pulse AI will treat dataset versions as immutable approval artifacts rather than continuously learning from every user conversation."
+                copy="Celar AI will treat dataset versions as immutable approval artifacts rather than continuously learning from every user conversation."
                 action={<LockedButton>Import dataset</LockedButton>}
               />
               <div className="pulse-ai-dataset-example">
@@ -706,7 +706,7 @@ export default function PulseAiCenter() {
               <SectionHeading
                 eyebrow="Controlled activation"
                 title="Promote through development, test, and production gates"
-                copy="Pulse AI will register approved endpoints with Module 064. It will not bypass the shared provider router or directly modify production resources."
+                copy="Celar AI will register approved endpoints with Module 064. It will not bypass the shared provider router or directly modify production resources."
               />
               <div className="pulse-ai-environment-grid">
                 <article><span>Development</span><h3>Not configured</h3><p>Future endpoint experimentation with synthetic or approved non-production data.</p><LockedButton>Deploy development</LockedButton></article>

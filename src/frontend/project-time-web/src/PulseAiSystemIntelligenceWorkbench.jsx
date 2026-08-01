@@ -11,6 +11,14 @@ const TABS = Object.freeze([
 ]);
 
 function asArray(value) { return Array.isArray(value) ? value : []; }
+function rebrandCelarString(value) { return String(value ?? '').replaceAll('CELAR AI', 'CELAR AI').replaceAll('Celar AI', 'Celar AI'); }
+function rebrandCelarValue(value) {
+  if (typeof value === 'string') return rebrandCelarString(value);
+  if (Array.isArray(value)) return value.map(rebrandCelarValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rebrandCelarValue(item)]));
+}
+
 function title(value) { return String(value ?? '').replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function formatDate(value) { const parsed = value ? new Date(value) : null; return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString() : 'Not recorded'; }
 function formatPercent(value) { const number = Number(value); return Number.isFinite(number) ? `${Math.round(number * 100)}%` : 'Not recorded'; }
@@ -171,7 +179,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
     if (!clean || busy) return;
     setBusy(true); setError(''); setResult(null);
     try {
-      const payload = await postJson('/api/pulse-ai/v1/system/questions', {
+      const payload = await postJson('/api/celar-ai/v1/chat', {
         question: clean,
         mode,
         detailLevel: 'comprehensive',
@@ -181,9 +189,9 @@ export default function PulseAiSystemIntelligenceWorkbench() {
         includeAuthorizedProjectDocuments: true,
         usePrivateModelWhenAvailable: true
       });
-      setResult(payload.result);
+      setResult(rebrandCelarValue(payload.result));
       await loadConversations();
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Pulse AI could not complete the question.'); }
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Celar AI could not complete the question.'); }
     finally { setBusy(false); }
   }
 
@@ -208,7 +216,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
 
   async function openConversation(id) {
     setBusy(true); setError('');
-    try { setConversationDetail(await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(id)}`)); }
+    try { setConversationDetail(rebrandCelarValue(await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(id)}`))); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Conversation could not be loaded.'); }
     finally { setBusy(false); }
   }
@@ -217,21 +225,21 @@ export default function PulseAiSystemIntelligenceWorkbench() {
   return (
     <section className="pulse-ai-system-workbench" data-pulse-ai-system-intelligence="v1">
       <header>
-        <div><p>Module 011 · Pulse AI</p><h2>System Intelligence, Live API Discovery & Troubleshooting</h2><span>Ask comprehensive questions about every authorized Pulse module, current APIs, runtime evidence, errors, architecture, and future enhancements.</span></div>
+        <div><p>Module 011 · Celar AI</p><h2>System Intelligence, Live API Discovery & Troubleshooting</h2><span>Ask comprehensive questions about every authorized Pulse module, current APIs, runtime evidence, errors, architecture, and future enhancements.</span></div>
         <button type="button" onClick={() => void refreshReadiness()}>Refresh readiness</button>
       </header>
-      <nav aria-label="Pulse AI system intelligence workspaces">
+      <nav aria-label="Celar AI system intelligence workspaces">
         {TABS.map(([id, label, description]) => <button type="button" key={id} className={tab === id ? 'is-active' : ''} onClick={() => setTab(id)}><strong>{label}</strong><span>{description}</span></button>)}
       </nav>
       {error ? <div className="pulse-ai-system-workbench-error" role="alert">{error}</div> : null}
       <div className="pulse-ai-system-workbench-body">
-        <div className="pulse-ai-system-workbench-title"><p>Pulse AI workspace</p><h3>{activeTab[1]}</h3><span>{activeTab[2]}</span></div>
+        <div className="pulse-ai-system-workbench-title"><p>Celar AI workspace</p><h3>{activeTab[1]}</h3><span>{activeTab[2]}</span></div>
 
         {tab === 'overview' ? (
           <div className="pulse-ai-system-workbench-stack">
             <section className="pulse-ai-system-workbench-card">
               <h4>{title(readiness?.readiness?.status || 'Loading readiness')}</h4>
-              <p>Pulse AI discovers running APIs from the live ASP.NET endpoint registry, executes only source-controlled same-origin GET tools, preserves owning-module authorization, and saves completed conversations when migration 054 is available.</p>
+              <p>Celar AI discovers running APIs from the live ASP.NET endpoint registry, executes only source-controlled same-origin GET tools, preserves owning-module authorization, and saves completed conversations when migration 054 is available.</p>
               <dl className="pulse-ai-system-workbench-kpis">
                 <div><dt>Live APIs</dt><dd>{readiness?.readiness?.liveApiCatalog?.summary?.total ?? '—'}</dd></div>
                 <div><dt>API modules</dt><dd>{readiness?.readiness?.liveApiCatalog?.summary?.modules ?? '—'}</dd></div>
@@ -252,7 +260,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
                 {tab === 'troubleshoot' ? 'Describe the issue, error, API, module, time, environment, and impact' : tab === 'enhance' ? 'Describe the future capability and business outcome' : 'Ask any question about Pulse'}
                 <textarea ref={inputRef} rows={5} value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={onQuestionKeyDown} placeholder="Press Enter to submit. Use Shift+Enter for a new line." />
               </label>
-              <div><span>Enter sends · Shift+Enter adds a line · responses are saved when durable conversations are ready</span><button type="submit" disabled={busy || !question.trim()}>{busy ? 'Analyzing…' : 'Ask Pulse AI'}</button></div>
+              <div><span>Enter sends · Shift+Enter adds a line · responses are saved when durable conversations are ready</span><button type="submit" disabled={busy || !question.trim()}>{busy ? 'Analyzing…' : 'Ask Celar AI'}</button></div>
             </form>
             <AnswerView result={result} />
           </div>

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
+import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
+import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
 import './pulse-ai-system-chat.css';
 
 const QUICK_QUESTIONS = Object.freeze([
   'What APIs are running on the system?',
   'Troubleshoot the current platform and show me the strongest evidence.',
-  'Explain Pulse AI and everything it can do.',
+  'Explain Celar AI and everything it can do.',
   'Design a future enhancement for Pulse using the current architecture.',
   'What is unhealthy, unavailable, unauthorized, or missing right now?',
   'How do Modules 013, 016, 078, and 998 work together for troubleshooting?'
@@ -24,6 +26,19 @@ function asArray(value) {
 
 function unique(values) {
   return [...new Set(asArray(values).filter((value) => value !== null && value !== undefined && String(value).trim()))];
+}
+
+function rebrandCelarString(value) {
+  return String(value ?? '')
+    .replaceAll('CELAR AI', 'CELAR AI')
+    .replaceAll('Celar AI', 'Celar AI');
+}
+
+function rebrandCelarValue(value) {
+  if (typeof value === 'string') return rebrandCelarString(value);
+  if (Array.isArray(value)) return value.map(rebrandCelarValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rebrandCelarValue(item)]));
 }
 
 function titleFrom(value) {
@@ -78,7 +93,9 @@ async function postJson(path, body) {
 async function loadLegacyPlan(question) {
   const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
   url.searchParams.set('question', question);
-  return getJson(`${url.pathname}${url.search}`);
+  const answerPreferences = applyHelpAnswerPreferences(url, question);
+  const payload = await getJson(`${url.pathname}${url.search}`);
+  return { ...payload, answerPreferences };
 }
 
 function navigateTo(target, close) {
@@ -256,14 +273,21 @@ function ToolEvidence({ tools }) {
 
 function SystemAnswer({ result, close }) {
   const answer = result?.answer ?? {};
+  /* GROUP_7_HELP_ANSWER_DETAIL_START */
+  const detailLevel = result?.detailLevel ?? 'comprehensive';
+  /* GROUP_7_HELP_ANSWER_DETAIL_END */
   return (
-    <div className="help-detailed-answer pulse-ai-system-answer">
+    <div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>
       <div className="help-answer-heading">
-        <span>Pulse AI comprehensive system answer</span>
-        <strong>{answer.directConclusion || 'Pulse AI completed the request.'}</strong>
+        <span>Celar AI comprehensive system answer</span>
+        <strong>{answer.directConclusion || 'Celar AI completed the request.'}</strong>
       </div>
       {answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}
       <EvidenceBadges result={result} />
+      <div className="help-answer-preference-evidence" role="note">
+        <span>Answer detail: {titleFrom(detailLevel)}</span>
+        <span>Source: saved profile, per-question command, or comprehensive system default</span>
+      </div>
       <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open />
       <AnswerList heading="Current state" values={answer.currentState} open />
       <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open />
@@ -294,7 +318,7 @@ function SystemAnswer({ result, close }) {
 }
 
 function LegacyPlanAnswer({ payload, close }) {
-  const plan = payload?.plan ?? {};
+  const plan = rebrandCelarValue(payload?.plan ?? {});
   const direct = plan.directKnowledgeAnswer;
   if (direct) {
     return (
@@ -310,11 +334,11 @@ function LegacyPlanAnswer({ payload, close }) {
   return (
     <div className="help-detailed-answer is-fallback">
       <div className="help-answer-heading"><span>Limited compatibility response</span><strong>System intelligence is not active in this runtime</strong></div>
-      <p className="help-answer-summary">The detailed system-intelligence API could not be reached. Pulse prepared a read-only evidence plan, but it did not invent live values.</p>
+      <p className="help-answer-summary">The detailed system-intelligence API could not be reached. Automatic multi-tool execution is not yet enabled for this compatibility response, so Pulse prepared a read-only evidence plan and did not invent live values.</p>
       <AnswerList heading="Required evidence" values={plan.requiredEvidence} />
       <AnswerList heading="Execution sequence" values={plan.executionSteps} />
       <AnswerList heading="Missing inputs" values={plan.missingInputs} />
-      <NavigationTargets targets={['#work-task-builder', '#service-control', '#user-guide']} close={close} />
+      <NavigationTargets targets={['#celar-ai', '#service-control', '#user-guide']} close={close} />
     </div>
   );
 }
@@ -333,7 +357,7 @@ function AssistantMessage({ message, close }) {
     return (
       <div className="help-message assistant is-detailed">
         <div className="help-detailed-answer is-fallback">
-          <div className="help-answer-heading"><span>Pulse AI request did not complete</span><strong>{message.error}</strong></div>
+          <div className="help-answer-heading"><span>Celar AI request did not complete</span><strong>{message.error}</strong></div>
           <p className="help-answer-summary">The completed conversation remains visible. Retry the question or use Modules 013, 016, 076, 078, and 998 with the displayed correlation evidence.</p>
           <NavigationTargets targets={['#service-control', '#backup-retention', '#defect-tracker', '#observability-slo-health', '#system-diagnostics']} close={close} />
         </div>
@@ -348,14 +372,14 @@ function serverMessageToUi(message) {
     return { id: message.messageId, role: 'user', text: message.text, createdAt: message.createdAt };
   }
   const structured = message.structuredResponse && typeof message.structuredResponse === 'object'
-    ? message.structuredResponse
+    ? rebrandCelarValue(message.structuredResponse)
     : null;
   return {
     id: message.messageId,
     role: 'assistant',
     payload: structured?.answer ? structured : null,
-    text: message.text,
-    error: message.status === 'failed' && !structured?.answer ? message.text : '',
+    text: rebrandCelarString(message.text),
+    error: message.status === 'failed' && !structured?.answer ? rebrandCelarString(message.text) : '',
     createdAt: message.createdAt
   };
 }
@@ -381,7 +405,10 @@ export default function HelpAssistant() {
 
   async function refreshConversationList(selectId = '') {
     const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
-    const rows = asArray(payload.conversations);
+    const rows = asArray(payload.conversations).map((conversation) => ({
+      ...conversation,
+      title: rebrandCelarString(conversation.title)
+    }));
     setConversations(rows);
     return selectId || activeConversationId || rows[0]?.conversationId || '';
   }
@@ -405,12 +432,12 @@ export default function HelpAssistant() {
 
   async function createConversation(mode = 'system_help') {
     const payload = await postJson('/api/pulse-ai/v1/system/conversations', {
-      title: 'New Pulse AI conversation',
+      title: 'New Celar AI conversation',
       mode,
       scope: { source: 'global_help_chat' }
     });
     const conversation = payload.conversation;
-    if (!conversation?.conversationId) throw new Error('Pulse AI did not return a conversation identifier.');
+    if (!conversation?.conversationId) throw new Error('Celar AI did not return a conversation identifier.');
     setActiveConversationId(conversation.conversationId);
     setMessages([WELCOME_MESSAGE]);
     await refreshConversationList(conversation.conversationId);
@@ -481,9 +508,7 @@ export default function HelpAssistant() {
           conversationId = '';
         }
       }
-      const path = conversationId
-        ? `/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}/messages`
-        : '/api/pulse-ai/v1/system/questions';
+      const path = '/api/celar-ai/v1/chat';
       const payload = await postJson(path, {
         conversationId: conversationId || null,
         question: clean,
@@ -495,7 +520,7 @@ export default function HelpAssistant() {
         includeAuthorizedProjectDocuments: true,
         usePrivateModelWhenAvailable: true
       });
-      const result = payload.result;
+      const result = rebrandCelarValue(payload.result);
       setMessages((current) => current.map((message) =>
         message.id === loadingId
           ? { id: result?.assistantMessageId || loadingId, role: 'assistant', payload: result, text: result?.answer?.directConclusion || '' }
@@ -519,7 +544,7 @@ export default function HelpAssistant() {
       } catch {
         setMessages((current) => current.map((message) =>
           message.id === loadingId
-            ? { id: loadingId, role: 'assistant', error: error instanceof Error ? error.message : 'Pulse AI could not complete this question.' }
+            ? { id: loadingId, role: 'assistant', error: error instanceof Error ? error.message : 'Celar AI could not complete this question.' }
             : message
         ));
       }
@@ -558,19 +583,27 @@ export default function HelpAssistant() {
     window.location.hash = route;
   }
 
+  function openDefectTracker() {
+    setIsOpen(false);
+    const destination = new URL(window.location.href);
+    destination.searchParams.set('defectSource', 'help');
+    destination.hash = 'defect-tracker';
+    window.location.assign(destination.toString());
+  }
+
   return (
     <>
       <button type="button" className="help-launcher" onClick={() => setIsOpen((current) => !current)}>
-        Ask Pulse AI
+        Ask Celar AI
       </button>
       {isOpen ? (
-        <aside className="help-panel pulse-ai-help-panel pulse-ai-system-chat" aria-label="Pulse AI system intelligence assistant">
+        <aside className="help-panel pulse-ai-help-panel pulse-ai-system-chat" aria-label="Celar AI system intelligence assistant">
           <div className="help-header">
             <div>
-              <strong>Pulse AI</strong>
+              <strong>Celar AI Help & Search</strong>
               <span>Detailed answers · live APIs · troubleshooting · future enhancements</span>
             </div>
-            <button type="button" aria-label="Close Pulse AI" onClick={() => setIsOpen(false)}>×</button>
+            <button type="button" aria-label="Close Celar AI" onClick={() => setIsOpen(false)}>×</button>
           </div>
 
           <div className="pulse-ai-conversation-toolbar">
@@ -590,10 +623,14 @@ export default function HelpAssistant() {
           </div>
 
           <div className="help-quick-actions">
-            <button type="button" className="help-full-guide-button" onClick={() => openRoute('user-guide')}>Complete User Guide</button>
-            <button type="button" className="help-pulse-ai-button" onClick={() => openRoute('work-task-builder')}>Pulse AI Workbench</button>
-            <button type="button" className="help-report-defect-button" onClick={() => openRoute('defect-tracker')}>Report a Defect</button>
+            <button type="button" className="help-full-guide-button" onClick={() => openRoute('user-guide')}>Module 999 — System User Guide</button>
+            <button type="button" className="help-pulse-ai-button" onClick={() => openRoute('celar-ai')}>Celar AI Workbench</button>
+            <button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Report a defect — Module 076</button>
           </div>
+
+          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}
+          <HelpGovernancePanel />
+          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}
 
           <div
             ref={messagesRef}
@@ -610,7 +647,7 @@ export default function HelpAssistant() {
               : <AssistantMessage key={message.id} message={message} close={() => setIsOpen(false)} />)}
           </div>
 
-          <div className="help-suggestions" aria-label="Suggested Pulse AI questions">
+          <div className="help-suggestions" aria-label="Suggested Celar AI questions">
             {QUICK_QUESTIONS.map((suggestion) => (
               <button type="button" key={suggestion} onClick={() => { setQuestion(suggestion); inputRef.current?.focus(); }}>
                 {suggestion}
@@ -626,7 +663,7 @@ export default function HelpAssistant() {
               onKeyDown={onInputKeyDown}
               placeholder="Ask about any module, API, error, report, financial, document, workflow, architecture, or future enhancement…"
               rows={3}
-              aria-label="Ask Pulse AI"
+              aria-label="Ask Celar AI"
               aria-keyshortcuts="Enter Shift+Enter Escape"
               disabled={sending}
             />

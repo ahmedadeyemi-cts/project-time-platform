@@ -357,7 +357,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
         <strong>Controlled activation:</strong> Queue, retry, and cancellation require explicit permissions, exact confirmations, current project authorization, and a non-View-As session. Raw document content and vectors never leave the private runtime through this UI.
       </div>
 
-      <nav className="pulse-ai-runtime-tabs" aria-label="Pulse AI private runtime workspaces">
+      <nav className="pulse-ai-runtime-tabs" aria-label="Celar AI private runtime workspaces">
         {TABS.map((item) => (
           <button type="button" className={activeTab === item.id ? 'is-active' : ''} key={item.id} onClick={() => setActiveTab(item.id)}>
             <strong>{item.label}</strong><span>{item.description}</span>

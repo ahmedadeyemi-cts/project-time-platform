@@ -477,7 +477,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
   const [tools, setTools] = useState({ loading: true, payload: null, error: '' });
   const [timesheet, setTimesheet] = useState({ ...INITIAL_TIMESHEET });
   const [timesheetResult, setTimesheetResult] = useState({ loading: false, payload: null, error: '' });
-  const [helpQuestion, setHelpQuestion] = useState('How does Pulse AI use an SOW and GSD to generate a timesheet suggestion?');
+  const [helpQuestion, setHelpQuestion] = useState('How does Celar AI use an SOW and GSD to generate a timesheet suggestion?');
   const [helpResult, setHelpResult] = useState({ loading: false, payload: null, error: '' });
   const [flowhive, setFlowhive] = useState({ ...INITIAL_FLOWHIVE });
   const [flowhiveResult, setFlowhiveResult] = useState({ loading: false, payload: null, error: '' });
@@ -594,7 +594,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
       </div>
 
       <div className="pulse-ai-deep-layout">
-        <nav className="pulse-ai-deep-tabs" aria-label="Pulse AI deep intelligence workspaces">
+        <nav className="pulse-ai-deep-tabs" aria-label="Celar AI deep intelligence workspaces">
           {WORKSPACES.map((workspace) => (
             <button
               type="button"

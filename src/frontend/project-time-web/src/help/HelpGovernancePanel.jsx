@@ -62,7 +62,7 @@ export default function HelpGovernancePanel({ compact = true }) {
       <div className="group7-help-governance__heading">
         <div>
           <strong>Governed answer hierarchy</strong>
-          <span>Pulse AI should use the highest verified source available and identify when evidence is insufficient.</span>
+          <span>Celar AI should use the highest verified source available and identify when evidence is insufficient.</span>
         </div>
         <a href="#user-guide">Open System User Guide</a>
       </div>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
+import CelarAiProviderBridgePanel from './CelarAiProviderBridgePanel.jsx';
 import './ai-provider-configuration-center.css';
 import './projectpulse-module-standard.css';
+import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
 
 const PROVIDER_LABELS = {
   claude: 'Claude',
@@ -209,8 +211,9 @@ export default function AiProviderConfigurationCenter() {
           <p className="ai-provider-center__eyebrow">Module 064 · governed shared service</p>
           <h1>AI Provider Configuration Center</h1>
           <p>
-            ProjectPulse checks provider health automatically and routes each AI request once through Claude,
-            then OpenAI, then the governed local fallback. A safety refusal never triggers another provider.
+            Celar AI uses Module 064 as the governed provider gateway. Module 064 checks provider health automatically,
+            controls approved models and feature routes, and preserves the private-first boundary. Claude and OpenAI remain
+            optional sanitized fallbacks, and a safety refusal never triggers another provider.
           </p>
         </div>
         <button type="button" onClick={refreshHealth} disabled={refreshing || state.loading}>
@@ -218,6 +221,9 @@ export default function AiProviderConfigurationCenter() {
         </button>
       </header>
 
+      {/* GROUP_7_MODULE_064_READINESS_PANEL_START */}
+      <AiProviderReadinessPanel />
+      {/* GROUP_7_MODULE_064_READINESS_PANEL_END */}
       <div className="ai-provider-center__automatic-health" role="status">
         <strong>Automatic provider health is active.</strong>
         <span>
@@ -355,6 +361,8 @@ export default function AiProviderConfigurationCenter() {
               })}
             </div>
           </section>
+
+          <CelarAiProviderBridgePanel />
 
           <section className="ai-provider-center__section">
             <div className="ai-provider-center__section-heading">
