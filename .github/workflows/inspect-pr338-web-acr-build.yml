@@ -1,0 +1,59 @@
+name: Inspect PR338 Failed Web ACR Build
+
+on:
+  push:
+    branches:
+      - release/deploy-merged-pr338-main-test-20260801-v2
+    paths:
+      - '.github/workflows/inspect-pr338-web-acr-build.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: inspect-pr338-web-acr-build-dsbd
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    if: github.actor == 'ahmedadeyemi-cts' && github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    name: Read failed ACR build dsbd
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_BRANCH: release/deploy-merged-pr338-main-test-20260801-v2
+      EXPECTED_ACR_NAME: acrphdtest7825cc
+      FAILED_RUN_ID: dsbd
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+    steps:
+      - name: Guard exact diagnostic scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" ]]
+          [[ "$AZURE_ACR_NAME" == "$EXPECTED_ACR_NAME" ]]
+          [[ "$FAILED_RUN_ID" == dsbd ]]
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Print exact failed ACR build metadata and logs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az acr task show-run \
+            --registry "$AZURE_ACR_NAME" \
+            --run-id "$FAILED_RUN_ID" \
+            --output jsonc \
+            --only-show-errors
+          echo '--- ACR BUILD LOGS ---'
+          az acr task logs \
+            --registry "$AZURE_ACR_NAME" \
+            --run-id "$FAILED_RUN_ID" \
+            --only-show-errors
