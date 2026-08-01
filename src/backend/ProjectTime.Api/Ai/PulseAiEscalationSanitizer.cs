@@ -135,6 +135,9 @@ public sealed class PulseAiEscalationSanitizer
                     : "sanitized_capsule_execution_blocked"
                 : "sanitized_capsule_preview_ready";
 
+        // Preview-only compatibility contract: ExternalExecutionAuthorized: false.
+        // Execution can become true only through SanitizeForExecution after every
+        // independent policy, classification, and redaction blocker has passed.
         return new PulseAiSanitizationResult(
             Status: status,
             Purpose: purpose,
