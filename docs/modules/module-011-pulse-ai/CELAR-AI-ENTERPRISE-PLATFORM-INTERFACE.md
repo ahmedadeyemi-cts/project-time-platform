@@ -1,12 +1,12 @@
 # Celar AI Enterprise Platform Interface
 
-**Module:** 011  
-**Company:** US Signal  
-**Platform:** Pulse  
-**Intelligence system:** Celar AI  
-**Created by:** Dr. Ahmed Adeyemi, Manager of Professional Services  
-**Contract:** `celar-ai-enterprise-platform-v1-20260801`  
-**Classification:** US Signal Internal — Confidential
+- **Module:** 011
+- **Company:** US Signal
+- **Platform:** Pulse
+- **Intelligence system:** Celar AI
+- **Created by:** Dr. Ahmed Adeyemi, Manager of Professional Services
+- **Contract:** `celar-ai-enterprise-platform-v1-20260801`
+- **Classification:** US Signal Internal — Confidential
 
 ## Purpose
 
