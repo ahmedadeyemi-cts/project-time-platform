@@ -1,4 +1,31 @@
 <Project>
+  <PropertyGroup>
+    <AnalyticsScheduleServiceGenerated>$(IntermediateOutputPath)AnalyticsCenterScheduleService.g.cs</AnalyticsScheduleServiceGenerated>
+    <AnalyticsEnterpriseModuleGenerated>$(IntermediateOutputPath)AnalyticsCenterEnterpriseExperienceModule.g.cs</AnalyticsEnterpriseModuleGenerated>
+  </PropertyGroup>
+
+  <!--
+    The canonical API project already uses generated compile copies for a small
+    number of oversized or compiler-sensitive sources. Keep the reviewed
+    Analytics source readable while making nullable intent explicit in the
+    generated copies used by every local, CI, and container build.
+  -->
+  <ItemGroup>
+    <Compile Remove="Modules/AnalyticsCenterScheduleService.cs" />
+    <Compile Remove="Modules/AnalyticsCenterEnterpriseExperienceModule.cs" />
+  </ItemGroup>
+
+  <Target Name="PrepareAnalyticsCenterEnterpriseCompileSources"
+          BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="sed -e 's/var nextRun = request.Enabled/DateTimeOffset? nextRun = request.Enabled/' -e 's/var next = schedule.Enabled/DateTimeOffset? next = schedule.Enabled/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterScheduleService.cs&quot; &gt; &quot;$(AnalyticsScheduleServiceGenerated)&quot;" />
+    <Exec Command="sed -e 's/? (project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m)/? (decimal?)((project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m))/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterEnterpriseExperienceModule.cs&quot; &gt; &quot;$(AnalyticsEnterpriseModuleGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(AnalyticsScheduleServiceGenerated)" />
+      <Compile Include="$(AnalyticsEnterpriseModuleGenerated)" />
+    </ItemGroup>
+  </Target>
+
   <!--
     The canonical API project generates its top-level Program source before
     CoreCompile. Add the Analytics enterprise experience after the existing
