@@ -45,16 +45,28 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Enforce exact dependency-reconciliation boundary
+      - name: Classify exact dependency-reconciliation boundary
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_HEAD_REF" == "$TARGET_BRANCH" ]]
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
           git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
-          printf '%s\n' "$CHANGED"
-          test "$CHANGED" = 'src/frontend/project-time-web/package.json'
+          mapfile -t PR_CHANGED < <(git diff --name-only origin/main...HEAD | LC_ALL=C sort)
+          printf '%s\n' "${PR_CHANGED[@]}"
+
+          if [[ "${#PR_CHANGED[@]}" == 1 && "${PR_CHANGED[0]}" == 'src/frontend/project-time-web/package.json' ]]; then
+            echo 'RECONCILE_REQUIRED=true' >> "$GITHUB_ENV"
+            echo 'VITE_PLUGIN_RECONCILIATION_MODE=GENERATE'
+          elif [[ "${#PR_CHANGED[@]}" == 2 \
+               && "${PR_CHANGED[0]}" == 'src/frontend/project-time-web/package-lock.json' \
+               && "${PR_CHANGED[1]}" == 'src/frontend/project-time-web/package.json' ]]; then
+            echo 'RECONCILE_REQUIRED=false' >> "$GITHUB_ENV"
+            echo 'VITE_PLUGIN_RECONCILIATION_MODE=VERIFY_EXISTING'
+          else
+            echo 'Unexpected PR #392 source boundary.' >&2
+            exit 1
+          fi
 
           node - <<'NODE'
           const fs = require('node:fs');
@@ -68,6 +80,7 @@ jobs:
           NODE
 
       - name: Carry forward PostCSS and generate the combined npm lockfile
+        if: env.RECONCILE_REQUIRED == 'true'
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -77,7 +90,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --audit-level=high
 
-      - name: Verify exact generated dependency state
+      - name: Verify exact reconciled dependency state
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -105,13 +118,20 @@ jobs:
           NODE
 
           git diff --check
-          mapfile -t CHANGED < <(git diff --name-only | LC_ALL=C sort)
-          printf '%s\n' "${CHANGED[@]}"
-          [[ "${#CHANGED[@]}" == 2 ]]
-          [[ "${CHANGED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
-          [[ "${CHANGED[1]}" == 'src/frontend/project-time-web/package.json' ]]
+          if [[ "$RECONCILE_REQUIRED" == 'true' ]]; then
+            mapfile -t GENERATED < <(git diff --name-only | LC_ALL=C sort)
+            printf '%s\n' "${GENERATED[@]}"
+            [[ "${#GENERATED[@]}" == 2 ]]
+            [[ "${GENERATED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
+            [[ "${GENERATED[1]}" == 'src/frontend/project-time-web/package.json' ]]
+          else
+            git diff --exit-code
+            test -z "$(git status --porcelain=v1 --untracked-files=no)"
+            echo 'VITE_PLUGIN_RECONCILIATION_ALREADY_CURRENT=YES'
+          fi
 
       - name: Commit the reconciled dependency files
+        if: env.RECONCILE_REQUIRED == 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
