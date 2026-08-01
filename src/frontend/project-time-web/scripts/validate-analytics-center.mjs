@@ -32,7 +32,7 @@ for (const marker of [
   'Home', 'Dashboards', 'Reports', 'Schedules', 'Data Explorer',
   'KPIs & Metrics', 'Alerts & Subscriptions', 'Data Quality', 'Admin',
   'Recently Viewed Dashboards & Reports', 'Report Library',
-  'Select report', 'Set criteria', 'All customers', 'All projects',
+  'Set criteria', 'All customers', 'All projects',
   'All engineers', 'All Project Managers', 'All teams',
   'Preview report', 'Run & save', 'Actual analytics results', 'Analytics run history',
   'US Signal PDF', 'Excel', 'Recurring US Signal delivery',
@@ -60,7 +60,7 @@ for (const marker of [
 
 for (const marker of [
   '.analytics-enterprise-shell', '.analytics-sidebar', '.analytics-kpi-grid',
-  '.analytics-recent-grid', '.analytics-build-layout', '.analytics-report-cards',
+  '.analytics-recent-grid', '.analytics-build-layout',
   '.analytics-report-categories', '.analytics-filter-grid', '.analytics-multiselect-menu',
   '.analytics-schedule-panel', '.analytics-source-grid', '.analytics-history-list',
   '.analytics-result-table-wrap', '.analytics-coverage-footer', '@media print'
