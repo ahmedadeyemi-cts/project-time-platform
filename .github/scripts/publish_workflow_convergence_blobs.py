@@ -18,19 +18,37 @@ REPAIRS = (
 
 for path, mode_variable, success_marker in REPAIRS:
     source = path.read_text(encoding='utf-8')
-    old = "          if [[ \"${PROJECTPULSE_DEPENDENCY_ONLY:-false}\" == 'true' ]]; then"
+    old = (
+        "          if [[ \"$STATUS\" != '0' ]]; then exit \"$STATUS\"; fi\n"
+        "          if [[ \"${PROJECTPULSE_DEPENDENCY_ONLY:-false}\" == 'true' ]]; then\n"
+        "            test -s dist/index.html"
+    )
     new = (
+        "          if [[ \"$STATUS\" != '0' ]]; then exit \"$STATUS\"; fi\n"
         "          if [[ \"${PROJECTPULSE_DEPENDENCY_ONLY:-false}\" == 'true' "
-        f"|| \"${{{mode_variable}:-}}\" == 'WORKFLOW_CONVERGENCE' ]]; then"
+        f"|| \"${{{mode_variable}:-}}\" == 'WORKFLOW_CONVERGENCE' ]]; then\n"
+        "            test -s dist/index.html"
     )
 
     count = source.count(old)
     if count != 1:
-        raise SystemExit(f'{path}: expected one applicability target, found {count}')
+        raise SystemExit(
+            f'{path}: expected one compiled-output applicability target, found {count}'
+        )
     if success_marker not in source:
-        raise SystemExit(f'{path}: required successful dependency-only build marker is missing')
+        raise SystemExit(
+            f'{path}: required successful dependency-only build marker is missing'
+        )
     if f'{mode_variable}=WORKFLOW_CONVERGENCE' not in source:
         raise SystemExit(f'{path}: workflow-convergence mode assignment is missing')
 
-    path.write_text(source.replace(old, new, 1), encoding='utf-8')
+    updated = source.replace(old, new, 1)
+    if updated.count("test -s dist/index.html") != source.count("test -s dist/index.html"):
+        raise SystemExit(f'{path}: compiled-output validation count changed unexpectedly')
+    if updated.count("PROJECTPULSE_DEPENDENCY_ONLY") != source.count(
+        "PROJECTPULSE_DEPENDENCY_ONLY"
+    ):
+        raise SystemExit(f'{path}: dependency-only contract count changed unexpectedly')
+
+    path.write_text(updated, encoding='utf-8')
     print(f'WORKFLOW_CONVERGENCE_BLOB_READY={path}')
