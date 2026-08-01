@@ -1,0 +1,183 @@
+name: Validate Celar AI Enterprise Platform Interface
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-enterprise-platform-interface-20260801
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - 'docs/modules/module-011-pulse-ai/CELAR-AI-ENTERPRISE-PLATFORM-INTERFACE.md'
+      - 'src/backend/ProjectTime.Api/Directory.Build.targets'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiPeopleAndGuidanceService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs'
+      - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiSolutionComposer.jsx'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-architecture-overview.css'
+      - 'src/frontend/project-time-web/src/celar-ai-contextual-chat.css'
+      - 'src/frontend/project-time-web/src/celar-ai-enterprise-chat-context.css'
+      - 'src/frontend/project-time-web/src/celar-ai-enterprise-platform.css'
+      - 'src/frontend/project-time-web/src/celar-ai-solution-composer.css'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-enterprise-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify isolated source and protected boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          test -n "$BASE"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          test -n "$CHANGED"
+
+          if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"; then
+            echo 'The Celar AI enterprise interface overlaps a prohibited migration, deployment, or provider-secret surface.' >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          git diff --check "$BASE"...HEAD
+          echo "CELAR_AI_ENTERPRISE_BASE=$BASE"
+          echo "CELAR_AI_ENTERPRISE_HEAD=$(git rev-parse HEAD)"
+          echo 'CELAR_AI_ENTERPRISE_SOURCE_ISOLATION=PASSED'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate enterprise source contract and injectors
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check ./scripts/inject-celar-ai-contextual-chat-workspace.mjs
+          node --check ./scripts/inject-celar-ai-enterprise-chat-context.mjs
+          node --check ./scripts/inject-celar-ai-runtime-rebrand.mjs
+          node --check ./scripts/validate-celar-ai-enterprise-platform.mjs
+          node ./scripts/validate-celar-ai-enterprise-platform.mjs
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee celar-ai-enterprise-api-build.log
+          grep -Fq '0 Error(s)' celar-ai-enterprise-api-build.log
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiBrandModule.g.cs -print -quit)"
+          test -n "$GENERATED"
+          grep -Fq 'MapCelarAiEnterprisePlatformEndpoints' "$GENERATED"
+          PEOPLE="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiPeopleAndGuidanceService.g.cs -print -quit)"
+          test -n "$PEOPLE"
+          grep -Fq 'persistence.EffectiveUserId' "$PEOPLE"
+          echo 'CELAR_AI_ENTERPRISE_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete production frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build | tee celar-ai-enterprise-frontend-build.log
+          test -s dist/index.html
+          cat dist/assets/*.js > /tmp/celar-enterprise.js
+          cat dist/assets/*.css > /tmp/celar-enterprise.css
+          for marker in \
+            'Celar AI Enterprise Platform' \
+            'Celar AI Architecture Overview' \
+            'Created by Dr. Ahmed Adeyemi' \
+            '/api/celar-ai/v1/compose' \
+            'Generate review draft' \
+            'Download SVG' \
+            'Fresh chat — no previous conversation context' \
+            'Add project, person/team, or date context'; do
+            grep -Fq "$marker" /tmp/celar-enterprise.js
+          done
+          for marker in \
+            '.celar-ai-enterprise-platform' \
+            '.celar-ai-architecture-overview' \
+            '.celar-ai-solution-composer' \
+            '.celar-ai-question-context' \
+            'resize:both'; do
+            grep -Fq "$marker" /tmp/celar-enterprise.css
+          done
+          echo 'CELAR_AI_ENTERPRISE_FRONTEND_BUILD=PASSED'
+
+      - name: Build production web-container context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag celar-ai-enterprise-web:${{ github.run_id }}-${{ github.run_attempt }} \
+            .
+          echo 'CELAR_AI_ENTERPRISE_WEB_CONTAINER=PASSED'
+
+      - name: Publish validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Celar AI Enterprise Platform validation'
+            echo
+            echo "- Exact head: \`${GITHUB_SHA}\`"
+            echo '- Architecture: US Signal private-first diagram with Dr. Ahmed Adeyemi attribution'
+            echo '- Chat: fresh by default, explicit history, normal resizable default, context controls'
+            echo '- Capabilities: people/work, How-to, Timesheet, SOW, planning, timeline, diagram, system intelligence'
+            echo '- External fallback: sanitized generic reasoning only, disabled by default'
+            echo '- Migration applied: no'
+            echo '- Deployment performed: no'
+            echo '- Provider secret changed: no'
+            echo '- State-changing business action: no'
+          } >> "$GITHUB_STEP_SUMMARY"
