@@ -193,8 +193,17 @@ jobs:
           if [[ -f ./scripts/validate-analytics-center.mjs ]]; then
             node ./scripts/validate-analytics-center.mjs
           fi
+
+          git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
           git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
+          echo 'GROUP_5_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'GROUP_5_AND_ANALYTICS_POST_BUILD_VALIDATION=PASSED'
           echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
 
