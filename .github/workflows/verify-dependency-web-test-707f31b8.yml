@@ -26,7 +26,8 @@ jobs:
     timeout-minutes: 35
     env:
       RELEASE_SHA: 707f31b88df173d9543b292a9cc19d6ec01ca6ac
-      PRIOR_API_RELEASE_SHA: 4673c185f7fe885dd202dbbd07579182be32d572
+      PRIOR_API_IMAGE_RELEASE_SHA: 4673c185f7fe885dd202dbbd07579182be32d572
+      PRIOR_API_SOURCE_SHA: 574b4b5da7c4acb4734c87b1ff6a45930c57ea33
       VERIFY_BRANCH: verify/dependency-web-test-707f31b8-20260801
       VERIFY_PATH: .github/workflows/verify-dependency-web-test-707f31b8.yml
 
@@ -72,7 +73,7 @@ jobs:
           API_APP='${{ vars.AZURE_API_APP }}'
           WEB_APP='${{ vars.AZURE_WEB_APP }}'
           WEB_TAG="dependency-web-$RELEASE_SHA"
-          API_TAG="release-$PRIOR_API_RELEASE_SHA"
+          API_TAG="release-$PRIOR_API_IMAGE_RELEASE_SHA"
 
           resolve_current_image() {
             local image="$1"
@@ -158,7 +159,7 @@ jobs:
                && "$WEB_SOURCE" == "$RELEASE_SHA" \
                && "$WEB_READY_REVISION" == "$WEB_LATEST" \
                && "$CURRENT_API" == "$EXPECTED_API" \
-               && "$API_SOURCE" == "$PRIOR_API_RELEASE_SHA" \
+               && "$API_SOURCE" == "$PRIOR_API_SOURCE_SHA" \
                && "$API_READY_REVISION" == "$API_LATEST" ]]; then
               READY=1
               break
@@ -174,7 +175,7 @@ jobs:
             echo "Current web source: ${WEB_SOURCE:-missing}" >&2
             echo "Expected API image: ${EXPECTED_API:-unavailable}" >&2
             echo "Current API image: ${CURRENT_API:-unresolved}" >&2
-            echo "Expected API source: $PRIOR_API_RELEASE_SHA" >&2
+            echo "Expected API source: $PRIOR_API_SOURCE_SHA" >&2
             echo "Current API source: ${API_SOURCE:-missing}" >&2
             exit 1
           fi
@@ -196,6 +197,7 @@ jobs:
           echo "api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
           echo 'PROJECTPULSE_DEPENDENCY_WEB_DIGEST_VERIFIED=YES'
           echo 'PROJECTPULSE_TEST_API_IMAGE_UNCHANGED=YES'
+          echo 'PROJECTPULSE_TEST_API_SOURCE_MARKER_UNCHANGED=YES'
           echo 'PROJECTPULSE_DATABASE_MIGRATIONS_FOR_DEPENDENCY_RELEASE=NONE'
 
       - name: Validate public API and web responses
@@ -283,11 +285,13 @@ jobs:
               'apiBuilt': False,
               'apiDeployed': False,
               'apiImageUnchanged': True,
+              'apiSourceMarkerUnchanged': True,
               'apiImage': os.environ['API_IMAGE'],
               'apiDigest': os.environ['API_DIGEST'],
               'apiRevision': os.environ['API_REVISION'],
               'apiSourceCommit': os.environ['API_SOURCE'],
-              'expectedPriorApiReleaseSha': os.environ['PRIOR_API_RELEASE_SHA'],
+              'expectedPriorApiImageReleaseSha': os.environ['PRIOR_API_IMAGE_RELEASE_SHA'],
+              'expectedPriorApiSourceSha': os.environ['PRIOR_API_SOURCE_SHA'],
               'webImage': os.environ['WEB_IMAGE'],
               'webDigest': os.environ['WEB_DIGEST'],
               'webRevision': os.environ['WEB_REVISION'],
