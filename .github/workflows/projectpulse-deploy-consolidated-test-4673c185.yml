@@ -1,4 +1,4 @@
-name: Diagnose Consolidated Test ACR Build 4673c185
+name: Deploy Corrected Consolidated Test Release 574b4b5d
 
 on:
   pull_request:
@@ -10,19 +10,57 @@ on:
 permissions:
   id-token: write
   contents: read
+  issues: write
 
 concurrency:
-  group: diagnose-consolidated-test-acr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: projectpulse-corrected-test-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
-  diagnose:
-    name: Read failed ACR build logs without modifying Azure
+  deploy:
+    name: Rebuild web only, migrate, and deploy exact Test release
     if: github.event.pull_request.head.ref == 'observe/consolidated-test-release-4673c185-20260801'
     environment: test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
+    env:
+      RELEASE_SHA: 574b4b5da7c4acb4734c87b1ff6a45930c57ea33
+      FEATURE_BASE_SHA: 4673c185f7fe885dd202dbbd07579182be32d572
+      API_IMAGE: ${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@sha256:aabd47a0aff5e2cf62f89670eb1d722000871b90f0326507b8ac5ded9547334d
+      MIGRATION_IMAGE: ${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-release-migrator@sha256:2557b1bf26f3d7d59d26c8f45d8a29745e1e7e2bf0d82adca2b07231e2f160a4
+
     steps:
+      - name: Check out exact corrected release source
+        uses: actions/checkout@v5
+        with:
+          ref: 574b4b5da7c4acb4734c87b1ff6a45930c57ea33
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard exact release and corrected web context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == 'observe/consolidated-test-release-4673c185-20260801' ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          test -f release/deployment/containers/web/Dockerfile
+          for required in \
+            'src/backend/ProjectTime.Api/Modules/Module001MultiTimerModule.cs' \
+            'src/backend/ProjectTime.Api/Modules/Module001MultiTimerFinalization.cs' \
+            'src/backend/ProjectTime.Api/Modules/Module001MultiTimerStart.cs' \
+            'src/backend/ProjectTime.Api/Modules/Module001MultiTimerStop.cs' \
+            'database/migrations/057_module_001_multi_timer_document_grounded_ai.sql' \
+            'database/rollback/057_module_001_multi_timer_document_grounded_ai_rollback.sql' \
+            'tests/test-module001-multi-timer-migration-057.sh'; do
+            grep -Fq "$required" release/deployment/containers/web/Dockerfile
+            test -f "release/$required"
+          done
+          git -C release diff --check
+          echo "PROJECTPULSE_RELEASE_SOURCE=$RELEASE_SHA"
+          echo "PROJECTPULSE_FEATURE_BASE=$FEATURE_BASE_SHA"
+          echo 'PROJECTPULSE_WEB_CONTEXT_CORRECTION=PASSED'
+
       - name: Sign in to Azure using Test OIDC
         uses: azure/login@v2
         with:
@@ -30,21 +68,283 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Read all three immutable image build records
+      - name: Capture current immutable Test release
+        id: before
         shell: bash
         run: |
           set -Eeuo pipefail
-          for run_id in dsbp dsbq dsbn; do
-            echo "PROJECTPULSE_ACR_RUN_BEGIN=$run_id"
-            az acr task show-run \
-              --registry '${{ vars.AZURE_ACR_NAME }}' \
-              --run-id "$run_id" \
-              --output json \
-              --only-show-errors
-            echo "PROJECTPULSE_ACR_LOG_BEGIN=$run_id"
-            az acr task logs \
-              --registry '${{ vars.AZURE_ACR_NAME }}' \
-              --run-id "$run_id" \
-              --only-show-errors || true
-            echo "PROJECTPULSE_ACR_LOG_END=$run_id"
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside the approved Test ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single ]]
+          [[ "${WEB_MODE,,}" == single ]]
+
+          mapfile -t ENV_NAMES < <(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].env[].name' -o tsv --only-show-errors)
+          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/projectpulse-api-env-names
+          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
+            grep -Fxq "$name" /tmp/projectpulse-api-env-names || {
+              echo "Missing required API database setting: $name" >&2
+              exit 1
+            }
           done
+
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+          echo 'PROJECTPULSE_PREVIOUS_TEST_RELEASE=CAPTURED'
+
+      - name: Load the private Test database connection
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash release/scripts/export-pr55-test-database-url.sh
+
+      - name: Build only the corrected immutable web image
+        id: web_build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x release/scripts/build-pr55-acr-image.sh
+          WEB_DIGEST="$(
+            release/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "project-health-dashboard-web:release-${RELEASE_SHA}" \
+              release/deployment/containers/web/Dockerfile \
+              release
+          )"
+          WEB_DIGEST="$(tr -d '\r\n' <<<"$WEB_DIGEST")"
+          [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@'"$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "PROJECTPULSE_CORRECTED_WEB_IMAGE=$WEB_IMAGE"
+          echo 'PROJECTPULSE_CORRECTED_WEB_BUILD=PASSED'
+
+      - name: Apply or verify migrations 054 through 057
+        shell: bash
+        env:
+          DATABASE_URL: ${{ env.PROJECTPULSE_TEST_DATABASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:?Test database URL is required}"
+          printf '::add-mask::%s\n' "${DATABASE_URL//%/%25}"
+          RESOURCE_GROUP='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          ACR_NAME='${{ vars.AZURE_ACR_NAME }}'
+          JOB_NAME="ppfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ENVIRONMENT_ID="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.managedEnvironmentId -o tsv --only-show-errors)"
+          [[ -n "$ENVIRONMENT_ID" ]]
+          [[ "$MIGRATION_IMAGE" == "$ACR_NAME.azurecr.io/"*@sha256:* ]]
+
+          REGISTRY_USERNAME='00000000-0000-0000-0000-000000000000'
+          REGISTRY_PASSWORD="$(az acr login --name "$ACR_NAME" --expose-token --query accessToken -o tsv --only-show-errors)"
+          [[ -n "$REGISTRY_PASSWORD" ]]
+          printf '::add-mask::%s\n' "$REGISTRY_PASSWORD"
+
+          JOB_CREATED=0
+          cleanup() {
+            local status=$?
+            trap - EXIT INT TERM
+            unset DATABASE_URL REGISTRY_PASSWORD
+            if (( JOB_CREATED == 1 )); then
+              az containerapp job delete -g "$RESOURCE_GROUP" -n "$JOB_NAME" --yes --output none --only-show-errors || true
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT INT TERM
+
+          az containerapp job create \
+            -g "$RESOURCE_GROUP" \
+            -n "$JOB_NAME" \
+            --environment "$ENVIRONMENT_ID" \
+            --trigger-type Manual \
+            --replica-timeout 1800 \
+            --replica-retry-limit 0 \
+            --replica-completion-count 1 \
+            --parallelism 1 \
+            --image "$MIGRATION_IMAGE" \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --registry-server "$ACR_NAME.azurecr.io" \
+            --registry-username "$REGISTRY_USERNAME" \
+            --registry-password "$REGISTRY_PASSWORD" \
+            --secrets "projectpulse-db-url=$DATABASE_URL" \
+            --env-vars PROJECTPULSE_TEST_DATABASE_URL=secretref:projectpulse-db-url \
+            --tags projectpulse-scope=corrected-consolidated-test projectpulse-release="$RELEASE_SHA" \
+            --output none --only-show-errors
+          JOB_CREATED=1
+          unset REGISTRY_PASSWORD DATABASE_URL
+
+          EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
+          [[ -n "$EXECUTION_NAME" ]]
+          STATUS=''
+          for attempt in $(seq 1 180); do
+            STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
+            case "$STATUS" in
+              Succeeded) break ;;
+              Failed|Canceled) break ;;
+            esac
+            sleep 5
+          done
+          if [[ "$STATUS" != Succeeded ]]; then
+            az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 300 --only-show-errors >&2 || true
+            echo "Migration execution ended with status: $STATUS" >&2
+            exit 1
+          fi
+          echo 'PROJECTPULSE_MIGRATIONS_054_055_056_056A_057=APPLIED_OR_VERIFIED'
+
+      - name: Deploy immutable API image
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image "$API_IMAGE" \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
+            --revision-suffix "fixapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+
+      - name: Validate API image and public health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CURRENT="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ "$CURRENT" == "$API_IMAGE" ]]
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          for attempt in $(seq 1 36); do
+            STATUS="$(curl -sS -o /tmp/projectpulse-api-health -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/api/health?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            case "$STATUS" in
+              200|401) echo 'PROJECTPULSE_CORRECTED_API=HEALTHY'; exit 0 ;;
+            esac
+            sleep 5
+          done
+          cat /tmp/projectpulse-api-health >&2 || true
+          exit 1
+
+      - name: Deploy corrected immutable web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.web_build.outputs.web_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
+            --revision-suffix "fixweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+
+      - name: Validate web image and public response
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CURRENT="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ "$CURRENT" == '${{ steps.web_build.outputs.web_image }}' ]]
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          for attempt in $(seq 1 36); do
+            STATUS="$(curl -sS -o /tmp/projectpulse-web-home -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            if [[ "$STATUS" == 200 ]]; then
+              test -s /tmp/projectpulse-web-home
+              echo 'PROJECTPULSE_CORRECTED_WEB=HEALTHY'
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/projectpulse-web-home >&2 || true
+          exit 1
+
+      - name: Preserve immutable Test release evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-evidence
+          cat > release-evidence/corrected-consolidated-test-release.json <<JSON
+          {
+            "environment": "test",
+            "releaseSha": "$RELEASE_SHA",
+            "featureBaseSha": "$FEATURE_BASE_SHA",
+            "apiImage": "$API_IMAGE",
+            "webImage": "${{ steps.web_build.outputs.web_image }}",
+            "migrationImage": "$MIGRATION_IMAGE",
+            "migrations": ["054", "055", "056", "056A", "057"],
+            "workflowRunId": "$GITHUB_RUN_ID",
+            "workflowRunAttempt": "$GITHUB_RUN_ATTEMPT"
+          }
+          JSON
+
+      - name: Upload release evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: projectpulse-corrected-test-${{ github.run_id }}
+          path: release-evidence/corrected-consolidated-test-release.json
+          retention-days: 30
+
+      - name: Roll back API and web images on deployment failure
+        if: failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true')
+        shell: bash
+        run: |
+          set +e
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.before.outputs.old_api_image }}' \
+            --revision-suffix "rbapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          API_ROLLBACK=$?
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "rbweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          WEB_ROLLBACK=$?
+          echo "PROJECTPULSE_API_ROLLBACK_EXIT=$API_ROLLBACK"
+          echo "PROJECTPULSE_WEB_ROLLBACK_EXIT=$WEB_ROLLBACK"
+          exit 1
+
+      - name: Publish deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Corrected ProjectPulse consolidated Test release'
+            echo
+            echo "- Exact main release: \`$RELEASE_SHA\`"
+            echo "- Feature baseline: \`$FEATURE_BASE_SHA\`"
+            echo '- Reused immutable API image: passed'
+            echo '- Reused immutable migration image: passed'
+            echo '- Rebuilt only corrected web image: passed'
+            echo '- Migrations 054, 055, 056, 056A, and 057: applied or verified'
+            echo '- API immutable image and public health: passed'
+            echo '- Web immutable image and public response: passed'
+            echo '- Automatic image rollback guard: armed'
+          } >> "$GITHUB_STEP_SUMMARY"
