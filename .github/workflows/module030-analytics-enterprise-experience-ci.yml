@@ -1,0 +1,266 @@
+name: Validate Module 030 Analytics Enterprise Experience
+
+on:
+  push:
+    branches:
+      - 'feature/analytics-center-enterprise-experience-*'
+  pull_request:
+    paths:
+      - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
+      - 'database/migrations/060_analytics_center_enterprise_experience.sql'
+      - 'database/rollback/060_analytics_center_enterprise_experience_rollback.sql'
+      - 'docs/modules/module-030-analytics-enterprise-experience/README.md'
+      - 'src/backend/ProjectTime.Api/Directory.Build.targets'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterEnterpriseContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterEnterpriseExperienceModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterExperienceScope.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduler.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleRepository.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module065AnalyticsAttachmentDelivery.cs'
+      - 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'
+      - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect.jsx'
+      - 'src/frontend/project-time-web/src/analytics-center.css'
+      - 'tests/test-analytics-center-enterprise-migration-060.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module030-analytics-enterprise-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify isolated Analytics enterprise source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          ALLOWED='^(\.github/workflows/module030-analytics-enterprise-experience-ci\.yml|database/migrations/060_analytics_center_enterprise_experience\.sql|database/rollback/060_analytics_center_enterprise_experience_rollback\.sql|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Directory\.Build\.targets|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/AnalyticsCenter\.jsx|src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect\.jsx|src/frontend/project-time-web/src/analytics-center\.css|tests/test-analytics-center-enterprise-migration-060\.sh)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'Unexpected Analytics enterprise source scope:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Analytics enterprise work overlaps deployment or canonical generated application source.' >&2
+            exit 1
+          fi
+
+          echo 'ANALYTICS_ENTERPRISE_SOURCE_ISOLATION=PASS'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Analytics JavaScript syntax
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/src/AnalyticsCenter.jsx || true
+          node --check src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect.jsx || true
+          node --check src/frontend/project-time-web/scripts/validate-analytics-center.mjs
+
+      - name: Test migration 060
+        id: migration
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-analytics-center-enterprise-migration-060.sh > analytics-migration-060.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload migration 060 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-migration-060-${{ github.run_id }}-${{ github.run_attempt }}
+          path: analytics-migration-060.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce migration 060
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.migration.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            cat analytics-migration-060.log >&2
+            exit "$STATUS"
+          fi
+          cat analytics-migration-060.log
+
+      - name: Validate Analytics enterprise source contract
+        id: source_contract
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-analytics-center.mjs > analytics-enterprise-source.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Analytics source diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-enterprise-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/analytics-enterprise-source.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Analytics source contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.source_contract.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            cat src/frontend/project-time-web/analytics-enterprise-source.log >&2
+            exit "$STATUS"
+          fi
+          cat src/frontend/project-time-web/analytics-enterprise-source.log
+
+      - name: Build ProjectTime API
+        id: api_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > analytics-api-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-enterprise-api-${{ github.run_id }}-${{ github.run_attempt }}
+          path: analytics-api-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.api_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 260 analytics-api-build.log >&2
+            exit "$STATUS"
+          fi
+          tail -n 60 analytics-api-build.log
+          echo 'ANALYTICS_ENTERPRISE_API_BUILD=PASS'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Analytics and dependency regressions
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm run validate:analytics-center
+          npm run validate:group3-project-financial-workspaces
+          npm run validate:group4-project-notifications
+          npm run validate:group5-financial-operations
+          npm run validate:group6-enterprise-presentation
+          npm run validate:group7-ai-help-system-guide
+          npm run validate:module065
+          npm run validate:microsoft-connection
+          npm run validate:microsoft-sso-runtime
+          npm run validate:work-register-055c-055d
+
+      - name: Build complete frontend production bundle
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run build > analytics-frontend-build.log 2>&1
+          STATUS=$?
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-enterprise-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: src/frontend/project-time-web/analytics-frontend-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce frontend build and compiled markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS='${{ steps.frontend_build.outputs.exit_code }}'
+          if [[ "$STATUS" != '0' ]]; then
+            tail -n 260 analytics-frontend-build.log >&2
+            exit "$STATUS"
+          fi
+          cat dist/assets/*.js > /tmp/analytics-enterprise.js
+          cat dist/assets/*.css > /tmp/analytics-enterprise.css
+          for marker in \
+            'Analytics Center' \
+            'Back to Modules' \
+            'Back to Dashboard' \
+            'Recently Viewed Dashboards & Reports' \
+            'Report Library' \
+            'Scheduled Reports' \
+            'US Signal PDF' \
+            'Multiple active ProjectPulse users receive individual copies' \
+            '/api/analytics/v2/overview' \
+            '/api/analytics/v2/schedules'; do
+            grep -Fq "$marker" /tmp/analytics-enterprise.js
+          done
+          for marker in \
+            '.analytics-enterprise-shell' \
+            '.analytics-sidebar' \
+            '.analytics-kpi-grid' \
+            '.analytics-report-categories' \
+            '.analytics-multiselect-menu' \
+            '.analytics-schedule-panel'; do
+            grep -Fq "$marker" /tmp/analytics-enterprise.css
+          done
+          tail -n 60 analytics-frontend-build.log
+          echo 'ANALYTICS_ENTERPRISE_FRONTEND_BUILD=PASS'
