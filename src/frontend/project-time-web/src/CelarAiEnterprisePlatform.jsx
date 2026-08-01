@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import CelarAiArchitectureOverview from './CelarAiArchitectureOverview.jsx';
 import CelarAiSolutionComposer from './CelarAiSolutionComposer.jsx';
 import './celar-ai-enterprise-platform.css';
+import './celar-ai-enterprise-chat-context.css';
 
 const CAPABILITIES = Object.freeze([
   ['Ask & Search', 'Ask detailed questions about modules, workflows, documents, APIs, troubleshooting, reports, financials, and future enhancements.', '011 / 999'],
