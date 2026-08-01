@@ -81,7 +81,7 @@
     "validate:role-workspace-entra-crm-governance": "node ./scripts/validate-role-workspace-entra-crm-governance.mjs"
   },
   "dependencies": {
-    "react": "^18.3.1",
+    "react": "^19.2.8",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
