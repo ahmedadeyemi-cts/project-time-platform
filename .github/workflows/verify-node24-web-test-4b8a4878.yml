@@ -249,3 +249,5 @@ jobs:
         if: always()
         shell: bash
         run: az logout || true
+
+# Activation marker: independent verification of the completed Node 24 Test release.
