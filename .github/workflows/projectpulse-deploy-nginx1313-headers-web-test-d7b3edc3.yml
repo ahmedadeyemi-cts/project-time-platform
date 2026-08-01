@@ -1,0 +1,492 @@
+name: ProjectPulse nginx 1.31.3 Header-Inheritance Web Test d7b3edc3
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/projectpulse-deploy-nginx1313-headers-web-test-d7b3edc3.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-nginx1313-headers-web-test-d7b3edc3
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy exact nginx header-inheritance release to Test
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'deploy/nginx1313-headers-web-test-d7b3edc3-20260801'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      RELEASE_SHA: d7b3edc30f0e3565187f0092a5c9900878eb7128
+      DEPLOY_BRANCH: deploy/nginx1313-headers-web-test-d7b3edc3-20260801
+      DEPLOY_PATH: .github/workflows/projectpulse-deploy-nginx1313-headers-web-test-d7b3edc3.yml
+      EXPECTED_API_DIGEST: sha256:aabd47a0aff5e2cf62f89670eb1d722000871b90f0326507b8ac5ded9547334d
+      EXPECTED_API_SOURCE_SHA: 574b4b5da7c4acb4734c87b1ff6a45930c57ea33
+      EXPECTED_API_REVISION: ca-phd-test-api-westus3--relapi-30708633484-1
+      EXPECTED_BASELINE_WEB_DIGEST: sha256:283b88c943abcbdef69d09b95e394430bb6227739b9c44b4284c3c65b4802fae
+      EXPECTED_BASELINE_WEB_SOURCE_SHA: 4b8a4878211ea6f731f30c2c559ab9a6f08b7c41
+
+    steps:
+      - name: Check out exact deployment control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact corrected nginx release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard exact control and release boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == "$DEPLOY_BRANCH" ]]
+          [[ "$(git -C control rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          CONTROL_BASE="$(git -C control rev-parse HEAD^)"
+          [[ "$(git -C control rev-list --count "$CONTROL_BASE"..HEAD)" == '1' ]]
+          git -C control merge-base --is-ancestor "$RELEASE_SHA" "$CONTROL_BASE"
+          CHANGED="$(git -C control diff --name-only "$CONTROL_BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$DEPLOY_PATH" ]]
+          git -C control diff --check "$CONTROL_BASE"...HEAD
+
+          [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          for required in \
+            release/deployment/containers/web/Dockerfile \
+            release/deployment/containers/web/default.conf.template \
+            release/deployment/containers/web/projecttime-web-entrypoint.sh \
+            release/scripts/build-pr55-acr-image.sh; do
+            test -f "$required"
+          done
+
+          grep -Fxq 'FROM node:24-alpine AS build' \
+            release/deployment/containers/web/Dockerfile
+          grep -Fxq 'FROM nginxinc/nginx-unprivileged:1.31.3-alpine AS runtime' \
+            release/deployment/containers/web/Dockerfile
+          ! grep -Eq '^FROM nginxinc/nginx-unprivileged:(1\.27|1\.31)-alpine AS runtime$' \
+            release/deployment/containers/web/Dockerfile
+          grep -Fxq 'USER 101' release/deployment/containers/web/Dockerfile
+          grep -Fxq 'EXPOSE 8080' release/deployment/containers/web/Dockerfile
+          grep -Fq 'ENTRYPOINT ["/usr/local/bin/projecttime-web-entrypoint.sh"]' \
+            release/deployment/containers/web/Dockerfile
+
+          grep -Fq 'add_header_inherit merge;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'location /api/' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Cache-Control "no-store" always;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header X-Content-Type-Options "nosniff" always;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Referrer-Policy "same-origin" always;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header X-Frame-Options "SAMEORIGIN" always;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Content-Security-Policy' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Permissions-Policy' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Strict-Transport-Security "max-age=31536000" always;' \
+            release/deployment/containers/web/default.conf.template
+          sh -n release/deployment/containers/web/projecttime-web-entrypoint.sh
+          git -C release diff --check
+          test -z "$(git -C release status --porcelain=v1 --untracked-files=no)"
+
+          echo "PROJECTPULSE_NGINX_HEADER_RELEASE_SOURCE=$RELEASE_SHA"
+          echo 'PROJECTPULSE_API_BUILD_REQUESTED=NO'
+          echo 'PROJECTPULSE_DATABASE_MIGRATION_REQUESTED=NO'
+          echo 'PROJECTPULSE_CELAR_AI_SOURCE_REQUESTED=NO'
+          echo 'PROJECTPULSE_ANALYTICS_CENTER_SOURCE_REQUESTED=NO'
+
+      - name: Sign in to Azure using Test OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build, deploy, verify, and preserve evidence
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ACR='${{ vars.AZURE_ACR_NAME }}'
+          REGISTRY="$ACR.azurecr.io"
+          RESOURCE_GROUP='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          BASE='${{ vars.PUBLIC_URL }}'
+          BASE="${BASE%/}"
+
+          mkdir -p release-diagnostics
+
+          resolve_image() {
+            local image="$1"
+            local relative repository digest
+            case "$image" in
+              "$REGISTRY/"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$REGISTRY/"*:*) ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$REGISTRY/"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name "$ACR" --image "$relative" \
+              --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s/%s@%s\n' "$REGISTRY" "$repository" "$digest"
+          }
+
+          security_headers_ok() {
+            local file="$1"
+            grep -Fqi 'x-content-type-options: nosniff' "$file" \
+              && grep -Fqi 'referrer-policy: same-origin' "$file" \
+              && grep -Fqi 'x-frame-options: SAMEORIGIN' "$file" \
+              && grep -Fqi "content-security-policy: object-src 'none'; base-uri 'self'; frame-ancestors 'self'" "$file" \
+              && grep -Fqi 'permissions-policy: camera=(), microphone=(), geolocation=()' "$file" \
+              && grep -Fqi 'strict-transport-security: max-age=31536000' "$file"
+          }
+
+          no_store_ok() {
+            local file="$1"
+            grep -Eqi '^cache-control:.*no-store' "$file"
+          }
+
+          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
+          OLD_API="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)")"
+          OLD_WEB="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)")"
+          OLD_API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          OLD_WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          OLD_API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          OLD_API_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          OLD_WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          OLD_WEB_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+
+          EXPECTED_API="$REGISTRY/project-health-dashboard-api@$EXPECTED_API_DIGEST"
+          EXPECTED_BASELINE_WEB="$REGISTRY/project-health-dashboard-web@$EXPECTED_BASELINE_WEB_DIGEST"
+          [[ "$OLD_API" == "$EXPECTED_API" ]]
+          [[ "$OLD_API_SOURCE" == "$EXPECTED_API_SOURCE_SHA" ]]
+          [[ "$OLD_API_REVISION" == "$EXPECTED_API_REVISION" ]]
+          [[ "$OLD_API_REVISION" == "$OLD_API_LATEST" ]]
+          [[ "$OLD_WEB" == "$EXPECTED_BASELINE_WEB" ]]
+          [[ "$OLD_WEB_SOURCE" == "$EXPECTED_BASELINE_WEB_SOURCE_SHA" ]]
+          [[ "$OLD_WEB_REVISION" == "$OLD_WEB_LATEST" ]]
+
+          {
+            echo "release_sha=$RELEASE_SHA"
+            echo "baseline_api_image=$OLD_API"
+            echo "baseline_api_source=$OLD_API_SOURCE"
+            echo "baseline_api_revision=$OLD_API_REVISION"
+            echo "baseline_web_image=$OLD_WEB"
+            echo "baseline_web_source=$OLD_WEB_SOURCE"
+            echo "baseline_web_revision=$OLD_WEB_REVISION"
+            echo 'database_migrations=none'
+            echo 'api_build_or_deployment=none'
+          } > release-diagnostics/baseline.txt
+
+          DEPLOYED=0
+          rollback() {
+            local status=$?
+            local update_exit=0
+            local rollback_verified=0
+            trap - EXIT INT TERM
+            if (( status != 0 && DEPLOYED == 1 )); then
+              set +e
+              az containerapp update \
+                -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                --image "$OLD_WEB" \
+                --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$OLD_WEB_SOURCE" \
+                --revision-suffix "rbngh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --output none --only-show-errors
+              update_exit=$?
+              if (( update_exit == 0 )); then
+                for rollback_attempt in $(seq 1 40); do
+                  RB_WEB="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                    --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" \
+                    2>/dev/null || true)"
+                  RB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                    --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+                    -o tsv --only-show-errors 2>/dev/null || true)"
+                  RB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                    --query properties.latestRevisionName -o tsv --only-show-errors 2>/dev/null || true)"
+                  RB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                    --query properties.latestReadyRevisionName -o tsv --only-show-errors 2>/dev/null || true)"
+                  RB_STATUS="$(curl -sS -o /tmp/nginx-header-rollback-web -w '%{http_code}' \
+                    -H 'Cache-Control: no-cache, no-store, max-age=0' \
+                    "$BASE/?rollback=$GITHUB_RUN_ID&attempt=$rollback_attempt" || true)"
+                  if [[ "$RB_WEB" == "$OLD_WEB" \
+                     && "$RB_SOURCE" == "$OLD_WEB_SOURCE" \
+                     && "$RB_READY" == "$RB_LATEST" \
+                     && "$RB_STATUS" == 200 ]]; then
+                    rollback_verified=1
+                    break
+                  fi
+                  sleep 5
+                done
+              fi
+              echo "PROJECTPULSE_NGINX_HEADER_ROLLBACK_UPDATE_EXIT=$update_exit"
+              echo "PROJECTPULSE_NGINX_HEADER_ROLLBACK_VERIFIED=$rollback_verified"
+              {
+                echo "rollback_update_exit=$update_exit"
+                echo "rollback_verified=$rollback_verified"
+              } > release-diagnostics/rollback.txt
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT INT TERM
+
+          chmod +x release/scripts/build-pr55-acr-image.sh
+          WEB_TAG="nginx1313-headers-${RELEASE_SHA}"
+          release/scripts/build-pr55-acr-image.sh \
+            "$ACR" \
+            "project-health-dashboard-web:$WEB_TAG" \
+            release/deployment/containers/web/Dockerfile \
+            release > /tmp/nginx-header-web.digest 2> /tmp/nginx-header-web.err
+
+          WEB_DIGEST="$(tr -d '\r\n' < /tmp/nginx-header-web.digest)"
+          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            cat /tmp/nginx-header-web.err >&2 || true
+            exit 1
+          fi
+          NEW_WEB="$REGISTRY/project-health-dashboard-web@$WEB_DIGEST"
+          echo "PROJECTPULSE_NGINX_HEADER_WEB_IMAGE=$NEW_WEB"
+
+          az containerapp update \
+            -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --image "$NEW_WEB" \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
+            --revision-suffix "ngh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          DEPLOYED=1
+
+          READY=0
+          API_STATUS=''
+          WEB_STATUS=''
+          ROOT_HEADERS_OK=0
+          API_HEADERS_OK=0
+          for attempt in $(seq 1 60); do
+            CURRENT_WEB="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" \
+              2>/dev/null || true)"
+            CURRENT_API="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" \
+              2>/dev/null || true)"
+            WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+              --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+              -o tsv --only-show-errors)"
+            API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+              --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+              -o tsv --only-show-errors)"
+            WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+              --query properties.latestRevisionName -o tsv --only-show-errors)"
+            WEB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+              --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+            API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+              --query properties.latestRevisionName -o tsv --only-show-errors)"
+            API_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+              --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+
+            API_STATUS="$(curl -sS -D /tmp/nginx-header-api-headers-raw \
+              -o /tmp/nginx-header-api -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/api/health?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            WEB_STATUS="$(curl -sS -D /tmp/nginx-header-root-headers-raw \
+              -o /tmp/nginx-header-root -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            tr -d '\r' < /tmp/nginx-header-api-headers-raw > /tmp/nginx-header-api-headers
+            tr -d '\r' < /tmp/nginx-header-root-headers-raw > /tmp/nginx-header-root-headers
+            cp /tmp/nginx-header-api-headers release-diagnostics/api-headers.txt
+            cp /tmp/nginx-header-root-headers release-diagnostics/root-headers.txt
+
+            API_OK=0
+            WEB_OK=0
+            ROOT_HEADERS_OK=0
+            API_HEADERS_OK=0
+            case "$API_STATUS" in 200|401) API_OK=1 ;; esac
+            if [[ "$WEB_STATUS" == 200 ]] \
+              && test -s /tmp/nginx-header-root \
+              && grep -qi '<!doctype html' /tmp/nginx-header-root; then
+              WEB_OK=1
+            fi
+            if security_headers_ok /tmp/nginx-header-root-headers \
+              && no_store_ok /tmp/nginx-header-root-headers; then
+              ROOT_HEADERS_OK=1
+            fi
+            if security_headers_ok /tmp/nginx-header-api-headers \
+              && no_store_ok /tmp/nginx-header-api-headers; then
+              API_HEADERS_OK=1
+            fi
+
+            printf 'attempt=%s web=%s source=%s ready=%s/%s api=%s source=%s ready=%s/%s http=%s/%s root_headers=%s api_headers=%s\n' \
+              "$attempt" "${CURRENT_WEB:-unresolved}" "${WEB_SOURCE:-missing}" \
+              "$WEB_READY" "$WEB_LATEST" "${CURRENT_API:-unresolved}" \
+              "${API_SOURCE:-missing}" "$API_READY" "$API_LATEST" \
+              "$API_STATUS" "$WEB_STATUS" "$ROOT_HEADERS_OK" "$API_HEADERS_OK" \
+              | tee release-diagnostics/final-status.txt
+
+            if [[ "$CURRENT_WEB" == "$NEW_WEB" \
+               && "$WEB_SOURCE" == "$RELEASE_SHA" \
+               && "$WEB_READY" == "$WEB_LATEST" \
+               && "$CURRENT_API" == "$OLD_API" \
+               && "$API_SOURCE" == "$OLD_API_SOURCE" \
+               && "$API_READY" == "$API_LATEST" \
+               && "$API_READY" == "$OLD_API_REVISION" \
+               && "$API_OK" == 1 \
+               && "$WEB_OK" == 1 \
+               && "$ROOT_HEADERS_OK" == 1 \
+               && "$API_HEADERS_OK" == 1 ]]; then
+              READY=1
+              break
+            fi
+            sleep 5
+          done
+          (( READY == 1 ))
+
+          ROOT_BODY_SHA256="$(sha256sum /tmp/nginx-header-root | awk '{print $1}')"
+          ROOT_HEADERS_SHA256="$(sha256sum /tmp/nginx-header-root-headers | awk '{print $1}')"
+          API_HEADERS_SHA256="$(sha256sum /tmp/nginx-header-api-headers | awk '{print $1}')"
+          [[ "$ROOT_BODY_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ROOT_HEADERS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$API_HEADERS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          export OLD_API OLD_API_SOURCE OLD_API_REVISION
+          export OLD_WEB OLD_WEB_SOURCE OLD_WEB_REVISION
+          export NEW_WEB WEB_DIGEST WEB_READY API_READY API_STATUS WEB_STATUS
+          export ROOT_BODY_SHA256 ROOT_HEADERS_SHA256 API_HEADERS_SHA256
+          mkdir -p release-evidence
+          python3 - <<'PY' > release-evidence/nginx1313-header-inheritance-web-test-release.json
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          print(json.dumps({
+              'environment': 'test',
+              'releaseSha': os.environ['RELEASE_SHA'],
+              'sourcePullRequests': [415, 419],
+              'dependencyFamily': 'unprivileged nginx web runtime and response-header inheritance',
+              'runtimeImage': 'nginxinc/nginx-unprivileged:1.31.3-alpine',
+              'headerInheritance': 'merge',
+              'deploymentScope': 'web-only',
+              'databaseMigrations': [],
+              'apiBuilt': False,
+              'apiDeployed': False,
+              'celarAiSourceChanged': False,
+              'analyticsCenterSourceChanged': False,
+              'apiImageBefore': os.environ['OLD_API'],
+              'apiImageAfter': os.environ['OLD_API'],
+              'apiSourceCommitBefore': os.environ['OLD_API_SOURCE'],
+              'apiSourceCommitAfter': os.environ['OLD_API_SOURCE'],
+              'apiRevisionBefore': os.environ['OLD_API_REVISION'],
+              'apiRevisionAfter': os.environ['API_READY'],
+              'webImageBefore': os.environ['OLD_WEB'],
+              'webSourceCommitBefore': os.environ['OLD_WEB_SOURCE'],
+              'webRevisionBefore': os.environ['OLD_WEB_REVISION'],
+              'webImageAfter': os.environ['NEW_WEB'],
+              'webDigestAfter': os.environ['WEB_DIGEST'],
+              'webSourceCommitAfter': os.environ['RELEASE_SHA'],
+              'webRevisionAfter': os.environ['WEB_READY'],
+              'apiHttpStatus': int(os.environ['API_STATUS']),
+              'webHttpStatus': int(os.environ['WEB_STATUS']),
+              'rootSecurityHeadersVerified': True,
+              'apiSecurityHeadersVerified': True,
+              'rootCacheControlNoStoreVerified': True,
+              'apiCacheControlNoStoreVerified': True,
+              'webResponseBodySha256': os.environ['ROOT_BODY_SHA256'],
+              'rootResponseHeadersSha256': os.environ['ROOT_HEADERS_SHA256'],
+              'apiResponseHeadersSha256': os.environ['API_HEADERS_SHA256'],
+              'workflowRunId': os.environ['GITHUB_RUN_ID'],
+              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'completedAt': datetime.now(timezone.utc).isoformat(),
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum release-evidence/nginx1313-header-inheritance-web-test-release.json \
+            > release-evidence/SHA256SUMS
+          sha256sum --check release-evidence/SHA256SUMS
+
+          echo "web_image=$NEW_WEB" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_revision=$WEB_READY" >> "$GITHUB_OUTPUT"
+          echo "api_image=$OLD_API" >> "$GITHUB_OUTPUT"
+          echo "api_revision=$API_READY" >> "$GITHUB_OUTPUT"
+          echo 'PROJECTPULSE_NGINX_HEADER_WEB_DIGEST_VERIFIED=YES'
+          echo 'PROJECTPULSE_TEST_API_IMAGE_SOURCE_REVISION_UNCHANGED=YES'
+          echo 'PROJECTPULSE_DATABASE_MIGRATIONS_FOR_NGINX_HEADER_RELEASE=NONE'
+          echo 'PROJECTPULSE_NGINX_ROOT_AND_API_SECURITY_HEADERS=PASSED'
+          echo 'PROJECTPULSE_NGINX_ROOT_AND_API_CACHE_CONTROL=PASSED'
+
+          trap - EXIT INT TERM
+
+      - name: Upload immutable release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-nginx1313-header-web-test-${{ github.run_id }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload failed release diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-nginx1313-header-web-test-failure-${{ github.run_id }}
+          path: release-diagnostics/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          {
+            echo '## ProjectPulse nginx 1.31.3 header-inheritance Test release'
+            echo
+            echo "- Exact application source: \`$RELEASE_SHA\`"
+            echo '- Source PRs: #415 and #419'
+            echo '- Runtime: `nginxinc/nginx-unprivileged:1.31.3-alpine`'
+            echo '- Header inheritance: `merge`'
+            echo '- Deployment scope: web-only'
+            echo '- Database migrations: none'
+            echo '- API image build or deployment: none'
+            echo '- API immutable image, source marker, and revision unchanged: passed'
+            echo '- Web immutable image build, digest deployment, and readiness: passed'
+            echo '- Root and proxied API security headers: passed'
+            echo '- Root and proxied API Cache-Control no-store: passed'
+            echo '- Public API boundary and web HTML: passed'
+            echo '- Celar AI and Analytics Center source changes: none'
+            echo '- Checksummed immutable release evidence: uploaded'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
