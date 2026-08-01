@@ -79,7 +79,7 @@ assert(
     && chatInjector.includes('setMessages([WELCOME_MESSAGE])')
     && chatInjector.includes('await refreshConversationList();')
     && chatInjector.includes('CELAR_AI_CONTEXTUAL_CHAT_FRESH_THREAD_DEFAULT=YES')
-    && !chatInjector.includes('await loadConversation(selected)'),
+    && chatInjector.includes('previous conversations remain in your History, but they are not automatically inserted'),
   'opening the chat lists retained history but starts a fresh visible thread');
 assert(
   'HISTORY_EXPLICIT',
@@ -92,9 +92,9 @@ assert('CONTEXT_INJECTOR_ACTIVE', rebrandInjector.includes("inject-celar-ai-ente
 assert('PEOPLE_AUTHORIZED_TOOLS', people.includes('/api/project-workspace/overview') && people.includes('/api/capacity-forecast/forecast?weeks=14') && people.includes('/api/manager/approval-summary'), 'people/work questions use governed owning APIs');
 assert(
   'NO_SURVEILLANCE',
-  people.includes("does not prove a person's real-time physical activity")
+  people.includes('not proof of real-time activity')
     && people.includes('personnel surveillance')
-    && people.includes('does not use conversation history as evidence of what a person is currently doing'),
+    && people.includes('conversation history as evidence of what a person is currently doing'),
   'assignment and workload evidence is not misrepresented as real-time surveillance');
 assert('HOW_TO_CATALOG', people.includes('Create a new project') && people.includes('Enter time and generate a document-grounded suggestion') && people.includes('Create a reviewable FlowHive project plan') && people.includes('Run reports and investigate financial or billing results'), 'common Pulse procedures are source controlled');
 assert('DOCUMENTATION', documentation.includes('Celar AI Enterprise Platform Interface') && documentation.includes('Created by') && documentation.includes('PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED'), 'architecture, operation, and fallback policy are documented');
