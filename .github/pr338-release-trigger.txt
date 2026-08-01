@@ -1,0 +1,8 @@
+operation=reconcile-validate-merge-pr338
+repository=ahmedadeyemi-cts/project-time-platform
+expected_main=6e66a8bbaf93c8e62fba4dbc62028df90ccc27a3
+source_base=7df1bad3d4f37f92e91f5b202c83e31b94d6f983
+source_head=ef29da625fbc3a55dfe55a5cf2cb5ef0c42d60a8
+source_branch=feature/module-001-multi-timer-document-grounded-ai-20260730
+confirmation=RECONCILE-VALIDATE-MERGE-PR338-EXACT-HEAD
+attempt=1
