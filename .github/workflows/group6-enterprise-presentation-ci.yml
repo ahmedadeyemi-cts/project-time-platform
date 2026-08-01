@@ -72,7 +72,7 @@ jobs:
           echo 'GROUP_6_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
           echo 'GROUP_6_SOURCE_ISOLATION=PASSED'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm

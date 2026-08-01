@@ -66,7 +66,7 @@ jobs:
             echo "GLOBAL_VIEW_AS_DRAWER_SCOPE=NOT_APPLICABLE_FOR_$SOURCE_BRANCH"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
