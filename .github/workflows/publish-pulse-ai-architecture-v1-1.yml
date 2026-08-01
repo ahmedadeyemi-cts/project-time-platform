@@ -1,96 +1,44 @@
-# One-time governed ordinary-blob publisher for PR #393.
-# The original architecture publisher blob is restored after publication.
+# Temporary, narrowly gated ordinary-blob publisher for PR #393.
+# The original architecture publisher is restored after the repair is merged.
 name: Publish workflow-convergence marker-scope blobs
 
 on:
-  push:
-    branches:
-      - 'fix/remaining-release-train-specialized-workflow-convergence-20260801-dependency-applicability'
-    paths:
-      - '.github/workflows/publish-pulse-ai-architecture-v1-1.yml'
   pull_request:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/publish-pulse-ai-architecture-v1-1.yml'
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 concurrency:
-  group: workflow-convergence-marker-scope-publisher-${{ github.event.pull_request.number || github.ref_name }}
+  group: workflow-convergence-marker-scope-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    if: >-
-      (github.event_name == 'push' && github.actor != 'github-actions[bot]') ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.number == 393 &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event.pull_request.number == 393 && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
-      TARGET_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
-      - name: Check out exact repair branch
+      - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ env.TARGET_BRANCH }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Generate and verify workflow-convergence marker scope
+      - name: Generate verified ordinary snapshots
         shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -Eeuo pipefail
           [[ "$TARGET_BRANCH" == 'fix/remaining-release-train-specialized-workflow-convergence-20260801-dependency-applicability' ]]
-          [[ "$(git rev-parse HEAD)" == "$TARGET_SOURCE_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD_SHA" ]]
 
-          python3 - <<'PY'
-          from pathlib import Path
-
-          changes = (
-              (
-                  Path('.github/workflows/celar-ai-runtime-rebrand-ci.yml'),
-                  'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE',
-                  'CELAR_AI_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED',
-              ),
-              (
-                  Path('.github/workflows/pulse-ai-system-intelligence-ci.yml'),
-                  'PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE',
-                  'PULSE_AI_SYSTEM_INTELLIGENCE_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED',
-              ),
-          )
-
-          for path, mode_var, success_marker in changes:
-              text = path.read_text(encoding='utf-8')
-              old = (
-                  '          if [[ "$STATUS" != \'0\' ]]; then exit "$STATUS"; fi\n'
-                  '          if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == \'true\' ]]; then\n'
-                  '            test -s dist/index.html'
-              )
-              new = (
-                  '          if [[ "$STATUS" != \'0\' ]]; then exit "$STATUS"; fi\n'
-                  f'          if [[ "${{PROJECTPULSE_DEPENDENCY_ONLY:-false}}" == \'true\' || "${{{mode_var}:-}}" == \'WORKFLOW_CONVERGENCE\' ]]; then\n'
-                  '            test -s dist/index.html'
-              )
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f'{path}: expected one compiled-output applicability target, found {count}'
-                  )
-              text = text.replace(old, new, 1)
-              if success_marker not in text:
-                  raise SystemExit(f'{path}: compiled-output success marker missing after patch')
-              path.write_text(text, encoding='utf-8')
-          PY
-
+          python3 .github/scripts/publish_workflow_convergence_blobs.py
           git diff --check
-          grep -Fq 'WORKFLOW_CONVERGENCE' .github/workflows/celar-ai-runtime-rebrand-ci.yml
-          grep -Fq 'WORKFLOW_CONVERGENCE' .github/workflows/pulse-ai-system-intelligence-ci.yml
 
           mkdir -p .github/generated
           cp .github/workflows/celar-ai-runtime-rebrand-ci.yml \
@@ -99,34 +47,38 @@ jobs:
              .github/generated/pulse-ai-system-intelligence-ci.workflow-convergence.yml.txt
           sha256sum .github/generated/*.txt \
             > .github/generated/workflow-convergence-marker-scope.SHA256SUMS
-          printf '%s\n' "$TARGET_SOURCE_SHA" \
+          printf '%s\n' "$EXPECTED_HEAD_SHA" \
             > .github/generated/workflow-convergence-marker-scope.source-sha
 
-          # The workflow token commits ordinary snapshots only. The repository API
-          # later maps their verified blob SHAs to workflow paths atomically.
+          # The Actions token never writes workflow paths. It restores them before
+          # committing and pushes only ordinary files under .github/generated.
           git checkout -- \
             .github/workflows/celar-ai-runtime-rebrand-ci.yml \
             .github/workflows/pulse-ai-system-intelligence-ci.yml
           git diff --check
 
-      - name: Commit verified ordinary blob snapshots
+      - name: Commit ordinary snapshot blobs only
         shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .github/generated/
+
           mapfile -t CHANGED < <(git diff --cached --name-only | LC_ALL=C sort)
-          printf '%s\n' "${CHANGED[@]}"
           EXPECTED=(
             '.github/generated/celar-ai-runtime-rebrand-ci.workflow-convergence.yml.txt'
             '.github/generated/pulse-ai-system-intelligence-ci.workflow-convergence.yml.txt'
             '.github/generated/workflow-convergence-marker-scope.SHA256SUMS'
             '.github/generated/workflow-convergence-marker-scope.source-sha'
           )
+          printf '%s\n' "${CHANGED[@]}"
           [[ "${#CHANGED[@]}" == "${#EXPECTED[@]}" ]]
           diff -u \
             <(printf '%s\n' "${EXPECTED[@]}") \
             <(printf '%s\n' "${CHANGED[@]}")
+
           git commit -m 'CI: publish verified workflow-convergence marker-scope blobs'
           git push origin "HEAD:${TARGET_BRANCH}"
