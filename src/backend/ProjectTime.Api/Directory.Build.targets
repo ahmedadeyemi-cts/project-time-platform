@@ -2,11 +2,13 @@
   <PropertyGroup>
     <CelarAiPeopleGenerated>$(IntermediateOutputPath)CelarAiPeopleAndGuidanceService.g.cs</CelarAiPeopleGenerated>
     <CelarAiBrandGenerated>$(IntermediateOutputPath)CelarAiBrandModule.g.cs</CelarAiBrandGenerated>
+    <CelarAiEnterpriseGenerated>$(IntermediateOutputPath)CelarAiEnterprisePlatformService.g.cs</CelarAiEnterpriseGenerated>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="Ai/CelarAiPeopleAndGuidanceService.cs" />
     <Compile Remove="Modules/CelarAiBrandModule.cs" />
+    <Compile Remove="Ai/CelarAiEnterprisePlatformService.cs" />
   </ItemGroup>
 
   <Target Name="GenerateCelarAiEnterpriseCompatibilitySources" BeforeTargets="CoreCompile">
@@ -23,9 +25,15 @@
          readiness, architecture, and solution-composer endpoints. -->
     <Exec Command="awk 'BEGIN { inserted=0 } /^[[:space:]]*return endpoints;[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;        endpoints.MapCelarAiEnterprisePlatformEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Modules/CelarAiBrandModule.cs&quot; &gt; &quot;$(CelarAiBrandGenerated)&quot;" />
 
+    <!-- All TakeOrFallback paths return arrays. Materialize the declared type as
+         IReadOnlyList so the reviewable SOW contract compiles without implicit
+         IEnumerable conversions. -->
+    <Exec Command="sed -e 's/private static IEnumerable&lt;string&gt; TakeOrFallback/private static IReadOnlyList&lt;string&gt; TakeOrFallback/' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiEnterprisePlatformService.cs&quot; &gt; &quot;$(CelarAiEnterpriseGenerated)&quot;" />
+
     <ItemGroup>
       <Compile Include="$(CelarAiPeopleGenerated)" />
       <Compile Include="$(CelarAiBrandGenerated)" />
+      <Compile Include="$(CelarAiEnterpriseGenerated)" />
     </ItemGroup>
   </Target>
 </Project>
