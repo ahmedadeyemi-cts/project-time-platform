@@ -10,6 +10,8 @@ on:
     paths:
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
       - '.github/workflows/group5-financial-operations-recovery-ci.yml'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/package-lock.json'
       - 'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js'
       - 'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.css'
       - 'src/frontend/project-time-web/src/main.jsx'
@@ -32,9 +34,11 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify Help-chat ownership, Module 011 integration, or regression mode
@@ -46,6 +50,9 @@ jobs:
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
+
+          HELP_RUNTIME_OWNED='^(src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs)$'
+          CENTRAL_HELP_CONVERGENCE='^src/frontend/project-time-web/src/HelpAssistant\.jsx$'
 
           for protected in \
             '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
@@ -59,7 +66,7 @@ jobs:
 
           case "$HEAD_BRANCH" in
             fix/module-011-help-chat-usability-*)
-              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
               UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
               if [[ -n "$UNEXPECTED" ]]; then
                 echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
@@ -94,7 +101,24 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_LATER_MODULE_011_INTEGRATION=PASSED'
               ;;
+            security/repository-posture-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The central security posture branch changed Help-chat source outside the reviewed canonical-source convergence boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_CENTRAL_SECURITY_CONVERGENCE=PASSED'
+              ;;
             *)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              if [[ -n "$DIRECT_HELP_CHANGES" ]]; then
+                echo 'Pulse AI Help-chat runtime source may only be changed from the isolated Help-chat branch family:' >&2
+                printf '%s\n' "$DIRECT_HELP_CHANGES" >&2
+                exit 1
+              fi
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
               echo "PULSE_AI_HELP_CHAT_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
               ;;
@@ -105,11 +129,13 @@ jobs:
           git diff --check "origin/$BASE_BRANCH"...HEAD
           echo 'GROUP_5_REGRESSION_APPLICABILITY_CORRECTION=PASSED'
 
-      - uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -147,6 +173,17 @@ jobs:
           grep -Fq 'Shift+Enter adds a line' /tmp/pulse-ai-help-chat.js
           grep -Fq '.pulse-ai-help-keyboard-hint' /tmp/pulse-ai-help-chat.css
           grep -Fq 'overscroll-behavior:contain' /tmp/pulse-ai-help-chat.css
+
+          git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
+          git -C ../../.. diff --check
+          git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
+          echo 'PULSE_AI_HELP_CHAT_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'PULSE_AI_HELP_CHAT_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
@@ -174,6 +211,7 @@ jobs:
             echo '- Group 5 unrelated-PR regression mode: confirmed'
             echo '- API build: passed'
             echo '- Complete frontend build: passed'
+            echo '- Deterministic generated-source convergence: passed'
             echo '- Web container build: passed'
             echo '- Provider call added: none'
             echo '- Deployment performed: none'
