@@ -30,7 +30,10 @@ const ENGINEERING_OR_OPERATIONS_ROLES = new Set([
 
 export const ROLE_WORKSPACE_BASELINES = Object.freeze({
   projectManagement: Object.freeze([
+    'timesheet',
     'manager-approval',
+    'holiday-admin',
+    'project-allocation-info',
     'project-workload',
     'project-workspace',
     'project-intake',
@@ -43,6 +46,7 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'work-register',
     'contracts',
     'project-flowhive',
+    'qualifications-certifications',
     'user-guide'
   ]),
   accountingBilling: Object.freeze([
@@ -50,6 +54,8 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'audit-history',
     'customer-directory',
     'reporting',
+    'financial-operations-workbench',
+    'notification-delivery-monitor',
     'certify-integration',
     'billing-readiness',
     'project-closeout',
@@ -79,13 +85,9 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
 });
 
 export const PROJECT_MANAGEMENT_DENIED_ROUTES = Object.freeze([
-  'timesheet',
   'utilization',
-  'holiday-admin',
-  'project-allocation-info',
   'ai-time-entry',
   'calendar-capacity',
-  'qualifications-certifications',
   'capacity-pipeline-forecast',
   'oncall-scheduling'
 ]);
@@ -112,13 +114,21 @@ function normalizeRoleCode(value) {
 }
 
 export function roleCodesFrom(value) {
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeRoleCode(item?.roleCode ?? item)).filter(Boolean);
-  }
+  const source = Array.isArray(value)
+    ? value
+    : (value?.roles ?? value?.roleCodes ?? []);
+  const entries = Array.isArray(source)
+    ? source
+    : String(source ?? '').split(/[;,|]+/);
 
-  return (value?.roles ?? value?.roleCodes ?? [])
-    .map((item) => normalizeRoleCode(item?.roleCode ?? item))
-    .filter(Boolean);
+  return entries
+    .flatMap((item) => {
+      const raw = item?.roleCode ?? item;
+      return Array.isArray(raw) ? raw : String(raw ?? '').split(/[;,|]+/);
+    })
+    .map(normalizeRoleCode)
+    .filter(Boolean)
+    .filter((roleCode, index, values) => values.indexOf(roleCode) === index);
 }
 
 function hasAny(roleCodes, candidates) {
@@ -158,9 +168,20 @@ function canUseRegistryModule(module, assignedRoleCodes) {
   return strictRoleCodes.length === 0 || strictRoleCodes.some((roleCode) => assignedRoleCodes.includes(roleCode));
 }
 
+function activeRegistryModules(moduleRegistry) {
+  return (moduleRegistry ?? []).filter((module) => (
+    module?.isRetired !== true && module?.lifecycle !== 'retired'
+  ));
+}
+
 export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, moduleRegistry) {
   const roleCodes = roleCodesFrom(user);
-  if (roleCodes.length === 0 || hasAny(roleCodes, ADMIN_ROLES)) return permissionFilteredModules;
+  if (roleCodes.length === 0) return permissionFilteredModules ?? [];
+
+  // An actual Super Administrator has permanent organization-wide Full Control.
+  // When Administrator View-As is active, the effective user's non-admin roles are
+  // supplied here instead, so this full-catalog branch never transfers authority.
+  if (hasAny(roleCodes, ADMIN_ROLES)) return activeRegistryModules(moduleRegistry);
 
   const routes = new Set((permissionFilteredModules ?? []).map((module) => module.route));
   const projectManagement = hasAny(roleCodes, PROJECT_MANAGEMENT_ROLES);
@@ -183,6 +204,23 @@ export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, mo
   }
 
   const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
+  const pureProjectManagement = projectManagement
+    && !hasOperationalRole
+    && !accountingBilling
+    && !sales
+    && !coordinator;
+  const pureAccountingBilling = accountingBilling
+    && !hasOperationalRole
+    && !projectManagement
+    && !sales
+    && !coordinator;
+
+  if (pureProjectManagement || pureAccountingBilling) {
+    return activeRegistryModules(moduleRegistry).filter((module) => (
+      baselineRoutes.has(module.route) && routes.has(module.route)
+    ));
+  }
+
   const denied = projectManagement && !hasOperationalRole
     ? PROJECT_MANAGEMENT_DENIED_ROUTES
     : (accountingBilling || sales) && !hasOperationalRole && !projectManagement
@@ -190,5 +228,5 @@ export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, mo
       : [];
 
   denied.forEach((route) => routes.delete(route));
-  return (moduleRegistry ?? []).filter((module) => routes.has(module.route));
+  return activeRegistryModules(moduleRegistry).filter((module) => routes.has(module.route));
 }
