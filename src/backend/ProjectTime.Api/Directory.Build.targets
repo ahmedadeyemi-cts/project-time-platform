@@ -1,7 +1,15 @@
 <Project>
   <PropertyGroup>
-    <AnalyticsScheduleServiceGenerated>$(IntermediateOutputPath)AnalyticsCenterScheduleService.g.cs</AnalyticsScheduleServiceGenerated>
-    <AnalyticsEnterpriseModuleGenerated>$(IntermediateOutputPath)AnalyticsCenterEnterpriseExperienceModule.g.cs</AnalyticsEnterpriseModuleGenerated>
+    <AnalyticsGeneratedDirectory>$(MSBuildProjectDirectory)/obj/analytics-enterprise</AnalyticsGeneratedDirectory>
+    <AnalyticsScheduleServiceGenerated>$(AnalyticsGeneratedDirectory)/AnalyticsCenterScheduleService.g.cs</AnalyticsScheduleServiceGenerated>
+    <AnalyticsEnterpriseModuleGenerated>$(AnalyticsGeneratedDirectory)/AnalyticsCenterEnterpriseExperienceModule.g.cs</AnalyticsEnterpriseModuleGenerated>
+    <!--
+      The existing project computes this property before IntermediateOutputPath is
+      populated, which otherwise resolves the generated Program into the source
+      directory and causes validation builds to modify tracked source. Override it
+      to an explicitly ignored intermediate directory for every build.
+    -->
+    <ScopedRbacGeneratedProgram>$(AnalyticsGeneratedDirectory)/Program.ScopedRbac.g.cs</ScopedRbacGeneratedProgram>
   </PropertyGroup>
 
   <!--
@@ -11,13 +19,19 @@
     generated copies used by every local, CI, and container build.
   -->
   <ItemGroup>
+    <Compile Remove="Program.ScopedRbac.g.cs" />
     <Compile Remove="Modules/AnalyticsCenterScheduleService.cs" />
     <Compile Remove="Modules/AnalyticsCenterEnterpriseExperienceModule.cs" />
   </ItemGroup>
 
+  <Target Name="PrepareAnalyticsGeneratedDirectory"
+          BeforeTargets="GenerateScopedRbacSources;PrepareAnalyticsCenterEnterpriseCompileSources">
+    <MakeDir Directories="$(AnalyticsGeneratedDirectory)" />
+  </Target>
+
   <Target Name="PrepareAnalyticsCenterEnterpriseCompileSources"
           BeforeTargets="CoreCompile">
-    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <MakeDir Directories="$(AnalyticsGeneratedDirectory)" />
     <Exec Command="sed -e 's/var nextRun = request.Enabled/DateTimeOffset? nextRun = request.Enabled/' -e 's/var next = schedule.Enabled/DateTimeOffset? next = schedule.Enabled/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterScheduleService.cs&quot; &gt; &quot;$(AnalyticsScheduleServiceGenerated)&quot;" />
     <Exec Command="sed -e 's/? (project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m)/? (decimal?)((project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m))/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterEnterpriseExperienceModule.cs&quot; &gt; &quot;$(AnalyticsEnterpriseModuleGenerated)&quot;" />
     <ItemGroup>
