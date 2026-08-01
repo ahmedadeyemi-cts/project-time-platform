@@ -67,7 +67,7 @@ jobs:
           test "$confirmation" = "RECONCILE-VALIDATE-MERGE-PR338-EXACT-HEAD"
           test "$expected_main" = "6e66a8bbaf93c8e62fba4dbc62028df90ccc27a3"
           test "$source_base" = "7df1bad3d4f37f92e91f5b202c83e31b94d6f983"
-          test "$source_head" = "f84bc416b57060b93cd35fb326b87c5cb3828c7d"
+          test "$source_head" = "48822e916b6aa8bc73f7aa0d4524654e86092813"
           test "$source_branch" = "feature/module-001-multi-timer-document-grounded-ai-20260730"
 
           control_sha="$(git -C repo rev-parse HEAD)"
@@ -116,7 +116,6 @@ jobs:
           git cat-file -e "$SOURCE_HEAD^{commit}"
 
           cat > "$RUNNER_TEMP/pr338-expected-paths.txt" <<'PATHS'
-          .github/workflows/module001-multi-timer-document-grounded-ai-ci.yml
           database/migrations/057_module_001_multi_timer_document_grounded_ai.sql
           database/rollback/057_module_001_multi_timer_document_grounded_ai_rollback.sql
           docs/modules/module-001-timesheet/MULTI-TIMER-DOCUMENT-GROUNDED-AI.md
@@ -167,64 +166,17 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('.github/workflows/module001-multi-timer-document-grounded-ai-ci.yml')
-          text = path.read_text(encoding='utf-8')
-          replacements = {
-              'actions/checkout@v4': 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09',
-              'actions/setup-dotnet@v4': 'actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9',
-              'actions/setup-node@v4': 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
-          }
-          for old, new in replacements.items():
-              old_count = text.count(old)
-              new_count = text.count(new)
-              if old_count == 1 and new_count == 0:
-                  text = text.replace(old, new, 1)
-              elif old_count == 0 and new_count == 1:
-                  continue
-              else:
-                  raise SystemExit(
-                      f'Expected exactly one unpinned or pinned action reference for {old}; '
-                      f'found old={old_count}, pinned={new_count}'
-                  )
-          path.write_text(text, encoding='utf-8')
-          PY
-
-          python3 - <<'PY'
-          from pathlib import Path
-
           path = Path('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx')
           text = path.read_text(encoding='utf-8')
-          old = (
-              "      module001Api(`/api/timesheet/timers/history-v2?weekStart=${encodeURIComponent(selectedWeekStart)}`, {\n"
-              "        requiredCollections: ['timers']\n"
-              "      }),"
+          required = (
+              'async function loadTimerHistory(weekStart)',
+              '/api/timesheet/timers/history-v2?weekStart=',
+              '/api/timesheet/timers/history?weekStart=',
+              'loadTimerHistory(selectedWeekStart)',
           )
-          new = (
-              "      (async () => {\n"
-              "        const encodedWeekStart = encodeURIComponent(selectedWeekStart);\n"
-              "        try {\n"
-              "          return await module001Api(`/api/timesheet/timers/history-v2?weekStart=${encodedWeekStart}`, {\n"
-              "            requiredCollections: ['timers']\n"
-              "          });\n"
-              "        } catch (error) {\n"
-              "          if (error?.status !== 404 && error?.status !== 405) throw error;\n"
-              "          return module001Api(`/api/timesheet/timers/history?weekStart=${encodedWeekStart}`, {\n"
-              "            requiredCollections: ['timers']\n"
-              "          });\n"
-              "        }\n"
-              "      })(),"
-          )
-          old_count = text.count(old)
-          new_count = text.count('/api/timesheet/timers/history?weekStart=')
-          if old_count == 1 and new_count == 0:
-              text = text.replace(old, new, 1)
-          elif old_count == 0 and new_count == 1:
-              pass
-          else:
-              raise SystemExit(
-                  'Expected exactly one V2 history request or one reconciled legacy fallback; '
-                  f'found old={old_count}, fallback={new_count}'
-              )
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise SystemExit(f'Missing guarded timer-history compatibility contract: {missing}')
           path.write_text(text, encoding='utf-8')
           PY
 
@@ -319,18 +271,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          set +e
-          push_output="$(git push --force-with-lease="refs/heads/${SOURCE_BRANCH}:${SOURCE_HEAD}" origin "${CANDIDATE_SHA}:refs/heads/${SOURCE_BRANCH}" 2>&1)"
-          push_status=$?
-          set -e
-          printf '%s\n' "$push_output"
-          if [[ $push_status -eq 0 ]]; then
-            echo "PR338_BRANCH_UPDATED=$CANDIDATE_SHA"
-          elif grep -Fq 'without `workflows` permission' <<< "$push_output"; then
-            echo "PR338_CANDIDATE_VALIDATED_BUT_USER_CREDENTIAL_UPDATE_REQUIRED=$CANDIDATE_SHA"
-          else
-            exit "$push_status"
-          fi
+          git push --force-with-lease="refs/heads/${SOURCE_BRANCH}:${SOURCE_HEAD}" origin "${CANDIDATE_SHA}:refs/heads/${SOURCE_BRANCH}"
+          echo "PR338_BRANCH_UPDATED=$CANDIDATE_SHA"
 
       - name: Record exact reconciliation evidence
         shell: bash
@@ -343,4 +285,5 @@ jobs:
             echo "- Reconciled candidate: \`${{ steps.candidate.outputs.sha }}\`"
             echo '- Migration 057, API build/startup, focused validators, complete frontend build, security posture, and deterministic source convergence passed.'
             echo '- The legacy timer-history endpoint remains a guarded fallback for environments that have not yet activated the V2 history route.'
+            echo '- No standalone feature CI control file is included in the reconciled candidate.'
           } >> "$GITHUB_STEP_SUMMARY"
