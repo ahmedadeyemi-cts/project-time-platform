@@ -40,6 +40,14 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<IProjectPulseAiProvider>(provider => provider.GetRequiredService<ProjectPulseOpenAiProvider>());
         services.AddSingleton<ProjectPulseAiRouter>();
         services.AddSingleton<ProjectPulseAiHealthCoordinator>();
+
+        // Module 064 capability routing and private Celar AI runtime profile.
+        services.AddSingleton<CelarAiCapabilityRoutingStore>();
+        services.AddSingleton<CelarAiPrivateGenerationTarget>();
+        services.AddSingleton<CelarAiConsumerAssuranceRegistry>();
+        services.AddSingleton<CelarAiCapabilityRouter>();
+        services.AddHostedService<CelarAiCapabilityRoutingLoader>();
+
         services.AddSingleton<PulseAiDocumentGroundingService>();
         services.AddSingleton<PulseAiQuestionPlanner>();
         services.AddSingleton<PulseAiEscalationSanitizer>();
