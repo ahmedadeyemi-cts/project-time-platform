@@ -40,6 +40,12 @@ COPY src/backend/ProjectTime.Api/Ai/ \
 COPY src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs \
      src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
 
+COPY src/backend/ProjectTime.Api/Modules/Module001MultiTimerModule.cs \
+     src/backend/ProjectTime.Api/Modules/Module001MultiTimerFinalization.cs \
+     src/backend/ProjectTime.Api/Modules/Module001MultiTimerStart.cs \
+     src/backend/ProjectTime.Api/Modules/Module001MultiTimerStop.cs \
+     src/backend/ProjectTime.Api/Modules/
+
 COPY src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs \
      src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
 
@@ -253,6 +259,9 @@ COPY database/migrations/038_work_to_cash_lifecycle_and_audit.sql \
 COPY database/migrations/039_work_to_cash_reactivation_lock_order.sql \
      database/migrations/039_work_to_cash_reactivation_lock_order.sql
 
+COPY database/migrations/057_module_001_multi_timer_document_grounded_ai.sql \
+     database/migrations/057_module_001_multi_timer_document_grounded_ai.sql
+
 COPY database/rollback/034_module_026_crm_erp_integrations_rollback.sql \
      database/rollback/034_module_026_crm_erp_integrations_rollback.sql
 
@@ -270,6 +279,12 @@ COPY database/rollback/038_work_to_cash_lifecycle_and_audit_rollback.sql \
 
 COPY database/rollback/039_work_to_cash_reactivation_lock_order_rollback.sql \
      database/rollback/039_work_to_cash_reactivation_lock_order_rollback.sql
+
+COPY database/rollback/057_module_001_multi_timer_document_grounded_ai_rollback.sql \
+     database/rollback/057_module_001_multi_timer_document_grounded_ai_rollback.sql
+
+COPY tests/test-module001-multi-timer-migration-057.sh \
+     tests/test-module001-multi-timer-migration-057.sh
 
 COPY docs/modules/module-077-release-deployment-control/ \
      docs/modules/module-077-release-deployment-control/
