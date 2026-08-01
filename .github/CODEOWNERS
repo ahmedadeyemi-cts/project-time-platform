@@ -1,0 +1,20 @@
+# ProjectPulse repository ownership baseline
+# GitHub rulesets should require CODEOWNER approval for protected paths.
+
+* @ahmedadeyemi-cts
+
+/.github/ @ahmedadeyemi-cts
+/SECURITY.md @ahmedadeyemi-cts
+/docs/security/ @ahmedadeyemi-cts
+/scripts/security/ @ahmedadeyemi-cts
+
+/src/backend/ProjectTime.Api/Program.cs @ahmedadeyemi-cts
+/src/backend/ProjectTime.Api/ProjectTime.Api.csproj @ahmedadeyemi-cts
+/src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs @ahmedadeyemi-cts
+/src/backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs @ahmedadeyemi-cts
+/src/backend/ProjectTime.Api/Modules/ScopedRolePolicyAuthorizationBridge.cs @ahmedadeyemi-cts
+
+/database/migrations/ @ahmedadeyemi-cts
+/database/rollback/ @ahmedadeyemi-cts
+/deployment/ @ahmedadeyemi-cts
+/ops/ @ahmedadeyemi-cts
