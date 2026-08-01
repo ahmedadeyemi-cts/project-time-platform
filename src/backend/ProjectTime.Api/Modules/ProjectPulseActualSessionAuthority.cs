@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
@@ -6,6 +8,11 @@ namespace ProjectTime.Api.Modules;
 /// Resolves non-transferable authority from the actual authenticated ProjectPulse
 /// session. Super Administrator authority is permanent and organization-wide in
 /// an administrator's own session, but it is never transferred into View-As.
+///
+/// The resolver accepts the canonical SUPER_ADMINISTRATOR code and the retained
+/// ADMINISTRATOR compatibility alias. It first uses the stable session user ID,
+/// then falls back to the trusted actual-session email when an older or duplicate
+/// app-user mapping would otherwise hide a valid administrator assignment.
 /// </summary>
 internal static class ProjectPulseActualSessionAuthority
 {
@@ -14,6 +21,11 @@ internal static class ProjectPulseActualSessionAuthority
         "SUPER_ADMINISTRATOR",
         "ADMINISTRATOR"
     ];
+
+    internal static bool IsAdministratorRoleCode(string? roleCode) =>
+        SuperAdministratorRoleCodes.Contains(
+            (roleCode ?? string.Empty).Trim().ToUpperInvariant(),
+            StringComparer.OrdinalIgnoreCase);
 
     internal static bool IsViewAs(HttpContext context)
     {
@@ -37,8 +49,13 @@ internal static class ProjectPulseActualSessionAuthority
         CancellationToken cancellationToken = default)
     {
         if (IsViewAs(context)) return false;
-        var actualUserId = ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
-        if (!actualUserId.HasValue) return false;
+
+        var sessionUserId = ReadUserId(
+            context,
+            "ProjectPulseActualUserId",
+            "ProjectPulseSessionUserId");
+        var actualEmail = ReadActualEmail(context);
+        if (!sessionUserId.HasValue && string.IsNullOrWhiteSpace(actualEmail)) return false;
 
         var ownsConnection = existingConnection is null;
         var connectionString = ownsConnection ? BuildConnectionString() : string.Empty;
@@ -52,23 +69,47 @@ internal static class ProjectPulseActualSessionAuthority
             await connection.OpenAsync(cancellationToken);
 
         await using var command = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM app_user_role_assignments assignment
-                JOIN app_roles role
-                  ON role.app_role_id = assignment.app_role_id
-                 AND role.is_active = TRUE
-                JOIN app_users app_user
-                  ON app_user.user_id = assignment.user_id
-                 AND app_user.is_active = TRUE
-                WHERE assignment.user_id = @user_id
-                  AND assignment.is_active = TRUE
-                  AND upper(COALESCE(role.role_code, '')) = ANY(@role_codes)
-            );
+            SELECT app_user.user_id
+            FROM app_users app_user
+            JOIN app_user_role_assignments assignment
+              ON assignment.user_id = app_user.user_id
+             AND assignment.is_active = TRUE
+            JOIN app_roles role
+              ON role.app_role_id = assignment.app_role_id
+             AND role.is_active = TRUE
+            WHERE app_user.is_active = TRUE
+              AND upper(COALESCE(role.role_code, '')) = ANY(@role_codes)
+              AND (
+                    (@user_id IS NOT NULL AND app_user.user_id = @user_id)
+                 OR (@email <> '' AND lower(app_user.email) = lower(@email))
+              )
+            ORDER BY
+              CASE
+                WHEN @user_id IS NOT NULL AND app_user.user_id = @user_id THEN 0
+                ELSE 1
+              END,
+              app_user.updated_at DESC NULLS LAST,
+              app_user.user_id
+            LIMIT 1;
             """, connection, transaction);
-        command.Parameters.AddWithValue("user_id", actualUserId.Value);
+        command.Parameters.Add("user_id", NpgsqlDbType.Uuid).Value =
+            sessionUserId.HasValue ? sessionUserId.Value : DBNull.Value;
+        command.Parameters.AddWithValue("email", actualEmail);
         command.Parameters.AddWithValue("role_codes", SuperAdministratorRoleCodes);
-        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+
+        var resolved = await command.ExecuteScalarAsync(cancellationToken);
+        if (resolved is not Guid administratorUserId || administratorUserId == Guid.Empty)
+            return false;
+
+        // Repair request-local identity only. No session token, cookie, role
+        // assignment, or database row is changed by this compatibility step.
+        context.Items["ProjectPulseActualUserId"] = administratorUserId;
+        if (!IsViewAs(context))
+            context.Items["ProjectPulseEffectiveUserId"] = administratorUserId;
+        context.Items["ProjectPulsePermanentFullControl"] = true;
+        context.Items["ProjectPulseAuthorizationSource"] = "actual_session_super_administrator";
+        context.Items["ProjectPulseActualRoleCodes"] = SuperAdministratorRoleCodes;
+        return true;
     }
 
     internal static Guid? ReadUserId(HttpContext context, params string[] keys)
@@ -80,6 +121,43 @@ internal static class ProjectPulseActualSessionAuthority
             if (Guid.TryParse(raw?.ToString(), out var parsed) && parsed != Guid.Empty) return parsed;
         }
         return null;
+    }
+
+    internal static string ReadActualEmail(HttpContext context)
+    {
+        foreach (var key in new[]
+                 {
+                     "ProjectPulseActualEmail",
+                     "ProjectPulseSessionEmail",
+                     "ProjectPulseUserEmail"
+                 })
+        {
+            if (!context.Items.TryGetValue(key, out var raw)) continue;
+            var value = raw?.ToString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(value)) return value.ToLowerInvariant();
+        }
+
+        foreach (var claimType in new[]
+                 {
+                     ClaimTypes.Email,
+                     "email",
+                     "preferred_username",
+                     "upn",
+                     ClaimTypes.Name
+                 })
+        {
+            var value = context.User?.Claims
+                .FirstOrDefault(claim => string.Equals(
+                    claim.Type,
+                    claimType,
+                    StringComparison.OrdinalIgnoreCase))
+                ?.Value
+                ?.Trim();
+            if (!string.IsNullOrWhiteSpace(value) && value.Contains('@'))
+                return value.ToLowerInvariant();
+        }
+
+        return string.Empty;
     }
 
     private static string BuildConnectionString()
