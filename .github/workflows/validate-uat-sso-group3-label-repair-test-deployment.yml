@@ -25,13 +25,13 @@ jobs:
 
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact repair source release
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: b402f99130341995d692bb9f85fe195255c8ffb5
           path: release

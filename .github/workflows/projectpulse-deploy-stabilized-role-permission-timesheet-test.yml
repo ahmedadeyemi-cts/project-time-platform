@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: 2216bfadaca76858fe07e8d1228df888688fd786
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact stabilized release
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_commit }}
           path: release

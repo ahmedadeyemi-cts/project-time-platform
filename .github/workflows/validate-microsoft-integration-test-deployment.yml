@@ -22,7 +22,7 @@ jobs:
     name: Validate Microsoft Integration Connection deployment controls
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate guarded deployment contract
         shell: bash

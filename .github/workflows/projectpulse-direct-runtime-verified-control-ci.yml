@@ -19,6 +19,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate corrected checkout boundaries and deployment guard
         run: bash scripts/validate-direct-runtime-verified-test-deployment.sh

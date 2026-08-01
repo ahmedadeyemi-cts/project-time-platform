@@ -16,7 +16,7 @@ jobs:
     name: Validate functional runtime UAT candidate deployment control
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate guarded web-only candidate deployment contract
         shell: bash
         run: bash scripts/validate-runtime-direct-timer-recovery-test-deployment.sh

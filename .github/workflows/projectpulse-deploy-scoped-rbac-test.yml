@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: 19c7bee92e513b79ef83cc3b6ad3d2a781aa5b67
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact scoped RBAC release
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_commit }}
           path: release

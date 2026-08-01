@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: dffeae27cbebe4a66f5c35a52624423790eb9537
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact Modules card-number source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_commit }}
           path: release

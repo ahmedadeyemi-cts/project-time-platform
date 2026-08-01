@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: 821b346ce6fe2475c10717d1c2a46db234a63b32
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact blank-page hotfix source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_commit }}
           path: release

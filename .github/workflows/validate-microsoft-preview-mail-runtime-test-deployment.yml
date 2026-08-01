@@ -16,7 +16,7 @@ jobs:
     name: Validate Microsoft Preview mail-runtime deployment controls
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate guarded no-migration API/web deployment contract
         shell: bash
         run: bash scripts/validate-microsoft-preview-mail-runtime-test-deployment.sh

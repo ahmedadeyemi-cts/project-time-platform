@@ -30,13 +30,13 @@ jobs:
       EXPECTED_RELEASE_COMMIT: 79822a4aaf1d7d07a0be45ec3671bc61536f87a7
     steps:
       - name: Check out deployment controls
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: control
           fetch-depth: 0
 
       - name: Check out exact Approval Center hotfix source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_commit }}
           path: release

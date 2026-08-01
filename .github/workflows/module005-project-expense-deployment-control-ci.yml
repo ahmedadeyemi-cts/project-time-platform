@@ -17,6 +17,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate guarded Module 005 test deployment
         run: bash scripts/validate-module-005-project-expense-test-deployment.sh
