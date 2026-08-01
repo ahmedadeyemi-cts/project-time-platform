@@ -19,6 +19,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ProjectFinancialTruthReportingBridge.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/package-lock.json'
       - 'src/frontend/project-time-web/scripts/inject-group-5-financial-operations-recovery.mjs'
       - 'src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs'
       - 'src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx'
@@ -39,30 +40,37 @@ jobs:
     timeout-minutes: 65
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify Group 5 ownership or regression applicability
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           OWNED_BRANCH='false'
           ANALYTICS_COMPATIBILITY_BRANCH='false'
+          CENTRAL_SECURITY_BRANCH='false'
           if [[ "$HEAD_BRANCH" == feature/group-5-financial-reports-closeout-billing-recovery-* ]]; then
             OWNED_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* ]]; then
             ANALYTICS_COMPATIBILITY_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
+            CENTRAL_SECURITY_BRANCH='true'
           fi
 
-          ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
           GROUP5_RUNTIME_OWNED='^(database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
           ANALYTICS_COMPATIBILITY='^src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery\.mjs$'
+          CENTRAL_GROUP5_CONVERGENCE='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
 
           if [[ "$OWNED_BRANCH" == 'true' ]]; then
             UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
@@ -71,8 +79,25 @@ jobs:
               printf '%s\n' "$UNEXPECTED" >&2
               exit 1
             fi
+
+            if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/.*[Cc]ertify|src/backend/ProjectTime.Api/Modules/Module038)' <<<"$CHANGED"; then
+              echo 'Group 5 overlaps deployment, canonical App/registry source, or Module 038 Certify source.' >&2
+              exit 1
+            fi
+
             echo 'GROUP_5_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_SOURCE_ISOLATION=PASSED'
+          elif [[ "$CENTRAL_SECURITY_BRANCH" == 'true' ]]; then
+            DIRECT_GROUP5_CHANGES="$(grep -E "$GROUP5_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+            UNAPPROVED_GROUP5="$(grep -Ev "$CENTRAL_GROUP5_CONVERGENCE" <<<"$DIRECT_GROUP5_CHANGES" || true)"
+            if [[ -n "$UNAPPROVED_GROUP5" ]]; then
+              echo 'The central security posture branch changed Group 5 source outside the reviewed canonical-source convergence boundary:' >&2
+              printf '%s\n' "$UNAPPROVED_GROUP5" >&2
+              exit 1
+            fi
+
+            echo 'GROUP_5_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
+            echo 'GROUP_5_CENTRAL_SECURITY_CONVERGENCE=PASSED'
           else
             DIRECT_GROUP5_CHANGES="$(grep -E "$GROUP5_RUNTIME_OWNED" <<<"$CHANGED" || true)"
             if [[ "$ANALYTICS_COMPATIBILITY_BRANCH" == 'true' ]]; then
@@ -83,6 +108,7 @@ jobs:
               printf '%s\n' "$DIRECT_GROUP5_CHANGES" >&2
               exit 1
             fi
+
             echo 'GROUP_5_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
             echo 'GROUP_5_REGRESSION_APPLICABILITY=PASSED'
           fi
@@ -97,11 +123,15 @@ jobs:
             fi
           done
 
-      - uses: actions/setup-dotnet@v4
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -163,5 +193,33 @@ jobs:
           if [[ -f ./scripts/validate-analytics-center.mjs ]]; then
             node ./scripts/validate-analytics-center.mjs
           fi
+          git -C ../../.. diff --check
+          git -C ../../.. diff --exit-code
           echo 'GROUP_5_AND_ANALYTICS_POST_BUILD_VALIDATION=PASSED'
           echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
+
+      - name: Capture Group 5 validation evidence
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p artifacts
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo 'git_status_begin'
+            git status --short
+            echo 'git_status_end'
+          } > artifacts/group5-workflow-evidence.txt
+          exit 0
+
+      - name: Upload Group 5 validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: group5-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/group5-workflow-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
