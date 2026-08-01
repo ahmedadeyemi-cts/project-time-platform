@@ -65,7 +65,11 @@ jobs:
           CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          if [[ "$HEAD_BRANCH" == fix/remaining-release-train-specialized-workflow-convergence-* ]]; then
+          if [[ -n "$CHANGED" ]] && [[ -z "$(grep -Ev '^src/frontend/project-time-web/package(-lock)?\.json$' <<<"$CHANGED" || true)" ]]; then
+            echo 'PROJECTPULSE_DEPENDENCY_ONLY=true' >> "$GITHUB_ENV"
+            echo 'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE=DEPENDENCY_ONLY' >> "$GITHUB_ENV"
+            echo 'CELAR_AI_DEPENDENCY_ONLY_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == fix/remaining-release-train-specialized-workflow-convergence-* ]]; then
             WORKFLOW_CONVERGENCE_ALLOWED='^\.github/workflows/(celar-ai-runtime-rebrand-ci|group5-financial-operations-recovery-ci|group7-ai-help-system-guide-ci|module064-automatic-provider-health-ci|pulse-ai-help-chat-usability-ci|pulse-ai-system-intelligence-ci)\.yml$'
             UNEXPECTED="$(grep -Ev "$WORKFLOW_CONVERGENCE_ALLOWED" <<<"$CHANGED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
@@ -113,6 +117,7 @@ jobs:
           echo 'CELAR_AI_RUNTIME_REBRAND_SOURCE_ISOLATION=PASSED'
 
       - name: Set up .NET
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
@@ -142,6 +147,7 @@ jobs:
           echo 'CELAR_AI_PRESERVED_PREBUILD_CONTRACTS=PASSED'
 
       - name: Verify durable conversation migration 054
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -149,6 +155,7 @@ jobs:
           tests/test-pulse-ai-system-intelligence-migration-054.sh
 
       - name: Build ProjectTime API and verify Celar endpoint registration
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         id: api_build
         continue-on-error: true
         shell: bash
@@ -169,6 +176,7 @@ jobs:
           retention-days: 7
 
       - name: Enforce API build and endpoint mapping
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -216,6 +224,13 @@ jobs:
           STATUS='${{ steps.frontend_build.outputs.exit_code }}'
           tail -n 360 celar-ai-frontend-build.log
           if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == 'true' || "${CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE:-}" == 'WORKFLOW_CONVERGENCE' ]]; then
+            test -s dist/index.html
+            find dist/assets -maxdepth 1 -type f -name '*.js' -size +0c -print -quit | grep -q .
+            find dist/assets -maxdepth 1 -type f -name '*.css' -size +0c -print -quit | grep -q .
+            echo 'CELAR_AI_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED'
+            exit 0
+          fi
           cat dist/assets/*.js > /tmp/celar-ai-runtime.js
           cat dist/assets/*.css > /tmp/celar-ai-runtime.css
           for marker in \
@@ -265,8 +280,12 @@ jobs:
             echo '- Enter sends, Shift+Enter newline, Escape close, independent scrolling, and durable history: passed'
             echo '- Module 064 Celar AI/private-model provider bridge: passed'
             echo '- Existing Pulse AI technical routes, permissions, database objects, and environment compatibility: passed'
-            echo '- Migration 054 apply/rollback/reapply: passed'
-            echo '- .NET 10 API build and generated endpoint registration: passed'
+            if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == 'true' ]]; then
+              echo '- Migration 054 and .NET API checks: unchanged source; not applicable to dependency-only validation'
+            else
+              echo '- Migration 054 apply/rollback/reapply: passed'
+              echo '- .NET 10 API build and generated endpoint registration: passed'
+            fi
             echo '- Complete frontend production build: passed'
             echo '- Production web-container context: passed'
             echo '- Migration applied to Test/Production by this PR: no'

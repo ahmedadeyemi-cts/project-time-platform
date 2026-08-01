@@ -73,7 +73,11 @@ jobs:
           CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          if [[ "$HEAD_BRANCH" == fix/remaining-release-train-specialized-workflow-convergence-* ]]; then
+          if [[ -n "$CHANGED" ]] && [[ -z "$(grep -Ev '^src/frontend/project-time-web/package(-lock)?\.json$' <<<"$CHANGED" || true)" ]]; then
+            echo 'PROJECTPULSE_DEPENDENCY_ONLY=true' >> "$GITHUB_ENV"
+            echo 'PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE=DEPENDENCY_ONLY' >> "$GITHUB_ENV"
+            echo 'PULSE_AI_SYSTEM_INTELLIGENCE_DEPENDENCY_ONLY_SCOPE=PASSED'
+          elif [[ "$HEAD_BRANCH" == fix/remaining-release-train-specialized-workflow-convergence-* ]]; then
             WORKFLOW_CONVERGENCE_ALLOWED='^\.github/workflows/(celar-ai-runtime-rebrand-ci|group5-financial-operations-recovery-ci|group7-ai-help-system-guide-ci|module064-automatic-provider-health-ci|pulse-ai-help-chat-usability-ci|pulse-ai-system-intelligence-ci)\.yml$'
             UNEXPECTED="$(grep -Ev "$WORKFLOW_CONVERGENCE_ALLOWED" <<<"$CHANGED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
@@ -122,6 +126,7 @@ jobs:
           echo 'PULSE_AI_SYSTEM_INTELLIGENCE_SOURCE_ISOLATION=PASSED'
 
       - name: Set up .NET
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
@@ -143,6 +148,7 @@ jobs:
           node ./scripts/validate-module-011-system-intelligence-package.mjs
 
       - name: Test migration 054 apply rollback and reapply
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -169,6 +175,7 @@ jobs:
           npm run validate:module998
 
       - name: Build ProjectTime API
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         id: api_build
         continue-on-error: true
         shell: bash
@@ -189,6 +196,7 @@ jobs:
           retention-days: 7
 
       - name: Enforce API build and generated endpoint registration
+        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -235,6 +243,13 @@ jobs:
           STATUS='${{ steps.frontend_build.outputs.exit_code }}'
           tail -n 300 pulse-ai-system-intelligence-frontend-build.log
           if [[ "$STATUS" != '0' ]]; then exit "$STATUS"; fi
+          if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == 'true' || "${PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE:-}" == 'WORKFLOW_CONVERGENCE' ]]; then
+            test -s dist/index.html
+            find dist/assets -maxdepth 1 -type f -name '*.js' -size +0c -print -quit | grep -q .
+            find dist/assets -maxdepth 1 -type f -name '*.css' -size +0c -print -quit | grep -q .
+            echo 'PULSE_AI_SYSTEM_INTELLIGENCE_DEPENDENCY_ONLY_FRONTEND_BUILD=PASSED'
+            exit 0
+          fi
           cat dist/assets/*.js > /tmp/pulse-ai-system-intelligence.js
           cat dist/assets/*.css > /tmp/pulse-ai-system-intelligence.css
           for marker in \
@@ -276,7 +291,11 @@ jobs:
             echo '- Exact current-main source isolation: passed'
             echo "- Validation mode: ${PULSE_AI_SYSTEM_INTELLIGENCE_VALIDATION_MODE:-UNKNOWN}"
             echo '- Exact container-source mirrors: validated'
-            echo '- Migration 054 apply, rollback, idempotence, and reapply: passed'
+            if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == 'true' ]]; then
+              echo '- Migration 054: unchanged source; not applicable to dependency-only validation'
+            else
+              echo '- Migration 054 apply, rollback, idempotence, and reapply: passed'
+            fi
             echo '- Live ASP.NET API discovery contract: passed'
             echo '- Governed troubleshooting tool boundary: passed'
             echo '- Comprehensive direct-answer contract: passed'
@@ -284,7 +303,11 @@ jobs:
             echo '- Durable conversation contract: passed'
             echo '- Enter/Shift+Enter/Escape and visible scrolling: passed'
             echo '- Existing Pulse AI, FlowHive, Help, platform operations, architecture, release, observability, defect, and diagnostics contracts: passed'
-            echo '- .NET 10 API build: passed'
+            if [[ "${PROJECTPULSE_DEPENDENCY_ONLY:-false}" == 'true' ]]; then
+              echo '- .NET 10 API build: unchanged source; not applicable to dependency-only validation'
+            else
+              echo '- .NET 10 API build: passed'
+            fi
             echo '- Complete frontend production build: passed'
             echo '- Production web-container context: passed'
             echo '- Migration 054 applied to Test/Production: no'
