@@ -42,7 +42,7 @@ jobs:
           file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
           echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
