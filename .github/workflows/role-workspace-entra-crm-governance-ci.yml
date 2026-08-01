@@ -1,0 +1,100 @@
+name: Validate Role Workspaces, Entra Expiration, and CRM Persistence
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/role-workspace-entra-crm-governance-ci.yml'
+      - 'database/migrations/056_role_workspace_entra_crm_governance.sql'
+      - 'database/migrations/056a_role_workspace_permission_scope_guard.sql'
+      - 'database/rollback/056_role_workspace_entra_crm_governance_rollback.sql'
+      - 'database/rollback/056a_role_workspace_permission_scope_guard_rollback.sql'
+      - 'tests/test-role-workspace-entra-crm-governance-migration-056.sh'
+      - 'tests/test-role-workspace-permission-scope-migration-056a.sh'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EntraSecretExpirationGovernanceModule.cs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/src/role-workspace-governance.js'
+      - 'src/frontend/project-time-web/src/EntraSecretExpirationGlobalWarning.jsx'
+      - 'src/frontend/project-time-web/src/EntraSecretExpirationGovernancePanel.jsx'
+      - 'src/frontend/project-time-web/src/entra-secret-expiration-governance.css'
+      - 'src/frontend/project-time-web/src/CrmErpTokenPersistencePanel.jsx'
+      - 'src/frontend/project-time-web/src/crm-erp-token-persistence.css'
+      - 'src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+      - 'docs/modules/module-065-entra-secret-administration/**'
+      - 'docs/modules/module-026-crm-erp-integrations/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: role-workspace-entra-crm-governance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-056:
+    name: Migration 056 apply, immutable evidence, rollback, reapply
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Validate migration 056
+        run: bash tests/test-role-workspace-entra-crm-governance-migration-056.sh
+
+  migration-056a:
+    name: Migration 056A least-privilege guard, rollback, restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Validate migration 056A
+        run: bash tests/test-role-workspace-permission-scope-migration-056a.sh
+
+  api-release-build:
+    name: ProjectTime API Release build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore API
+        run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+  frontend-production-build:
+    name: Frontend production build and source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+      - name: Confirm generated runtime mounts and production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.js' -size +0c -print -quit)"
+          grep -Fq '<EntraSecretExpirationGlobalWarning authSession={authSession} />' src/App.jsx
+          grep -Fq '<EntraSecretExpirationGovernancePanel />' src/EntraSecretAdministrationCenter.jsx
+          grep -Fq '<CrmErpTokenPersistencePanel' src/CrmErpIntegrationCenter.jsx
+          grep -Fq 'Signed in as' src/App.jsx
+          echo 'GENERATED_RUNTIME_MOUNTS_AND_BUNDLE=PASS'

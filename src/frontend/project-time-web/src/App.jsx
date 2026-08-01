@@ -570,6 +570,9 @@ installProjectPulseGlobalViewAsTopbarMount();
 
 
 
+/* ROLE_WORKSPACE_ENTRA_CRM_GOVERNANCE_IMPORTS */
+import EntraSecretExpirationGlobalWarning from './EntraSecretExpirationGlobalWarning.jsx';
+import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import './timesheet.css';
@@ -2328,11 +2331,12 @@ function userHasAnyPermission(user, permissions) {
   return permissions.some((permission) => granted.has(permission));
 }
 
+/* ROLE_WORKSPACE_GOVERNANCE_VISIBLE_MODULES */
 function getVisibleRoleModules(user) {
   if (!user) return [];
 
   const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));
-  const modules = roleWorkspaceModules.filter((module) => {
+  const permissionFilteredModules = roleWorkspaceModules.filter((module) => {
     const strictRoleCodes = module.strictRoleCodes ?? [];
     if (strictRoleCodes.length > 0
         && !strictRoleCodes.some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))) {
@@ -2343,18 +2347,11 @@ function getVisibleRoleModules(user) {
       || (module.roleCodes ?? []).some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()));
   });
 
-  if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
-    return modules.filter((module) => module.route !== 'utilization');
-  }
-
-  return modules;
+  return applyRoleWorkspaceGovernance(user, permissionFilteredModules, roleWorkspaceModules);
 }
 
 function getRoleDisplayName(user) {
-  const roles = user?.roles ?? [];
-  if (roles.length === 0) return 'Workspace';
-  if (roles.some((role) => ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'].includes(role.roleCode))) return 'Administrator';
-  return roles.map((role) => role.roleName).join(' + ');
+  return getRoleWorkspaceName(user);
 }
 
 function getRoleNavigation(user) {
@@ -6103,6 +6100,8 @@ export default function App() {
 
   return (
     <main className={`app-shell route-${activeRoute} enterprise-nav-enabled ${isSideNavigationOpen ? 'sidebar-expanded' : 'sidebar-collapsed'}`}>
+      {/* ENTRA_SECRET_EXPIRATION_GLOBAL_WARNING_MOUNT */}
+      <EntraSecretExpirationGlobalWarning authSession={authSession} />
 
       {sessionWarning.visible && (
         <div className="session-timeout-backdrop">
@@ -6296,6 +6295,10 @@ Analytics - Variphy / Infortel`}
           <div>
             <p className="eyebrow">Workspace</p>
             <h1>{activeWorkspaceTitle}</h1>
+            {/* ROLE_WORKSPACE_SIGNED_IN_USER */}
+            <small className="workspace-signed-in-user">
+              Signed in as {userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.displayName || authSession?.username || currentUser.data?.email || 'Unknown user'}
+            </small>
           </div>
         </div>
 
