@@ -51,7 +51,6 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
   ]),
   accountingBilling: Object.freeze([
     'workflow',
-    'audit-history',
     'customer-directory',
     'reporting',
     'financial-operations-workbench',
