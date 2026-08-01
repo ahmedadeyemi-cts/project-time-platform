@@ -34,6 +34,12 @@ DROP TABLE IF EXISTS analytics_report_schedule_recipients;
 DROP TABLE IF EXISTS analytics_report_schedules;
 DROP TABLE IF EXISTS analytics_user_report_activity;
 
+-- PDF is introduced by migration 060. Remove only PDF export evidence before
+-- restoring the migration-055 csv/xlsx/json constraint. The referenced report
+-- runs remain intact.
+DELETE FROM enterprise_report_exports
+WHERE export_format = 'pdf';
+
 ALTER TABLE enterprise_report_exports
     DROP CONSTRAINT IF EXISTS enterprise_report_exports_export_format_check;
 ALTER TABLE enterprise_report_exports
