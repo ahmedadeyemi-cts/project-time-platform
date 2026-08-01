@@ -1,0 +1,57 @@
+{
+  "contractVersion": "celar-ai-capability-routing-v1",
+  "defaultTargets": ["celar_ai", "claude", "openai", "local_template"],
+  "localFallbackRequired": true,
+  "safetyRefusalFailover": false,
+  "capabilities": [
+    {
+      "feature": "timesheet_non_project_description",
+      "displayName": "Timesheet — Non-project time",
+      "consumerModules": ["001"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_non_document_context_only"
+    },
+    {
+      "feature": "timesheet_project_task_description",
+      "displayName": "Timesheet — Project tasks",
+      "consumerModules": ["001", "019"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    },
+    {
+      "feature": "timesheet_service_request_description",
+      "displayName": "Timesheet — Requests and Service Requests",
+      "consumerModules": ["001"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    },
+    {
+      "feature": "sow_gsd_planning",
+      "displayName": "SOW / GSD planning",
+      "consumerModules": ["011", "025"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    },
+    {
+      "feature": "project_flowhive_plan",
+      "displayName": "Project FlowHive plan",
+      "consumerModules": ["011", "066"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    },
+    {
+      "feature": "closeout_communication",
+      "displayName": "Closeout communication",
+      "consumerModules": ["011", "040", "055C"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    },
+    {
+      "feature": "help_assistant",
+      "displayName": "Celar AI system help",
+      "consumerModules": ["011", "999"],
+      "targets": ["celar_ai", "claude", "openai", "local_template"],
+      "externalContextPolicy": "sanitized_generic_only"
+    }
+  ]
+}
