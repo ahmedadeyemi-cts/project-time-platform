@@ -20,6 +20,7 @@ concurrency:
 jobs:
   reconcile:
     if: >-
+      github.actor != 'github-actions[bot]' &&
       github.event.pull_request.number == 392 &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'dependencies/vite-plugin-react-6.0.4-20260801'
@@ -61,16 +62,17 @@ jobs:
           if (packageJson.devDependencies['@vitejs/plugin-react'] !== '6.0.4') {
             throw new Error('package.json must pin @vitejs/plugin-react 6.0.4');
           }
-          if (packageJson.devDependencies.postcss !== '8.5.25') {
-            throw new Error('package.json must preserve PostCSS 8.5.25');
+          if (!['8.5.18', '8.5.25'].includes(packageJson.devDependencies.postcss)) {
+            throw new Error(`unexpected PostCSS starting version: ${packageJson.devDependencies.postcss}`);
           }
           NODE
 
-      - name: Generate the combined npm lockfile
+      - name: Carry forward PostCSS and generate the combined npm lockfile
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
+          npm pkg set 'devDependencies.postcss=8.5.25'
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --audit-level=high
@@ -105,10 +107,11 @@ jobs:
           git diff --check
           mapfile -t CHANGED < <(git diff --name-only | LC_ALL=C sort)
           printf '%s\n' "${CHANGED[@]}"
-          [[ "${#CHANGED[@]}" == 1 ]]
+          [[ "${#CHANGED[@]}" == 2 ]]
           [[ "${CHANGED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
+          [[ "${CHANGED[1]}" == 'src/frontend/project-time-web/package.json' ]]
 
-      - name: Commit the generated lockfile
+      - name: Commit the reconciled dependency files
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -119,8 +122,9 @@ jobs:
             src/frontend/project-time-web/package-lock.json
           mapfile -t STAGED < <(git diff --cached --name-only | LC_ALL=C sort)
           printf '%s\n' "${STAGED[@]}"
-          [[ "${#STAGED[@]}" == 1 ]]
+          [[ "${#STAGED[@]}" == 2 ]]
           [[ "${STAGED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
+          [[ "${STAGED[1]}" == 'src/frontend/project-time-web/package.json' ]]
           git commit -m 'Dependencies: reconcile Vite React plugin 6.0.4 with PostCSS 8.5.25'
           git push origin "HEAD:${TARGET_BRANCH}"
           echo 'VITE_PLUGIN_LOCKFILE_RECONCILIATION=PASSED'
