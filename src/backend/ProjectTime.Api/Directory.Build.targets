@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <CelarAiPeopleGenerated>$(IntermediateOutputPath)CelarAiPeopleAndGuidanceService.g.cs</CelarAiPeopleGenerated>
+    <CelarAiBrandGenerated>$(IntermediateOutputPath)CelarAiBrandModule.g.cs</CelarAiBrandGenerated>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Ai/CelarAiPeopleAndGuidanceService.cs" />
+    <Compile Remove="Modules/CelarAiBrandModule.cs" />
+  </ItemGroup>
+
+  <Target Name="GenerateCelarAiEnterpriseCompatibilitySources" BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+
+    <!-- Preserve the canonical people/guidance source while compiling the
+         effective-user identifier into the durable assistant-message write.
+         This keeps user-scoped history functional and prevents Guid.Empty from
+         failing the conversation ownership guard. -->
+    <Exec Command="awk 'BEGIN { in_return=0; in_record=0; in_finish=0; fixed_user=0; fixed_return=0; fixed_record=0 } /private async Task&lt;PulseAiSystemQuestionResult&gt; FinishAsync/ { in_finish=1 } /return new PersistenceContext\(/ { in_return=1 } /private sealed record PersistenceContext\(/ { in_record=1 } { if (in_finish &amp;&amp; fixed_user==0 &amp;&amp; $0 ~ /^[[:space:]]*Guid.Empty,[[:space:]]*$/) { sub(/Guid.Empty/, &quot;persistence.EffectiveUserId&quot;); fixed_user=1 } if (in_return &amp;&amp; fixed_return==0 &amp;&amp; $0 ~ /conversation is not null\);/) { print &quot;            effectiveUserId,&quot;; fixed_return=1; in_return=0 } if (in_record &amp;&amp; fixed_record==0 &amp;&amp; $0 ~ /bool Persisted\);/) { print &quot;        Guid EffectiveUserId,&quot;; fixed_record=1; in_record=0 } print } END { if (fixed_user==0 || fixed_return==0 || fixed_record==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiPeopleAndGuidanceService.cs&quot; &gt; &quot;$(CelarAiPeopleGenerated)&quot;" />
+
+    <!-- The existing Program generator already calls MapCelarAiBrandEndpoints.
+         Extend that single authoritative route registration with the enterprise
+         readiness, architecture, and solution-composer endpoints. -->
+    <Exec Command="awk 'BEGIN { inserted=0 } /^[[:space:]]*return endpoints;[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;        endpoints.MapCelarAiEnterprisePlatformEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Modules/CelarAiBrandModule.cs&quot; &gt; &quot;$(CelarAiBrandGenerated)&quot;" />
+
+    <ItemGroup>
+      <Compile Include="$(CelarAiPeopleGenerated)" />
+      <Compile Include="$(CelarAiBrandGenerated)" />
+    </ItemGroup>
+  </Target>
+</Project>
