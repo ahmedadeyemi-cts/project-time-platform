@@ -103,7 +103,7 @@ def _projectpulse_validate_generated_source_convergence(cwd=None):
                 "dotnet", "build", str(project), "--configuration", "Release", "--no-restore"
             ))
         run(("git", "diff", "--check"))
-        run(("git", "diff", "--cached", "--check"))
+        run(("git", "diff", "--cached", "--check"), capture=True)
         run(("git", "diff", "--exit-code"))
         extra = names("ls-files", "--others", "--exclude-standard")
         if extra:
@@ -237,6 +237,9 @@ def self_test():
         fake_bin.mkdir()
         (frontend / "src/App.jsx").write_text("base\n")
         (api / "ProjectTime.Api.csproj").write_text("<Project />\n")
+        (repo / ".gitattributes").write_text(
+            "src/backend/ProjectTime.Api/*.g.cs whitespace=-trailing-space\n"
+        )
         (frontend / "package.json").write_text(json.dumps({
             "name": "convergence-test", "version": "1.0.0", "private": True,
             "scripts": {"prebuild": "node scripts/generate.mjs"},
@@ -248,7 +251,7 @@ def self_test():
         dotnet = fake_bin / "dotnet"
         dotnet.write_text(
             "#!/usr/bin/env bash\nset -Eeuo pipefail\n"
-            "printf 'generated backend\\n' > src/backend/ProjectTime.Api/Synthetic.g.cs\n"
+            "printf 'generated backend  \\n' > src/backend/ProjectTime.Api/Synthetic.g.cs\n"
         )
         dotnet.chmod(0o755)
 
