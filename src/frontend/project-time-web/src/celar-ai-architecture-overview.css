@@ -1,0 +1,320 @@
+.celar-ai-architecture-overview {
+  --celar-navy: #072d59;
+  --celar-blue: #009fe3;
+  --celar-green: #25865f;
+  --celar-orange: #ba6417;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--celar-blue) 22%, var(--border, #d7e1ea));
+  border-radius: 22px;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  background: color-mix(in srgb, var(--surface, #fff) 97%, #e9f7fd 3%);
+  box-shadow: 0 18px 44px rgba(7, 45, 89, 0.08);
+}
+
+.celar-ai-architecture-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.celar-ai-architecture-heading > div {
+  min-width: 0;
+}
+
+.celar-ai-architecture-heading p,
+.celar-ai-architecture-heading h2,
+.celar-ai-architecture-heading span {
+  margin: 0;
+}
+
+.celar-ai-architecture-heading p {
+  color: var(--celar-blue);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.celar-ai-architecture-heading h2 {
+  margin-top: 0.22rem;
+  color: var(--text, #17243b);
+  font-size: clamp(1.25rem, 2.3vw, 1.8rem);
+  line-height: 1.2;
+}
+
+.celar-ai-architecture-heading span {
+  display: block;
+  max-width: 930px;
+  margin-top: 0.38rem;
+  color: var(--muted, #60718a);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.celar-ai-architecture-heading > a {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--celar-blue) 42%, var(--border, #d7e1ea));
+  border-radius: 11px;
+  padding: 0.62rem 0.78rem;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, #dff5ff 12%);
+  color: var(--celar-navy);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.celar-ai-architecture-heading > a:hover,
+.celar-ai-architecture-heading > a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--celar-blue) 18%, transparent);
+  outline-offset: 2px;
+}
+
+.celar-ai-architecture-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.celar-ai-architecture-canvas {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 18px;
+  background: var(--surface-strong, #fff);
+  scrollbar-gutter: stable;
+}
+
+.celar-ai-architecture-canvas:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--celar-blue) 18%, transparent);
+  outline-offset: 2px;
+}
+
+.celar-ai-architecture-canvas svg {
+  display: block;
+  width: 100%;
+  min-width: 860px;
+  height: auto;
+}
+
+.celar-ai-architecture-canvas .diagram-surface {
+  fill: var(--surface-strong, #fff);
+  stroke: color-mix(in srgb, var(--celar-navy) 15%, transparent);
+}
+
+.celar-ai-architecture-canvas .diagram-brand {
+  fill: var(--celar-navy);
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.celar-ai-architecture-canvas .diagram-created {
+  fill: var(--muted, #60718a);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.celar-ai-architecture-canvas .diagram-node {
+  fill: #f8fbfe;
+  stroke: #5994ca;
+  stroke-width: 2;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-auth,
+.celar-ai-architecture-canvas .diagram-node.is-verification {
+  fill: #eef7ff;
+  stroke: #4388c7;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-private {
+  fill: #eef5ff;
+  stroke: #4c82d1;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-tools,
+.celar-ai-architecture-canvas .diagram-node.is-sufficient {
+  fill: #effaf3;
+  stroke: #4ca16c;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-intelligence {
+  fill: #f5f0ff;
+  stroke: #8763cf;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-confidence {
+  fill: #fff8e8;
+  stroke: #d4962f;
+}
+
+.celar-ai-architecture-canvas .diagram-node.is-external {
+  fill: #fff4eb;
+  stroke: #d87a2b;
+}
+
+.celar-ai-architecture-canvas .diagram-node-title {
+  fill: var(--celar-navy);
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.celar-ai-architecture-canvas .diagram-node-subtitle {
+  fill: #665684;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.celar-ai-architecture-canvas .diagram-chip {
+  stroke-width: 1.5;
+}
+
+.celar-ai-architecture-canvas .diagram-chip.is-private {
+  fill: #f5f9ff;
+  stroke: #6794d4;
+}
+
+.celar-ai-architecture-canvas .diagram-chip.is-tools {
+  fill: #f3fbf5;
+  stroke: #62a879;
+}
+
+.celar-ai-architecture-canvas .diagram-chip.is-external {
+  fill: #fff8f1;
+  stroke: #dc863d;
+}
+
+.celar-ai-architecture-canvas .diagram-chip-text {
+  fill: var(--celar-navy);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.celar-ai-architecture-canvas .diagram-line {
+  fill: none;
+  stroke: #397ebd;
+  stroke-width: 2.4;
+  marker-end: url(#celar-ai-arrow);
+}
+
+.celar-ai-architecture-canvas marker path {
+  fill: #397ebd;
+}
+
+.celar-ai-architecture-canvas .diagram-result {
+  fill: var(--celar-navy);
+}
+
+.celar-ai-architecture-canvas .diagram-result-text {
+  fill: #fff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.celar-ai-architecture-glance-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 18px;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface, #fff) 96%, #eef7fc 4%);
+}
+
+.celar-ai-architecture-glance-panel > h3 {
+  margin: 0;
+  color: var(--text, #17243b);
+  font-size: 0.9rem;
+}
+
+.celar-ai-architecture-glance {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.72rem 0;
+  border-top: 1px solid var(--border, #d7e1ea);
+}
+
+.celar-ai-architecture-glance:first-of-type {
+  border-top: 0;
+}
+
+.celar-ai-architecture-glance > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 950;
+}
+
+.celar-ai-architecture-glance h3,
+.celar-ai-architecture-glance p {
+  margin: 0;
+}
+
+.celar-ai-architecture-glance h3 {
+  color: currentColor;
+  font-size: 0.78rem;
+}
+
+.celar-ai-architecture-glance p {
+  margin-top: 0.24rem;
+  color: var(--muted, #60718a);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.celar-ai-architecture-glance.is-private { color: #1769aa; }
+.celar-ai-architecture-glance.is-permission { color: #1a8a61; }
+.celar-ai-architecture-glance.is-external { color: #b76012; }
+.celar-ai-architecture-glance.is-review { color: #7454bc; }
+
+[data-theme="dark"] .celar-ai-architecture-canvas .diagram-surface,
+.dark .celar-ai-architecture-canvas .diagram-surface {
+  fill: #101d2f;
+}
+
+@media (max-width: 1080px) {
+  .celar-ai-architecture-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ai-architecture-glance-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .celar-ai-architecture-glance-panel > h3 {
+    grid-column: 1 / -1;
+  }
+
+  .celar-ai-architecture-glance {
+    border-top: 1px solid var(--border, #d7e1ea);
+  }
+}
+
+@media (max-width: 700px) {
+  .celar-ai-architecture-heading {
+    flex-direction: column;
+  }
+
+  .celar-ai-architecture-heading > a {
+    width: 100%;
+    text-align: center;
+  }
+
+  .celar-ai-architecture-glance-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ai-architecture-overview {
+    padding: 0.8rem;
+    border-radius: 16px;
+  }
+}
