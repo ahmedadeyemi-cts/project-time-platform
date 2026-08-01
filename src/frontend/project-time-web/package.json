@@ -86,7 +86,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.0.2",
-    "postcss": "8.5.18",
+    "postcss": "8.5.25",
     "vite": "8.2.0"
   }
 }
