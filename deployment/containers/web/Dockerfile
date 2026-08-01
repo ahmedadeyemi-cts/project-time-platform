@@ -297,6 +297,7 @@ COPY docs/modules/module-079-data-governance-retention/ \
 
 COPY docs/modules/module-080-customer-delivery-acceptance/ \
      docs/modules/module-080-customer-delivery-acceptance/
+
 COPY docs/modules/module-997-security-operations-response/ \
      docs/modules/module-997-security-operations-response/
 
