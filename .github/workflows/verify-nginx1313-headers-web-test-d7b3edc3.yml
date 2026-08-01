@@ -1,0 +1,353 @@
+name: Verify ProjectPulse nginx 1.31.3 Header Test d7b3edc3
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/verify-nginx1313-headers-web-test-d7b3edc3.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: verify-nginx1313-headers-web-test-d7b3edc3
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify immutable nginx header release and unchanged API
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/nginx1313-headers-web-test-d7b3edc3-20260801'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_SHA: d7b3edc30f0e3565187f0092a5c9900878eb7128
+      VERIFY_BRANCH: verify/nginx1313-headers-web-test-d7b3edc3-20260801
+      VERIFY_PATH: .github/workflows/verify-nginx1313-headers-web-test-d7b3edc3.yml
+      EXPECTED_API_DIGEST: sha256:aabd47a0aff5e2cf62f89670eb1d722000871b90f0326507b8ac5ded9547334d
+      EXPECTED_API_SOURCE_SHA: 574b4b5da7c4acb4734c87b1ff6a45930c57ea33
+      EXPECTED_API_REVISION: ca-phd-test-api-westus3--relapi-30708633484-1
+
+    steps:
+      - name: Check out exact verification control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact corrected nginx release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard read-only verification boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == "$VERIFY_BRANCH" ]]
+          [[ "$(git -C control rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          CONTROL_BASE="$(git -C control rev-parse HEAD^)"
+          [[ "$(git -C control rev-list --count "$CONTROL_BASE"..HEAD)" == '1' ]]
+          git -C control merge-base --is-ancestor "$RELEASE_SHA" "$CONTROL_BASE"
+          CHANGED="$(git -C control diff --name-only "$CONTROL_BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$VERIFY_PATH" ]]
+          git -C control diff --check "$CONTROL_BASE"...HEAD
+
+          [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          grep -Fxq 'FROM node:24-alpine AS build' \
+            release/deployment/containers/web/Dockerfile
+          grep -Fxq 'FROM nginxinc/nginx-unprivileged:1.31.3-alpine AS runtime' \
+            release/deployment/containers/web/Dockerfile
+          grep -Fq 'add_header_inherit merge;' \
+            release/deployment/containers/web/default.conf.template
+          grep -Fq 'add_header Cache-Control "no-store" always;' \
+            release/deployment/containers/web/default.conf.template
+          git -C release diff --check
+          test -z "$(git -C release status --porcelain=v1 --untracked-files=no)"
+
+          echo 'PROJECTPULSE_NGINX_HEADER_VERIFIER_SOURCE_ISOLATION=PASSED'
+          echo 'PROJECTPULSE_NGINX_HEADER_VERIFIER_AZURE_MODE=READ_ONLY'
+          echo 'PROJECTPULSE_DATABASE_MIGRATION_REQUESTED=NO'
+          echo 'PROJECTPULSE_CELAR_AI_SOURCE_REQUESTED=NO'
+          echo 'PROJECTPULSE_ANALYTICS_CENTER_SOURCE_REQUESTED=NO'
+
+      - name: Sign in to Azure using Test OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify immutable ACR and Container App state
+        id: state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ACR='${{ vars.AZURE_ACR_NAME }}'
+          REGISTRY="$ACR.azurecr.io"
+          RESOURCE_GROUP='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          WEB_TAG="nginx1313-headers-$RELEASE_SHA"
+          mkdir -p verification-diagnostics
+
+          WEB_DIGEST="$(az acr repository show \
+            --name "$ACR" \
+            --image "project-health-dashboard-web:$WEB_TAG" \
+            --query digest -o tsv --only-show-errors)"
+          [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          EXPECTED_WEB="$REGISTRY/project-health-dashboard-web@$WEB_DIGEST"
+          EXPECTED_API="$REGISTRY/project-health-dashboard-api@$EXPECTED_API_DIGEST"
+          RAW_WEB="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          RAW_API="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          WEB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          API_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+
+          {
+            echo "expected_web=$EXPECTED_WEB"
+            echo "actual_web=$RAW_WEB"
+            echo "web_source=$WEB_SOURCE"
+            echo "web_ready=$WEB_READY"
+            echo "web_latest=$WEB_LATEST"
+            echo "web_mode=$WEB_MODE"
+            echo "expected_api=$EXPECTED_API"
+            echo "actual_api=$RAW_API"
+            echo "api_source=$API_SOURCE"
+            echo "api_ready=$API_READY"
+            echo "api_latest=$API_LATEST"
+            echo "api_mode=$API_MODE"
+          } > verification-diagnostics/live-state.txt
+
+          [[ "$RAW_WEB" == "$EXPECTED_WEB" ]]
+          [[ "$WEB_SOURCE" == "$RELEASE_SHA" ]]
+          [[ "$WEB_READY" == "$WEB_LATEST" ]]
+          [[ "$RAW_API" == "$EXPECTED_API" ]]
+          [[ "$API_SOURCE" == "$EXPECTED_API_SOURCE_SHA" ]]
+          [[ "$API_READY" == "$EXPECTED_API_REVISION" ]]
+          [[ "$API_READY" == "$API_LATEST" ]]
+          [[ "${WEB_MODE,,}" == single ]]
+          [[ "${API_MODE,,}" == single ]]
+
+          echo "web_image=$EXPECTED_WEB" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_revision=$WEB_READY" >> "$GITHUB_OUTPUT"
+          echo "web_source=$WEB_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "api_image=$EXPECTED_API" >> "$GITHUB_OUTPUT"
+          echo "api_digest=$EXPECTED_API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "api_revision=$API_READY" >> "$GITHUB_OUTPUT"
+          echo "api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
+          echo 'PROJECTPULSE_NGINX_HEADER_WEB_DIGEST_VERIFIED=YES'
+          echo 'PROJECTPULSE_TEST_API_IMAGE_SOURCE_REVISION_UNCHANGED=YES'
+          echo 'PROJECTPULSE_DATABASE_MIGRATIONS_FOR_NGINX_HEADER_RELEASE=NONE'
+
+      - name: Validate public root and proxied API responses
+        id: public
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'
+          BASE="${BASE%/}"
+          mkdir -p verification-diagnostics
+
+          security_headers_ok() {
+            local file="$1"
+            grep -Fqi 'x-content-type-options: nosniff' "$file" \
+              && grep -Fqi 'referrer-policy: same-origin' "$file" \
+              && grep -Fqi 'x-frame-options: SAMEORIGIN' "$file" \
+              && grep -Fqi "content-security-policy: object-src 'none'; base-uri 'self'; frame-ancestors 'self'" "$file" \
+              && grep -Fqi 'permissions-policy: camera=(), microphone=(), geolocation=()' "$file" \
+              && grep -Fqi 'strict-transport-security: max-age=31536000' "$file"
+          }
+
+          no_store_ok() {
+            local file="$1"
+            grep -Eqi '^cache-control:.*no-store' "$file"
+          }
+
+          API_STATUS="$(curl -sS -D /tmp/projectpulse-nginx-header-api-headers-raw \
+            -o /tmp/projectpulse-nginx-header-api -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            "$BASE/api/health?verify=$RELEASE_SHA" || true)"
+          WEB_STATUS="$(curl -sS -D /tmp/projectpulse-nginx-header-root-headers-raw \
+            -o /tmp/projectpulse-nginx-header-root -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            "$BASE/?verify=$RELEASE_SHA" || true)"
+          tr -d '\r' < /tmp/projectpulse-nginx-header-api-headers-raw \
+            > /tmp/projectpulse-nginx-header-api-headers
+          tr -d '\r' < /tmp/projectpulse-nginx-header-root-headers-raw \
+            > /tmp/projectpulse-nginx-header-root-headers
+          cp /tmp/projectpulse-nginx-header-api-headers verification-diagnostics/api-headers.txt
+          cp /tmp/projectpulse-nginx-header-root-headers verification-diagnostics/root-headers.txt
+          {
+            echo "api_status=$API_STATUS"
+            echo "web_status=$WEB_STATUS"
+          } > verification-diagnostics/public-status.txt
+
+          case "$API_STATUS" in 200|401) ;; *)
+            echo "Public API validation failed with HTTP $API_STATUS" >&2
+            exit 1
+          esac
+          [[ "$WEB_STATUS" == 200 ]]
+          test -s /tmp/projectpulse-nginx-header-root
+          grep -qi '<!doctype html' /tmp/projectpulse-nginx-header-root
+          security_headers_ok /tmp/projectpulse-nginx-header-root-headers
+          security_headers_ok /tmp/projectpulse-nginx-header-api-headers
+          no_store_ok /tmp/projectpulse-nginx-header-root-headers
+          no_store_ok /tmp/projectpulse-nginx-header-api-headers
+
+          ROOT_BODY_SHA256="$(sha256sum /tmp/projectpulse-nginx-header-root | awk '{print $1}')"
+          ROOT_HEADERS_SHA256="$(sha256sum /tmp/projectpulse-nginx-header-root-headers | awk '{print $1}')"
+          API_HEADERS_SHA256="$(sha256sum /tmp/projectpulse-nginx-header-api-headers | awk '{print $1}')"
+          [[ "$ROOT_BODY_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ROOT_HEADERS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$API_HEADERS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          echo "api_status=$API_STATUS" >> "$GITHUB_OUTPUT"
+          echo "web_status=$WEB_STATUS" >> "$GITHUB_OUTPUT"
+          echo "root_body_sha256=$ROOT_BODY_SHA256" >> "$GITHUB_OUTPUT"
+          echo "root_headers_sha256=$ROOT_HEADERS_SHA256" >> "$GITHUB_OUTPUT"
+          echo "api_headers_sha256=$API_HEADERS_SHA256" >> "$GITHUB_OUTPUT"
+          echo 'PROJECTPULSE_NGINX_HEADER_API_HEALTH=PASSED'
+          echo 'PROJECTPULSE_NGINX_HEADER_WEB_RESPONSE=PASSED'
+          echo 'PROJECTPULSE_NGINX_ROOT_AND_API_SECURITY_HEADERS=PASSED'
+          echo 'PROJECTPULSE_NGINX_ROOT_AND_API_CACHE_CONTROL=PASSED'
+
+      - name: Create checksummed verification evidence
+        shell: bash
+        env:
+          WEB_IMAGE: ${{ steps.state.outputs.web_image }}
+          WEB_DIGEST: ${{ steps.state.outputs.web_digest }}
+          WEB_REVISION: ${{ steps.state.outputs.web_revision }}
+          WEB_SOURCE: ${{ steps.state.outputs.web_source }}
+          API_IMAGE: ${{ steps.state.outputs.api_image }}
+          API_DIGEST: ${{ steps.state.outputs.api_digest }}
+          API_REVISION: ${{ steps.state.outputs.api_revision }}
+          API_SOURCE: ${{ steps.state.outputs.api_source }}
+          API_STATUS: ${{ steps.public.outputs.api_status }}
+          WEB_STATUS: ${{ steps.public.outputs.web_status }}
+          ROOT_BODY_SHA256: ${{ steps.public.outputs.root_body_sha256 }}
+          ROOT_HEADERS_SHA256: ${{ steps.public.outputs.root_headers_sha256 }}
+          API_HEADERS_SHA256: ${{ steps.public.outputs.api_headers_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p verification-evidence
+          python3 - <<'PY' > verification-evidence/nginx1313-header-inheritance-web-test-verification.json
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          print(json.dumps({
+              'environment': 'test',
+              'releaseSha': os.environ['RELEASE_SHA'],
+              'sourcePullRequests': [415, 419],
+              'dependencyFamily': 'unprivileged nginx web runtime and response-header inheritance',
+              'runtimeImage': 'nginxinc/nginx-unprivileged:1.31.3-alpine',
+              'headerInheritance': 'merge',
+              'deploymentScope': 'web-only',
+              'databaseMigrations': [],
+              'apiBuilt': False,
+              'apiDeployed': False,
+              'celarAiSourceChanged': False,
+              'analyticsCenterSourceChanged': False,
+              'apiImageUnchanged': True,
+              'apiSourceMarkerUnchanged': True,
+              'apiRevisionUnchanged': True,
+              'apiImage': os.environ['API_IMAGE'],
+              'apiDigest': os.environ['API_DIGEST'],
+              'apiRevision': os.environ['API_REVISION'],
+              'apiSourceCommit': os.environ['API_SOURCE'],
+              'webImage': os.environ['WEB_IMAGE'],
+              'webDigest': os.environ['WEB_DIGEST'],
+              'webRevision': os.environ['WEB_REVISION'],
+              'webSourceCommit': os.environ['WEB_SOURCE'],
+              'apiHttpStatus': int(os.environ['API_STATUS']),
+              'webHttpStatus': int(os.environ['WEB_STATUS']),
+              'rootSecurityHeadersVerified': True,
+              'apiSecurityHeadersVerified': True,
+              'rootCacheControlNoStoreVerified': True,
+              'apiCacheControlNoStoreVerified': True,
+              'webResponseBodySha256': os.environ['ROOT_BODY_SHA256'],
+              'rootResponseHeadersSha256': os.environ['ROOT_HEADERS_SHA256'],
+              'apiResponseHeadersSha256': os.environ['API_HEADERS_SHA256'],
+              'verificationWorkflowRunId': os.environ['GITHUB_RUN_ID'],
+              'verificationWorkflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'verifiedAt': datetime.now(timezone.utc).isoformat(),
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum verification-evidence/nginx1313-header-inheritance-web-test-verification.json \
+            > verification-evidence/SHA256SUMS
+          sha256sum --check verification-evidence/SHA256SUMS
+          echo 'PROJECTPULSE_NGINX_HEADER_VERIFICATION_EVIDENCE=CHECKSUMMED'
+
+      - name: Upload immutable verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-nginx1313-header-web-test-verification-${{ github.run_id }}
+          path: verification-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload failed verification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-nginx1313-header-web-test-verification-failure-${{ github.run_id }}
+          path: verification-diagnostics/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish verification summary
+        shell: bash
+        run: |
+          {
+            echo '## ProjectPulse nginx 1.31.3 header-inheritance Test verification'
+            echo
+            echo "- Exact application source: \`$RELEASE_SHA\`"
+            echo '- Source PRs: #415 and #419'
+            echo '- Runtime: `nginxinc/nginx-unprivileged:1.31.3-alpine`'
+            echo '- Header inheritance: `merge`'
+            echo '- Web image deployed by immutable ACR digest: passed'
+            echo '- Web source marker, ready revision, and Single mode: passed'
+            echo '- API immutable image, source marker, revision, and Single mode unchanged: passed'
+            echo '- API image built or deployed by this release: no'
+            echo '- Database migrations: none'
+            echo '- Public root and proxied API responses: passed'
+            echo '- Root and proxied API security headers: passed'
+            echo '- Root and proxied API Cache-Control no-store: passed'
+            echo '- Celar AI and Analytics Center source changes: none'
+            echo '- Checksummed verification evidence: uploaded'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
