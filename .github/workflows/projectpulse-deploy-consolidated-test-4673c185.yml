@@ -1,4 +1,4 @@
-name: Observe Consolidated Test Release 4673c185
+name: Diagnose Consolidated Test ACR Build 4673c185
 
 on:
   pull_request:
@@ -8,112 +8,43 @@ on:
       - '.github/workflows/projectpulse-deploy-consolidated-test-4673c185.yml'
 
 permissions:
-  actions: read
+  id-token: write
   contents: read
-  issues: write
 
 concurrency:
-  group: observe-consolidated-test-release-${{ github.event.pull_request.number }}
+  group: diagnose-consolidated-test-acr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  observe:
-    name: Read the existing branch deployment without touching Azure
+  diagnose:
+    name: Read failed ACR build logs without modifying Azure
     if: github.event.pull_request.head.ref == 'observe/consolidated-test-release-4673c185-20260801'
+    environment: test
     runs-on: ubuntu-latest
-    timeout-minutes: 125
+    timeout-minutes: 20
     steps:
-      - name: Locate and follow the exact consolidated deployment run
+      - name: Sign in to Azure using Test OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Read all three immutable image build records
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: 4673c185f7fe885dd202dbbd07579182be32d572
-          DEPLOYMENT_TRIGGER_SHA: a1fde0d24f5eca9bf0482ba24a749b17403f74e1
-          EVIDENCE_ISSUE: '387'
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_HEAD_REF" == 'observe/consolidated-test-release-4673c185-20260801' ]]
-
-          API_ROOT="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          AUTH="Authorization: Bearer ${GH_TOKEN}"
-          ACCEPT='Accept: application/vnd.github+json'
-          VERSION='X-GitHub-Api-Version: 2022-11-28'
-          WORKFLOW='projectpulse-deploy-consolidated-test-4673c185.yml'
-          SOURCE_BRANCH='deploy/consolidated-test-4673c185-20260801'
-
-          comment() {
-            local body="$1"
-            jq -n --arg body "$body" '{body:$body}' \
-              | curl --fail-with-body --silent --show-error \
-                  -X POST -H "$AUTH" -H "$ACCEPT" -H "$VERSION" \
-                  -H 'Content-Type: application/json' \
-                  --data-binary @- "$API_ROOT/issues/$EVIDENCE_ISSUE/comments" >/dev/null
-          }
-
-          RUNS="$(
-            curl --fail-with-body --silent --show-error --get \
-              -H "$AUTH" -H "$ACCEPT" -H "$VERSION" \
-              --data-urlencode "branch=$SOURCE_BRANCH" \
-              --data-urlencode 'event=push' \
-              --data-urlencode 'per_page=50' \
-              "$API_ROOT/actions/workflows/$WORKFLOW/runs"
-          )"
-
-          echo 'PROJECTPULSE_BRANCH_RUNS_BEGIN'
-          jq '[.workflow_runs[] | {id, name, head_sha, status, conclusion, event, created_at, updated_at, html_url}]' <<<"$RUNS"
-          echo 'PROJECTPULSE_BRANCH_RUNS_END'
-
-          RUN_ID="$(
-            jq -r --arg trigger "$DEPLOYMENT_TRIGGER_SHA" \
-              '[.workflow_runs[] | select(.head_sha == $trigger)] | sort_by(.created_at) | last | .id // empty' \
-              <<<"$RUNS"
-          )"
-
-          if [[ -z "$RUN_ID" ]]; then
-            comment "### Consolidated Test release observer\n\nNo Actions run exists for deployment trigger \`$DEPLOYMENT_TRIGGER_SHA\`. This observer did not access Azure or start a deployment."
-            echo 'PROJECTPULSE_CONSOLIDATED_DEPLOYMENT_RUN=NOT_FOUND'
-            exit 0
-          fi
-
-          get_run() {
-            curl --fail-with-body --silent --show-error \
-              -H "$AUTH" -H "$ACCEPT" -H "$VERSION" \
-              "$API_ROOT/actions/runs/$RUN_ID"
-          }
-
-          RUN="$(get_run)"
-          STATUS="$(jq -r '.status' <<<"$RUN")"
-          CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN")"
-          RUN_URL="$(jq -r '.html_url' <<<"$RUN")"
-          comment "### Consolidated Test release run located\n\n- Exact application source: \`$RELEASE_SHA\`\n- Trigger: \`$DEPLOYMENT_TRIGGER_SHA\`\n- Run: **$RUN_ID**\n- Status: **$STATUS**\n- Conclusion: **$CONCLUSION**\n- Actions URL: $RUN_URL\n\nThe observer is following this existing run and will not start another deployment."
-
-          for attempt in $(seq 1 720); do
-            RUN="$(get_run)"
-            STATUS="$(jq -r '.status' <<<"$RUN")"
-            CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN")"
-            [[ "$STATUS" == completed ]] && break
-            sleep 10
+          for run_id in dsbp dsbq dsbn; do
+            echo "PROJECTPULSE_ACR_RUN_BEGIN=$run_id"
+            az acr task show-run \
+              --registry '${{ vars.AZURE_ACR_NAME }}' \
+              --run-id "$run_id" \
+              --output json \
+              --only-show-errors
+            echo "PROJECTPULSE_ACR_LOG_BEGIN=$run_id"
+            az acr task logs \
+              --registry '${{ vars.AZURE_ACR_NAME }}' \
+              --run-id "$run_id" \
+              --only-show-errors || true
+            echo "PROJECTPULSE_ACR_LOG_END=$run_id"
           done
-
-          [[ "$STATUS" == completed ]] || {
-            comment "### Consolidated Test release observer timeout\n\nRun **$RUN_ID** remained non-terminal. No duplicate deployment was started.\n\n$RUN_URL"
-            exit 1
-          }
-
-          JOBS="$(curl --fail-with-body --silent --show-error -H "$AUTH" -H "$ACCEPT" -H "$VERSION" "$API_ROOT/actions/runs/$RUN_ID/jobs?per_page=100")"
-          ARTIFACTS="$(curl --fail-with-body --silent --show-error -H "$AUTH" -H "$ACCEPT" -H "$VERSION" "$API_ROOT/actions/runs/$RUN_ID/artifacts?per_page=100")"
-
-          echo 'PROJECTPULSE_DEPLOYMENT_JOBS_BEGIN'
-          jq '[.jobs[] | {id, name, status, conclusion, started_at, completed_at, html_url, steps:[.steps[] | {name, status, conclusion, number}]}]' <<<"$JOBS"
-          echo 'PROJECTPULSE_DEPLOYMENT_JOBS_END'
-          echo 'PROJECTPULSE_DEPLOYMENT_ARTIFACTS_BEGIN'
-          jq '[.artifacts[] | {id, name, expired, size_in_bytes, created_at, expires_at}]' <<<"$ARTIFACTS"
-          echo 'PROJECTPULSE_DEPLOYMENT_ARTIFACTS_END'
-
-          JOB_SUMMARY="$(jq -c '[.jobs[] | {name, conclusion, completed_at, steps:[.steps[] | {name, conclusion}]}]' <<<"$JOBS")"
-          ARTIFACT_SUMMARY="$(jq -c '[.artifacts[] | {name, expired, size_in_bytes}]' <<<"$ARTIFACTS")"
-          comment "### Consolidated Test release completed\n\n- Exact application source: \`$RELEASE_SHA\`\n- Run: **$RUN_ID**\n- Final conclusion: **$CONCLUSION**\n- Actions URL: $RUN_URL\n\nJobs: \`$JOB_SUMMARY\`\n\nArtifacts: \`$ARTIFACT_SUMMARY\`"
-
-          echo "PROJECTPULSE_CONSOLIDATED_DEPLOYMENT_RUN_ID=$RUN_ID"
-          echo "PROJECTPULSE_CONSOLIDATED_DEPLOYMENT_CONCLUSION=$CONCLUSION"
-          [[ "$CONCLUSION" == success ]]
