@@ -6,6 +6,10 @@ namespace ProjectTime.Api.Modules;
 
 public static class CelarAiBrandModule
 {
+    private const string ContextPolicyRoute = "/api/celar-ai/v1/context-policy";
+    private const string GuidanceCatalogRoute = "/api/celar-ai/v1/guidance/catalog";
+    private const string PeopleActivityReadinessRoute = "/api/celar-ai/v1/people-activity/readiness";
+
     private static readonly HashSet<string> Module064AdministratorRoles =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -22,9 +26,18 @@ public static class CelarAiBrandModule
         endpoints.MapGet(
             CelarAiBrandProfile.ProviderBridgeRoute,
             (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetProviderBridgeAsync);
+        endpoints.MapGet(
+            ContextPolicyRoute,
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetContextPolicyAsync);
+        endpoints.MapGet(
+            GuidanceCatalogRoute,
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetGuidanceCatalogAsync);
+        endpoints.MapGet(
+            PeopleActivityReadinessRoute,
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetPeopleActivityReadinessAsync);
         endpoints.MapPost(
             CelarAiBrandProfile.ChatRoute,
-            (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CancellationToken, Task<IResult>>)ChatAsync);
+            (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CancellationToken, Task<IResult>>)ChatAsync);
         return endpoints;
     }
 
@@ -42,6 +55,7 @@ public static class CelarAiBrandModule
             module = "011",
             status = "celar_ai_identity_loaded",
             brand = CelarAiBrandProfile.ToPublicProfile(),
+            contextPolicy = CelarAiPeopleAndGuidanceService.ContextPolicy(),
             access = AccessEvidence(context, identities.Value, access),
             privacy = new
             {
@@ -53,6 +67,62 @@ public static class CelarAiBrandModule
                 credentialsReturned = false
             },
             generatedAt = DateTimeOffset.UtcNow
+        });
+    }
+
+    private static async Task<IResult> GetContextPolicyAsync(
+        HttpContext context,
+        PulseAiSystemIntelligenceService service,
+        CancellationToken cancellationToken)
+    {
+        var identities = Identities(context);
+        if (identities is null) return SessionRequired();
+        var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
+        if (!access.IsActive || !access.CanAsk) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+        return Results.Ok(new
+        {
+            module = "011",
+            brand = CelarAiBrandProfile.BrandName,
+            policy = CelarAiPeopleAndGuidanceService.ContextPolicy(),
+            access = AccessEvidence(context, identities.Value, access)
+        });
+    }
+
+    private static async Task<IResult> GetGuidanceCatalogAsync(
+        HttpContext context,
+        PulseAiSystemIntelligenceService service,
+        CancellationToken cancellationToken)
+    {
+        var identities = Identities(context);
+        if (identities is null) return SessionRequired();
+        var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
+        if (!access.IsActive || !access.CanAsk) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+        return Results.Ok(new
+        {
+            module = "011",
+            brand = CelarAiBrandProfile.BrandName,
+            catalog = CelarAiPeopleAndGuidanceService.GuidanceCatalog(),
+            access = AccessEvidence(context, identities.Value, access),
+            stateChanged = false
+        });
+    }
+
+    private static async Task<IResult> GetPeopleActivityReadinessAsync(
+        HttpContext context,
+        PulseAiSystemIntelligenceService service,
+        CancellationToken cancellationToken)
+    {
+        var identities = Identities(context);
+        if (identities is null) return SessionRequired();
+        var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
+        if (!access.IsActive || !access.CanAsk) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
+        return Results.Ok(new
+        {
+            module = "011",
+            brand = CelarAiBrandProfile.BrandName,
+            readiness = CelarAiPeopleAndGuidanceService.PeopleActivityReadiness(),
+            access = AccessEvidence(context, identities.Value, access),
+            stateChanged = false
         });
     }
 
@@ -110,6 +180,8 @@ public static class CelarAiBrandModule
             featureRoutes = new object[]
             {
                 new { feature = "celar_ai_system_chat", primary = "private_celar_model_or_deterministic_system_synthesis", external = "sanitized_generic_reasoning_only" },
+                new { feature = "celar_ai_people_activity", primary = "authorized_owning_module_tools_and_deterministic_synthesis", external = "disabled" },
+                new { feature = "celar_ai_platform_guidance", primary = "source_controlled_operating_knowledge", external = "not_required" },
                 new { feature = "timesheet_document_grounding", primary = "private_celar_model", external = "raw_document_route_prohibited" },
                 new { feature = "system_help_search", primary = "private_celar_model_and_governed_tools", external = "sanitized_generic_reasoning_only" },
                 new { feature = "flowhive_document_planning", primary = "private_celar_model_and_deterministic_schedule_engine", external = "generic_planning_checklist_only" },
@@ -120,6 +192,7 @@ public static class CelarAiBrandModule
                 "Module 064 remains the only approved external-provider configuration and routing boundary.",
                 "The private Celar AI endpoint is configured through private runtime settings and secret references, not through a public provider API-key form.",
                 "Raw SOW, GSD, customer, contract, architecture, employee, rate, and financial context is not eligible for direct Claude or OpenAI routing.",
+                "People/work questions use current authorized owning-module evidence and are not routed to a public provider.",
                 "A safety refusal ends the request and is never bypassed by another provider.",
                 "No secret or endpoint value is returned by this readiness response."
             },
@@ -133,6 +206,7 @@ public static class CelarAiBrandModule
         HttpContext context,
         PulseAiSystemIntelligenceService service,
         PulseAiSystemIntelligenceRepository repository,
+        CelarAiPeopleAndGuidanceService peopleAndGuidance,
         CancellationToken cancellationToken)
     {
         var identities = Identities(context);
@@ -165,7 +239,15 @@ public static class CelarAiBrandModule
         }
         else
         {
-            result = await service.AskAsync(
+            var specialized = await peopleAndGuidance.TryAnswerAsync(
+                identities.Value.Actual,
+                identities.Value.Effective,
+                access,
+                request with { Question = question },
+                context,
+                service.Options(),
+                cancellationToken);
+            result = specialized ?? await service.AskAsync(
                 identities.Value.Actual,
                 identities.Value.Effective,
                 request with { Question = question },
@@ -179,13 +261,23 @@ public static class CelarAiBrandModule
             brand = CelarAiBrandProfile.BrandName,
             feature = "celar_ai_system_intelligence",
             technicalCompatibilityFeature = PulseAiSystemIntelligencePolicy.FeatureCode,
+            contextPolicy = new
+            {
+                contractVersion = CelarAiPeopleAndGuidanceService.ContextPolicyVersion,
+                previousConversationMessagesInjected = false,
+                currentThreadOnly = true,
+                historicalConversationRetained = result.Persisted,
+                historicalConversationUsedOnlyWhenExplicitlyReopened = true,
+                crossUserHistoryAllowed = false
+            },
             access = AccessEvidence(context, identities.Value, access),
             result = result.ToPublicResponse(),
             conversationPersistence = new
             {
                 enabled = result.Persisted,
                 viewAsQuestionPersisted = identities.Value.Actual == identities.Value.Effective && result.Persisted,
-                closesOrRefreshesDoNotDeleteCompletedMessages = result.Persisted
+                closesOrRefreshesDoNotDeleteCompletedMessages = result.Persisted,
+                openingChatAutomaticallyLoadsLatestConversation = false
             },
             externalProviderCalled = false,
             stateChanged = result.Persisted
@@ -231,7 +323,11 @@ public static class CelarAiBrandModule
                 role: "user",
                 status: "completed",
                 messageText: request.Question ?? string.Empty,
-                structuredResponse: null,
+                structuredResponse: new
+                {
+                    contextPolicy = CelarAiPeopleAndGuidanceService.ContextPolicyVersion,
+                    previousConversationMessagesInjected = false
+                },
                 inquiryRunId: null,
                 privateAnswerRunId: null,
                 correlationId: correlationId,
@@ -299,7 +395,8 @@ public static class CelarAiBrandModule
                     identityProfile = CelarAiBrandProfile.ContractVersion,
                     liveRecordToolsUsed = false,
                     privateDocumentsUsed = false,
-                    externalProviderUsed = false
+                    externalProviderUsed = false,
+                    previousConversationMessagesInjected = false
                 },
                 dataAsOf: dataAsOf,
                 cancellationToken);
