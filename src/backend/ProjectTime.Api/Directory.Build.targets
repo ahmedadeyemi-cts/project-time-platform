@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    The canonical API project generates its top-level Program source before
+    CoreCompile. Add the Analytics enterprise experience after the existing
+    Module 030 mapping without rewriting the oversized ProjectTime.Api.csproj.
+    The guard keeps registration idempotent in local, CI, and container builds.
+  -->
+  <Target Name="RegisterAnalyticsCenterEnterpriseExperience"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <Exec Command="grep -Fq 'app.MapAnalyticsCenterEnterpriseExperienceEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapAnalyticsCenterEndpoints();/a app.MapAnalyticsCenterEnterpriseExperienceEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+  </Target>
+</Project>
