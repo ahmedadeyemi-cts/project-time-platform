@@ -1,0 +1,373 @@
+name: ProjectPulse Dependency Web-Only Test Release 707f31b8
+
+on:
+  push:
+    branches:
+      - 'deploy/dependency-web-test-707f31b8-20260801'
+    paths:
+      - '.github/workflows/projectpulse-deploy-dependency-web-test-707f31b8.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-dependency-web-only-test-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy exact dependency web release to Test
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RELEASE_SHA: 707f31b88df173d9543b292a9cc19d6ec01ca6ac
+      CONTROL_BRANCH: deploy/dependency-web-test-707f31b8-20260801
+      CONTROL_PATH: .github/workflows/projectpulse-deploy-dependency-web-test-707f31b8.yml
+
+    steps:
+      - name: Check out exact deployment control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact release source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 707f31b88df173d9543b292a9cc19d6ec01ca6ac
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard exact control and release boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$CONTROL_BRANCH" ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_SHA" ]]
+
+          git -C control fetch origin main --no-tags
+          BASE_REF="$(git -C control merge-base origin/main HEAD)"
+          [[ -n "$BASE_REF" ]]
+          [[ "$BASE_REF" == "$(git -C control rev-parse origin/main)" ]]
+          CHANGED="$(git -C control diff --name-only "$BASE_REF"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$CONTROL_PATH" ]]
+
+          for required in \
+            release/deployment/containers/web/Dockerfile \
+            release/scripts/build-pr55-acr-image.sh \
+            release/src/frontend/project-time-web/package.json \
+            release/src/frontend/project-time-web/package-lock.json; do
+            test -f "$required"
+          done
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('release/src/frontend/project-time-web')
+          package = json.loads((root / 'package.json').read_text(encoding='utf-8'))
+          lock = json.loads((root / 'package-lock.json').read_text(encoding='utf-8'))
+          lock_root = lock['packages']['']
+          plugin = lock['packages']['node_modules/@vitejs/plugin-react']
+
+          checks = (
+              (package['devDependencies']['@vitejs/plugin-react'], '6.0.4', 'package plugin'),
+              (package['devDependencies']['postcss'], '8.5.25', 'package PostCSS'),
+              (lock_root['devDependencies']['@vitejs/plugin-react'], '6.0.4', 'lock plugin'),
+              (lock_root['devDependencies']['postcss'], '8.5.25', 'lock PostCSS'),
+              (plugin['version'], '6.0.4', 'resolved plugin'),
+              (plugin['dependencies']['@rolldown/pluginutils'], '^1.0.1', 'pluginutils range'),
+          )
+          for actual, expected, label in checks:
+              if actual != expected:
+                  raise SystemExit(f'{label}: expected {expected}, found {actual}')
+          if not plugin['resolved'].endswith('/plugin-react-6.0.4.tgz'):
+              raise SystemExit(f"unexpected plugin artifact: {plugin['resolved']}")
+          print('PROJECTPULSE_DEPENDENCY_RELEASE_CONTRACT=PASSED')
+          PY
+
+          git -C release diff --check
+          test -z "$(git -C release status --porcelain=v1 --untracked-files=no)"
+          echo "PROJECTPULSE_DEPENDENCY_WEB_RELEASE_SOURCE=$RELEASE_SHA"
+          echo 'PROJECTPULSE_API_BUILD_REQUESTED=NO'
+          echo 'PROJECTPULSE_DATABASE_MIGRATION_REQUESTED=NO'
+
+      - name: Sign in to Azure using Test OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current immutable Test release
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" \
+              --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          API_MODE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query properties.configuration.activeRevisionsMode \
+            -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query properties.configuration.activeRevisionsMode \
+            -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single ]]
+          [[ "${WEB_MODE,,}" == single ]]
+
+          RAW_API="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+          RAW_WEB="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+
+          OLD_API="$(resolve_digest "$RAW_API")"
+          OLD_WEB="$(resolve_digest "$RAW_WEB")"
+          echo "old_api_image=$OLD_API" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$OLD_WEB" >> "$GITHUB_OUTPUT"
+          echo "PROJECTPULSE_EXISTING_API_IMAGE=$OLD_API"
+          echo "PROJECTPULSE_EXISTING_WEB_IMAGE=$OLD_WEB"
+          echo 'PROJECTPULSE_DEPENDENCY_RELEASE_CAPTURE=PASSED'
+
+      - name: Build immutable web image only
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x release/scripts/build-pr55-acr-image.sh
+          WEB_TAG="dependency-web-${RELEASE_SHA}"
+          release/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-web:$WEB_TAG" \
+            release/deployment/containers/web/Dockerfile \
+            release > /tmp/projectpulse-dependency-web.digest \
+            2> /tmp/projectpulse-dependency-web.err
+
+          WEB_DIGEST="$(tr -d '\r\n' < /tmp/projectpulse-dependency-web.digest)"
+          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            cat /tmp/projectpulse-dependency-web.err >&2 || true
+            echo "Invalid web digest: $WEB_DIGEST" >&2
+            exit 1
+          fi
+          WEB_IMAGE="${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "PROJECTPULSE_DEPENDENCY_WEB_IMAGE=$WEB_IMAGE"
+          echo 'PROJECTPULSE_WEB_ONLY_IMAGE_BUILD=PASSED'
+
+      - name: Deploy exact web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
+            --revision-suffix "depweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+
+      - name: Validate immutable images and public responses
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" \
+              --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          CURRENT_WEB="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+          [[ "$CURRENT_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+          RAW_API="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+          CURRENT_API="$(resolve_digest "$RAW_API")"
+          [[ "$CURRENT_API" == '${{ steps.before.outputs.old_api_image }}' ]]
+          echo 'PROJECTPULSE_TEST_API_IMAGE_UNCHANGED=YES'
+
+          BASE='${{ vars.PUBLIC_URL }}'
+          BASE="${BASE%/}"
+          API_READY=0
+          WEB_READY=0
+          for attempt in $(seq 1 48); do
+            API_STATUS="$(curl -sS -o /tmp/projectpulse-dependency-api-health -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/api/health?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            case "$API_STATUS" in 200|401) API_READY=1 ;; esac
+
+            WEB_STATUS="$(curl -sS -o /tmp/projectpulse-dependency-web-home -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              "$BASE/?release=$RELEASE_SHA&attempt=$attempt" || true)"
+            if [[ "$WEB_STATUS" == 200 ]] \
+              && test -s /tmp/projectpulse-dependency-web-home \
+              && grep -qi '<!doctype html' /tmp/projectpulse-dependency-web-home; then
+              WEB_READY=1
+            fi
+
+            if (( API_READY == 1 && WEB_READY == 1 )); then
+              echo 'PROJECTPULSE_DEPENDENCY_API_HEALTH=PASSED'
+              echo 'PROJECTPULSE_DEPENDENCY_WEB_RESPONSE=PASSED'
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Final API status: $API_STATUS" >&2
+          echo "Final web status: $WEB_STATUS" >&2
+          cat /tmp/projectpulse-dependency-api-health >&2 || true
+          cat /tmp/projectpulse-dependency-web-home >&2 || true
+          exit 1
+
+      - name: Preserve immutable release evidence
+        if: success()
+        shell: bash
+        env:
+          OLD_API_IMAGE: ${{ steps.before.outputs.old_api_image }}
+          OLD_WEB_IMAGE: ${{ steps.before.outputs.old_web_image }}
+          NEW_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-evidence
+          python3 - <<'PY' > release-evidence/dependency-web-only-test-release.json
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          print(json.dumps({
+              'environment': 'test',
+              'releaseSha': os.environ['RELEASE_SHA'],
+              'sourcePullRequests': [391, 392],
+              'deploymentScope': 'web-only',
+              'databaseMigrations': [],
+              'apiBuilt': False,
+              'apiDeployed': False,
+              'apiImageBefore': os.environ['OLD_API_IMAGE'],
+              'apiImageAfter': os.environ['OLD_API_IMAGE'],
+              'apiImageUnchanged': True,
+              'webImageBefore': os.environ['OLD_WEB_IMAGE'],
+              'webImageAfter': os.environ['NEW_WEB_IMAGE'],
+              'workflowRunId': os.environ['GITHUB_RUN_ID'],
+              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'completedAt': datetime.now(timezone.utc).isoformat(),
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum release-evidence/dependency-web-only-test-release.json \
+            > release-evidence/SHA256SUMS
+          sha256sum --check release-evidence/SHA256SUMS
+
+      - name: Upload immutable release evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: projectpulse-dependency-web-test-${{ github.run_id }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Roll back web image on deployment failure
+        if: failure() && steps.deploy_web.outputs.started == 'true'
+        shell: bash
+        run: |
+          set +e
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "rbweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          ROLLBACK_EXIT=$?
+
+          API_AFTER="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+          WEB_AFTER="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --query 'properties.template.containers[0].image' \
+            -o tsv --only-show-errors)"
+          echo "PROJECTPULSE_WEB_ROLLBACK_EXIT=$ROLLBACK_EXIT"
+          echo "PROJECTPULSE_API_IMAGE_AFTER_FAILURE=$API_AFTER"
+          echo "PROJECTPULSE_WEB_IMAGE_AFTER_ROLLBACK=$WEB_AFTER"
+          exit 1
+
+      - name: Publish deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## ProjectPulse dependency web-only Test release'
+            echo
+            echo "- Exact application source: \`$RELEASE_SHA\`"
+            echo '- Source PRs: #391 and #392'
+            echo '- PostCSS 8.5.25 and @vitejs/plugin-react 6.0.4: verified'
+            echo '- Database migrations: none'
+            echo '- API image built: no'
+            echo '- API image deployed: no'
+            echo '- API immutable image unchanged: passed'
+            echo '- Web immutable image build: passed'
+            echo '- Web digest deployment: passed'
+            echo '- Public API and web response validation: passed'
+            echo '- Automatic web rollback guard: armed'
+            echo '- Immutable release evidence: uploaded'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
