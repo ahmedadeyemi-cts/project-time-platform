@@ -1,0 +1,401 @@
+name: Deploy Merged PR 338 Release to Test V4
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - '.github/workflows/deploy-merged-pr338-main-test-v4.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-merged-pr338-main-test-v4
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/deploy-merged-pr338-main-test-20260801-v2'
+    name: Build exact images and deploy merged PR 338 to Test
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      EXPECTED_RELEASE_COMMIT: b38a670bce6975fe0860849e25a6497c6e2de36c
+      EXPECTED_TRIGGER_BRANCH: release/deploy-merged-pr338-main-test-20260801-v2
+      VERIFIED_MIGRATION_RUN: '30687604163'
+      VERIFIED_SOURCE_RUN: '30700666531'
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+      AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+
+    steps:
+      - name: Check out exact deployment control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact merged release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b38a670bce6975fe0860849e25a6497c6e2de36c
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard actor, branch, base, release, and deployment-only scope
+        id: guard
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$BASE_REF" == main ]]
+          [[ "$BASE_SHA" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$HEAD_REF" == "$EXPECTED_TRIGGER_BRANCH" ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$(git -C release ls-remote origin refs/heads/main | awk '{print $1}')" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$VERIFIED_MIGRATION_RUN" == 30687604163 ]]
+          [[ "$VERIFIED_SOURCE_RUN" == 30700666531 ]]
+
+          git -C control diff --name-only "$BASE_SHA...HEAD" | sort > "$RUNNER_TEMP/control-paths.txt"
+          test -s "$RUNNER_TEMP/control-paths.txt"
+          if grep -Ev '^\.github/(deploy-merged-pr338-main-test-v2-trigger|workflows/(deploy-merged-pr338-main-test-v2\.yml|inspect-pr338-web-acr-build\.yml|deploy-merged-pr338-main-test-v3\.yml|deploy-merged-pr338-main-test-v4\.yml))$' \
+              "$RUNNER_TEMP/control-paths.txt" > "$RUNNER_TEMP/unexpected-control-paths.txt"; then
+            cat "$RUNNER_TEMP/unexpected-control-paths.txt" >&2
+            exit 1
+          fi
+          git -C control diff --check "$BASE_SHA...HEAD"
+          echo "control_commit=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo 'EXACT_TEST_DEPLOYMENT_SCOPE=PASS'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Build and validate exact frontend release
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pushd src/frontend/project-time-web >/dev/null
+          npm ci --no-audit --no-fund
+          node scripts/validate-role-workspace-entra-crm-governance.mjs
+          node scripts/validate-module-001-timesheet-timer-mobile.mjs
+          npm run build
+          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.js' -size +0c -print -quit)"
+          popd >/dev/null
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+          echo 'EXACT_FRONTEND_RELEASE=PASS'
+
+      - name: Prepare immutable web runtime context and restore exact source
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          context="$RUNNER_TEMP/pr338-web-runtime-v4-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0755 "$context/dist"
+          cp -a src/frontend/project-time-web/dist/. "$context/dist/"
+          install -m 0644 deployment/containers/web/default.conf.template "$context/default.conf.template"
+          install -m 0755 deployment/containers/web/projecttime-web-entrypoint.sh "$context/projecttime-web-entrypoint.sh"
+
+          cat > "$context/Dockerfile" <<'DOCKERFILE'
+          FROM nginxinc/nginx-unprivileged:1.27-alpine
+
+          ENV API_UPSTREAM=http://127.0.0.1:5080 \
+              NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
+
+          USER root
+
+          COPY dist/ /usr/share/nginx/html/
+          COPY default.conf.template /etc/nginx/templates/default.conf.template
+          COPY projecttime-web-entrypoint.sh /usr/local/bin/projecttime-web-entrypoint.sh
+
+          RUN chmod 0644 /etc/nginx/templates/default.conf.template \
+              && chmod 0755 /usr/local/bin/projecttime-web-entrypoint.sh
+
+          USER 101
+
+          RUN test -r /etc/nginx/templates/default.conf.template \
+              && test -x /usr/local/bin/projecttime-web-entrypoint.sh \
+              && API_UPSTREAM=http://127.0.0.1:18080 \
+                 NGINX_RESOLVER=127.0.0.1 \
+                 /usr/local/bin/projecttime-web-entrypoint.sh nginx -t \
+              && rm -f /etc/nginx/conf.d/default.conf
+
+          EXPOSE 8080
+          ENTRYPOINT ["/usr/local/bin/projecttime-web-entrypoint.sh"]
+          CMD ["nginx", "-g", "daemon off;"]
+          DOCKERFILE
+          sed -i 's/^[[:space:]]*//' "$context/Dockerfile"
+
+          printf '%s\n' "$EXPECTED_RELEASE_COMMIT" > "$context/release-commit"
+          echo "WEB_CONTEXT=$context" >> "$GITHUB_ENV"
+
+          git reset --hard "$EXPECTED_RELEASE_COMMIT"
+          git clean -fdx
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          test -z "$(git status --porcelain=v1)"
+          echo 'EXACT_SOURCE_RESTORED=PASS'
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build immutable API and web images with authoritative ACR polling
+        id: images
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -d "$WEB_CONTEXT/dist" ]]
+          [[ "$(tr -d '\r\n' < "$WEB_CONTEXT/release-commit")" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          old_api="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          old_web="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ -n "$old_api" && -n "$old_web" ]]
+
+          queue_and_wait() {
+            local label="$1"
+            local image="$2"
+            local dockerfile="$3"
+            local context="$4"
+            local output command_status run_id status digest
+
+            set +e
+            output="$(az acr build \
+              --registry "$AZURE_ACR_NAME" \
+              --image "$image" \
+              --file "$dockerfile" \
+              --no-wait \
+              "$context" 2>&1)"
+            command_status=$?
+            set -e
+            printf '%s\n' "$output" >&2
+
+            run_id="$(sed -nE 's/.*Queued a build with ID:[[:space:]]*([^[:space:]]+).*/\1/p' <<<"$output" | tail -n 1)"
+            if [[ -z "$run_id" ]]; then
+              echo "$label ACR queue did not return an exact run ID; command status=$command_status" >&2
+              return 1
+            fi
+            [[ "$run_id" =~ ^[[:alnum:]-]+$ ]]
+            echo "${label}_ACR_RUN=$run_id" >&2
+
+            status=''
+            for attempt in $(seq 1 180); do
+              status="$(az acr task show-run \
+                --registry "$AZURE_ACR_NAME" \
+                --run-id "$run_id" \
+                --query status -o tsv --only-show-errors)"
+              case "$status" in
+                Succeeded) break ;;
+                Failed|Canceled|Timeout|Error)
+                  echo "$label ACR build failed with status: $status" >&2
+                  az acr task logs --registry "$AZURE_ACR_NAME" \
+                    --run-id "$run_id" --only-show-errors >&2 || true
+                  return 1
+                  ;;
+              esac
+              sleep 5
+            done
+            if [[ "$status" != Succeeded ]]; then
+              echo "$label ACR build timed out with status: ${status:-unknown}" >&2
+              az acr task logs --registry "$AZURE_ACR_NAME" \
+                --run-id "$run_id" --only-show-errors >&2 || true
+              return 1
+            fi
+
+            digest="$(az acr task show-run \
+              --registry "$AZURE_ACR_NAME" \
+              --run-id "$run_id" \
+              --query 'outputImages[0].digest' -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s\n' "$digest" > "$RUNNER_TEMP/${label}.digest"
+            printf '%s\n' "$run_id" > "$RUNNER_TEMP/${label}.run-id"
+          }
+
+          api_tag="project-health-dashboard-api:merged-pr338-v4-${EXPECTED_RELEASE_COMMIT}-${GITHUB_RUN_ID}"
+          web_tag="project-health-dashboard-web:merged-pr338-v4-${EXPECTED_RELEASE_COMMIT}-${GITHUB_RUN_ID}"
+          queue_and_wait api "$api_tag" deployment/containers/api/Dockerfile .
+          queue_and_wait web "$web_tag" Dockerfile "$WEB_CONTEXT"
+
+          api_digest="$(cat "$RUNNER_TEMP/api.digest")"
+          web_digest="$(cat "$RUNNER_TEMP/web.digest")"
+          api_image="$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-api@$api_digest"
+          web_image="$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-web@$web_digest"
+          {
+            echo "old_api=$old_api"
+            echo "old_web=$old_web"
+            echo "api_image=$api_image"
+            echo "web_image=$web_image"
+            echo "api_run=$(cat "$RUNNER_TEMP/api.run-id")"
+            echo "web_run=$(cat "$RUNNER_TEMP/web.run-id")"
+          } >> "$GITHUB_OUTPUT"
+          echo "API_IMAGE=$api_image"
+          echo "WEB_IMAGE=$web_image"
+
+      - name: Deploy exact release to Test with rollback protection
+        id: deploy
+        working-directory: release
+        shell: bash
+        env:
+          OLD_API_IMAGE: ${{ steps.images.outputs.old_api }}
+          OLD_WEB_IMAGE: ${{ steps.images.outputs.old_web }}
+          API_IMAGE: ${{ steps.images.outputs.api_image }}
+          WEB_IMAGE: ${{ steps.images.outputs.web_image }}
+        run: |
+          set -Eeuo pipefail
+          base_url="${PUBLIC_URL%/}"
+          [[ "$base_url" == https://*.onenecklab.com || "$base_url" == https://*.ussignal.com ]]
+          ! grep -Eiq 'azurecontainerapps\.io|\.internal\.' <<<"$base_url"
+
+          api_suffix="p338v4a-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          web_suffix="p338v4w-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          api_revision="$AZURE_API_APP--$api_suffix"
+          web_revision="$AZURE_WEB_APP--$web_suffix"
+          api_started=0
+          web_started=0
+
+          rollback() {
+            local status=$?
+            trap - EXIT INT TERM
+            if (( status != 0 )); then
+              set +e
+              if (( web_started == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+                  --image "$OLD_WEB_IMAGE" \
+                  --revision-suffix "p338v4wr-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                  --output none --only-show-errors || true
+              fi
+              if (( api_started == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+                  --image "$OLD_API_IMAGE" \
+                  --revision-suffix "p338v4ar-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                  --output none --only-show-errors || true
+              fi
+              echo 'TEST_APPLICATION_ROLLBACK=REQUESTED'
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT INT TERM
+
+          api_started=1
+          az containerapp update \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --image "$API_IMAGE" \
+            --set-env-vars \
+              PROJECTPULSE_ENVIRONMENT=test \
+              PROJECTPULSE_SOURCE_COMMIT="$EXPECTED_RELEASE_COMMIT" \
+            --revision-suffix "$api_suffix" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            "$AZURE_RESOURCE_GROUP" "$AZURE_API_APP" "$api_revision" "$API_IMAGE" 60 10
+
+          api_ok=0
+          for attempt in $(seq 1 30); do
+            health="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/health?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            route="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/timesheet/timers/active-set?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            if [[ "$health" == 200 || "$health" == 401 ]] && [[ "$route" == 401 || "$route" == 403 ]]; then
+              api_ok=1
+              break
+            fi
+            sleep 10
+          done
+          (( api_ok == 1 ))
+
+          web_started=1
+          az containerapp update \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --image "$WEB_IMAGE" \
+            --revision-suffix "$web_suffix" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            "$AZURE_RESOURCE_GROUP" "$AZURE_WEB_APP" "$web_revision" "$WEB_IMAGE" 60 10
+
+          web_ok=0
+          for attempt in $(seq 1 30); do
+            page="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            route="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/timesheet/timers/history-v2?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            if [[ "$page" == 200 ]] && [[ "$route" == 401 || "$route" == 403 ]]; then
+              web_ok=1
+              break
+            fi
+            sleep 10
+          done
+          (( web_ok == 1 ))
+
+          active_api="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          active_web="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          source_commit="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          [[ "$active_api" == "$API_IMAGE" ]]
+          [[ "$active_web" == "$WEB_IMAGE" ]]
+          [[ "$source_commit" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          {
+            echo "api_revision=$api_revision"
+            echo "web_revision=$web_revision"
+          } >> "$GITHUB_OUTPUT"
+          echo 'MERGED_PR338_TEST_DEPLOYMENT_V4=COMPLETE'
+
+      - name: Record exact Test release evidence
+        shell: bash
+        run: |
+          {
+            echo '## Merged PR #338 deployed to Test'
+            echo
+            echo "- Release commit: \`$EXPECTED_RELEASE_COMMIT\`"
+            echo "- Control commit: \`${{ steps.guard.outputs.control_commit }}\`"
+            echo "- Migration verification run: \`$VERIFIED_MIGRATION_RUN\`"
+            echo "- Source validation run: \`$VERIFIED_SOURCE_RUN\`"
+            echo "- API ACR run: \`${{ steps.images.outputs.api_run }}\`"
+            echo "- Web ACR run: \`${{ steps.images.outputs.web_run }}\`"
+            echo "- API image: \`${{ steps.images.outputs.api_image }}\`"
+            echo "- Web image: \`${{ steps.images.outputs.web_image }}\`"
+            echo "- API revision: \`${{ steps.deploy.outputs.api_revision }}\`"
+            echo "- Web revision: \`${{ steps.deploy.outputs.web_revision }}\`"
+            echo '- Migrations 056, 056A, and 057: applied and independently verified in Test'
+            echo '- Environment changed: Test only'
+            echo '- Production changed: no'
+            echo '- Authenticated role-based UAT: still required'
+          } >> "$GITHUB_STEP_SUMMARY"
