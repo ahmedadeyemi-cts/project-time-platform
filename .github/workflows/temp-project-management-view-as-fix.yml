@@ -1,0 +1,480 @@
+name: Temporary Project Management View-As Fix Publisher
+
+on:
+  push:
+    branches:
+      - fix/project-management-view-as-effective-workspace-20260801
+    paths:
+      - .github/workflows/temp-project-management-view-as-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-project-management-view-as-effective-workspace-20260801
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TARGET_BRANCH: fix/project-management-view-as-effective-workspace-20260801
+      BASE_SHA: 03728d0fb098e477dcfd270df475a07581235a0e
+      WORKFLOW_PATH: .github/workflows/temp-project-management-view-as-fix.yml
+
+    steps:
+      - name: Check out exact isolated branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard branch and pre-publication scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
+          [[ "$(git rev-parse HEAD^)" == "$BASE_SHA" ]]
+          [[ "$(git rev-list --count "$BASE_SHA"..HEAD)" == '1' ]]
+          CHANGED="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$WORKFLOW_PATH" ]]
+
+      - name: Apply the Project Management View-As correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          paths = {
+              'app': root / 'src/frontend/project-time-web/src/App.jsx',
+              'welcome': root / 'src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx',
+              'governance': root / 'src/frontend/project-time-web/src/role-workspace-governance.js',
+              'injector': root / 'src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs',
+              'validator': root / 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs',
+          }
+
+          def read(key):
+              return paths[key].read_text(encoding='utf-8')
+
+          def write(key, content):
+              paths[key].write_text(content, encoding='utf-8')
+
+          def replace_once(source, old, new, label):
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+              return source.replace(old, new, 1)
+
+          app = read('app')
+          app = replace_once(
+              app,
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';",
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';",
+              'App role-governance import',
+          )
+
+          route_helper = """function getRouteFromHash() {
+            const hash = window.location.hash || '#dashboard';
+            return hash.replace('#', '') || 'dashboard';
+          }
+          """
+          view_as_helper = route_helper + """
+          /* ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY */
+          function readProjectPulseActiveViewAsIdentity() {
+            try {
+              const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+              return selected?.userId ? selected : null;
+            } catch {
+              return null;
+            }
+          }
+          """
+          if 'ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY' not in app:
+              app = replace_once(app, route_helper, view_as_helper, 'App View-As identity helper')
+
+          old_role_codes = "  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];"
+          new_role_codes = "  const currentRoleCodes = roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity());"
+          app = replace_once(app, old_role_codes, new_role_codes, 'App effective role codes')
+
+          old_assigned_roles = "  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));"
+          new_assigned_roles = "  const assignedRoleCodes = new Set(roleCodesFrom(user));"
+          app = replace_once(app, old_assigned_roles, new_assigned_roles, 'App visible-module role normalization')
+
+          old_loader = """      try {
+                const [userResult, quarterResult] = await Promise.all([
+                  fetchJson('/api/security/me', authSession),
+                  fetchJson('/api/utilization/current-quarter', authSession)
+                ]);
+
+                if (!cancelled) {
+                  setCurrentUser({ loading: false, data: userResult, error: null });
+                  setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
+                }
+              } catch (error) {
+                if (!cancelled) {
+                  const message = error instanceof Error ? error.message : 'Unknown error';
+                  setCurrentUser((current) => ({ ...current, loading: false, error: message }));
+                  setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message }));
+                }
+              }
+          """
+          new_loader = """      /* ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION */
+              let userResult;
+              try {
+                userResult = await fetchJson('/api/security/me', authSession);
+                if (cancelled) return;
+                setCurrentUser({ loading: false, data: userResult, error: null });
+              } catch (error) {
+                if (cancelled) return;
+                const message = error instanceof Error ? error.message : 'Unable to load the effective user.';
+                setCurrentUser({ loading: false, data: null, error: message });
+                setCurrentQuarterUtilization({ loading: false, data: { applicable: false }, error: null });
+                return;
+              }
+
+              const canViewUtilization = userHasAnyPermission(userResult, [
+                'VIEW_OWN_UTILIZATION',
+                'VIEW_TEAM_UTILIZATION',
+                'VIEW_INDIVIDUAL_UTILIZATION',
+                'VIEW_UTILIZATION',
+                'SYSTEM_ADMINISTRATION',
+                'MANAGE_ALL'
+              ]);
+
+              if (!canViewUtilization) {
+                setCurrentQuarterUtilization({ loading: false, data: { applicable: false }, error: null });
+                return;
+              }
+
+              try {
+                const quarterResult = await fetchJson('/api/utilization/current-quarter', authSession);
+                if (!cancelled) {
+                  setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
+                }
+              } catch (error) {
+                if (!cancelled) {
+                  const message = error instanceof Error ? error.message : 'Unable to load current-quarter utilization.';
+                  setCurrentQuarterUtilization({ loading: false, data: null, error: message });
+                }
+              }
+          """
+          app = replace_once(app, old_loader, new_loader, 'App effective identity and utilization load isolation')
+
+          old_visible = """  const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+            const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
+          """
+          new_visible = """  /* ROLE_WORKSPACE_EFFECTIVE_USER_MODEL */
+            const activeViewAsIdentity = readProjectPulseActiveViewAsIdentity();
+            const effectiveUser = useMemo(() => {
+              const securityUser = securityContext.data;
+              const profileUser = currentUser.data;
+              const storedViewAs = readProjectPulseActiveViewAsIdentity();
+              if (!securityUser && !profileUser && !storedViewAs) return null;
+
+              const effectiveRoleCodes = roleCodesFrom(securityUser || profileUser || storedViewAs);
+              return {
+                ...(profileUser || {}),
+                ...(securityUser || {}),
+                displayName: storedViewAs?.displayName
+                  || securityUser?.displayName
+                  || profileUser?.displayName
+                  || storedViewAs?.email
+                  || securityUser?.email
+                  || profileUser?.email
+                  || '',
+                email: storedViewAs?.email || securityUser?.email || profileUser?.email || '',
+                roleCodes: effectiveRoleCodes,
+                roles: securityUser?.roles ?? profileUser?.roles ?? effectiveRoleCodes,
+                permissions: securityUser?.permissions ?? profileUser?.permissions ?? []
+              };
+            }, [currentUser.data, securityContext.data]);
+            const effectiveDisplayName = activeViewAsIdentity?.displayName
+              || activeViewAsIdentity?.email
+              || effectiveUser?.displayName
+              || effectiveUser?.email
+              || authSession?.displayName
+              || authSession?.username
+              || 'Unknown user';
+            const visibleRoleModules = useMemo(() => getVisibleRoleModules(effectiveUser), [effectiveUser]);
+            const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
+          """
+          app = replace_once(app, old_visible, new_visible, 'App effective user and visible modules')
+
+          old_signed_in = "Signed in as {userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.displayName || authSession?.username || currentUser.data?.email || 'Unknown user'}"
+          app = replace_once(app, old_signed_in, 'Signed in as {effectiveDisplayName}', 'App signed-in effective identity')
+
+          old_dashboard_name = "displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}"
+          app = replace_once(app, old_dashboard_name, 'displayName={effectiveDisplayName}', 'App welcome effective identity')
+          write('app', app)
+
+          welcome = read('welcome')
+          management_actions = """  management: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Health', 'project-workload'],
+                ['Team Utilization', 'utilization'],
+                ['Work Register', 'work-register']
+              ],
+          """
+          project_management_actions = """  projectManagement: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Workload', 'project-workload'],
+                ['Project Workspace', 'project-workspace'],
+                ['Analytics Center', 'reporting']
+              ],
+              management: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Health', 'project-workload'],
+                ['Team Utilization', 'utilization'],
+                ['Work Register', 'work-register']
+              ],
+          """
+          welcome = replace_once(welcome, management_actions, project_management_actions, 'PM dashboard quick actions')
+
+          old_persona = """  if (hasAny(roleCodes, [
+                'MANAGER',
+                'PEOPLE_MANAGER',
+                'PROJECT_MANAGER',
+                'PROJECT_MANAGEMENT',
+                'PROJECT_MANAGEMENT_LEAD',
+                'PROJECT_MANAGEMENT_TEAM_LEAD',
+                'PM_TEAM_LEAD'
+              ])) return 'management';
+          """
+          new_persona = """  if (hasAny(roleCodes, [
+                'PROJECT_MANAGER',
+                'PROJECT_MANAGEMENT',
+                'PROJECT_MANAGEMENT_LEAD',
+                'PROJECT_MANAGEMENT_TEAM_LEAD',
+                'PM_TEAM_LEAD'
+              ])) return 'projectManagement';
+              if (hasAny(roleCodes, ['MANAGER', 'PEOPLE_MANAGER'])) return 'management';
+          """
+          welcome = replace_once(welcome, old_persona, new_persona, 'PM dashboard persona')
+          write('welcome', welcome)
+
+          governance = read('governance')
+          old_role_codes_from = """export function roleCodesFrom(value) {
+            if (Array.isArray(value)) {
+              return value.map((item) => normalizeRoleCode(item?.roleCode ?? item)).filter(Boolean);
+            }
+
+            return (value?.roles ?? value?.roleCodes ?? [])
+              .map((item) => normalizeRoleCode(item?.roleCode ?? item))
+              .filter(Boolean);
+          }
+          """
+          new_role_codes_from = """export function roleCodesFrom(value) {
+            const source = Array.isArray(value) ? value : (value?.roles ?? value?.roleCodes ?? []);
+            const entries = Array.isArray(source)
+              ? source
+              : String(source ?? '').split(/[;,|]+/);
+
+            return entries
+              .flatMap((item) => {
+                const raw = item?.roleCode ?? item;
+                return Array.isArray(raw) ? raw : String(raw ?? '').split(/[;,|]+/);
+              })
+              .map(normalizeRoleCode)
+              .filter(Boolean);
+          }
+          """
+          governance = replace_once(governance, old_role_codes_from, new_role_codes_from, 'role-code normalization')
+
+          old_tail = """  const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
+            const denied = projectManagement && !hasOperationalRole
+              ? PROJECT_MANAGEMENT_DENIED_ROUTES
+              : (accountingBilling || sales) && !hasOperationalRole && !projectManagement
+                ? BUSINESS_ROLE_DENIED_ROUTES
+                : [];
+
+            denied.forEach((route) => routes.delete(route));
+            return (moduleRegistry ?? []).filter((module) => routes.has(module.route));
+          }
+          """
+          new_tail = """  const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
+            const pureProjectManagement = projectManagement
+              && !hasOperationalRole
+              && !accountingBilling
+              && !sales
+              && !coordinator;
+
+            if (pureProjectManagement) {
+              return (moduleRegistry ?? []).filter((module) => (
+                baselineRoutes.has(module.route) && routes.has(module.route)
+              ));
+            }
+
+            const denied = projectManagement && !hasOperationalRole
+              ? PROJECT_MANAGEMENT_DENIED_ROUTES
+              : (accountingBilling || sales) && !hasOperationalRole && !projectManagement
+                ? BUSINESS_ROLE_DENIED_ROUTES
+                : [];
+
+            denied.forEach((route) => routes.delete(route));
+            return (moduleRegistry ?? []).filter((module) => routes.has(module.route));
+          }
+          """
+          governance = replace_once(governance, old_tail, new_tail, 'pure PM exact module baseline')
+          write('governance', governance)
+
+          injector = read('injector')
+          injector = injector.replace(
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';",
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';",
+          )
+          injector = injector.replace(
+              "const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));",
+              "const assignedRoleCodes = new Set(roleCodesFrom(user));",
+          )
+          injection_anchor = """  if (!source.includes('ENTRA_SECRET_EXPIRATION_GLOBAL_WARNING_MOUNT')) {
+          """
+          if 'ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION' not in injector:
+              injector_patch = """  source = source.replace(
+              \"import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';\",
+              \"import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';\",
+            );
+            source = source.replace(
+              \"  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));\",
+              \"  const assignedRoleCodes = new Set(roleCodesFrom(user));\",
+            );
+            source = source.replace(
+              \"  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];\",
+              \"  const currentRoleCodes = roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity());\",
+            );
+            source = source.replace(
+              \"Signed in as {userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.displayName || authSession?.username || currentUser.data?.email || 'Unknown user'}\",
+              \"Signed in as {effectiveDisplayName}\",
+            );
+            source = source.replace(
+              \"displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}\",
+              \"displayName={effectiveDisplayName}\",
+            );
+            if (!source.includes('ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION')
+                || !source.includes('ROLE_WORKSPACE_EFFECTIVE_USER_MODEL')) {
+              throw new Error('Role workspace governance requires the effective identity load-isolation source baseline.');
+            }
+
+          """
+              injector = replace_once(injector, injection_anchor, injector_patch + injection_anchor, 'injector effective identity safeguards')
+          write('injector', injector)
+
+          validator = read('validator')
+          app_require_anchor = """  '<EntraSecretExpirationGlobalWarning authSession={authSession} />',
+          ], 'App workspace governance');
+          """
+          app_require_replacement = """  '<EntraSecretExpirationGlobalWarning authSession={authSession} />',
+            'ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY',
+            'ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION',
+            'ROLE_WORKSPACE_EFFECTIVE_USER_MODEL',
+            'const assignedRoleCodes = new Set(roleCodesFrom(user));',
+            'roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity())',
+            \"userResult = await fetchJson('/api/security/me', authSession);\",
+            \"const canViewUtilization = userHasAnyPermission(userResult, [\",
+            \"'VIEW_OWN_UTILIZATION'\",
+            'const visibleRoleModules = useMemo(() => getVisibleRoleModules(effectiveUser), [effectiveUser]);',
+            'Signed in as {effectiveDisplayName}',
+            'displayName={effectiveDisplayName}',
+          ], 'App workspace governance');
+          """
+          validator = replace_once(validator, app_require_anchor, app_require_replacement, 'validator App effective identity contracts')
+
+          welcome_require_anchor = """  \"'FINANCE'\",
+          ], 'role welcome dashboard');
+          """
+          welcome_require_replacement = """  \"'FINANCE'\",
+            'projectManagement: [',
+            \"['Approval Center', 'manager-approval']\",
+            \"['Project Workload', 'project-workload']\",
+            \"['Project Workspace', 'project-workspace']\",
+            \"['Analytics Center', 'reporting']\",
+            \"return 'projectManagement';\",
+          ], 'role welcome dashboard');
+          """
+          validator = replace_once(validator, welcome_require_anchor, welcome_require_replacement, 'validator PM dashboard contracts')
+
+          governance_require_anchor = """  \"'oncall-scheduling'\",
+          ], 'role workspace governance');
+          """
+          governance_require_replacement = """  \"'oncall-scheduling'\",
+            'const pureProjectManagement = projectManagement',
+            'baselineRoutes.has(module.route) && routes.has(module.route)',
+            \"String(source ?? '').split(/[;,|]+/)\",
+          ], 'role workspace governance');
+          """
+          validator = replace_once(validator, governance_require_anchor, governance_require_replacement, 'validator exact PM baseline contracts')
+
+          exclude_anchor = """requireCount(app, 'ROLE_WORKSPACE_GOVERNANCE_VISIBLE_MODULES', 1, 'App workspace governance');
+          """
+          exclude_replacement = """requireExcludes(app, [
+            \"const [userResult, quarterResult] = await Promise.all([\",
+            'getVisibleRoleModules(currentUser.data)',
+            \"displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}\",
+          ], 'Project Management View-As regression');
+          requireCount(app, 'ROLE_WORKSPACE_GOVERNANCE_VISIBLE_MODULES', 1, 'App workspace governance');
+          """
+          validator = replace_once(validator, exclude_anchor, exclude_replacement, 'validator View-As regression exclusions')
+          write('validator', validator)
+
+          print('PROJECT_MANAGEMENT_VIEW_AS_EFFECTIVE_WORKSPACE_PATCH=PASS')
+          PY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused role workspace contracts
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run validate:role-workspace-entra-crm-governance
+          npm run build
+
+      - name: Enforce exact final source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          ALLOWED="$(cat <<'EOF'
+          .github/workflows/temp-project-management-view-as-fix.yml
+          src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs
+          src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx
+          src/frontend/project-time-web/src/role-workspace-governance.js
+          EOF
+          )"
+          ACTUAL="$(git status --porcelain=v1 | sed -E 's/^.. //' | sort)"
+          EXPECTED="$(printf '%s\n' "$ALLOWED" | sed '/^$/d' | sort)"
+          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$EXPECTED" "$ACTUAL"
+          [[ "$ACTUAL" == "$EXPECTED" ]]
+
+      - name: Publish the reviewed source-only correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm "$WORKFLOW_PATH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx \
+            src/frontend/project-time-web/src/role-workspace-governance.js \
+            src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs \
+            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+            "$WORKFLOW_PATH"
+          git diff --cached --check
+          git commit -m 'Fix Project Management View-As identity and workspace access'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo 'PROJECT_MANAGEMENT_VIEW_AS_SOURCE_PUBLISHED=YES'
