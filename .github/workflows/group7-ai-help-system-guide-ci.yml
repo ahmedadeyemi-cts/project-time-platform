@@ -9,8 +9,13 @@ on:
       - '.github/workflows/group7-ai-help-system-guide-ci.yml'
       - 'docs/modules/group-7-ai-help-system-guide/README.md'
       - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/package-lock.json'
       - 'src/frontend/project-time-web/scripts/inject-group-7-ai-help-system-guide.mjs'
       - 'src/frontend/project-time-web/scripts/validate-group-7-ai-help-system-guide.mjs'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/src/SystemUserGuide.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
       - 'src/frontend/project-time-web/src/ai/**'
       - 'src/frontend/project-time-web/src/help/**'
   workflow_dispatch:
@@ -28,21 +33,24 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify owned Group 7 source scope or run regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
           if [[ "$HEAD_BRANCH" == feature/group-7-ai-help-system-user-guide-* ]]; then
-            ALLOWED='^(\.github/workflows/group7-ai-help-system-guide-ci\.yml|docs/modules/group-7-ai-help-system-guide/README\.md|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$'
+            ALLOWED='^(\.github/workflows/group7-ai-help-system-guide-ci\.yml|docs/modules/group-7-ai-help-system-guide/README\.md|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$'
             UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
               echo 'Unexpected Group 7 source scope:' >&2
@@ -55,6 +63,7 @@ jobs:
               exit 1
             fi
 
+            echo 'GROUP_7_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'GROUP_7_SOURCE_ISOLATION=PASSED'
           else
             DIRECT_GROUP7="$(grep -E '^(docs/modules/group-7-ai-help-system-guide/|src/frontend/project-time-web/scripts/(inject-group-7-ai-help-system-guide|validate-group-7-ai-help-system-guide)\.mjs|src/frontend/project-time-web/src/ai/(AiProviderReadinessController\.jsx|AiProviderReadinessPanel\.jsx|ai-provider-readiness-store\.js|ai-provider-readiness\.css)|src/frontend/project-time-web/src/help/(HelpGovernancePanel\.jsx|help-answer-preferences\.js|help-governance\.css))$' <<<"$CHANGED" || true)"
@@ -63,6 +72,7 @@ jobs:
               printf '%s\n' "$DIRECT_GROUP7" >&2
               exit 1
             fi
+            echo 'GROUP_7_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
             echo "GROUP_7_SOURCE_ISOLATION=REGRESSION_MODE branch=$HEAD_BRANCH"
           fi
 
@@ -76,9 +86,10 @@ jobs:
             fi
           done
 
-          git diff --check origin/main...HEAD
+          git diff --check "origin/$BASE_BRANCH"...HEAD
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: npm
@@ -115,7 +126,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Validate compiled Group 7 markers
+      - name: Validate compiled Group 7 markers and source idempotence
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -145,4 +156,7 @@ jobs:
             grep -Fq "$marker" /tmp/group7-ai-help-system-guide.css
           done
 
+          git -C ../../.. diff --check
+          git -C ../../.. diff --exit-code
           echo 'GROUP_7_FRONTEND_BUILD=PASSED'
+          echo "GROUP_7_VALIDATION_MODE=${GROUP_7_VALIDATION_MODE:-UNKNOWN}"
