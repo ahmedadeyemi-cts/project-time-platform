@@ -1,0 +1,593 @@
+name: Deploy Merged PR 338 Release to Test V2
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - '.github/workflows/deploy-merged-pr338-main-test-v2.yml'
+      - '.github/deploy-merged-pr338-main-test-v2-trigger'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-merged-pr338-main-test-v2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/deploy-merged-pr338-main-test-20260801-v2'
+    name: Validate, migrate, and deploy exact merged release to Test
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      EXPECTED_RELEASE_COMMIT: b38a670bce6975fe0860849e25a6497c6e2de36c
+      EXPECTED_TRIGGER_BRANCH: release/deploy-merged-pr338-main-test-20260801-v2
+      REQUIRED_CONFIRMATION: APPLY-056-056A-057-AND-DEPLOY-B38A670-TO-TEST-V2
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+      AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+
+    steps:
+      - name: Check out exact deployment control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact merged source release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b38a670bce6975fe0860849e25a6497c6e2de36c
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact main, control scope, and release identity
+        id: guard
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$BASE_REF" == main ]]
+          [[ "$BASE_SHA" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$HEAD_REF" == "$EXPECTED_TRIGGER_BRANCH" ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$(git -C release ls-remote origin refs/heads/main | awk '{print $1}')" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          trigger='control/.github/deploy-merged-pr338-main-test-v2-trigger'
+          test -f "$trigger"
+          [[ "$(sed -n 's/^operation=//p' "$trigger" | tail -1)" == apply-migrations-and-deploy ]]
+          [[ "$(sed -n 's/^release_commit=//p' "$trigger" | tail -1)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$(sed -n 's/^environment=//p' "$trigger" | tail -1)" == test ]]
+          [[ "$(sed -n 's/^confirmation=//p' "$trigger" | tail -1)" == "$REQUIRED_CONFIRMATION" ]]
+
+          cat > "$RUNNER_TEMP/expected-control-paths.txt" <<'PATHS'
+          .github/deploy-merged-pr338-main-test-v2-trigger
+          .github/workflows/deploy-merged-pr338-main-test-v2.yml
+          PATHS
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-control-paths.txt"
+          sort -o "$RUNNER_TEMP/expected-control-paths.txt" "$RUNNER_TEMP/expected-control-paths.txt"
+          git -C control diff --name-only "$BASE_SHA...HEAD" | sort > "$RUNNER_TEMP/actual-control-paths.txt"
+          diff -u "$RUNNER_TEMP/expected-control-paths.txt" "$RUNNER_TEMP/actual-control-paths.txt"
+          git -C control diff --check "$BASE_SHA...HEAD"
+
+          for path in \
+            database/migrations/056_role_workspace_entra_crm_governance.sql \
+            database/migrations/056a_role_workspace_permission_scope_guard.sql \
+            database/migrations/057_module_001_multi_timer_document_grounded_ai.sql \
+            tests/test-role-workspace-entra-crm-governance-migration-056.sh \
+            tests/test-role-workspace-permission-scope-migration-056a.sh \
+            tests/test-module001-multi-timer-migration-057.sh \
+            scripts/export-pr55-test-database-url.sh \
+            scripts/build-pr55-acr-image.sh \
+            scripts/wait-containerapp-ready-revision.sh \
+            deployment/containers/pr55-migrator/Dockerfile \
+            deployment/containers/api/Dockerfile \
+            deployment/containers/web/Dockerfile; do
+            test -f "release/$path"
+          done
+
+          echo "control_commit=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo 'EXACT_RELEASE_GUARD=PASS'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Build exact API release
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release --no-restore
+          echo 'EXACT_API_BUILD=PASS'
+
+      - name: Validate migrations 056, 056A, and 057
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-role-workspace-entra-crm-governance-migration-056.sh
+          bash tests/test-role-workspace-permission-scope-migration-056a.sh
+          bash tests/test-module001-multi-timer-migration-057.sh
+          echo 'EXACT_MIGRATION_TESTS=PASS'
+
+      - name: Validate and build exact frontend release
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          node scripts/validate-role-workspace-entra-crm-governance.mjs
+          node scripts/validate-module-001-timesheet-timer-mobile.mjs
+          npm run build
+          echo 'EXACT_FRONTEND_BUILD=PASS'
+
+      - name: Validate security posture and restore exact source tree
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+          echo 'Deterministic build output before source reset:'
+          git status --short || true
+          git reset --hard "$EXPECTED_RELEASE_COMMIT"
+          git clean -fdx
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          test -z "$(git status --porcelain=v1)"
+          echo 'EXACT_SOURCE_RESTORED_AFTER_VALIDATION=PASS'
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Load Test database connection from the current API app
+        working-directory: release
+        shell: bash
+        run: bash scripts/export-pr55-test-database-url.sh
+
+      - name: Build immutable migration image
+        id: migration_image
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          context="$RUNNER_TEMP/pr338-migrations-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$context/migrations"
+          install -m 0644 deployment/containers/pr55-migrator/Dockerfile "$context/Dockerfile"
+          install -m 0644 database/migrations/056_role_workspace_entra_crm_governance.sql "$context/migrations/"
+          install -m 0644 database/migrations/056a_role_workspace_permission_scope_guard.sql "$context/migrations/"
+          install -m 0644 database/migrations/057_module_001_multi_timer_document_grounded_ai.sql "$context/migrations/"
+          printf '%s\n' "$EXPECTED_RELEASE_COMMIT" > "$context/release-commit"
+
+          cat > "$context/apply-pr55-test-migrations.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          root="${1:?release root required}"
+          database_url="${PROJECTPULSE_TEST_DATABASE_URL:?database URL required}"
+          expected='b38a670bce6975fe0860849e25a6497c6e2de36c'
+          [[ "$(tr -d '\r\n' < "$root/.projectpulse-release-commit")" == "$expected" ]]
+          cd "$root/database/migrations"
+          sha256sum --check --strict SHA256SUMS
+
+          read -r projects_before entries_before timers_before documents_before <<<"$(
+            psql "$database_url" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+              SELECT
+                (SELECT COUNT(*) FROM projects),
+                (SELECT COUNT(*) FROM time_entries),
+                (SELECT COUNT(*) FROM module001_timer_sessions),
+                (SELECT COUNT(*) FROM project_intake_documents);" | tr '|' ' '
+          )"
+
+          apply_migration() {
+            local id="$1"
+            local file="$2"
+            local present
+            present="$(psql "$database_url" --no-psqlrc -At --set=ON_ERROR_STOP=1 \
+              --command="SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='$id');")"
+            if [[ "$present" == t ]]; then
+              echo "MIGRATION_$id=ALREADY_PRESENT"
+            elif [[ "$present" == f ]]; then
+              echo "MIGRATION_$id=APPLYING"
+              psql "$database_url" --no-psqlrc --set=ON_ERROR_STOP=1 --file="$file"
+            else
+              echo "Unexpected migration state for $id: $present" >&2
+              exit 1
+            fi
+          }
+
+          apply_migration 056_role_workspace_entra_crm_governance \
+            056_role_workspace_entra_crm_governance.sql
+          apply_migration 056a_role_workspace_permission_scope_guard \
+            056a_role_workspace_permission_scope_guard.sql
+          apply_migration 057_module_001_multi_timer_document_grounded_ai \
+            057_module_001_multi_timer_document_grounded_ai.sql
+
+          psql "$database_url" --no-psqlrc --set=ON_ERROR_STOP=1 <<'SQL'
+          DO $verify$
+          BEGIN
+            IF (
+              SELECT COUNT(*) FROM schema_migrations
+              WHERE migration_id IN (
+                '056_role_workspace_entra_crm_governance',
+                '056a_role_workspace_permission_scope_guard',
+                '057_module_001_multi_timer_document_grounded_ai'
+              )
+            ) <> 3 THEN
+              RAISE EXCEPTION 'Required migrations are not all registered.';
+            END IF;
+
+            IF to_regclass('public.entra_secret_expiration_profile_versions') IS NULL
+               OR to_regclass('public.crm_integration_token_refresh_events') IS NULL
+               OR to_regclass('public.role_workspace_permission_scope_changes_056a') IS NULL THEN
+              RAISE EXCEPTION 'Migration 056 or 056A structures are missing.';
+            END IF;
+
+            IF to_regclass('public.ux_module001_running_assignment') IS NULL
+               OR to_regclass('public.ux_module001_running_non_project') IS NULL THEN
+              RAISE EXCEPTION 'Migration 057 multi-timer indexes are missing.';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_trigger
+              WHERE tgrelid = to_regclass('public.module001_timer_sessions')
+                AND tgname = 'trg_module001_057_running_timer_limit'
+                AND tgenabled <> 'D'
+                AND NOT tgisinternal
+            ) THEN
+              RAISE EXCEPTION 'Migration 057 running-timer limit trigger is missing.';
+            END IF;
+
+            IF EXISTS (
+              SELECT user_id FROM module001_timer_sessions
+              WHERE timer_status = 'RUNNING'
+              GROUP BY user_id HAVING COUNT(*) > 5
+            ) THEN
+              RAISE EXCEPTION 'A user has more than five running timers.';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid = to_regclass('public.module001_timer_sessions')
+                AND conname = 'chk_module001_timer_actual_seconds'
+                AND pg_get_constraintdef(oid) LIKE '%86400%'
+            ) THEN
+              RAISE EXCEPTION 'The 24-hour timer constraint is missing.';
+            END IF;
+          END
+          $verify$;
+          SQL
+
+          read -r projects_after entries_after timers_after documents_after <<<"$(
+            psql "$database_url" --no-psqlrc -At --set=ON_ERROR_STOP=1 --command="
+              SELECT
+                (SELECT COUNT(*) FROM projects),
+                (SELECT COUNT(*) FROM time_entries),
+                (SELECT COUNT(*) FROM module001_timer_sessions),
+                (SELECT COUNT(*) FROM project_intake_documents);" | tr '|' ' '
+          )"
+          [[ "$projects_after" == "$projects_before" ]]
+          [[ "$entries_after" == "$entries_before" ]]
+          [[ "$timers_after" == "$timers_before" ]]
+          [[ "$documents_after" == "$documents_before" ]]
+          echo 'MIGRATIONS_056_056A_057=VERIFIED'
+          SCRIPT
+          sed -i 's/^[[:space:]]*//' "$context/apply-pr55-test-migrations.sh"
+          chmod 0555 "$context/apply-pr55-test-migrations.sh"
+          (
+            cd "$context/migrations"
+            sha256sum \
+              056_role_workspace_entra_crm_governance.sql \
+              056a_role_workspace_permission_scope_guard.sql \
+              057_module_001_multi_timer_document_grounded_ai.sql > SHA256SUMS
+          )
+
+          digest="$(bash scripts/build-pr55-acr-image.sh \
+            "$AZURE_ACR_NAME" \
+            "project-health-dashboard-migrations-pr338:${EXPECTED_RELEASE_COMMIT}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$context/Dockerfile" \
+            "$context")"
+          [[ "$digest" == sha256:* ]]
+          image="$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-migrations-pr338@$digest"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "MIGRATION_IMAGE=$image"
+
+      - name: Apply and verify Test migrations in the private environment
+        id: migrate
+        shell: bash
+        env:
+          MIGRATION_IMAGE: ${{ steps.migration_image.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${PROJECTPULSE_TEST_DATABASE_URL:-}" ]]
+          [[ "$MIGRATION_IMAGE" == "$AZURE_ACR_NAME.azurecr.io/"*@sha256:* ]]
+
+          environment_id="$(az containerapp show \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query properties.managedEnvironmentId -o tsv --only-show-errors)"
+          registry_identity="$(az containerapp show \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query "properties.configuration.registries[?server=='$AZURE_ACR_NAME.azurecr.io'].identity | [0]" \
+            -o tsv --only-show-errors)"
+          [[ -n "$environment_id" && "$environment_id" != None && "$environment_id" != null ]]
+          [[ -n "$registry_identity" && "$registry_identity" != None && "$registry_identity" != null ]]
+
+          identity_args=()
+          case "${registry_identity,,}" in
+            system-environment) ;;
+            /subscriptions/*) identity_args+=(--mi-user-assigned "$registry_identity") ;;
+            *) echo "Unsupported registry identity: $registry_identity" >&2; exit 1 ;;
+          esac
+
+          job="p338m-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            local status=$?
+            trap - EXIT INT TERM
+            set +e
+            az containerapp job delete -g "$AZURE_RESOURCE_GROUP" -n "$job" \
+              --yes --output none --only-show-errors || true
+            unset PROJECTPULSE_TEST_DATABASE_URL
+            exit "$status"
+          }
+          trap cleanup EXIT INT TERM
+
+          if az containerapp job show -g "$AZURE_RESOURCE_GROUP" -n "$job" \
+            --output none --only-show-errors 2>/dev/null; then
+            echo "Migration job already exists: $job" >&2
+            exit 1
+          fi
+
+          az containerapp job create \
+            -g "$AZURE_RESOURCE_GROUP" \
+            -n "$job" \
+            --environment "$environment_id" \
+            --trigger-type Manual \
+            --replica-timeout 1800 \
+            --replica-retry-limit 0 \
+            --replica-completion-count 1 \
+            --parallelism 1 \
+            --image "$MIGRATION_IMAGE" \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            "${identity_args[@]}" \
+            --registry-server "$AZURE_ACR_NAME.azurecr.io" \
+            --registry-identity "$registry_identity" \
+            --secrets "database-url=$PROJECTPULSE_TEST_DATABASE_URL" \
+            --env-vars PROJECTPULSE_TEST_DATABASE_URL=secretref:database-url \
+            --tags \
+              projectpulse-scope=pr338-test-migrations \
+              projectpulse-release="$EXPECTED_RELEASE_COMMIT" \
+            --output none --only-show-errors
+
+          execution="$(az containerapp job start \
+            -g "$AZURE_RESOURCE_GROUP" -n "$job" \
+            --query name -o tsv --only-show-errors)"
+          [[ -n "$execution" ]]
+
+          succeeded=0
+          for attempt in $(seq 1 180); do
+            status="$(az containerapp job execution list \
+              -g "$AZURE_RESOURCE_GROUP" -n "$job" \
+              --query "[?name=='$execution'].properties.status | [0]" \
+              -o tsv --only-show-errors)"
+            case "$status" in
+              Succeeded) succeeded=1; break ;;
+              Failed|Stopped|Canceled|Degraded) break ;;
+            esac
+            sleep 5
+          done
+
+          if (( succeeded != 1 )); then
+            echo "Migration execution failed with status: ${status:-unknown}" >&2
+            az containerapp job logs show \
+              -g "$AZURE_RESOURCE_GROUP" -n "$job" \
+              --execution "$execution" --container "$job" \
+              --tail 500 --only-show-errors >&2 || true
+            exit 1
+          fi
+
+          echo "job=$job" >> "$GITHUB_OUTPUT"
+          echo 'TEST_MIGRATIONS_056_056A_057=COMPLETE'
+
+      - name: Build immutable API and web images and capture rollback release
+        id: images
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          old_api="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          old_web="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ -n "$old_api" && -n "$old_web" ]]
+
+          api_digest="$(bash scripts/build-pr55-acr-image.sh \
+            "$AZURE_ACR_NAME" \
+            "project-health-dashboard-api:merged-pr338-${EXPECTED_RELEASE_COMMIT}-${GITHUB_RUN_ID}" \
+            deployment/containers/api/Dockerfile .)"
+          web_digest="$(bash scripts/build-pr55-acr-image.sh \
+            "$AZURE_ACR_NAME" \
+            "project-health-dashboard-web:merged-pr338-${EXPECTED_RELEASE_COMMIT}-${GITHUB_RUN_ID}" \
+            deployment/containers/web/Dockerfile .)"
+          [[ "$api_digest" == sha256:* && "$web_digest" == sha256:* ]]
+
+          api_image="$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-api@$api_digest"
+          web_image="$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-web@$web_digest"
+          {
+            echo "old_api=$old_api"
+            echo "old_web=$old_web"
+            echo "api_image=$api_image"
+            echo "web_image=$web_image"
+          } >> "$GITHUB_OUTPUT"
+          echo "API_IMAGE=$api_image"
+          echo "WEB_IMAGE=$web_image"
+
+      - name: Deploy exact release to Test with rollback protection
+        id: deploy
+        working-directory: release
+        shell: bash
+        env:
+          OLD_API_IMAGE: ${{ steps.images.outputs.old_api }}
+          OLD_WEB_IMAGE: ${{ steps.images.outputs.old_web }}
+          API_IMAGE: ${{ steps.images.outputs.api_image }}
+          WEB_IMAGE: ${{ steps.images.outputs.web_image }}
+        run: |
+          set -Eeuo pipefail
+          base_url="${PUBLIC_URL%/}"
+          [[ "$base_url" == https://*.onenecklab.com || "$base_url" == https://*.ussignal.com ]]
+          ! grep -Eiq 'azurecontainerapps\.io|\.internal\.' <<<"$base_url"
+
+          api_suffix="p338a-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          web_suffix="p338w-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          api_revision="$AZURE_API_APP--$api_suffix"
+          web_revision="$AZURE_WEB_APP--$web_suffix"
+          api_started=0
+          web_started=0
+
+          rollback() {
+            local status=$?
+            trap - EXIT INT TERM
+            if (( status != 0 )); then
+              set +e
+              if (( web_started == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+                  --image "$OLD_WEB_IMAGE" \
+                  --revision-suffix "p338wr-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                  --output none --only-show-errors || true
+              fi
+              if (( api_started == 1 )); then
+                az containerapp update -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+                  --image "$OLD_API_IMAGE" \
+                  --revision-suffix "p338ar-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                  --output none --only-show-errors || true
+              fi
+              echo 'TEST_APPLICATION_ROLLBACK=REQUESTED'
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT INT TERM
+
+          api_started=1
+          az containerapp update \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --image "$API_IMAGE" \
+            --set-env-vars \
+              PROJECTPULSE_ENVIRONMENT=test \
+              PROJECTPULSE_SOURCE_COMMIT="$EXPECTED_RELEASE_COMMIT" \
+            --revision-suffix "$api_suffix" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            "$AZURE_RESOURCE_GROUP" "$AZURE_API_APP" "$api_revision" "$API_IMAGE" 60 10
+
+          api_ok=0
+          for attempt in $(seq 1 30); do
+            health="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/health?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            route="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/timesheet/timers/active-set?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            if [[ "$health" == 200 || "$health" == 401 ]] && [[ "$route" == 401 || "$route" == 403 ]]; then
+              api_ok=1
+              break
+            fi
+            sleep 10
+          done
+          (( api_ok == 1 ))
+
+          web_started=1
+          az containerapp update \
+            -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --image "$WEB_IMAGE" \
+            --revision-suffix "$web_suffix" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            "$AZURE_RESOURCE_GROUP" "$AZURE_WEB_APP" "$web_revision" "$WEB_IMAGE" 60 10
+
+          web_ok=0
+          for attempt in $(seq 1 30); do
+            page="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            route="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache, no-store' \
+              "$base_url/api/timesheet/timers/history-v2?release_check=${GITHUB_RUN_ID}-${attempt}" || true)"
+            if [[ "$page" == 200 ]] && [[ "$route" == 401 || "$route" == 403 ]]; then
+              web_ok=1
+              break
+            fi
+            sleep 10
+          done
+          (( web_ok == 1 ))
+
+          active_api="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          active_web="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          source_commit="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          [[ "$active_api" == "$API_IMAGE" ]]
+          [[ "$active_web" == "$WEB_IMAGE" ]]
+          [[ "$source_commit" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          {
+            echo "api_revision=$api_revision"
+            echo "web_revision=$web_revision"
+          } >> "$GITHUB_OUTPUT"
+          echo 'MERGED_PR338_TEST_DEPLOYMENT=COMPLETE'
+
+      - name: Record exact Test release evidence
+        shell: bash
+        run: |
+          {
+            echo '## Merged PR #338 deployed to Test'
+            echo
+            echo "- Release commit: \`$EXPECTED_RELEASE_COMMIT\`"
+            echo "- Control commit: \`${{ steps.guard.outputs.control_commit }}\`"
+            echo '- Migrations: `056`, `056A`, and `057` applied or already present and verified.'
+            echo "- Migration image: \`${{ steps.migration_image.outputs.image }}\`"
+            echo "- API image: \`${{ steps.images.outputs.api_image }}\`"
+            echo "- Web image: \`${{ steps.images.outputs.web_image }}\`"
+            echo "- API revision: \`${{ steps.deploy.outputs.api_revision }}\`"
+            echo "- Web revision: \`${{ steps.deploy.outputs.web_revision }}\`"
+            echo '- Environment: Test only'
+            echo '- Production changed: no'
+            echo '- Authenticated role-based UAT: still required'
+          } >> "$GITHUB_STEP_SUMMARY"
