@@ -20,6 +20,12 @@
          failing the conversation ownership guard. -->
     <Exec Command="awk 'BEGIN { in_return=0; in_record=0; in_finish=0; fixed_user=0; fixed_return=0; fixed_record=0 } /private async Task&lt;PulseAiSystemQuestionResult&gt; FinishAsync/ { in_finish=1 } /return new PersistenceContext\(/ { in_return=1 } /private sealed record PersistenceContext\(/ { in_record=1 } { if (in_finish &amp;&amp; fixed_user==0 &amp;&amp; $0 ~ /^[[:space:]]*Guid.Empty,[[:space:]]*$/) { sub(/Guid.Empty/, &quot;persistence.EffectiveUserId&quot;); fixed_user=1 } if (in_return &amp;&amp; fixed_return==0 &amp;&amp; $0 ~ /conversation is not null\);/) { print &quot;            effectiveUserId,&quot;; fixed_return=1; in_return=0 } if (in_record &amp;&amp; fixed_record==0 &amp;&amp; $0 ~ /bool Persisted\);/) { print &quot;        Guid EffectiveUserId,&quot;; fixed_record=1; in_record=0 } print } END { if (fixed_user==0 || fixed_return==0 || fixed_record==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiPeopleAndGuidanceService.cs&quot; &gt; &quot;$(CelarAiPeopleGenerated)&quot;" />
 
+    <!-- The canonical evidence visitor receives a tool result in its public
+         entry point, but its recursive helper needs only the stable tool name.
+         Thread that label through the generated recursion so the helper never
+         references an out-of-scope result variable. -->
+    <Exec Command="sed -i -e 's/Visit(document.RootElement, rows, maximum);/Visit(document.RootElement, rows, maximum, result.ToolName);/' -e 's/private static void Visit(JsonElement element, List&lt;string&gt; rows, int maximum)/private static void Visit(JsonElement element, List&lt;string&gt; rows, int maximum, string toolName)/' -e 's/Visit(item, rows, maximum);/Visit(item, rows, maximum, toolName);/' -e 's/Visit(property.Value, rows, maximum);/Visit(property.Value, rows, maximum, toolName);/' -e 's/{result.ToolName}:/{toolName}:/' &quot;$(CelarAiPeopleGenerated)&quot;" />
+
     <!-- The existing Program generator already calls MapCelarAiBrandEndpoints.
          Extend that single authoritative route registration with the enterprise
          readiness, architecture, and solution-composer endpoints. -->
