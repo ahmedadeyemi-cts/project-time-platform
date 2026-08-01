@@ -1,0 +1,113 @@
+.celar-ai-question-context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 95%, #e9f6fc 5%);
+}
+
+.celar-ai-question-context-toggle button {
+  min-height: 32px !important;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 32%, var(--border));
+  border-radius: 9px;
+  padding: 0.38rem 0.55rem;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.celar-ai-question-context-toggle span {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.celar-ai-question-context {
+  display: none;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.celar-ai-question-context.is-open {
+  display: grid;
+}
+
+.celar-ai-question-context label {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.celar-ai-question-context input {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.48rem;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.65rem;
+}
+
+.celar-ai-question-context input:focus {
+  border-color: var(--brand-blue);
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 14%, transparent);
+}
+
+.celar-ai-question-context > button {
+  min-height: 34px !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.6rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .celar-ai-question-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .celar-ai-question-context > button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .celar-ai-question-context-toggle {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .celar-ai-question-context-toggle span {
+    text-align: left;
+  }
+
+  .celar-ai-question-context {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ai-question-context > button {
+    grid-column: auto;
+  }
+}
