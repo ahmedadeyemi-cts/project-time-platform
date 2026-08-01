@@ -1,0 +1,299 @@
+name: Reconcile and Validate PR 338 Exact Head
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/pr338-release-trigger.txt'
+      - '.github/workflows/reconcile-pr338-exact-head.yml'
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: projectpulse-pr338-exact-reconciliation
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    if: >-
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/reconcile-pr338-exact-20260731'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out exact live main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: main
+          path: repo
+          fetch-depth: 0
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Check out exact trigger
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: trigger
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify actor, repository, main, source branch, and exact heads
+        id: pins
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trigger="$GITHUB_WORKSPACE/trigger/.github/pr338-release-trigger.txt"
+          test -f "$trigger"
+
+          value() {
+            local key="$1"
+            awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1) }' "$trigger"
+          }
+
+          expected_main="$(value expected_main)"
+          source_base="$(value source_base)"
+          source_head="$(value source_head)"
+          source_branch="$(value source_branch)"
+          repository="$(value repository)"
+          confirmation="$(value confirmation)"
+
+          test "$repository" = "${{ github.repository }}"
+          test "$confirmation" = "RECONCILE-VALIDATE-MERGE-PR338-EXACT-HEAD"
+          test "$expected_main" = "6e66a8bbaf93c8e62fba4dbc62028df90ccc27a3"
+          test "$source_base" = "7df1bad3d4f37f92e91f5b202c83e31b94d6f983"
+          test "$source_head" = "ef29da625fbc3a55dfe55a5cf2cb5ef0c42d60a8"
+          test "$source_branch" = "feature/module-001-multi-timer-document-grounded-ai-20260730"
+
+          control_sha="$(git -C repo rev-parse HEAD)"
+          remote_main="$(git -C repo ls-remote origin refs/heads/main | awk '{print $1}')"
+          remote_source="$(git -C repo ls-remote origin "refs/heads/$source_branch" | awk '{print $1}')"
+          trigger_sha="$(git -C trigger rev-parse HEAD)"
+
+          test "$control_sha" = "$expected_main"
+          test "$remote_main" = "$expected_main"
+          test "$remote_source" = "$source_head"
+          test "$trigger_sha" = "${{ github.event.pull_request.head.sha }}"
+
+          echo "expected_main=$expected_main" >> "$GITHUB_OUTPUT"
+          echo "source_base=$source_base" >> "$GITHUB_OUTPUT"
+          echo "source_head=$source_head" >> "$GITHUB_OUTPUT"
+          echo "source_branch=$source_branch" >> "$GITHUB_OUTPUT"
+          echo "trigger_sha=$trigger_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: repo/src/frontend/project-time-web/package-lock.json
+
+      - name: Reconcile reviewed PR 338 source onto exact current main
+        id: candidate
+        working-directory: repo
+        shell: bash
+        env:
+          EXPECTED_MAIN: ${{ steps.pins.outputs.expected_main }}
+          SOURCE_BASE: ${{ steps.pins.outputs.source_base }}
+          SOURCE_HEAD: ${{ steps.pins.outputs.source_head }}
+        run: |
+          set -Eeuo pipefail
+          git config user.name "ProjectPulse Guarded Release Train"
+          git config user.email "projectpulse-release@users.noreply.github.com"
+          git fetch --no-tags origin "$SOURCE_HEAD"
+          git cat-file -e "$EXPECTED_MAIN^{commit}"
+          git cat-file -e "$SOURCE_BASE^{commit}"
+          git cat-file -e "$SOURCE_HEAD^{commit}"
+
+          cat > "$RUNNER_TEMP/pr338-expected-paths.txt" <<'PATHS'
+          .github/workflows/module001-multi-timer-document-grounded-ai-ci.yml
+          database/migrations/057_module_001_multi_timer_document_grounded_ai.sql
+          database/rollback/057_module_001_multi_timer_document_grounded_ai_rollback.sql
+          docs/modules/module-001-timesheet/MULTI-TIMER-DOCUMENT-GROUNDED-AI.md
+          src/backend/ProjectTime.Api/Modules/Module001MultiTimerFinalization.cs
+          src/backend/ProjectTime.Api/Modules/Module001MultiTimerModule.cs
+          src/backend/ProjectTime.Api/Modules/Module001MultiTimerStart.cs
+          src/backend/ProjectTime.Api/Modules/Module001MultiTimerStop.cs
+          src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          src/frontend/project-time-web/scripts/inject-module-001-owned-extension-slots.mjs
+          src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
+          src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx
+          src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx
+          src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx
+          src/frontend/project-time-web/src/module001/module001-multi-timer.css
+          src/frontend/project-time-web/src/module001/timesheet-duration.js
+          tests/test-module001-multi-timer-migration-057.sh
+          PATHS
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/pr338-expected-paths.txt"
+          sort -o "$RUNNER_TEMP/pr338-expected-paths.txt" "$RUNNER_TEMP/pr338-expected-paths.txt"
+          git diff --name-only "$SOURCE_BASE" "$SOURCE_HEAD" | sort > "$RUNNER_TEMP/pr338-actual-paths.txt"
+          diff -u "$RUNNER_TEMP/pr338-expected-paths.txt" "$RUNNER_TEMP/pr338-actual-paths.txt"
+
+          git checkout -B repair/pr-338 "$EXPECTED_MAIN"
+          while IFS= read -r path; do
+            if [[ "$path" == "src/backend/ProjectTime.Api/ProjectTime.Api.csproj" ]]; then
+              continue
+            fi
+            git checkout "$SOURCE_HEAD" -- "$path"
+          done < "$RUNNER_TEMP/pr338-expected-paths.txt"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+          text = path.read_text(encoding='utf-8')
+          timer = 'print &quot;app.MapModule001TimerTargetEndpoints();&quot;;'
+          multi = 'print &quot;app.MapModule001MultiTimerEndpoints();&quot;;'
+          if text.count(timer) != 1:
+              raise SystemExit(f'Expected one Module001 timer target registration; found {text.count(timer)}')
+          if text.count(multi) == 0:
+              text = text.replace(timer, timer + ' ' + multi, 1)
+          elif text.count(multi) != 1:
+              raise SystemExit(f'Expected at most one multi-timer registration; found {text.count(multi)}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/module001-multi-timer-document-grounded-ai-ci.yml')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'actions/checkout@v4': 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09',
+              'actions/setup-dotnet@v4': 'actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9',
+              'actions/setup-node@v4': 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one {old}; found {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          npm ci --no-audit --no-fund --prefix src/frontend/project-time-web
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          npm run prebuild --prefix src/frontend/project-time-web
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+          mapfile -t dirty < <(
+            {
+              git diff --name-only
+              git ls-files --others --exclude-standard
+            } | sed '/^$/d' | sort -u
+          )
+          for path in "${dirty[@]}"; do
+            if grep -Fxq "$path" "$RUNNER_TEMP/pr338-expected-paths.txt"; then
+              continue
+            fi
+            case "$path" in
+              src/frontend/project-time-web/src/*|src/frontend/project-time-web/container-context/*|src/backend/ProjectTime.Api/*.g.cs)
+                ;;
+              *)
+                echo "::error::Unexpected generated or modified path: $path"
+                exit 1
+                ;;
+            esac
+          done
+
+          git add -A
+          git diff --cached --check
+          git commit -m "Reconcile PR #338 with current main and complete release gates"
+          candidate_sha="$(git rev-parse HEAD)"
+
+          npm run prebuild --prefix src/frontend/project-time-web
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+          test -z "$(git status --porcelain=v1)"
+
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "PR338_RECONCILED_CANDIDATE=$candidate_sha"
+
+      - name: Verify migration 057 in PostgreSQL
+        working-directory: repo
+        run: bash tests/test-module001-multi-timer-migration-057.sh
+
+      - name: Build ProjectTime API
+        working-directory: repo
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+      - name: Verify API startup and route registration
+        working-directory: repo
+        run: bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run focused Module 001 validators
+        working-directory: repo/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          validators=(
+            validate-module-001-timesheet-timer-mobile.mjs
+            validate-module-001-ptc-time-steward.mjs
+            validate-module-001-ptc-timer-dom-ownership.mjs
+            validate-role-permission-timesheet-stabilization.mjs
+            validate-runtime-role-policy-ptc-data.mjs
+          )
+          for validator in "${validators[@]}"; do
+            echo "RUNNING_VALIDATOR=$validator"
+            node "scripts/$validator"
+          done
+
+      - name: Build complete frontend production bundle
+        working-directory: repo/src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate repository security posture and final source cleanliness
+        working-directory: repo
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+          test -z "$(git status --porcelain=v1)"
+          test "$(git rev-parse HEAD)" = "${{ steps.candidate.outputs.sha }}"
+
+      - name: Publish exact candidate to PR 338 branch with guarded lease
+        working-directory: repo
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_BRANCH: ${{ steps.pins.outputs.source_branch }}
+          SOURCE_HEAD: ${{ steps.pins.outputs.source_head }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          set +e
+          push_output="$(git push --force-with-lease="refs/heads/${SOURCE_BRANCH}:${SOURCE_HEAD}" origin "${CANDIDATE_SHA}:refs/heads/${SOURCE_BRANCH}" 2>&1)"
+          push_status=$?
+          set -e
+          printf '%s\n' "$push_output"
+          if [[ $push_status -eq 0 ]]; then
+            echo "PR338_BRANCH_UPDATED=$CANDIDATE_SHA"
+          elif grep -Fq 'without `workflows` permission' <<< "$push_output"; then
+            echo "PR338_CANDIDATE_VALIDATED_BUT_USER_CREDENTIAL_UPDATE_REQUIRED=$CANDIDATE_SHA"
+          else
+            exit "$push_status"
+          fi
+
+      - name: Record exact reconciliation evidence
+        shell: bash
+        run: |
+          {
+            echo '## PR #338 exact-head reconciliation'
+            echo
+            echo "- Main: \`${{ steps.pins.outputs.expected_main }}\`"
+            echo "- Original PR head: \`${{ steps.pins.outputs.source_head }}\`"
+            echo "- Reconciled candidate: \`${{ steps.candidate.outputs.sha }}\`"
+            echo '- Migration 057, API build/startup, focused validators, complete frontend build, security posture, and deterministic source convergence passed.'
+          } >> "$GITHUB_STEP_SUMMARY"
