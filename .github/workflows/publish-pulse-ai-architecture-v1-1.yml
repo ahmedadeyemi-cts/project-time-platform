@@ -8,25 +8,37 @@ on:
       - 'fix/remaining-release-train-specialized-workflow-convergence-20260801-dependency-applicability'
     paths:
       - '.github/workflows/publish-pulse-ai-architecture-v1-1.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-pulse-ai-architecture-v1-1.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: workflow-convergence-marker-scope-publisher
+  group: workflow-convergence-marker-scope-publisher-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      (github.event_name == 'push' && github.actor != 'github-actions[bot]') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.number == 393 &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      TARGET_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - name: Check out exact repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -34,6 +46,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          [[ "$TARGET_BRANCH" == 'fix/remaining-release-train-specialized-workflow-convergence-20260801-dependency-applicability' ]]
+          [[ "$(git rev-parse HEAD)" == "$TARGET_SOURCE_SHA" ]]
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -84,7 +99,7 @@ jobs:
              .github/generated/pulse-ai-system-intelligence-ci.workflow-convergence.yml.txt
           sha256sum .github/generated/*.txt \
             > .github/generated/workflow-convergence-marker-scope.SHA256SUMS
-          printf '%s\n' "$GITHUB_SHA" \
+          printf '%s\n' "$TARGET_SOURCE_SHA" \
             > .github/generated/workflow-convergence-marker-scope.source-sha
 
           # The workflow token commits ordinary snapshots only. The repository API
@@ -114,4 +129,4 @@ jobs:
             <(printf '%s\n' "${EXPECTED[@]}") \
             <(printf '%s\n' "${CHANGED[@]}")
           git commit -m 'CI: publish verified workflow-convergence marker-scope blobs'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${TARGET_BRANCH}"
