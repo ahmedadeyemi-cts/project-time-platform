@@ -180,39 +180,77 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-          npm ci --no-audit --no-fund --prefix src/frontend/project-time-web
-          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
-          npm run build --prefix src/frontend/project-time-web
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
-
-          mapfile -t dirty < <(
+          collect_dirty() {
             {
               git diff --name-only
               git ls-files --others --exclude-standard
             } | sed '/^$/d' | sort -u
-          )
-          for path in "${dirty[@]}"; do
-            if grep -Fxq "$path" "$RUNNER_TEMP/pr338-expected-paths.txt"; then
-              continue
-            fi
-            case "$path" in
-              src/frontend/project-time-web/src/*|src/frontend/project-time-web/container-context/*|src/backend/ProjectTime.Api/*.g.cs)
-                ;;
-              *)
-                echo "::error::Unexpected generated or modified path: $path"
-                exit 1
-                ;;
-            esac
-          done
+          }
+
+          validate_dirty() {
+            local path
+            for path in "$@"; do
+              if grep -Fxq "$path" "$RUNNER_TEMP/pr338-expected-paths.txt"; then
+                continue
+              fi
+              case "$path" in
+                src/frontend/project-time-web/src/*|src/frontend/project-time-web/container-context/*|src/backend/ProjectTime.Api/*.g.cs)
+                  ;;
+                *)
+                  echo "::error::Unexpected generated or modified path: $path"
+                  exit 1
+                  ;;
+              esac
+            done
+          }
+
+          run_candidate_builds() {
+            npm run build --prefix src/frontend/project-time-web
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+          }
+
+          npm ci --no-audit --no-fund --prefix src/frontend/project-time-web
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          run_candidate_builds
+
+          mapfile -t dirty < <(collect_dirty)
+          validate_dirty "${dirty[@]}"
 
           git add -A
           git diff --cached --check
           git commit -m "Reconcile PR #338 with current main and complete release gates"
-          candidate_sha="$(git rev-parse HEAD)"
 
-          npm run build --prefix src/frontend/project-time-web
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+          converged=false
+          for pass in 1 2 3 4; do
+            echo "GENERATED_SOURCE_CONVERGENCE_PASS=$pass"
+            run_candidate_builds
+            mapfile -t dirty < <(collect_dirty)
+
+            if (( ${#dirty[@]} == 0 )); then
+              converged=true
+              break
+            fi
+
+            echo "::notice::Build pass $pass changed generated source; reconciling the following allowed paths:"
+            printf '%s\n' "${dirty[@]}"
+            validate_dirty "${dirty[@]}"
+
+            if (( pass == 4 )); then
+              echo "::error::Generated source did not converge after four validation builds."
+              git status --short
+              git diff --stat
+              git diff -- . ':(exclude)src/frontend/project-time-web/dist/**' | sed -n '1,400p'
+              exit 1
+            fi
+
+            git add -A
+            git diff --cached --check
+            git commit --amend --no-edit
+          done
+
+          test "$converged" = true
           test -z "$(git status --porcelain=v1)"
+          candidate_sha="$(git rev-parse HEAD)"
 
           echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
           echo "PR338_RECONCILED_CANDIDATE=$candidate_sha"
