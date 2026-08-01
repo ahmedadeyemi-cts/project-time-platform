@@ -40,7 +40,20 @@ public sealed class PulseAiEscalationSanitizer
         @"\b(customer|client|employee|engineer|manager|contact|user)\s*(?:name)?\s*[:=]\s*[^\r\n,;]{2,80}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public PulseAiSanitizationResult Sanitize(PulseAiSanitizationRequest request)
+    public PulseAiSanitizationResult Sanitize(PulseAiSanitizationRequest request) =>
+        SanitizeInternal(request, executionRequested: false);
+
+    /// <summary>
+    /// Produces a capsule that may be executed only when every policy gate passes.
+    /// The caller must still prove that no private document text, people records,
+    /// or financial values were used to construct the generic problem statement.
+    /// </summary>
+    public PulseAiSanitizationResult SanitizeForExecution(PulseAiSanitizationRequest request) =>
+        SanitizeInternal(request, executionRequested: true);
+
+    private static PulseAiSanitizationResult SanitizeInternal(
+        PulseAiSanitizationRequest request,
+        bool executionRequested)
     {
         var purpose = Clean(request.Purpose, 120, "unspecified_reasoning_support");
         var classification = Clean(request.Classification, 80, "restricted").ToLowerInvariant();
@@ -77,30 +90,53 @@ public sealed class PulseAiEscalationSanitizer
         current = Regex.Replace(current, @"(?:\r?\n){3,}", Environment.NewLine + Environment.NewLine);
         if (current.Length > 6000) current = current[..6000].TrimEnd() + " [TRUNCATED]";
 
-        var blockers = new List<string>
+        var blockers = new List<string>();
+        if (!executionRequested)
         {
-            "This endpoint creates a preview capsule only and never calls Claude, OpenAI, or another external provider."
-        };
+            blockers.Add("This endpoint creates a preview capsule only and never calls Claude, OpenAI, or another external provider.");
+            if (!request.AcknowledgePreviewOnly)
+                blockers.Add("The caller did not acknowledge that this is a preview-only operation.");
+            if (!Boolean("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", false))
+                blockers.Add("Sanitized external escalation is disabled by ProjectPulse runtime policy.");
+            if (classification.Contains("financial", StringComparison.OrdinalIgnoreCase))
+                blockers.Add("Financial and commercial context is blocked from external escalation by default.");
+            if (classification is "restricted" or "confidential")
+                blockers.Add("Restricted or confidential material requires a separate approved escalation policy even after redaction.");
+            if (ContainsAny(original, "statement of work", " sow ", "global solution design", " gsd ", "contract", "rate card"))
+                blockers.Add("The source appears to contain internal document or commercial context; a human privacy review is required.");
+        }
+        else
+        {
+            if (!request.AcknowledgePreviewOnly)
+                blockers.Add("The caller did not explicitly acknowledge sanitized external execution.");
+            if (!Boolean("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", false))
+                blockers.Add("Sanitized external escalation is disabled by ProjectPulse runtime policy.");
+            if (classification is not ("public" or "internal_generic" or "generic"))
+                blockers.Add("Only public or internal-generic problem statements are eligible for sanitized external execution.");
+            if (removed.Contains("financial_values"))
+                blockers.Add("A financial value was detected. Financial and commercial content is not eligible for this external execution path.");
+            if (removed.Contains("named_people_and_customers"))
+                blockers.Add("A named person or customer was detected. The generic capsule must be rebuilt without identity context.");
+            if (removed.Contains("secrets_and_credentials"))
+                blockers.Add("Credential-like content was detected. The capsule is blocked from external execution.");
+        }
 
-        if (!request.AcknowledgePreviewOnly)
-            blockers.Add("The caller did not acknowledge that this is a preview-only operation.");
-        if (!Boolean("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", false))
-            blockers.Add("Sanitized external escalation is disabled by ProjectPulse runtime policy.");
-        if (classification.Contains("financial", StringComparison.OrdinalIgnoreCase))
-            blockers.Add("Financial and commercial context is blocked from external escalation by default.");
-        if (classification is "restricted" or "confidential")
-            blockers.Add("Restricted or confidential material requires a separate approved escalation policy even after redaction.");
-        if (ContainsAny(original, "statement of work", " sow ", "global solution design", " gsd ", "contract", "rate card"))
-            blockers.Add("The source appears to contain internal document or commercial context; a human privacy review is required.");
         if (current.Contains("[REDACTED_SECRET]", StringComparison.Ordinal))
-            blockers.Add("Credential-like content was detected. The capsule must not be externally executed from this preview.");
+            blockers.Add("Credential-like content was detected. The capsule must not be externally executed.");
         if (string.IsNullOrWhiteSpace(current))
             blockers.Add("No useful sanitized reasoning context remains after redaction.");
 
+        var authorized = executionRequested && blockers.Count == 0;
+        var status = string.IsNullOrWhiteSpace(current)
+            ? "sanitized_capsule_empty"
+            : executionRequested
+                ? authorized
+                    ? "sanitized_capsule_execution_ready"
+                    : "sanitized_capsule_execution_blocked"
+                : "sanitized_capsule_preview_ready";
+
         return new PulseAiSanitizationResult(
-            Status: string.IsNullOrWhiteSpace(current)
-                ? "sanitized_capsule_empty"
-                : "sanitized_capsule_preview_ready",
+            Status: status,
             Purpose: purpose,
             Classification: classification,
             SanitizedCapsule: current,
@@ -114,9 +150,9 @@ public sealed class PulseAiEscalationSanitizer
                 "deidentified constraints and dependencies",
                 "non-customer-specific reasoning question",
                 "requested output schema",
-                "generic technology categories after human review"
+                "generic technology categories after policy review"
             ],
-            ExternalExecutionAuthorized: false,
+            ExternalExecutionAuthorized: authorized,
             BlockedReasons: blockers,
             GeneratedAt: DateTimeOffset.UtcNow);
     }
