@@ -1,0 +1,108 @@
+name: Validate Remaining PR Release Train Controller
+
+on:
+  push:
+    branches:
+      - 'fix/remaining-pr-release-train-generated-source-convergence-*'
+  pull_request:
+    paths:
+      - '.github/scripts/patch_remaining_pr_release_train.py'
+      - '.github/scripts/remaining_pr_release_train.py.gz.b64'
+      - '.github/workflows/remaining-pr-release-train.yml'
+      - '.github/workflows/validate-remaining-pr-release-train-controller.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remaining-pr-release-train-controller-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify controller-repair source isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          if [[ "$HEAD_BRANCH" == fix/remaining-pr-release-train-generated-source-convergence-* ]]; then
+            ALLOWED='^(\.github/scripts/patch_remaining_pr_release_train\.py|\.github/workflows/(remaining-pr-release-train|validate-remaining-pr-release-train-controller)\.yml)$'
+            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected release-train controller repair scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+          fi
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo 'REMAINING_PR_RELEASE_TRAIN_CONTROLLER_SOURCE_ISOLATION=PASSED'
+
+      - name: Set up Node.js for the deterministic convergence self-test
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Decode and validate the exact production controller patch contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTROLLER="$RUNNER_TEMP/remaining_pr_release_train.py"
+          base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$CONTROLLER"
+
+          python3 -m py_compile .github/scripts/patch_remaining_pr_release_train.py
+          python3 .github/scripts/patch_remaining_pr_release_train.py --check "$CONTROLLER" \
+            | tee "$RUNNER_TEMP/controller-patch-check.json"
+          grep -Fq '"replacements": 1' "$RUNNER_TEMP/controller-patch-check.json"
+
+          python3 .github/scripts/patch_remaining_pr_release_train.py "$CONTROLLER" \
+            | tee "$RUNNER_TEMP/controller-patch-apply.json"
+          python3 -m py_compile "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_RELEASE_TRAIN_GENERATED_SOURCE_CONVERGENCE_V1' "$CONTROLLER"
+          grep -Fq '_projectpulse_validate_generated_source_convergence' "$CONTROLLER"
+          grep -Fq '"replacements": 1' "$RUNNER_TEMP/controller-patch-apply.json"
+
+          echo 'REMAINING_PR_RELEASE_TRAIN_EXACT_CONTROLLER_PATCH=PASSED'
+
+      - name: Run generated-source convergence and restoration self-test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/patch_remaining_pr_release_train.py --self-test
+          echo 'REMAINING_PR_RELEASE_TRAIN_CONVERGENCE_SELF_TEST=PASSED'
+
+      - name: Verify repository source remained clean
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=normal)"
+          echo 'REMAINING_PR_RELEASE_TRAIN_CONTROLLER_REPOSITORY_CLEAN=PASSED'

@@ -359,15 +359,13 @@ export default function ApprovalExportAuditWorkflowCenter() {
           <div className="approval-export-panel-heading">
             <div>
               <h3>Workflow Items</h3>
-              <p className="muted">Role-scoped submitted, manager-approved, PM-approved, accounting-ready, reconciled, and locked days.</p>
+              <p className="muted">Approval decisions are completed only in Pending approval work. This view remains for reconciliation, locking, export preparation, and audit history.</p>
             </div>
             <span>{workflowItems.length} item(s)</span>
           </div>
 
           <div className="approval-export-item-list">
             {workflowItems.map((item) => {
-              const canPmApprove = Boolean(access.canProjectApprove) && item.status === 'manager_approved';
-              const canAccountingReady = Boolean(access.canManageAccounting) && ['pm_approved', 'manager_approved'].includes(item.status);
               const canReconcile = Boolean(access.canManageAccounting) && ['accounting_ready', 'pm_approved'].includes(item.status);
               const canLock = Boolean(access.canManageAccounting) && ['reconciled', 'accounting_ready'].includes(item.status);
 
@@ -396,7 +394,7 @@ export default function ApprovalExportAuditWorkflowCenter() {
                     <small>Locked: {formatDateTime(item.lockedAt)}</small>
                   </div>
 
-                  {(canPmApprove || canAccountingReady || canReconcile || canLock) ? (
+                  {(canReconcile || canLock) ? (
                     <div className="approval-export-action-panel">
                       <textarea
                         value={getNote(item)}
@@ -404,8 +402,6 @@ export default function ApprovalExportAuditWorkflowCenter() {
                         placeholder="Optional workflow note"
                       />
                       <div className="approval-export-button-row">
-                        {canPmApprove ? <button type="button" className="primary-action" onClick={() => runAction(item, 'pm_approve')}>PM approve</button> : null}
-                        {canAccountingReady ? <button type="button" className="secondary-action" onClick={() => runAction(item, 'accounting_ready')}>Mark accounting-ready</button> : null}
                         {canReconcile ? <button type="button" className="secondary-action" onClick={() => runAction(item, 'reconcile')}>Reconcile</button> : null}
                         {canLock ? <button type="button" className="secondary-action" onClick={() => runAction(item, 'lock')}>Lock</button> : null}
                       </div>

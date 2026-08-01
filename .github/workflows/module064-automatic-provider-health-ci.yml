@@ -211,7 +211,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Enforce frontend build result and source idempotence
+      - name: Enforce frontend build result and deterministic generated-source convergence
         if: steps.frontend_build.outcome != 'skipped'
         working-directory: src/frontend/project-time-web
         shell: bash
@@ -222,8 +222,17 @@ jobs:
             tail -n 160 module064-frontend-build.log >&2
             exit "$STATUS"
           fi
+
+          git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
           git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
           tail -n 50 module064-frontend-build.log
+          echo 'MODULE_064_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'MODULE_064_FRONTEND_BUILD=PASSED'
           echo "MODULE_064_VALIDATION_MODE=${MODULE_064_VALIDATION_MODE:-UNKNOWN}"

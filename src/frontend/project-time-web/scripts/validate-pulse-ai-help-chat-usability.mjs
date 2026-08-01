@@ -101,8 +101,10 @@ assert(
     && !usability.includes('replaceChildren')
     && !usability.includes('removeChild')
     && usability.includes('form.append(hint)')
-    && help.includes('onSubmit={(event) => {')
-    && help.includes('void submitQuestion();'),
+    && (
+      (help.includes('onSubmit={(event) => {') && help.includes('void submitQuestion();'))
+      || help.includes('onSubmit={submitQuestion}')
+    ),
   'the bridge delegates submission to the existing React form and adds only a non-state hint'
 );
 

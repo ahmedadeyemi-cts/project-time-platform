@@ -362,16 +362,29 @@ assert(
   'local deterministic redaction with no provider execution or route mutation'
 );
 
+const legacyGlobalHelp = includesAll(source.help, [
+  "'/api/pulse-ai/v1/help-search/plan'",
+  'DetailedAssistantAnswer',
+  'Automatic multi-tool execution is not yet enabled',
+  'fallbackAnswer',
+  'retired Work Task Builder no longer owns project or task creation'
+]);
+const currentSystemHelp = includesAll(source.help, [
+  "'/api/pulse-ai/v1/help-search/plan'",
+  'function SystemAnswer',
+  'LegacyPlanAnswer',
+  'System intelligence is not active in this runtime',
+  "'/api/pulse-ai/v1/system/questions'"
+]) || includesAll(source.help, [
+  "'/api/pulse-ai/v1/help-search/plan'",
+  'function SystemAnswer',
+  'LegacyPlanAnswer',
+  "'/api/celar-ai/v1/chat'"
+]);
 assert(
   'GLOBAL_HELP',
-  includesAll(source.help, [
-    "'/api/pulse-ai/v1/help-search/plan'",
-    'DetailedAssistantAnswer',
-    'Automatic multi-tool execution is not yet enabled',
-    'fallbackAnswer',
-    'retired Work Task Builder no longer owns project or task creation'
-  ]),
-  'global Help renders detailed guidance and a corrected fallback'
+  legacyGlobalHelp || currentSystemHelp,
+  'global Help renders comprehensive system answers and a source-grounded compatibility fallback'
 );
 assert(
   'HELP_SAFE_RENDERING',
@@ -493,12 +506,20 @@ assert(
   'foundation and FlowHive contracts remain intact'
 );
 
+const reviewedLaterMigrations = new Set([
+  'database/migrations/052_document_intelligence_runtime.sql',
+  'database/migrations/053_intelligence_answer_orchestration.sql',
+  'database/migrations/054_pulse_ai_system_intelligence_conversations.sql'
+]);
 const migrations = walk('database/migrations')
-  .filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|deep[-_]?intelligence)/i.test(relative));
+  .filter((relative) => /(?:module[-_]?011|pulse[-_]?ai|deep[-_]?intelligence|document_intelligence_runtime|intelligence_answer_orchestration)/i.test(relative));
+const unexpectedMigrations = migrations.filter((relative) => !reviewedLaterMigrations.has(relative));
 assert(
-  'NO_MIGRATION',
-  migrations.length === 0,
-  migrations.length === 0 ? 'no Module 011 migration exists' : migrations.join(', ')
+  'KNOWN_LATER_MIGRATIONS_ONLY',
+  unexpectedMigrations.length === 0,
+  unexpectedMigrations.length === 0
+    ? 'the read-only deep-intelligence foundation is preserved while reviewed later phases use migrations 052, 053, and 054'
+    : unexpectedMigrations.join(', ')
 );
 
 const ownedDeepIntelligencePaths = [

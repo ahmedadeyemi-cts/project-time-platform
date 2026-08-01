@@ -1,0 +1,226 @@
+name: Validate Module 030 Analytics Center
+
+on:
+  push:
+    branches:
+      - 'feature/module-030-analytics-center-*'
+      - 'fix/module030-regression-validator-*'
+  pull_request:
+    paths:
+      - '.github/workflows/module030-analytics-center-ci.yml'
+      - '.github/workflows/group5-financial-operations-recovery-ci.yml'
+      - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+      - 'database/migrations/055_analytics_center.sql'
+      - 'database/rollback/055_analytics_center_rollback.sql'
+      - 'docs/modules/module-030-analytics-center/README.md'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenter*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReporting*.cs'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/inject-analytics-center.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-group-4-project-notification-automation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs'
+      - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/analytics-center.css'
+      - 'tests/test-analytics-center-migration-055.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module030-analytics-center-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Module 030 ownership or run regression mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE_REF="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          test -n "$BASE_REF"
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
+          printf '%s\n' "$CHANGED"
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* ]]; then
+            ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|group5-financial-operations-recovery-ci|pulse-ai-help-chat-usability-ci)\.yml|database/migrations/055_analytics_center\.sql|database/rollback/055_analytics_center_rollback\.sql|docs/modules/module-030-analytics-center/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsCenter(Contracts|DirectoryLoader|Module)|EnterpriseReporting(Contracts|Catalog|Engine|SourceLoader|Repository|Module))\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package\.json|src/frontend/project-time-web/scripts/(inject-analytics-center|inject-group-4-project-notification-automation|validate-analytics-center|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css)|tests/test-analytics-center-migration-055\.sh)$'
+            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Module 030 Analytics Center source scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+
+            if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+              echo 'Analytics Center source overlaps deployment or canonical generated integration files.' >&2
+              exit 1
+            fi
+
+            if grep -Fxq 'database/migrations/054_enterprise_reporting_center.sql' <<<"$CHANGED"; then
+              echo 'Migration 054 is owned by another PR and must not be reused.' >&2
+              exit 1
+            fi
+
+            echo 'ANALYTICS_CENTER_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+            echo 'ANALYTICS_CENTER_SOURCE_ISOLATION=PASSED'
+          else
+            DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/055_analytics_center\.sql|rollback/055_analytics_center_rollback\.sql)|docs/modules/module-030-analytics-center/README\.md|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenter|EnterpriseReporting).*\.cs|src/frontend/project-time-web/scripts/(inject-analytics-center|validate-analytics-center)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css)|tests/test-analytics-center-migration-055\.sh)$' <<<"$CHANGED" || true)"
+            if [[ -n "$DIRECT_ANALYTICS" ]]; then
+              echo 'An unrelated branch directly changes Module 030-owned source:' >&2
+              printf '%s\n' "$DIRECT_ANALYTICS" >&2
+              exit 1
+            fi
+
+            echo 'ANALYTICS_CENTER_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+            echo "ANALYTICS_CENTER_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
+          fi
+
+          git diff --check "$BASE_REF"...HEAD
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Check Analytics Center JavaScript syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-analytics-center.mjs
+          node --check src/frontend/project-time-web/scripts/inject-group-4-project-notification-automation.mjs
+          node --check src/frontend/project-time-web/scripts/validate-analytics-center.mjs
+          node --check src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs
+
+      - name: Test migration 055 apply idempotence immutability rollback and reapply
+        shell: bash
+        run: bash tests/test-analytics-center-migration-055.sh
+
+      - name: Validate Analytics Center source contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: node ./scripts/validate-analytics-center.mjs
+
+      - name: Build ProjectTime API in Release mode
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Analytics Center dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:group3-project-financial-workspaces
+          npm run validate:group5-financial-operations
+          npm run validate:group6-enterprise-presentation
+          npm run validate:group7-ai-help-system-guide
+          npm run validate:work-register-055c-055d
+          npm run validate:module005
+          npm run validate:module069
+          npm run validate:module071
+          npm run validate:module072
+          npm run validate:module075
+          npm run validate:module076
+          npm run validate:module077
+          npm run validate:module078
+          npm run validate:module079
+          npm run validate:module080
+          npm run validate:analytics-center
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm run build
+
+      - name: Validate compiled Analytics Center markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat dist/assets/*.js > /tmp/analytics-center.js
+          cat dist/assets/*.css > /tmp/analytics-center.css
+
+          for marker in \
+            'Analytics Center' \
+            'Select report' \
+            'Set criteria' \
+            'All customers' \
+            'All projects' \
+            'All engineers' \
+            'All Project Managers' \
+            'All teams' \
+            'Preview report' \
+            'Run & save' \
+            'Analytics run history' \
+            '/api/analytics/catalog' \
+            '/api/analytics/filter-options'; do
+            grep -Fq "$marker" /tmp/analytics-center.js
+          done
+
+          for forbidden in \
+            'selectedEngineerSummaryText' \
+            '030Q Reporting Readiness Closeout' \
+            'Build Export Layout' \
+            'Save Report Definition Preview'; do
+            if grep -Fq "$forbidden" /tmp/analytics-center.js; then
+              echo "Legacy Analytics marker remains in compiled bundle: $forbidden" >&2
+              exit 1
+            fi
+          done
+
+          for marker in \
+            '.analytics-center' \
+            '.analytics-build-layout' \
+            '.analytics-report-cards' \
+            '.analytics-filter-grid' \
+            '.analytics-source-grid' \
+            '.analytics-history-list'; do
+            grep -Fq "$marker" /tmp/analytics-center.css
+          done
+
+          echo 'ANALYTICS_CENTER_FRONTEND_BUILD=PASSED'
+
+      - name: Publish validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Module 030 Analytics Center validation'
+            echo
+            echo "- Validation mode: ${ANALYTICS_CENTER_VALIDATION_MODE:-UNKNOWN}"
+            echo '- Protected deployment files: guarded'
+            echo '- Direct Module 030 source on unrelated branches: guarded'
+            echo '- Migration 055 regression: executed'
+            echo '- API and complete frontend builds: executed'
+          } >> "$GITHUB_STEP_SUMMARY"

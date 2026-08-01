@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import './project-manager-workload-center.css';
-import UnifiedProjectFinancialWorkspace from './UnifiedProjectFinancialWorkspace.jsx';
 
 function getStoredAuthSession() {
   try {
@@ -113,9 +112,6 @@ export default function ProjectManagerWorkloadCenter() {
 
   return (
     <section className="pm-workload-center">
-      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_START */}
-      <UnifiedProjectFinancialWorkspace workspace="pm" projectManagerUserId={selectedProjectManagerUserId} />
-      {/* GROUP_3_UNIFIED_PROJECT_FINANCIAL_WORKSPACES_END */}
       <div className="pm-workload-header">
         <div>
           <p className="eyebrow">019M-AM</p>

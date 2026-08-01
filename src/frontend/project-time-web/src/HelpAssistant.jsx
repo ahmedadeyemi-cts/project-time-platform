@@ -1,134 +1,84 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
-import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
-import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
+import './pulse-ai-system-chat.css';
 
-const fallbackTopics = [
-  {
-    keywords: ['defect', 'bug', 'broken', 'issue', 'report a problem', 'module 076', '076'],
-    title: 'Report a ProjectPulse defect',
-    summary:
-      'Open Module 076 to prepare a governed defect report. Record the affected module or route, expected behavior, observed behavior, business impact, environment, effective role, reproducible steps, sanitized evidence, priority, ownership, comments, resolution, verification, and GitHub linkage.',
-    navigationTargets: ['#defect-tracker', '#system-diagnostics']
-  },
-  {
-    keywords: ['guide', 'help', 'manual', 'documentation', 'module 999', '999'],
-    title: 'Use the System User Guide',
-    summary:
-      'Module 999 is the authoritative user guide for global functions, installed modules, role expectations, page controls, step-by-step workflows, statuses, troubleshooting, and navigation. Pulse AI uses approved documentation and current permission evidence when the detailed Help service is available.',
-    navigationTargets: ['#user-guide', '#work-task-builder']
-  },
-  {
-    keywords: ['timesheet', 'time', 'hours', 'normal', 'afterhours', 'ot', 'overtime'],
-    title: 'Prepare and submit an accurate timesheet',
-    summary:
-      'Module 001 supports Weekly Grid, Daily Focus, Guided Add, Quick Entry List, and Smart Work Log. Select the correct project task, request, or non-project category; enter Normal or Afterhours time; add a factual description; review any AI suggestion; save the draft; and submit only when the week is complete and eligible.',
-    navigationTargets: ['#timesheet', '#manager-approval']
-  },
-  {
-    keywords: ['save', 'draft', 'refresh', 'lost', 'missing', 'not showing'],
-    title: 'Protect unsaved ProjectPulse work',
-    summary:
-      'Wait for the save confirmation before refreshing, closing the tab, or changing pages. A successful save persists through the API; unsaved browser changes can be lost. If saved data does not reload, preserve the route, date, effective user, correlation evidence, and exact message before reporting a defect.',
-    navigationTargets: ['#timesheet', '#defect-tracker']
-  },
-  {
-    keywords: ['submit', 'approval', 'manager', 'approve', 'reject', 'decline'],
-    title: 'Understand the time approval lifecycle',
-    summary:
-      'Submitted time moves to Module 002 Approval Inbox. Authorized reviewers inspect the project, task, date, hours, description, and applicable scope before approving or declining for correction. Later governed states may include PM approval, accounting readiness, reconciliation, locking, reopening, and audit evidence.',
-    navigationTargets: ['#manager-approval', '#workflow', '#audit-history']
-  },
-  {
-    keywords: ['opportunity', 'sales', 'presales', 'pipeline', 'won', 'lost'],
-    title: 'Review opportunity and pipeline information',
-    summary:
-      'Module 063 tracks active and closed opportunities, ownership, customer context, estimated and actual revenue where available, shared Sales/Presales/Engineering tasks, completion accountability, and activity history. Access remains limited to the user’s authorized commercial scope.',
-    navigationTargets: ['#opportunities', '#sales-insights']
-  },
-  {
-    keywords: ['contract', 'prepaid', 'block of hours', 'balance', 'expiration'],
-    title: 'Review contracts and block-of-hours balances',
-    summary:
-      'Module 060 manages authorized prepaid and block-of-hours records, credits, consumption, remaining balance, expiration, and Account Executive reporting. Financial values should be interpreted using the saved contract, rate, time, expense, billing, and reporting sources rather than model estimates.',
-    navigationTargets: ['#contracts', '#reporting']
-  },
-  {
-    keywords: ['project', 'task', 'assignment', 'customer', 'intake'],
-    title: 'Navigate the project delivery lifecycle',
-    summary:
-      'Module 020 owns pre-project intake and resource handoff. Module 055D creates approved new projects; Module 055C manages existing projects, tasks, assignments, delivery details, and audit history. Module 019 provides role-scoped project documents and engineering context. The retired Work Task Builder no longer owns project or task creation.',
-    navigationTargets: ['#project-intake', '#create-work-register', '#work-register', '#project-workspace']
-  },
-  {
-    keywords: ['location', 'work location', 'timezone', 'resource profile'],
-    title: 'Use work-location and resource context',
-    summary:
-      'Work-location and time-zone information supports timesheet, scheduling, capacity, and resource context. Select the correct work-location values where required. Authorized administration workflows maintain user, identity, directory, team, department, office, and profile information.',
-    navigationTargets: ['#timesheet', '#user-admin', '#calendar-capacity']
-  },
-  {
-    keywords: ['utilization', 'target', 'billable', 'pto', 'vacation', 'capacity'],
-    title: 'Understand utilization and capacity',
-    summary:
-      'Module 003 compares eligible billable time with approved targets. Modules 057 and 070 provide calendar, assignment, capacity, and pipeline context. A complete answer should identify the period, target definition, eligible hours, exclusions, current value, remaining hours, assignment load, and source freshness.',
-    navigationTargets: ['#utilization', '#calendar-capacity', '#capacity-pipeline-forecast']
-  },
-  {
-    keywords: ['access', 'permission', 'role', '403', 'denied', 'no access'],
-    title: 'Understand ProjectPulse access',
-    summary:
-      'ProjectPulse evaluates the actual and effective user, role policy, module permission, requested action, and record-level scope. No Access hides the module and denies direct API access. View permits authorized reading only. HTTP 403 means the current effective identity is not authorized for that action or record.',
-    navigationTargets: ['#roles-permissions-matrix', '#role-admin', '#user-admin']
-  },
-  {
-    keywords: ['dark', 'light', 'theme', 'mode'],
-    title: 'Change the ProjectPulse appearance',
-    summary:
-      'Use the appearance control in the top navigation or profile settings to switch between light and dark mode. The preference should apply across authenticated module pages and global application surfaces.',
-    navigationTargets: ['#profile']
-  }
-];
+const QUICK_QUESTIONS = Object.freeze([
+  'What APIs are running on the system?',
+  'Troubleshoot the current platform and show me the strongest evidence.',
+  'Explain Pulse AI and everything it can do.',
+  'Design a future enhancement for Pulse using the current architecture.',
+  'What is unhealthy, unavailable, unauthorized, or missing right now?',
+  'How do Modules 013, 016, 078, and 998 work together for troubleshooting?'
+]);
 
-function fallbackAnswer(question) {
-  const normalized = question.trim().toLowerCase();
-  const match = fallbackTopics.find((topic) =>
-    topic.keywords.some((keyword) => normalized.includes(keyword))
-  );
+const WELCOME_MESSAGE = Object.freeze({
+  id: 'welcome',
+  role: 'assistant',
+  text: 'Ask any question about Pulse. I can explain modules and workflows, discover the APIs registered in the running application, use authorized read-only troubleshooting evidence, analyze projects and private documents, explain reports and financials, and prepare detailed future-enhancement blueprints. Completed conversations remain available after closing or refreshing this page.'
+});
 
-  return match ?? {
-    title: 'Detailed ProjectPulse guidance is temporarily unavailable',
-    summary:
-      'The Pulse AI Help planning service could not be reached. Open Module 999 and search by module number, page, button, status, role, project, customer, workflow, error, or business term. This fallback does not inspect live records or infer an answer from restricted data.',
-    navigationTargets: ['#user-guide', '#work-task-builder']
-  };
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function unique(values) {
+  return [...new Set(asArray(values).filter((value) => value !== null && value !== undefined && String(value).trim()))];
 }
 
 function titleFrom(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
+    .replaceAll('-', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function unique(values) {
-  return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))];
+function formatDate(value) {
+  if (!value) return 'Not recorded';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
-async function loadPulseAiPlan(question) {
-  const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
-  url.searchParams.set('question', question);
-  const answerPreferences = applyHelpAnswerPreferences(url, question);
-  const response = await fetch(`${url.pathname}${url.search}`, {
+function formatPercent(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${Math.round(numeric * 100)}%` : 'Not recorded';
+}
+
+async function readJson(response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || payload?.result?.answer?.directConclusion || `Request returned HTTP ${response.status}.`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function getJson(path) {
+  return readJson(await fetch(path, {
     method: 'GET',
     cache: 'no-store',
     headers: { Accept: 'application/json' }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.message || `Pulse AI Help returned HTTP ${response.status}.`);
-  }
-  return { ...payload, answerPreferences };
+  }));
+}
+
+async function postJson(path, body) {
+  return readJson(await fetch(path, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body ?? {})
+  }));
+}
+
+async function loadLegacyPlan(question) {
+  const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
+  url.searchParams.set('question', question);
+  return getJson(`${url.pathname}${url.search}`);
 }
 
 function navigateTo(target, close) {
@@ -145,8 +95,8 @@ function NavigationTargets({ targets, close }) {
   const values = unique(targets);
   if (!values.length) return null;
   return (
-    <div className="help-answer-navigation" aria-label="Relevant ProjectPulse pages">
-      {values.slice(0, 8).map((target) => (
+    <div className="help-answer-navigation" aria-label="Relevant Pulse pages">
+      {values.slice(0, 16).map((target) => (
         <button type="button" key={target} onClick={() => navigateTo(target, close)}>
           {target.startsWith('#') ? titleFrom(target.slice(1)) : target}
         </button>
@@ -155,285 +105,533 @@ function NavigationTargets({ targets, close }) {
   );
 }
 
-function AnswerList({ heading, values }) {
+function AnswerList({ heading, values, open = false, ordered = false }) {
   const rows = unique(values);
   if (!rows.length) return null;
+  const List = ordered ? 'ol' : 'ul';
   return (
-    <section className="help-answer-section">
-      <strong>{heading}</strong>
-      <ul>{rows.map((row, index) => <li key={`${heading}-${index}`}>{row}</li>)}</ul>
-    </section>
+    <details className="pulse-ai-system-section" open={open}>
+      <summary><span>{heading}</span><small>{rows.length}</small></summary>
+      <List>{rows.map((row, index) => <li key={`${heading}-${index}`}>{String(row)}</li>)}</List>
+    </details>
   );
 }
 
-function DetailedAssistantAnswer({ payload, close }) {
-  const plan = payload?.plan ?? {};
-  const direct = plan.directKnowledgeAnswer;
-  const semanticQuery = plan.semanticQuery ?? {};
-  const runtime = payload?.runtimeExecution ?? {};
-  const answerContract = payload?.answerContract ?? {};
-  /* GROUP_7_HELP_ANSWER_DETAIL_START */
-  const answerPreferences = payload?.answerPreferences ?? { detailLevel: 'standard' };
-  const detailLevel = answerPreferences.detailLevel ?? 'standard';
-  const conciseAnswer = detailLevel === 'concise';
-  const executiveAnswer = detailLevel === 'executive';
-  const expandedAnswer = ['detailed', 'highly_detailed', 'technical', 'step_by_step'].includes(detailLevel);
-  const technicalAnswer = ['highly_detailed', 'technical'].includes(detailLevel);
-  /* GROUP_7_HELP_ANSWER_DETAIL_END */
-
+function EvidenceBadges({ result }) {
+  const answer = result?.answer ?? {};
   return (
-    <div className="help-detailed-answer" data-answer-detail={detailLevel}>
-      {direct ? (
-        <>
-          <div className="help-answer-heading">
-            <span>Pulse AI detailed guidance</span>
-            <strong>{direct.title}</strong>
-          </div>
-          <p className="help-answer-summary">{direct.summary}</p>
-          {!executiveAnswer ? <AnswerList heading="Detailed procedure" values={direct.detailedSteps} /> : null}
-          {!conciseAnswer ? <AnswerList heading="Important rules" values={direct.importantRules} /> : null}
-          <div className="help-answer-evidence">
-            <span>Source modules: {unique(direct.sourceModules).join(', ') || 'Not recorded'}</span>
-            <span>Generated: {plan.generatedAt ? new Date(plan.generatedAt).toLocaleString() : 'Not recorded'}</span>
-          </div>
-          <NavigationTargets targets={direct.navigationTargets} close={close} />
-        </>
-      ) : (
-        <>
-          <div className="help-answer-heading">
-            <span>Pulse AI comprehensive answer plan</span>
-            <strong>{titleFrom(plan.status || 'governed plan ready')}</strong>
-          </div>
-          <p className="help-answer-summary">
-            Pulse AI classified this question across {unique(plan.domains).length || 1} relevant domain(s) and prepared the evidence,
-            filters, read-only tools, calculations, privacy controls, and answer structure required for a source-grounded response.
-            Automatic multi-tool execution is not yet enabled for this question, so this response does not invent live values.
-          </p>
-          <AnswerList heading="Relevant business and system domains" values={unique(plan.domains).map(titleFrom)} />
-          <AnswerList heading="Required evidence" values={plan.requiredEvidence} />
-          <AnswerList heading="Filters that must be resolved" values={plan.filtersToResolve} />
-          <AnswerList heading="Deterministic calculations" values={plan.deterministicCalculations} />
-          <AnswerList heading="Required answer sections" values={plan.answerSections} />
-          <AnswerList heading="Detailed execution sequence" values={plan.executionSteps} />
-          <AnswerList heading="Privacy controls" values={plan.privacyControls} />
-          <AnswerList heading="Missing inputs before exact execution" values={plan.missingInputs} />
-          <section className="help-answer-section">
-            <strong>Governed semantic query</strong>
-            <dl className="help-answer-query-grid">
-              <div><dt>Metrics</dt><dd>{unique(semanticQuery.metrics).join(', ') || 'No exact metric selected'}</dd></div>
-              <div><dt>Dimensions</dt><dd>{unique(semanticQuery.dimensions).join(', ') || 'Project'}</dd></div>
-              <div><dt>Required tools</dt><dd>{unique(plan.requiredTools).join(', ') || 'Product knowledge'}</dd></div>
-              <div><dt>Arbitrary SQL</dt><dd>{semanticQuery.arbitrarySqlAllowed ? 'Allowed' : 'Not allowed'}</dd></div>
-              <div><dt>Unknown values</dt><dd>{semanticQuery.unknownValuesPreserved ? 'Preserved' : 'Not recorded'}</dd></div>
-              <div><dt>External execution</dt><dd>{titleFrom(semanticQuery.externalExecution || 'not authorized')}</dd></div>
-            </dl>
-          </section>
-          <div className="help-answer-evidence">
-            <span>Owning modules: {unique(plan.owningModules).join(', ') || 'Multiple registered modules'}</span>
-            <span>Live execution: {runtime.automaticMultiToolExecutionEnabled ? 'Enabled' : 'Not yet enabled'}</span>
-          </div>
-          <NavigationTargets targets={['#work-task-builder', '#user-guide']} close={close} />
-        </>
-      )}
-
-      <div className="help-answer-preference-evidence">
-        <span>Answer detail: {titleFrom(detailLevel)}</span>
-        <span>Preference source: {titleFrom(answerPreferences.preferenceSource ?? 'saved_preference')}</span>
-        {answerPreferences.includeRepositoryContext ? <span>Repository context requested</span> : null}
-        {answerPreferences.includeAssumptions ? <span>Assumptions requested</span> : null}
-        {answerPreferences.includeSourceCitations ? <span>Source citations requested</span> : null}
-      </div>
-      {technicalAnswer ? (
-      <details className="help-answer-contract">
-        <summary>Answer quality contract</summary>
-        <AnswerList heading="Minimum sections" values={answerContract.minimumSections} />
-        <AnswerList heading="Required qualities" values={answerContract.mustInclude} />
-        {answerContract.unsupportedClaimPolicy ? <p><strong>Unsupported claims:</strong> {answerContract.unsupportedClaimPolicy}</p> : null}
-      </details>
-      ) : null}
+    <div className="pulse-ai-system-evidence-badges">
+      <span>Status: {titleFrom(result?.status || 'unknown')}</span>
+      <span>Intent: {titleFrom(result?.intentCode || 'general system')}</span>
+      <span>Confidence: {formatPercent(answer.confidence)}</span>
+      <span>Data as of: {formatDate(answer.dataAsOf)}</span>
+      <span>Sources: {asArray(result?.sources).length}</span>
+      <span>APIs: {asArray(result?.relevantApis).length}</span>
+      <span>Tools: {asArray(result?.toolResults).length}</span>
+      <span>Saved: {result?.persisted ? 'Yes' : 'No'}</span>
     </div>
   );
 }
 
-function FallbackAssistantAnswer({ answer, warning, close }) {
+function EnhancementBlueprint({ blueprint }) {
+  if (!blueprint) return null;
+  return (
+    <details className="pulse-ai-system-blueprint" open>
+      <summary>Future enhancement blueprint</summary>
+      <div className="pulse-ai-system-blueprint-body">
+        <h5>{blueprint.requestedCapability || 'Requested capability'}</h5>
+        <p>{blueprint.businessOutcome}</p>
+        <AnswerList heading="Affected modules" values={blueprint.affectedModules} open />
+        <AnswerList heading="Current capabilities" values={blueprint.currentCapabilities} open />
+        <AnswerList heading="Gaps" values={blueprint.gaps} open />
+        <AnswerList heading="Proposed architecture" values={blueprint.proposedArchitecture} open />
+        <AnswerList heading="Proposed APIs" values={blueprint.proposedApis} />
+        <AnswerList heading="Data and migration considerations" values={blueprint.dataAndMigrationConsiderations} />
+        <AnswerList heading="Security and privacy controls" values={blueprint.securityAndPrivacyControls} open />
+        <AnswerList heading="Operational and support controls" values={blueprint.operationalAndSupportControls} />
+        <AnswerList heading="Implementation phases" values={blueprint.implementationPhases} open ordered />
+        <AnswerList heading="Test strategy" values={blueprint.testStrategy} />
+        <AnswerList heading="Rollout and rollback" values={blueprint.rolloutAndRollback} />
+        <AnswerList heading="Risks" values={blueprint.risks} />
+        <AnswerList heading="Acceptance criteria" values={blueprint.acceptanceCriteria} open />
+        <AnswerList heading="Dependencies" values={blueprint.dependencies} />
+      </div>
+    </details>
+  );
+}
+
+function ApiInventory({ apis }) {
+  const rows = asArray(apis);
+  const [filter, setFilter] = useState('');
+  const visible = useMemo(() => {
+    const normalized = filter.trim().toLowerCase();
+    if (!normalized) return rows;
+    return rows.filter((api) => [
+      api.method,
+      api.routePattern,
+      api.moduleCode,
+      api.moduleName,
+      api.purpose,
+      api.registrationStatus
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalized)));
+  }, [filter, rows]);
+  if (!rows.length) return null;
+  return (
+    <details className="pulse-ai-system-api-inventory">
+      <summary>Registered APIs returned for this answer <small>{rows.length}</small></summary>
+      <div className="pulse-ai-system-api-toolbar">
+        <label>
+          Filter APIs
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="module, method, route, purpose…"
+          />
+        </label>
+        <span>{visible.length} shown</span>
+      </div>
+      <div className="pulse-ai-system-table-wrap">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Route</th><th>Module</th><th>Purpose</th><th>Registered</th><th>Safe retest</th></tr>
+          </thead>
+          <tbody>
+            {visible.map((api) => (
+              <tr key={`${api.apiId}-${api.method}`}>
+                <td><code>{api.method}</code></td>
+                <td><code>{api.routePattern}</code></td>
+                <td>{api.moduleCode} — {api.moduleName}</td>
+                <td>{api.purpose}</td>
+                <td>{titleFrom(api.registrationStatus)}</td>
+                <td>{api.safeRetestSupported ? 'Yes' : api.safeRetestReason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+function SourceEvidence({ sources }) {
+  const rows = asArray(sources);
+  if (!rows.length) return null;
+  return (
+    <details className="pulse-ai-system-sources">
+      <summary>Source and freshness evidence <small>{rows.length}</small></summary>
+      <div className="pulse-ai-system-source-grid">
+        {rows.map((source) => (
+          <article key={source.sourceId}>
+            <div><strong>Source {source.sourceId}</strong><span>{titleFrom(source.status)}</span></div>
+            <h6>{source.sourceName}</h6>
+            <p>{source.moduleCode} · {source.method} {source.path}</p>
+            <small>{source.evidenceScope}</small>
+            <small>Observed {formatDate(source.observedAt)} · {titleFrom(source.freshness)}</small>
+          </article>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ToolEvidence({ tools }) {
+  const rows = asArray(tools);
+  if (!rows.length) return null;
+  return (
+    <details className="pulse-ai-system-tools">
+      <summary>Governed tool execution <small>{rows.length}</small></summary>
+      <div className="pulse-ai-system-tool-grid">
+        {rows.map((tool) => (
+          <article key={tool.toolCode} className={tool.status === 'succeeded' ? 'is-success' : 'is-warning'}>
+            <div><strong>{tool.toolName}</strong><span>HTTP {tool.statusCode || '—'}</span></div>
+            <p>{tool.moduleCode} · {tool.method} {tool.path}</p>
+            <small>{titleFrom(tool.status)} · {tool.durationMs} ms · {tool.diagnosticCode || 'No diagnostic code'}</small>
+            <ul>{asArray(tool.evidenceSummary).map((value, index) => <li key={`${tool.toolCode}-${index}`}>{value}</li>)}</ul>
+          </article>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function SystemAnswer({ result, close }) {
+  const answer = result?.answer ?? {};
+  return (
+    <div className="help-detailed-answer pulse-ai-system-answer">
+      <div className="help-answer-heading">
+        <span>Pulse AI comprehensive system answer</span>
+        <strong>{answer.directConclusion || 'Pulse AI completed the request.'}</strong>
+      </div>
+      {answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}
+      <EvidenceBadges result={result} />
+      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open />
+      <AnswerList heading="Current state" values={answer.currentState} open />
+      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open />
+      <AnswerList heading="API findings" values={answer.apiFindings} open={result?.intentCode === 'api_inventory'} />
+      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={result?.intentCode === 'troubleshooting'} />
+      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={result?.intentCode === 'troubleshooting'} />
+      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={result?.intentCode === 'troubleshooting'} ordered />
+      <AnswerList heading="Source evidence" values={answer.sourceEvidence} />
+      <AnswerList heading="Known, unknown, stale, unavailable, and unauthorized values" values={answer.knownUnknownAndStaleValues} />
+      <AnswerList heading="Assumptions" values={answer.assumptions} />
+      <AnswerList heading="Conflicts" values={answer.conflicts} />
+      <AnswerList heading="Limitations" values={answer.limitations} />
+      <AnswerList heading="Risks and implications" values={answer.risksAndImplications} />
+      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open ordered />
+      <EnhancementBlueprint blueprint={answer.futureEnhancementBlueprint} />
+      <ApiInventory apis={result?.relevantApis} />
+      <ToolEvidence tools={result?.toolResults} />
+      <SourceEvidence sources={result?.sources} />
+      <AnswerList heading="Warnings" values={result?.warnings} />
+      <div className="pulse-ai-system-answer-footer">
+        <span>Correlation: <code>{result?.correlationId || 'Not recorded'}</code></span>
+        <span>Model: {result?.modelName || 'Deterministic private system synthesis'}</span>
+        <span>{answer.confidenceExplanation}</span>
+      </div>
+      <NavigationTargets targets={answer.navigationTargets} close={close} />
+    </div>
+  );
+}
+
+function LegacyPlanAnswer({ payload, close }) {
+  const plan = payload?.plan ?? {};
+  const direct = plan.directKnowledgeAnswer;
+  if (direct) {
+    return (
+      <div className="help-detailed-answer is-fallback">
+        <div className="help-answer-heading"><span>Pulse operating guidance</span><strong>{direct.title}</strong></div>
+        <p className="help-answer-summary">{direct.summary}</p>
+        <AnswerList heading="Detailed procedure" values={direct.detailedSteps} open />
+        <AnswerList heading="Important rules" values={direct.importantRules} open />
+        <NavigationTargets targets={direct.navigationTargets} close={close} />
+      </div>
+    );
+  }
   return (
     <div className="help-detailed-answer is-fallback">
-      <div className="help-answer-heading">
-        <span>Local governed fallback</span>
-        <strong>{answer.title}</strong>
-      </div>
-      <p className="help-answer-summary">{answer.summary}</p>
-      {warning ? <p className="help-answer-warning">{warning}</p> : null}
-      <NavigationTargets targets={answer.navigationTargets} close={close} />
+      <div className="help-answer-heading"><span>Limited compatibility response</span><strong>System intelligence is not active in this runtime</strong></div>
+      <p className="help-answer-summary">The detailed system-intelligence API could not be reached. Pulse prepared a read-only evidence plan, but it did not invent live values.</p>
+      <AnswerList heading="Required evidence" values={plan.requiredEvidence} />
+      <AnswerList heading="Execution sequence" values={plan.executionSteps} />
+      <AnswerList heading="Missing inputs" values={plan.missingInputs} />
+      <NavigationTargets targets={['#work-task-builder', '#service-control', '#user-guide']} close={close} />
     </div>
   );
 }
 
 function AssistantMessage({ message, close }) {
   if (message.loading) {
-    return <div className="help-message assistant help-message-loading">Building a detailed, permission-aware answer plan…</div>;
+    return <div className="help-message assistant help-message-loading">Retrieving authorized evidence and building a comprehensive answer…</div>;
   }
-  if (message.payload) {
-    return <div className="help-message assistant is-detailed"><DetailedAssistantAnswer payload={message.payload} close={close} /></div>;
+  if (message.payload?.answer) {
+    return <div className="help-message assistant is-detailed"><SystemAnswer result={message.payload} close={close} /></div>;
   }
-  if (message.fallback) {
-    return <div className="help-message assistant is-detailed"><FallbackAssistantAnswer answer={message.fallback} warning={message.warning} close={close} /></div>;
+  if (message.legacyPayload) {
+    return <div className="help-message assistant is-detailed"><LegacyPlanAnswer payload={message.legacyPayload} close={close} /></div>;
+  }
+  if (message.error) {
+    return (
+      <div className="help-message assistant is-detailed">
+        <div className="help-detailed-answer is-fallback">
+          <div className="help-answer-heading"><span>Pulse AI request did not complete</span><strong>{message.error}</strong></div>
+          <p className="help-answer-summary">The completed conversation remains visible. Retry the question or use Modules 013, 016, 076, 078, and 998 with the displayed correlation evidence.</p>
+          <NavigationTargets targets={['#service-control', '#backup-retention', '#defect-tracker', '#observability-slo-health', '#system-diagnostics']} close={close} />
+        </div>
+      </div>
+    );
   }
   return <div className="help-message assistant">{message.text}</div>;
+}
+
+function serverMessageToUi(message) {
+  if (message.role === 'user') {
+    return { id: message.messageId, role: 'user', text: message.text, createdAt: message.createdAt };
+  }
+  const structured = message.structuredResponse && typeof message.structuredResponse === 'object'
+    ? message.structuredResponse
+    : null;
+  return {
+    id: message.messageId,
+    role: 'assistant',
+    payload: structured?.answer ? structured : null,
+    text: message.text,
+    error: message.status === 'failed' && !structured?.answer ? message.text : '',
+    createdAt: message.createdAt
+  };
 }
 
 export default function HelpAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      text: 'Ask a ProjectPulse product, workflow, project, document, reporting, financial, security, or operations question. Pulse AI will provide detailed guidance or show the exact evidence and tools required for a trustworthy live answer.'
-    }
-  ]);
+  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef(null);
+  const messagesRef = useRef(null);
+  const followLatestRef = useRef(true);
+  const sendingRef = useRef(false);
 
-  const suggestions = useMemo(
-    () => [
-      'How does Pulse AI use an SOW and GSD for a timesheet suggestion?',
-      'How do I create and maintain a project?',
-      'Why can a user not see a module?',
-      'How should FlowHive create a project plan?',
-      'How should I analyze project budget variance?',
-      'How do I report a defect?'
-    ],
-    []
+  const activeConversation = useMemo(
+    () => conversations.find((item) => item.conversationId === activeConversationId) ?? null,
+    [activeConversationId, conversations]
   );
 
-  async function submitQuestion(nextQuestion = question) {
-    const cleanQuestion = nextQuestion.trim();
-    if (!cleanQuestion || isSubmitting) return;
+  async function refreshConversationList(selectId = '') {
+    const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
+    const rows = asArray(payload.conversations);
+    setConversations(rows);
+    return selectId || activeConversationId || rows[0]?.conversationId || '';
+  }
 
+  async function loadConversation(conversationId) {
+    if (!conversationId) {
+      setMessages([WELCOME_MESSAGE]);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const payload = await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}`);
+      const rows = asArray(payload?.conversation?.messages).map(serverMessageToUi);
+      setMessages(rows.length ? rows : [WELCOME_MESSAGE]);
+      setActiveConversationId(conversationId);
+      followLatestRef.current = true;
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function createConversation(mode = 'system_help') {
+    const payload = await postJson('/api/pulse-ai/v1/system/conversations', {
+      title: 'New Pulse AI conversation',
+      mode,
+      scope: { source: 'global_help_chat' }
+    });
+    const conversation = payload.conversation;
+    if (!conversation?.conversationId) throw new Error('Pulse AI did not return a conversation identifier.');
+    setActiveConversationId(conversation.conversationId);
+    setMessages([WELCOME_MESSAGE]);
+    await refreshConversationList(conversation.conversationId);
+    return conversation.conversationId;
+  }
+
+  async function hydrate() {
+    if (hydrated) return;
+    setHistoryLoading(true);
+    try {
+      const selected = await refreshConversationList();
+      if (selected) {
+        await loadConversation(selected);
+      } else {
+        await createConversation();
+      }
+    } catch {
+      setMessages([WELCOME_MESSAGE]);
+    } finally {
+      setHydrated(true);
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void hydrate();
+    window.setTimeout(() => inputRef.current?.focus(), 40);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !followLatestRef.current) return;
+    const viewport = messagesRef.current;
+    if (!viewport) return;
+    window.requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+  }, [messages, isOpen]);
+
+  function onConversationScroll(event) {
+    const element = event.currentTarget;
+    followLatestRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  }
+
+  async function submitQuestion(event) {
+    event?.preventDefault?.();
+    if (sendingRef.current) return;
+    const clean = question.trim();
+    if (!clean) return;
+    sendingRef.current = true;
+    setSending(true);
+    setQuestion('');
+    followLatestRef.current = true;
+    const localUserId = `user-${Date.now()}`;
     const loadingId = `loading-${Date.now()}`;
     setMessages((current) => [
       ...current,
-      { role: 'user', text: cleanQuestion },
-      { role: 'assistant', loading: true, id: loadingId }
+      { id: localUserId, role: 'user', text: clean },
+      { id: loadingId, role: 'assistant', loading: true }
     ]);
-    setQuestion('');
-    setIsSubmitting(true);
 
     try {
-      const payload = await loadPulseAiPlan(cleanQuestion);
+      let conversationId = activeConversationId;
+      if (!conversationId) {
+        try {
+          conversationId = await createConversation();
+        } catch {
+          conversationId = '';
+        }
+      }
+      const path = conversationId
+        ? `/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}/messages`
+        : '/api/pulse-ai/v1/system/questions';
+      const payload = await postJson(path, {
+        conversationId: conversationId || null,
+        question: clean,
+        mode: 'system_help',
+        detailLevel: 'comprehensive',
+        includeApiInventory: true,
+        includeTroubleshooting: true,
+        includeFutureEnhancement: true,
+        includeAuthorizedProjectDocuments: true,
+        usePrivateModelWhenAvailable: true
+      });
+      const result = payload.result;
       setMessages((current) => current.map((message) =>
         message.id === loadingId
-          ? { role: 'assistant', payload, id: `answer-${Date.now()}` }
+          ? { id: result?.assistantMessageId || loadingId, role: 'assistant', payload: result, text: result?.answer?.directConclusion || '' }
           : message
       ));
+      const returnedConversationId = result?.conversationId || conversationId;
+      if (returnedConversationId) setActiveConversationId(returnedConversationId);
+      try {
+        await refreshConversationList(returnedConversationId);
+      } catch {
+        // The completed answer remains in memory even if the history refresh is temporarily unavailable.
+      }
     } catch (error) {
-      const fallback = fallbackAnswer(cleanQuestion);
-      setMessages((current) => current.map((message) =>
-        message.id === loadingId
-          ? {
-              role: 'assistant',
-              fallback,
-              warning: error instanceof Error
-                ? `The detailed Pulse AI Help service was unavailable: ${error.message}`
-                : 'The detailed Pulse AI Help service was unavailable.',
-              id: `fallback-${Date.now()}`
-            }
-          : message
-      ));
+      try {
+        const legacyPayload = await loadLegacyPlan(clean);
+        setMessages((current) => current.map((message) =>
+          message.id === loadingId
+            ? { id: loadingId, role: 'assistant', legacyPayload }
+            : message
+        ));
+      } catch {
+        setMessages((current) => current.map((message) =>
+          message.id === loadingId
+            ? { id: loadingId, role: 'assistant', error: error instanceof Error ? error.message : 'Pulse AI could not complete this question.' }
+            : message
+        ));
+      }
     } finally {
-      setIsSubmitting(false);
+      sendingRef.current = false;
+      setSending(false);
+      window.setTimeout(() => inputRef.current?.focus(), 40);
     }
   }
 
-  function closePanel() {
+  function onInputKeyDown(event) {
+    if (event.nativeEvent?.isComposing || event.isComposing) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsOpen(false);
+      return;
+    }
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
+  async function selectConversation(event) {
+    const id = event.target.value;
+    setActiveConversationId(id);
+    try {
+      await loadConversation(id);
+    } catch (error) {
+      setMessages([{ id: 'history-error', role: 'assistant', error: error instanceof Error ? error.message : 'Conversation history could not be loaded.' }]);
+    }
+  }
+
+  function openRoute(route) {
     setIsOpen(false);
-  }
-
-  function openCompleteGuide() {
-    closePanel();
-    window.location.hash = 'user-guide';
-  }
-
-  function openPulseAi() {
-    closePanel();
-    window.location.hash = 'work-task-builder';
-  }
-
-  function openDefectTracker() {
-    closePanel();
-    const destination = new URL(window.location.href);
-    destination.searchParams.set('defectSource', 'help');
-    destination.hash = 'defect-tracker';
-    window.location.assign(destination.toString());
+    window.location.hash = route;
   }
 
   return (
     <>
-      <button className="help-launcher" type="button" onClick={() => setIsOpen(true)}>
+      <button type="button" className="help-launcher" onClick={() => setIsOpen((current) => !current)}>
         Ask Pulse AI
       </button>
-
       {isOpen ? (
-        <aside className="help-panel pulse-ai-help-panel" aria-label="Pulse AI ProjectPulse help and search assistant">
+        <aside className="help-panel pulse-ai-help-panel pulse-ai-system-chat" aria-label="Pulse AI system intelligence assistant">
           <div className="help-header">
             <div>
-              <strong>Pulse AI Help & Search</strong>
-              <span>Detailed, permission-aware ProjectPulse guidance</span>
+              <strong>Pulse AI</strong>
+              <span>Detailed answers · live APIs · troubleshooting · future enhancements</span>
             </div>
-            <button type="button" onClick={closePanel} aria-label="Close help assistant">
-              ×
-            </button>
+            <button type="button" aria-label="Close Pulse AI" onClick={() => setIsOpen(false)}>×</button>
+          </div>
+
+          <div className="pulse-ai-conversation-toolbar">
+            <label>
+              Conversation
+              <select value={activeConversationId} onChange={selectConversation} disabled={historyLoading}>
+                {!activeConversationId ? <option value="">Current session</option> : null}
+                {conversations.map((conversation) => (
+                  <option key={conversation.conversationId} value={conversation.conversationId}>
+                    {conversation.title} · {conversation.messageCount} messages
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => void createConversation()} disabled={historyLoading || sending}>New conversation</button>
+            <span>{activeConversation ? `Updated ${formatDate(activeConversation.updatedAt)}` : 'Server history loads when available'}</span>
           </div>
 
           <div className="help-quick-actions">
-            <button className="help-full-guide-button" type="button" onClick={openCompleteGuide}>
-              Module 999 — System User Guide
-            </button>
-            <button className="help-pulse-ai-button" type="button" onClick={openPulseAi}>
-              Module 011 — Pulse AI Workbench
-            </button>
-            <button className="help-report-defect-button" type="button" onClick={openDefectTracker}>
-              Report a defect — Module 076
-            </button>
+            <button type="button" className="help-full-guide-button" onClick={() => openRoute('user-guide')}>Complete User Guide</button>
+            <button type="button" className="help-pulse-ai-button" onClick={() => openRoute('work-task-builder')}>Pulse AI Workbench</button>
+            <button type="button" className="help-report-defect-button" onClick={() => openRoute('defect-tracker')}>Report a Defect</button>
           </div>
 
-          {/* GROUP_7_HELP_GOVERNANCE_PANEL_START */}
-          <HelpGovernancePanel />
-          {/* GROUP_7_HELP_GOVERNANCE_PANEL_END */}
-          <div className="help-messages">
-            {messages.map((message, index) => (
-              message.role === 'user' ? (
-                <div className="help-message user" key={message.id || `user-${index}`}>{message.text}</div>
-              ) : (
-                <AssistantMessage message={message} close={closePanel} key={message.id || `assistant-${index}`} />
-              )
-            ))}
+          <div
+            ref={messagesRef}
+            className="help-messages"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            tabIndex={0}
+            onScroll={onConversationScroll}
+          >
+            {historyLoading && messages.length === 1 ? <div className="help-message assistant help-message-loading">Loading durable conversation history…</div> : null}
+            {messages.map((message) => message.role === 'user'
+              ? <div key={message.id} className="help-message user">{message.text}</div>
+              : <AssistantMessage key={message.id} message={message} close={() => setIsOpen(false)} />)}
           </div>
 
           <div className="help-suggestions" aria-label="Suggested Pulse AI questions">
-            {suggestions.map((suggestion) => (
-              <button type="button" key={suggestion} onClick={() => submitQuestion(suggestion)} disabled={isSubmitting}>
+            {QUICK_QUESTIONS.map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => { setQuestion(suggestion); inputRef.current?.focus(); }}>
                 {suggestion}
               </button>
             ))}
           </div>
 
-          <form
-            className="help-input-row"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitQuestion();
-            }}
-          >
+          <form className="help-input-row" onSubmit={submitQuestion}>
             <textarea
+              ref={inputRef}
               value={question}
-              rows={2}
-              placeholder="Ask a detailed question about any authorized ProjectPulse function…"
               onChange={(event) => setQuestion(event.target.value)}
-              disabled={isSubmitting}
+              onKeyDown={onInputKeyDown}
+              placeholder="Ask about any module, API, error, report, financial, document, workflow, architecture, or future enhancement…"
+              rows={3}
+              aria-label="Ask Pulse AI"
+              aria-keyshortcuts="Enter Shift+Enter Escape"
+              disabled={sending}
             />
-            <button type="submit" disabled={isSubmitting || !question.trim()}>
-              {isSubmitting ? 'Analyzing…' : 'Ask'}
-            </button>
+            <button type="submit" disabled={sending || !question.trim()}>{sending ? 'Working…' : 'Ask'}</button>
+            <span className="pulse-ai-help-keyboard-hint">Enter sends · Shift+Enter adds a line · Escape closes · completed responses remain in conversation history</span>
           </form>
         </aside>
       ) : null}

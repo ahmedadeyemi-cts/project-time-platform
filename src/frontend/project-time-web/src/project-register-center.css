@@ -1,6 +1,7 @@
 .project-register-center {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .project-register-hero {
@@ -26,8 +27,15 @@
   line-height: 1.55;
 }
 
+.project-register-hero small {
+  display: block;
+  margin-top: 0.65rem;
+  color: var(--muted-text, #52687b);
+}
+
 .project-register-hero-actions,
-.project-register-drawer footer {
+.project-register-drawer footer,
+.project-register-pagination {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
@@ -47,16 +55,12 @@
   border: 1px solid rgba(8, 64, 104, 0.2);
   border-radius: 0.75rem;
   background: rgba(0, 159, 227, 0.08);
+  line-height: 1.45;
 }
 
 .project-register-banner.warning {
   border-color: rgba(190, 125, 0, 0.35);
   background: rgba(255, 190, 60, 0.12);
-}
-
-.project-register-banner.error {
-  border-color: rgba(172, 42, 42, 0.35);
-  background: rgba(172, 42, 42, 0.08);
 }
 
 .project-register-summary {
@@ -91,8 +95,7 @@
 }
 
 .project-register-summary small,
-.project-register-table small,
-.project-register-detail-list span {
+.project-register-table small {
   display: block;
   line-height: 1.35;
 }
@@ -104,7 +107,8 @@
   align-items: end;
 }
 
-.project-register-toolbar label {
+.project-register-toolbar label,
+.project-register-pagination label {
   display: grid;
   gap: 0.35rem;
   font-size: 0.78rem;
@@ -112,7 +116,8 @@
 }
 
 .project-register-toolbar input,
-.project-register-toolbar select {
+.project-register-toolbar select,
+.project-register-pagination select {
   width: 100%;
   min-height: 2.65rem;
   padding: 0.55rem 0.7rem;
@@ -122,26 +127,53 @@
   color: inherit;
 }
 
-.project-register-totalbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem 1.3rem;
-  padding: 0.75rem 0.9rem;
+.project-register-pagination {
+  justify-content: flex-end;
+  padding: 0.7rem 0.85rem;
   border-radius: 0.7rem;
   background: rgba(8, 64, 104, 0.06);
   font-size: 0.82rem;
 }
 
+.project-register-pagination label {
+  grid-auto-flow: column;
+  align-items: center;
+}
+
+.project-register-pagination select {
+  width: auto;
+  min-height: 2.1rem;
+  padding: 0.3rem 1.8rem 0.3rem 0.45rem;
+}
+
+.project-register-pagination button {
+  min-height: 2.15rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(8, 64, 104, 0.22);
+  border-radius: 0.55rem;
+  background: var(--panel-bg, #fff);
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-register-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .project-register-table-wrap {
-  overflow: auto;
   max-width: 100%;
+  max-height: min(62vh, 46rem);
+  overflow: auto;
   border: 1px solid rgba(8, 64, 104, 0.16);
   border-radius: 0.9rem;
+  overscroll-behavior: contain;
 }
 
 .project-register-table {
   width: 100%;
-  min-width: 112rem;
+  min-width: 104rem;
   border-collapse: separate;
   border-spacing: 0;
   background: var(--panel-bg, #fff);
@@ -158,16 +190,34 @@
 .project-register-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--panel-bg, #fff);
   color: var(--heading-color, #072d59);
   font-size: 0.75rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  box-shadow: 0 1px 0 rgba(8, 64, 104, 0.14);
 }
 
 .project-register-table tbody tr:hover {
   background: rgba(0, 159, 227, 0.045);
+}
+
+.project-register-table td > strong:first-child {
+  font-size: 0.92rem;
+}
+
+.project-register-immutable-id {
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+  opacity: 0.58;
+  font-size: 0.68rem;
+}
+
+.project-register-latest-note {
+  max-width: 26rem;
+  margin: 0;
+  line-height: 1.4;
 }
 
 .project-register-state {
@@ -206,9 +256,8 @@
   cursor: pointer;
 }
 
-.project-register-empty-cell,
-.project-register-empty-copy {
-  padding: 1.5rem;
+.project-register-empty-cell {
+  padding: 2rem;
   text-align: center;
   opacity: 0.72;
 }
@@ -224,12 +273,6 @@
   line-height: 1.45;
 }
 
-.project-register-governance-grid button[disabled] {
-  justify-self: start;
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .project-register-drawer-backdrop {
   position: fixed;
   inset: 0;
@@ -241,7 +284,7 @@
 }
 
 .project-register-drawer {
-  width: min(50rem, 96vw);
+  width: min(52rem, 96vw);
   height: 100%;
   overflow-y: auto;
   padding: 1.2rem;
@@ -271,16 +314,15 @@
   line-height: 1.45;
 }
 
-.project-register-readonly-notice.managed {
-  border-left-color: #67b446;
-  background: rgba(103, 180, 70, 0.08);
+.project-register-readonly-notice code {
+  overflow-wrap: anywhere;
 }
 
 .project-register-detail-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem;
-  margin-bottom: 1rem;
+  margin: 1rem 0;
 }
 
 .project-register-detail-summary strong {
@@ -298,17 +340,34 @@
   margin-bottom: 0.7rem;
 }
 
-.project-register-detail-list {
+.project-register-timeline {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.7rem;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  overscroll-behavior: contain;
 }
 
-.project-register-detail-list article {
+.project-register-timeline article {
   display: grid;
-  gap: 0.2rem;
-  padding: 0.7rem;
-  border-radius: 0.6rem;
+  gap: 0.45rem;
+  padding: 0.8rem;
+  border-radius: 0.65rem;
   background: rgba(8, 64, 104, 0.045);
+}
+
+.project-register-timeline article header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.project-register-timeline article p,
+.project-register-timeline article small {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .project-register-drawer footer {
@@ -356,12 +415,10 @@
 }
 
 @media (max-width: 700px) {
-  .project-register-hero {
-    display: grid;
-  }
-
+  .project-register-hero,
   .project-register-hero-actions,
-  .project-register-drawer footer {
+  .project-register-drawer footer,
+  .project-register-pagination {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -379,5 +436,56 @@
 
   .project-register-drawer {
     width: 100%;
+  }
+
+  .project-register-pagination label {
+    grid-auto-flow: row;
+  }
+}
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+
+  .enterprise-top-navigation,
+  .enterprise-sidebar,
+  .project-register-hero-actions,
+  .project-register-toolbar,
+  .project-register-pagination,
+  .project-register-row-action,
+  .project-register-inline-link,
+  .project-register-governance-grid,
+  .project-register-drawer-backdrop,
+  .uss-session-intelligence-dock,
+  .administrator-view-as-dock {
+    display: none !important;
+  }
+
+  .project-register-center {
+    display: block;
+  }
+
+  .project-register-hero {
+    margin-bottom: 1rem;
+    border: 0;
+    border-bottom: 3px solid #003b5c;
+    border-radius: 0;
+    background: #fff !important;
+  }
+
+  .project-register-table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+  }
+
+  .project-register-table {
+    min-width: 0;
+    font-size: 8pt;
+  }
+
+  .project-register-table thead th {
+    position: static;
   }
 }

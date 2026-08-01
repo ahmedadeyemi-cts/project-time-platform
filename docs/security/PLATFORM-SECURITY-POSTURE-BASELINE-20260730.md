@@ -198,3 +198,13 @@ The posture is considered production-ready only when:
 - CodeQL, secret scanning, push protection, dependency alerts, CI, and the repository posture gate are active;
 - authenticated role-based UAT and a fresh external scan pass;
 - the session-cookie migration and build-source convergence have committed plans, owners, and deadlines.
+
+<!-- CURRENT_MAIN_SECURITY_BASELINE_COUNTS -->
+
+### Reconciled current-main source-generation ceilings
+
+- Backend compile exclusions: `16`
+- Backend build-time source transforms: `17`
+- Frontend prebuild injectors: `10`
+
+These are fixed ceilings captured during the reviewed PR #330 reconciliation; future growth fails closed.

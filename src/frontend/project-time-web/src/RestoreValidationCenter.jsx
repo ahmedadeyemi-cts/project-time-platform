@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import './restore-validation-center.css';
-import PlatformResiliencePlanningPanel from './PlatformResiliencePlanningPanel.jsx';
 
 const statusLabels = {
   ready: 'Ready',
@@ -199,9 +198,6 @@ export default function RestoreValidationCenter({ authSession }) {
 
   return (
     <section id="restore-validation-center" className="panel timesheet-page restore-validation-page">
-      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_START */}
-      <PlatformResiliencePlanningPanel moduleCode="015" authSession={authSession} />
-      {/* GROUP_2B_PROVIDER_NEUTRAL_RESILIENCE_END */}
       <section className="restore-validation-hero">
         <div>
           <p className="restore-validation-eyebrow">System Operations</p>

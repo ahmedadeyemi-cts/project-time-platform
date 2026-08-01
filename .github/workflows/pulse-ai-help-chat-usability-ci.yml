@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'fix/module-011-help-chat-usability-*'
+      - 'feature/module-011-system-intelligence-troubleshooting-*'
+      - 'feature/module-011-celar-ai-runtime-rebrand-*'
   pull_request:
     paths:
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
@@ -39,65 +41,88 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify owned Help-chat scope or regression applicability
+      - name: Verify Help-chat ownership, Module 011 integration, or regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          OWNED_BRANCH='false'
-          CENTRAL_SECURITY_BRANCH='false'
-          if [[ "$HEAD_BRANCH" == fix/module-011-help-chat-usability-* ]]; then
-            OWNED_BRANCH='true'
-          elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
-            CENTRAL_SECURITY_BRANCH='true'
-          fi
-
-          ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
           HELP_RUNTIME_OWNED='^(src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs)$'
           CENTRAL_HELP_CONVERGENCE='^src/frontend/project-time-web/src/HelpAssistant\.jsx$'
 
-          if [[ "$OWNED_BRANCH" == 'true' ]]; then
-            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-            if [[ -n "$UNEXPECTED" ]]; then
-              echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
-              printf '%s\n' "$UNEXPECTED" >&2
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$CHANGED"; then
+              echo "Protected deployment file changed: $protected" >&2
               exit 1
             fi
+          done
 
-            if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
-              echo 'The Help chat hotfix cannot include a migration or deployment operation.' >&2
-              exit 1
-            fi
-
-            echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
-            echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
-          elif [[ "$CENTRAL_SECURITY_BRANCH" == 'true' ]]; then
-            DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-            UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
-            if [[ -n "$UNAPPROVED_HELP" ]]; then
-              echo 'The central security posture branch changed Help-chat source outside the reviewed canonical-source convergence boundary:' >&2
-              printf '%s\n' "$UNAPPROVED_HELP" >&2
-              exit 1
-            fi
-
-            echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
-            echo 'PULSE_AI_HELP_CHAT_CENTRAL_SECURITY_CONVERGENCE=PASSED'
-          else
-            DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-            if [[ -n "$DIRECT_HELP_CHANGES" ]]; then
-              echo 'Pulse AI Help-chat runtime source may only be changed from the isolated Help-chat branch family:' >&2
-              printf '%s\n' "$DIRECT_HELP_CHANGES" >&2
-              exit 1
-            fi
-
-            echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
-            echo 'PULSE_AI_HELP_CHAT_REGRESSION_APPLICABILITY=PASSED'
-          fi
+          case "$HEAD_BRANCH" in
+            fix/module-011-help-chat-usability-*)
+              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+              UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+              if [[ -n "$UNEXPECTED" ]]; then
+                echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
+                printf '%s\n' "$UNEXPECTED" >&2
+                exit 1
+              fi
+              if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The Help chat hotfix cannot include a migration or deployment operation.' >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
+              ;;
+            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*)
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in later Module 011 Help integration:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              UNEXPECTED_DEPLOYMENT="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+              if [[ "$HEAD_BRANCH" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+                UNEXPECTED_DEPLOYMENT="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$UNEXPECTED_DEPLOYMENT" || true)"
+              fi
+              if [[ -n "$UNEXPECTED_DEPLOYMENT" ]]; then
+                echo 'The Help chat integration workflow cannot validate a deployment operation.' >&2
+                printf '%s\n' "$UNEXPECTED_DEPLOYMENT" >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_LATER_MODULE_011_INTEGRATION=PASSED'
+              ;;
+            security/repository-posture-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The central security posture branch changed Help-chat source outside the reviewed canonical-source convergence boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_CENTRAL_SECURITY_CONVERGENCE=PASSED'
+              ;;
+            *)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              if [[ -n "$DIRECT_HELP_CHANGES" ]]; then
+                echo 'Pulse AI Help-chat runtime source may only be changed from the isolated Help-chat branch family:' >&2
+                printf '%s\n' "$DIRECT_HELP_CHANGES" >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+              echo "PULSE_AI_HELP_CHAT_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
+              ;;
+          esac
 
           grep -Fq 'GROUP_5_VALIDATION_MODE=REGRESSION' .github/workflows/group5-financial-operations-recovery-ci.yml
           grep -Fq 'GROUP5_RUNTIME_OWNED' .github/workflows/group5-financial-operations-recovery-ci.yml
@@ -128,7 +153,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 6 -name PulseAiQuestionPlanner.g.cs -print -quit)"
+          GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name PulseAiQuestionPlanner.g.cs -print -quit)"
           test -n "$GENERATED"
           grep -Fq 'PulseAiProductKnowledgeCatalog.Find(normalized) ?? FindKnowledgeAnswer(normalized)' "$GENERATED"
           echo "PULSE_AI_HELP_CHAT_GENERATED_PLANNER=$GENERATED"
@@ -148,8 +173,17 @@ jobs:
           grep -Fq 'Shift+Enter adds a line' /tmp/pulse-ai-help-chat.js
           grep -Fq '.pulse-ai-help-keyboard-hint' /tmp/pulse-ai-help-chat.css
           grep -Fq 'overscroll-behavior:contain' /tmp/pulse-ai-help-chat.css
+
+          git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
           git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
+          echo 'PULSE_AI_HELP_CHAT_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'PULSE_AI_HELP_CHAT_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
@@ -166,19 +200,19 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## Pulse AI Help Chat Usability'
+            echo '## Pulse AI / Celar AI Help Chat Usability'
             echo
             echo '- Conversation scrolling: restored'
             echo '- Enter submits: enabled'
             echo '- Shift+Enter newline: preserved'
             echo '- Escape closes: enabled'
-            echo '- Direct Pulse AI purpose answer: enabled'
+            echo '- Direct product-purpose answer: enabled'
             echo "- Validation mode: ${PULSE_AI_HELP_CHAT_VALIDATION_MODE:-UNKNOWN}"
-            echo '- Group 5 unrelated-PR regression mode: preserved'
+            echo '- Group 5 unrelated-PR regression mode: confirmed'
             echo '- API build: passed'
             echo '- Complete frontend build: passed'
+            echo '- Deterministic generated-source convergence: passed'
             echo '- Web container build: passed'
-            echo '- Database migration: none'
             echo '- Provider call added: none'
             echo '- Deployment performed: none'
           } >> "$GITHUB_STEP_SUMMARY"
