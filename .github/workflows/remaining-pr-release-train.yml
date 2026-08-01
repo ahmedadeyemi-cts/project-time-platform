@@ -141,8 +141,21 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$RUNNER_TEMP/remaining_pr_release_train.py"
-          python3 "$RUNNER_TEMP/remaining_pr_release_train.py"
+          controller="$RUNNER_TEMP/remaining_pr_release_train.py"
+          base64 --decode .github/scripts/remaining_pr_release_train.py.gz.b64 | gzip -d > "$controller"
+
+          python3 -m py_compile .github/scripts/patch_remaining_pr_release_train.py
+          python3 .github/scripts/patch_remaining_pr_release_train.py --check "$controller" \
+            | tee "$RUNNER_TEMP/remaining-pr-release-train-patch-check.json"
+          grep -Fq '"replacements": 1' "$RUNNER_TEMP/remaining-pr-release-train-patch-check.json"
+
+          python3 .github/scripts/patch_remaining_pr_release_train.py "$controller" \
+            | tee "$RUNNER_TEMP/remaining-pr-release-train-patch-apply.json"
+          python3 -m py_compile "$controller"
+          grep -Fq 'PROJECTPULSE_RELEASE_TRAIN_GENERATED_SOURCE_CONVERGENCE_V1' "$controller"
+          grep -Fq '_projectpulse_validate_generated_source_convergence' "$controller"
+
+          python3 "$controller"
 
       - name: Capture exact failed reconciliation diagnostics
         if: failure()
