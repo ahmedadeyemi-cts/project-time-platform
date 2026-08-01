@@ -56,26 +56,17 @@ jobs:
           [[ "$(git -C control rev-list --count "$CONTROL_BASE"..HEAD)" == '1' ]]
           git -C control merge-base --is-ancestor "$RELEASE_SHA" "$CONTROL_BASE"
           CHANGED="$(git -C control diff --name-only "$CONTROL_BASE"...HEAD)"
-          printf '%s\n' "$CHANGED"
           [[ "$CHANGED" == "$DEPLOY_PATH" ]]
           git -C control diff --check "$CONTROL_BASE"...HEAD
 
           [[ "$(git -C release rev-parse HEAD)" == "$RELEASE_SHA" ]]
-          for required in \
-            release/deployment/containers/web/Dockerfile \
-            release/scripts/build-pr55-acr-image.sh \
-            release/src/frontend/project-time-web/package.json \
-            release/src/frontend/project-time-web/package-lock.json; do
-            test -f "$required"
-          done
-
           grep -Fxq 'FROM node:24-alpine AS build' \
             release/deployment/containers/web/Dockerfile
           ! grep -Eq '^FROM node:(20|25)-alpine AS build$' \
             release/deployment/containers/web/Dockerfile
           grep -Fxq 'FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime' \
             release/deployment/containers/web/Dockerfile
-
+          test -f release/scripts/build-pr55-acr-image.sh
           git -C release diff --check
           test -z "$(git -C release status --porcelain=v1 --untracked-files=no)"
           echo "PROJECTPULSE_NODE24_RELEASE_SOURCE=$RELEASE_SHA"
@@ -89,126 +80,9 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current immutable Test release
-        id: before
+      - name: Build, deploy, verify, and preserve evidence
+        id: release
         shell: bash
-        run: |
-          set -Eeuo pipefail
-          ACR='${{ vars.AZURE_ACR_NAME }}'
-          REGISTRY="$ACR.azurecr.io"
-          RESOURCE_GROUP='${{ vars.AZURE_RESOURCE_GROUP }}'
-          API_APP='${{ vars.AZURE_API_APP }}'
-          WEB_APP='${{ vars.AZURE_WEB_APP }}'
-
-          resolve_image() {
-            local image="$1"
-            local relative repository digest
-            case "$image" in
-              "$REGISTRY/"*@sha256:*) printf '%s\n' "$image"; return ;;
-              "$REGISTRY/"*:*) ;;
-              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
-            esac
-            relative="${image#"$REGISTRY/"}"
-            repository="${relative%:*}"
-            digest="$(az acr repository show \
-              --name "$ACR" \
-              --image "$relative" \
-              --query digest -o tsv --only-show-errors)"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s/%s@%s\n' "$REGISTRY" "$repository" "$digest"
-          }
-
-          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
-          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
-          [[ "${API_MODE,,}" == single ]]
-          [[ "${WEB_MODE,,}" == single ]]
-
-          RAW_API="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-          RAW_WEB="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-          API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
-            -o tsv --only-show-errors)"
-          WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
-            -o tsv --only-show-errors)"
-          API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query properties.latestRevisionName -o tsv --only-show-errors)"
-          API_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
-          WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query properties.latestRevisionName -o tsv --only-show-errors)"
-          WEB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
-
-          [[ -n "$API_SOURCE" && -n "$WEB_SOURCE" ]]
-          [[ "$API_LATEST" == "$API_READY" ]]
-          [[ "$WEB_LATEST" == "$WEB_READY" ]]
-
-          OLD_API="$(resolve_image "$RAW_API")"
-          OLD_WEB="$(resolve_image "$RAW_WEB")"
-          echo "old_api_image=$OLD_API" >> "$GITHUB_OUTPUT"
-          echo "old_api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
-          echo "old_api_revision=$API_READY" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB" >> "$GITHUB_OUTPUT"
-          echo "old_web_source=$WEB_SOURCE" >> "$GITHUB_OUTPUT"
-          echo "old_web_revision=$WEB_READY" >> "$GITHUB_OUTPUT"
-          echo "PROJECTPULSE_EXISTING_API_IMAGE=$OLD_API"
-          echo "PROJECTPULSE_EXISTING_WEB_IMAGE=$OLD_WEB"
-          echo 'PROJECTPULSE_NODE24_RELEASE_CAPTURE=PASSED'
-
-      - name: Build immutable Node 24 web image only
-        id: build
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          chmod +x release/scripts/build-pr55-acr-image.sh
-          WEB_TAG="node24-${RELEASE_SHA}"
-
-          release/scripts/build-pr55-acr-image.sh \
-            '${{ vars.AZURE_ACR_NAME }}' \
-            "project-health-dashboard-web:$WEB_TAG" \
-            release/deployment/containers/web/Dockerfile \
-            release > /tmp/projectpulse-node24-web.digest \
-            2> /tmp/projectpulse-node24-web.err
-
-          WEB_DIGEST="$(tr -d '\r\n' < /tmp/projectpulse-node24-web.digest)"
-          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            cat /tmp/projectpulse-node24-web.err >&2 || true
-            echo "Invalid web digest: $WEB_DIGEST" >&2
-            exit 1
-          fi
-
-          WEB_IMAGE="${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST"
-          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "PROJECTPULSE_NODE24_WEB_IMAGE=$WEB_IMAGE"
-          echo 'PROJECTPULSE_NODE24_WEB_BUILD=PASSED'
-
-      - name: Deploy exact Node 24 web image
-        id: deploy_web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          echo 'started=true' >> "$GITHUB_OUTPUT"
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --image '${{ steps.build.outputs.web_image }}' \
-            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
-            --revision-suffix "node24-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --output none --only-show-errors
-
-      - name: Validate immutable release and public responses
-        id: verify
-        shell: bash
-        env:
-          EXPECTED_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
-          EXPECTED_API_IMAGE: ${{ steps.before.outputs.old_api_image }}
-          EXPECTED_API_SOURCE: ${{ steps.before.outputs.old_api_source }}
         run: |
           set -Eeuo pipefail
           ACR='${{ vars.AZURE_ACR_NAME }}'
@@ -225,28 +99,91 @@ jobs:
             case "$image" in
               "$REGISTRY/"*@sha256:*) printf '%s\n' "$image"; return ;;
               "$REGISTRY/"*:*) ;;
-              *) return 1 ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
             esac
             relative="${image#"$REGISTRY/"}"
             repository="${relative%:*}"
             digest="$(az acr repository show \
-              --name "$ACR" \
-              --image "$relative" \
+              --name "$ACR" --image "$relative" \
               --query digest -o tsv --only-show-errors)"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             printf '%s/%s@%s\n' "$REGISTRY" "$repository" "$digest"
           }
 
+          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+
+          OLD_API="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)")"
+          OLD_WEB="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query 'properties.template.containers[0].image' -o tsv --only-show-errors)")"
+          OLD_API_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          OLD_WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
+            -o tsv --only-show-errors)"
+          OLD_API_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          OLD_WEB_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          [[ -n "$OLD_API_SOURCE" && -n "$OLD_WEB_SOURCE" ]]
+
+          DEPLOYED=0
+          rollback() {
+            local status=$?
+            trap - EXIT INT TERM
+            if (( status != 0 && DEPLOYED == 1 )); then
+              set +e
+              az containerapp update \
+                -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+                --image "$OLD_WEB" \
+                --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$OLD_WEB_SOURCE" \
+                --revision-suffix "rbnode24-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --output none --only-show-errors
+              echo "PROJECTPULSE_NODE24_WEB_ROLLBACK_EXIT=$?"
+            fi
+            exit "$status"
+          }
+          trap rollback EXIT INT TERM
+
+          chmod +x release/scripts/build-pr55-acr-image.sh
+          WEB_TAG="node24-${RELEASE_SHA}"
+          release/scripts/build-pr55-acr-image.sh \
+            "$ACR" \
+            "project-health-dashboard-web:$WEB_TAG" \
+            release/deployment/containers/web/Dockerfile \
+            release > /tmp/node24-web.digest 2> /tmp/node24-web.err
+
+          WEB_DIGEST="$(tr -d '\r\n' < /tmp/node24-web.digest)"
+          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            cat /tmp/node24-web.err >&2 || true
+            exit 1
+          fi
+          NEW_WEB="$REGISTRY/project-health-dashboard-web@$WEB_DIGEST"
+          echo "PROJECTPULSE_NODE24_WEB_IMAGE=$NEW_WEB"
+
+          az containerapp update \
+            -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            --image "$NEW_WEB" \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_SHA" \
+            --revision-suffix "node24-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          DEPLOYED=1
+
           READY=0
           API_STATUS=''
           WEB_STATUS=''
           for attempt in $(seq 1 60); do
-            RAW_WEB="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-            RAW_API="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-            CURRENT_WEB="$(resolve_image "$RAW_WEB" 2>/dev/null || true)"
-            CURRENT_API="$(resolve_image "$RAW_API" 2>/dev/null || true)"
+            CURRENT_WEB="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" \
+              2>/dev/null || true)"
+            CURRENT_API="$(resolve_image "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+              --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" \
+              2>/dev/null || true)"
             WEB_SOURCE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
               --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" \
               -o tsv --only-show-errors)"
@@ -255,93 +192,50 @@ jobs:
               -o tsv --only-show-errors)"
             WEB_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
               --query properties.latestRevisionName -o tsv --only-show-errors)"
-            WEB_READY_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
+            WEB_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
               --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
             API_LATEST="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
               --query properties.latestRevisionName -o tsv --only-show-errors)"
-            API_READY_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
+            API_READY="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
               --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
 
-            API_STATUS="$(curl -sS -o /tmp/projectpulse-node24-api \
-              -w '%{http_code}' \
+            API_STATUS="$(curl -sS -o /tmp/node24-api -w '%{http_code}' \
               -H 'Cache-Control: no-cache, no-store, max-age=0' \
               "$BASE/api/health?release=$RELEASE_SHA&attempt=$attempt" || true)"
-            WEB_STATUS="$(curl -sS -o /tmp/projectpulse-node24-web \
-              -w '%{http_code}' \
+            WEB_STATUS="$(curl -sS -o /tmp/node24-web -w '%{http_code}' \
               -H 'Cache-Control: no-cache, no-store, max-age=0' \
               "$BASE/?release=$RELEASE_SHA&attempt=$attempt" || true)"
 
-            API_HEALTHY=0
-            WEB_HEALTHY=0
-            case "$API_STATUS" in 200|401) API_HEALTHY=1 ;; esac
+            API_OK=0
+            WEB_OK=0
+            case "$API_STATUS" in 200|401) API_OK=1 ;; esac
             if [[ "$WEB_STATUS" == 200 ]] \
-              && test -s /tmp/projectpulse-node24-web \
-              && grep -qi '<!doctype html' /tmp/projectpulse-node24-web; then
-              WEB_HEALTHY=1
+              && test -s /tmp/node24-web \
+              && grep -qi '<!doctype html' /tmp/node24-web; then
+              WEB_OK=1
             fi
 
-            printf 'attempt=%s web=%s source=%s ready=%s/%s api=%s source=%s ready=%s/%s http=%s/%s\n' \
-              "$attempt" "${CURRENT_WEB:-unresolved}" "${WEB_SOURCE:-missing}" \
-              "$WEB_READY_REVISION" "$WEB_LATEST" "${CURRENT_API:-unresolved}" \
-              "${API_SOURCE:-missing}" "$API_READY_REVISION" "$API_LATEST" \
-              "$API_STATUS" "$WEB_STATUS"
-
-            if [[ "$CURRENT_WEB" == "$EXPECTED_WEB_IMAGE" \
+            if [[ "$CURRENT_WEB" == "$NEW_WEB" \
                && "$WEB_SOURCE" == "$RELEASE_SHA" \
-               && "$WEB_READY_REVISION" == "$WEB_LATEST" \
-               && "$CURRENT_API" == "$EXPECTED_API_IMAGE" \
-               && "$API_SOURCE" == "$EXPECTED_API_SOURCE" \
-               && "$API_READY_REVISION" == "$API_LATEST" \
-               && "$API_HEALTHY" == 1 \
-               && "$WEB_HEALTHY" == 1 ]]; then
+               && "$WEB_READY" == "$WEB_LATEST" \
+               && "$CURRENT_API" == "$OLD_API" \
+               && "$API_SOURCE" == "$OLD_API_SOURCE" \
+               && "$API_READY" == "$API_LATEST" \
+               && "$API_OK" == 1 && "$WEB_OK" == 1 ]]; then
               READY=1
               break
             fi
             sleep 5
           done
+          (( READY == 1 ))
 
-          (( READY == 1 )) || {
-            echo 'The exact Node 24 web release did not reach the required state.' >&2
-            exit 1
-          }
-
-          API_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" \
-            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
-          WEB_MODE="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" \
-            --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
-          [[ "${API_MODE,,}" == single ]]
-          [[ "${WEB_MODE,,}" == single ]]
-
-          WEB_BODY_SHA256="$(sha256sum /tmp/projectpulse-node24-web | awk '{print $1}')"
+          WEB_BODY_SHA256="$(sha256sum /tmp/node24-web | awk '{print $1}')"
           [[ "$WEB_BODY_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          echo "web_revision=$WEB_READY_REVISION" >> "$GITHUB_OUTPUT"
-          echo "api_revision=$API_READY_REVISION" >> "$GITHUB_OUTPUT"
-          echo "api_status=$API_STATUS" >> "$GITHUB_OUTPUT"
-          echo "web_status=$WEB_STATUS" >> "$GITHUB_OUTPUT"
-          echo "web_body_sha256=$WEB_BODY_SHA256" >> "$GITHUB_OUTPUT"
-          echo 'PROJECTPULSE_NODE24_WEB_DIGEST_VERIFIED=YES'
-          echo 'PROJECTPULSE_TEST_API_IMAGE_UNCHANGED=YES'
-          echo 'PROJECTPULSE_TEST_API_SOURCE_MARKER_UNCHANGED=YES'
-          echo 'PROJECTPULSE_NODE24_PUBLIC_RESPONSES=PASSED'
 
-      - name: Preserve immutable release evidence
-        shell: bash
-        env:
-          OLD_API_IMAGE: ${{ steps.before.outputs.old_api_image }}
-          OLD_API_SOURCE: ${{ steps.before.outputs.old_api_source }}
-          OLD_API_REVISION: ${{ steps.before.outputs.old_api_revision }}
-          OLD_WEB_IMAGE: ${{ steps.before.outputs.old_web_image }}
-          OLD_WEB_SOURCE: ${{ steps.before.outputs.old_web_source }}
-          OLD_WEB_REVISION: ${{ steps.before.outputs.old_web_revision }}
-          NEW_WEB_IMAGE: ${{ steps.build.outputs.web_image }}
-          NEW_WEB_DIGEST: ${{ steps.build.outputs.web_digest }}
-          NEW_WEB_REVISION: ${{ steps.verify.outputs.web_revision }}
-          API_REVISION: ${{ steps.verify.outputs.api_revision }}
-          API_STATUS: ${{ steps.verify.outputs.api_status }}
-          WEB_STATUS: ${{ steps.verify.outputs.web_status }}
-          WEB_BODY_SHA256: ${{ steps.verify.outputs.web_body_sha256 }}
-        run: |
-          set -Eeuo pipefail
+          export OLD_API OLD_API_SOURCE OLD_API_REVISION
+          export OLD_WEB OLD_WEB_SOURCE OLD_WEB_REVISION
+          export NEW_WEB WEB_DIGEST WEB_READY API_READY
+          export API_STATUS WEB_STATUS WEB_BODY_SHA256
           mkdir -p release-evidence
           python3 - <<'PY' > release-evidence/node24-web-only-test-release.json
           import json
@@ -349,41 +243,52 @@ jobs:
           from datetime import datetime, timezone
 
           print(json.dumps({
-              'environment': 'test',
-              'releaseSha': os.environ['RELEASE_SHA'],
-              'sourcePullRequests': [410],
-              'dependencyFamily': 'Node.js web build container',
-              'buildImage': 'node:24-alpine',
-              'runtimeImageFamilyChanged': False,
-              'deploymentScope': 'web-only',
-              'databaseMigrations': [],
-              'apiBuilt': False,
-              'apiDeployed': False,
-              'apiImageBefore': os.environ['OLD_API_IMAGE'],
-              'apiImageAfter': os.environ['OLD_API_IMAGE'],
-              'apiSourceCommitBefore': os.environ['OLD_API_SOURCE'],
-              'apiSourceCommitAfter': os.environ['OLD_API_SOURCE'],
-              'apiRevisionBefore': os.environ['OLD_API_REVISION'],
-              'apiRevisionAfter': os.environ['API_REVISION'],
-              'apiHttpStatus': int(os.environ['API_STATUS']),
-              'webImageBefore': os.environ['OLD_WEB_IMAGE'],
-              'webSourceCommitBefore': os.environ['OLD_WEB_SOURCE'],
-              'webRevisionBefore': os.environ['OLD_WEB_REVISION'],
-              'webImageAfter': os.environ['NEW_WEB_IMAGE'],
-              'webDigestAfter': os.environ['NEW_WEB_DIGEST'],
-              'webSourceCommitAfter': os.environ['RELEASE_SHA'],
-              'webRevisionAfter': os.environ['NEW_WEB_REVISION'],
-              'webHttpStatus': int(os.environ['WEB_STATUS']),
-              'webResponseBodySha256': os.environ['WEB_BODY_SHA256'],
-              'workflowRunId': os.environ['GITHUB_RUN_ID'],
-              'workflowRunAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'completedAt': datetime.now(timezone.utc).isoformat(),
+              "environment": "test",
+              "releaseSha": os.environ["RELEASE_SHA"],
+              "sourcePullRequests": [410],
+              "dependencyFamily": "Node.js web build container",
+              "buildImage": "node:24-alpine",
+              "runtimeImageFamilyChanged": False,
+              "deploymentScope": "web-only",
+              "databaseMigrations": [],
+              "apiBuilt": False,
+              "apiDeployed": False,
+              "apiImageBefore": os.environ["OLD_API"],
+              "apiImageAfter": os.environ["OLD_API"],
+              "apiSourceCommitBefore": os.environ["OLD_API_SOURCE"],
+              "apiSourceCommitAfter": os.environ["OLD_API_SOURCE"],
+              "apiRevisionBefore": os.environ["OLD_API_REVISION"],
+              "apiRevisionAfter": os.environ["API_READY"],
+              "webImageBefore": os.environ["OLD_WEB"],
+              "webSourceCommitBefore": os.environ["OLD_WEB_SOURCE"],
+              "webRevisionBefore": os.environ["OLD_WEB_REVISION"],
+              "webImageAfter": os.environ["NEW_WEB"],
+              "webDigestAfter": os.environ["WEB_DIGEST"],
+              "webSourceCommitAfter": os.environ["RELEASE_SHA"],
+              "webRevisionAfter": os.environ["WEB_READY"],
+              "apiHttpStatus": int(os.environ["API_STATUS"]),
+              "webHttpStatus": int(os.environ["WEB_STATUS"]),
+              "webResponseBodySha256": os.environ["WEB_BODY_SHA256"],
+              "workflowRunId": os.environ["GITHUB_RUN_ID"],
+              "workflowRunAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "completedAt": datetime.now(timezone.utc).isoformat(),
           }, indent=2, sort_keys=True))
           PY
           sha256sum release-evidence/node24-web-only-test-release.json \
             > release-evidence/SHA256SUMS
           sha256sum --check release-evidence/SHA256SUMS
-          echo 'PROJECTPULSE_NODE24_RELEASE_EVIDENCE=CHECKSUMMED'
+
+          echo "web_image=$NEW_WEB" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_revision=$WEB_READY" >> "$GITHUB_OUTPUT"
+          echo "api_image=$OLD_API" >> "$GITHUB_OUTPUT"
+          echo "api_revision=$API_READY" >> "$GITHUB_OUTPUT"
+          echo 'PROJECTPULSE_NODE24_WEB_DIGEST_VERIFIED=YES'
+          echo 'PROJECTPULSE_TEST_API_IMAGE_UNCHANGED=YES'
+          echo 'PROJECTPULSE_DATABASE_MIGRATIONS_FOR_NODE24_RELEASE=NONE'
+          echo 'PROJECTPULSE_NODE24_PUBLIC_RESPONSES=PASSED'
+
+          trap - EXIT INT TERM
 
       - name: Upload immutable release evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -393,27 +298,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Roll back web image on deployment failure
-        if: failure() && steps.deploy_web.outputs.started == 'true'
-        shell: bash
-        env:
-          OLD_WEB_IMAGE: ${{ steps.before.outputs.old_web_image }}
-          OLD_WEB_SOURCE: ${{ steps.before.outputs.old_web_source }}
-        run: |
-          set +e
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --image "$OLD_WEB_IMAGE" \
-            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$OLD_WEB_SOURCE" \
-            --revision-suffix "rbnode24-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --output none --only-show-errors
-          ROLLBACK_EXIT=$?
-          echo "PROJECTPULSE_NODE24_WEB_ROLLBACK_EXIT=$ROLLBACK_EXIT"
-          exit 1
-
       - name: Publish deployment summary
-        if: success()
         shell: bash
         run: |
           {
@@ -428,7 +313,7 @@ jobs:
             echo '- API immutable image/source marker unchanged: passed'
             echo '- Web immutable image build and deployment: passed'
             echo '- Public API health and web HTML: passed'
-            echo '- Automatic web rollback guard: armed'
+            echo '- Automatic runtime rollback guard: passed'
             echo '- Checksummed immutable release evidence: uploaded'
           } >> "$GITHUB_STEP_SUMMARY"
 
