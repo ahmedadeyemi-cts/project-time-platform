@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 # Preserve the repository-relative path used by the frontend validation
 # scripts while copying only the repository files they inspect.
