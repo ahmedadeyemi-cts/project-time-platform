@@ -126,7 +126,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Validate compiled Group 7 markers and source idempotence
+      - name: Validate compiled Group 7 markers and deterministic generated-source convergence
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -157,6 +157,14 @@ jobs:
           done
 
           git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
+          git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
+          echo 'GROUP_7_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'GROUP_7_FRONTEND_BUILD=PASSED'
           echo "GROUP_7_VALIDATION_MODE=${GROUP_7_VALIDATION_MODE:-UNKNOWN}"
