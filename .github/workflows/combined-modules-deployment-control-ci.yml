@@ -28,7 +28,7 @@ jobs:
           exit "$STATUS"
       - name: Upload deployment-control diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: combined-modules-deployment-control-diagnostics
           path: combined-modules-control-validation.log

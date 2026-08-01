@@ -258,7 +258,7 @@ jobs:
 
       - name: Upload deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: module-012-037-permissions-test-deployment-${{ github.run_id }}
           path: evidence/module-012-037-permissions-test-deployment.json

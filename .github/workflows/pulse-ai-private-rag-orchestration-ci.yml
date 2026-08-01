@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload API diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pulse-ai-private-rag-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: pulse-ai-private-rag-api-build.log
@@ -179,7 +179,7 @@ jobs:
 
       - name: Upload frontend diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pulse-ai-private-rag-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/pulse-ai-private-rag-frontend-build.log

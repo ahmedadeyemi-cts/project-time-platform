@@ -178,7 +178,7 @@ jobs:
           JSON
 
       - name: Upload immutable migration evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group4-migration-050-test-${{ github.run_id }}
           path: control/evidence/group4-migration-050-test.json

@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload Modules card-number deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: modules-card-numbers-test-deployment-${{ github.run_id }}
           path: evidence/modules-card-numbers-test-deployment.json

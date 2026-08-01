@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload source-contract diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2a-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group2a-source-contract.log
@@ -133,7 +133,7 @@ jobs:
 
       - name: Upload API build diagnostics
         if: always() && steps.api_build.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2a-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: group2a-api-build.log
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload frontend build diagnostics
         if: always() && steps.frontend_build.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2a-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group2a-frontend-build.log

@@ -251,7 +251,7 @@ jobs:
 
       - name: Upload direct runtime data deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: direct-runtime-data-test-deployment-${{ github.run_id }}
           path: evidence/direct-runtime-data-test-deployment.json

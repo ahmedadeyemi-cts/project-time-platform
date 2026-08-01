@@ -322,7 +322,7 @@ jobs:
 
       - name: Upload combined API validation diagnostics
         if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: combined-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/combined-api-validation
@@ -384,7 +384,7 @@ jobs:
 
       - name: Upload combined deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: combined-modules-test-deployment-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/combined-modules-001-005-012-037-038-test-deployment.json

@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload Group 3 source-contract diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group3-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group3-source-contract.log
@@ -137,7 +137,7 @@ jobs:
 
       - name: Upload Group 3 API-build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group3-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: group3-api-build.log
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload Group 3 frontend-build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group3-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group3-frontend-build.log

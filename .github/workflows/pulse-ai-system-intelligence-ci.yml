@@ -180,7 +180,7 @@ jobs:
 
       - name: Upload API diagnostics
         if: always() && steps.api_build.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pulse-ai-system-intelligence-api-${{ github.run_id }}-${{ github.run_attempt }}
           path: pulse-ai-system-intelligence-api-build.log
@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload frontend diagnostics
         if: always() && steps.frontend_build.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pulse-ai-system-intelligence-frontend-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/pulse-ai-system-intelligence-frontend-build.log

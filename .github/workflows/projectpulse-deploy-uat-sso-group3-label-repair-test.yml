@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload deployment diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: uat-sso-group3-pulse-ai-repair-test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload immutable deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: uat-sso-group3-pulse-ai-repair-test-${{ github.run_id }}
           path: control/evidence/uat-sso-group3-pulse-ai-repair-test-deployment.json

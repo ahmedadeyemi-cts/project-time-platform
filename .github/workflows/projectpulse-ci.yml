@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload migration 040 diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scoped-rbac-migration-040-diagnostics
           path: /tmp/scoped-rbac-migration-040.log
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload Module 001 migration 041 diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: module-001-migration-041-diagnostics
           path: /tmp/module-001-migration-041.log
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload PTC migration 043 diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ptc-time-steward-migration-043-diagnostics
           path: /tmp/ptc-time-steward-migration-043.log
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload Module 005 parser diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: module005-parser-test-diagnostics
           path: /tmp/module005-parser-tests.log
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload Module 005 migration diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: project-expense-migration-044-diagnostics
           path: /tmp/project-expense-migration-044.log
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload frontend build diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: projectpulse-frontend-build-diagnostics
           path: /tmp/projectpulse-frontend-build.log
@@ -254,7 +254,7 @@ jobs:
           JSON
 
       - name: Upload release manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: projectpulse-release-manifest
           path: artifacts/release-manifest.json

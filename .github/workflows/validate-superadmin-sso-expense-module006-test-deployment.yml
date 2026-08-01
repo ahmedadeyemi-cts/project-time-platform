@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload API build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: superadmin-sso-expense-module006-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: superadmin-sso-expense-module006-api-build.log
@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload frontend build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: superadmin-sso-expense-module006-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/superadmin-sso-expense-module006-frontend-build.log

@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload deployment guard diagnostics
         if: ${{ failure() && steps.deployment_guard.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-experience-deployment-guard-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/admin-experience-deployment-guard.log

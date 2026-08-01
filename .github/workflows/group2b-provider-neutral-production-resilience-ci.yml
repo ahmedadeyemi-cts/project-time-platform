@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload Group 2B source-contract diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2b-source-contract-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group2b-source-contract.log
@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload Group 2B API-build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2b-api-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: group2b-api-build.log
@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload Group 2B frontend-build diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: group2b-frontend-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/group2b-frontend-build.log

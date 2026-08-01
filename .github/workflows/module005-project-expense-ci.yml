@@ -57,7 +57,7 @@ jobs:
           exit "$STATUS"
       - name: Upload Module 005 API build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: module005-api-build-diagnostics
           path: /tmp/module005-api-build.log
@@ -74,7 +74,7 @@ jobs:
           exit "$STATUS"
       - name: Upload Module 005 parser diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: module005-parser-test-diagnostics
           path: /tmp/module005-parser-tests.log
@@ -91,7 +91,7 @@ jobs:
           exit "$STATUS"
       - name: Upload Module 005 migration diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-expense-migration-044-diagnostics
           path: /tmp/project-expense-migration-044.log
@@ -112,7 +112,7 @@ jobs:
           exit "$STATUS"
       - name: Upload Module 005 frontend contract diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: module005-frontend-contract-diagnostics
           path: /tmp/module005-frontend-contract.log

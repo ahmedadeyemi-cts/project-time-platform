@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload combined API diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: combined-modules-api-build-diagnostics
           path: /tmp/combined-api-build.log
@@ -74,7 +74,7 @@ jobs:
 
       - name: Upload combined API startup diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: combined-modules-api-startup-diagnostics
           path: |

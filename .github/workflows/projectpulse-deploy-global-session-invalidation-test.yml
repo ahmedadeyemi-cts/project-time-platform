@@ -418,7 +418,7 @@ jobs:
 
       - name: Upload combined deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: role-policy-audit-module065-test-${{ github.run_id }}
           path: evidence/role-policy-audit-module065-test-deployment.json

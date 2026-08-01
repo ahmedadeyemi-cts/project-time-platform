@@ -241,7 +241,7 @@ jobs:
 
       - name: Upload API validation diagnostics
         if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: microsoft-preview-mail-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/microsoft-preview-mail-api-validation
@@ -330,7 +330,7 @@ jobs:
 
       - name: Upload deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: microsoft-preview-mail-runtime-test-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/microsoft-preview-mail-runtime-test-deployment.json

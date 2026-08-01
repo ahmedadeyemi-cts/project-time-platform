@@ -302,7 +302,7 @@ jobs:
 
       - name: Upload API validation diagnostics
         if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-experience-api-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/admin-experience-api-validation
@@ -392,7 +392,7 @@ jobs:
 
       - name: Upload deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-experience-008-009-test-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence/admin-experience-008-009-test-deployment.json

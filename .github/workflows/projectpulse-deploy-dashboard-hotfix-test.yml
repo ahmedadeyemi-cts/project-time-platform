@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload dashboard hotfix deployment evidence
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dashboard-hotfix-test-deployment-${{ github.run_id }}
           path: evidence/dashboard-hotfix-test-deployment.json
