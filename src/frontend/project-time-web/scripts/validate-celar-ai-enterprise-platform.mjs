@@ -73,12 +73,29 @@ assert('ENTERPRISE_MOUNT', panel.includes("import CelarAiEnterprisePlatform") &&
 assert('COMPOSER_INTERFACE', composer.includes("'/api/celar-ai/v1/compose'") && composer.includes('Download SVG') && composer.includes('Mermaid source') && composer.includes('Allow generic sanitized fallback'), 'composer supports private artifacts, diagrams, and explicit fallback consent');
 assert('CHAT_NORMAL_SIZE', chatCss.includes('width: min(560px') && chatCss.includes('height: min(720px') && chatCss.includes('resize: both'), 'chat defaults to a normal resizable working-companion window');
 assert('CHAT_SIZE_CONTROLS', ['is-size-compact', 'is-size-standard', 'is-size-wide', 'is-size-fullscreen', 'is-minimized'].every((value) => chatCss.includes(value)), 'compact, standard, wide, fullscreen, and minimized states exist');
-assert('FRESH_CHAT_DEFAULT', chatInjector.includes('fresh_thread_no_previous_conversation_context') && chatInjector.includes('setMessages([WELCOME_MESSAGE])') && !chatInjector.includes('await loadConversation(selected)'), 'opening the chat starts fresh rather than automatically loading the latest thread');
-assert('HISTORY_EXPLICIT', chatInjector.includes('History') && chatInjector.includes('loadHistoricalConversation'), 'history is loaded only through explicit user selection');
+assert(
+  'FRESH_CHAT_DEFAULT',
+  chatInjector.includes("setActiveConversationId('');")
+    && chatInjector.includes('setMessages([WELCOME_MESSAGE])')
+    && chatInjector.includes('await refreshConversationList();')
+    && chatInjector.includes('CELAR_AI_CONTEXTUAL_CHAT_FRESH_THREAD_DEFAULT=YES')
+    && !chatInjector.includes('await loadConversation(selected)'),
+  'opening the chat lists retained history but starts a fresh visible thread');
+assert(
+  'HISTORY_EXPLICIT',
+  chatInjector.includes('await loadConversation(id)')
+    && chatInjector.includes('setHistoryOpen(false)')
+    && chatInjector.includes('CELAR_AI_CONTEXTUAL_CHAT_HISTORY_AUTO_INJECTED=NO'),
+  'history is loaded only after the user selects a retained conversation');
 assert('QUESTION_CONTEXT', contextInjector.includes('projectCode') && contextInjector.includes('personOrTeam') && contextInjector.includes('dateFrom') && contextInjector.includes('current question and selected thread'), 'project, person/team, and date context is explicit and current-question scoped');
 assert('CONTEXT_INJECTOR_ACTIVE', rebrandInjector.includes("inject-celar-ai-enterprise-chat-context.mjs"), 'enterprise context injection runs after contextual chat injection');
 assert('PEOPLE_AUTHORIZED_TOOLS', people.includes('/api/project-workspace/overview') && people.includes('/api/capacity-forecast/forecast?weeks=14') && people.includes('/api/manager/approval-summary'), 'people/work questions use governed owning APIs');
-assert('NO_SURVEILLANCE', people.includes('does not prove a person\'s real-time physical activity') && people.includes('employee surveillance are not enabled') && people.includes('Historical conversation text is retained separately and is not treated as evidence'), 'assignment and workload evidence is not misrepresented as surveillance');
+assert(
+  'NO_SURVEILLANCE',
+  people.includes("does not prove a person's real-time physical activity")
+    && people.includes('personnel surveillance')
+    && people.includes('does not use conversation history as evidence of what a person is currently doing'),
+  'assignment and workload evidence is not misrepresented as real-time surveillance');
 assert('HOW_TO_CATALOG', people.includes('Create a new project') && people.includes('Enter time and generate a document-grounded suggestion') && people.includes('Create a reviewable FlowHive project plan') && people.includes('Run reports and investigate financial or billing results'), 'common Pulse procedures are source controlled');
 assert('DOCUMENTATION', documentation.includes('Celar AI Enterprise Platform Interface') && documentation.includes('Created by') && documentation.includes('PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED'), 'architecture, operation, and fallback policy are documented');
 assert('NO_NEW_MIGRATION', !fs.readdirSync(path.join(repo, 'database', 'migrations')).some((name) => /celar.*enterprise|enterprise.*celar/i.test(name)), 'this interface package adds no database migration');
