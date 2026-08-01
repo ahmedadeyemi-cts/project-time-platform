@@ -7,8 +7,13 @@ on:
   pull_request:
     paths:
       - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - 'database/migrations/061_celar_ai_capability_routing.sql'
+      - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-ENTERPRISE-PLATFORM-INTERFACE.md'
+      - 'docs/modules/module-064-ai-provider-configuration/CELAR-AI-CAPABILITY-ROUTING.md'
+      - 'docs/modules/module-064-ai-provider-configuration/celar-ai-default-capability-routes.json'
       - 'src/backend/ProjectTime.Api/Directory.Build.targets'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs'
@@ -16,16 +21,20 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs'
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-capability-routing.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs'
       - 'src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiSolutionComposer.jsx'
       - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-architecture-overview.css'
+      - 'src/frontend/project-time-web/src/celar-ai-capability-routing-panel.css'
       - 'src/frontend/project-time-web/src/celar-ai-contextual-chat.css'
       - 'src/frontend/project-time-web/src/celar-ai-enterprise-chat-context.css'
       - 'src/frontend/project-time-web/src/celar-ai-enterprise-platform.css'
@@ -41,7 +50,21 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 110
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: projectpulse
+          POSTGRES_PASSWORD: projectpulse
+          POSTGRES_DB: projectpulse_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U projectpulse -d projectpulse_validation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Check out exact source
@@ -63,8 +86,16 @@ jobs:
           printf '%s\n' "$CHANGED"
           test -n "$CHANGED"
 
-          if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"; then
-            echo 'The Celar AI enterprise interface overlaps a prohibited migration, deployment, or provider-secret surface.' >&2
+          ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+          DISALLOWED_DATABASE="$(grep '^database/' <<<"$CHANGED" | grep -Ev "$ALLOWED_DATABASE" || true)"
+          if [[ -n "$DISALLOWED_DATABASE" ]]; then
+            echo 'The Celar AI enterprise package changed an unapproved database file:' >&2
+            printf '%s\n' "$DISALLOWED_DATABASE" >&2
+            exit 1
+          fi
+
+          if grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"; then
+            echo 'The Celar AI enterprise interface overlaps a prohibited deployment or existing provider-secret surface.' >&2
             exit 1
           fi
 
@@ -95,16 +126,63 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
+      - name: Validate migration 061 apply, repeat, rollback, and reapply
+        env:
+          PGPASSWORD: projectpulse
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation; then
+              break
+            fi
+            sleep 2
+          done
+          PSQL=(psql -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation -v ON_ERROR_STOP=1)
+          "${PSQL[@]}" -f database/migrations/061_celar_ai_capability_routing.sql
+          "${PSQL[@]}" -f database/migrations/061_celar_ai_capability_routing.sql
+          "${PSQL[@]}" -Atqc "
+            SELECT CASE WHEN
+              to_regclass('public.ai_capability_routes') IS NOT NULL AND
+              to_regclass('public.ai_capability_route_audit') IS NOT NULL AND
+              to_regclass('public.ai_private_model_profiles') IS NOT NULL AND
+              to_regclass('public.ai_private_model_profile_audit') IS NOT NULL AND
+              (SELECT count(*) FROM ai_capability_routes) = 7 AND
+              NOT EXISTS (
+                SELECT 1 FROM ai_capability_routes
+                WHERE route_targets <> '[\"celar_ai\",\"claude\",\"openai\",\"local_template\"]'::jsonb
+              )
+            THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
+          "${PSQL[@]}" -f database/rollback/061_celar_ai_capability_routing_rollback.sql
+          "${PSQL[@]}" -Atqc "
+            SELECT CASE WHEN
+              to_regclass('public.ai_capability_routes') IS NULL AND
+              to_regclass('public.ai_private_model_profiles') IS NULL
+            THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
+          "${PSQL[@]}" -f database/migrations/061_celar_ai_capability_routing.sql
+          echo 'CELAR_AI_MIGRATION_061=PASSED'
+
       - name: Validate enterprise source contract and injectors
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
+          node --check ./scripts/inject-celar-ai-capability-routing.mjs
           node --check ./scripts/inject-celar-ai-contextual-chat-workspace.mjs
           node --check ./scripts/inject-celar-ai-enterprise-chat-context.mjs
           node --check ./scripts/inject-celar-ai-runtime-rebrand.mjs
           node --check ./scripts/validate-celar-ai-enterprise-platform.mjs
           node ./scripts/validate-celar-ai-enterprise-platform.mjs
+
+          grep -Fq 'celar_ai' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'timesheet_non_project_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'timesheet_project_task_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'timesheet_service_request_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'Governed local template must remain the final fallback' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'MapCelarAiCapabilityRoutingEndpoints' ../../backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          grep -Fq 'endpointReturned = false' ../../backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          grep -Fq 'tokenReturned = false' ../../backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          echo 'CELAR_AI_CAPABILITY_ROUTING_SOURCE_CONTRACT=PASSED'
 
       - name: Build ProjectTime API
         shell: bash
@@ -112,12 +190,28 @@ jobs:
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee celar-ai-enterprise-api-build.log
           grep -Fq '0 Error(s)' celar-ai-enterprise-api-build.log
+
           GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiBrandModule.g.cs -print -quit)"
           test -n "$GENERATED"
           grep -Fq 'MapCelarAiEnterprisePlatformEndpoints' "$GENERATED"
+
           PEOPLE="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiPeopleAndGuidanceService.g.cs -print -quit)"
           test -n "$PEOPLE"
           grep -Fq 'persistence.EffectiveUserId' "$PEOPLE"
+
+          ROUTING="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiCapabilityRouting.g.cs -print -quit)"
+          test -n "$ROUTING"
+          grep -Fq 'privateResult' "$ROUTING"
+
+          TIMESHEET="$(find src/backend/ProjectTime.Api -maxdepth 8 -name ProjectPulseAiTimeEntrySuggestionService.g.cs -print -quit)"
+          test -n "$TIMESHEET"
+          grep -Fq 'CelarAiCapabilityRouter' "$TIMESHEET"
+          grep -Fq 'ResolveTimesheetFeature' "$TIMESHEET"
+
+          EXTERNAL="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiExternalReasoningService.g.cs -print -quit)"
+          test -n "$EXTERNAL"
+          grep -Fq 'GenerateExternalAsync' "$EXTERNAL"
+
           echo 'CELAR_AI_ENTERPRISE_API_BUILD=PASSED'
 
       - name: Install frontend dependencies
@@ -141,7 +235,12 @@ jobs:
             'Generate review draft' \
             'Download SVG' \
             'Fresh chat — no previous conversation context' \
-            'Add project, person/team, or date context'; do
+            'Add project, person/team, or date context' \
+            'Private-first targets and capability routing' \
+            '/api/ai-configuration/routes' \
+            '/api/ai-configuration/private-model/settings' \
+            '/api/ai-configuration/consumers' \
+            'Primary, secondary, tertiary, and final fallback'; do
             grep -Fq "$marker" /tmp/celar-enterprise.js
           done
           for marker in \
@@ -149,6 +248,7 @@ jobs:
             '.celar-ai-architecture-overview' \
             '.celar-ai-solution-composer' \
             '.celar-ai-question-context' \
+            '.celar-ai-routing' \
             'resize:both'; do
             grep -Fq "$marker" /tmp/celar-enterprise.css
           done
@@ -174,9 +274,12 @@ jobs:
             echo "- Exact head: \`${GITHUB_SHA}\`"
             echo '- Architecture: US Signal private-first diagram with Dr. Ahmed Adeyemi attribution'
             echo '- Chat: fresh by default, explicit history, normal resizable default, context controls'
-            echo '- Capabilities: people/work, How-to, Timesheet, SOW, planning, timeline, diagram, system intelligence'
-            echo '- External fallback: sanitized generic reasoning only, disabled by default'
-            echo '- Migration applied: no'
+            echo '- Capabilities: people/work, How-to, Timesheet, SOW, planning, timeline, diagram, closeout, system intelligence'
+            echo '- Module 064: editable primary, secondary, tertiary, and required local fallback routes'
+            echo '- Default route: Celar AI -> Claude -> OpenAI -> Governed local template'
+            echo '- Private model: write-only endpoint/token profile and sanitized readiness test'
+            echo '- External fallback: sanitized generic reasoning only; refusal stops routing'
+            echo '- Migration 061 source: validated apply/repeat/rollback/reapply; not applied to Test or Production'
             echo '- Deployment performed: no'
             echo '- Provider secret changed: no'
             echo '- State-changing business action: no'
