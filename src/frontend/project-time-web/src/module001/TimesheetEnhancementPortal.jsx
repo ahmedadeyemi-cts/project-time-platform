@@ -5,7 +5,9 @@ import TimesheetTimerView from './TimesheetTimerView.jsx';
 import { calculateTimerDuration, formatElapsedSeconds } from './timesheet-duration.js';
 import './timesheet-prep.css';
 import './module001-runtime-v2.css';
+import './module001-multi-timer.css';
 
+const MOBILE_KEY = 'projectPulseModule001MobileMode';
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const TIMER_TARGET_PATTERN = /^(?:(?:assignment|category):[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}|category-code:[A-Z0-9][A-Z0-9_-]{0,99})$/i;
 
@@ -14,22 +16,36 @@ function isTimesheetRoute() {
 }
 
 function readSlots() {
-  if (!isTimesheetRoute()) return { page: null, switcher: null, workspace: null, recovery: null };
+  const empty = { page: null, switcher: null, toolbar: null, workspace: null, recovery: null };
+  if (!isTimesheetRoute()) return empty;
   const page = document.querySelector('#timesheet.timesheet-page');
-  if (!page) return { page: null, switcher: null, workspace: null, recovery: null };
+  if (!page) return empty;
   return {
     page,
     switcher: page.querySelector('#module001-view-tab-host[data-projectpulse-react-owned-slot="true"]'),
+    toolbar: page.querySelector('#module001-toolbar-host[data-projectpulse-react-owned-slot="true"]'),
     workspace: page.querySelector('#module001-enhancement-view-host[data-projectpulse-react-owned-slot="true"]'),
     recovery: page.querySelector('#module001-active-timer-recovery-host[data-projectpulse-react-owned-slot="true"]')
   };
 }
 
 async function module001Api(path, options = {}) {
-  return authoritativeApi(path, {
-    ...options,
-    moduleNumber: '001'
-  });
+  return authoritativeApi(path, { ...options, moduleNumber: '001' });
+}
+
+async function loadTimerHistory(weekStart) {
+  const encodedWeekStart = encodeURIComponent(weekStart);
+  try {
+    return await module001Api(`/api/timesheet/timers/history-v2?weekStart=${encodedWeekStart}`, {
+      requiredCollections: ['timers']
+    });
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    if (![404, 405, 501].includes(status)) throw error;
+    return module001Api(`/api/timesheet/timers/history?weekStart=${encodedWeekStart}`, {
+      requiredCollections: ['timers']
+    });
+  }
 }
 
 function timerTargetValue(target = {}) {
@@ -60,6 +76,13 @@ function normalizeTargets(rows = []) {
   });
 }
 
+function timerValue(timer = {}) {
+  if (timer.assignmentId) return `assignment:${timer.assignmentId}`;
+  if (timer.nonProjectCategoryId) return `category:${timer.nonProjectCategoryId}`;
+  if (timer.nonProjectCategoryCode) return `category-code:${timer.nonProjectCategoryCode}`;
+  return '';
+}
+
 function activeTimerLabel(timer) {
   return [
     timer?.customerName,
@@ -68,18 +91,41 @@ function activeTimerLabel(timer) {
   ].filter(Boolean).join(' · ') || 'Authorized activity';
 }
 
+function batchTarget(value) {
+  if (value.startsWith('assignment:')) {
+    return { assignmentId: value.slice('assignment:'.length), nonProjectTimeCategoryId: null, nonProjectCategoryCode: null };
+  }
+  if (value.startsWith('category:')) {
+    return { assignmentId: null, nonProjectTimeCategoryId: value.slice('category:'.length), nonProjectCategoryCode: null };
+  }
+  if (value.startsWith('category-code:')) {
+    return { assignmentId: null, nonProjectTimeCategoryId: null, nonProjectCategoryCode: value.slice('category-code:'.length) };
+  }
+  return null;
+}
+
+function normalizeTimerArray(payload, pluralName, singularName) {
+  const plural = payload?.[pluralName] || payload?.[pluralName[0].toUpperCase() + pluralName.slice(1)];
+  if (Array.isArray(plural)) return plural;
+  const singular = payload?.[singularName] || payload?.[singularName[0].toUpperCase() + singularName.slice(1)];
+  return singular ? [singular] : [];
+}
+
 export default function TimesheetEnhancementPortal() {
   const [slots, setSlots] = useState(() => readSlots());
   const [snapshot, setSnapshot] = useState(() => window.__projectPulseModule001Snapshot || null);
   const [timerMode, setTimerMode] = useState(false);
+  const [mobileMode, setMobileMode] = useState(() => window.localStorage.getItem(MOBILE_KEY) === 'true');
   const [targets, setTargets] = useState([]);
-  const [activeTimer, setActiveTimer] = useState(null);
-  const [autoStoppedTimer, setAutoStoppedTimer] = useState(null);
+  const [activeTimers, setActiveTimers] = useState([]);
+  const [autoStoppedTimers, setAutoStoppedTimers] = useState([]);
   const [history, setHistory] = useState([]);
-  const [selectedTarget, setSelectedTarget] = useState('');
+  const [selectedTargets, setSelectedTargets] = useState([]);
   const [classification, setClassification] = useState('normal');
-  const [description, setDescription] = useState('');
-  const [busy, setBusy] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [timerDescriptions, setTimerDescriptions] = useState({});
+  const [maximumConcurrentTimers, setMaximumConcurrentTimers] = useState(5);
+  const [busyAction, setBusyAction] = useState('');
   const [message, setMessage] = useState('');
   const [clock, setClock] = useState(() => new Date());
 
@@ -89,6 +135,7 @@ export default function TimesheetEnhancementPortal() {
       setSlots((current) => (
         current.page === next.page
         && current.switcher === next.switcher
+        && current.toolbar === next.toolbar
         && current.workspace === next.workspace
         && current.recovery === next.recovery
       ) ? current : next);
@@ -111,8 +158,13 @@ export default function TimesheetEnhancementPortal() {
 
   useEffect(() => {
     document.body.classList.toggle('projectpulse-module001-timer-mode', Boolean(timerMode && slots.page));
-    return () => document.body.classList.remove('projectpulse-module001-timer-mode');
-  }, [slots.page, timerMode]);
+    slots.page?.classList.toggle('module001-mobile-mode', mobileMode);
+    window.localStorage.setItem(MOBILE_KEY, String(mobileMode));
+    return () => {
+      document.body.classList.remove('projectpulse-module001-timer-mode');
+      slots.page?.classList.remove('module001-mobile-mode');
+    };
+  }, [mobileMode, slots.page, timerMode]);
 
   useEffect(() => {
     if (!slots.switcher) return undefined;
@@ -131,10 +183,8 @@ export default function TimesheetEnhancementPortal() {
   const loadRuntime = useCallback(async ({ preserveMessage = false } = {}) => {
     if (!slots.page || !selectedWeekStart) return;
     const [activeResult, historyResult, targetResult] = await Promise.allSettled([
-      module001Api('/api/timesheet/timers/active'),
-      module001Api(`/api/timesheet/timers/history?weekStart=${encodeURIComponent(selectedWeekStart)}`, {
-        requiredCollections: ['timers']
-      }),
+      module001Api('/api/timesheet/timers/active-set', { requiredCollections: ['activeTimers', 'autoStoppedTimers'] }),
+      loadTimerHistory(selectedWeekStart),
       module001Api(`/api/timesheet/timers/targets?weekStart=${encodeURIComponent(selectedWeekStart)}`, {
         requiredCollections: ['targets']
       })
@@ -143,21 +193,20 @@ export default function TimesheetEnhancementPortal() {
     const errors = [];
     if (activeResult.status === 'fulfilled') {
       const payload = activeResult.value || {};
-      if (!Object.prototype.hasOwnProperty.call(payload, 'activeTimer')
-          && !Object.prototype.hasOwnProperty.call(payload, 'autoStoppedTimer')) {
-        errors.push('The active-timer service returned an incomplete response.');
-      } else {
-        const timer = payload.activeTimer || payload.ActiveTimer || null;
-        const stopped = payload.autoStoppedTimer || payload.AutoStoppedTimer || null;
-        setActiveTimer(timer);
-        setAutoStoppedTimer(stopped);
-        if (timer) {
-          setDescription(timer.description || '');
-          setClassification(timer.timeClassification || 'normal');
-        }
-      }
+      const running = normalizeTimerArray(payload, 'activeTimers', 'activeTimer');
+      const stopped = normalizeTimerArray(payload, 'autoStoppedTimers', 'autoStoppedTimer');
+      setActiveTimers(running);
+      setAutoStoppedTimers(stopped);
+      setMaximumConcurrentTimers(Math.max(1, Number(payload.maximumConcurrentTimers || 5)));
+      setTimerDescriptions((current) => Object.fromEntries(running.map((timer) => [
+        timer.timerSessionId,
+        Object.prototype.hasOwnProperty.call(current, timer.timerSessionId)
+          ? current[timer.timerSessionId]
+          : timer.description || ''
+      ])));
+      if (Array.isArray(payload.warnings)) errors.push(...payload.warnings.filter(Boolean));
     } else {
-      errors.push(activeResult.reason?.message || 'Unable to load the active timer.');
+      errors.push(activeResult.reason?.message || 'Unable to load active timers.');
     }
 
     if (historyResult.status === 'fulfilled') {
@@ -176,9 +225,7 @@ export default function TimesheetEnhancementPortal() {
     else if (!preserveMessage) setMessage('');
   }, [selectedWeekStart, slots.page]);
 
-  useEffect(() => {
-    void loadRuntime();
-  }, [loadRuntime]);
+  useEffect(() => { void loadRuntime(); }, [loadRuntime]);
 
   useEffect(() => {
     if (!slots.page) return undefined;
@@ -197,126 +244,141 @@ export default function TimesheetEnhancementPortal() {
   }, [slots.page, loadRuntime]);
 
   useEffect(() => {
-    if (selectedTarget && !targets.some((target) => target.selectionValue === selectedTarget)) {
-      setSelectedTarget('');
-    }
-  }, [selectedTarget, targets]);
+    const validTargetValues = new Set(targets.map((target) => target.selectionValue));
+    const runningValues = new Set(activeTimers.map(timerValue));
+    setSelectedTargets((current) => current.filter((value) => validTargetValues.has(value) && !runningValues.has(value)));
+  }, [activeTimers, targets]);
 
   useEffect(() => {
     setClock(new Date());
-    if (!activeTimer?.startedAtUtc) return undefined;
+    if (activeTimers.length === 0) return undefined;
     const interval = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(interval);
-  }, [activeTimer?.startedAtUtc]);
+  }, [activeTimers]);
 
-  const recoveryDuration = useMemo(
-    () => activeTimer?.startedAtUtc
-      ? calculateTimerDuration(activeTimer.startedAtUtc, clock)
-      : { cappedSeconds: 0, roundedMinutes: 0 },
-    [activeTimer?.startedAtUtc, clock]
-  );
+  const recoveryDuration = useMemo(() => activeTimers.reduce((longest, timer) => {
+    const duration = calculateTimerDuration(timer.startedAtUtc, clock);
+    return duration.cappedSeconds > longest.cappedSeconds ? duration : longest;
+  }, { cappedSeconds: 0, roundedMinutes: 0 }), [activeTimers, clock]);
 
-  async function startTimer() {
-    const target = targets.find((item) => item.selectionValue === selectedTarget);
-    if (!target) {
-      setMessage('Select a Project Task, Request / Service Request, or Non-Project Time activity.');
+  function updateTimerDescription(timerSessionId, value) {
+    setTimerDescriptions((current) => ({ ...current, [timerSessionId]: value }));
+  }
+
+  function notifyTimerChanged(action, timerCount) {
+    window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-changed', {
+      detail: { action, timerCount }
+    }));
+  }
+
+  async function startTimers() {
+    const requests = selectedTargets.map(batchTarget).filter(Boolean);
+    if (requests.length === 0) {
+      setMessage('Select at least one Project Task, Request / Service Request, or Non-Project Time activity.');
       return;
     }
 
-    setBusy('start');
-    setMessage('Starting the server timer…');
+    setBusyAction('start');
+    setMessage(`Starting ${requests.length} server ${requests.length === 1 ? 'timer' : 'timers'}…`);
     try {
-      const codeTarget = target.selectionValue.startsWith('category-code:');
-      const result = await module001Api(
-        codeTarget ? '/api/timesheet/timers/start-by-code' : '/api/timesheet/timers/start',
-        {
-          method: 'POST',
-          body: JSON.stringify(codeTarget ? {
-            nonProjectCategoryCode: target.selectionValue.slice('category-code:'.length),
-            timeClassification: classification,
-            description,
-            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-          } : {
-            assignmentId: target.selectionValue.startsWith('assignment:')
-              ? target.selectionValue.slice('assignment:'.length)
-              : null,
-            nonProjectTimeCategoryId: target.selectionValue.startsWith('category:')
-              ? target.selectionValue.slice('category:'.length)
-              : null,
-            timeClassification: classification,
-            description,
-            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-          })
-        }
-      );
-      const timer = result.timer || result.activeTimer || null;
-      if (timer) {
-        setActiveTimer(timer);
-        setDescription(timer.description || description);
-        setClassification(timer.timeClassification || classification);
-      }
-      setMessage('Timer started. The server continues tracking it through refreshes, sign-out, and session expiration.');
+      const result = await module001Api('/api/timesheet/timers/start-batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          targets: requests,
+          timeClassification: classification,
+          description: draftDescription,
+          timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+        })
+      });
+      const started = Array.isArray(result.timers) ? result.timers : result.timer ? [result.timer] : [];
+      setSelectedTargets([]);
+      setDraftDescription('');
+      const startedCount = started.length || requests.length;
+      setMessage(startedCount === 1
+        ? 'Timer started. The server continues tracking it through refreshes, sign-out, and session expiration.'
+        : `${startedCount} timers started. The server continues tracking them through refreshes, sign-out, and session expiration.`);
+      notifyTimerChanged('started', started.length || requests.length);
       await loadRuntime({ preserveMessage: true });
     } catch (error) {
-      const existingTimer = error?.payload?.activeTimer || null;
-      if (error?.status === 409 && existingTimer) {
-        setActiveTimer(existingTimer);
-        setDescription(existingTimer.description || '');
-        setClassification(existingTimer.timeClassification || 'normal');
-        setMessage('A timer was already running. It has been recovered from the server.');
-      } else {
-        setMessage(error.message || 'The timer could not be started.');
-      }
+      const recovered = normalizeTimerArray(error?.payload || {}, 'activeTimers', 'activeTimer');
+      if (recovered.length > 0) setActiveTimers(recovered);
+      setMessage(error.message || 'The selected timers could not be started.');
     } finally {
-      setBusy('');
+      setBusyAction('');
     }
   }
 
-  async function stopTimer() {
-    if (!activeTimer) return;
-    setBusy('stop');
-    setMessage('Stopping the server timer…');
+  async function stopTimer(timer) {
+    if (!timer) return;
+    setBusyAction(`stop:${timer.timerSessionId}`);
+    setMessage(`Stopping ${activeTimerLabel(timer)}…`);
     try {
-      const result = await module001Api(`/api/timesheet/timers/${activeTimer.timerSessionId}/stop`, {
+      const result = await module001Api(`/api/timesheet/timers/v2/${timer.timerSessionId}/stop`, {
         method: 'POST',
         body: JSON.stringify({
-          description,
-          reason: 'Stopped from Module 001 Timesheet.',
-          expectedRowVersion: activeTimer.rowVersion
+          description: timerDescriptions[timer.timerSessionId] ?? timer.description ?? '',
+          reason: 'Stopped individually from Module 001 Timesheet.',
+          expectedRowVersion: timer.rowVersion
         })
       });
-      setActiveTimer(null);
       setMessage(result.message || 'Timer stopped and its draft time entry was created.');
-      window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-changed', { detail: { action: 'stopped' } }));
+      notifyTimerChanged('stopped', 1);
       await loadRuntime({ preserveMessage: true });
     } catch (error) {
       setMessage(error.message || 'The timer could not be stopped.');
     } finally {
-      setBusy('');
+      setBusyAction('');
     }
   }
 
-  async function discardTimer() {
-    if (!activeTimer || !window.confirm('Discard this running timer without creating a time entry?')) return;
-    setBusy('discard');
-    setMessage('Discarding the server timer…');
+  async function stopAllTimers() {
+    if (activeTimers.length === 0) return;
+    const confirmed = window.confirm(`Stop all ${activeTimers.length} running timers and create their draft time entries?`);
+    if (!confirmed) return;
+
+    setBusyAction('stop-all');
+    setMessage(`Stopping all ${activeTimers.length} timers…`);
     try {
-      const result = await module001Api(`/api/timesheet/timers/${activeTimer.timerSessionId}/discard`, {
+      const result = await module001Api('/api/timesheet/timers/v2/stop-all', {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Stopped together from Module 001 Timesheet.',
+          timers: activeTimers.map((timer) => ({
+            timerSessionId: timer.timerSessionId,
+            description: timerDescriptions[timer.timerSessionId] ?? timer.description ?? '',
+            expectedRowVersion: timer.rowVersion
+          }))
+        })
+      });
+      setMessage(result.message || 'All running timers stopped and their draft time entries were created.');
+      notifyTimerChanged('stopped-all', activeTimers.length);
+      await loadRuntime({ preserveMessage: true });
+    } catch (error) {
+      setMessage(error.message || 'The running timers could not be stopped together. No partial stop was committed.');
+    } finally {
+      setBusyAction('');
+    }
+  }
+
+  async function discardTimer(timer) {
+    if (!timer || !window.confirm(`Discard the running timer for ${activeTimerLabel(timer)} without creating a time entry?`)) return;
+    setBusyAction(`discard:${timer.timerSessionId}`);
+    setMessage(`Discarding ${activeTimerLabel(timer)}…`);
+    try {
+      const result = await module001Api(`/api/timesheet/timers/v2/${timer.timerSessionId}/discard`, {
         method: 'POST',
         body: JSON.stringify({
           reason: 'Discarded after user confirmation.',
-          expectedRowVersion: activeTimer.rowVersion
+          expectedRowVersion: timer.rowVersion
         })
       });
-      setActiveTimer(null);
-      setDescription('');
       setMessage(result.message || 'Timer discarded.');
-      window.dispatchEvent(new CustomEvent('projectpulse:module001-timer-changed', { detail: { action: 'discarded' } }));
+      notifyTimerChanged('discarded', 1);
       await loadRuntime({ preserveMessage: true });
     } catch (error) {
       setMessage(error.message || 'The timer could not be discarded.');
     } finally {
-      setBusy('');
+      setBusyAction('');
     }
   }
 
@@ -334,54 +396,69 @@ export default function TimesheetEnhancementPortal() {
         onClick={() => setTimerMode(true)}
       >
         <strong>Start / Stop Timer</strong>
-        <small>Track active work in real time</small>
+        <small>Up to five simultaneous activities</small>
       </button>,
       slots.switcher
+    ) : null}
+
+    {slots.toolbar ? createPortal(
+      <label className="module001-mobile-toggle" title="Use larger touch targets and a stacked Timesheet layout on this device.">
+        <input type="checkbox" checked={mobileMode} onChange={(event) => setMobileMode(event.target.checked)} />
+        <span>Mobile mode</span>
+      </label>,
+      slots.toolbar
     ) : null}
 
     {slots.workspace ? createPortal(
       timerMode ? <TimesheetTimerView
         targets={targets}
         history={history}
-        activeTimer={activeTimer}
-        selectedTargetValue={selectedTarget}
+        activeTimers={activeTimers}
+        selectedTargetValues={selectedTargets}
         classification={classification}
-        description={description}
+        draftDescription={draftDescription}
+        timerDescriptions={timerDescriptions}
+        maximumConcurrentTimers={maximumConcurrentTimers}
         isViewAs={viewAs}
-        busy={Boolean(busy)}
+        busyAction={busyAction}
         statusMessage={message}
-        onSelectTarget={setSelectedTarget}
+        onSelectTargets={setSelectedTargets}
         onClassificationChange={setClassification}
-        onDescriptionChange={setDescription}
-        onStart={startTimer}
-        onStop={stopTimer}
-        onDiscard={discardTimer}
+        onDraftDescriptionChange={setDraftDescription}
+        onTimerDescriptionChange={updateTimerDescription}
+        onStart={startTimers}
+        onStopOne={stopTimer}
+        onStopAll={stopAllTimers}
+        onDiscardOne={discardTimer}
       /> : null,
       slots.workspace
     ) : null}
 
-    {slots.recovery && !timerMode && activeTimer ? createPortal(
-      <section className="module001-server-timer-recovery" aria-label="Running timer recovered from server">
+    {slots.recovery && !timerMode && activeTimers.length > 0 ? createPortal(
+      <section className="module001-server-timer-recovery module001-multi-timer-recovery" aria-label="Running timers recovered from server">
         <div>
-          <p className="eyebrow">RUNNING TIMER</p>
-          <h3>{activeTimerLabel(activeTimer)}</h3>
-          <p>The timer is server-owned and remains active through refreshes, sign-out, and session expiration.</p>
-          <small>Started {new Date(activeTimer.startedAtUtc).toLocaleString()} · Rounded draft {(recoveryDuration.roundedMinutes / 60).toFixed(2)} hours</small>
+          <p className="eyebrow">RUNNING TIMERS</p>
+          <h3>{activeTimers.length} active {activeTimers.length === 1 ? 'activity' : 'activities'}</h3>
+          <p>{activeTimers.map(activeTimerLabel).join(' • ')}</p>
+          <small>The timers are server-owned and remain active through refreshes, sign-out, and session expiration.</small>
         </div>
         <strong className="module001-server-timer-clock" aria-live="polite">{formatElapsedSeconds(recoveryDuration.cappedSeconds)}</strong>
         <div className="module001-server-timer-actions">
-          <button type="button" onClick={() => setTimerMode(true)}>Open timer</button>
-          <button type="button" disabled={Boolean(busy) || viewAs} onClick={stopTimer}>{busy === 'stop' ? 'Stopping…' : 'Stop timer'}</button>
-          <button type="button" className="danger" disabled={Boolean(busy) || viewAs} onClick={discardTimer}>{busy === 'discard' ? 'Discarding…' : 'Discard'}</button>
+          <button type="button" onClick={() => setTimerMode(true)}>Open timers</button>
+          <button type="button" disabled={Boolean(busyAction) || viewAs} onClick={stopAllTimers}>{busyAction === 'stop-all' ? 'Stopping…' : 'Stop all'}</button>
         </div>
       </section>,
       slots.recovery
     ) : null}
 
-    {slots.recovery && !activeTimer && autoStoppedTimer ? createPortal(
-      <section className="module001-server-timer-recovery auto-stopped" aria-label="Automatically stopped timer">
-        <div><p className="eyebrow">TIMER SAFETY LIMIT</p><h3>{activeTimerLabel(autoStoppedTimer)}</h3><p>The server stopped this timer at the 12-hour limit. Review the resulting draft entry before submission.</p></div>
-        <button type="button" onClick={() => setAutoStoppedTimer(null)}>Dismiss</button>
+    {slots.recovery && activeTimers.length === 0 && autoStoppedTimers.length > 0 ? createPortal(
+      <section className="module001-server-timer-recovery auto-stopped" aria-label="Automatically stopped timers">
+        <div>
+          <p className="eyebrow">TIMER SAFETY LIMIT</p>
+          <h3>{autoStoppedTimers.length} {autoStoppedTimers.length === 1 ? 'timer was' : 'timers were'} stopped automatically</h3>
+          <p>The server stopped {autoStoppedTimers.map(activeTimerLabel).join(' • ')} at the 24-hour limit. Review the resulting draft entries before submission.</p>
+        </div>
+        <button type="button" onClick={() => setAutoStoppedTimers([])}>Dismiss</button>
       </section>,
       slots.recovery
     ) : null}

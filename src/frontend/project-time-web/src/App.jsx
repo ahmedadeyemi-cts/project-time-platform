@@ -33,6 +33,8 @@ const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import SystemUserGuide from './SystemUserGuide.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
+import EnterpriseModulePresentation from './enterprise/EnterpriseModulePresentation.jsx';
+import AiProviderReadinessController from './ai/AiProviderReadinessController.jsx';
 
 
 
@@ -597,6 +599,8 @@ import BillingReadinessCenter from './BillingReadinessCenter.jsx';
 import ProjectCloseoutCenter from './ProjectCloseoutCenter.jsx';
 import CloseoutEmailAutomationCenter from './CloseoutEmailAutomationCenter.jsx';
 import InvoiceBillingCenter from './InvoiceBillingCenter.jsx';
+import FinancialOperationsRecoveryWorkspace from './FinancialOperationsRecoveryWorkspace.jsx';
+import AnalyticsCenter from './AnalyticsCenter.jsx';
 import CalendarCapacityCenter from './CalendarCapacityCenter.jsx';
 import SecurityOperationsResponseCenter from './SecurityOperationsResponseCenter.jsx';
 import CiCdPipelineCenter from './CiCdPipelineCenter.jsx';
@@ -605,6 +609,7 @@ import ContractsCenter from './ContractsCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
+import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
 import ProjectFlowHiveCenter from './ProjectFlowHiveCenter.jsx';
 import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';
@@ -1924,13 +1929,31 @@ const roleWorkspaceModules = sortProjectPulseModules([
     roleCodes: ["PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP"],
   },
   {
+    route: "notification-delivery-monitor",
+    href: "#notification-delivery-monitor",
+    title: "Notification Delivery Monitor",
+    navLabel: "MODULE 032",
+    description: "Monitor project notification dispatches, automatically derived recipients, source failures, retry evidence, and Module 065 governed delivery.",
+    permissions: ["VIEW_NOTIFICATION_DELIVERY_MONITOR", "MANAGE_NOTIFICATION_DELIVERY", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "ACCOUNTING", "ACCOUNTING_BILLING", "BILLING", "FINANCE", "EXECUTIVE", "ENGINEERING", "ENGINEERING_LEAD", "SALES", "INSIDE_SALES", "SOLUTION_ARCHITECT", "MANAGER", "PROJECT_TEAM_COORDINATOR", "ADMINISTRATOR", "SUPER_ADMINISTRATOR"],
+  },
+  {
     route: "reporting",
     href: "#reporting",
-    title: "Reporting / Accounting / Invoicing / Analytics",
+    title: "Analytics Center",
     navLabel: "MODULE 030",
-    description: "Provide operational, accounting, invoicing, workflow, system, and executive reporting.",
-    permissions: ["VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
-    roleCodes: ["ACCOUNTING", "PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING", "MANAGER", "SALES", "ACCOUNT_EXECUTIVE"],
+    description: "Select and run role-scoped analytics across projects, customers, financials, time, people, delivery, operations, governance, and acceptance.",
+    permissions: ["VIEW_FINANCIAL_REPORT_CENTER", "RUN_FINANCIAL_REPORTS", "VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["ACCOUNTING", "PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING", "MANAGER", "SALES", "INSIDE_SALES", "ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT"],
+  },
+  {
+    route: "financial-operations-workbench",
+    href: "#financial-operations-workbench",
+    title: "Financial Operations Workbench",
+    navLabel: "MODULE 031",
+    description: "One accountable queue for financial-source failures, billing blockers, closeout blockers, reconciliation exceptions, notification failures, retry, and resolution evidence.",
+    permissions: ["VIEW_FINANCIAL_OPERATIONS_WORKBENCH", "MANAGE_FINANCIAL_OPERATIONS_RECOVERY", "RETRY_FINANCIAL_SOURCES", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["ACCOUNTING", "PROJECT_TEAM_COORDINATOR", "EXECUTIVE", "EXECUTIVE_LEADERSHIP", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD"],
   },
   {
     route: "cicd-pipeline",
@@ -2036,7 +2059,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'work-task-builder',
     href: '#work-task-builder',
-    title: 'Pulse AI',
+    title: 'Celar AI',
     navLabel: 'MODULE 011',
     description: 'Governed AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion through Module 064.',
     permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
@@ -2486,7 +2509,7 @@ function getNavigationGroup(item) {
       return 'Security & Audit';
 
     case 'work-task-builder':
-      return 'Pulse AI';
+      return 'Celar AI';
 
     case 'user-admin':
     case 'azure-admin':
@@ -3426,13 +3449,31 @@ function getInstalledProjectPulseModuleRegistry() {
       permissions: ["VIEW_AUDIT_TRAIL", "VIEW_REPORTS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     },
     {
+      route: "notification-delivery-monitor",
+      href: "#notification-delivery-monitor",
+      title: "Notification Delivery Monitor",
+      navLabel: "MODULE 032",
+      group: "Reports & Workflow",
+      description: "Monitor project notification dispatches, automatically derived recipients, source failures, retry evidence, and Module 065 governed delivery.",
+      permissions: ["VIEW_NOTIFICATION_DELIVERY_MONITOR", "MANAGE_NOTIFICATION_DELIVERY", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
       route: "reporting",
       href: "#reporting",
-      title: "Reporting / Accounting / Invoicing / Analytics",
+      title: "Analytics Center",
       navLabel: "MODULE 030",
       group: "Reports & Workflow",
-      description: "Provide operational, accounting, invoicing, workflow, system, and executive reporting.",
-      permissions: ["VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+      description: "Select and run role-scoped analytics across projects, customers, financials, time, people, delivery, operations, governance, and acceptance.",
+      permissions: ["VIEW_FINANCIAL_REPORT_CENTER", "RUN_FINANCIAL_REPORTS", "VIEW_REPORTS", "MANAGE_REPORTS", "VIEW_EXECUTIVE_REPORTING", "VIEW_ACCOUNT_RECONCILIATION", "EXPORT_TIME_EXCEL", "EXPORT_TIME_PDF", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    },
+    {
+      route: "financial-operations-workbench",
+      href: "#financial-operations-workbench",
+      title: "Financial Operations Workbench",
+      navLabel: "MODULE 031",
+      group: "Reports & Workflow",
+      description: "One accountable queue for financial-source failures, billing blockers, closeout blockers, reconciliation exceptions, notification failures, retry, and resolution evidence.",
+      permissions: ["VIEW_FINANCIAL_OPERATIONS_WORKBENCH", "MANAGE_FINANCIAL_OPERATIONS_RECOVERY", "RETRY_FINANCIAL_SOURCES", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
     },
     {
       route: "cicd-pipeline",
@@ -3482,11 +3523,11 @@ function getInstalledProjectPulseModuleRegistry() {
     },
     {
       route: 'work-task-builder',
-      title: 'Pulse AI',
+      title: 'Celar AI',
     navLabel: 'MODULE 011',
       status: 'Active',
       permissions: ['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-      description: 'Provides governed Pulse AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion while preserving Modules 055D and 055C project/task ownership.'
+      description: 'Provides governed Celar AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion while preserving Modules 055D and 055C project/task ownership.'
     },
     {
       route: 'role-admin',
@@ -6457,6 +6498,12 @@ Analytics - Variphy / Infortel`}
       </aside>
 
       <PageContextGuide activeRoute={activeRoute} />
+      {/* GROUP_6_ENTERPRISE_PRESENTATION_START */}
+      <EnterpriseModulePresentation activeRoute={activeRoute} />
+      {/* GROUP_6_ENTERPRISE_PRESENTATION_END */}
+      {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_START */}
+      <AiProviderReadinessController authSession={authSession} />
+      {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_END */}
 
       {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
       {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
@@ -7062,20 +7109,45 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE */}
+      {(activeRoute === 'notification-delivery-monitor' && canSeeAny(['VIEW_NOTIFICATION_DELIVERY_MONITOR', 'MANAGE_NOTIFICATION_DELIVERY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="notification-delivery-monitor" className="panel notification-delivery-monitor-route-panel">
+          <ProjectNotificationAutomationCenter mode="delivery-monitor" authSession={authSession} />
+        </section>
+      ) : null}
+      {/* GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START */}
+      {(activeRoute === 'reporting' && canSeeAny(['VIEW_FINANCIAL_REPORT_CENTER', 'RUN_FINANCIAL_REPORTS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'VIEW_EXECUTIVE_REPORTING', 'VIEW_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="reporting" className="panel financial-report-center-route-panel">
+          <AnalyticsCenter authSession={authSession} />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'financial-operations-workbench' && canSeeAny(['VIEW_FINANCIAL_OPERATIONS_WORKBENCH', 'MANAGE_FINANCIAL_OPERATIONS_RECOVERY', 'RETRY_FINANCIAL_SOURCES', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="financial-operations-workbench" className="panel financial-operations-workbench-route-panel">
+          <FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />
+        </section>
+      ) : null}
+      {/* GROUP_5_FINANCIAL_OPERATIONS_ROUTES_END */}
       {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-closeout" className="panel project-closeout-route-panel">
+          {/* GROUP_5_MODULE_040_RECOVERY_PANEL */}
+          <FinancialOperationsRecoveryWorkspace moduleCode="040" authSession={authSession} />
           <ProjectCloseoutCenter />
         </section>
       ) : null}
 
       {(activeRoute === 'closeout-email' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="closeout-email" className="panel closeout-email-route-panel">
+          {/* GROUP_5_MODULE_041_RECOVERY_PANEL */}
+          <FinancialOperationsRecoveryWorkspace moduleCode="041" authSession={authSession} />
           <CloseoutEmailAutomationCenter />
         </section>
       ) : null}
 
       {(activeRoute === 'invoice-billing-center' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="invoice-billing-center" className="panel invoice-billing-center-route-panel">
+          {/* GROUP_5_MODULE_042_RECOVERY_PANEL */}
+          <FinancialOperationsRecoveryWorkspace moduleCode="042" authSession={authSession} />
           <InvoiceBillingCenter
             usSignalLogoUrl={usSignalLogoUrl}
             userKey={authSession?.username ?? currentUser.data?.email ?? 'current-user'}
@@ -7968,6 +8040,8 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cost-alerts" className="panel cost-alert-route-panel">
+          {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}
+          <ProjectNotificationAutomationCenter mode="routing-rules" authSession={authSession} />
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
@@ -8055,6 +8129,8 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'billing-readiness' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="billing-readiness" className="panel billing-readiness-route-panel">
+          {/* GROUP_5_MODULE_039_RECOVERY_PANEL */}
+          <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} />
           <BillingReadinessCenter />
         </section>
       ) : null}
@@ -8100,6 +8176,8 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'time-compliance' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY'])) ? (
         <section id="time-compliance" className="panel time-compliance-route-panel">
+          {/* GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES */}
+          <ProjectNotificationAutomationCenter mode="schedules" authSession={authSession} />
           <TimeComplianceCenter />
         </section>
       ) : null}
