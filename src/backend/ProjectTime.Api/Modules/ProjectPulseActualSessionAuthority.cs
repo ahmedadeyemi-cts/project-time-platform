@@ -88,7 +88,6 @@ internal static class ProjectPulseActualSessionAuthority
                 WHEN @user_id IS NOT NULL AND app_user.user_id = @user_id THEN 0
                 ELSE 1
               END,
-              app_user.updated_at DESC NULLS LAST,
               app_user.user_id
             LIMIT 1;
             """, connection, transaction);
