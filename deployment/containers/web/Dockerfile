@@ -330,7 +330,7 @@ WORKDIR /workspace/src/frontend/project-time-web
 RUN npm run build
 
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 ENV API_UPSTREAM=http://127.0.0.1:5080 \
     NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
