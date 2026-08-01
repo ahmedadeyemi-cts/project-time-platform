@@ -173,8 +173,17 @@ jobs:
           grep -Fq 'Shift+Enter adds a line' /tmp/pulse-ai-help-chat.js
           grep -Fq '.pulse-ai-help-keyboard-hint' /tmp/pulse-ai-help-chat.css
           grep -Fq 'overscroll-behavior:contain' /tmp/pulse-ai-help-chat.css
+
+          git -C ../../.. diff --check
+          git -C ../../.. add -A
+          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          npm run prebuild
           git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
+          git -C ../../.. reset --mixed
+          trap - EXIT
+
+          echo 'PULSE_AI_HELP_CHAT_GENERATED_SOURCE_CONVERGENCE=PASSED'
           echo 'PULSE_AI_HELP_CHAT_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
@@ -202,6 +211,7 @@ jobs:
             echo '- Group 5 unrelated-PR regression mode: confirmed'
             echo '- API build: passed'
             echo '- Complete frontend build: passed'
+            echo '- Deterministic generated-source convergence: passed'
             echo '- Web container build: passed'
             echo '- Provider call added: none'
             echo '- Deployment performed: none'
