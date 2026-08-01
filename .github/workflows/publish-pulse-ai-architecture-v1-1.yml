@@ -1,131 +1,482 @@
-# Serialized branch publication; source and artifact validation remain deterministic.
-# Branch-only trigger merge emits the single publication push event.
-name: Publish US Signal Pulse AI Architecture v1.1
+name: Temporary Project Management View-As Source Publisher
 
 on:
-  push:
+  pull_request:
     branches:
-      - docs/pulse-ai-architecture-v1-1-20260729
-    paths:
-      - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
-      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
-  workflow_dispatch:
+      - main
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: publish-pulse-ai-architecture-v1-1-docs-branch
+  group: temp-project-management-view-as-source-publisher-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/project-management-view-as-effective-workspace-20260801'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      TARGET_BRANCH: docs/pulse-ai-architecture-v1-1-20260729
+      TARGET_BRANCH: fix/project-management-view-as-effective-workspace-20260801
+      TRIGGER_PATH: .github/generated/project-management-view-as-trigger.txt
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact isolated source branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          persist-credentials: true
 
-      - name: Enforce documentation branch and source boundary
+      - name: Guard exact same-repository trigger boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
-          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
-          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
-          file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
-          echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
+          [[ "$GITHUB_HEAD_REF" == "$TARGET_BRANCH" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse HEAD^)" == '${{ github.event.pull_request.base.sha }}' ]]
+          [[ "$(git rev-list --count '${{ github.event.pull_request.base.sha }}'..HEAD)" == '1' ]]
+          CHANGED="$(git diff --name-only '${{ github.event.pull_request.base.sha }}'...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$TRIGGER_PATH" ]]
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install document-generation dependencies
+      - name: Apply the Project Management View-As correction
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0
-          python -m pip install --upgrade pip
-          python -m pip install python-docx reportlab cairosvg pillow pypdf
-
-      - name: Generate the US Signal architecture package
-        shell: bash
-        working-directory: docs/modules/module-011-pulse-ai/architecture/v1.1/source
-        run: |
-          set -Eeuo pipefail
-          python generate_pulse_architecture_v1_1.py | tee ../generation.log
-
-      - name: Validate the generated documents and diagrams
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
-          FILES=(
-            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
-            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
-            'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
-            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
-            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg'
-            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
-            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
-            'SHA256SUMS.txt'
-          )
-          for file in "${FILES[@]}"; do
-            test -s "$ROOT/$file"
-          done
-          ! find "$ROOT" -maxdepth 1 -type f -name '*v1.0*' -print -quit | grep -q .
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          from zipfile import ZipFile
-          from PIL import Image
-          from pypdf import PdfReader
+          import re
 
-          root = Path('docs/modules/module-011-pulse-ai/architecture/v1.1')
-          main_pdf = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
-          diagrams_pdf = root / 'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
-          docx = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
-          logical = root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
-          deployment = root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+          root = Path('.')
+          paths = {
+              'app': root / 'src/frontend/project-time-web/src/App.jsx',
+              'welcome': root / 'src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx',
+              'governance': root / 'src/frontend/project-time-web/src/role-workspace-governance.js',
+              'injector': root / 'src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs',
+              'validator': root / 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs',
+          }
 
-          assert len(PdfReader(str(main_pdf)).pages) >= 20
-          assert len(PdfReader(str(diagrams_pdf)).pages) == 2
-          with ZipFile(docx) as archive:
-              assert '[Content_Types].xml' in archive.namelist()
-              assert 'word/document.xml' in archive.namelist()
-          assert Image.open(logical).width >= 2000
-          assert Image.open(deployment).width >= 2400
-          for svg in [
-              root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg',
-              root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
-          ]:
-              text = svg.read_text(encoding='utf-8')
-              assert 'US Signal' in text
-              assert 'Pulse' in text
-              assert 'data:image/jpeg;base64,' in text
-          print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+          def read(key):
+              return paths[key].read_text(encoding='utf-8')
+
+          def write(key, content):
+              paths[key].write_text(content, encoding='utf-8')
+
+          def replace_once(source, old, new, label):
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+              return source.replace(old, new, 1)
+
+          app = read('app')
+          app = replace_once(
+              app,
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';",
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';",
+              'App role-governance import',
+          )
+
+          route_helper = """function getRouteFromHash() {
+            const hash = window.location.hash || '#dashboard';
+            return hash.replace('#', '') || 'dashboard';
+          }
+          """
+          view_as_helper = route_helper + """
+          /* ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY */
+          function readProjectPulseActiveViewAsIdentity() {
+            try {
+              const selected = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+              return selected?.userId ? selected : null;
+            } catch {
+              return null;
+            }
+          }
+          """
+          if 'ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY' not in app:
+              app = replace_once(app, route_helper, view_as_helper, 'App View-As identity helper')
+
+          old_role_codes = "  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];"
+          new_role_codes = "  const currentRoleCodes = roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity());"
+          app = replace_once(app, old_role_codes, new_role_codes, 'App effective role codes')
+
+          old_assigned_roles = "  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));"
+          new_assigned_roles = "  const assignedRoleCodes = new Set(roleCodesFrom(user));"
+          app = replace_once(app, old_assigned_roles, new_assigned_roles, 'App visible-module role normalization')
+
+          old_loader = """      try {
+                const [userResult, quarterResult] = await Promise.all([
+                  fetchJson('/api/security/me', authSession),
+                  fetchJson('/api/utilization/current-quarter', authSession)
+                ]);
+
+                if (!cancelled) {
+                  setCurrentUser({ loading: false, data: userResult, error: null });
+                  setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
+                }
+              } catch (error) {
+                if (!cancelled) {
+                  const message = error instanceof Error ? error.message : 'Unknown error';
+                  setCurrentUser((current) => ({ ...current, loading: false, error: message }));
+                  setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message }));
+                }
+              }
+          """
+          new_loader = """      /* ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION */
+              let userResult;
+              try {
+                userResult = await fetchJson('/api/security/me', authSession);
+                if (cancelled) return;
+                setCurrentUser({ loading: false, data: userResult, error: null });
+              } catch (error) {
+                if (cancelled) return;
+                const message = error instanceof Error ? error.message : 'Unable to load the effective user.';
+                setCurrentUser({ loading: false, data: null, error: message });
+                setCurrentQuarterUtilization({ loading: false, data: { applicable: false }, error: null });
+                return;
+              }
+
+              const canViewUtilization = userHasAnyPermission(userResult, [
+                'VIEW_OWN_UTILIZATION',
+                'VIEW_TEAM_UTILIZATION',
+                'VIEW_INDIVIDUAL_UTILIZATION',
+                'VIEW_UTILIZATION',
+                'SYSTEM_ADMINISTRATION',
+                'MANAGE_ALL'
+              ]);
+
+              if (!canViewUtilization) {
+                setCurrentQuarterUtilization({ loading: false, data: { applicable: false }, error: null });
+                return;
+              }
+
+              try {
+                const quarterResult = await fetchJson('/api/utilization/current-quarter', authSession);
+                if (!cancelled) {
+                  setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
+                }
+              } catch (error) {
+                if (!cancelled) {
+                  const message = error instanceof Error ? error.message : 'Unable to load current-quarter utilization.';
+                  setCurrentQuarterUtilization({ loading: false, data: null, error: message });
+                }
+              }
+          """
+          app = replace_once(app, old_loader, new_loader, 'App effective identity and utilization load isolation')
+
+          old_visible = """  const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+            const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
+          """
+          new_visible = """  /* ROLE_WORKSPACE_EFFECTIVE_USER_MODEL */
+            const activeViewAsIdentity = readProjectPulseActiveViewAsIdentity();
+            const effectiveUser = useMemo(() => {
+              const securityUser = securityContext.data;
+              const profileUser = currentUser.data;
+              const storedViewAs = readProjectPulseActiveViewAsIdentity();
+              if (!securityUser && !profileUser && !storedViewAs) return null;
+
+              const effectiveRoleCodes = roleCodesFrom(securityUser || profileUser || storedViewAs);
+              return {
+                ...(profileUser || {}),
+                ...(securityUser || {}),
+                displayName: storedViewAs?.displayName
+                  || securityUser?.displayName
+                  || profileUser?.displayName
+                  || storedViewAs?.email
+                  || securityUser?.email
+                  || profileUser?.email
+                  || '',
+                email: storedViewAs?.email || securityUser?.email || profileUser?.email || '',
+                roleCodes: effectiveRoleCodes,
+                roles: securityUser?.roles ?? profileUser?.roles ?? effectiveRoleCodes,
+                permissions: securityUser?.permissions ?? profileUser?.permissions ?? []
+              };
+            }, [currentUser.data, securityContext.data]);
+            const effectiveDisplayName = activeViewAsIdentity?.displayName
+              || activeViewAsIdentity?.email
+              || effectiveUser?.displayName
+              || effectiveUser?.email
+              || authSession?.displayName
+              || authSession?.username
+              || 'Unknown user';
+            const visibleRoleModules = useMemo(() => getVisibleRoleModules(effectiveUser), [effectiveUser]);
+            const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
+          """
+          app = replace_once(app, old_visible, new_visible, 'App effective user and visible modules')
+
+          old_signed_in = "Signed in as {userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.displayName || authSession?.username || currentUser.data?.email || 'Unknown user'}"
+          app = replace_once(app, old_signed_in, 'Signed in as {effectiveDisplayName}', 'App signed-in effective identity')
+
+          old_dashboard_name = "displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}"
+          app = replace_once(app, old_dashboard_name, 'displayName={effectiveDisplayName}', 'App welcome effective identity')
+          write('app', app)
+
+          welcome = read('welcome')
+          management_actions = """  management: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Health', 'project-workload'],
+                ['Team Utilization', 'utilization'],
+                ['Work Register', 'work-register']
+              ],
+          """
+          project_management_actions = """  projectManagement: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Workload', 'project-workload'],
+                ['Project Workspace', 'project-workspace'],
+                ['Analytics Center', 'reporting']
+              ],
+              management: [
+                ['Approval Center', 'manager-approval'],
+                ['Project Health', 'project-workload'],
+                ['Team Utilization', 'utilization'],
+                ['Work Register', 'work-register']
+              ],
+          """
+          welcome = replace_once(welcome, management_actions, project_management_actions, 'PM dashboard quick actions')
+
+          old_persona = """  if (hasAny(roleCodes, [
+                'MANAGER',
+                'PEOPLE_MANAGER',
+                'PROJECT_MANAGER',
+                'PROJECT_MANAGEMENT',
+                'PROJECT_MANAGEMENT_LEAD',
+                'PROJECT_MANAGEMENT_TEAM_LEAD',
+                'PM_TEAM_LEAD'
+              ])) return 'management';
+          """
+          new_persona = """  if (hasAny(roleCodes, [
+                'PROJECT_MANAGER',
+                'PROJECT_MANAGEMENT',
+                'PROJECT_MANAGEMENT_LEAD',
+                'PROJECT_MANAGEMENT_TEAM_LEAD',
+                'PM_TEAM_LEAD'
+              ])) return 'projectManagement';
+              if (hasAny(roleCodes, ['MANAGER', 'PEOPLE_MANAGER'])) return 'management';
+          """
+          welcome = replace_once(welcome, old_persona, new_persona, 'PM dashboard persona')
+          write('welcome', welcome)
+
+          governance = read('governance')
+          old_role_codes_from = """export function roleCodesFrom(value) {
+            if (Array.isArray(value)) {
+              return value.map((item) => normalizeRoleCode(item?.roleCode ?? item)).filter(Boolean);
+            }
+
+            return (value?.roles ?? value?.roleCodes ?? [])
+              .map((item) => normalizeRoleCode(item?.roleCode ?? item))
+              .filter(Boolean);
+          }
+          """
+          new_role_codes_from = """export function roleCodesFrom(value) {
+            const source = Array.isArray(value) ? value : (value?.roles ?? value?.roleCodes ?? []);
+            const entries = Array.isArray(source)
+              ? source
+              : String(source ?? '').split(/[;,|]+/);
+
+            return entries
+              .flatMap((item) => {
+                const raw = item?.roleCode ?? item;
+                return Array.isArray(raw) ? raw : String(raw ?? '').split(/[;,|]+/);
+              })
+              .map(normalizeRoleCode)
+              .filter(Boolean);
+          }
+          """
+          governance = replace_once(governance, old_role_codes_from, new_role_codes_from, 'role-code normalization')
+
+          old_tail = """  const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
+            const denied = projectManagement && !hasOperationalRole
+              ? PROJECT_MANAGEMENT_DENIED_ROUTES
+              : (accountingBilling || sales) && !hasOperationalRole && !projectManagement
+                ? BUSINESS_ROLE_DENIED_ROUTES
+                : [];
+
+            denied.forEach((route) => routes.delete(route));
+            return (moduleRegistry ?? []).filter((module) => routes.has(module.route));
+          }
+          """
+          new_tail = """  const hasOperationalRole = hasAny(roleCodes, ENGINEERING_OR_OPERATIONS_ROLES);
+            const pureProjectManagement = projectManagement
+              && !hasOperationalRole
+              && !accountingBilling
+              && !sales
+              && !coordinator;
+
+            if (pureProjectManagement) {
+              return (moduleRegistry ?? []).filter((module) => (
+                baselineRoutes.has(module.route) && routes.has(module.route)
+              ));
+            }
+
+            const denied = projectManagement && !hasOperationalRole
+              ? PROJECT_MANAGEMENT_DENIED_ROUTES
+              : (accountingBilling || sales) && !hasOperationalRole && !projectManagement
+                ? BUSINESS_ROLE_DENIED_ROUTES
+                : [];
+
+            denied.forEach((route) => routes.delete(route));
+            return (moduleRegistry ?? []).filter((module) => routes.has(module.route));
+          }
+          """
+          governance = replace_once(governance, old_tail, new_tail, 'pure PM exact module baseline')
+          write('governance', governance)
+
+          injector = read('injector')
+          injector = injector.replace(
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';",
+              "import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';",
+          )
+          injector = injector.replace(
+              "const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));",
+              "const assignedRoleCodes = new Set(roleCodesFrom(user));",
+          )
+          injection_anchor = """  if (!source.includes('ENTRA_SECRET_EXPIRATION_GLOBAL_WARNING_MOUNT')) {
+          """
+          if 'ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION' not in injector:
+              injector_patch = """  source = source.replace(
+              \"import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';\",
+              \"import { applyRoleWorkspaceGovernance, getRoleWorkspaceName, roleCodesFrom } from './role-workspace-governance.js';\",
+            );
+            source = source.replace(
+              \"  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));\",
+              \"  const assignedRoleCodes = new Set(roleCodesFrom(user));\",
+            );
+            source = source.replace(
+              \"  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];\",
+              \"  const currentRoleCodes = roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity());\",
+            );
+            source = source.replace(
+              \"Signed in as {userPreferences.displayNameOverride || currentUser.data?.displayName || authSession?.displayName || authSession?.username || currentUser.data?.email || 'Unknown user'}\",
+              \"Signed in as {effectiveDisplayName}\",
+            );
+            source = source.replace(
+              \"displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}\",
+              \"displayName={effectiveDisplayName}\",
+            );
+            if (!source.includes('ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION')
+                || !source.includes('ROLE_WORKSPACE_EFFECTIVE_USER_MODEL')) {
+              throw new Error('Role workspace governance requires the effective identity load-isolation source baseline.');
+            }
+
+          """
+              injector = replace_once(injector, injection_anchor, injector_patch + injection_anchor, 'injector effective identity safeguards')
+          write('injector', injector)
+
+          validator = read('validator')
+          app_require_anchor = """  '<EntraSecretExpirationGlobalWarning authSession={authSession} />',
+          ], 'App workspace governance');
+          """
+          app_require_replacement = """  '<EntraSecretExpirationGlobalWarning authSession={authSession} />',
+            'ROLE_WORKSPACE_EFFECTIVE_VIEW_AS_IDENTITY',
+            'ROLE_WORKSPACE_EFFECTIVE_IDENTITY_LOAD_ISOLATION',
+            'ROLE_WORKSPACE_EFFECTIVE_USER_MODEL',
+            'const assignedRoleCodes = new Set(roleCodesFrom(user));',
+            'roleCodesFrom(securityContext.data || currentUser.data || readProjectPulseActiveViewAsIdentity())',
+            \"userResult = await fetchJson('/api/security/me', authSession);\",
+            \"const canViewUtilization = userHasAnyPermission(userResult, [\",
+            \"'VIEW_OWN_UTILIZATION'\",
+            'const visibleRoleModules = useMemo(() => getVisibleRoleModules(effectiveUser), [effectiveUser]);',
+            'Signed in as {effectiveDisplayName}',
+            'displayName={effectiveDisplayName}',
+          ], 'App workspace governance');
+          """
+          validator = replace_once(validator, app_require_anchor, app_require_replacement, 'validator App effective identity contracts')
+
+          welcome_require_anchor = """  \"'FINANCE'\",
+          ], 'role welcome dashboard');
+          """
+          welcome_require_replacement = """  \"'FINANCE'\",
+            'projectManagement: [',
+            \"['Approval Center', 'manager-approval']\",
+            \"['Project Workload', 'project-workload']\",
+            \"['Project Workspace', 'project-workspace']\",
+            \"['Analytics Center', 'reporting']\",
+            \"return 'projectManagement';\",
+          ], 'role welcome dashboard');
+          """
+          validator = replace_once(validator, welcome_require_anchor, welcome_require_replacement, 'validator PM dashboard contracts')
+
+          governance_require_anchor = """  \"'oncall-scheduling'\",
+          ], 'role workspace governance');
+          """
+          governance_require_replacement = """  \"'oncall-scheduling'\",
+            'const pureProjectManagement = projectManagement',
+            'baselineRoutes.has(module.route) && routes.has(module.route)',
+            \"String(source ?? '').split(/[;,|]+/)\",
+          ], 'role workspace governance');
+          """
+          validator = replace_once(validator, governance_require_anchor, governance_require_replacement, 'validator exact PM baseline contracts')
+
+          exclude_anchor = """requireCount(app, 'ROLE_WORKSPACE_GOVERNANCE_VISIBLE_MODULES', 1, 'App workspace governance');
+          """
+          exclude_replacement = """requireExcludes(app, [
+            \"const [userResult, quarterResult] = await Promise.all([\",
+            'getVisibleRoleModules(currentUser.data)',
+            \"displayName={currentUser.data?.displayName || authSession?.displayName || authSession?.username}\",
+          ], 'Project Management View-As regression');
+          requireCount(app, 'ROLE_WORKSPACE_GOVERNANCE_VISIBLE_MODULES', 1, 'App workspace governance');
+          """
+          validator = replace_once(validator, exclude_anchor, exclude_replacement, 'validator View-As regression exclusions')
+          write('validator', validator)
+
+          print('PROJECT_MANAGEMENT_VIEW_AS_EFFECTIVE_WORKSPACE_PATCH=PASS')
           PY
-          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
-          git diff --check -- . ':(exclude,glob)**/*.pdf'
 
-      - name: Commit the generated architecture artifacts
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused role workspace contracts
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run validate:role-workspace-entra-crm-governance
+          npm run build
+
+      - name: Enforce exact final source scope
         shell: bash
         run: |
           set -Eeuo pipefail
-          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
+          git diff --check
+          ALLOWED="$(cat <<'EOF'
+          .github/generated/project-management-view-as-trigger.txt
+          src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs
+          src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx
+          src/frontend/project-time-web/src/role-workspace-governance.js
+          EOF
+          )"
+          ACTUAL="$(git status --porcelain=v1 | sed -E 's/^.. //' | sort)"
+          EXPECTED="$(printf '%s\n' "$ALLOWED" | sed '/^$/d' | sort)"
+          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$EXPECTED" "$ACTUAL"
+          [[ "$ACTUAL" == "$EXPECTED" ]]
+
+      - name: Publish the reviewed source-only correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm "$TRIGGER_PATH"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$ROOT"
-          if git diff --cached --quiet; then
-            echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
-            exit 0
-          fi
-          git commit -m 'Publish US Signal Pulse AI architecture package v1.1'
-          git push origin "HEAD:${TARGET_BRANCH}"
-          echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
+          git add \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx \
+            src/frontend/project-time-web/src/role-workspace-governance.js \
+            src/frontend/project-time-web/scripts/inject-role-workspace-entra-crm-governance.mjs \
+            src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+            "$TRIGGER_PATH"
+          git diff --cached --check
+          git commit -m 'Fix Project Management View-As identity and workspace access'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo 'PROJECT_MANAGEMENT_VIEW_AS_SOURCE_PUBLISHED=YES'
