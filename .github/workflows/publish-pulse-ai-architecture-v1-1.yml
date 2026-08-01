@@ -1,150 +1,131 @@
-# One-time, narrowly gated lockfile generator for PR #392.
-# The original architecture publisher is restored immediately after reconciliation.
-name: Reconcile Vite React plugin lockfile for PR 392
+# Serialized branch publication; source and artifact validation remain deterministic.
+# Branch-only trigger merge emits the single publication push event.
+name: Publish US Signal Pulse AI Architecture v1.1
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - docs/pulse-ai-architecture-v1-1-20260729
     paths:
-      - 'src/frontend/project-time-web/package.json'
-      - 'src/frontend/project-time-web/package-lock.json'
+      - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
+      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: pr-392-vite-plugin-lockfile-reconciliation
+  group: publish-pulse-ai-architecture-v1-1-docs-branch
   cancel-in-progress: false
 
 jobs:
-  reconcile:
-    if: >-
-      github.actor != 'github-actions[bot]' &&
-      github.event.pull_request.number == 392 &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'dependencies/vite-plugin-react-6.0.4-20260801'
+  publish:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
-      TARGET_BRANCH: dependencies/vite-plugin-react-6.0.4-20260801
-      WEB_ROOT: src/frontend/project-time-web
+      TARGET_BRANCH: docs/pulse-ai-architecture-v1-1-20260729
 
     steps:
-      - name: Check out exact pull-request branch
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          persist-credentials: true
+          ref: ${{ github.sha }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Enforce documentation branch and source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
+          file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
+          echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
+
+      - uses: actions/setup-python@v5
         with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+          python-version: '3.12'
 
-      - name: Classify exact dependency-reconciliation boundary
+      - name: Install document-generation dependencies
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "$GITHUB_HEAD_REF" == "$TARGET_BRANCH" ]]
-          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
-          git fetch origin main --no-tags
-          mapfile -t PR_CHANGED < <(git diff --name-only origin/main...HEAD | LC_ALL=C sort)
-          printf '%s\n' "${PR_CHANGED[@]}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0
+          python -m pip install --upgrade pip
+          python -m pip install python-docx reportlab cairosvg pillow pypdf
 
-          if [[ "${#PR_CHANGED[@]}" == 1 && "${PR_CHANGED[0]}" == 'src/frontend/project-time-web/package.json' ]]; then
-            echo 'RECONCILE_REQUIRED=true' >> "$GITHUB_ENV"
-            echo 'VITE_PLUGIN_RECONCILIATION_MODE=GENERATE'
-          elif [[ "${#PR_CHANGED[@]}" == 2 \
-               && "${PR_CHANGED[0]}" == 'src/frontend/project-time-web/package-lock.json' \
-               && "${PR_CHANGED[1]}" == 'src/frontend/project-time-web/package.json' ]]; then
-            echo 'RECONCILE_REQUIRED=false' >> "$GITHUB_ENV"
-            echo 'VITE_PLUGIN_RECONCILIATION_MODE=VERIFY_EXISTING'
-          else
-            echo 'Unexpected PR #392 source boundary.' >&2
-            exit 1
-          fi
+      - name: Generate the US Signal architecture package
+        shell: bash
+        working-directory: docs/modules/module-011-pulse-ai/architecture/v1.1/source
+        run: |
+          set -Eeuo pipefail
+          python generate_pulse_architecture_v1_1.py | tee ../generation.log
 
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const packageJson = JSON.parse(fs.readFileSync('src/frontend/project-time-web/package.json', 'utf8'));
-          if (packageJson.devDependencies['@vitejs/plugin-react'] !== '6.0.4') {
-            throw new Error('package.json must pin @vitejs/plugin-react 6.0.4');
-          }
-          if (!['8.5.18', '8.5.25'].includes(packageJson.devDependencies.postcss)) {
-            throw new Error(`unexpected PostCSS starting version: ${packageJson.devDependencies.postcss}`);
-          }
-          NODE
-
-      - name: Carry forward PostCSS and generate the combined npm lockfile
-        if: env.RECONCILE_REQUIRED == 'true'
-        working-directory: src/frontend/project-time-web
+      - name: Validate the generated documents and diagrams
         shell: bash
         run: |
           set -Eeuo pipefail
-          npm pkg set 'devDependencies.postcss=8.5.25'
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm audit --audit-level=high
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
+          FILES=(
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+            'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+            'SHA256SUMS.txt'
+          )
+          for file in "${FILES[@]}"; do
+            test -s "$ROOT/$file"
+          done
+          ! find "$ROOT" -maxdepth 1 -type f -name '*v1.0*' -print -quit | grep -q .
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from PIL import Image
+          from pypdf import PdfReader
 
-      - name: Verify exact reconciled dependency state
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v1.1')
+          main_pdf = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+          diagrams_pdf = root / 'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+          docx = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+          logical = root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+          deployment = root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+
+          assert len(PdfReader(str(main_pdf)).pages) >= 20
+          assert len(PdfReader(str(diagrams_pdf)).pages) == 2
+          with ZipFile(docx) as archive:
+              assert '[Content_Types].xml' in archive.namelist()
+              assert 'word/document.xml' in archive.namelist()
+          assert Image.open(logical).width >= 2000
+          assert Image.open(deployment).width >= 2400
+          for svg in [
+              root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg',
+              root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+          ]:
+              text = svg.read_text(encoding='utf-8')
+              assert 'US Signal' in text
+              assert 'Pulse' in text
+              assert 'data:image/jpeg;base64,' in text
+          print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+          PY
+          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
+          git diff --check -- . ':(exclude,glob)**/*.pdf'
+
+      - name: Commit the generated architecture artifacts
         shell: bash
         run: |
           set -Eeuo pipefail
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const packageJson = JSON.parse(fs.readFileSync('src/frontend/project-time-web/package.json', 'utf8'));
-          const lock = JSON.parse(fs.readFileSync('src/frontend/project-time-web/package-lock.json', 'utf8'));
-          const root = lock.packages[''];
-          const plugin = lock.packages['node_modules/@vitejs/plugin-react'];
-
-          const expected = [
-            [packageJson.devDependencies['@vitejs/plugin-react'], '6.0.4', 'package.json plugin'],
-            [packageJson.devDependencies.postcss, '8.5.25', 'package.json PostCSS'],
-            [root.devDependencies['@vitejs/plugin-react'], '6.0.4', 'lock root plugin'],
-            [root.devDependencies.postcss, '8.5.25', 'lock root PostCSS'],
-            [plugin.version, '6.0.4', 'installed plugin'],
-            [plugin.dependencies['@rolldown/pluginutils'], '^1.0.1', 'pluginutils range'],
-          ];
-          for (const [actual, wanted, label] of expected) {
-            if (actual !== wanted) throw new Error(`${label}: expected ${wanted}, got ${actual}`);
-          }
-          if (!plugin.resolved.endsWith('/plugin-react-6.0.4.tgz')) {
-            throw new Error(`unexpected plugin tarball: ${plugin.resolved}`);
-          }
-          NODE
-
-          git diff --check
-          if [[ "$RECONCILE_REQUIRED" == 'true' ]]; then
-            mapfile -t GENERATED < <(git diff --name-only | LC_ALL=C sort)
-            printf '%s\n' "${GENERATED[@]}"
-            [[ "${#GENERATED[@]}" == 2 ]]
-            [[ "${GENERATED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
-            [[ "${GENERATED[1]}" == 'src/frontend/project-time-web/package.json' ]]
-          else
-            git diff --exit-code
-            test -z "$(git status --porcelain=v1 --untracked-files=no)"
-            echo 'VITE_PLUGIN_RECONCILIATION_ALREADY_CURRENT=YES'
-          fi
-
-      - name: Commit the reconciled dependency files
-        if: env.RECONCILE_REQUIRED == 'true'
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            src/frontend/project-time-web/package.json \
-            src/frontend/project-time-web/package-lock.json
-          mapfile -t STAGED < <(git diff --cached --name-only | LC_ALL=C sort)
-          printf '%s\n' "${STAGED[@]}"
-          [[ "${#STAGED[@]}" == 2 ]]
-          [[ "${STAGED[0]}" == 'src/frontend/project-time-web/package-lock.json' ]]
-          [[ "${STAGED[1]}" == 'src/frontend/project-time-web/package.json' ]]
-          git commit -m 'Dependencies: reconcile Vite React plugin 6.0.4 with PostCSS 8.5.25'
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
+            exit 0
+          fi
+          git commit -m 'Publish US Signal Pulse AI architecture package v1.1'
           git push origin "HEAD:${TARGET_BRANCH}"
-          echo 'VITE_PLUGIN_LOCKFILE_RECONCILIATION=PASSED'
+          echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
