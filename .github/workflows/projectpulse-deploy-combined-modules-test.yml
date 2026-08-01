@@ -111,7 +111,7 @@ jobs:
           grep -Fq 'COMBINED_MODULES_001_005_012_037_038_DATABASE=APPLIED_OR_VERIFIED' control/scripts/apply-combined-modules-test-migrations.sh
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

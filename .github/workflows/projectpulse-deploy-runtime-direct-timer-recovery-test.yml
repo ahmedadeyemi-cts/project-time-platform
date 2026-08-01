@@ -120,7 +120,7 @@ jobs:
           It **does not** authenticate as a ProjectPulse user and therefore cannot prove user lists, task assignments, active timers, role-policy data, or Certify interactions function for a signed-in session.
           SUMMARY
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

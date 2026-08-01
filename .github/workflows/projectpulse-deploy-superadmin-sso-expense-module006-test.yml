@@ -226,7 +226,7 @@ jobs:
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo 'SUPERADMIN_SSO_EXPENSE_MODULE006_SOURCE_VALIDATION=PASS'
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

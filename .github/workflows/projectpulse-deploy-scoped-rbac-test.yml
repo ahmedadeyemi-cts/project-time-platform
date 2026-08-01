@@ -62,7 +62,7 @@ jobs:
           grep -Fq 'Strictly read-only representation' release/src/frontend/project-time-web/src/RolesPermissionsMatrix.jsx
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

@@ -108,7 +108,7 @@ jobs:
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo '::warning::A green deployment proves exact API/web revision integrity and served Preview/mail-runtime assets. Signed-in Preview, Graph, SMTP, SSO, and mail-delivery UAT remain required.'
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

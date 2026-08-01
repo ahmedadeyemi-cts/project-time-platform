@@ -117,7 +117,7 @@ jobs:
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo '::warning::A green deployment proves migration, image, protected-route, and served-asset integrity. Signed-in Audit and History, individual user management, local password management, bulk updates, and manager-team UAT remain required.'
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
