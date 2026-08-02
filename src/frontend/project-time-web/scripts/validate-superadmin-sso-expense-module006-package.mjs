@@ -59,18 +59,28 @@ const fullBackendContext = [
 
 if (fullBackendContext) {
   requireAll(actualAuthority, [
-    'SUPER_ADMINISTRATOR',
-    'ADMINISTRATOR',
+    '"SUPER_ADMINISTRATOR"',
+    '"ADMINISTRATOR"',
+    'IsAdministratorRoleCode',
     'ProjectPulseActualUserId',
     'ProjectPulseSessionUserId',
     'ProjectPulseEffectiveUserId',
     'X-ProjectPulse-View-As-User',
     'if (IsViewAs(context)) return false;',
+    'ReadActualEmail(context)',
+    'lower(app_user.email) = lower(@email)',
     'assignment.is_active = TRUE',
     'role.is_active = TRUE',
     'app_user.is_active = TRUE',
-    'return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);'
+    'resolved is not Guid administratorUserId',
+    'context.Items["ProjectPulsePermanentFullControl"] = true;',
+    'context.Items["ProjectPulseAuthorizationSource"] = "actual_session_super_administrator";',
+    'return true;'
   ], 'Actual-session Super Administrator invariant');
+  rejectAll(actualAuthority, [
+    "upper(COALESCE(role.role_code, '')) = 'SUPER_ADMINISTRATOR'",
+    'return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);'
+  ], 'obsolete exact-role-only administrator resolver');
 
   requireAll(scopedBridge, [
     'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync',
