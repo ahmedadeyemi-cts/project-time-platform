@@ -11,9 +11,9 @@ const files = {
   selfServiceStylesheet: 'src/frontend/project-time-web/src/qualifications-self-service.css',
   app: 'src/frontend/project-time-web/src/App.jsx',
   package: 'src/frontend/project-time-web/package.json',
-  migration: 'database/migrations/062_project_management_billing_role_access_repair.sql',
-  rollback: 'database/rollback/062_project_management_billing_role_access_repair_rollback.sql',
-  migrationTest: 'tests/test-project-management-billing-role-access-migration-062.sh',
+  migration: 'database/migrations/063_project_management_billing_role_access_repair.sql',
+  rollback: 'database/rollback/063_project_management_billing_role_access_repair_rollback.sql',
+  migrationTest: 'tests/test-project-management-billing-role-access-migration-063.sh',
   readme: 'docs/modules/module-069-qualifications-certifications/README.md',
   api: 'docs/modules/module-069-qualifications-certifications/API-CONTRACT.md',
   security: 'docs/modules/module-069-qualifications-certifications/SECURITY-AND-OPERATIONS.md'
@@ -96,14 +96,14 @@ if (selfServiceAvailable) {
   ].every((value) => selfService.includes(`"${value}"`)), 'all Project Management aliases');
   check('SELF_SERVICE_REGISTERED', registration.includes('app.MapQualificationsCertificationSelfServiceEndpoints();'), 'endpoint wiring');
 
-  check('MIGRATION_062_PERMISSIONS', migration.includes('VIEW_QUALIFICATIONS_069') && migration.includes('MANAGE_OWN_QUALIFICATIONS_069'), 'Module 069 permissions');
-  check('MIGRATION_062_PM_SCOPE', migration.includes("'VIEW_TIME_ENTRY'") && migration.includes("'PROJECT_TIME_APPROVAL'") && migration.includes("'VIEW_HOLIDAYS'") && migration.includes("'MANAGE_EXPENSES'"), 'PM operational permission repair');
-  check('MIGRATION_062_BILLING_AUDIT_EXCLUSION', migration.includes("upper(role.role_code) IN ('BILLING', 'ACCOUNTING_BILLING', 'FINANCE')") && migration.includes("upper(COALESCE(permission.module_code, '')) = '008'"), 'Billing Module 008 exclusion');
-  check('ROLLBACK_062_SCOPED', rollback.includes('role_access_repair_062_permission_grants') && rollback.includes('role_access_repair_062_permission_removals'), 'reversible evidence-based rollback');
-  check('MIGRATION_062_TEST', migrationTest.includes('PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_062=PASS') && migrationTest.includes('billing_audit_removed') && migrationTest.includes('accounting_audit_preserved'), 'apply, rollback, and reapply coverage');
+  check('MIGRATION_063_PERMISSIONS', migration.includes('VIEW_QUALIFICATIONS_069') && migration.includes('MANAGE_OWN_QUALIFICATIONS_069'), 'Module 069 permissions');
+  check('MIGRATION_063_PM_SCOPE', migration.includes("'VIEW_TIME_ENTRY'") && migration.includes("'PROJECT_TIME_APPROVAL'") && migration.includes("'VIEW_HOLIDAYS'") && migration.includes("'MANAGE_EXPENSES'"), 'PM operational permission repair');
+  check('MIGRATION_063_BILLING_AUDIT_EXCLUSION', migration.includes("upper(role.role_code) IN ('BILLING', 'ACCOUNTING_BILLING', 'FINANCE')") && migration.includes("upper(COALESCE(permission.module_code, '')) = '008'"), 'Billing Module 008 exclusion');
+  check('ROLLBACK_063_SCOPED', rollback.includes('role_access_repair_063_permission_grants') && rollback.includes('role_access_repair_063_permission_removals'), 'reversible evidence-based rollback');
+  check('MIGRATION_063_TEST', migrationTest.includes('PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_063=PASS') && migrationTest.includes('billing_audit_removed') && migrationTest.includes('accounting_audit_preserved'), 'apply, rollback, and reapply coverage');
 } else {
   console.log('MODULE_069_SELF_SERVICE_BACKEND_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
-  console.log('MODULE_069_MIGRATION_062_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  console.log('MODULE_069_MIGRATION_063_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 check('FRONTEND_MARKERS', frontend.includes('data-module="069"') && frontend.includes("'self-service' : 'read-only-matrix'"), 'matrix and self-service modes');

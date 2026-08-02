@@ -39,7 +39,7 @@ these endpoints.
 - Raw exception text is suppressed from browser responses.
 - No credential, token, private key, provider secret, or connection string is
   accepted or returned.
-- The change uses the existing qualification table; migration 062 changes RBAC
+- The change uses the existing qualification table; migration 063 changes RBAC
   permissions and does not create a second qualification data store.
 - No Azure, Entra, external provider, mail-delivery, or deployment operation is
   performed by Module 069 self-service.
