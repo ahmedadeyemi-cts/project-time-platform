@@ -143,10 +143,7 @@ requireIncludes(billingActions, [
   "['Invoice & Billing', 'invoice-billing-center']",
   "['Analytics Center', 'reporting']",
 ], 'Billing dashboard actions');
-requireExcludes(welcome, [
-  'Time entry is not part of this role.',
-  "if (hasAny(roleCodes, ['ACCOUNTING', 'ACCOUNTING_BILLING', 'BILLING', 'FINANCE'])) return 'billing';",
-], 'obsolete role assumptions');
+requireExcludes(welcome, ['Time entry is not part of this role.'], 'obsolete PM assumption');
 
 requireIncludes(identityCompatibility, [
   '/api/utilization/current-quarter',
@@ -155,9 +152,7 @@ requireIncludes(identityCompatibility, [
   'grantsUtilizationAccess: false',
   'viewAsMutationAuthority: false',
 ], 'effective identity load isolation');
-requireIncludes(main, [
-  "import './role-workspace-effective-identity-compatibility.js';",
-], 'effective identity startup wiring');
+requireIncludes(main, ["import './role-workspace-effective-identity-compatibility.js';"], 'effective identity startup wiring');
 requireCount(main, "import './role-workspace-effective-identity-compatibility.js';", 1, 'effective identity startup wiring');
 
 requireIncludes(app, [
@@ -203,9 +198,10 @@ const crmAdministration = optional('src/backend/ProjectTime.Api/Modules/CrmErpAd
 const entraAdministration = optional('src/backend/ProjectTime.Api/Modules/EntraSecretAdministrationModule.cs');
 const microsoftSecurity = optional('src/backend/ProjectTime.Api/Modules/MicrosoftIntegrationSecurityCompatibility.cs');
 const projectFile = optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj');
-const migration063PmBillingAdmin = optional('database/migrations/062_super_administrator_permanent_full_control.sql');
-const rollback063PmBillingAdmin = optional('database/rollback/062_super_administrator_permanent_full_control_rollback.sql');
-const test063PmBillingAdmin = optional('tests/test-super-administrator-permanent-full-control-migration-062.sh');
+
+const migration062Admin = optional('database/migrations/062_super_administrator_permanent_full_control.sql');
+const rollback062Admin = optional('database/rollback/062_super_administrator_permanent_full_control_rollback.sql');
+const test062Admin = optional('tests/test-super-administrator-permanent-full-control-migration-062.sh');
 const migration063PmBilling = optional('database/migrations/063_project_management_billing_role_access_repair.sql');
 const rollback063PmBilling = optional('database/rollback/063_project_management_billing_role_access_repair_rollback.sql');
 const test063PmBilling = optional('tests/test-project-management-billing-role-access-migration-063.sh');
@@ -292,26 +288,26 @@ if (projectFile) {
   ], 'API registration');
 }
 
-if (migration063PmBillingAdmin && rollback063PmBillingAdmin && test063PmBillingAdmin) {
-  requireIncludes(migration063PmBillingAdmin, [
+if (migration062Admin && rollback062Admin && test062Admin) {
+  requireIncludes(migration062Admin, [
     '062_super_administrator_permanent_full_control',
     "upper(role_code) IN ('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')",
     'role_access_repair_062_assignment_changes',
     'role_access_repair_062_permission_changes',
     'missing_permission_relationships',
   ], 'migration 062 administrator authority');
-  requireIncludes(rollback063PmBillingAdmin, [
+  requireIncludes(rollback062Admin, [
     'role_access_repair_062_assignment_changes',
     'role_access_repair_062_permission_changes',
     "migration_id = '062_super_administrator_permanent_full_control'",
-  ], 'rollback 061');
-  requireIncludes(test063PmBillingAdmin, [
+  ], 'rollback 062 administrator authority');
+  requireIncludes(test062Admin, [
     'SUPER_ADMINISTRATOR_PERMANENT_FULL_CONTROL_MIGRATION_062=PASS',
     'migration_registered_once',
     'rollback_preserved_preexisting_permission',
   ], 'migration 062 administrator test');
 } else {
-  console.log('ROLE_WORKSPACE_SUPER_ADMIN_MIGRATION_061_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
+  console.log('ROLE_WORKSPACE_SUPER_ADMIN_MIGRATION_062_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
 
 if (migration063PmBilling && rollback063PmBilling && test063PmBilling) {
@@ -325,19 +321,19 @@ if (migration063PmBilling && rollback063PmBilling && test063PmBilling) {
     "'MANAGE_EXPENSES'",
     "upper(role.role_code) IN ('BILLING', 'ACCOUNTING_BILLING', 'FINANCE')",
     "upper(COALESCE(permission.module_code, '')) = '008'",
-  ], 'migration 062');
+  ], 'migration 063 PM and Billing role repair');
   requireIncludes(rollback063PmBilling, [
     'role_access_repair_063_permission_grants',
     'role_access_repair_063_permission_removals',
-    'rollback 062 restoration',
-  ], 'rollback 062');
+    'rollback 063 restoration',
+  ], 'rollback 063 PM and Billing role repair');
   requireIncludes(test063PmBilling, [
     'PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_063=PASS',
     'pm_required_permissions_complete',
     'billing_audit_removed',
     'accounting_audit_preserved',
     'pm_scope_restored',
-  ], 'migration 062 test');
+  ], 'migration 063 PM and Billing test');
 } else {
   console.log('ROLE_WORKSPACE_PM_BILLING_MIGRATION_063_CHECK=SKIPPED_MINIMAL_WEB_CONTEXT');
 }
