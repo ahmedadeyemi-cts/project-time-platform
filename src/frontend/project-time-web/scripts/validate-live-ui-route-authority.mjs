@@ -15,6 +15,7 @@ const files = {
   analyticsAuthority: 'src/legacy-analytics-overlay-authority.js',
   celarPlatform: 'src/CelarAiEnterprisePlatform.jsx',
   architecture: 'src/CelarAiArchitectureOverview.jsx',
+  microsoftPortal: 'src/MicrosoftIntegrationDualConnectionPortal.jsx',
   mailPanel: 'src/MicrosoftMailTransportReadinessPanel.jsx'
 };
 
@@ -37,6 +38,7 @@ const main = read(files.main);
 const analyticsAuthority = read(files.analyticsAuthority);
 const celarPlatform = read(files.celarPlatform);
 const architecture = read(files.architecture);
+const microsoftPortal = read(files.microsoftPortal);
 const mailPanel = read(files.mailPanel);
 
 const requiredAliases = [
@@ -48,7 +50,8 @@ const requiredAliases = [
   "'financial-report-center': 'reporting'",
   "'crm': 'crm-integration'",
   "'crm-erp': 'crm-integration'",
-  "'microsoft-integration': 'entra-secret-administration'"
+  "'microsoft-integration': 'entra-secret-administration'",
+  "'module-065': 'entra-secret-administration'"
 ];
 
 test('BUILD_CHAIN', chain.includes("await import('./inject-live-ui-route-authority.mjs');"));
@@ -67,6 +70,18 @@ test('ANALYTICS_NATIVE_MOUNT', generated.includes('<AnalyticsCenter authSession=
   && generated.includes('data-authoritative-module="030"'));
 test('ANALYTICS_SINGLE_MOUNT', generated.split('<AnalyticsCenter authSession={authSession} />').length - 1 === 1);
 test('ANALYTICS_RUNTIME_AUTHORITY_IMPORTED', main.includes("import './legacy-analytics-overlay-authority.js';"));
+test('ANALYTICS_RUNTIME_AUTHORITY_PRECEDES_PORTALS',
+  main.indexOf("import './legacy-analytics-overlay-authority.js';") >= 0
+  && main.indexOf("import './legacy-analytics-overlay-authority.js';") < main.indexOf("import MicrosoftIntegrationDualConnectionPortal"));
+test('RAW_HASH_CANONICALIZATION', analyticsAuthority.includes('function canonicalizeRuntimeHash()')
+  && analyticsAuthority.includes('window.history.replaceState')
+  && analyticsAuthority.includes("'celar-ai': 'work-task-builder'")
+  && analyticsAuthority.includes("'analytics-center': 'reporting'")
+  && analyticsAuthority.includes("'crm-erp': 'crm-integration'")
+  && analyticsAuthority.includes("'microsoft-integration': 'entra-secret-administration'")
+  && analyticsAuthority.includes("'module-065': 'entra-secret-administration'")
+  && analyticsAuthority.includes("'global-mail-configuration': 'entra-secret-administration'")
+  && analyticsAuthority.includes('projectpulse:route-canonicalized'));
 test('LEGACY_ANALYTICS_OVERLAY_DISABLED', analyticsAuthority.includes('MODULE_030_NATIVE_REACT_ROUTE')
   && analyticsAuthority.includes('MutationObserver')
   && analyticsAuthority.includes("'projectpulse-030-shell'")
@@ -81,6 +96,9 @@ test('CELAR_ARCHITECTURE_MOUNT', celarPlatform.includes('<CelarAiArchitectureOve
   && architecture.includes('<svg'));
 test('GUIDED_CLOSEOUT_ONLY', generated.includes('<ProjectCloseoutCenter />')
   && !generated.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"'));
+test('MICROSOFT_PORTAL_CANONICAL_ROUTE', microsoftPortal.includes("const ACTIVE_ROUTE = 'entra-secret-administration'")
+  && analyticsAuthority.includes("'microsoft-integration': 'entra-secret-administration'")
+  && analyticsAuthority.includes("'module-065': 'entra-secret-administration'"));
 test('MODULE065_READINESS_VISIBLE', mailPanel.includes("const ROUTE = 'entra-secret-administration'")
   && mailPanel.includes("'microsoft-integration': ROUTE")
   && mailPanel.includes('Test sender and transport')
@@ -100,6 +118,7 @@ if (exists(files.distIndex)) {
 test('PRODUCTION_BUNDLE_FOUND', bundle.length > 0);
 test('PRODUCTION_BUNDLE_ANALYTICS', bundle.includes('Analytics Center'));
 test('PRODUCTION_BUNDLE_ANALYTICS_AUTHORITY', bundle.includes('MODULE_030_NATIVE_REACT_ROUTE'));
+test('PRODUCTION_BUNDLE_HASH_CANONICALIZATION', bundle.includes('projectpulse:route-canonicalized'));
 test('PRODUCTION_BUNDLE_CELAR_ARCHITECTURE', bundle.includes('Celar AI Architecture Overview'));
 test('PRODUCTION_BUNDLE_SUPERADMIN', bundle.includes('Full Control · Organization-wide'));
 test('PRODUCTION_BUNDLE_SMTP_READINESS', bundle.includes('Test sender and transport'));
