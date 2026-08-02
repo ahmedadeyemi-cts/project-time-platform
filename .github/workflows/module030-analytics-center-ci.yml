@@ -110,8 +110,13 @@ jobs:
             echo "ANALYTICS_CENTER_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
           fi
 
-          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-            echo 'Analytics Center source overlaps deployment or canonical generated integration files.' >&2
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED"; then
+            echo 'Analytics Center validation detected deployment-control overlap.' >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* || "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* ]] && \
+             grep -E '^(src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Analytics-owned source overlaps canonical generated integration files.' >&2
             exit 1
           fi
           if grep -Fxq 'database/migrations/054_enterprise_reporting_center.sql' <<<"$CHANGED"; then
