@@ -1,0 +1,119 @@
+name: Validate Live UI Route Authority
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/live-ui-route-authority-ci.yml'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-live-ui-route-authority.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-ui-route-authority-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build and validate authoritative live UI routes
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EXPECTED_BRANCH: fix/live-ui-route-authority-20260802
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact branch and source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_BRANCH" ]]
+          git fetch origin '${{ github.event.pull_request.base.ref }}' --no-tags
+          BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
+          HEAD="$(git rev-parse HEAD)"
+          [[ "$HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
+
+          mapfile -t changed < <(git diff --name-only "$BASE"..."$HEAD")
+          printf '%s\n' "${changed[@]}"
+          allowed='^(\.github/workflows/live-ui-route-authority-ci\.yml|src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context\.mjs|src/frontend/project-time-web/scripts/inject-live-ui-route-authority\.mjs|src/frontend/project-time-web/scripts/validate-live-ui-route-authority\.mjs|src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel\.jsx)$'
+          for file in "${changed[@]}"; do
+            [[ "$file" =~ $allowed ]] || {
+              echo "Unexpected file in live UI correction: $file" >&2
+              exit 1
+            }
+          done
+          [[ "${#changed[@]}" -ge 4 ]]
+          echo "LIVE_UI_EXACT_HEAD=$HEAD"
+          echo 'LIVE_UI_SOURCE_BOUNDARY=PASSED'
+
+      - name: Validate repository security posture
+        shell: bash
+        run: bash scripts/validate-repository-security-posture.sh
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm run build
+
+      - name: Validate runtime ownership and route authority
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: node ./scripts/validate-live-ui-route-authority.mjs
+
+      - name: Prove the production HTML disables the retired Analytics overlay
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          INDEX='dist/index.html'
+          test -s "$INDEX"
+          grep -Fq 'MODULE_030_NATIVE_REACT_ROUTE' "$INDEX"
+          grep -Fq 'window.__projectPulse030NativeReactRoute = true' "$INDEX"
+          grep -Fq '#projectpulse-030-shell,#projectpulse-030-reporting-card{display:none!important}' "$INDEX"
+          grep -Fq 'removeRetiredModule030Overlay' "$INDEX"
+          echo 'LIVE_UI_LEGACY_ANALYTICS_OVERLAY=DISABLED'
+
+      - name: Prove the generated runtime mounts the new interfaces
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APP='src/App.Module001.g.jsx'
+          test -s "$APP"
+          grep -Fq '<AnalyticsCenter authSession={authSession} />' "$APP"
+          grep -Fq '<CrmErpIntegrationCenter />' "$APP"
+          grep -Fq '<WorkTaskBuilderPanel />' "$APP"
+          grep -Fq '<ProjectCloseoutCenter />' "$APP"
+          grep -Fq "'celar-ai': 'work-task-builder'" "$APP"
+          grep -Fq "'crm-erp': 'crm-integration'" "$APP"
+          grep -Fq "roleCodes.includes('SUPER_ADMINISTRATOR')" "$APP"
+          ! grep -Fq '<FinancialOperationsRecoveryWorkspace moduleCode="040"' "$APP"
+          echo 'LIVE_UI_GENERATED_RUNTIME=PASSED'
+
+      - name: Build production web container
+        shell: bash
+        run: docker build --file deployment/containers/web/Dockerfile --tag projectpulse-live-ui-route-authority:${{ github.sha }} .
