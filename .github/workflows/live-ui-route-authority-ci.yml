@@ -60,7 +60,7 @@ jobs:
 
       - name: Validate repository security posture
         shell: bash
-        run: bash scripts/validate-repository-security-posture.sh
+        run: python3 scripts/security/validate-repository-security-posture.py
 
       - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
