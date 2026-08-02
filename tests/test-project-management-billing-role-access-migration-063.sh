@@ -2,12 +2,12 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONTAINER="projectpulse-role-repair-062-${GITHUB_RUN_ID:-local}-$$"
+CONTAINER="projectpulse-role-repair-063-${GITHUB_RUN_ID:-local}-$$"
 DB_USER="projectpulse"
 DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
-MIGRATION="/workspace/database/migrations/062_project_management_billing_role_access_repair.sql"
-ROLLBACK="/workspace/database/rollback/062_project_management_billing_role_access_repair_rollback.sql"
+MIGRATION="/workspace/database/migrations/063_project_management_billing_role_access_repair.sql"
+ROLLBACK="/workspace/database/rollback/063_project_management_billing_role_access_repair_rollback.sql"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -30,7 +30,7 @@ assert_eq() {
 
 expect_sql_failure() {
   local sql="$1" expected="$2" label="$3"
-  local log="/tmp/projectpulse-062-${label}.log"
+  local log="/tmp/projectpulse-063-${label}.log"
   if psql_exec -c "$sql" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
@@ -164,7 +164,7 @@ apply_migration() { psql_exec -f "$MIGRATION" >/dev/null; }
 apply_migration
 apply_migration
 
-assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_project_management_billing_role_access_repair';")" migration_registered_once
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='063_project_management_billing_role_access_repair';")" migration_registered_once
 assert_eq 2 "$(value "SELECT COUNT(*) FROM app_permissions WHERE permission_code IN ('VIEW_QUALIFICATIONS_069','MANAGE_OWN_QUALIFICATIONS_069');")" qualification_permissions_created
 assert_eq 75 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('PROJECT_MANAGER','PROJECT_MANAGEMENT','PROJECT_MANAGEMENT_LEAD','PROJECT_MANAGEMENT_TEAM_LEAD','PM_TEAM_LEAD') AND permission.permission_code IN ('VIEW_TIME_ENTRY','EDIT_OWN_TIME','SUBMIT_OWN_TIME','VIEW_APPROVAL_INBOX','APPROVE_TIME','REJECT_TIME','PROJECT_TIME_APPROVAL','VIEW_HOLIDAYS','VIEW_CALENDAR','VIEW_EXPENSES','MANAGE_EXPENSES','VIEW_PROJECT_WORKSPACE','VIEW_REPORTS','VIEW_QUALIFICATIONS_069','MANAGE_OWN_QUALIFICATIONS_069');")" pm_required_permissions_complete
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('BILLING','ACCOUNTING_BILLING','FINANCE') AND permission.permission_code='VIEW_AUDIT_TRAIL';")" billing_audit_removed
@@ -172,20 +172,20 @@ assert_eq 1 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOI
 assert_eq 2 "$(value "SELECT COUNT(*) FROM projectpulse_role_scope_rules WHERE role_code IN ('PROJECT_MANAGEMENT','PROJECT_MANAGEMENT_LEAD') AND can_view_assigned_self=TRUE AND can_approve_time=TRUE;")" pm_scope_corrected
 
 expect_sql_failure \
-  "DELETE FROM role_access_repair_062_permission_grants;" \
-  "migration 062 evidence is immutable" \
+  "DELETE FROM role_access_repair_063_permission_grants;" \
+  "migration 063 evidence is immutable" \
   grant_evidence_immutable
 
 psql_exec -f "$ROLLBACK" >/dev/null
 
-assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_project_management_billing_role_access_repair';")" migration_removed_on_rollback
+assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='063_project_management_billing_role_access_repair';")" migration_removed_on_rollback
 assert_eq 3 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('BILLING','ACCOUNTING_BILLING','FINANCE') AND permission.permission_code='VIEW_AUDIT_TRAIL';")" billing_audit_restored
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code='PROJECT_MANAGEMENT' AND permission.permission_code='VIEW_TIME_ENTRY';")" preexisting_pm_grant_preserved
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code='PROJECT_MANAGEMENT' AND permission.permission_code='MANAGE_OWN_QUALIFICATIONS_069';")" migration_pm_grant_removed
 assert_eq 'false|false|original PM scope' "$(value "SELECT can_view_assigned_self::text || '|' || can_approve_time::text || '|' || notes FROM projectpulse_role_scope_rules WHERE role_code='PROJECT_MANAGEMENT';")" pm_scope_restored
 
 apply_migration
-assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_project_management_billing_role_access_repair';")" migration_reapplied
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='063_project_management_billing_role_access_repair';")" migration_reapplied
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('BILLING','ACCOUNTING_BILLING','FINANCE') AND permission.permission_code='VIEW_AUDIT_TRAIL';")" billing_audit_removed_after_reapply
 
-echo 'PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_062=PASS'
+echo 'PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_063=PASS'

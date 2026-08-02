@@ -2,12 +2,12 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONTAINER="projectpulse-superadmin-061-${GITHUB_RUN_ID:-local}-$$"
+CONTAINER="projectpulse-superadmin-062-${GITHUB_RUN_ID:-local}-$$"
 DB_USER="projectpulse"
 DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
-MIGRATION="/workspace/database/migrations/061_super_administrator_permanent_full_control.sql"
-ROLLBACK="/workspace/database/rollback/061_super_administrator_permanent_full_control_rollback.sql"
+MIGRATION="/workspace/database/migrations/062_super_administrator_permanent_full_control.sql"
+ROLLBACK="/workspace/database/rollback/062_super_administrator_permanent_full_control_rollback.sql"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -30,7 +30,7 @@ assert_eq() {
 
 expect_sql_failure() {
   local sql="$1" expected="$2" label="$3"
-  local log="/tmp/projectpulse-061-${label}.log"
+  local log="/tmp/projectpulse-062-${label}.log"
   if psql_exec -c "$sql" >"$log" 2>&1; then
     echo "ASSERTION_FAILED $label unexpectedly_succeeded" >&2
     exit 1
@@ -136,7 +136,7 @@ INSERT INTO app_user_role_assignments (user_id, app_role_id, assignment_reason)
 SELECT '10000000-0000-0000-0000-000000000002', app_role_id, 'Pre-existing canonical assignment'
 FROM app_roles WHERE role_code = 'SUPER_ADMINISTRATOR';
 
--- One relationship predates migration 061 and must survive rollback.
+-- One relationship predates migration 062 and must survive rollback.
 INSERT INTO app_role_permissions (app_role_id, app_permission_id)
 SELECT role.app_role_id, permission.app_permission_id
 FROM app_roles role
@@ -148,15 +148,15 @@ apply_migration() { psql_exec -f "$MIGRATION" >/dev/null; }
 apply_migration
 apply_migration
 
-assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='061_super_administrator_permanent_full_control';")" migration_registered_once
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_super_administrator_permanent_full_control';")" migration_registered_once
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id WHERE a.user_id='10000000-0000-0000-0000-000000000001' AND r.role_code='SUPER_ADMINISTRATOR' AND a.is_active=TRUE;")" legacy_admin_reconciled
 assert_eq 8 "$(value "SELECT COUNT(*) FROM app_role_permissions rp JOIN app_roles r ON r.app_role_id=rp.app_role_id WHERE r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR');")" every_admin_permission_explicit
-assert_eq 1 "$(value "SELECT COUNT(*) FROM role_access_repair_061_assignment_changes;")" assignment_evidence_count
-assert_eq 7 "$(value "SELECT COUNT(*) FROM role_access_repair_061_permission_changes;")" permission_evidence_count
+assert_eq 1 "$(value "SELECT COUNT(*) FROM role_access_repair_062_assignment_changes;")" assignment_evidence_count
+assert_eq 7 "$(value "SELECT COUNT(*) FROM role_access_repair_062_permission_changes;")" permission_evidence_count
 
 expect_sql_failure \
-  "DELETE FROM role_access_repair_061_permission_changes;" \
-  "ProjectPulse migration 061 evidence is immutable" \
+  "DELETE FROM role_access_repair_062_permission_changes;" \
+  "ProjectPulse migration 062 evidence is immutable" \
   immutable_permission_evidence
 
 psql_exec <<'SQL'
@@ -166,18 +166,18 @@ SQL
 apply_migration
 
 assert_eq 10 "$(value "SELECT COUNT(*) FROM app_role_permissions rp JOIN app_roles r ON r.app_role_id=rp.app_role_id WHERE r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR');")" later_permission_reconciled
-assert_eq 9 "$(value "SELECT COUNT(*) FROM role_access_repair_061_permission_changes;")" later_permission_evidence_recorded
+assert_eq 9 "$(value "SELECT COUNT(*) FROM role_access_repair_062_permission_changes;")" later_permission_evidence_recorded
 
 psql_exec -f "$ROLLBACK" >/dev/null
 
-assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='061_super_administrator_permanent_full_control';")" rollback_removed_registration
+assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_super_administrator_permanent_full_control';")" rollback_removed_registration
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id WHERE a.user_id='10000000-0000-0000-0000-000000000001' AND r.role_code='SUPER_ADMINISTRATOR';")" rollback_removed_inserted_canonical_assignment
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id WHERE a.user_id='10000000-0000-0000-0000-000000000002' AND r.role_code='SUPER_ADMINISTRATOR' AND a.is_active=TRUE;")" rollback_preserved_preexisting_canonical_assignment
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_role_permissions rp JOIN app_roles r ON r.app_role_id=rp.app_role_id JOIN app_permissions p ON p.app_permission_id=rp.app_permission_id WHERE r.role_code='SUPER_ADMINISTRATOR' AND p.permission_code='MANAGE_ALL';")" rollback_preserved_preexisting_permission
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions rp JOIN app_roles r ON r.app_role_id=rp.app_role_id JOIN app_permissions p ON p.app_permission_id=rp.app_permission_id WHERE r.role_code='ADMINISTRATOR';")" rollback_removed_only_migration_permissions
 
 apply_migration
-assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='061_super_administrator_permanent_full_control';")" migration_reapplied
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_super_administrator_permanent_full_control';")" migration_reapplied
 assert_eq 10 "$(value "SELECT COUNT(*) FROM app_role_permissions rp JOIN app_roles r ON r.app_role_id=rp.app_role_id WHERE r.role_code IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR');")" reapplied_permissions_complete
 
-echo 'SUPER_ADMINISTRATOR_PERMANENT_FULL_CONTROL_MIGRATION_061=PASS'
+echo 'SUPER_ADMINISTRATOR_PERMANENT_FULL_CONTROL_MIGRATION_062=PASS'

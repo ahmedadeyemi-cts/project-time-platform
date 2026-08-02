@@ -1,4 +1,4 @@
--- ProjectPulse migration 062
+-- ProjectPulse migration 063
 -- Correct Project Management self-service/project-approval authority and the
 -- Billing exclusion from Module 008 Audit History.
 --
@@ -13,12 +13,12 @@ BEGIN
        OR to_regclass('public.app_roles') IS NULL
        OR to_regclass('public.app_permissions') IS NULL
        OR to_regclass('public.app_role_permissions') IS NULL THEN
-        RAISE EXCEPTION 'Migration 062 requires the ProjectPulse RBAC foundation.';
+        RAISE EXCEPTION 'Migration 063 requires the ProjectPulse RBAC foundation.';
     END IF;
 END;
 $prerequisites$;
 
-CREATE TABLE IF NOT EXISTS role_access_repair_062_permission_grants (
+CREATE TABLE IF NOT EXISTS role_access_repair_063_permission_grants (
     role_id UUID NOT NULL REFERENCES app_roles(app_role_id) ON DELETE RESTRICT,
     permission_id UUID NOT NULL REFERENCES app_permissions(app_permission_id) ON DELETE RESTRICT,
     role_code VARCHAR(75) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS role_access_repair_062_permission_grants (
     PRIMARY KEY (role_id, permission_id)
 );
 
-CREATE TABLE IF NOT EXISTS role_access_repair_062_permission_removals (
+CREATE TABLE IF NOT EXISTS role_access_repair_063_permission_removals (
     role_id UUID NOT NULL REFERENCES app_roles(app_role_id) ON DELETE RESTRICT,
     permission_id UUID NOT NULL REFERENCES app_permissions(app_permission_id) ON DELETE RESTRICT,
     role_code VARCHAR(75) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS role_access_repair_062_permission_removals (
     PRIMARY KEY (role_id, permission_id)
 );
 
-CREATE TABLE IF NOT EXISTS role_access_repair_062_scope_changes (
+CREATE TABLE IF NOT EXISTS role_access_repair_063_scope_changes (
     role_code VARCHAR(75) PRIMARY KEY,
     previous_can_view_assigned_self BOOLEAN NULL,
     previous_can_approve_time BOOLEAN NULL,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS role_access_repair_062_scope_changes (
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS role_access_repair_062_policy_versions (
+CREATE TABLE IF NOT EXISTS role_access_repair_063_policy_versions (
     singleton_key BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton_key),
     previous_policy_version_id UUID NULL,
     replacement_policy_version_id UUID NULL,
@@ -54,38 +54,38 @@ CREATE TABLE IF NOT EXISTS role_access_repair_062_policy_versions (
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE OR REPLACE FUNCTION projectpulse_062_block_evidence_mutation()
+CREATE OR REPLACE FUNCTION projectpulse_063_block_evidence_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse_062_immutable$
+AS $projectpulse_063_immutable$
 BEGIN
-    RAISE EXCEPTION 'ProjectPulse migration 062 evidence is immutable.';
+    RAISE EXCEPTION 'ProjectPulse migration 063 evidence is immutable.';
 END;
-$projectpulse_062_immutable$;
+$projectpulse_063_immutable$;
 
-DROP TRIGGER IF EXISTS trg_role_access_repair_062_grants_immutable
-    ON role_access_repair_062_permission_grants;
-CREATE TRIGGER trg_role_access_repair_062_grants_immutable
-BEFORE UPDATE OR DELETE ON role_access_repair_062_permission_grants
-FOR EACH ROW EXECUTE FUNCTION projectpulse_062_block_evidence_mutation();
+DROP TRIGGER IF EXISTS trg_role_access_repair_063_grants_immutable
+    ON role_access_repair_063_permission_grants;
+CREATE TRIGGER trg_role_access_repair_063_grants_immutable
+BEFORE UPDATE OR DELETE ON role_access_repair_063_permission_grants
+FOR EACH ROW EXECUTE FUNCTION projectpulse_063_block_evidence_mutation();
 
-DROP TRIGGER IF EXISTS trg_role_access_repair_062_removals_immutable
-    ON role_access_repair_062_permission_removals;
-CREATE TRIGGER trg_role_access_repair_062_removals_immutable
-BEFORE UPDATE OR DELETE ON role_access_repair_062_permission_removals
-FOR EACH ROW EXECUTE FUNCTION projectpulse_062_block_evidence_mutation();
+DROP TRIGGER IF EXISTS trg_role_access_repair_063_removals_immutable
+    ON role_access_repair_063_permission_removals;
+CREATE TRIGGER trg_role_access_repair_063_removals_immutable
+BEFORE UPDATE OR DELETE ON role_access_repair_063_permission_removals
+FOR EACH ROW EXECUTE FUNCTION projectpulse_063_block_evidence_mutation();
 
-DROP TRIGGER IF EXISTS trg_role_access_repair_062_scopes_immutable
-    ON role_access_repair_062_scope_changes;
-CREATE TRIGGER trg_role_access_repair_062_scopes_immutable
-BEFORE UPDATE OR DELETE ON role_access_repair_062_scope_changes
-FOR EACH ROW EXECUTE FUNCTION projectpulse_062_block_evidence_mutation();
+DROP TRIGGER IF EXISTS trg_role_access_repair_063_scopes_immutable
+    ON role_access_repair_063_scope_changes;
+CREATE TRIGGER trg_role_access_repair_063_scopes_immutable
+BEFORE UPDATE OR DELETE ON role_access_repair_063_scope_changes
+FOR EACH ROW EXECUTE FUNCTION projectpulse_063_block_evidence_mutation();
 
-DROP TRIGGER IF EXISTS trg_role_access_repair_062_policy_immutable
-    ON role_access_repair_062_policy_versions;
-CREATE TRIGGER trg_role_access_repair_062_policy_immutable
-BEFORE UPDATE OR DELETE ON role_access_repair_062_policy_versions
-FOR EACH ROW EXECUTE FUNCTION projectpulse_062_block_evidence_mutation();
+DROP TRIGGER IF EXISTS trg_role_access_repair_063_policy_immutable
+    ON role_access_repair_063_policy_versions;
+CREATE TRIGGER trg_role_access_repair_063_policy_immutable
+BEFORE UPDATE OR DELETE ON role_access_repair_063_policy_versions
+FOR EACH ROW EXECUTE FUNCTION projectpulse_063_block_evidence_mutation();
 
 INSERT INTO app_permissions (
     permission_code,
@@ -111,11 +111,11 @@ SET permission_name = EXCLUDED.permission_name,
     module_code = EXCLUDED.module_code,
     permission_description = EXCLUDED.permission_description;
 
-CREATE TEMP TABLE projectpulse_062_pm_permissions (
+CREATE TEMP TABLE projectpulse_063_pm_permissions (
     permission_code VARCHAR(100) PRIMARY KEY
 ) ON COMMIT DROP;
 
-INSERT INTO projectpulse_062_pm_permissions (permission_code)
+INSERT INTO projectpulse_063_pm_permissions (permission_code)
 VALUES
     ('VIEW_TIME_ENTRY'),
     ('EDIT_OWN_TIME'),
@@ -140,7 +140,7 @@ WITH candidates AS (
         upper(role.role_code) AS role_code,
         permission.permission_code
     FROM app_roles role
-    JOIN projectpulse_062_pm_permissions required
+    JOIN projectpulse_063_pm_permissions required
       ON TRUE
     JOIN app_permissions permission
       ON upper(permission.permission_code) = upper(required.permission_code)
@@ -157,7 +157,7 @@ WITH candidates AS (
       )
       AND relationship.app_role_permission_id IS NULL
 )
-INSERT INTO role_access_repair_062_permission_grants (
+INSERT INTO role_access_repair_063_permission_grants (
     role_id,
     permission_id,
     role_code,
@@ -176,7 +176,7 @@ SELECT
     role_id,
     permission_id,
     NOW()
-FROM role_access_repair_062_permission_grants
+FROM role_access_repair_063_permission_grants
 ON CONFLICT (app_role_id, app_permission_id) DO NOTHING;
 
 -- Billing is operationally separate from Accounting. Remove only Module 008
@@ -204,7 +204,7 @@ WITH candidates AS (
             )
       )
 )
-INSERT INTO role_access_repair_062_permission_removals (
+INSERT INTO role_access_repair_063_permission_removals (
     role_id,
     permission_id,
     role_code,
@@ -216,7 +216,7 @@ FROM candidates
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 DELETE FROM app_role_permissions relationship
-USING role_access_repair_062_permission_removals removal
+USING role_access_repair_063_permission_removals removal
 WHERE relationship.app_role_id = removal.role_id
   AND relationship.app_permission_id = removal.permission_id;
 
@@ -226,7 +226,7 @@ WHERE relationship.app_role_id = removal.role_id
 DO $scope_repair$
 BEGIN
     IF to_regclass('public.projectpulse_role_scope_rules') IS NOT NULL THEN
-        INSERT INTO role_access_repair_062_scope_changes (
+        INSERT INTO role_access_repair_063_scope_changes (
             role_code,
             previous_can_view_assigned_self,
             previous_can_approve_time,
@@ -245,8 +245,8 @@ BEGIN
         SET can_view_assigned_self = TRUE,
             can_approve_time = TRUE,
             notes = CASE
-                WHEN position('Migration 062' IN COALESCE(notes, '')) > 0 THEN notes
-                ELSE concat_ws(' ', NULLIF(notes, ''), 'Migration 062 confirms own time entry, assigned-project approval, holiday view, project expense entry, and own qualification self-service.')
+                WHEN position('Migration 063' IN COALESCE(notes, '')) > 0 THEN notes
+                ELSE concat_ws(' ', NULLIF(notes, ''), 'Migration 063 confirms own time entry, assigned-project approval, holiday view, project expense entry, and own qualification self-service.')
             END,
             updated_at = NOW()
         WHERE upper(role_code) IN ('PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD');
@@ -296,7 +296,7 @@ BEGIN
 
     SELECT previous_policy_version_id, replacement_policy_version_id
     INTO previous_id, replacement_id
-    FROM role_access_repair_062_policy_versions
+    FROM role_access_repair_063_policy_versions
     WHERE singleton_key = TRUE;
 
     IF replacement_id IS NOT NULL THEN
@@ -332,9 +332,9 @@ BEGIN
         replacement_number,
         policy_name || ' · Billing Audit History exclusion',
         'DRAFT',
-        'migration_062_project_management_billing_role_access_repair',
-        encode(digest('migration-062:' || replacement_number::text, 'sha256'), 'hex'),
-        concat_ws(' ', NULLIF(policy_notes, ''), 'Migration 062 removed only Billing-family Module 008 grants. Accounting and every other role/module decision were preserved.'),
+        'migration_063_project_management_billing_role_access_repair',
+        encode(digest('migration-063:' || replacement_number::text, 'sha256'), 'hex'),
+        concat_ws(' ', NULLIF(policy_notes, ''), 'Migration 063 removed only Billing-family Module 008 grants. Accounting and every other role/module decision were preserved.'),
         created_by_user_id,
         published_by_user_id,
         NOW()
@@ -390,7 +390,7 @@ BEGIN
         published_at = NOW()
     WHERE policy_version_id = replacement_id;
 
-    INSERT INTO role_access_repair_062_policy_versions (
+    INSERT INTO role_access_repair_063_policy_versions (
         singleton_key,
         previous_policy_version_id,
         replacement_policy_version_id,
@@ -419,9 +419,9 @@ BEGIN
         )
         VALUES (
             replacement_id,
-            'MIGRATION_062_BILLING_AUDIT_HISTORY_EXCLUDED',
+            'MIGRATION_063_BILLING_AUDIT_HISTORY_EXCLUDED',
             NULL,
-            'migration-062@projectpulse.local',
+            'migration-063@projectpulse.local',
             'Remove Billing-family Module 008 grants while preserving Accounting and every unrelated policy decision.',
             jsonb_build_object('policyVersionId', previous_id, 'versionNumber', previous_number),
             jsonb_build_object('policyVersionId', replacement_id, 'versionNumber', replacement_number),
@@ -439,7 +439,7 @@ BEGIN
     SELECT COUNT(*)
     INTO missing_pm_permissions
     FROM app_roles role
-    CROSS JOIN projectpulse_062_pm_permissions required
+    CROSS JOIN projectpulse_063_pm_permissions required
     LEFT JOIN app_permissions permission
       ON upper(permission.permission_code) = upper(required.permission_code)
     LEFT JOIN app_role_permissions relationship
@@ -459,7 +459,7 @@ BEGIN
       );
 
     IF missing_pm_permissions <> 0 THEN
-        RAISE EXCEPTION 'Migration 062 invariant failed: % Project Management permission relationship(s) are missing.', missing_pm_permissions;
+        RAISE EXCEPTION 'Migration 063 invariant failed: % Project Management permission relationship(s) are missing.', missing_pm_permissions;
     END IF;
 
     SELECT COUNT(*)
@@ -481,14 +481,14 @@ BEGIN
       );
 
     IF billing_audit_permissions <> 0 THEN
-        RAISE EXCEPTION 'Migration 062 invariant failed: % Billing Audit History permission(s) remain.', billing_audit_permissions;
+        RAISE EXCEPTION 'Migration 063 invariant failed: % Billing Audit History permission(s) remain.', billing_audit_permissions;
     END IF;
 END;
 $assert_invariants$;
 
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (
-    '062_project_management_billing_role_access_repair',
+    '063_project_management_billing_role_access_repair',
     'Grant Project Management own time, assigned-project approval, holiday, expense, and own qualification access; remove Billing Audit History access',
     NOW()
 )
