@@ -79,6 +79,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin "$BASE_BRANCH" --no-tags
           BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
           test -n "$BASE"
@@ -86,10 +87,17 @@ jobs:
           printf '%s\n' "$CHANGED"
           test -n "$CHANGED"
 
-          ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback)\.sql))$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+          else
+            ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+          fi
+
           DISALLOWED_DATABASE="$(grep '^database/' <<<"$CHANGED" | grep -Ev "$ALLOWED_DATABASE" || true)"
           if [[ -n "$DISALLOWED_DATABASE" ]]; then
-            echo 'The Celar AI enterprise package changed an unapproved database file:' >&2
+            echo 'The Celar AI enterprise package changed an unapproved database file for this validation mode:' >&2
             printf '%s\n' "$DISALLOWED_DATABASE" >&2
             exit 1
           fi
@@ -272,6 +280,7 @@ jobs:
             echo '## Celar AI Enterprise Platform validation'
             echo
             echo "- Exact head: \`${GITHUB_SHA}\`"
+            echo "- Validation mode: ${CELAR_AI_ENTERPRISE_VALIDATION_MODE:-UNKNOWN}"
             echo '- Architecture: US Signal private-first diagram with Dr. Ahmed Adeyemi attribution'
             echo '- Chat: fresh by default, explicit history, normal resizable default, context controls'
             echo '- Capabilities: people/work, How-to, Timesheet, SOW, planning, timeline, diagram, closeout, system intelligence'
