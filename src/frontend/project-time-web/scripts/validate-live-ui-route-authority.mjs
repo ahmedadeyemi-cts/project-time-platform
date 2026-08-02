@@ -54,10 +54,13 @@ test('INJECTOR_READS_GENERATED_APP', injector.includes("App.Module001.g.jsx"));
 test('ROUTE_ALIASES', requiredAliases.every((marker) => generated.includes(marker)), requiredAliases.join(', '));
 test('ROUTE_QUERY_NORMALIZATION', generated.includes(".replace(/^#/, '').split('?')[0].trim()"));
 test('SUPER_ADMIN_ROUTE_AUTHORITY', generated.includes('function hasActualAdministratorAuthority()')
-  && generated.includes('!securityContext.data?.isViewAs && userIsAdministrator(securityContext.data)')
+  && generated.includes("roleCodes.includes('SUPER_ADMINISTRATOR')")
+  && generated.includes("roleCodes.includes('ADMINISTRATOR')")
+  && generated.includes("permissions.includes('SYSTEM_ADMINISTRATION')")
+  && generated.includes("permissions.includes('MANAGE_ALL')")
   && generated.includes('return hasActualAdministratorAuthority()')
   && generated.includes('|| permissionCodes.some((permissionCode) => hasPermission(permissionCode));'));
-test('VIEW_AS_REMAINS_READ_ONLY', generated.includes('!securityContext.data?.isViewAs'));
+test('VIEW_AS_REMAINS_READ_ONLY', generated.includes('if (securityContext.data?.isViewAs) return false;'));
 test('ANALYTICS_NATIVE_MOUNT', generated.includes('<AnalyticsCenter authSession={authSession} />')
   && generated.includes('data-authoritative-module="030"'));
 test('ANALYTICS_SINGLE_MOUNT', generated.split('<AnalyticsCenter authSession={authSession} />').length - 1 === 1);
