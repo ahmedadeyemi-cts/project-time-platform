@@ -4,16 +4,24 @@ on:
   push:
     branches:
       - 'feature/module-030-analytics-center-*'
+      - 'feature/analytics-center-enterprise-experience-*'
       - 'fix/module030-regression-validator-*'
   pull_request:
     paths:
       - '.github/workflows/module030-analytics-center-ci.yml'
+      - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
       - '.github/workflows/group5-financial-operations-recovery-ci.yml'
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
       - 'database/migrations/055_analytics_center.sql'
+      - 'database/migrations/060_analytics_center_enterprise_experience.sql'
       - 'database/rollback/055_analytics_center_rollback.sql'
+      - 'database/rollback/060_analytics_center_enterprise_experience_rollback.sql'
       - 'docs/modules/module-030-analytics-center/README.md'
+      - 'docs/modules/module-030-analytics-enterprise-experience/README.md'
+      - 'src/backend/ProjectTime.Api/Directory.Build.targets'
       - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenter*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module065AnalyticsAttachmentDelivery.cs'
       - 'src/backend/ProjectTime.Api/Modules/EnterpriseReporting*.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
       - 'src/frontend/project-time-web/package.json'
@@ -22,8 +30,10 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-analytics-center.mjs'
       - 'src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs'
       - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect.jsx'
       - 'src/frontend/project-time-web/src/analytics-center.css'
       - 'tests/test-analytics-center-migration-055.sh'
+      - 'tests/test-analytics-center-enterprise-migration-060.sh'
   workflow_dispatch:
 
 permissions:
@@ -73,31 +83,37 @@ jobs:
               printf '%s\n' "$UNEXPECTED" >&2
               exit 1
             fi
-
-            if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-              echo 'Analytics Center source overlaps deployment or canonical generated integration files.' >&2
-              exit 1
-            fi
-
-            if grep -Fxq 'database/migrations/054_enterprise_reporting_center.sql' <<<"$CHANGED"; then
-              echo 'Migration 054 is owned by another PR and must not be reused.' >&2
-              exit 1
-            fi
-
             echo 'ANALYTICS_CENTER_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'ANALYTICS_CENTER_SOURCE_ISOLATION=PASSED'
+          elif [[ "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* ]]; then
+            ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|database/migrations/060_analytics_center_enterprise_experience\.sql|database/rollback/060_analytics_center_enterprise_experience_rollback\.sql|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Directory\.Build\.targets|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/AnalyticsCenter\.jsx|src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect\.jsx|src/frontend/project-time-web/src/analytics-center\.css|tests/test-analytics-center-enterprise-migration-060\.sh)$'
+            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Analytics enterprise extension scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_CENTER_VALIDATION_MODE=ENTERPRISE_EXTENSION' >> "$GITHUB_ENV"
+            echo 'ANALYTICS_CENTER_ENTERPRISE_SOURCE_ISOLATION=PASSED'
           else
-            DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/055_analytics_center\.sql|rollback/055_analytics_center_rollback\.sql)|docs/modules/module-030-analytics-center/README\.md|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenter|EnterpriseReporting).*\.cs|src/frontend/project-time-web/scripts/(inject-analytics-center|validate-analytics-center)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css)|tests/test-analytics-center-migration-055\.sh)$' <<<"$CHANGED" || true)"
+            DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/(055_analytics_center|060_analytics_center_enterprise_experience)\.sql|rollback/(055_analytics_center_rollback|060_analytics_center_enterprise_experience_rollback)\.sql)|docs/modules/module-030-analytics[^/]*/README\.md|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenter|AnalyticsBrandedExportBuilder|Module065AnalyticsAttachmentDelivery|EnterpriseReporting).*\.cs|src/frontend/project-time-web/scripts/(inject-analytics-center|validate-analytics-center)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center.*\.sh)$' <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_ANALYTICS" ]]; then
               echo 'An unrelated branch directly changes Module 030-owned source:' >&2
               printf '%s\n' "$DIRECT_ANALYTICS" >&2
               exit 1
             fi
-
             echo 'ANALYTICS_CENTER_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
             echo "ANALYTICS_CENTER_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
           fi
 
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Analytics Center source overlaps deployment or canonical generated integration files.' >&2
+            exit 1
+          fi
+          if grep -Fxq 'database/migrations/054_enterprise_reporting_center.sql' <<<"$CHANGED"; then
+            echo 'Migration 054 is owned by another PR and must not be reused.' >&2
+            exit 1
+          fi
           git diff --check "$BASE_REF"...HEAD
 
       - uses: actions/setup-dotnet@v4
@@ -122,6 +138,11 @@ jobs:
       - name: Test migration 055 apply idempotence immutability rollback and reapply
         shell: bash
         run: bash tests/test-analytics-center-migration-055.sh
+
+      - name: Test migration 060 for enterprise extension
+        if: env.ANALYTICS_CENTER_VALIDATION_MODE == 'ENTERPRISE_EXTENSION'
+        shell: bash
+        run: bash tests/test-analytics-center-enterprise-migration-060.sh
 
       - name: Validate Analytics Center source contract
         working-directory: src/frontend/project-time-web
@@ -171,22 +192,62 @@ jobs:
           cat dist/assets/*.js > /tmp/analytics-center.js
           cat dist/assets/*.css > /tmp/analytics-center.css
 
-          for marker in \
-            'Analytics Center' \
-            'Select report' \
-            'Set criteria' \
-            'All customers' \
-            'All projects' \
-            'All engineers' \
-            'All Project Managers' \
-            'All teams' \
-            'Preview report' \
-            'Run & save' \
-            'Analytics run history' \
-            '/api/analytics/catalog' \
-            '/api/analytics/filter-options'; do
-            grep -Fq "$marker" /tmp/analytics-center.js
-          done
+          if [[ "${ANALYTICS_CENTER_VALIDATION_MODE:-}" == 'ENTERPRISE_EXTENSION' ]]; then
+            for marker in \
+              'Analytics Center' \
+              'Back to Modules' \
+              'Back to Dashboard' \
+              'Recently Viewed Dashboards & Reports' \
+              'Report Library' \
+              'Set criteria' \
+              'All customers' \
+              'All projects' \
+              'All engineers' \
+              'All Project Managers' \
+              'All teams' \
+              'Preview report' \
+              'Run & save' \
+              'Scheduled Reports' \
+              'US Signal PDF' \
+              '/api/analytics/v2/overview' \
+              '/api/analytics/v2/schedules'; do
+              grep -Fq "$marker" /tmp/analytics-center.js
+            done
+            for marker in \
+              '.analytics-enterprise-shell' \
+              '.analytics-sidebar' \
+              '.analytics-kpi-grid' \
+              '.analytics-report-categories' \
+              '.analytics-filter-grid' \
+              '.analytics-multiselect-menu' \
+              '.analytics-schedule-panel'; do
+              grep -Fq "$marker" /tmp/analytics-center.css
+            done
+          else
+            for marker in \
+              'Analytics Center' \
+              'Set criteria' \
+              'All customers' \
+              'All projects' \
+              'All engineers' \
+              'All Project Managers' \
+              'All teams' \
+              'Preview report' \
+              'Run & save' \
+              'Analytics run history' \
+              '/api/analytics/catalog' \
+              '/api/analytics/filter-options'; do
+              grep -Fq "$marker" /tmp/analytics-center.js
+            done
+            for marker in \
+              '.analytics-center' \
+              '.analytics-build-layout' \
+              '.analytics-filter-grid' \
+              '.analytics-source-grid' \
+              '.analytics-history-list'; do
+              grep -Fq "$marker" /tmp/analytics-center.css
+            done
+          fi
 
           for forbidden in \
             'selectedEngineerSummaryText' \
@@ -198,17 +259,6 @@ jobs:
               exit 1
             fi
           done
-
-          for marker in \
-            '.analytics-center' \
-            '.analytics-build-layout' \
-            '.analytics-report-cards' \
-            '.analytics-filter-grid' \
-            '.analytics-source-grid' \
-            '.analytics-history-list'; do
-            grep -Fq "$marker" /tmp/analytics-center.css
-          done
-
           echo 'ANALYTICS_CENTER_FRONTEND_BUILD=PASSED'
 
       - name: Publish validation summary
@@ -220,7 +270,7 @@ jobs:
             echo
             echo "- Validation mode: ${ANALYTICS_CENTER_VALIDATION_MODE:-UNKNOWN}"
             echo '- Protected deployment files: guarded'
-            echo '- Direct Module 030 source on unrelated branches: guarded'
             echo '- Migration 055 regression: executed'
+            echo '- Migration 060 extension regression: conditional'
             echo '- API and complete frontend builds: executed'
           } >> "$GITHUB_STEP_SUMMARY"
