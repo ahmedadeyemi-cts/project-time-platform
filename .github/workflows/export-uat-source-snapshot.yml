@@ -1,0 +1,41 @@
+name: Export UAT Source Snapshot
+
+on:
+  push:
+    branches:
+      - diagnose/uat-source-snapshot-20260802
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact base and prepare snapshot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='fbbd22353e7ef79d8f44348f2936918a8cfe04bb'
+          git merge-base --is-ancestor "$BASE" HEAD
+          mkdir -p /tmp/uat-source
+          rsync -a --exclude='.git' --exclude='node_modules' --exclude='bin' --exclude='obj' --exclude='dist' ./ /tmp/uat-source/project-time-platform/
+          tar -C /tmp/uat-source -czf /tmp/project-time-platform-uat-source.tar.gz project-time-platform
+          sha256sum /tmp/project-time-platform-uat-source.tar.gz > /tmp/project-time-platform-uat-source.sha256
+
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: project-time-platform-uat-source-${{ github.run_id }}
+          path: |
+            /tmp/project-time-platform-uat-source.tar.gz
+            /tmp/project-time-platform-uat-source.sha256
+          retention-days: 2
