@@ -3,9 +3,15 @@ import './microsoft-mail-transport-readiness.css';
 
 const ROUTE = 'entra-secret-administration';
 const TEST_PATH = '/api/microsoft-integration/mail-runtime/test';
+const ROUTE_ALIASES = Object.freeze({
+  'microsoft-integration': ROUTE,
+  'module-065': ROUTE,
+  'global-mail-configuration': ROUTE
+});
 
 function currentRoute() {
-  return String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0] || 'dashboard';
+  const raw = String(window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0] || 'dashboard';
+  return ROUTE_ALIASES[raw] || raw;
 }
 
 function runtimeEnvironmentMode() {
