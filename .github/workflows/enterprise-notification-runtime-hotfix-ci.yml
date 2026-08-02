@@ -1,0 +1,107 @@
+name: Validate Enterprise Notification Runtime Hotfix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/enterprise-notification-runtime-hotfix-ci.yml'
+      - 'database/migrations/065_enterprise_notification_runtime_completion.sql'
+      - 'database/rollback/065_enterprise_notification_runtime_completion_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRuntimeBootstrap.cs'
+      - 'tests/test-enterprise-notification-runtime-completion-migration-065.sh'
+      - 'tests/test-enterprise-notification-runtime-hotfix-contract.sh'
+  push:
+    branches:
+      - fix/enterprise-notification-runtime-test-release-20260802
+    paths:
+      - '.github/workflows/enterprise-notification-runtime-hotfix-ci.yml'
+      - 'database/migrations/065_enterprise_notification_runtime_completion.sql'
+      - 'database/rollback/065_enterprise_notification_runtime_completion_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRuntimeBootstrap.cs'
+      - 'tests/test-enterprise-notification-runtime-completion-migration-065.sh'
+      - 'tests/test-enterprise-notification-runtime-hotfix-contract.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-notification-runtime-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Guard exact hotfix source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          ALLOWED='^(\.github/workflows/enterprise-notification-runtime-hotfix-ci\.yml|database/migrations/065_enterprise_notification_runtime_completion\.sql|database/rollback/065_enterprise_notification_runtime_completion_rollback\.sql|src/backend/ProjectTime\.Api/Modules/EnterpriseNotificationRuntimeBootstrap\.cs|tests/test-enterprise-notification-runtime-completion-migration-065\.sh|tests/test-enterprise-notification-runtime-hotfix-contract\.sh)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          [[ -z "$UNEXPECTED" ]] || {
+            echo 'Unexpected source in enterprise notification runtime hotfix:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          }
+          git diff --check "$BASE"...HEAD
+          echo "ENTERPRISE_NOTIFICATION_RUNTIME_HOTFIX_BASE=$BASE"
+          echo "ENTERPRISE_NOTIFICATION_RUNTIME_HOTFIX_HEAD=$(git rev-parse HEAD)"
+          echo 'ENTERPRISE_NOTIFICATION_RUNTIME_HOTFIX_SCOPE=PASSED'
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Validate runtime source contract
+        shell: bash
+        run: bash tests/test-enterprise-notification-runtime-hotfix-contract.sh
+
+      - name: Validate migration 065 apply, repeat, rollback, and reapply
+        shell: bash
+        run: bash tests/test-enterprise-notification-runtime-completion-migration-065.sh
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build complete API in Release mode
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install and build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Build production API container
+        shell: bash
+        run: docker build --file deployment/containers/api/Dockerfile .
+
+      - name: Build production web container
+        shell: bash
+        run: docker build --file deployment/containers/web/Dockerfile .
