@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 /* ROLE_WORKSPACE_WELCOME_IMPORT */
-import { getRoleWorkspaceLabel, getRoleWorkspaceName } from './role-workspace-governance.js';
+import {
+  getRoleWorkspaceLabel,
+  getRoleWorkspaceName,
+  roleCodesFrom
+} from './role-workspace-governance.js';
 import './role-welcome-dashboard.css';
+
+const PROJECT_MANAGEMENT_ROLES = new Set([
+  'PROJECT_MANAGER',
+  'PROJECT_MANAGEMENT',
+  'PROJECT_MANAGEMENT_LEAD',
+  'PROJECT_MANAGEMENT_TEAM_LEAD',
+  'PM_TEAM_LEAD'
+]);
 
 const TIME_ENTRY_ROLES = new Set([
   'ENGINEER',
@@ -9,24 +21,19 @@ const TIME_ENTRY_ROLES = new Set([
   'SOLUTION_ARCHITECT',
   'ARCHITECT',
   'SA',
-  'SAA'
+  'SAA',
+  ...PROJECT_MANAGEMENT_ROLES
 ]);
 
 const TIME_ENTRY_EXCLUDED_ROLES = new Set([
   'MANAGER',
   'PEOPLE_MANAGER',
-  'PROJECT_MANAGER',
-  'PROJECT_MANAGEMENT',
-  'PROJECT_MANAGEMENT_LEAD',
-  'PROJECT_MANAGEMENT_TEAM_LEAD',
-  'PM_TEAM_LEAD',
   'SALES',
   'INSIDE_SALES',
   'ACCOUNT_EXECUTIVE',
   'SALES_MANAGER',
   'EXECUTIVE',
   'PROJECT_TEAM_COORDINATOR',
-  /* ROLE_WORKSPACE_TIME_ENTRY_EXCLUSIONS */
   'ACCOUNTING',
   'ACCOUNTING_BILLING',
   'BILLING',
@@ -34,57 +41,71 @@ const TIME_ENTRY_EXCLUDED_ROLES = new Set([
   'RESALE'
 ]);
 
-const ROLE_ACTIONS = {
-  engineering: [
+const ROLE_ACTIONS = Object.freeze({
+  engineering: Object.freeze([
     ['Add Time', 'timesheet'],
     ['My Timesheet', 'timesheet'],
     ['Project Workspace', 'project-workspace'],
     ['My Utilization', 'utilization']
-  ],
-  management: [
+  ]),
+  projectManagement: Object.freeze([
+    ['Add Time', 'timesheet'],
+    ['Approval Center', 'manager-approval'],
+    ['Project Expense Upload', 'project-allocation-info'],
+    ['Project Workspace', 'project-workspace'],
+    ['Qualifications & Certifications', 'qualifications-certifications']
+  ]),
+  management: Object.freeze([
     ['Approval Center', 'manager-approval'],
     ['Project Health', 'project-workload'],
     ['Team Utilization', 'utilization'],
     ['Work Register', 'work-register']
-  ],
-  sales: [
+  ]),
+  sales: Object.freeze([
     ['Opportunities', 'opportunities'],
     ['Project Intake', 'project-intake'],
     ['Customers', 'customer-directory'],
     ['CRM / ERP', 'crm-integration']
-  ],
-  executive: [
+  ]),
+  executive: Object.freeze([
     ['Executive Reporting', 'reporting'],
     ['Portfolio Health', 'project-workload'],
     ['Billing Snapshot', 'billing-readiness'],
     ['Invoice Center', 'invoice-billing-center']
-  ],
-  coordinator: [
+  ]),
+  coordinator: Object.freeze([
     ['Create Project', 'create-work-register'],
     ['Work Register', 'work-register'],
     ['Billing Readiness', 'billing-readiness'],
     ['Project Closeout', 'project-closeout']
-  ],
-  billing: [
-    ['Billing Readiness', 'billing-readiness'],
-    ['Invoice Center', 'invoice-billing-center'],
+  ]),
+  accounting: Object.freeze([
     ['Reconciliation', 'workflow'],
-    ['Audit History', 'audit-history']
-  ],
-  administration: [
+    ['Audit History', 'audit-history'],
+    ['Billing Readiness', 'billing-readiness'],
+    ['Analytics Center', 'reporting']
+  ]),
+  billing: Object.freeze([
+    ['Financial Operations', 'financial-operations-workbench'],
+    ['Billing Readiness', 'billing-readiness'],
+    ['Invoice & Billing', 'invoice-billing-center'],
+    ['Analytics Center', 'reporting']
+  ]),
+  administration: Object.freeze([
     ['Work Register', 'work-register'],
     ['Create Project', 'create-work-register'],
     ['Role Administration', 'role-admin'],
     ['Audit History', 'audit-history']
-  ]
-};
+  ])
+});
 
 function getAuthHeaders() {
   try {
     const raw = window.localStorage.getItem('projectPulseAuthSession');
     if (!raw) return {};
     const session = JSON.parse(raw);
-    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+    const token = session?.sessionToken || session?.token || session?.accessToken || '';
+    return token ? { 'X-ProjectPulse-Session': token } : {};
   } catch {
     return {};
   }
@@ -103,7 +124,7 @@ async function fetchDashboard() {
 }
 
 function normalizeRoleCodes(roleCodes) {
-  return (roleCodes ?? []).map((value) => String(value ?? '').trim().toUpperCase()).filter(Boolean);
+  return roleCodesFrom(Array.isArray(roleCodes) ? roleCodes : { roleCodes });
 }
 
 function hasAny(roleCodes, values) {
@@ -112,19 +133,13 @@ function hasAny(roleCodes, values) {
 
 function getPersona(roleCodes) {
   if (hasAny(roleCodes, ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'])) return 'administration';
-  if (hasAny(roleCodes, ['ACCOUNTING', 'ACCOUNTING_BILLING', 'BILLING', 'FINANCE'])) return 'billing';
+  if (roleCodes.includes('ACCOUNTING')) return 'accounting';
+  if (hasAny(roleCodes, ['ACCOUNTING_BILLING', 'BILLING', 'FINANCE'])) return 'billing';
   if (roleCodes.includes('PROJECT_TEAM_COORDINATOR')) return 'coordinator';
   if (roleCodes.includes('EXECUTIVE')) return 'executive';
   if (hasAny(roleCodes, ['SALES', 'INSIDE_SALES', 'ACCOUNT_EXECUTIVE', 'SALES_MANAGER'])) return 'sales';
-  if (hasAny(roleCodes, [
-    'MANAGER',
-    'PEOPLE_MANAGER',
-    'PROJECT_MANAGER',
-    'PROJECT_MANAGEMENT',
-    'PROJECT_MANAGEMENT_LEAD',
-    'PROJECT_MANAGEMENT_TEAM_LEAD',
-    'PM_TEAM_LEAD'
-  ])) return 'management';
+  if (roleCodes.some((roleCode) => PROJECT_MANAGEMENT_ROLES.has(roleCode))) return 'projectManagement';
+  if (hasAny(roleCodes, ['MANAGER', 'PEOPLE_MANAGER'])) return 'management';
   return 'engineering';
 }
 
@@ -153,6 +168,24 @@ function titleCase(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function priorityRoute(persona) {
+  if (persona === 'sales') return 'opportunities';
+  if (persona === 'billing') return 'billing-readiness';
+  if (persona === 'accounting') return 'workflow';
+  if (persona === 'projectManagement' || persona === 'management') return 'manager-approval';
+  return 'timesheet';
+}
+
+function noTimeEntryMessage(persona) {
+  if (persona === 'billing') {
+    return 'This workspace focuses on billing readiness, reconciliation, invoicing, closeout, financial operations, and authorized reporting.';
+  }
+  if (persona === 'accounting') {
+    return 'This workspace focuses on reconciliation, accounting review, audit evidence, billing readiness, and authorized reporting.';
+  }
+  return 'Your dashboard focuses on the operational actions authorized for this role.';
 }
 
 export default function RoleWelcomeDashboard({
@@ -191,7 +224,8 @@ export default function RoleWelcomeDashboard({
     };
   }, [normalizedRoles.join('|')]);
 
-  const showTimeEntry = clientShowTimeEntry && state.data?.showTimeEntry !== false;
+  const timesheetHref = routeHref(roleModules, 'timesheet');
+  const showTimeEntry = clientShowTimeEntry && Boolean(timesheetHref);
   const welcomeDisplayName = String(displayName || 'there').trim() || 'there';
   const todayLabel = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -202,8 +236,7 @@ export default function RoleWelcomeDashboard({
     .filter(([, route]) => showTimeEntry || route !== 'timesheet')
     .map(([label, route]) => ({ label, route, href: routeHref(roleModules, route) }))
     .filter((action) => action.href);
-  const timesheetHref = routeHref(roleModules, 'timesheet');
-  const priorityHref = routeHref(roleModules, persona === 'sales' ? 'opportunities' : 'manager-approval');
+  const priorityHref = routeHref(roleModules, priorityRoute(persona));
   const projectHealthHref = routeHref(roleModules, 'project-workload');
   const billingReadinessHref = routeHref(roleModules, 'billing-readiness');
   const workRegisterHref = routeHref(roleModules, 'work-register');
@@ -268,9 +301,7 @@ export default function RoleWelcomeDashboard({
                 </div>
               ))}
             </div>
-            {timesheetHref ? (
-              <a className="welcome-card-link" href={timesheetHref}>Open weekly timesheet →</a>
-            ) : null}
+            <a className="welcome-card-link" href={timesheetHref}>Open weekly timesheet →</a>
           </article>
         ) : (
           <article className="welcome-card welcome-priorities-card">
@@ -280,12 +311,9 @@ export default function RoleWelcomeDashboard({
                 <h2>{getRoleWorkspaceName(normalizedRoles)} operations</h2>
               </div>
             </div>
-            <p className="welcome-card-copy">
-              Time entry is not part of this role. Your dashboard focuses on approvals, delivery, customers,
-              billing, closeout, and portfolio actions.
-            </p>
+            <p className="welcome-card-copy">{noTimeEntryMessage(persona)}</p>
             <div className="welcome-priority-links">
-              {actions.slice(0, 3).map((action) => (
+              {actions.slice(0, 4).map((action) => (
                 <a href={action.href} key={`priority-${action.route}`}>{action.label} →</a>
               ))}
             </div>
@@ -294,10 +322,7 @@ export default function RoleWelcomeDashboard({
 
         <article className="welcome-card welcome-attention-card">
           <div className="welcome-card-heading">
-            <div>
-              <span>Requires attention</span>
-              <h2>Action queue</h2>
-            </div>
+            <div><span>Requires attention</span><h2>Action queue</h2></div>
           </div>
           <dl className="welcome-metric-list">
             <div><dt>Time approvals</dt><dd>{attention.timeApprovals}</dd></div>
@@ -305,100 +330,56 @@ export default function RoleWelcomeDashboard({
             <div><dt>Project alerts</dt><dd>{attention.projectAlerts}</dd></div>
             <div><dt>Closeout pending</dt><dd>{attention.closeoutPending}</dd></div>
           </dl>
-          {priorityHref ? (
-            <a className="welcome-card-link" href={priorityHref}>Open priority workspace →</a>
-          ) : null}
+          {priorityHref ? <a className="welcome-card-link" href={priorityHref}>Open priority workspace →</a> : null}
         </article>
 
         <article className="welcome-card welcome-project-health-card">
-          <div className="welcome-card-heading">
-            <div>
-              <span>Project health</span>
-              <h2>Delivery snapshot</h2>
-            </div>
-          </div>
+          <div className="welcome-card-heading"><div><span>Project health</span><h2>Delivery snapshot</h2></div></div>
           <dl className="welcome-health-list">
             <div className="healthy"><dt>Healthy</dt><dd>{projectHealth.healthy}</dd></div>
             <div className="review"><dt>Needs review</dt><dd>{projectHealth.needsReview}</dd></div>
             <div className="risk"><dt>At risk</dt><dd>{projectHealth.atRisk}</dd></div>
           </dl>
-          {projectHealthHref ? (
-            <a className="welcome-card-link" href={projectHealthHref}>Open project health →</a>
-          ) : null}
+          {projectHealthHref ? <a className="welcome-card-link" href={projectHealthHref}>Open project health →</a> : null}
         </article>
 
         <article className="welcome-card welcome-billing-card">
-          <div className="welcome-card-heading">
-            <div>
-              <span>Team / billing snapshot</span>
-              <h2>Work-to-Cash</h2>
-            </div>
-          </div>
+          <div className="welcome-card-heading"><div><span>Team / billing snapshot</span><h2>Work-to-Cash</h2></div></div>
           <dl className="welcome-metric-list">
             <div><dt>Unbilled approved hours</dt><dd>{formatHours(billing.unbilledHours)}</dd></div>
             <div><dt>Ready to invoice</dt><dd>{billing.readyToInvoice}</dd></div>
             <div><dt>Open invoices</dt><dd>{billing.openInvoices}</dd></div>
           </dl>
-          {billingReadinessHref ? (
-            <a className="welcome-card-link" href={billingReadinessHref}>Open billing readiness →</a>
-          ) : null}
+          {billingReadinessHref ? <a className="welcome-card-link" href={billingReadinessHref}>Open billing readiness →</a> : null}
         </article>
 
         <article className="welcome-card welcome-projects-card">
-          <div className="welcome-card-heading">
-            <div>
-              <span>{state.data?.scope === 'portfolio' ? 'Portfolio projects' : 'My projects'}</span>
-              <h2>Current work</h2>
-            </div>
-          </div>
+          <div className="welcome-card-heading"><div><span>{state.data?.scope === 'portfolio' ? 'Portfolio projects' : 'My projects'}</span><h2>Current work</h2></div></div>
           <div className="welcome-project-list">
             {projects.length === 0 ? (
               <p className="welcome-empty">No scoped projects require attention.</p>
             ) : projects.map((project) => (
-              <a
-                href={workRegisterHref || undefined}
-                aria-disabled={workRegisterHref ? undefined : 'true'}
-                key={project.projectId}
-              >
-                <div>
-                  <strong>{project.projectCode || project.projectName}</strong>
-                  <span>{project.customerName || project.projectName}</span>
-                </div>
-                <div>
-                  <strong>{project.activeTaskCount ?? 0}</strong>
-                  <span>{project.activeTaskCount === 1 ? 'active task' : 'active tasks'}</span>
-                  <span>{titleCase(project.status)}</span>
-                </div>
+              <a href={workRegisterHref || undefined} aria-disabled={workRegisterHref ? undefined : 'true'} key={project.projectId}>
+                <div><strong>{project.projectCode || project.projectName}</strong><span>{project.customerName || project.projectName}</span></div>
+                <div><strong>{project.activeTaskCount ?? 0}</strong><span>{project.activeTaskCount === 1 ? 'active task' : 'active tasks'}</span><span>{titleCase(project.status)}</span></div>
               </a>
             ))}
           </div>
         </article>
 
         <article className="welcome-card welcome-recent-card">
-          <div className="welcome-card-heading">
-            <div>
-              <span>Recent items</span>
-              <h2>Tracked activity</h2>
-            </div>
-          </div>
+          <div className="welcome-card-heading"><div><span>Recent items</span><h2>Tracked activity</h2></div></div>
           <div className="welcome-recent-list">
             {recent.length === 0 ? (
               <p className="welcome-empty">{state.loading ? 'Loading current activity…' : 'No recent scoped activity.'}</p>
             ) : recent.slice(0, 6).map((item, index) => {
-              const itemHref = routeHref(
-                roleModules,
-                item.processArea === 'invoice' ? 'invoice-billing-center' : 'work-register'
-              );
+              const itemHref = routeHref(roleModules, item.processArea === 'invoice' ? 'invoice-billing-center' : 'work-register');
               return (
-              <a
-                href={itemHref || undefined}
-                aria-disabled={itemHref ? undefined : 'true'}
-                key={`${item.createdAt}-${index}`}
-              >
-                <span>{titleCase(item.processArea)}</span>
-                <strong>{item.summary}</strong>
-                <small>{item.projectCode} {formatDate(item.createdAt)}</small>
-              </a>
+                <a href={itemHref || undefined} aria-disabled={itemHref ? undefined : 'true'} key={`${item.createdAt}-${index}`}>
+                  <span>{titleCase(item.processArea)}</span>
+                  <strong>{item.summary}</strong>
+                  <small>{item.projectCode} {formatDate(item.createdAt)}</small>
+                </a>
               );
             })}
           </div>
