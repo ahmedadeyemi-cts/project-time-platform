@@ -1,22 +1,28 @@
 name: Diagnose Migration 066 Exact Failure
 
 on:
-  push:
+  pull_request:
     branches:
-      - diagnose/uat-447-migration-066
+      - main
+    paths:
+      - '.github/workflows/diagnose-migration-066.yml'
+      - 'database/migrations/066_immutable_project_numbers.sql'
+      - 'database/rollback/066_immutable_project_numbers_rollback.sql'
+      - 'tests/test-immutable-project-numbers-migration-066.sh'
 
 permissions:
   contents: read
 
 jobs:
   diagnose:
+    if: github.event.pull_request.head.ref == 'diagnose/uat-447-migration-066'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out exact diagnostic head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
