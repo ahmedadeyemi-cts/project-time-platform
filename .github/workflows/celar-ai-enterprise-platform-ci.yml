@@ -28,9 +28,13 @@ on:
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs'
       - 'src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-uat-functional-completion.mjs'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
       - 'src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiUnifiedWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-unified-workspace.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
       - 'src/frontend/project-time-web/src/CelarAiSolutionComposer.jsx'
       - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-architecture-overview.css'
@@ -88,7 +92,7 @@ jobs:
           test -n "$CHANGED"
 
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
-            ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback)\.sql))$'
+            ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration|066_immutable_business_project_numbers)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback|066_immutable_business_project_numbers_rollback)\.sql))$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
           else
             ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
