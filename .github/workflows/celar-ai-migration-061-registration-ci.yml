@@ -1,11 +1,20 @@
 name: Validate Celar AI Migration 061 Registration
 
 on:
+  push:
+    branches:
+      - fix/celar-ai-migration-061-registration-20260802
+    paths:
+      - '.github/workflows/celar-ai-migration-061-registration-ci.yml'
+      - 'database/migrations/061_celar_ai_capability_routing.sql'
+      - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+      - 'tests/test-celar-ai-capability-routing-migration-061.sh'
   pull_request:
     paths:
       - '.github/workflows/celar-ai-migration-061-registration-ci.yml'
       - 'database/migrations/061_celar_ai_capability_routing.sql'
       - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+      - 'tests/test-celar-ai-capability-routing-migration-061.sh'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +27,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -50,7 +59,7 @@ jobs:
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
-          ALLOWED='^(\.github/workflows/celar-ai-migration-061-registration-ci\.yml|database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+          ALLOWED='^(\.github/workflows/celar-ai-migration-061-registration-ci\.yml|database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql|tests/test-celar-ai-capability-routing-migration-061\.sh)$'
           UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
           [[ -z "$UNEXPECTED" ]] || {
             echo 'Unexpected source in migration 061 registration repair:' >&2
@@ -59,6 +68,9 @@ jobs:
           }
           git diff --check "origin/$BASE_BRANCH"...HEAD
           echo 'CELAR_AI_MIGRATION_061_REGISTRATION_SCOPE=PASSED'
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
 
       - name: Validate apply repeat rollback and reapply registration
         env:
@@ -99,3 +111,7 @@ jobs:
               (SELECT COUNT(*) FROM schema_migrations WHERE migration_id = '061_celar_ai_capability_routing') = 1
             THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
           echo 'CELAR_AI_MIGRATION_061_REGISTRATION=PASSED'
+
+      - name: Validate portable migration test harness
+        shell: bash
+        run: bash tests/test-celar-ai-capability-routing-migration-061.sh
