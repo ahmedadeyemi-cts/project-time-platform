@@ -1,4 +1,4 @@
-name: Validate UAT SSO, Group 3 Workspaces, and Pulse AI Label Repair
+name: Validate UAT SSO, Group 3 Workspaces, and Celar AI Label Repair
 
 on:
   push:
@@ -102,7 +102,7 @@ jobs:
           grep -Fq 'consumed_auth_sso_state_redirect_uri' "$PROGRAM"
           echo 'MICROSOFT_SSO_STATE_ORIGIN_RECOVERY=PASS'
 
-      - name: Validate role-specific Group 3 and Pulse AI labels
+      - name: Validate role-specific Group 3 and Celar AI labels
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -122,11 +122,11 @@ jobs:
             grep -Fq "$marker" "$WORKSPACE"
           done
 
-          grep -Fq 'Pulse AI' "$APP"
-          grep -Fq 'Pulse AI' "$HELP"
+          grep -Fq 'Celar AI' "$APP"
+          grep -Fq 'Celar AI' "$HELP"
           grep -Fq '.group3-hero' "$CSS"
           grep -Eq '#0[0-9A-Fa-f]{5}|#1[0-9A-Fa-f]{5}|rgb\(' "$CSS"
-          echo 'GROUP3_DISTINCT_WORKSPACES_AND_PULSE_AI_LABEL=PASS'
+          echo 'GROUP3_DISTINCT_WORKSPACES_AND_CELAR_AI_LABEL=PASS'
 
       - uses: actions/setup-dotnet@v4
         with:
