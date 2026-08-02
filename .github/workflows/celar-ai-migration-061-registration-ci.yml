@@ -1,0 +1,101 @@
+name: Validate Celar AI Migration 061 Registration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-migration-061-registration-ci.yml'
+      - 'database/migrations/061_celar_ai_capability_routing.sql'
+      - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-migration-061-registration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: projectpulse
+          POSTGRES_PASSWORD: projectpulse
+          POSTGRES_DB: projectpulse_validation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U projectpulse -d projectpulse_validation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Guard source-only migration repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          ALLOWED='^(\.github/workflows/celar-ai-migration-061-registration-ci\.yml|database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
+          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
+          [[ -z "$UNEXPECTED" ]] || {
+            echo 'Unexpected source in migration 061 registration repair:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          }
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+          echo 'CELAR_AI_MIGRATION_061_REGISTRATION_SCOPE=PASSED'
+
+      - name: Validate apply repeat rollback and reapply registration
+        env:
+          PGPASSWORD: projectpulse
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 30); do
+            pg_isready -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation && break
+            sleep 2
+          done
+          PSQL=(psql -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation -v ON_ERROR_STOP=1)
+          MIGRATION='database/migrations/061_celar_ai_capability_routing.sql'
+          ROLLBACK='database/rollback/061_celar_ai_capability_routing_rollback.sql'
+
+          "${PSQL[@]}" -f "$MIGRATION"
+          "${PSQL[@]}" -f "$MIGRATION"
+          "${PSQL[@]}" -Atqc "
+            SELECT CASE WHEN
+              to_regclass('public.ai_capability_routes') IS NOT NULL AND
+              to_regclass('public.ai_private_model_profiles') IS NOT NULL AND
+              (SELECT COUNT(*) FROM ai_capability_routes) = 7 AND
+              (SELECT COUNT(*) FROM schema_migrations WHERE migration_id = '061_celar_ai_capability_routing') = 1
+            THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
+
+          "${PSQL[@]}" -f "$ROLLBACK"
+          "${PSQL[@]}" -Atqc "
+            SELECT CASE WHEN
+              to_regclass('public.ai_capability_routes') IS NULL AND
+              to_regclass('public.ai_private_model_profiles') IS NULL AND
+              (SELECT COUNT(*) FROM schema_migrations WHERE migration_id = '061_celar_ai_capability_routing') = 0
+            THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
+
+          "${PSQL[@]}" -f "$MIGRATION"
+          "${PSQL[@]}" -Atqc "
+            SELECT CASE WHEN
+              (SELECT COUNT(*) FROM ai_capability_routes) = 7 AND
+              (SELECT COUNT(*) FROM schema_migrations WHERE migration_id = '061_celar_ai_capability_routing') = 1
+            THEN 'PASSED' ELSE 'FAILED' END;" | grep -Fxq PASSED
+          echo 'CELAR_AI_MIGRATION_061_REGISTRATION=PASSED'
