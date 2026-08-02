@@ -597,7 +597,7 @@ internal static class EnterpriseNotificationSourceScanner
 
     private static DateTimeOffset StageTimestamp(TimesheetSourceRow row)
     {
-        var candidates = row.Status switch
+        string[] candidates = row.Status switch
         {
             "manager_approved" => ["manager_approved_at"],
             "manager_declined" => ["manager_declined_at"],
