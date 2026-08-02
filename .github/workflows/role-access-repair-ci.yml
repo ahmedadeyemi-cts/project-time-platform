@@ -45,23 +45,48 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Guard protected feature isolation
+      - name: Guard protected feature isolation or validate consolidated release
         shell: bash
         run: |
           set -Eeuo pipefail
           base='${{ github.event.pull_request.base.sha }}'
           head='${{ github.event.pull_request.head.sha }}'
+          head_branch='${{ github.head_ref || github.ref_name }}'
           if [[ -n "$base" && -n "$head" ]]; then
             changed="$(git diff --name-only "$base"..."$head")"
           else
             changed="$(git diff --name-only HEAD^)"
           fi
           printf '%s\n' "$changed"
-          ! grep -Eq '(^|/)(CelarAiEnterprise|CelarAiEnterprisePlatformModule|AnalyticsCenterEnterprise|AnalyticsCenterEnterpriseModule|ProjectCloseoutGuidedCenter)' <<<"$changed"
-          ! grep -Eq '^database/migrations/060_analytics_center_enterprise_experience' <<<"$changed"
-          ! grep -Eq '^database/migrations/061_celar_ai_capability_routing' <<<"$changed"
-          echo 'ROLE_ACCESS_REPAIR_PROTECTED_PARALLEL_FEATURES_UNCHANGED=YES'
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$changed"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$head_branch" == release/consolidated-enterprise-validation-* ]]; then
+            # The consolidated candidate intentionally combines the separately
+            # reviewed Analytics, Celar AI, closeout, role, and notification
+            # packages. Validate the role repair as a regression without
+            # pretending those packages are role-owned source.
+            echo 'ROLE_ACCESS_REPAIR_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+            echo 'ROLE_ACCESS_REPAIR_CONSOLIDATED_RELEASE_SCOPE=YES'
+          else
+            ! grep -Eq '(^|/)(CelarAiEnterprise|CelarAiEnterprisePlatformModule|AnalyticsCenterEnterprise|AnalyticsCenterEnterpriseModule|ProjectCloseoutGuidedCenter)' <<<"$changed"
+            ! grep -Eq '^database/migrations/060_analytics_center_enterprise_experience' <<<"$changed"
+            ! grep -Eq '^database/migrations/061_celar_ai_capability_routing' <<<"$changed"
+            echo 'ROLE_ACCESS_REPAIR_VALIDATION_MODE=ISOLATED_SOURCE' >> "$GITHUB_ENV"
+            echo 'ROLE_ACCESS_REPAIR_PROTECTED_PARALLEL_FEATURES_UNCHANGED=YES'
+          fi
+
+          git diff --check "$base"..."$head"
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -177,9 +202,10 @@ jobs:
         if: success()
         shell: bash
         run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Role access repair validation
 
+          - Validation mode: ${ROLE_ACCESS_REPAIR_VALIDATION_MODE:-UNKNOWN}
           - Super Administrator permanent Full Control: validated by migration 062
           - Legacy Administrator reconciliation: validated
           - Module 026 and Module 065 authority contract: validated
