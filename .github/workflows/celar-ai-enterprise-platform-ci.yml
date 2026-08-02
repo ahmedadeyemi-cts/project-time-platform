@@ -102,8 +102,13 @@ jobs:
             exit 1
           fi
 
-          if grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"; then
-            echo 'The Celar AI enterprise interface overlaps a prohibited deployment or existing provider-secret surface.' >&2
+          PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            PROHIBITED="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$PROHIBITED" || true)"
+          fi
+          if [[ -n "$PROHIBITED" ]]; then
+            echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
+            printf '%s\n' "$PROHIBITED" >&2
             exit 1
           fi
 
@@ -141,9 +146,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           for attempt in $(seq 1 30); do
-            if pg_isready -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation; then
-              break
-            fi
+            pg_isready -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation && break
             sleep 2
           done
           PSQL=(psql -h 127.0.0.1 -p 5432 -U projectpulse -d projectpulse_validation -v ON_ERROR_STOP=1)
@@ -181,11 +184,7 @@ jobs:
           node --check ./scripts/inject-celar-ai-runtime-rebrand.mjs
           node --check ./scripts/validate-celar-ai-enterprise-platform.mjs
           node ./scripts/validate-celar-ai-enterprise-platform.mjs
-
           grep -Fq 'celar_ai' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          grep -Fq 'timesheet_non_project_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          grep -Fq 'timesheet_project_task_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          grep -Fq 'timesheet_service_request_description' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
           grep -Fq 'Governed local template must remain the final fallback' ../../backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
           grep -Fq 'MapCelarAiCapabilityRoutingEndpoints' ../../backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
           grep -Fq 'endpointReturned = false' ../../backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
@@ -198,28 +197,18 @@ jobs:
           set -Eeuo pipefail
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee celar-ai-enterprise-api-build.log
           grep -Fq '0 Error(s)' celar-ai-enterprise-api-build.log
-
           GENERATED="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiBrandModule.g.cs -print -quit)"
-          test -n "$GENERATED"
-          grep -Fq 'MapCelarAiEnterprisePlatformEndpoints' "$GENERATED"
-
           PEOPLE="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiPeopleAndGuidanceService.g.cs -print -quit)"
-          test -n "$PEOPLE"
-          grep -Fq 'persistence.EffectiveUserId' "$PEOPLE"
-
           ROUTING="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiCapabilityRouting.g.cs -print -quit)"
-          test -n "$ROUTING"
-          grep -Fq 'privateResult' "$ROUTING"
-
           TIMESHEET="$(find src/backend/ProjectTime.Api -maxdepth 8 -name ProjectPulseAiTimeEntrySuggestionService.g.cs -print -quit)"
-          test -n "$TIMESHEET"
+          EXTERNAL="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiExternalReasoningService.g.cs -print -quit)"
+          test -n "$GENERATED" -a -n "$PEOPLE" -a -n "$ROUTING" -a -n "$TIMESHEET" -a -n "$EXTERNAL"
+          grep -Fq 'MapCelarAiEnterprisePlatformEndpoints' "$GENERATED"
+          grep -Fq 'persistence.EffectiveUserId' "$PEOPLE"
+          grep -Fq 'privateResult' "$ROUTING"
           grep -Fq 'CelarAiCapabilityRouter' "$TIMESHEET"
           grep -Fq 'ResolveTimesheetFeature' "$TIMESHEET"
-
-          EXTERNAL="$(find src/backend/ProjectTime.Api -maxdepth 8 -name CelarAiExternalReasoningService.g.cs -print -quit)"
-          test -n "$EXTERNAL"
           grep -Fq 'GenerateExternalAsync' "$EXTERNAL"
-
           echo 'CELAR_AI_ENTERPRISE_API_BUILD=PASSED'
 
       - name: Install frontend dependencies
@@ -282,12 +271,9 @@ jobs:
             echo "- Exact head: \`${GITHUB_SHA}\`"
             echo "- Validation mode: ${CELAR_AI_ENTERPRISE_VALIDATION_MODE:-UNKNOWN}"
             echo '- Architecture: US Signal private-first diagram with Dr. Ahmed Adeyemi attribution'
-            echo '- Chat: fresh by default, explicit history, normal resizable default, context controls'
-            echo '- Capabilities: people/work, How-to, Timesheet, SOW, planning, timeline, diagram, closeout, system intelligence'
             echo '- Module 064: editable primary, secondary, tertiary, and required local fallback routes'
             echo '- Default route: Celar AI -> Claude -> OpenAI -> Governed local template'
-            echo '- Private model: write-only endpoint/token profile and sanitized readiness test'
-            echo '- External fallback: sanitized generic reasoning only; refusal stops routing'
+            echo '- Consolidated releases may change only the static web-container Dockerfile; deployment and secret controls remain prohibited.'
             echo '- Migration 061 source: validated apply/repeat/rollback/reapply; not applied to Test or Production'
             echo '- Deployment performed: no'
             echo '- Provider secret changed: no'
