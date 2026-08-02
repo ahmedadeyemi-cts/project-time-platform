@@ -1,0 +1,141 @@
+name: Role Access Repair CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/role-access-repair-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PermanentRoleAuthorityCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/RoleAccessAuditModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/QualificationsCertificationSelfServiceModule.cs'
+      - 'src/frontend/project-time-web/src/role-workspace-governance.js'
+      - 'src/frontend/project-time-web/src/role-workspace-effective-identity-compatibility.js'
+      - 'src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx'
+      - 'src/frontend/project-time-web/src/QualificationsCertificationCenter.jsx'
+      - 'src/frontend/project-time-web/src/qualifications-self-service.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs'
+      - 'database/migrations/061_super_administrator_permanent_full_control.sql'
+      - 'database/rollback/061_super_administrator_permanent_full_control_rollback.sql'
+      - 'database/migrations/062_project_management_billing_role_access_repair.sql'
+      - 'database/rollback/062_project_management_billing_role_access_repair_rollback.sql'
+      - 'tests/test-super-administrator-permanent-full-control-migration-061.sh'
+      - 'tests/test-project-management-billing-role-access-migration-062.sh'
+      - 'docs/modules/module-069-qualifications-certifications/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: role-access-repair-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard protected feature isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.event.pull_request.head.sha }}'
+          if [[ -n "$base" && -n "$head" ]]; then
+            changed="$(git diff --name-only "$base"..."$head")"
+          else
+            changed="$(git diff --name-only HEAD^)"
+          fi
+          printf '%s\n' "$changed"
+          ! grep -Eq '(^|/)(CelarAiEnterprise|CelarAiEnterprisePlatformModule|AnalyticsCenterEnterprise|AnalyticsCenterEnterpriseModule|ProjectCloseoutGuidedCenter)' <<<"$changed"
+          ! grep -Eq '^database/migrations/060_analytics_center_enterprise_experience' <<<"$changed"
+          echo 'ROLE_ACCESS_REPAIR_PROTECTED_PARALLEL_FEATURES_UNCHANGED=YES'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Build API Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+      - name: Test migration 061 apply rollback and reapply
+        shell: bash
+        run: bash tests/test-super-administrator-permanent-full-control-migration-061.sh
+
+      - name: Test migration 062 apply rollback and reapply
+        shell: bash
+        run: bash tests/test-project-management-billing-role-access-migration-062.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate focused role contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:role-workspace-entra-crm-governance
+          npm run validate:module069
+
+      - name: Build complete production frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Ensure validators did not mutate tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Build production web container
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-role-access-repair:${GITHUB_SHA}" \
+            .
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Role access repair validation
+
+          - Super Administrator permanent Full Control: validated
+          - Legacy Administrator reconciliation: validated
+          - Module 026 and Module 065 authority contract: validated
+          - Project Management own time and project approval: validated
+          - Project Management holiday, expense, and own qualifications: validated
+          - Billing Module 008 Audit History exclusion: validated
+          - Accounting Audit History preservation: validated
+          - Administrator View-As write authority: none
+          - Azure/Test/Production mutation: none
+          EOF
