@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import CelarAiProviderBridgePanel from './CelarAiProviderBridgePanel.jsx';
+import CelarAiCapabilityRoutingPanel from './CelarAiCapabilityRoutingPanel.jsx';
 import './ai-provider-configuration-center.css';
 import './projectpulse-module-standard.css';
 import AiProviderReadinessPanel from './ai/AiProviderReadinessPanel.jsx';
@@ -363,6 +364,7 @@ export default function AiProviderConfigurationCenter() {
           </section>
 
           <CelarAiProviderBridgePanel />
+          <CelarAiCapabilityRoutingPanel />
 
           <section className="ai-provider-center__section">
             <div className="ai-provider-center__section-heading">
