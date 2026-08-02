@@ -1,95 +1,341 @@
-name: ProjectPulse Deploy Test
+name: ProjectPulse Deploy Live UI Route Authority Test
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        required: true
-        default: test
-        type: choice
-        options: [test]
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/projectpulse-deploy-test.yml'
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-test
+  group: projectpulse-live-ui-route-authority-test
   cancel-in-progress: false
 
 jobs:
   deploy:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'deploy/live-ui-route-authority-test-fbbd2235-20260802'
+    name: Deploy exact live UI route-authority web release to Test
     environment: test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 120
+    env:
+      EXPECTED_RELEASE_COMMIT: fbbd22353e7ef79d8f44348f2936918a8cfe04bb
+      EXPECTED_CONTROL_BRANCH: deploy/live-ui-route-authority-test-fbbd2235-20260802
+      CONTROL_WORKFLOW: .github/workflows/projectpulse-deploy-test.yml
+      USER_REPORTED_URL: https://phd-west-test.onenecklab.com
 
-      - uses: azure/login@v2
+    steps:
+      - name: Check out exact deployment control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact merged live UI release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fbbd22353e7ef79d8f44348f2936918a8cfe04bb
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard control branch, exact main release, and web-only scope
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_CONTROL_BRANCH" ]]
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+
+          CONTROL_HEAD="$(git -C control rev-parse HEAD)"
+          RELEASE_HEAD="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$RELEASE_HEAD" == "$EXPECTED_RELEASE_COMMIT" ]]
+
+          git -C control fetch origin main --no-tags
+          CURRENT_MAIN="$(git -C control rev-parse origin/main)"
+          [[ "$CURRENT_MAIN" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo "main moved from the validated live UI merge: $CURRENT_MAIN" >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
+
+          CHANGED="$(git -C control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$CONTROL_WORKFLOW" ]] || {
+            echo 'The activation PR must contain only the one-time Test deployment workflow.' >&2
+            exit 1
+          }
+
+          test -f release/deployment/containers/web/Dockerfile
+          test -f release/scripts/build-pr55-acr-image.sh
+          test -f release/scripts/wait-containerapp-ready-revision.sh
+          test -f release/src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js
+          test -f release/src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx
+          test -f release/src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx
+          grep -Fq "import './legacy-analytics-overlay-authority.js';" release/src/frontend/project-time-web/src/main.jsx
+          grep -Fq 'MODULE_030_NATIVE_REACT_ROUTE' release/src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js
+          grep -Fq 'projectpulse:route-canonicalized' release/src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js
+          grep -Fq 'Celar AI Architecture Overview' release/src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx
+
+          echo "target_commit=$RELEASE_HEAD" >> "$GITHUB_OUTPUT"
+          echo "control_commit=$CONTROL_HEAD" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_TEST_RELEASE_GUARD=PASSED'
+          echo 'LIVE_UI_DEPLOYMENT_SCOPE=WEB_ONLY'
+
+      - name: Sign in to Azure Test through OIDC
+        uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current release
+      - name: Capture current immutable web release and unchanged API state
         id: before
         shell: bash
         run: |
           set -Eeuo pipefail
-          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          ACR='${{ vars.AZURE_ACR_NAME }}'
+          REGISTRY="$ACR.azurecr.io/"
 
-      - name: Build API and web images
+          RAW_WEB="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          RAW_API="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          [[ -n "$RAW_WEB" && -n "$RAW_API" ]]
+          [[ "${WEB_MODE,,}" == single && "${API_MODE,,}" == single ]]
+
+          resolve_digest() {
+            local image="$1" relative repository digest
+            case "$image" in
+              "$REGISTRY"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$REGISTRY"*:*) ;;
+              *) echo "Unexpected non-ACR image: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$REGISTRY"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name "$ACR" --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$REGISTRY" "$repository" "$digest"
+          }
+
+          OLD_WEB="$(resolve_digest "$RAW_WEB")"
+          OLD_WEB_REVISION="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          OLD_API_SOURCE="$(az containerapp show -g "$RG" -n "$API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
+          OLD_API_REVISION="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+
+          echo "old_web_image=$OLD_WEB" >> "$GITHUB_OUTPUT"
+          echo "old_web_revision=$OLD_WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo "api_image=$RAW_API" >> "$GITHUB_OUTPUT"
+          echo "api_source=$OLD_API_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "api_revision=$OLD_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_PREVIOUS_RELEASE_CAPTURED=YES'
+
+      - name: Build immutable web image from the exact merged release
+        id: build
+        working-directory: release
         shell: bash
         run: |
           set -Eeuo pipefail
-          API_TAG="ci-${GITHUB_SHA}"
-          WEB_TAG="ci-${GITHUB_SHA}"
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-api:$API_TAG" --file deployment/containers/api/Dockerfile .
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-web:$WEB_TAG" --file deployment/containers/web/Dockerfile .
+          SHA='${{ steps.release.outputs.target_commit }}'
+          WEB_REPO='project-health-dashboard-web'
+          TAG="liveui-${SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          WEB_DIGEST="$(scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:$TAG" deployment/containers/web/Dockerfile .)"
+          [[ "$WEB_DIGEST" == sha256:* ]]
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_IMMUTABLE_WEB_IMAGE_BUILT=YES'
 
-      - name: Deploy API
+      - name: Deploy immutable web image
+        id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
-          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --set-env-vars PROJECTPULSE_ENVIRONMENT=test --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
+          SUFFIX="ui${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          [[ "$SUFFIX" =~ ^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$ ]]
+          EXPECTED_REVISION='${{ vars.AZURE_WEB_APP }}'--"$SUFFIX"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "expected_revision=$EXPECTED_REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Validate API
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none \
+            --only-show-errors
+
+      - name: Wait for the exact candidate web revision
         shell: bash
         run: |
           set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
-            case "$STATUS" in 200|401) exit 0 ;; esac
-            sleep 10
+          bash release/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            '${{ steps.deploy_web.outputs.expected_revision }}' \
+            '${{ steps.build.outputs.web_image }}' \
+            60 \
+            10
+
+      - name: Validate live Test bundle, route authority, and unchanged API
+        id: validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          EXPECTED_WEB='${{ steps.build.outputs.web_image }}'
+          EXPECTED_REVISION='${{ steps.deploy_web.outputs.expected_revision }}'
+          EXPECTED_API='${{ steps.before.outputs.api_image }}'
+          EXPECTED_API_SOURCE='${{ steps.before.outputs.api_source }}'
+          mkdir -p evidence/live
+
+          ACTIVE_WEB="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          LATEST_READY="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          ACTIVE_API="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          ACTIVE_API_SOURCE="$(az containerapp show -g "$RG" -n "$API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
+          REVISION_JSON="$(az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$EXPECTED_REVISION" --query '{image:properties.template.containers[0].image,provisioningState:properties.provisioningState,healthState:properties.healthState,active:properties.active,trafficWeight:properties.trafficWeight}' -o json --only-show-errors)"
+
+          [[ "$ACTIVE_WEB" == "$EXPECTED_WEB" ]]
+          [[ "$LATEST_READY" == "$EXPECTED_REVISION" ]]
+          [[ "${WEB_MODE,,}" == single ]]
+          [[ "$ACTIVE_API" == "$EXPECTED_API" ]]
+          [[ "$ACTIVE_API_SOURCE" == "$EXPECTED_API_SOURCE" ]]
+          jq -e --arg image "$EXPECTED_WEB" '.image == $image and (.active == true) and ((.healthState // "") | ascii_downcase) == "healthy"' <<<"$REVISION_JSON" >/dev/null
+
+          verify_surface() {
+            local label="$1" base="$2" safe status js_rel js_url buster
+            base="${base%/}"
+            safe="$(tr -cs 'A-Za-z0-9' '_' <<<"$label" | sed 's/^_*//;s/_*$//')"
+            buster="liveui-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${safe}"
+            status="$(curl -sS -L --connect-timeout 15 --max-time 45 -D "evidence/live/$safe-index.headers" -o "evidence/live/$safe-index.html" -w '%{http_code}' -H 'Cache-Control: no-cache' "$base/?release_check=$buster")"
+            [[ "$status" == 200 ]]
+            js_rel="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' "evidence/live/$safe-index.html" | head -1)"
+            [[ -n "$js_rel" ]]
+            case "$js_rel" in
+              http*) js_url="$js_rel" ;;
+              /*) js_url="$base$js_rel" ;;
+              *) js_url="$base/$js_rel" ;;
+            esac
+            curl -sS -L --connect-timeout 15 --max-time 60 -D "evidence/live/$safe-app.headers" -o "evidence/live/$safe-app.js" -H 'Cache-Control: no-cache' "$js_url?release_check=$buster"
+            test -s "evidence/live/$safe-app.js"
+            grep -Fq 'MODULE_030_NATIVE_REACT_ROUTE' "evidence/live/$safe-app.js"
+            grep -Fq 'projectpulse:route-canonicalized' "evidence/live/$safe-app.js"
+            grep -Fq 'Celar AI Architecture Overview' "evidence/live/$safe-app.js"
+            grep -Fq 'Test sender and transport' "evidence/live/$safe-app.js"
+            grep -Fq 'Full Control · Organization-wide' "evidence/live/$safe-app.js"
+            grep -Fq 'Analytics Center' "evidence/live/$safe-app.js"
+            sha256sum "evidence/live/$safe-app.js" > "evidence/live/$safe-app.sha256"
+            echo "LIVE_UI_SURFACE_${safe}=PASSED"
+          }
+
+          verify_surface configured_public '${{ vars.PUBLIC_URL }}'
+          verify_surface user_reported "$USER_REPORTED_URL"
+
+          for path in \
+            '/api/integrations/026/providers' \
+            '/api/celar-ai/v1/platform/readiness'; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' "${USER_REPORTED_URL%/}$path")"
+            [[ "$status" == 401 ]]
           done
-          exit 1
+          status="$(curl -sS -X POST -H 'Content-Type: application/json' -d '{"environmentMode":"test"}' -o /dev/null -w '%{http_code}' "${USER_REPORTED_URL%/}/api/microsoft-integration/mail-runtime/test")"
+          [[ "$status" == 401 ]]
 
-      - name: Deploy web
+          echo "ready_revision=$LATEST_READY" >> "$GITHUB_OUTPUT"
+          echo "revision_json=$(jq -c . <<<"$REVISION_JSON")" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_TEST_DEPLOYMENT_VALIDATION=PASSED'
+          echo 'LIVE_UI_API_ROLLOUT=NONE'
+          echo 'LIVE_UI_DATABASE_OPERATION=NONE'
+
+      - name: Write immutable Test deployment evidence
+        if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
-          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image "$WEB_IMAGE" --revision-suffix "ciweb-${GITHUB_RUN_ID}" --output none
+          mkdir -p evidence
+          cat > evidence/live-ui-route-authority-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "controlCommit": "${{ steps.release.outputs.control_commit }}",
+            "workflowRunId": "${{ github.run_id }}",
+            "workflowRunAttempt": "${{ github.run_attempt }}",
+            "deploymentScope": "web-only",
+            "databaseOperation": false,
+            "apiDeployment": false,
+            "apiImageUnchanged": "${{ steps.before.outputs.api_image }}",
+            "apiSourceUnchanged": "${{ steps.before.outputs.api_source }}",
+            "apiReadyRevisionUnchanged": "${{ steps.before.outputs.api_revision }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "previousWebReadyRevision": "${{ steps.before.outputs.old_web_revision }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "webDigest": "${{ steps.build.outputs.web_digest }}",
+            "webReadyRevision": "${{ steps.validate.outputs.ready_revision }}",
+            "activeRevisionMode": "Single",
+            "liveMarkers": [
+              "MODULE_030_NATIVE_REACT_ROUTE",
+              "projectpulse:route-canonicalized",
+              "Celar AI Architecture Overview",
+              "Test sender and transport",
+              "Full Control · Organization-wide",
+              "Analytics Center"
+            ],
+            "userReportedUrl": "https://phd-west-test.onenecklab.com",
+            "rollbackInvoked": false,
+            "productionOperation": false
+          }
+          JSON
+          sha256sum evidence/live-ui-route-authority-test-deployment.json > evidence/SHA256SUMS
+          cat evidence/live-ui-route-authority-test-deployment.json
 
-      - name: Validate web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/' || true)"
-            [[ "$STATUS" == "200" ]] && exit 0
-            sleep 10
-          done
-          exit 1
+      - name: Upload Test deployment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-ui-route-authority-test-deployment-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Roll back on failure
-        if: failure()
+      - name: Roll back web image on deployment failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
         shell: bash
         run: |
           set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rbapi-${GITHUB_RUN_ID}" --output none
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbweb-${GITHUB_RUN_ID}" --output none
+          SUFFIX="uirb${GITHUB_RUN_ID}a${GITHUB_RUN_ATTEMPT}"
+          EXPECTED_REVISION='${{ vars.AZURE_WEB_APP }}'--"$SUFFIX"
+          echo 'Only the Test web image is being rolled back. No API or database change occurred.'
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.before.outputs.old_web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none \
+            --only-show-errors
+          bash release/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_WEB_APP }}' \
+            "$EXPECTED_REVISION" \
+            '${{ steps.before.outputs.old_web_image }}' \
+            45 \
+            10 || true
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
