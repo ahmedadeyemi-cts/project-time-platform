@@ -1,0 +1,141 @@
+name: Temporary Renumber Role Access Migrations
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temp-renumber-role-access-migrations.yml'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: temp-renumber-role-access-migrations-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  renumber:
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/super-administrator-permanent-full-control-20260801'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact branch and migration source set
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_HEAD_REF" == 'fix/super-administrator-permanent-full-control-20260801' ]]
+          test -f database/migrations/061_super_administrator_permanent_full_control.sql
+          test -f database/rollback/061_super_administrator_permanent_full_control_rollback.sql
+          test -f tests/test-super-administrator-permanent-full-control-migration-061.sh
+          test -f database/migrations/062_project_management_billing_role_access_repair.sql
+          test -f database/rollback/062_project_management_billing_role_access_repair_rollback.sql
+          test -f tests/test-project-management-billing-role-access-migration-062.sh
+          test ! -e database/migrations/062_super_administrator_permanent_full_control.sql
+          test ! -e database/migrations/063_project_management_billing_role_access_repair.sql
+
+      - name: Renumber files and internal evidence identifiers atomically
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          changes = [
+              (
+                  Path('database/migrations/061_super_administrator_permanent_full_control.sql'),
+                  Path('database/migrations/062_super_administrator_permanent_full_control.sql'),
+                  '061',
+                  '062',
+              ),
+              (
+                  Path('database/rollback/061_super_administrator_permanent_full_control_rollback.sql'),
+                  Path('database/rollback/062_super_administrator_permanent_full_control_rollback.sql'),
+                  '061',
+                  '062',
+              ),
+              (
+                  Path('tests/test-super-administrator-permanent-full-control-migration-061.sh'),
+                  Path('tests/test-super-administrator-permanent-full-control-migration-062.sh'),
+                  '061',
+                  '062',
+              ),
+              (
+                  Path('database/migrations/062_project_management_billing_role_access_repair.sql'),
+                  Path('database/migrations/063_project_management_billing_role_access_repair.sql'),
+                  '062',
+                  '063',
+              ),
+              (
+                  Path('database/rollback/062_project_management_billing_role_access_repair_rollback.sql'),
+                  Path('database/rollback/063_project_management_billing_role_access_repair_rollback.sql'),
+                  '062',
+                  '063',
+              ),
+              (
+                  Path('tests/test-project-management-billing-role-access-migration-062.sh'),
+                  Path('tests/test-project-management-billing-role-access-migration-063.sh'),
+                  '062',
+                  '063',
+              ),
+          ]
+
+          for source, target, old, new in changes:
+              content = source.read_text(encoding='utf-8').replace(old, new)
+              target.write_text(content, encoding='utf-8')
+              source.unlink()
+
+          print('ROLE_ACCESS_MIGRATION_RENUMBER=PASS')
+          PY
+
+      - name: Validate renumbered source boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f database/migrations/062_super_administrator_permanent_full_control.sql
+          test -f database/rollback/062_super_administrator_permanent_full_control_rollback.sql
+          test -f tests/test-super-administrator-permanent-full-control-migration-062.sh
+          test -f database/migrations/063_project_management_billing_role_access_repair.sql
+          test -f database/rollback/063_project_management_billing_role_access_repair_rollback.sql
+          test -f tests/test-project-management-billing-role-access-migration-063.sh
+          grep -Fq '062_super_administrator_permanent_full_control' database/migrations/062_super_administrator_permanent_full_control.sql
+          grep -Fq '063_project_management_billing_role_access_repair' database/migrations/063_project_management_billing_role_access_repair.sql
+          grep -Fq 'SUPER_ADMINISTRATOR_PERMANENT_FULL_CONTROL_MIGRATION_062=PASS' tests/test-super-administrator-permanent-full-control-migration-062.sh
+          grep -Fq 'PROJECT_MANAGEMENT_BILLING_ROLE_ACCESS_MIGRATION_063=PASS' tests/test-project-management-billing-role-access-migration-063.sh
+          git diff --check
+
+      - name: Publish renumbered source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            database/migrations/061_super_administrator_permanent_full_control.sql \
+            database/rollback/061_super_administrator_permanent_full_control_rollback.sql \
+            tests/test-super-administrator-permanent-full-control-migration-061.sh \
+            database/migrations/062_super_administrator_permanent_full_control.sql \
+            database/rollback/062_super_administrator_permanent_full_control_rollback.sql \
+            tests/test-super-administrator-permanent-full-control-migration-062.sh \
+            database/migrations/062_project_management_billing_role_access_repair.sql \
+            database/rollback/062_project_management_billing_role_access_repair_rollback.sql \
+            tests/test-project-management-billing-role-access-migration-062.sh \
+            database/migrations/063_project_management_billing_role_access_repair.sql \
+            database/rollback/063_project_management_billing_role_access_repair_rollback.sql \
+            tests/test-project-management-billing-role-access-migration-063.sh
+          git diff --cached --check
+          git commit -m 'Renumber role access migrations after Celar AI migration 061'
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
+          echo 'ROLE_ACCESS_MIGRATION_RENUMBER_PUBLISHED=YES'
