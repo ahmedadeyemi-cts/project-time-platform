@@ -110,8 +110,13 @@ jobs:
             echo "ANALYTICS_CENTER_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
           fi
 
-          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED"; then
-            echo 'Analytics Center validation detected deployment-control overlap.' >&2
+          DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
+            echo 'Analytics Center validation detected deployment-control overlap:' >&2
+            printf '%s\n' "$DEPLOYMENT_OVERLAP" >&2
             exit 1
           fi
           if [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* || "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* ]] && \
@@ -293,7 +298,7 @@ jobs:
             echo
             echo "- Validation mode: ${ANALYTICS_CENTER_VALIDATION_MODE:-UNKNOWN}"
             echo '- Active compiled profile: base or enterprise, selected from checked-out source'
-            echo '- Protected deployment files: guarded'
+            echo '- Consolidated releases may change only the static web-container Dockerfile; deployment controls remain prohibited.'
             echo '- Migration 055 regression: executed'
             echo '- Migration 060 regression: executed when present'
             echo '- API and complete frontend builds: executed'
