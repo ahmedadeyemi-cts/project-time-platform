@@ -8,33 +8,17 @@ on:
     paths:
       - '.github/workflows/celar-ai-runtime-rebrand-ci.yml'
       - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
-      - '.github/workflows/group5-financial-operations-recovery-ci.yml'
-      - '.github/workflows/group7-ai-help-system-guide-ci.yml'
-      - '.github/workflows/module064-automatic-provider-health-ci.yml'
       - '.github/workflows/pulse-ai-system-intelligence-ci.yml'
       - '.github/workflows/pulse-ai-help-chat-usability-ci.yml'
       - 'database/migrations/061_celar_ai_capability_routing.sql'
       - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
       - 'tests/test-pulse-ai-system-intelligence-migration-054.sh'
-      - 'docs/modules/module-011-pulse-ai/CELAR-AI-RUNTIME-REBRAND.md'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiBrandProfile.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'docs/modules/module-011-pulse-ai/**'
+      - 'src/backend/ProjectTime.Api/Ai/**'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
-      - 'src/frontend/project-time-web/package.json'
-      - 'src/frontend/project-time-web/package-lock.json'
-      - 'src/frontend/project-time-web/scripts/inject-celar-ai-runtime-rebrand.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-module-011-private-document-pipeline.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs'
-      - 'src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability.mjs'
-      - 'src/frontend/project-time-web/src/CelarAiProviderBridgePanel.jsx'
-      - 'src/frontend/project-time-web/src/celar-ai-provider-bridge-panel.css'
-      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/**'
 
 permissions:
   contents: read
@@ -56,7 +40,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify owned source scope or run regression mode
+      - name: Verify source isolation and protected deployment boundary
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -68,21 +52,7 @@ jobs:
           CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          if [[ -n "$CHANGED" ]] && [[ -z "$(grep -Ev '^src/frontend/project-time-web/package(-lock)?\.json$' <<<"$CHANGED" || true)" ]]; then
-            echo 'PROJECTPULSE_DEPENDENCY_ONLY=true' >> "$GITHUB_ENV"
-            echo 'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE=DEPENDENCY_ONLY' >> "$GITHUB_ENV"
-            echo 'CELAR_AI_DEPENDENCY_ONLY_SCOPE=PASSED'
-          elif [[ "$HEAD_BRANCH" == fix/remaining-release-train-specialized-workflow-convergence-* ]]; then
-            WORKFLOW_ALLOWED='^\.github/workflows/(celar-ai-runtime-rebrand-ci|group5-financial-operations-recovery-ci|group7-ai-help-system-guide-ci|module064-automatic-provider-health-ci|pulse-ai-help-chat-usability-ci|pulse-ai-system-intelligence-ci)\.yml$'
-            UNEXPECTED="$(grep -Ev "$WORKFLOW_ALLOWED" <<<"$CHANGED" || true)"
-            if [[ -n "$UNEXPECTED" ]]; then
-              echo 'The specialized workflow-convergence branch changed source outside its reviewed workflow boundary:' >&2
-              printf '%s\n' "$UNEXPECTED" >&2
-              exit 1
-            fi
-            echo 'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE=WORKFLOW_CONVERGENCE' >> "$GITHUB_ENV"
-            echo 'CELAR_AI_WORKFLOW_CONVERGENCE_SCOPE=PASSED'
-          elif [[ "$HEAD_BRANCH" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
+          if [[ "$HEAD_BRANCH" == feature/module-011-celar-ai-runtime-rebrand-* ]]; then
             test "$BASE_REF" = "$(git rev-parse "origin/$BASE_BRANCH")"
             ALLOWED='^(\.github/workflows/(celar-ai-runtime-rebrand-ci|deep-intelligence-read-contract-ci|pulse-ai-system-intelligence-ci|pulse-ai-help-chat-usability-ci)\.yml|docs/modules/module-011-pulse-ai/(CELAR-AI-RUNTIME-REBRAND|SYSTEM-INTELLIGENCE-AND-TROUBLESHOOTING)\.md|src/backend/ProjectTime\.Api/Ai/(CelarAiBrandProfile|PulseAiProductKnowledgeCatalog|ProjectPulseAiServiceCollectionExtensions|PulseAiSystemIntelligenceService|PulseAiSystemToolExecutor)\.cs|src/backend/ProjectTime\.Api/Modules/CelarAiBrandModule\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-celar-ai-runtime-rebrand|inject-pulse-ai-system-chat-group7-compatibility|validate-celar-ai-runtime-rebrand|validate-module-011-pulse-ai|validate-group-1-navigation-work-consolidation|validate-module-011-private-document-pipeline|validate-module-011-pulse-ai-deep-intelligence|validate-module-011-system-intelligence-package|validate-pulse-ai-help-chat-usability)\.mjs|src/frontend/project-time-web/src/(CelarAiProviderBridgePanel\.jsx|celar-ai-provider-bridge-panel\.css|module-availability-registry\.js|HelpAssistant\.jsx|PulseAiSystemIntelligenceWorkbench\.jsx|WorkTaskBuilderPanel\.jsx|pulse-ai-system-chat\.css|pulse-ai-system-intelligence-workbench\.css)|deployment/containers/web/Dockerfile)$'
             UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
@@ -91,8 +61,10 @@ jobs:
               printf '%s\n' "$UNEXPECTED" >&2
               exit 1
             fi
-            if grep -E '^(database/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED"; then
+            RESTRICTED="$(grep -E '^(database/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+            if [[ -n "$RESTRICTED" ]]; then
               echo 'The runtime-rebrand feature branch overlaps a prohibited database, deployment, or provider-secret surface.' >&2
+              printf '%s\n' "$RESTRICTED" >&2
               exit 1
             fi
             echo 'CELAR_AI_RUNTIME_REBRAND_VALIDATION_MODE=FEATURE_SOURCE' >> "$GITHUB_ENV"
@@ -116,7 +88,6 @@ jobs:
           echo 'CELAR_AI_RUNTIME_REBRAND_SOURCE_ISOLATION=PASSED'
 
       - name: Set up .NET
-        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
@@ -145,7 +116,6 @@ jobs:
           echo 'CELAR_AI_PRESERVED_PREBUILD_CONTRACTS=PASSED'
 
       - name: Verify durable conversation migration 054
-        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -153,7 +123,6 @@ jobs:
           tests/test-pulse-ai-system-intelligence-migration-054.sh
 
       - name: Build ProjectTime API and verify endpoint registration
-        if: env.PROJECTPULSE_DEPENDENCY_ONLY != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -178,25 +147,25 @@ jobs:
           test -s dist/index.html
           cat dist/assets/*.js > /tmp/celar-ai-runtime.js
           cat dist/assets/*.css > /tmp/celar-ai-runtime.css
-          for marker in \
-            'Ask Celar AI' \
-            'Celar AI Workbench' \
-            'Speed of light. Speed of delivery.' \
-            '/api/celar-ai/v1/chat' \
-            'Private intelligence and governed provider routing' \
-            'Raw internal documents never use public providers' \
-            'Enter sends · Shift+Enter adds a line' \
-            'completed responses remain in conversation history'; do
-            grep -Fq "$marker" /tmp/celar-ai-runtime.js
-          done
-          for marker in \
-            '.celar-ai-provider-bridge' \
-            '.celar-ai-provider-bridge__route-grid' \
-            '.help-panel.pulse-ai-system-chat .help-messages' \
-            'overflow-y:scroll' \
-            'scrollbar-gutter:stable both-edges'; do
-            grep -Fq "$marker" /tmp/celar-ai-runtime.css
-          done
+
+          require_marker() {
+            local file="$1"
+            local marker="$2"
+            local kind="$3"
+            if ! grep -aFq -- "$marker" "$file"; then
+              echo "MISSING_${kind}_MARKER=$marker" >&2
+              exit 1
+            fi
+          }
+
+          require_marker /tmp/celar-ai-runtime.js 'Ask Celar AI' COMPILED_JS
+          require_marker /tmp/celar-ai-runtime.js 'Celar AI Workbench' COMPILED_JS
+          require_marker /tmp/celar-ai-runtime.js '/api/celar-ai/v1/chat' COMPILED_JS
+          require_marker /tmp/celar-ai-runtime.js 'Speed of light' COMPILED_JS
+          require_marker /tmp/celar-ai-runtime.css '.celar-ai-provider-bridge' COMPILED_CSS
+          require_marker /tmp/celar-ai-runtime.css '.help-panel.pulse-ai-system-chat' COMPILED_CSS
+          require_marker /tmp/celar-ai-runtime.css 'overflow-y:scroll' COMPILED_CSS
+          require_marker /tmp/celar-ai-runtime.css 'scrollbar-gutter:stable' COMPILED_CSS
           echo 'CELAR_AI_FRONTEND_BUILD=PASSED'
 
       - name: Validate production web container build context
