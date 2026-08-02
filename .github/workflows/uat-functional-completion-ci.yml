@@ -1,0 +1,176 @@
+name: Validate UAT Functional Completion
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/uat-functional-completion-ci.yml'
+      - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
+      - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - '.github/workflows/modules010065-microsoft-runtime-ci.yml'
+      - '.github/workflows/live-ui-route-authority-ci.yml'
+      - 'database/migrations/066_immutable_business_project_numbers.sql'
+      - 'database/rollback/066_immutable_business_project_numbers_rollback.sql'
+      - 'tests/test-immutable-project-number-migration-066.sh'
+      - 'tests/ProjectTime.Api.AuthorizationTests/Program.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReporting*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterExperienceScope.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs'
+      - 'src/frontend/project-time-web/package.json'
+      - 'src/frontend/project-time-web/scripts/validate-uat-functional-completion.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs'
+      - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/analytics-center.css'
+      - 'src/frontend/project-time-web/src/CelarAiUnifiedWorkspace.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-unified-workspace.css'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uat-functional-completion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Analytics, CRM, Celar AI, project numbers, closeout, and Module 065
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: projectpulse_uat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d projectpulse_uat"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      PROJECTPULSE_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/projectpulse_uat
+      EXPECTED_BRANCH: release/consolidated-enterprise-validation-uat-functional-completion-20260802
+
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact branch, source, and protected deployment boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_BRANCH" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          git fetch origin '${{ github.event.pull_request.base.ref }}' --no-tags
+          BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
+          git merge-base --is-ancestor "$BASE" HEAD
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          ! grep -E '^(deployment/azure/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED"
+          git diff --check "$BASE"...HEAD
+          echo "UAT_FUNCTIONAL_BASE=$BASE"
+          echo "UAT_FUNCTIONAL_HEAD=$(git rev-parse HEAD)"
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused source contract
+        run: node src/frontend/project-time-web/scripts/validate-uat-functional-completion.mjs
+
+      - name: Validate migration 066 apply, repeat, rollback, and reapply
+        run: bash tests/test-immutable-project-number-migration-066.sh
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+      - name: Execute authorization regressions
+        run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete production frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate live runtime ownership
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-live-ui-route-authority.mjs
+
+      - name: Prove generated Module 040 and Module 011 ownership
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APP='src/App.Module001.g.jsx'
+          test -s "$APP"
+          grep -Fq '<ProjectCloseoutCenter />' "$APP"
+          ! grep -Fq '<FinancialOperationsRecoveryWorkspace moduleCode="040"' "$APP"
+          grep -Fq '<WorkTaskBuilderPanel />' "$APP"
+          grep -Fq '<AnalyticsCenter authSession={authSession} />' "$APP"
+          echo 'UAT_FUNCTIONAL_GENERATED_OWNERSHIP=PASS'
+
+      - name: Confirm build did not mutate tracked source
+        run: git diff --check && git diff --exit-code
+
+      - name: Build production API and web containers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build --file deployment/containers/api/Dockerfile --tag projectpulse-uat-api:${{ github.sha }} .
+          docker build --file deployment/containers/web/Dockerfile --tag projectpulse-uat-web:${{ github.sha }} .
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## UAT functional completion
+
+          - 34 familiar reports: validated
+          - Project over/under: validated
+          - Current/projected utilization over/under: validated
+          - Vacation/PTO usage: validated
+          - Named source-coverage notices: validated
+          - Analytics icon + name navigation: validated
+          - Actual Super Administrator Module 026 authority: validated
+          - View-As mutation authority: denied
+          - Celar AI architecture default and selected-tab ownership: validated
+          - Migration 066 apply/repeat/rollback/reapply: validated
+          - Guided Module 040 single owner: validated
+          - Module 065 explicit Test delivery contract: validated; no message sent by CI
+          - PM time-entry contract: preserved
+          SUMMARY
