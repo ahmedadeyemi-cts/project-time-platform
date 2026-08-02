@@ -249,13 +249,25 @@ assert(
   'the Module 064 Celar AI bridge is responsive and supports the existing light/dark experience'
 );
 
+const approvedCelarMigrations = new Set([
+  'database/migrations/061_celar_ai_capability_routing.sql'
+]);
+const approvedCelarRollbacks = new Set([
+  'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+]);
 const celarMigrations = walk('database/migrations').filter((relative) => /celar[-_]?ai/i.test(relative));
+const celarRollbacks = walk('database/rollback').filter((relative) => /celar[-_]?ai/i.test(relative));
+const unexpectedCelarMigrations = celarMigrations.filter((relative) => !approvedCelarMigrations.has(relative));
+const unexpectedCelarRollbacks = celarRollbacks.filter((relative) => !approvedCelarRollbacks.has(relative));
+const presentApprovedCelarMigrations = celarMigrations.filter((relative) => approvedCelarMigrations.has(relative));
+const presentApprovedCelarRollbacks = celarRollbacks.filter((relative) => approvedCelarRollbacks.has(relative));
+
 assert(
   'NO_CELAR_DATABASE_MIGRATION',
-  celarMigrations.length === 0,
-  celarMigrations.length === 0
-    ? 'the visible rebrand does not rename or duplicate stable pulse_ai database objects'
-    : `unexpected Celar migration paths: ${celarMigrations.join(', ')}`
+  unexpectedCelarMigrations.length === 0 && unexpectedCelarRollbacks.length === 0,
+  unexpectedCelarMigrations.length === 0 && unexpectedCelarRollbacks.length === 0
+    ? `no unapproved Celar database object rename or duplication; approved capability-routing artifacts present=${presentApprovedCelarMigrations.length + presentApprovedCelarRollbacks.length}`
+    : `unexpected Celar database paths: ${[...unexpectedCelarMigrations, ...unexpectedCelarRollbacks].join(', ')}`
 );
 
 const changedDeploymentSources = [
@@ -274,8 +286,8 @@ assert(
   !changedDeploymentSources.includes('az containerapp')
     && !changedDeploymentSources.includes('workflow_dispatch')
     && !moduleSource.includes('/api/ai-configuration/providers/')
-    && !bridge.includes('method: \'POST\'')
-    && !bridge.includes('method: \'PUT\''),
+    && !bridge.includes("method: 'POST'")
+    && !bridge.includes("method: 'PUT'"),
   'the rebrand does not deploy, change Azure, write provider secrets, or mutate Module 064 configuration'
 );
 
@@ -299,7 +311,9 @@ console.log('CELAR_AI_SHIFT_ENTER_NEWLINE=YES');
 console.log('CELAR_AI_RESPONSE_PERSISTENCE=RETAINS_MIGRATION_054_CONVERSATIONS');
 console.log('CELAR_AI_PROVIDER_PAGE=INTEGRATED');
 console.log('CELAR_AI_TECHNICAL_COMPATIBILITY=RETAINED');
-console.log('CELAR_AI_DATABASE_MIGRATIONS_ADDED=0');
+console.log(`CELAR_AI_DATABASE_MIGRATIONS_ADDED=${presentApprovedCelarMigrations.length}`);
+console.log(`CELAR_AI_DATABASE_ROLLBACKS_ADDED=${presentApprovedCelarRollbacks.length}`);
+console.log(`CELAR_AI_UNAPPROVED_DATABASE_ARTIFACTS=${unexpectedCelarMigrations.length + unexpectedCelarRollbacks.length}`);
 console.log('CELAR_AI_DEPLOYMENTS_PERFORMED=0');
 
 if (checks.some((check) => !check.condition)) {
