@@ -95,13 +95,13 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate focused role contracts
+      - name: Validate administrator PM Billing and View-As contracts
         working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          npm run validate:role-workspace-entra-crm-governance
-          npm run validate:module069
+        run: npm run validate:role-workspace-entra-crm-governance
+
+      - name: Validate Module 069 governed self-service
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module069
 
       - name: Build complete production frontend
         working-directory: src/frontend/project-time-web
