@@ -16,6 +16,7 @@ on:
       - 'src/frontend/project-time-web/src/qualifications-self-service.css'
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs'
       - 'database/migrations/061_super_administrator_permanent_full_control.sql'
       - 'database/rollback/061_super_administrator_permanent_full_control_rollback.sql'
@@ -95,8 +96,21 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
+      - name: Execute canonical role workspace matrix
+        id: role_matrix
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-role-workspace-access-matrix.mjs > "$RUNNER_TEMP/role-workspace-matrix.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/role-workspace-matrix.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/role-workspace-matrix.status"
+          exit "$status"
+
       - name: Validate administrator PM Billing and View-As contracts
         id: role_contracts
+        if: always()
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
@@ -126,6 +140,8 @@ jobs:
         with:
           name: role-access-repair-validator-diagnostics-${{ github.run_id }}
           path: |
+            ${{ runner.temp }}/role-workspace-matrix.log
+            ${{ runner.temp }}/role-workspace-matrix.status
             ${{ runner.temp }}/role-workspace-validator.log
             ${{ runner.temp }}/role-workspace-validator.status
             ${{ runner.temp }}/module069-validator.log
@@ -170,6 +186,7 @@ jobs:
           - Project Management holiday, expense, and own qualifications: validated
           - Billing Module 008 Audit History exclusion: validated
           - Accounting Audit History preservation: validated
+          - Canonical role and alias workspace matrix: validated
           - Administrator View-As write authority: none
           - Azure/Test/Production mutation: none
           EOF
