@@ -16,6 +16,12 @@ public static class ModuleAvailabilityOverridesModule
 
     public static WebApplication MapModuleAvailabilityOverrideEndpoints(this WebApplication app)
     {
+        // Install the cross-module actual-session authority resolver before
+        // endpoint-local authorization and the later scoped-role middleware.
+        app.UsePermanentRoleAuthorityCompatibility();
+        app.MapRoleAccessAuditEndpoints();
+        app.MapQualificationsCertificationSelfServiceEndpoints();
+
         // Force the Minimal API Delegate overload. A direct method-group binding can
         // select RequestDelegate and discard the returned IResult, producing HTTP 200
         // with an empty body.
