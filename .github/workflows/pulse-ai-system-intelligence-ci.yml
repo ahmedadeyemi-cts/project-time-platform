@@ -167,11 +167,20 @@ jobs:
             fi
           }
 
+          require_scroll_contract() {
+            local file="$1"
+            local kind="$2"
+            if ! grep -aEq -- '(overflow-y:[[:space:]]*scroll|overflow:[^;}]*scroll)' "$file"; then
+              echo "MISSING_${kind}_SCROLL_CONTRACT" >&2
+              exit 1
+            fi
+          }
+
           require_marker /tmp/pulse-ai-system-intelligence.js 'Ask Celar AI' COMPILED_JS
           require_marker /tmp/pulse-ai-system-intelligence.js 'Celar AI Workbench' COMPILED_JS
           require_marker /tmp/pulse-ai-system-intelligence.js '/api/celar-ai/v1/chat' COMPILED_JS
           require_marker /tmp/pulse-ai-system-intelligence.css '.help-panel.pulse-ai-system-chat' COMPILED_CSS
-          require_marker /tmp/pulse-ai-system-intelligence.css 'overflow-y:scroll' COMPILED_CSS
+          require_scroll_contract /tmp/pulse-ai-system-intelligence.css COMPILED_CSS
           require_marker /tmp/pulse-ai-system-intelligence.css 'scrollbar-gutter:stable' COMPILED_CSS
           echo 'PULSE_AI_SYSTEM_INTELLIGENCE_FRONTEND_BUILD=PASSED'
 
