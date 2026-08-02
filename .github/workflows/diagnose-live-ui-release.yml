@@ -1,0 +1,264 @@
+name: Diagnose Live Test UI Release
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/diagnose-live-ui-release.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: diagnose-live-ui-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnose/live-ui-release-20260802'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      USER_REPORTED_URL: https://phd-west-test.onenecklab.com
+      CONFIGURED_PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+      CONTROL_FILE: .github/workflows/diagnose-live-ui-release.yml
+
+    steps:
+      - name: Check out diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard read-only diagnostic scope
+        id: guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == 'diagnose/live-ui-release-20260802' ]]
+          git fetch origin main --no-tags
+          MAIN_SHA="$(git rev-parse origin/main)"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          CHANGED="$(git diff --name-only "$MAIN_SHA"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$CONTROL_FILE" ]]
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_DIAGNOSTIC_SCOPE=READ_ONLY'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build exact frontend and inspect generated runtime app
+        id: local
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+
+          GENERATED='src/App.Module001.g.jsx'
+          INDEX='dist/index.html'
+          test -s "$GENERATED"
+          test -s "$INDEX"
+          LOCAL_JS_REL="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' "$INDEX" | head -1)"
+          [[ -n "$LOCAL_JS_REL" ]]
+          LOCAL_JS="dist/${LOCAL_JS_REL#./}"
+          LOCAL_JS="${LOCAL_JS/\/assets\//assets/}"
+          test -s "$LOCAL_JS"
+
+          mkdir -p ../../../diagnostic/local
+          cp "$GENERATED" ../../../diagnostic/local/App.Module001.g.jsx
+          cp "$INDEX" ../../../diagnostic/local/index.html
+          cp "$LOCAL_JS" ../../../diagnostic/local/app.js
+
+          LOCAL_SHA="$(sha256sum "$LOCAL_JS" | awk '{print $1}')"
+          echo "bundle_sha=$LOCAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "bundle_path=$LOCAL_JS_REL" >> "$GITHUB_OUTPUT"
+
+          check() {
+            local label="$1" pattern="$2" file="$3"
+            if grep -Fq "$pattern" "$file"; then
+              printf '%s=YES\n' "$label"
+            else
+              printf '%s=NO\n' "$label"
+            fi
+          }
+
+          {
+            echo "MAIN_SHA=${{ steps.guard.outputs.main_sha }}"
+            echo "LOCAL_BUNDLE_SHA256=$LOCAL_SHA"
+            echo "LOCAL_BUNDLE_PATH=$LOCAL_JS_REL"
+            check GENERATED_ANALYTICS_IMPORT "import AnalyticsCenter from './AnalyticsCenter.jsx';" "$GENERATED"
+            check GENERATED_ANALYTICS_MOUNT '<AnalyticsCenter authSession={authSession} />' "$GENERATED"
+            check GENERATED_CELAR_ROUTE "route: 'celar-ai'" "$GENERATED"
+            check GENERATED_CELAR_WORKSPACE '<WorkTaskBuilderPanel' "$GENERATED"
+            check GENERATED_CLOSEOUT_MOUNT '<ProjectCloseoutCenter' "$GENERATED"
+            check GENERATED_ROLE_DASHBOARD '<RoleWelcomeDashboard' "$GENERATED"
+            check GENERATED_MODULE026_MOUNT '<CrmErpIntegrationCenter' "$GENERATED"
+            check BUNDLE_ANALYTICS_MARKER 'Analytics Center' "$LOCAL_JS"
+            check BUNDLE_CELAR_MARKER 'Created by Dr. Ahmed Adeyemi' "$LOCAL_JS"
+            check BUNDLE_CLOSEOUT_MARKER 'What you need to do now' "$LOCAL_JS"
+            check BUNDLE_SUPERADMIN_MARKER 'Full Control · Organization-wide' "$LOCAL_JS"
+          } | tee ../../../diagnostic/local/runtime-wiring.txt
+
+      - name: Sign in to Azure Test through OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture active Test ingress, revisions, images, and domains
+        id: azure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p diagnostic/azure
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+
+          WEB_FQDN="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.ingress.fqdn' -o tsv --only-show-errors)"
+          API_FQDN="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.configuration.ingress.fqdn' -o tsv --only-show-errors)"
+          WEB_IMAGE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_IMAGE="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          WEB_READY="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          API_READY="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          API_SOURCE="$(az containerapp show -g "$RG" -n "$API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+
+          az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.ingress.customDomains' -o json --only-show-errors > diagnostic/azure/web-custom-domains.json
+          az containerapp revision list -g "$RG" -n "$WEB_APP" -o json --only-show-errors > diagnostic/azure/web-revisions.json
+          az containerapp revision list -g "$RG" -n "$API_APP" -o json --only-show-errors > diagnostic/azure/api-revisions.json
+
+          {
+            echo "MAIN_SHA=${{ steps.guard.outputs.main_sha }}"
+            echo "CONFIGURED_PUBLIC_URL=$CONFIGURED_PUBLIC_URL"
+            echo "USER_REPORTED_URL=$USER_REPORTED_URL"
+            echo "WEB_FQDN=$WEB_FQDN"
+            echo "API_FQDN=$API_FQDN"
+            echo "WEB_IMAGE=$WEB_IMAGE"
+            echo "API_IMAGE=$API_IMAGE"
+            echo "WEB_READY_REVISION=$WEB_READY"
+            echo "API_READY_REVISION=$API_READY"
+            echo "API_SOURCE_COMMIT=$API_SOURCE"
+            echo "WEB_REVISION_MODE=$WEB_MODE"
+            echo "API_REVISION_MODE=$API_MODE"
+          } | tee diagnostic/azure/state.txt
+
+          echo "web_fqdn=$WEB_FQDN" >> "$GITHUB_OUTPUT"
+          echo "api_fqdn=$API_FQDN" >> "$GITHUB_OUTPUT"
+
+      - name: Compare user URL, configured URL, and Azure ingress bundles
+        id: live
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p diagnostic/live
+
+          python3 - <<'PY' | tee diagnostic/live/dns.txt
+          import socket
+          host = 'phd-west-test.onenecklab.com'
+          try:
+              rows = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+              print('DNS_STATUS=RESOLVED')
+              for row in sorted({item[4][0] for item in rows}):
+                  print(f'DNS_ADDRESS={row}')
+          except Exception as exc:
+              print('DNS_STATUS=FAILED')
+              print(f'DNS_ERROR={type(exc).__name__}:{exc}')
+          PY
+
+          sanitize() { tr -cs 'A-Za-z0-9' '_' <<<"$1" | sed 's/^_*//;s/_*$//'; }
+          fetch_surface() {
+            local label="$1" base="$2"
+            [[ -n "$base" ]] || return 0
+            base="${base%/}"
+            local safe; safe="$(sanitize "$label")"
+            local dir="diagnostic/live/$safe"
+            mkdir -p "$dir"
+            local buster="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${safe}"
+            local status
+            status="$(curl -sS -L --connect-timeout 15 --max-time 45 -D "$dir/index.headers" -o "$dir/index.html" -w '%{http_code}' -H 'Cache-Control: no-cache' "$base/?live_ui_diagnostic=$buster" || true)"
+            echo "HTTP_STATUS=$status" > "$dir/result.txt"
+            echo "BASE_URL=$base" >> "$dir/result.txt"
+            if [[ "$status" != 200 ]]; then
+              return 0
+            fi
+            local js_rel js_url
+            js_rel="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' "$dir/index.html" | head -1)"
+            echo "BUNDLE_PATH=$js_rel" >> "$dir/result.txt"
+            [[ -n "$js_rel" ]] || return 0
+            case "$js_rel" in
+              http*) js_url="$js_rel" ;;
+              /*) js_url="$base$js_rel" ;;
+              *) js_url="$base/$js_rel" ;;
+            esac
+            curl -sS -L --connect-timeout 15 --max-time 60 -D "$dir/app.headers" -o "$dir/app.js" -H 'Cache-Control: no-cache' "$js_url?live_ui_diagnostic=$buster" || true
+            if [[ -s "$dir/app.js" ]]; then
+              local sha; sha="$(sha256sum "$dir/app.js" | awk '{print $1}')"
+              echo "BUNDLE_SHA256=$sha" >> "$dir/result.txt"
+              echo "MATCHES_LOCAL=$([[ "$sha" == '${{ steps.local.outputs.bundle_sha }}' ]] && echo YES || echo NO)" >> "$dir/result.txt"
+              for marker in 'Analytics Center' 'Created by Dr. Ahmed Adeyemi' 'What you need to do now' 'Full Control · Organization-wide'; do
+                key="$(tr '[:lower:] ' '[:upper:]_' <<<"$marker" | tr -cd 'A-Z0-9_')"
+                echo "MARKER_${key}=$(grep -Fq "$marker" "$dir/app.js" && echo YES || echo NO)" >> "$dir/result.txt"
+              done
+            fi
+            curl -sS -L --connect-timeout 15 --max-time 30 -D "$dir/version.headers" -o "$dir/version.json" -H 'Cache-Control: no-cache' "$base/api/version?live_ui_diagnostic=$buster" || true
+          }
+
+          fetch_surface user_reported "$USER_REPORTED_URL"
+          fetch_surface configured_public "$CONFIGURED_PUBLIC_URL"
+          fetch_surface azure_ingress "https://${{ steps.azure.outputs.web_fqdn }}"
+
+          find diagnostic/live -name result.txt -print -exec cat {} \; | tee diagnostic/live/summary.txt
+
+      - name: Produce diagnosis summary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p diagnostic
+          {
+            echo '# Live Test UI diagnostic'
+            echo
+            echo '## Local generated runtime wiring'
+            cat diagnostic/local/runtime-wiring.txt 2>/dev/null || true
+            echo
+            echo '## Azure state'
+            cat diagnostic/azure/state.txt 2>/dev/null || true
+            echo
+            echo '## DNS'
+            cat diagnostic/live/dns.txt 2>/dev/null || true
+            echo
+            echo '## Live surfaces'
+            cat diagnostic/live/summary.txt 2>/dev/null || true
+          } > diagnostic/REPORT.md
+          cat diagnostic/REPORT.md
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-ui-release-diagnostic-${{ github.run_id }}
+          path: diagnostic
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
