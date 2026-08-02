@@ -289,6 +289,10 @@ The API endpoint registration is applied after the canonical generated Program r
 
 The existing Analytics Center build-time injector remains the sole owner of the generated Module 030 mount and registry identity. Canonical `App.jsx`, `main.jsx`, More-menu security, and the module registry are not committed by this package.
 
+## Release reconciliation
+
+The package was revalidated after the Celar AI regression-gate correction was merged to `main` at `592d4dfcab40131dd0a4a318f28b24dd3de7063a`. This documentation-only checkpoint triggers a fresh pull-request merge candidate and exact-head validation without changing Analytics behavior or migration 060.
+
 ## No deployment
 
 This source package does not:
