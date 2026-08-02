@@ -1,0 +1,62 @@
+name: PR436 Build Mutation Diagnostic
+
+on:
+  push:
+    branches:
+      - release/consolidated-enterprise-validation-20260802
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr436-build-mutation-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture-build-mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-fund
+
+      - name: Run exact production build
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Capture deterministic source mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/pr436-build-mutation
+          git status --porcelain=v1 > /tmp/pr436-build-mutation/status.txt
+          git diff --name-status > /tmp/pr436-build-mutation/name-status.txt
+          git diff --stat > /tmp/pr436-build-mutation/stat.txt
+          git diff --binary > /tmp/pr436-build-mutation/build-mutation.patch
+          while IFS= read -r -d '' path; do
+            mkdir -p "/tmp/pr436-build-mutation/files/$(dirname "$path")"
+            cp -- "$path" "/tmp/pr436-build-mutation/files/$path"
+          done < <(git diff --name-only -z --diff-filter=ACMRTUXB)
+
+      - name: Upload exact build mutation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr436-build-mutation-${{ github.sha }}
+          path: /tmp/pr436-build-mutation
+          if-no-files-found: error
+          retention-days: 1
