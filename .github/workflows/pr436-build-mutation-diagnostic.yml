@@ -1,6 +1,9 @@
 name: PR436 Build Mutation Diagnostic
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - release/consolidated-enterprise-validation-20260802
