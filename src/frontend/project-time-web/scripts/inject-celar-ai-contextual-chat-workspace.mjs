@@ -6,8 +6,39 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const helpPath = path.join(root, 'src', 'HelpAssistant.jsx');
 let content = fs.readFileSync(helpPath, 'utf8');
 
+function hasCompatibleOwnedExtension(label) {
+  if (label === 'window_state') {
+    return content.includes(`  const [sending, setSending] = useState(false);
+  const [chatSize, setChatSize] = useState(initialChatSize);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [questionContext, setQuestionContext] = useState({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+  const inputRef = useRef(null);`);
+  }
+
+  if (label === 'fresh_hydration_policy') {
+    return content.includes(`      await refreshConversationList();
+      setActiveConversationId('');
+      setMessages([WELCOME_MESSAGE]);
+      followLatestRef.current = true;`)
+      && content.includes(`  function beginFreshConversation() {
+    setActiveConversationId('');
+    setMessages([WELCOME_MESSAGE]);
+    setQuestion('');
+    setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+    setHistoryOpen(false);
+    setContextOpen(false);
+    followLatestRef.current = true;
+    window.setTimeout(() => inputRef.current?.focus(), 40);
+  }`);
+  }
+
+  return false;
+}
+
 function replaceRequired(before, after, label) {
-  if (content.includes(after)) return;
+  if (content.includes(after) || hasCompatibleOwnedExtension(label)) return;
   if (!content.includes(before)) {
     throw new Error(`CELAR_AI_CONTEXTUAL_CHAT_MISSING_ANCHOR=${label}`);
   }
