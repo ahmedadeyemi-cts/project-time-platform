@@ -96,18 +96,50 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Validate administrator PM Billing and View-As contracts
+        id: role_contracts
         working-directory: src/frontend/project-time-web
-        run: npm run validate:role-workspace-entra-crm-governance
+        shell: bash
+        run: |
+          set +e
+          npm run validate:role-workspace-entra-crm-governance > "$RUNNER_TEMP/role-workspace-validator.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/role-workspace-validator.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/role-workspace-validator.status"
+          exit "$status"
 
       - name: Validate Module 069 governed self-service
+        id: module069_contract
+        if: always()
         working-directory: src/frontend/project-time-web
-        run: npm run validate:module069
+        shell: bash
+        run: |
+          set +e
+          npm run validate:module069 > "$RUNNER_TEMP/module069-validator.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/module069-validator.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/module069-validator.status"
+          exit "$status"
+
+      - name: Upload focused validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: role-access-repair-validator-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/role-workspace-validator.log
+            ${{ runner.temp }}/role-workspace-validator.status
+            ${{ runner.temp }}/module069-validator.log
+            ${{ runner.temp }}/module069-validator.status
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Build complete production frontend
+        if: success()
         working-directory: src/frontend/project-time-web
         run: npm run build
 
       - name: Ensure validators did not mutate tracked source
+        if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -115,6 +147,7 @@ jobs:
           git diff --exit-code
 
       - name: Build production web container
+        if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -124,6 +157,7 @@ jobs:
             .
 
       - name: Publish validation summary
+        if: success()
         shell: bash
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
