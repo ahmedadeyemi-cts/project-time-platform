@@ -1,5 +1,15 @@
 BEGIN;
 
+-- Migration 061 must be independently idempotent in both the governed release
+-- runner and the focused validation database. The platform normally creates this
+-- table during the initial schema, while this guard preserves that same contract
+-- for a clean validation database.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    migration_id TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Module 064 remains the single AI provider and capability-routing boundary.
 -- Celar AI is a private orchestration target, not a public vendor provider.
 CREATE TABLE IF NOT EXISTS ai_capability_routes (
@@ -88,5 +98,15 @@ COMMENT ON TABLE ai_capability_routes IS
     'Module 064 ordered Celar AI, Claude, OpenAI, and governed-local routes by business capability.';
 COMMENT ON TABLE ai_private_model_profiles IS
     'Write-only encrypted private Celar AI inference profile by environment; secret and endpoint values are never returned.';
+
+INSERT INTO schema_migrations (migration_id, description, applied_at)
+VALUES (
+    '061_celar_ai_capability_routing',
+    'Celar AI capability routing, private-model profile storage, encrypted endpoint and token metadata, and immutable route/profile audit evidence',
+    NOW()
+)
+ON CONFLICT (migration_id) DO UPDATE
+SET description = EXCLUDED.description,
+    applied_at = EXCLUDED.applied_at;
 
 COMMIT;
