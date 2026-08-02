@@ -5,10 +5,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const generatedAppPath = path.join(webRoot, 'src', 'App.Module001.g.jsx');
-const indexPath = path.join(webRoot, 'index.html');
-
 const APP_MARKER = '/* LIVE_UI_ROUTE_AUTHORITY_COMPATIBILITY */';
-const INDEX_MARKER = 'MODULE_030_NATIVE_REACT_ROUTE';
 
 function count(source, marker) {
   return source.split(marker).length - 1;
@@ -155,67 +152,7 @@ function normalizeRoute(hash) {
   write(generatedAppPath, source);
 }
 
-function installLegacyAnalyticsSuppression() {
-  if (!fs.existsSync(indexPath)) throw new Error('The frontend index.html target is missing.');
-  let source = fs.readFileSync(indexPath, 'utf8');
-  if (source.includes(INDEX_MARKER)) return;
-
-  const anchor = `<script id="projectpulse-030-script">
-(function () {
-  if (window.__projectPulse030Installed) return;
-  window.__projectPulse030Installed = true;`;
-
-  const replacement = `<script id="projectpulse-030-script">
-(function () {
-  // ${INDEX_MARKER}: Module 030 is owned by the React AnalyticsCenter route.
-  window.__projectPulse030Installed = true;
-  window.__projectPulse030NativeReactRoute = true;
-
-  var nativeStyle = document.getElementById('projectpulse-030-native-react-route-style');
-  if (!nativeStyle) {
-    nativeStyle = document.createElement('style');
-    nativeStyle.id = 'projectpulse-030-native-react-route-style';
-    nativeStyle.textContent = '#projectpulse-030-shell,#projectpulse-030-reporting-card{display:none!important}';
-    document.head.appendChild(nativeStyle);
-  }
-
-  function removeRetiredModule030Overlay() {
-    var shell = document.getElementById('projectpulse-030-shell');
-    var card = document.getElementById('projectpulse-030-reporting-card');
-    if (shell) shell.remove();
-    if (card) card.remove();
-  }
-
-  removeRetiredModule030Overlay();
-  document.addEventListener('DOMContentLoaded', removeRetiredModule030Overlay);
-  window.addEventListener('hashchange', removeRetiredModule030Overlay);
-  return;
-
-  if (window.__projectPulse030Installed) return;
-  window.__projectPulse030Installed = true;`;
-
-  if (!source.includes(anchor)) {
-    throw new Error('Live UI correction could not locate the legacy Module 030 overlay installer.');
-  }
-  source = source.replace(anchor, replacement);
-
-  for (const required of [
-    INDEX_MARKER,
-    'window.__projectPulse030NativeReactRoute = true',
-    'removeRetiredModule030Overlay',
-    '#projectpulse-030-shell,#projectpulse-030-reporting-card{display:none!important}'
-  ]) {
-    if (!source.includes(required)) throw new Error(`Legacy Analytics suppression is missing: ${required}`);
-  }
-  if (count(source, INDEX_MARKER) !== 1) {
-    throw new Error('Module 030 native React marker must appear exactly once.');
-  }
-
-  write(indexPath, source);
-}
-
 installGeneratedAppCorrection();
-installLegacyAnalyticsSuppression();
 
 console.log('LIVE_UI_ROUTE_AUTHORITY=PASS');
 console.log('LIVE_UI_ANALYTICS_OWNER=REACT_MODULE_030');
