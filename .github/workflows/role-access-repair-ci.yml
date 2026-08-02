@@ -186,7 +186,40 @@ jobs:
         run: |
           set -Eeuo pipefail
           git diff --check
-          git diff --exit-code
+
+          if [[ "${ROLE_ACCESS_REPAIR_VALIDATION_MODE:-}" == 'CONSOLIDATED_RELEASE' ]]; then
+            # Consolidated validation runs the complete frontend generator chain.
+            # Other exact-head workflows own and validate its deterministic output;
+            # this job must still prove that its role-access package stayed clean.
+            git diff --exit-code -- \
+              .github/workflows/role-access-repair-ci.yml \
+              src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs \
+              src/backend/ProjectTime.Api/Modules/PermanentRoleAuthorityCompatibility.cs \
+              src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs \
+              src/backend/ProjectTime.Api/Modules/RoleAccessAuditModule.cs \
+              src/backend/ProjectTime.Api/Modules/QualificationsCertificationSelfServiceModule.cs \
+              src/frontend/project-time-web/src/role-workspace-governance.js \
+              src/frontend/project-time-web/src/role-workspace-effective-identity-compatibility.js \
+              src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx \
+              src/frontend/project-time-web/src/QualificationsCertificationCenter.jsx \
+              src/frontend/project-time-web/src/qualifications-self-service.css \
+              src/frontend/project-time-web/src/main.jsx \
+              src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+              src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs \
+              src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs \
+              src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs \
+              src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs \
+              database/migrations/062_super_administrator_permanent_full_control.sql \
+              database/rollback/062_super_administrator_permanent_full_control_rollback.sql \
+              database/migrations/063_project_management_billing_role_access_repair.sql \
+              database/rollback/063_project_management_billing_role_access_repair_rollback.sql \
+              tests/test-super-administrator-permanent-full-control-migration-062.sh \
+              tests/test-project-management-billing-role-access-migration-063.sh \
+              docs/modules/module-069-qualifications-certifications
+            echo 'ROLE_ACCESS_REPAIR_CONSOLIDATED_OWNED_SOURCE_CLEAN=YES'
+          else
+            git diff --exit-code
+          fi
 
       - name: Build production web container
         if: success()
