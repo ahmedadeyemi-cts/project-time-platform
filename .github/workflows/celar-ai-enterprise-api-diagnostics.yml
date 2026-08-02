@@ -1,0 +1,68 @@
+name: Celar AI Enterprise API Diagnostics
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-enterprise-platform-interface-20260801
+    paths:
+      - '.github/workflows/celar-ai-enterprise-api-diagnostics.yml'
+      - 'src/backend/ProjectTime.Api/**'
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-enterprise-api-diagnostics.yml'
+      - 'src/backend/ProjectTime.Api/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-enterprise-api-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and capture diagnostics
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release > celar-ai-enterprise-api-build.log 2>&1
+          STATUS=$?
+          grep -E 'error CS|error MSB|Build FAILED|[0-9]+ Error\(s\)' celar-ai-enterprise-api-build.log > celar-ai-enterprise-api-errors.log || true
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload compiler diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: celar-ai-enterprise-api-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            celar-ai-enterprise-api-build.log
+            celar-ai-enterprise-api-errors.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce build result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat celar-ai-enterprise-api-errors.log || true
+          test '${{ steps.build.outputs.exit_code }}' = '0'
+          grep -Fq '0 Error(s)' celar-ai-enterprise-api-build.log

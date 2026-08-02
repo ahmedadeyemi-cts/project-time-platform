@@ -1,0 +1,347 @@
+.celar-ai-enterprise-platform {
+  --celar-navy: #072d59;
+  --celar-blue: #009fe3;
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 1720px);
+  margin: 0 auto 1rem;
+  padding: 1rem;
+  color: var(--text, #17243b);
+}
+
+.celar-ai-platform-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--celar-blue) 28%, transparent);
+  border-radius: 24px;
+  padding: clamp(1.2rem, 2.7vw, 2rem);
+  background:
+    radial-gradient(circle at 92% 10%, rgba(17, 171, 204, 0.22), transparent 34%),
+    linear-gradient(135deg, #071a36 0%, #0d315d 58%, #13578a 100%);
+  color: #fff;
+  box-shadow: 0 22px 52px rgba(10, 36, 70, 0.19);
+}
+
+.celar-ai-platform-hero p,
+.celar-ai-platform-hero h1,
+.celar-ai-platform-hero span {
+  margin: 0;
+}
+
+.celar-ai-platform-hero p {
+  color: #72dcf0;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.celar-ai-platform-hero h1 {
+  margin-top: 0.24rem;
+  color: #fff;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.celar-ai-platform-hero span {
+  display: block;
+  max-width: 980px;
+  margin-top: 0.6rem;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.celar-ai-platform-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.celar-ai-platform-actions button,
+.celar-ai-platform-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 11px;
+  padding: 0.62rem 0.82rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.celar-ai-platform-actions button:first-child {
+  border-color: #48cee4;
+  background: #22bdd8;
+  color: #061a2f;
+}
+
+.celar-ai-platform-actions button:disabled {
+  opacity: 0.62;
+  cursor: progress;
+}
+
+.celar-ai-platform-identity-bar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) repeat(3, minmax(150px, auto));
+  gap: 0.65rem;
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 16px;
+  padding: 0.75rem;
+  background: var(--surface, #fff);
+  box-shadow: 0 10px 28px rgba(24, 52, 88, 0.06);
+}
+
+.celar-ai-platform-identity-bar > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  border-radius: 11px;
+  padding: 0.65rem;
+  background: var(--surface-strong, #f7faff);
+}
+
+.celar-ai-platform-identity-bar span {
+  color: var(--muted, #60718a);
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.celar-ai-platform-identity-bar strong {
+  color: var(--celar-navy);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.celar-ai-platform-error {
+  border: 1px solid #dba464;
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: #fff8eb;
+  color: #774c18;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.celar-ai-platform-readiness {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.celar-ai-platform-readiness-card {
+  display: grid;
+  gap: 0.26rem;
+  min-width: 0;
+  border: 1px solid var(--border, #d7e1ea);
+  border-left: 4px solid #6a8298;
+  border-radius: 13px;
+  padding: 0.8rem;
+  background: var(--surface, #fff);
+}
+
+.celar-ai-platform-readiness-card.is-ready { border-left-color: #16825e; }
+.celar-ai-platform-readiness-card.is-warning { border-left-color: #b66a0f; }
+
+.celar-ai-platform-readiness-card > span {
+  color: var(--muted, #60718a);
+  font-size: 0.61rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.celar-ai-platform-readiness-card > strong {
+  color: var(--text, #17243b);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.celar-ai-platform-readiness-card > small {
+  color: var(--muted, #60718a);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.celar-ai-platform-capabilities {
+  display: grid;
+  gap: 0.8rem;
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 20px;
+  padding: 1rem;
+  background: var(--surface, #fff);
+}
+
+.celar-ai-platform-section-heading p,
+.celar-ai-platform-section-heading h2,
+.celar-ai-platform-section-heading span {
+  margin: 0;
+}
+
+.celar-ai-platform-section-heading p {
+  color: var(--celar-blue);
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.celar-ai-platform-section-heading h2 {
+  margin-top: 0.2rem;
+  color: var(--text, #17243b);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+}
+
+.celar-ai-platform-section-heading span {
+  display: block;
+  max-width: 980px;
+  margin-top: 0.35rem;
+  color: var(--muted, #60718a);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.celar-ai-platform-capabilities > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.celar-ai-platform-capabilities article {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  min-width: 0;
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 13px;
+  padding: 0.75rem;
+  background: var(--surface-strong, #f8fbfe);
+}
+
+.celar-ai-platform-capabilities article > span {
+  color: var(--celar-blue);
+  font-size: 0.62rem;
+  font-weight: 950;
+}
+
+.celar-ai-platform-capabilities h3,
+.celar-ai-platform-capabilities p {
+  margin: 0;
+}
+
+.celar-ai-platform-capabilities h3 {
+  color: var(--celar-navy);
+  font-size: 0.76rem;
+}
+
+.celar-ai-platform-capabilities p {
+  color: var(--muted, #60718a);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.celar-ai-platform-capabilities footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.4rem;
+  border-top: 1px solid var(--border, #d7e1ea);
+  padding-top: 0.45rem;
+}
+
+.celar-ai-platform-capabilities footer strong,
+.celar-ai-platform-capabilities footer small {
+  color: var(--muted, #60718a);
+  font-size: 0.56rem;
+  line-height: 1.3;
+}
+
+.celar-ai-platform-capabilities footer strong {
+  color: #075a95;
+}
+
+.celar-ai-platform-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.celar-ai-platform-controls article {
+  border: 1px solid var(--border, #d7e1ea);
+  border-radius: 13px;
+  padding: 0.75rem;
+  background: var(--surface, #fff);
+}
+
+.celar-ai-platform-controls strong,
+.celar-ai-platform-controls p {
+  margin: 0;
+}
+
+.celar-ai-platform-controls strong {
+  color: var(--celar-navy);
+  font-size: 0.76rem;
+}
+
+.celar-ai-platform-controls p {
+  margin-top: 0.3rem;
+  color: var(--muted, #60718a);
+  font-size: 0.66rem;
+  line-height: 1.48;
+}
+
+@media (max-width: 1260px) {
+  .celar-ai-platform-capabilities > div:last-child {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .celar-ai-platform-readiness,
+  .celar-ai-platform-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .celar-ai-platform-hero,
+  .celar-ai-platform-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .celar-ai-platform-actions > * {
+    width: 100%;
+  }
+
+  .celar-ai-platform-identity-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .celar-ai-enterprise-platform {
+    padding: 0.55rem;
+  }
+
+  .celar-ai-platform-capabilities > div:last-child,
+  .celar-ai-platform-readiness,
+  .celar-ai-platform-controls,
+  .celar-ai-platform-identity-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ai-platform-hero {
+    border-radius: 18px;
+  }
+}
