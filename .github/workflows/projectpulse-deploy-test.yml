@@ -63,7 +63,7 @@ jobs:
           printf '%s\n' "$CHANGED"
           [[ "$CHANGED" == "$CONTROL_WORKFLOW" ]]
 
-          ! grep -nE 'az[[:space:]]+containerapp[[:space:]]+(update|create|delete)|az[[:space:]]+acr[[:space:]]+build|psql|PROJECTPULSE_TEST_DATABASE_URL' "$CONTROL_WORKFLOW"
+          ! grep -nE 'az[[:space:]]+containerapp[[:space:]]+(update|create|delete)|az[[:space:]]+acr[[:space:]]+build|p[s]ql|PROJECTPULSE_TEST_DATABASE_UR[L]' "$CONTROL_WORKFLOW"
           echo "control_commit=$HEAD" >> "$GITHUB_OUTPUT"
           echo 'LIVE_UI_VERIFICATION_SCOPE=READ_ONLY'
           echo 'LIVE_UI_AZURE_MUTATION_COMMANDS=0'
