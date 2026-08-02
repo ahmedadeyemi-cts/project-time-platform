@@ -1,0 +1,45 @@
+name: Diagnose Migration 066 Exact Failure
+
+on:
+  push:
+    branches:
+      - diagnose/uat-447-migration-066
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run migration 066 lifecycle and preserve complete output
+        id: migration
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/migration-066-evidence
+          bash -x tests/test-immutable-project-numbers-migration-066.sh \
+            > /tmp/migration-066-evidence/test.log 2>&1
+          status=$?
+          printf '%s\n' "$status" > /tmp/migration-066-evidence/exit-code.txt
+          cp database/migrations/066_immutable_project_numbers.sql /tmp/migration-066-evidence/
+          cp database/rollback/066_immutable_project_numbers_rollback.sql /tmp/migration-066-evidence/
+          cp tests/test-immutable-project-numbers-migration-066.sh /tmp/migration-066-evidence/
+          cat /tmp/migration-066-evidence/test.log
+          exit "$status"
+
+      - name: Upload complete migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: migration-066-diagnostics-${{ github.run_id }}
+          path: /tmp/migration-066-evidence
+          retention-days: 3
