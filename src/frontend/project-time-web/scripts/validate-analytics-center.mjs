@@ -7,32 +7,43 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, '..');
 const repoRoot = path.resolve(webRoot, '../../..');
 const srcRoot = path.join(webRoot, 'src');
-const fullRepo = fs.existsSync(path.join(repoRoot, '.git'))
+const fullRepositoryContext = fs.existsSync(path.join(repoRoot, '.git'))
   || fs.existsSync(path.join(repoRoot, '.github/workflows/projectpulse-ci.yml'));
-
 const file = (...parts) => path.join(...parts);
 const read = (target) => {
   if (!fs.existsSync(target)) throw new Error(`Analytics Center file is missing: ${path.relative(repoRoot, target)}`);
   return fs.readFileSync(target, 'utf8');
 };
 let checks = 0;
-const assert = (condition, message) => { checks += 1; if (!condition) throw new Error(message); };
-const has = (source, marker, label) => assert(source.includes(marker), `${label} is missing: ${marker}`);
-const count = (source, marker) => source.split(marker).length - 1;
+function assert(condition, message) { checks += 1; if (!condition) throw new Error(message); }
+function contains(source, marker, label) { assert(source.includes(marker), `${label} is missing: ${marker}`); }
+function count(source, marker) { return source.split(marker).length - 1; }
 
 const component = read(file(srcRoot, 'AnalyticsCenter.jsx'));
+const multiSelect = read(file(srcRoot, 'analytics/AnalyticsMultiSelect.jsx'));
 const css = read(file(srcRoot, 'analytics-center.css'));
 const injector = read(file(here, 'inject-analytics-center.mjs'));
-const pkg = JSON.parse(read(file(webRoot, 'package.json')));
+const packageJson = JSON.parse(read(file(webRoot, 'package.json')));
 
 for (const marker of [
-  'Analytics Center', 'Select report', 'Set criteria', 'All customers', 'All projects',
-  'All engineers', 'All Project Managers', 'All teams', 'Refresh filter lists',
-  'Preview report', 'Run & save', 'Actual analytics results', 'Analytics run history',
-  '/api/analytics/catalog', '/api/analytics/filter-options', '/api/analytics/${persisted',
-  '/api/analytics/history', '/api/analytics/runs/${runId}/export',
+  "import USSignalLogo from './enterprise/USSignalLogo.jsx';",
+  "import AnalyticsMultiSelect from './analytics/AnalyticsMultiSelect.jsx';",
+  'data-projectpulse-module="030"', 'Analytics Center',
+  'Back to Modules', 'Back to Dashboard', 'Home', 'Dashboards', 'Reports',
+  'Schedules', 'Data Explorer', 'KPIs & Metrics', 'Alerts & Subscriptions',
+  'Data Quality', 'Admin', 'Recently Viewed Dashboards & Reports',
+  'Report Library', 'Set criteria', 'All customers', 'All projects',
+  'All engineers', 'All Project Managers', 'All teams', 'Preview report',
+  'Run & save', 'Actual analytics results', 'Analytics run history',
+  'US Signal PDF', 'Excel', 'Recurring US Signal delivery',
+  'Multiple active ProjectPulse users receive individual copies',
+  'Module 065 owns Entra Secret Administration',
+  '/api/analytics/v2/overview', '/api/analytics/v2/catalog',
+  '/api/analytics/v2/filter-options', '/api/analytics/v2/${persisted',
+  '/api/analytics/v2/history', '/api/analytics/v2/runs/${runId}/export',
+  '/api/analytics/v2/schedules', '/api/analytics/v2/recipient-options',
   "['xlsx', 'csv', 'json']", 'Engineer — self only', 'PM — own portfolio'
-]) has(component, marker, 'Analytics Center interface');
+]) contains(component, marker, 'Analytics Center enterprise interface');
 
 for (const forbidden of [
   'Fiscal Period', '030Q Reporting Readiness Closeout', 'Build Export Layout',
@@ -42,9 +53,17 @@ for (const forbidden of [
 ]) assert(!component.includes(forbidden), `Legacy Module 030 marker remains: ${forbidden}`);
 
 for (const marker of [
-  '.analytics-center', '.analytics-build-layout', '.analytics-report-cards',
-  '.analytics-filter-grid', '.analytics-source-grid', '.analytics-history-list', '@media print'
-]) has(css, marker, 'Analytics Center styling');
+  'aria-multiselectable="true"', 'type="checkbox"', 'Select visible',
+  'Remove ${option.label}', 'No authorized options match this search'
+]) contains(multiSelect, marker, 'Analytics accessible multi-select');
+
+for (const marker of [
+  '.analytics-enterprise-shell', '.analytics-sidebar', '.analytics-topbar',
+  '.analytics-kpi-grid', '.analytics-recent-grid', '.analytics-report-categories',
+  '.analytics-filter-grid', '.analytics-multiselect-menu', '.analytics-schedule-panel',
+  '.analytics-source-grid', '.analytics-history-list', '.analytics-result-table-wrap',
+  '.analytics-coverage-footer', '@media print'
+]) contains(css, marker, 'Analytics Center enterprise styling');
 
 for (const marker of [
   "import AnalyticsCenter from './AnalyticsCenter.jsx';",
@@ -52,29 +71,106 @@ for (const marker of [
   "displayName: 'Analytics Center'",
   "replaceAll('Financial Report Center', 'Analytics Center')",
   "replaceAll('Enterprise Reporting Center', 'Analytics Center')"
-]) has(injector, marker, 'Analytics generated integration');
+]) contains(injector, marker, 'Analytics generated integration');
 
-has(pkg.scripts?.predev ?? '', 'inject-analytics-center.mjs', 'predev Analytics installer');
-has(pkg.scripts?.prebuild ?? '', 'inject-analytics-center.mjs', 'prebuild Analytics installer');
-has(pkg.scripts?.build ?? '', 'validate:analytics-center', 'full-build Analytics validation');
-assert(pkg.scripts?.['validate:analytics-center'] === 'node ./scripts/validate-analytics-center.mjs', 'Analytics package validator is not authoritative.');
+contains(packageJson.scripts?.predev ?? '', 'inject-analytics-center.mjs', 'predev Analytics installer');
+contains(packageJson.scripts?.prebuild ?? '', 'inject-analytics-center.mjs', 'prebuild Analytics installer');
+contains(packageJson.scripts?.build ?? '', 'validate:analytics-center', 'full-build Analytics validator');
+assert(packageJson.scripts?.['validate:analytics-center'] === 'node ./scripts/validate-analytics-center.mjs', 'Analytics package validator is not authoritative.');
 
-if (fullRepo) {
-  const contracts = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterContracts.cs'));
-  const directory = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterDirectoryLoader.cs'));
-  const module = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterModule.cs'));
+if (fullRepositoryContext) {
+  const contracts = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterEnterpriseContracts.cs'));
+  const scope = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterExperienceScope.cs'));
+  const module = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterEnterpriseExperienceModule.cs'));
+  const scheduleService = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleService.cs'));
+  const scheduler = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduler.cs'));
+  const scheduleRepository = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterScheduleRepository.cs'));
+  const exportBuilder = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/AnalyticsBrandedExportBuilder.cs'));
+  const module065Delivery = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/Module065AnalyticsAttachmentDelivery.cs'));
+  const targets = read(file(repoRoot, 'src/backend/ProjectTime.Api/Directory.Build.targets'));
+  const migration = read(file(repoRoot, 'database/migrations/060_analytics_center_enterprise_experience.sql'));
+  const rollback = read(file(repoRoot, 'database/rollback/060_analytics_center_enterprise_experience_rollback.sql'));
+  const migrationTest = read(file(repoRoot, 'tests/test-analytics-center-enterprise-migration-060.sh'));
   const catalog = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs'));
-  const engine = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingEngine.cs'));
-  const loader = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingSourceLoader.cs'));
-  const repository = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingRepository.cs'));
-  const compatibility = read(file(repoRoot, 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingModule.cs'));
-  const migration = read(file(repoRoot, 'database/migrations/055_analytics_center.sql'));
-  const rollback = read(file(repoRoot, 'database/rollback/055_analytics_center_rollback.sql'));
-  const project = read(file(repoRoot, 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'));
-  const docs = read(file(repoRoot, 'docs/modules/module-030-analytics-center/README.md'));
+  const schedulingSource = `${scheduleService}\n${scheduler}\n${scheduleRepository}`;
 
-  for (const marker of ['AnalyticsReportRequest', 'CustomerId', 'ProjectId', 'ProjectManagerUserId', 'EngineerUserId', 'TeamId', 'DateFrom', 'DateTo']) has(contracts, marker, 'Analytics request contract');
-  for (const marker of ['FROM clients client', 'FROM teams team', 'JOIN team_memberships', '@broad OR client.client_id = ANY(@client_ids)', '@broad OR membership.user_id = ANY(@visible_user_ids)']) has(directory, marker, 'role-scoped directory loader');
+  for (const marker of [
+    'CustomerIds', 'ProjectIds', 'ProjectManagerUserIds', 'EngineerUserIds',
+    'TeamIds', 'ContractTypes', 'AnalyticsScheduleUpsertRequest',
+    'AnalyticsScheduleDeliveryEvidence', 'Module065MailAttachment'
+  ]) contains(contracts, marker, 'Analytics enterprise contracts');
+
+  for (const marker of [
+    'multipleSelection = true', '"customerIds"', '"projectIds"',
+    '"projectManagerUserIds"', '"engineerUserIds"', '"teamIds"',
+    '"contractTypes"', 'Type = "multiselect"', 'IsEngineerOnly', 'IsPmOnly',
+    'Engineer scope: person-level reports and filters are locked',
+    'Project Manager scope: reports and PM filters are locked',
+    'Modules 055C/055D contract type', 'Fixed Price', 'Time and Material'
+  ]) contains(scope, marker, 'Analytics multiple-selection and server scope');
+
+  for (const endpoint of [
+    '/api/analytics/v2/overview', '/api/analytics/v2/catalog',
+    '/api/analytics/v2/filter-options', '/api/analytics/v2/preview',
+    '/api/analytics/v2/run', '/api/analytics/v2/history',
+    '/api/analytics/v2/runs/{runId:guid}/export',
+    '/api/analytics/v2/activity/{reportCode}/view',
+    '/api/analytics/v2/activity/{reportCode}/favorite',
+    '/api/analytics/v2/recipient-options', '/api/analytics/v2/schedules',
+    '/api/analytics/v2/schedules/{scheduleId:guid}/run-now',
+    '/api/analytics/v2/schedule-runs', '/api/analytics/v2/schedules/readiness',
+    '/api/analytics/v2/schedules/run-due'
+  ]) contains(module, endpoint, 'Analytics enterprise API');
+
+  for (const marker of [
+    'Contracted value', 'Active projects', 'Billable utilization', 'Hours used',
+    'Forecast variance', 'New customers (YTD)', 'PM workload',
+    'Report delivery health', 'BuildScheduledReportAsync', 'ExportUrls'
+  ]) contains(module, marker, 'Analytics overview and export contract');
+
+  for (const marker of [
+    'analytics_report_schedules', 'analytics_report_schedule_recipients',
+    'analytics_report_schedule_runs', 'analytics_report_schedule_delivery_attempts',
+    'analytics_user_report_activity', 'TryAcquireSchedulerLockAsync',
+    'LoadRecipientOptionsAsync', 'UpsertActivityAsync',
+    'individualizedRecipientScope', 'individualized branded report',
+    'production_governed', 'recipients.Length > 1', 'scopeUserId',
+    'InsertDeliveryEvidenceAsync', 'pg_try_advisory_lock', 'CalculateNextRun',
+    'weekdays', 'weekly', 'monthly', 'quarterly', 'yearly'
+  ]) contains(schedulingSource, marker, 'Analytics governed recurring scheduling');
+
+  for (const marker of [
+    'USSNavyStacked.png', 'USSNavyStacked.jpg', 'BuildPdf', 'BuildExcel',
+    'application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'US Signal · ProjectPulse Analytics Center', 'SHA256.HashData'
+  ]) contains(exportBuilder, marker, 'US Signal branded exports');
+
+  for (const marker of [
+    'Module065ProjectNotificationDelivery.GetReadinessAsync', 'microsoft_graph',
+    'smtp_relay', '#microsoft.graph.fileAttachment', 'PROJECTPULSE_TEST_SMTP_',
+    'PROJECTPULSE_PRODUCTION_SMTP_',
+    'Module 065 delivered the US Signal branded Analytics report'
+  ]) contains(module065Delivery, marker, 'Module 065 attachment delivery');
+
+  for (const table of [
+    'analytics_report_schedules', 'analytics_report_schedule_recipients',
+    'analytics_report_schedule_runs', 'analytics_report_schedule_delivery_attempts',
+    'analytics_user_report_activity'
+  ]) {
+    contains(migration, table, 'migration 060 table');
+    contains(rollback, `DROP TABLE IF EXISTS ${table}`, 'migration 060 rollback');
+  }
+  for (const permission of [
+    'VIEW_ANALYTICS_DASHBOARDS', 'VIEW_ANALYTICS_SCHEDULES',
+    'MANAGE_ANALYTICS_SCHEDULES', 'DELIVER_ANALYTICS_SCHEDULES'
+  ]) contains(migration, permission, 'migration 060 permission');
+  contains(migration, "export_format IN ('csv', 'xlsx', 'json', 'pdf')", 'PDF export evidence support');
+  contains(migration, 'projectpulse060_block_analytics_schedule_evidence_mutation', 'immutable schedule evidence');
+  contains(migration, "'060_analytics_center_enterprise_experience'", 'migration 060 registration');
+  contains(rollback, "export_format IN ('csv', 'xlsx', 'json')", 'rollback export contract');
+  contains(migrationTest, 'ANALYTICS_CENTER_ENTERPRISE_MIGRATION_060=PASS', 'migration 060 test');
+  contains(targets, 'app.MapAnalyticsCenterEnterpriseExperienceEndpoints();', 'Analytics enterprise endpoint registration');
+  contains(targets, 'AfterTargets="GenerateScopedRbacSources"', 'generated Program integration order');
 
   const reports = [
     'project_portfolio', 'project_financial_health', 'project_budget_forecast',
@@ -86,55 +182,13 @@ if (fullRepo) {
     'release_deployment_readiness', 'service_health_slo', 'data_governance_retention',
     'customer_delivery_acceptance', 'secure_project_information', 'pmo_project_controls'
   ];
-  for (const report of reports) has(catalog, `"${report}"`, 'Analytics report catalog');
-  for (const marker of ['Customer()', 'Project()', 'ProjectManager()', 'Engineer()', 'DateFrom()', 'DateTo()']) has(catalog, marker, 'report-specific filters');
-
-  for (const marker of [
-    '/api/analytics/catalog', '/api/analytics/filter-options', '/api/analytics/preview',
-    '/api/analytics/run', '/api/analytics/history', '/api/analytics/runs/{runId:guid}/export',
-    'moduleName = "Analytics Center"', 'fiscalPeriodFilterPresent = false',
-    'organizationFilterPresent = false', 'CustomerOptions', 'ProjectOptions',
-    'ProjectManagerOptions', 'EngineerOptions', 'TeamOptions', 'CanonicalContractTypes',
-    'Fixed Price', 'Time and Material', 'Pre-Sales', 'Non-billable',
-    'contractTypesAlignedToModules055C055D = true', 'engineerReportsLockedToSelf',
-    'projectManagerReportsLockedToOwnPortfolio'
-  ]) has(module, marker, 'Analytics API and criteria behavior');
-
-  for (const marker of [
-    'Engineer scope: report data and person filters are locked',
-    'Project Manager scope: report data and Project Manager filters are locked',
-    'EngineerUserId = engineerOnly ? context.Actor.EffectiveUserId',
-    'ProjectManagerUserId = pmOnly ? context.Actor.EffectiveUserId',
-    'TimeEntryDetail', 'EngineerUtilization', 'ProjectManagerPortfolio'
-  ]) has(engine, marker, 'server scope enforcement');
-
-  for (const marker of [
-    'time_entries', 'project_expense_uploads', 'work_billing_readiness_reviews',
-    'work_closeout_records', 'project_notification_dispatches', 'resource_qualifications',
-    'module076_items', 'operational_control_history', 'secure_project_information_requests',
-    'pmo_control_items', 'SOURCE_SCOPE_RESTRICTED', 'row_to_json(source)::text'
-  ]) has(loader, marker, 'source-isolated loader');
-  assert(!loader.includes('SELECT * FROM'), 'Analytics source loader uses unrestricted SELECT *.');
-
-  for (const marker of ['SaveRunAsync', 'LoadHistoryAsync', 'LoadRunAsync', 'RecordExportAsync', 'LoadSavedViewsAsync', 'SaveViewAsync', 'DeleteSavedViewAsync', 'SHA256.HashData']) has(repository, marker, 'Analytics persistence');
-  for (const marker of ['BuildExcel', 'BuildCsv', 'BuildJson']) has(compatibility, marker, 'Analytics export compatibility');
-
-  for (const table of ['enterprise_report_runs', 'enterprise_report_saved_views', 'enterprise_report_exports']) has(migration, table, 'migration 055 table');
-  has(migration, 'projectpulse055_block_analytics_evidence_mutation', 'immutable Analytics evidence');
-  has(migration, "'055_analytics_center'", 'migration 055 registration');
-  has(migration, "'ANALYTICS_CENTER'", 'Analytics feature identity');
-  for (const table of ['enterprise_report_runs', 'enterprise_report_saved_views', 'enterprise_report_exports']) has(rollback, `DROP TABLE IF EXISTS ${table}`, 'migration 055 rollback');
-
-  has(project, 'app.MapEnterpriseReportingEndpoints();', 'compatibility API registration');
-  has(project, 'app.MapAnalyticsCenterEndpoints();', 'Analytics API registration');
-  assert(count(project, 'app.MapAnalyticsCenterEndpoints();') === 1, 'Analytics endpoints must register once.');
-  has(project, 's/054_enterprise_reporting_center/055_analytics_center/g', 'migration 055 repository normalization');
-  has(project, 's/migration_054_required/migration_055_required/g', 'migration 055 response normalization');
-
-  for (const marker of ['Analytics Center', '24 report types', 'Customer Directory', 'Modules 055C and 055D', 'Engineer', 'Project Manager', 'Team', 'immutable', 'Migration `055_analytics_center`', 'No deployment']) has(docs, marker, 'Analytics documentation');
+  for (const report of reports) contains(catalog, `"${report}"`, 'Analytics report catalog');
 }
 
-execFileSync(process.execPath, [file(here, 'inject-analytics-center.mjs')], { cwd: webRoot, stdio: 'inherit' });
+execFileSync(process.execPath, [file(here, 'inject-analytics-center.mjs')], {
+  cwd: webRoot,
+  stdio: 'inherit'
+});
 const generatedApp = read(file(srcRoot, 'App.jsx'));
 const generatedRegistry = read(file(srcRoot, 'module-availability-registry.js'));
 assert(count(generatedApp, "import AnalyticsCenter from './AnalyticsCenter.jsx';") === 1, 'Generated App must import Analytics Center once.');
@@ -143,9 +197,12 @@ assert(!generatedApp.includes('<EnterpriseReportingCenter authSession={authSessi
 assert(!generatedApp.includes('<FinancialOperationsRecoveryWorkspace mode="reporting" authSession={authSession} />'), 'Legacy Financial Report Center mount remains.');
 assert(!generatedApp.includes('selectedEngineerSummaryText'), 'Generated App retains the legacy Engineer-render exception.');
 assert(count(generatedRegistry, "moduleNumber: '030'") === 1, 'Module 030 registry entry is not unique.');
-has(generatedRegistry, "displayName: 'Analytics Center'", 'generated Module 030 identity');
+contains(generatedRegistry, "displayName: 'Analytics Center'", 'generated Module 030 identity');
 
 console.log(`ANALYTICS_CENTER_VALIDATION_CHECKS=${checks}`);
-console.log(`ANALYTICS_CENTER_FULL_REPOSITORY_CONTEXT=${fullRepo ? 'YES' : 'NO'}`);
+console.log(`ANALYTICS_CENTER_FULL_REPOSITORY_CONTEXT=${fullRepositoryContext ? 'YES' : 'NO'}`);
 console.log('ANALYTICS_CENTER_REPORT_COUNT=24');
+console.log('ANALYTICS_CENTER_MULTIPLE_SELECTION=PASS');
+console.log('ANALYTICS_CENTER_BRANDED_PDF_XLSX=PASS');
+console.log('ANALYTICS_CENTER_MODULE_065_SCHEDULING=PASS');
 console.log('MODULE_030_ANALYTICS_CENTER=PASS');

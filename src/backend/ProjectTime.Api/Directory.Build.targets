@@ -1,0 +1,54 @@
+<Project>
+  <PropertyGroup>
+    <AnalyticsGeneratedDirectory>$(MSBuildProjectDirectory)/obj/analytics-enterprise</AnalyticsGeneratedDirectory>
+    <AnalyticsScheduleServiceGenerated>$(AnalyticsGeneratedDirectory)/AnalyticsCenterScheduleService.g.cs</AnalyticsScheduleServiceGenerated>
+    <AnalyticsEnterpriseModuleGenerated>$(AnalyticsGeneratedDirectory)/AnalyticsCenterEnterpriseExperienceModule.g.cs</AnalyticsEnterpriseModuleGenerated>
+    <!--
+      The existing project computes this property before IntermediateOutputPath is
+      populated, which otherwise resolves the generated Program into the source
+      directory and causes validation builds to modify tracked source. Override it
+      to an explicitly ignored intermediate directory for every build.
+    -->
+    <ScopedRbacGeneratedProgram>$(AnalyticsGeneratedDirectory)/Program.ScopedRbac.g.cs</ScopedRbacGeneratedProgram>
+  </PropertyGroup>
+
+  <!--
+    The canonical API project already uses generated compile copies for a small
+    number of oversized or compiler-sensitive sources. Keep the reviewed
+    Analytics source readable while making nullable intent explicit in the
+    generated copies used by every local, CI, and container build.
+  -->
+  <ItemGroup>
+    <Compile Remove="Program.ScopedRbac.g.cs" />
+    <Compile Remove="Modules/AnalyticsCenterScheduleService.cs" />
+    <Compile Remove="Modules/AnalyticsCenterEnterpriseExperienceModule.cs" />
+  </ItemGroup>
+
+  <Target Name="PrepareAnalyticsGeneratedDirectory"
+          BeforeTargets="GenerateScopedRbacSources;PrepareAnalyticsCenterEnterpriseCompileSources">
+    <MakeDir Directories="$(AnalyticsGeneratedDirectory)" />
+  </Target>
+
+  <Target Name="PrepareAnalyticsCenterEnterpriseCompileSources"
+          BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(AnalyticsGeneratedDirectory)" />
+    <Exec Command="sed -e 's/var nextRun = request.Enabled/DateTimeOffset? nextRun = request.Enabled/' -e 's/var next = schedule.Enabled/DateTimeOffset? next = schedule.Enabled/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterScheduleService.cs&quot; &gt; &quot;$(AnalyticsScheduleServiceGenerated)&quot;" />
+    <Exec Command="sed -e 's/? (project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m)/? (decimal?)((project.LaborBudget ?? 0m) + (project.ExpenseBudget ?? 0m))/' &quot;$(MSBuildProjectDirectory)/Modules/AnalyticsCenterEnterpriseExperienceModule.cs&quot; &gt; &quot;$(AnalyticsEnterpriseModuleGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(AnalyticsScheduleServiceGenerated)" />
+      <Compile Include="$(AnalyticsEnterpriseModuleGenerated)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The canonical API project generates its top-level Program source before
+    CoreCompile. Add the Analytics enterprise experience after the existing
+    Module 030 mapping without rewriting the oversized ProjectTime.Api.csproj.
+    The guard keeps registration idempotent in local, CI, and container builds.
+  -->
+  <Target Name="RegisterAnalyticsCenterEnterpriseExperience"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <Exec Command="grep -Fq 'app.MapAnalyticsCenterEnterpriseExperienceEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot; || sed -i '/app.MapAnalyticsCenterEndpoints();/a app.MapAnalyticsCenterEnterpriseExperienceEndpoints();' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+  </Target>
+</Project>
