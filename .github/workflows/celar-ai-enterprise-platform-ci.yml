@@ -90,6 +90,12 @@ jobs:
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback)\.sql))$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+          elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
+            # A UAT functional-completion package owns only the immutable project-number
+            # migration. Celar AI is validated as a consumer because its private
+            # document resolvers accept current project numbers and retained aliases.
+            ALLOWED_DATABASE='^(database/migrations/066_immutable_project_numbers\.sql|database/rollback/066_immutable_project_numbers_rollback\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=UAT_FUNCTIONAL_COMPLETION' >> "$GITHUB_ENV"
           else
             ALLOWED_DATABASE='^(database/migrations/061_celar_ai_capability_routing\.sql|database/rollback/061_celar_ai_capability_routing_rollback\.sql)$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"

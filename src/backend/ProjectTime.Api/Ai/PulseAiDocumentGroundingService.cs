@@ -544,13 +544,13 @@ public sealed class PulseAiDocumentGroundingService
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
             WHERE
-                (@project_code <> '' AND LOWER(p.project_code) = LOWER(@project_code))
+                (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
                 OR (
                     @project_name <> ''
                     AND LOWER(p.project_name) = LOWER(@project_name)
                 )
             ORDER BY
-                CASE WHEN @project_code <> '' AND LOWER(p.project_code) = LOWER(@project_code) THEN 0 ELSE 1 END,
+                CASE WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 0 ELSE 1 END,
                 p.updated_at DESC
             LIMIT 1;
             """;

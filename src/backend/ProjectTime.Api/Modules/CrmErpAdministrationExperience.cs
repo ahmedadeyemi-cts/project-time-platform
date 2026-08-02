@@ -275,6 +275,19 @@ public static partial class CrmErpIntegrationModule
                 "Exit Administrator View-As before changing CRM or ERP connector configuration.");
         }
 
+        // Permanent actual-session Super Administrator authority is evaluated
+        // before any published policy. A stale or incomplete policy matrix may
+        // narrow ordinary roles, but it cannot downgrade the authenticated
+        // Super Administrator's own session. View-As was rejected above and
+        // never inherits this bypass.
+        if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(context))
+        {
+            return new ManageAuthority(
+                true,
+                "actual_session_super_administrator",
+                "Your actual Super Administrator session has permanent Full Control of Module 026.");
+        }
+
         var dynamicDecision = await ScopedRolePolicyModule.EvaluateCurrentActorAsync(
             context,
             ModuleNumber,

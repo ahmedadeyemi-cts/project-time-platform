@@ -105,6 +105,124 @@ internal static class Module065ProjectNotificationDelivery
             message);
     }
 
+    /// <summary>
+    /// Sends one explicitly confirmed Test-environment message without changing
+    /// the global recipient boundary. This method is intentionally internal and
+    /// may be called only after the Module 065 endpoint has verified the exact
+    /// confirmation phrase and a self/allowlisted recipient. General notification
+    /// delivery continues to honor test_only as outbox-only.
+    /// </summary>
+    internal static async Task<Module065MailDeliveryResult> DeliverGovernedTestAsync(
+        string subject,
+        string textBody,
+        string htmlBody,
+        ProjectNotificationUser recipient,
+        HttpContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var readiness = await GetReadinessAsync(context, cancellationToken);
+        if (!readiness.RuntimeEnvironment.Equals("test", StringComparison.OrdinalIgnoreCase)
+            || !readiness.ConfiguredEnvironment.Equals("test", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                false,
+                "suppressed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                "MODULE_065_TEST_ENVIRONMENT_REQUIRED",
+                "A governed delivery test may run only from the active Test Module 065 profile.");
+        }
+
+        if (!IsEmail(recipient.Email))
+        {
+            return new(
+                false,
+                "suppressed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                "MODULE_065_TEST_RECIPIENT_INVALID",
+                "The governed Test dispatch requires one valid email recipient.");
+        }
+
+        if (readiness.RecipientBoundary == "locked")
+        {
+            return new(
+                false,
+                "suppressed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                "MODULE_065_TEST_BOUNDARY_LOCKED",
+                "The Module 065 recipient boundary is locked. No Test message was sent.");
+        }
+
+        if (!readiness.RuntimeReady)
+        {
+            return new(
+                false,
+                "failed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                "MODULE_065_TEST_TRANSPORT_NOT_READY",
+                readiness.Message);
+        }
+
+        try
+        {
+            var recipients = new[] { recipient with { RecipientType = "to" } };
+            return readiness.ConfiguredProvider switch
+            {
+                "microsoft_graph" => await DeliverGraphAsync(
+                    readiness,
+                    subject,
+                    textBody,
+                    htmlBody,
+                    recipients,
+                    cancellationToken),
+                "smtp_relay" => await DeliverSmtpAsync(
+                    readiness,
+                    subject,
+                    textBody,
+                    htmlBody,
+                    recipients,
+                    cancellationToken),
+                _ => new(
+                    false,
+                    "suppressed",
+                    readiness.ConfiguredProvider,
+                    readiness.RecipientBoundary,
+                    string.Empty,
+                    "MODULE_065_TEST_PROVIDER_LOCKED",
+                    "Select Microsoft Graph or Microsoft 365 SMTP relay before sending a governed Test message.")
+            };
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(
+                false,
+                "failed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                "MODULE_065_TEST_DELIVERY_TIMEOUT",
+                "The governed Module 065 Test delivery timed out.");
+        }
+        catch (Exception exception)
+        {
+            return new(
+                false,
+                "failed",
+                readiness.ConfiguredProvider,
+                readiness.RecipientBoundary,
+                string.Empty,
+                Diagnostic(exception),
+                FriendlyDeliveryFailure(exception));
+        }
+    }
+
     internal static async Task<Module065MailDeliveryResult> DeliverAsync(
         string subject,
         string textBody,

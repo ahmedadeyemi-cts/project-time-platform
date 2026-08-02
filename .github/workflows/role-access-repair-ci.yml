@@ -71,11 +71,12 @@ jobs:
             fi
           done
 
-          if [[ "$head_branch" == release/consolidated-enterprise-validation-* ]]; then
-            # The consolidated candidate intentionally combines the separately
-            # reviewed Analytics, Celar AI, closeout, role, and notification
-            # packages. Validate the role repair as a regression without
-            # pretending those packages are role-owned source.
+          if [[ "$head_branch" == release/consolidated-enterprise-validation-* ]] \
+             || grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$changed"; then
+            # Consolidated and UAT-completion candidates intentionally combine
+            # separately owned Analytics, Celar AI, closeout, role, and notification
+            # packages. Validate role authority as a regression without pretending
+            # the complete release is role-owned source.
             echo 'ROLE_ACCESS_REPAIR_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
             echo 'ROLE_ACCESS_REPAIR_CONSOLIDATED_RELEASE_SCOPE=YES'
           else

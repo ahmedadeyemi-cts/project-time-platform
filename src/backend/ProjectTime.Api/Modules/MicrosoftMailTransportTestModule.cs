@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
@@ -16,12 +17,17 @@ public static class MicrosoftMailTransportTestModule
 {
     private const string ModuleNumber = "065";
     private const string TestPath = "/api/microsoft-integration/mail-runtime/test";
+    private const string GovernedDeliveryTestPath = "/api/microsoft-integration/mail-runtime/test-delivery";
+    private const string GovernedDeliveryConfirmation = "SEND MODULE 065 TEST";
     private const string ConfigurationMarker = "PROJECTPULSE_MICROSOFT_INTEGRATION_JSON:";
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(8);
 
     public static WebApplication MapMicrosoftMailTransportTestEndpoints(this WebApplication app)
     {
         app.MapPost(TestPath, (Func<HttpContext, Task<IResult>>)TestAsync);
+        app.MapPost(
+            GovernedDeliveryTestPath,
+            (Func<HttpContext, Task<IResult>>)SendGovernedDeliveryTestAsync);
         return app;
     }
 
@@ -258,6 +264,341 @@ public static class MicrosoftMailTransportTestModule
                 ? $"The configured {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} sender and {ProviderLabel(profile.Provider)} transport passed the non-delivery readiness test. {boundaryMessage} No email was sent."
                 : $"The configured {MicrosoftEnvironmentRuntimeResolver.Display(environmentMode)} {ProviderLabel(profile.Provider)} transport requires attention. {boundaryMessage} No email was sent."
         });
+    }
+
+    private static async Task<IResult> SendGovernedDeliveryTestAsync(HttpContext context)
+    {
+        if (!SameOrigin(context))
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_origin_rejected",
+                message = "The governed Module 065 Test request must originate from the active ProjectPulse site."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var access = await AdminExperienceCommon.AuthorizeAsync(context);
+        if (access.Failure is not null) return access.Failure;
+        if (AdminExperienceCommon.IsViewAs(context))
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "view_as_read_only",
+                message = "Exit Administrator View-As before sending a governed Module 065 Test message."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        GovernedDeliveryTestRequest? request;
+        try
+        {
+            request = await context.Request.ReadFromJsonAsync<GovernedDeliveryTestRequest>(
+                cancellationToken: context.RequestAborted);
+        }
+        catch
+        {
+            return Results.BadRequest(new
+            {
+                module = ModuleNumber,
+                status = "invalid_governed_mail_test_request",
+                message = $"Enter the recipient and exact confirmation phrase: {GovernedDeliveryConfirmation}."
+            });
+        }
+
+        if (!string.Equals(
+                request?.Confirmation?.Trim(),
+                GovernedDeliveryConfirmation,
+                StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_confirmation_required",
+                expectedConfirmation = GovernedDeliveryConfirmation,
+                message = $"Type {GovernedDeliveryConfirmation} exactly before sending a real Test email."
+            });
+        }
+
+        var runtimeEnvironment = MicrosoftEnvironmentRuntimeResolver.Resolve(context);
+        var environmentMode = MicrosoftEnvironmentRuntimeResolver.Normalize(request?.EnvironmentMode);
+        if (environmentMode != "test" || runtimeEnvironment != "test")
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_requires_test_environment",
+                environmentMode,
+                runtimeEnvironment,
+                message = "A governed delivery test may run only from the active Test environment."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var recipientEmail = (request?.RecipientEmail ?? string.Empty).Trim().ToLowerInvariant();
+        if (!IsEmail(recipientEmail))
+        {
+            return Results.BadRequest(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_recipient_invalid",
+                message = "Enter one valid Test recipient email address."
+            });
+        }
+
+        var ownEmail = access.Context!.Email.Trim().ToLowerInvariant();
+        var allowlist = TestRecipientAllowlist();
+        var recipientAuthorized = recipientEmail.Equals(ownEmail, StringComparison.OrdinalIgnoreCase)
+            || allowlist.Contains(recipientEmail);
+        if (!recipientAuthorized)
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_recipient_not_allowed",
+                recipientEmail,
+                selfRecipient = ownEmail,
+                allowlistConfigured = allowlist.Count > 0,
+                message = "The Test recipient must be the signed-in user's own email or a server-side allowlisted address."
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            await MicrosoftMailRuntimeConfigurationModule.ApplyStoredEnvironmentAsync("test");
+        }
+        catch
+        {
+            // The readiness and delivery adapter below returns the authoritative
+            // sanitized diagnostic when Test runtime hydration is unavailable.
+        }
+
+        var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(
+            context,
+            context.RequestAborted);
+        if (!readiness.RuntimeReady
+            || readiness.RecipientBoundary == "locked"
+            || readiness.ConfiguredProvider is not ("microsoft_graph" or "smtp_relay"))
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_transport_not_ready",
+                environmentMode,
+                configuredProvider = readiness.ConfiguredProvider,
+                recipientBoundary = readiness.RecipientBoundary,
+                senderMailbox = readiness.SenderMailbox,
+                message = readiness.Message
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var selfRecipient = recipientEmail.Equals(ownEmail, StringComparison.OrdinalIgnoreCase);
+        var recipient = new ProjectNotificationUser(
+            selfRecipient ? access.Context.UserId : null,
+            selfRecipient ? access.Context.Email : recipientEmail,
+            recipientEmail,
+            "MODULE_065_TEST_RECIPIENT",
+            selfRecipient ? "signed_in_user" : "server_allowlist",
+            "to");
+        var now = DateTimeOffset.UtcNow;
+        var subject = $"US Signal ProjectPulse Module 065 Test — {now:yyyy-MM-dd HH:mm:ss} UTC";
+        var textBody = $"""
+            This is an explicitly confirmed ProjectPulse Module 065 Test message.
+
+            Environment: Test
+            Provider: {readiness.ConfiguredProvider}
+            Sender: {readiness.SenderMailbox}
+            Recipient boundary: {readiness.RecipientBoundary}
+            Requested by: {access.Context.Email}
+            Correlation ID: {context.TraceIdentifier}
+            Requested at: {now:O}
+
+            This message proves the governed Microsoft 365 delivery path. It does not contain customer, project, financial, credential, token, or private-document data.
+            """;
+        var htmlBody = $"""
+            <div style="font-family:Arial,sans-serif;line-height:1.55;color:#15233b">
+              <h2 style="color:#0b385f">US Signal ProjectPulse · Module 065 Test</h2>
+              <p>This is an explicitly confirmed, governed Test-environment delivery.</p>
+              <table style="border-collapse:collapse">
+                <tr><td style="padding:4px 10px 4px 0"><strong>Environment</strong></td><td>Test</td></tr>
+                <tr><td style="padding:4px 10px 4px 0"><strong>Provider</strong></td><td>{WebUtility.HtmlEncode(readiness.ConfiguredProvider)}</td></tr>
+                <tr><td style="padding:4px 10px 4px 0"><strong>Sender</strong></td><td>{WebUtility.HtmlEncode(readiness.SenderMailbox)}</td></tr>
+                <tr><td style="padding:4px 10px 4px 0"><strong>Boundary</strong></td><td>{WebUtility.HtmlEncode(readiness.RecipientBoundary)}</td></tr>
+                <tr><td style="padding:4px 10px 4px 0"><strong>Requested by</strong></td><td>{WebUtility.HtmlEncode(access.Context.Email)}</td></tr>
+                <tr><td style="padding:4px 10px 4px 0"><strong>Correlation ID</strong></td><td>{WebUtility.HtmlEncode(context.TraceIdentifier)}</td></tr>
+              </table>
+              <p style="margin-top:16px;color:#607089">No customer, project, financial, credential, token, or private-document data is included.</p>
+            </div>
+            """;
+
+        await using var connection = new NpgsqlConnection(access.Context.ConnectionString);
+        await connection.OpenAsync(context.RequestAborted);
+        var eventKey = $"module065:governed-test:{access.Context.UserId:N}:{Guid.NewGuid():N}";
+        var dispatchId = await ProjectNotificationRepository.UpsertDispatchAsync(
+            connection,
+            null,
+            null,
+            null,
+            eventKey,
+            "MODULE_065_GOVERNED_TEST",
+            "informational",
+            ModuleNumber,
+            "explicit_test_requested",
+            subject,
+            textBody,
+            htmlBody,
+            readiness.RecipientBoundary,
+            "queued",
+            new[] { recipient },
+            new
+            {
+                environmentMode = "test",
+                confirmationMatched = true,
+                recipientAuthorization = recipient.DerivationSource,
+                requesterUserId = access.Context.UserId,
+                requesterEmail = access.Context.Email,
+                liveTestException = "single_self_or_allowlisted_recipient",
+                generalTestBoundaryChanged = false,
+                secretValuesIncluded = false,
+                correlationId = context.TraceIdentifier
+            },
+            context.RequestAborted);
+
+        var dispatch = await ProjectNotificationRepository.LoadDispatchAsync(
+            connection,
+            dispatchId,
+            context.RequestAborted);
+        if (dispatch is null)
+        {
+            return Results.Json(new
+            {
+                module = ModuleNumber,
+                status = "governed_mail_test_dispatch_unavailable",
+                correlationId = context.TraceIdentifier,
+                message = "The governed Test dispatch record could not be reloaded. No delivery was attempted."
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var delivery = await Module065ProjectNotificationDelivery.DeliverGovernedTestAsync(
+            subject,
+            textBody,
+            htmlBody,
+            recipient,
+            context,
+            context.RequestAborted);
+        await ProjectNotificationRepository.RecordDeliveryAsync(
+            connection,
+            dispatch,
+            delivery,
+            access.Context.UserId,
+            "Explicit governed Module 065 Test requested with exact confirmation phrase.",
+            context.TraceIdentifier,
+            context.RequestAborted);
+
+        var auditEvidenceRecorded = false;
+        try
+        {
+            auditEvidenceRecorded = await AdminExperienceCommon.WriteAuditAsync(
+                connection,
+                null,
+                "integration",
+                delivery.Sent ? "success" : "failed",
+                "MODULE_065_GOVERNED_TEST_DELIVERY",
+                access.Context.UserId,
+                access.Context.Email,
+                "project_notification_dispatch",
+                dispatchId.ToString(),
+                recipientEmail,
+                ModuleNumber,
+                "project_notification_dispatches",
+                dispatchId.ToString(),
+                delivery.Sent
+                    ? "A governed Module 065 Test message was accepted by the configured Microsoft 365 provider."
+                    : "The governed Module 065 Test message was not delivered.",
+                new
+                {
+                    dispatchId,
+                    environmentMode = "test",
+                    provider = delivery.Provider,
+                    recipientBoundary = delivery.RecipientBoundary,
+                    recipientAuthorization = recipient.DerivationSource,
+                    delivery.Status,
+                    delivery.DiagnosticCode,
+                    providerMessageIdPresent = !string.IsNullOrWhiteSpace(delivery.ProviderMessageId),
+                    confirmationMatched = true,
+                    secretValuesReturned = false
+                },
+                AdminExperienceCommon.ClientIp(context),
+                context.TraceIdentifier,
+                context.RequestAborted);
+        }
+        catch
+        {
+            // The durable dispatch and attempt ledgers remain authoritative when
+            // optional Module 008 evidence cannot be written.
+        }
+
+        return Results.Json(new
+        {
+            module = ModuleNumber,
+            status = delivery.Sent
+                ? "governed_mail_test_sent"
+                : "governed_mail_test_failed",
+            sent = delivery.Sent,
+            dispatchId,
+            testedAt = now,
+            environmentMode = "test",
+            configuredProvider = delivery.Provider,
+            recipientBoundary = delivery.RecipientBoundary,
+            senderMailbox = readiness.SenderMailbox,
+            recipientEmail,
+            recipientAuthorization = recipient.DerivationSource,
+            deliveryStatus = delivery.Status,
+            delivery.DiagnosticCode,
+            delivery.Message,
+            providerMessageIdPresent = !string.IsNullOrWhiteSpace(delivery.ProviderMessageId),
+            auditEvidenceRecorded,
+            generalTestBoundaryChanged = false,
+            secretValuesReturned = false,
+            correlationId = context.TraceIdentifier
+        }, statusCode: delivery.Sent
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status502BadGateway);
+    }
+
+    private static bool SameOrigin(HttpContext context)
+    {
+        var origin = context.Request.Headers.Origin.ToString();
+        if (string.IsNullOrWhiteSpace(origin)
+            || !Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+            || uri.Scheme is not ("https" or "http"))
+        {
+            return false;
+        }
+
+        var fetchSite = context.Request.Headers["Sec-Fetch-Site"].ToString();
+        if (string.Equals(fetchSite, "same-origin", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var forwardedHost = context.Request.Headers["X-Forwarded-Host"].ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        var publicHost = !string.IsNullOrWhiteSpace(forwardedHost)
+            ? HostString.FromUriComponent(forwardedHost)
+            : context.Request.Host;
+        if (!string.Equals(uri.Host, publicHost.Host, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return publicHost.Port is null || uri.Port == publicHost.Port;
+    }
+
+    private static HashSet<string> TestRecipientAllowlist()
+    {
+        var configured = Environment.GetEnvironmentVariable(
+            "PROJECTPULSE_MAIL_TEST_RECIPIENT_ALLOWLIST") ?? string.Empty;
+        return configured
+            .Split(new[] { ',', ';', '\n', '\r', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => value.ToLowerInvariant())
+            .Where(IsEmail)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static async Task<MailProfile?> ReadStoredProfileAsync(
@@ -595,6 +936,10 @@ public static class MicrosoftMailTransportTestModule
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
     private sealed record MailTestRequest(string? EnvironmentMode);
+    private sealed record GovernedDeliveryTestRequest(
+        string? EnvironmentMode,
+        string? RecipientEmail,
+        string? Confirmation);
     private sealed record MailProfile(
         string TenantKey,
         string EnvironmentMode,

@@ -209,15 +209,20 @@ internal static class AnalyticsCenterExperienceScope
             .ToArray();
         var requiredUnavailable = sources.Any(source => source.Required
             && source.Status is "unavailable" or "restricted");
-        var degraded = sources.Any(source => source.Status is "partial" or "unavailable" or "restricted");
+        var degradedSources = sources
+            .Where(source => source.Status is "partial" or "unavailable" or "restricted")
+            .Select(source => $"{source.Name} ({(source.Required ? "required" : "optional")}: {source.Status})")
+            .ToArray();
+        var degraded = degradedSources.Length > 0;
         var status = rows.Length == 0
             ? requiredUnavailable ? "source_unavailable" : "no_data"
             : degraded ? "partial" : "complete";
+        var sourceList = degradedSources.Length == 0 ? "None" : string.Join("; ", degradedSources);
         var message = status switch
         {
-            "complete" => $"{rows.Length} role-scoped analytics row(s) loaded.",
-            "partial" => $"{rows.Length} role-scoped row(s) loaded. One or more independent sources are degraded; healthy results remain visible.",
-            "source_unavailable" => "A required source is unavailable or outside the current scope. Other Analytics Center workspaces remain usable.",
+            "complete" => $"Report completed. {rows.Length} authorized analytics row(s) loaded successfully.",
+            "partial" => $"Report completed with limited source coverage. {rows.Length} authorized row(s) loaded successfully. Limited source(s): {sourceList}. Displayed rows remain valid; fields that depend on those sources may be incomplete.",
+            "source_unavailable" => $"The report could not produce rows because a required source is unavailable or outside the current scope. Limited source(s): {sourceList}. Other Analytics Center reports remain usable.",
             _ => "No data matched the current role scope and selected report criteria."
         };
         return result with

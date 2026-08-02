@@ -17,6 +17,18 @@ internal static class EnterpriseReportingSourceLoader
         new Dictionary<string, SourceSpec>(StringComparer.OrdinalIgnoreCase)
         {
             ["time_entries"] = new("time_entries", "Time entries", "time_entries"),
+            ["timesheet_day_statuses"] = new("timesheet_day_statuses", "Timesheet day statuses", "timesheet_day_statuses"),
+            ["non_project_time_categories"] = new("non_project_time_categories", "Non-project time categories", "non_project_time_categories"),
+            ["app_users"] = new("app_users", "Authorized people directory", "app_users"),
+            ["reporting_relationships"] = new("reporting_relationships", "Reporting relationships", "reporting_relationships"),
+            ["team_memberships"] = new("team_memberships", "Team memberships", "team_memberships"),
+            ["teams"] = new("teams", "Team directory", "teams"),
+            ["client_invoices"] = new("client_invoices", "Client invoice records", "client_invoices"),
+            ["billing_invoices"] = new("billing_invoices", "Work-to-Cash billing invoices", "billing_invoices"),
+            ["billing_invoice_lines"] = new("billing_invoice_lines", "Billing invoice lines", "billing_invoice_lines"),
+            ["system_audit_events"] = new("system_audit_events", "Immutable system audit events", "projectpulse_system_audit_events", true),
+            ["external_connections"] = new("external_connections", "CRM and external connection readiness", "crm_integration_providers", true),
+            ["ai_capability_routing"] = new("ai_capability_routing", "Module 064 AI capability routes", "ai_capability_routes", true),
             ["approved_time_entries"] = new(
                 "approved_time_entries", "Approved time entries", "time_entries", false,
                 "lower(COALESCE(status, '')) IN ('pm_approved','manager_approved','project_approved','project_validated','accounting_ready','reconciled','locked')"),
@@ -28,7 +40,7 @@ internal static class EnterpriseReportingSourceLoader
             ["project_notification_dispatches"] = new("project_notification_dispatches", "Group 4 notification dispatches", "project_notification_dispatches"),
             ["resource_qualifications"] = new("resource_qualifications", "Qualifications and certifications", "resource_qualifications"),
             ["qualification_renewals"] = new("qualification_renewals", "Qualification renewal acknowledgements", "qualification_renewal_records"),
-            ["utilization_targets"] = new("utilization_targets", "Utilization targets", "utilization_targets"),
+            ["utilization_targets"] = new("utilization_targets", "Utilization targets", "utilization_policy_targets"),
             ["oncall_schedule"] = new("oncall_schedule", "Governed on-call schedule", "governed_oncall_assignments"),
             ["oncall_roster"] = new("oncall_roster", "Governed on-call roster", "governed_oncall_roster"),
             ["oncall_imports"] = new("oncall_imports", "Operational-directory import evidence", "governed_directory_import_batches"),
@@ -206,7 +218,10 @@ internal static class EnterpriseReportingSourceLoader
         var visibleProjectIds = context.Projects.Select(project => project.ProjectId).Distinct().ToArray();
         if (projectColumn is not null)
         {
-            predicates.Add($"source.{Quote(projectColumn)} = ANY(@project_ids)");
+            var projectPredicate = $"source.{Quote(projectColumn)} = ANY(@project_ids)";
+            if (spec.Key is "time_entries" or "timesheet_day_statuses")
+                projectPredicate = $"({projectPredicate} OR source.{Quote(projectColumn)} IS NULL)";
+            predicates.Add(projectPredicate);
         }
         else if (!context.Actor.Broad && IsProjectBound(spec.Key))
         {
@@ -217,7 +232,7 @@ internal static class EnterpriseReportingSourceLoader
         {
             "user_id", "engineer_user_id", "resource_user_id", "owner_user_id",
             "expense_owner_user_id", "reported_by_user_id", "raised_by_user_id",
-            "assignee_user_id", "created_by_user_id"
+            "assignee_user_id", "created_by_user_id", "employee_user_id"
         }.Where(columns.Contains).ToArray();
         var allowedUserIds = AllowedUserIds(context);
         if (!context.Actor.Broad && userColumns.Length > 0)
@@ -280,6 +295,7 @@ internal static class EnterpriseReportingSourceLoader
 
     private static bool IsProjectBound(string key) => key is
         "project_expenses" or "billing_readiness_reviews" or "project_closeout_records"
+        or "client_invoices" or "billing_invoices" or "billing_invoice_lines"
         or "project_notification_dispatches" or "customer_acceptance_engagements"
         or "acceptance_evidence" or "acceptance_decisions"
         or "secure_project_information_requests" or "secure_project_information_audit"

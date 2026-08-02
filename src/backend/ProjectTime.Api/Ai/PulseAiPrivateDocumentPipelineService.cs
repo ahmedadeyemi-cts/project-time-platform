@@ -522,7 +522,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
         var active = schema.IsActive ? "d.is_active = TRUE" : "TRUE";
         var selector = singleDocument
             ? "AND d.project_intake_document_id = @document_id"
-            : "AND (@project_code = '' OR LOWER(p.project_code) = LOWER(@project_code))\n"
+            : "AND (@project_code = '' OR LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code))\n"
                 + "AND (@document_category = '' OR LOWER(" + category + ") = LOWER(@document_category))\n"
                 + "AND (@extraction_status = '' OR LOWER(" + extraction + ") = LOWER(@extraction_status))";
         var limit = singleDocument ? "LIMIT 1" : "LIMIT @limit";

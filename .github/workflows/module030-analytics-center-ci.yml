@@ -99,6 +99,20 @@ jobs:
             fi
             echo 'ANALYTICS_CENTER_VALIDATION_MODE=ENTERPRISE_EXTENSION' >> "$GITHUB_ENV"
             echo 'ANALYTICS_CENTER_ENTERPRISE_SOURCE_ISOLATION=PASSED'
+          elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
+            # A UAT completion package combines independently owned fixes. Validate
+            # only the exact Module 030 subset here while allowing the other
+            # packages to be checked by their own workflows.
+            UAT_DIRECT_ANALYTICS="$(grep -E '^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenter|AnalyticsBrandedExportBuilder|Module065AnalyticsAttachmentDelivery|EnterpriseReporting).*\.cs|src/frontend/project-time-web/scripts/(inject-analytics-center|validate-analytics-center)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css))$' <<<"$CHANGED" || true)"
+            UAT_ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenterExperienceScope|EnterpriseReportingCatalog|EnterpriseReportingEngine|EnterpriseReportingSourceLoader)\.cs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css))$'
+            UNEXPECTED="$(grep -Ev "$UAT_ALLOWED" <<<"$UAT_DIRECT_ANALYTICS" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Module 030 source in UAT functional-completion mode:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_CENTER_VALIDATION_MODE=UAT_FUNCTIONAL_COMPLETION' >> "$GITHUB_ENV"
+            echo 'ANALYTICS_CENTER_UAT_OWNED_SUBSET=PASSED'
           else
             DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/(055_analytics_center|060_analytics_center_enterprise_experience)\.sql|rollback/(055_analytics_center_rollback|060_analytics_center_enterprise_experience_rollback)\.sql)|docs/modules/module-030-analytics[^/]*/README\.md|src/backend/ProjectTime\.Api/Modules/(AnalyticsCenter|AnalyticsBrandedExportBuilder|Module065AnalyticsAttachmentDelivery|EnterpriseReporting).*\.cs|src/frontend/project-time-web/scripts/(inject-analytics-center|validate-analytics-center)\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center.*\.sh)$' <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_ANALYTICS" ]]; then

@@ -1,0 +1,141 @@
+name: Validate UAT Functional Completion
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/uat-functional-completion-ci.yml'
+      - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - '.github/workflows/module030-analytics-center-ci.yml'
+      - '.github/workflows/module030-analytics-enterprise-experience-ci.yml'
+      - '.github/workflows/modules010065-microsoft-runtime-ci.yml'
+      - '.github/workflows/role-access-repair-ci.yml'
+      - 'database/migrations/066_immutable_project_numbers.sql'
+      - 'database/rollback/066_immutable_project_numbers_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs'
+      - 'src/backend/ProjectTime.Api/Modules/AnalyticsCenterExperienceScope.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingEngine.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingSourceLoader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
+      - 'src/backend/ProjectTime.Api/PulseAiDocumentGroundingService.g.cs'
+      - 'src/frontend/project-time-web/scripts/inject-live-ui-route-authority.mjs'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx'
+      - 'src/frontend/project-time-web/src/analytics-center.css'
+      - 'src/frontend/project-time-web/src/microsoft-mail-transport-readiness.css'
+      - 'src/frontend/project-time-web/src/work-task-builder-panel.css'
+      - 'tests/test-immutable-project-numbers-migration-066.sh'
+      - 'tests/test-uat-functional-completion-contract.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uat-functional-completion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build and validate Analytics, CRM, Celar AI, closeout, and Module 065
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact checkout and base ancestry
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HEAD="$(git rev-parse HEAD)"
+          [[ "$HEAD" == '${{ github.event.pull_request.head.sha || github.sha }}' ]]
+          if [[ -n '${{ github.event.pull_request.base.sha }}' ]]; then
+            git merge-base --is-ancestor '${{ github.event.pull_request.base.sha }}' "$HEAD"
+            git diff --check '${{ github.event.pull_request.base.sha }}'..."$HEAD"
+          else
+            git diff --check HEAD~1...HEAD
+          fi
+          echo "UAT_FUNCTIONAL_COMPLETION_EXACT_HEAD=$HEAD"
+
+      - name: Validate repository security posture
+        shell: bash
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Validate focused source contract
+        shell: bash
+        run: bash tests/test-uat-functional-completion-contract.sh
+
+      - name: Validate migration 066 apply, repeat, rollback, and reapply
+        shell: bash
+        run: bash tests/test-immutable-project-numbers-migration-066.sh
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute authorization regression tests
+        shell: bash
+        run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate affected frontend contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:analytics-center
+          npm run validate:celar-ai-runtime-rebrand
+          npm run validate:module065
+          npm run validate:microsoft-connection
+          npm run validate:microsoft-sso-runtime
+          npm run validate:role-workspace-entra-crm-governance
+          npm run validate:superadmin-sso-expense-module006
+          npm run validate:work-register-055c-055d
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm run build
+
+      - name: Confirm validation left tracked source unchanged
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Build production web container
+        shell: bash
+        run: docker build --file deployment/containers/web/Dockerfile --tag projectpulse-uat-functional-completion:${{ github.sha }} .
