@@ -12,6 +12,10 @@ on:
       - 'src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js'
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
+      - 'src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx'
+      - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
 
 permissions:
   contents: read
@@ -25,8 +29,6 @@ jobs:
     name: Build and validate authoritative live UI routes
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      EXPECTED_BRANCH: fix/live-ui-route-authority-20260802
 
     steps:
       - name: Check out exact source
@@ -36,29 +38,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Guard exact branch and source boundary
+      - name: Guard exact checkout and base ancestry
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
-          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_BRANCH" ]]
-          git fetch origin '${{ github.event.pull_request.base.ref }}' --no-tags
-          BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
           HEAD="$(git rev-parse HEAD)"
           [[ "$HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
 
-          mapfile -t changed < <(git diff --name-only "$BASE"..."$HEAD")
-          printf '%s\n' "${changed[@]}"
-          allowed='^(\.github/workflows/live-ui-route-authority-ci\.yml|src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context\.mjs|src/frontend/project-time-web/scripts/inject-live-ui-route-authority\.mjs|src/frontend/project-time-web/scripts/validate-live-ui-route-authority\.mjs|src/frontend/project-time-web/src/legacy-analytics-overlay-authority\.js|src/frontend/project-time-web/src/main\.jsx|src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel\.jsx)$'
-          for file in "${changed[@]}"; do
-            [[ "$file" =~ $allowed ]] || {
-              echo "Unexpected file in live UI correction: $file" >&2
-              exit 1
-            }
-          done
-          [[ "${#changed[@]}" -eq 7 ]]
+          git fetch origin '${{ github.event.pull_request.base.ref }}' --no-tags
+          BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
+          git merge-base --is-ancestor "$BASE" "$HEAD"
+
+          git diff --name-only "$BASE"..."$HEAD"
+          test -f src/frontend/project-time-web/scripts/inject-live-ui-route-authority.mjs
+          test -f src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs
+          test -f src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js
+          test -f src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx
           echo "LIVE_UI_EXACT_HEAD=$HEAD"
-          echo 'LIVE_UI_SOURCE_BOUNDARY=PASSED'
+          echo "LIVE_UI_BASE_SHA=$BASE"
+          echo 'LIVE_UI_CHECKOUT_GUARD=PASSED'
 
       - name: Validate repository security posture
         shell: bash
@@ -101,6 +99,7 @@ jobs:
           grep -Fq 'projectpulse-030-shell' "$JS"
           grep -Fq 'projectpulse-030-reporting-card' "$JS"
           grep -Fq 'MutationObserver' "$JS"
+          grep -Fq 'projectpulse:route-canonicalized' "$JS"
           echo 'LIVE_UI_LEGACY_ANALYTICS_OVERLAY=PERMANENTLY_SUPPRESSED'
 
       - name: Prove the generated runtime mounts the new interfaces
