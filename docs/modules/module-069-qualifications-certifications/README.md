@@ -1,8 +1,9 @@
 # Module 069 — Qualifications & Certification Matrix
 
-Module 069 completes the safe read-only workforce capability package available
-on the existing ProjectPulse schema. It implements tracker requirements
-RES-007 through RES-012 without reusing or removing installed Module 011.
+Module 069 provides the ProjectPulse workforce-capability matrix and a governed
+self-service experience for each authenticated user’s own qualifications and
+certifications. It uses the existing ProjectPulse identity and resource-profile
+foundation; it does not create another employee directory.
 
 ## Package scope
 
@@ -13,47 +14,72 @@ RES-007 through RES-012 without reusing or removing installed Module 011.
 - Current, expiring-within-90-days, expired, and unrecorded states.
 - Search, category, and lifecycle filters.
 - Coverage view for identities without qualification records.
-- No database migration and no mutation endpoint.
+- Authenticated self-service creation and update of the user’s own records.
+- No delete endpoint and no write authority over another user’s records.
+
+## API ownership
+
+The original matrix endpoints remain read-only:
+
+```text
+GET /api/qualifications/capabilities
+GET /api/qualifications/matrix
+```
+
+The self-service extension adds:
+
+```text
+GET  /api/qualifications/self-service
+POST /api/qualifications/self-service
+PUT  /api/qualifications/self-service/{qualificationId}
+```
+
+The POST and PUT endpoints always bind `user_id` to the actual authenticated
+ProjectPulse user. A caller cannot supply a different user ID. Administrator
+View-As remains read-only, and the underlying Super Administrator session does
+not transfer write authority to the selected effective identity.
+
+## Project Management role
+
+Project Managers and Project Management Leads may:
+
+- view Module 069 within their normal role scope;
+- add their own qualification or certification;
+- update their own record; and
+- record an issue/effective date, optional expiration date, competency, and
+  years of experience.
+
+This does not grant organization-wide qualification administration. Editing
+another user remains separately governed.
 
 ## Governance
 
 | Field | Value |
 |---|---|
-| Baseline | `main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4` |
-| Workspace | `/workspace/scratch/467636bfa6c3/project-time-platform-modules-064-074-release-train` |
-| Branch | `feature/modules-064-074-release-train-on-main-20260719` |
+| Module | `069` |
 | Route | `qualifications-certifications` |
-| APIs | `/api/qualifications/capabilities`, `/api/qualifications/matrix` |
-| Git/runtime | Uncommitted, unpushed, undeployed |
-| Azure/database/Entra | No change |
+| Identity key | Stable `app_users.user_id` |
+| Matrix scope | Organization, team, or self from server authorization |
+| Self-service scope | Own authenticated user only |
+| View-As | Read-only |
+| Delete | Not exposed |
+| Migration | `062_project_management_billing_role_access_repair` adds role permissions; existing qualification storage remains authoritative |
+| External systems | No Azure, Entra, provider, or notification operation |
 
-## Identity rule
+## Security boundaries
 
-Module 069 does not create another employee directory. Stable `app_users.user_id`
-is the key. Display names and organizational labels remain owned by ProjectPulse
-identity/User Administration and follow the Module 062 shared identity approach.
+- Every request requires a valid ProjectPulse session.
+- The read matrix remains parameterized and role scoped.
+- Self-service POST and PUT ignore client-selected identity and use the actual
+  session user ID.
+- Mutation is denied whenever View-As is active or actual and effective users
+  differ.
+- Input length, experience range, and date ordering are validated server-side.
+- Audit evidence is written when the shared module-audit table is available.
+- Secret, token, credential, and provider values are never accepted or returned.
 
-## Deferred mutation scope
+## Still deferred
 
-Self-service editing, issuer/evidence fields, renewal acknowledgement, renewal
-target dates, history, and expiration notifications require separately approved
-persistence and audit controls. Notifications also depend on an activated Module
-067 shared mail boundary. The current package never mislabels those capabilities
-as complete.
-
-## Shared integration hold
-
-Registration/build/governance files overlap Modules 002, 064, 066, and 068.
-They are semantically integrated once in the current-main release train and
-remain uncommitted pending final validation and publication authority.
-
-## Validation evidence
-
-- Module 069 source contract: 54/54 passed.
-- .NET 10 Release build: passed with no Module 069 warning or error.
-- Module 059 global route guard: passed.
-- Module 062 identity guard: passed.
-- Module 056E/global-card preservation: passed.
-- Production frontend build: passed; the existing chunk-size advisory remains.
-- Source status: `RELEASE_TRAIN_CANDIDATE_UNCOMMITTED`; the read-only route is
-  registered in source and remains undeployed.
+Issuer evidence, credential identifiers, document upload, renewal
+acknowledgement, scheduled expiration notifications, organization-wide edit,
+and delete require separately reviewed persistence and workflow controls.

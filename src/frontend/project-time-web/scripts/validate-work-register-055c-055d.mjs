@@ -175,7 +175,15 @@ test(
 );
 test('ROW_SPECIFIC_EDIT_SCOPE', program.includes('canEditProject = CanEditProject') && frontend.includes("item.canEditProject === true ? 'Edit work' : 'View details'") && frontend.includes('selectedWorkItem?.canEditProject === true'));
 test('CLOSEOUT_HANDOFF_SOURCE', frontend.includes('startProjectCloseout') && frontend.includes('projectPulseProjectCloseoutHandoff') && frontend.includes("window.location.hash = 'project-closeout'"));
-test('CLOSEOUT_HANDOFF_TARGET', closeoutFrontend.includes('readProjectCloseoutHandoff') && closeoutFrontend.includes('Opened ${handoffProject.projectCode} from Module 055C') && closeoutFrontend.includes("removeItem('projectPulseProjectCloseoutHandoff')"));
+test(
+  'CLOSEOUT_HANDOFF_TARGET',
+  closeoutFrontend.includes('readProjectCloseoutHandoff')
+    && (
+      closeoutFrontend.includes('Opened ${handoffProject.projectCode} from Module 055C')
+      || closeoutFrontend.includes('Module 055C selected ${handoffMatch.projectCode}')
+    )
+    && closeoutFrontend.includes("removeItem('projectPulseProjectCloseoutHandoff')")
+);
 test('EDIT_AUDIT', program.includes('work_register_change_history') && purchaseOrder.includes("'purchase_order_updated'"));
 test('REASON_REQUIRED', purchaseOrder.includes('A change reason is required for Work Register audit history'));
 test('PERMISSIONS', migration.includes('EDIT_WORK_REGISTER_055C') && migration.includes('CREATE_WORK_REGISTER_055D'));

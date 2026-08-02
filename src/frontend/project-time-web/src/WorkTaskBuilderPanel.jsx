@@ -1,3 +1,4 @@
+import CelarAiEnterprisePlatform from './CelarAiEnterprisePlatform.jsx';
 import PulseAiCenter from './PulseAiCenter.jsx';
 import PulseAiMissionControl from './PulseAiMissionControl.jsx';
 import PulseAiDeepIntelligenceWorkbench from './PulseAiDeepIntelligenceWorkbench.jsx';
@@ -11,8 +12,9 @@ import PulseAiSystemIntelligenceWorkbench from './PulseAiSystemIntelligenceWorkb
  *
  * App.jsx historically mounts this file for the `work-task-builder` route. The
  * former Work Task Builder workflow was retired and its project/task ownership
- * moved to Modules 055D and 055C. Keeping this small compatibility component
- * avoids a shared App.jsx edit while Module 011 is reactivated as Celar AI.
+ * moved to Modules 055D and 055C. Keeping this compatibility component preserves
+ * old bookmarks while Celar AI is available through the preferred `celar-ai`
+ * route.
  *
  * The retired implementation remains recoverable from the immutable pre-reuse
  * checkpoint documented under docs/modules/module-011-pulse-ai/.
@@ -21,6 +23,7 @@ import PulseAiSystemIntelligenceWorkbench from './PulseAiSystemIntelligenceWorkb
  * mount: return <PulseAiCenter />;
  */
 export {
+  CelarAiEnterprisePlatform,
   PulseAiCenter,
   PulseAiMissionControl,
   PulseAiDeepIntelligenceWorkbench,
@@ -37,6 +40,7 @@ function PulseAiWorkspace() {
 export default function WorkTaskBuilderPanel() {
   return (
     <>
+      <CelarAiEnterprisePlatform />
       <PulseAiMissionControl />
       <PulseAiSystemIntelligenceWorkbench />
       <PulseAiPrivateRuntimeWorkbench />

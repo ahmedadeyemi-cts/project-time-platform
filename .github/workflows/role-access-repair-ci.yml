@@ -1,0 +1,252 @@
+name: Role Access Repair CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/role-access-repair-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PermanentRoleAuthorityCompatibility.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/RoleAccessAuditModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/QualificationsCertificationSelfServiceModule.cs'
+      - 'src/frontend/project-time-web/src/role-workspace-governance.js'
+      - 'src/frontend/project-time-web/src/role-workspace-effective-identity-compatibility.js'
+      - 'src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx'
+      - 'src/frontend/project-time-web/src/QualificationsCertificationCenter.jsx'
+      - 'src/frontend/project-time-web/src/qualifications-self-service.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs'
+      - 'database/migrations/062_super_administrator_permanent_full_control.sql'
+      - 'database/rollback/062_super_administrator_permanent_full_control_rollback.sql'
+      - 'database/migrations/063_project_management_billing_role_access_repair.sql'
+      - 'database/rollback/063_project_management_billing_role_access_repair_rollback.sql'
+      - 'tests/test-super-administrator-permanent-full-control-migration-062.sh'
+      - 'tests/test-project-management-billing-role-access-migration-063.sh'
+      - 'docs/modules/module-069-qualifications-certifications/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: role-access-repair-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Guard protected feature isolation or validate consolidated release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.event.pull_request.head.sha }}'
+          head_branch='${{ github.head_ref || github.ref_name }}'
+          if [[ -n "$base" && -n "$head" ]]; then
+            changed="$(git diff --name-only "$base"..."$head")"
+          else
+            changed="$(git diff --name-only HEAD^)"
+          fi
+          printf '%s\n' "$changed"
+
+          for protected in \
+            '.github/workflows/projectpulse-deploy-runtime-direct-timer-recovery-test.yml' \
+            '.github/workflows/validate-runtime-direct-timer-recovery-deployment.yml' \
+            'scripts/validate-runtime-direct-timer-recovery-test-deployment.sh'; do
+            if grep -Fxq "$protected" <<<"$changed"; then
+              echo "Protected deployment file changed: $protected" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "$head_branch" == release/consolidated-enterprise-validation-* ]]; then
+            # The consolidated candidate intentionally combines the separately
+            # reviewed Analytics, Celar AI, closeout, role, and notification
+            # packages. Validate the role repair as a regression without
+            # pretending those packages are role-owned source.
+            echo 'ROLE_ACCESS_REPAIR_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+            echo 'ROLE_ACCESS_REPAIR_CONSOLIDATED_RELEASE_SCOPE=YES'
+          else
+            ! grep -Eq '(^|/)(CelarAiEnterprise|CelarAiEnterprisePlatformModule|AnalyticsCenterEnterprise|AnalyticsCenterEnterpriseModule|ProjectCloseoutGuidedCenter)' <<<"$changed"
+            ! grep -Eq '^database/migrations/060_analytics_center_enterprise_experience' <<<"$changed"
+            ! grep -Eq '^database/migrations/061_celar_ai_capability_routing' <<<"$changed"
+            echo 'ROLE_ACCESS_REPAIR_VALIDATION_MODE=ISOLATED_SOURCE' >> "$GITHUB_ENV"
+            echo 'ROLE_ACCESS_REPAIR_PROTECTED_PARALLEL_FEATURES_UNCHANGED=YES'
+          fi
+
+          git diff --check "$base"..."$head"
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Build API Release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+      - name: Test migration 062 administrator authority apply rollback and reapply
+        shell: bash
+        run: bash tests/test-super-administrator-permanent-full-control-migration-062.sh
+
+      - name: Test migration 063 PM and Billing apply rollback and reapply
+        shell: bash
+        run: bash tests/test-project-management-billing-role-access-migration-063.sh
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Execute canonical role workspace matrix
+        id: role_matrix
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          node ./scripts/validate-role-workspace-access-matrix.mjs > "$RUNNER_TEMP/role-workspace-matrix.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/role-workspace-matrix.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/role-workspace-matrix.status"
+          exit "$status"
+
+      - name: Validate administrator PM Billing and View-As contracts
+        id: role_contracts
+        if: always()
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run validate:role-workspace-entra-crm-governance > "$RUNNER_TEMP/role-workspace-validator.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/role-workspace-validator.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/role-workspace-validator.status"
+          exit "$status"
+
+      - name: Validate Module 069 governed self-service
+        id: module069_contract
+        if: always()
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set +e
+          npm run validate:module069 > "$RUNNER_TEMP/module069-validator.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/module069-validator.log"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/module069-validator.status"
+          exit "$status"
+
+      - name: Upload focused validator diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: role-access-repair-validator-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/role-workspace-matrix.log
+            ${{ runner.temp }}/role-workspace-matrix.status
+            ${{ runner.temp }}/role-workspace-validator.log
+            ${{ runner.temp }}/role-workspace-validator.status
+            ${{ runner.temp }}/module069-validator.log
+            ${{ runner.temp }}/module069-validator.status
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build complete production frontend
+        if: success()
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Ensure validators did not mutate tracked source
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+
+          if [[ "${ROLE_ACCESS_REPAIR_VALIDATION_MODE:-}" == 'CONSOLIDATED_RELEASE' ]]; then
+            # Consolidated validation runs the complete frontend generator chain.
+            # Other exact-head workflows own and validate its deterministic output;
+            # this job must still prove that its role-access package stayed clean.
+            git diff --exit-code -- \
+              .github/workflows/role-access-repair-ci.yml \
+              src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs \
+              src/backend/ProjectTime.Api/Modules/PermanentRoleAuthorityCompatibility.cs \
+              src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs \
+              src/backend/ProjectTime.Api/Modules/RoleAccessAuditModule.cs \
+              src/backend/ProjectTime.Api/Modules/QualificationsCertificationSelfServiceModule.cs \
+              src/frontend/project-time-web/src/role-workspace-governance.js \
+              src/frontend/project-time-web/src/role-workspace-effective-identity-compatibility.js \
+              src/frontend/project-time-web/src/RoleWelcomeDashboard.jsx \
+              src/frontend/project-time-web/src/QualificationsCertificationCenter.jsx \
+              src/frontend/project-time-web/src/qualifications-self-service.css \
+              src/frontend/project-time-web/src/main.jsx \
+              src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs \
+              src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs \
+              src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs \
+              src/frontend/project-time-web/scripts/validate-superadmin-sso-expense-module006-package.mjs \
+              src/frontend/project-time-web/scripts/validate-security-role-policy-public-origin.mjs \
+              database/migrations/062_super_administrator_permanent_full_control.sql \
+              database/rollback/062_super_administrator_permanent_full_control_rollback.sql \
+              database/migrations/063_project_management_billing_role_access_repair.sql \
+              database/rollback/063_project_management_billing_role_access_repair_rollback.sql \
+              tests/test-super-administrator-permanent-full-control-migration-062.sh \
+              tests/test-project-management-billing-role-access-migration-063.sh \
+              docs/modules/module-069-qualifications-certifications
+            echo 'ROLE_ACCESS_REPAIR_CONSOLIDATED_OWNED_SOURCE_CLEAN=YES'
+          else
+            git diff --exit-code
+          fi
+
+      - name: Build production web container
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag "projectpulse-role-access-repair:${GITHUB_SHA}" \
+            .
+
+      - name: Publish validation summary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Role access repair validation
+
+          - Validation mode: ${ROLE_ACCESS_REPAIR_VALIDATION_MODE:-UNKNOWN}
+          - Super Administrator permanent Full Control: validated by migration 062
+          - Legacy Administrator reconciliation: validated
+          - Module 026 and Module 065 authority contract: validated
+          - Project Management own time and project approval: validated by migration 063
+          - Project Management holiday, expense, and own qualifications: validated
+          - Billing Module 008 Audit History exclusion: validated
+          - Accounting Audit History preservation: validated
+          - Canonical role and alias workspace matrix: validated
+          - Administrator View-As write authority: none
+          - Azure/Test/Production mutation: none
+          EOF

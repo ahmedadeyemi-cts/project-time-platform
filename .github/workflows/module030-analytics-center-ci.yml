@@ -6,6 +6,7 @@ on:
       - 'feature/module-030-analytics-center-*'
       - 'feature/analytics-center-enterprise-experience-*'
       - 'fix/module030-regression-validator-*'
+      - 'fix/module030-enterprise-regression-mode-*'
   pull_request:
     paths:
       - '.github/workflows/module030-analytics-center-ci.yml'
@@ -49,9 +50,12 @@ jobs:
     timeout-minutes: 75
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify Module 030 ownership or run regression mode
         shell: bash
@@ -106,8 +110,18 @@ jobs:
             echo "ANALYTICS_CENTER_REGRESSION_MODE=PASS branch=$HEAD_BRANCH"
           fi
 
-          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-            echo 'Analytics Center source overlaps deployment or canonical generated integration files.' >&2
+          DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
+            echo 'Analytics Center validation detected deployment-control overlap:' >&2
+            printf '%s\n' "$DEPLOYMENT_OVERLAP" >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* || "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* ]] && \
+             grep -E '^(src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Analytics-owned source overlaps canonical generated integration files.' >&2
             exit 1
           fi
           if grep -Fxq 'database/migrations/054_enterprise_reporting_center.sql' <<<"$CHANGED"; then
@@ -116,13 +130,15 @@ jobs:
           fi
           git diff --check "$BASE_REF"...HEAD
 
-      - uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
@@ -139,8 +155,8 @@ jobs:
         shell: bash
         run: bash tests/test-analytics-center-migration-055.sh
 
-      - name: Test migration 060 for enterprise extension
-        if: env.ANALYTICS_CENTER_VALIDATION_MODE == 'ENTERPRISE_EXTENSION'
+      - name: Test migration 060 when the enterprise package is present
+        if: ${{ hashFiles('database/migrations/060_analytics_center_enterprise_experience.sql') != '' }}
         shell: bash
         run: bash tests/test-analytics-center-enterprise-migration-060.sh
 
@@ -192,7 +208,18 @@ jobs:
           cat dist/assets/*.js > /tmp/analytics-center.js
           cat dist/assets/*.css > /tmp/analytics-center.css
 
-          if [[ "${ANALYTICS_CENTER_VALIDATION_MODE:-}" == 'ENTERPRISE_EXTENSION' ]]; then
+          require_marker() {
+            local file="$1"
+            local marker="$2"
+            local kind="$3"
+            if ! grep -aFq -- "$marker" "$file"; then
+              echo "MISSING_${kind}_MARKER=$marker" >&2
+              exit 1
+            fi
+          }
+
+          if grep -Fq '.analytics-enterprise-shell' src/analytics-center.css; then
+            echo 'ANALYTICS_CENTER_COMPILED_PROFILE=ENTERPRISE'
             for marker in \
               'Analytics Center' \
               'Back to Modules' \
@@ -211,7 +238,7 @@ jobs:
               'US Signal PDF' \
               '/api/analytics/v2/overview' \
               '/api/analytics/v2/schedules'; do
-              grep -Fq "$marker" /tmp/analytics-center.js
+              require_marker /tmp/analytics-center.js "$marker" COMPILED_JS
             done
             for marker in \
               '.analytics-enterprise-shell' \
@@ -221,9 +248,10 @@ jobs:
               '.analytics-filter-grid' \
               '.analytics-multiselect-menu' \
               '.analytics-schedule-panel'; do
-              grep -Fq "$marker" /tmp/analytics-center.css
+              require_marker /tmp/analytics-center.css "$marker" COMPILED_CSS
             done
           else
+            echo 'ANALYTICS_CENTER_COMPILED_PROFILE=BASE'
             for marker in \
               'Analytics Center' \
               'Set criteria' \
@@ -237,7 +265,7 @@ jobs:
               'Analytics run history' \
               '/api/analytics/catalog' \
               '/api/analytics/filter-options'; do
-              grep -Fq "$marker" /tmp/analytics-center.js
+              require_marker /tmp/analytics-center.js "$marker" COMPILED_JS
             done
             for marker in \
               '.analytics-center' \
@@ -245,7 +273,7 @@ jobs:
               '.analytics-filter-grid' \
               '.analytics-source-grid' \
               '.analytics-history-list'; do
-              grep -Fq "$marker" /tmp/analytics-center.css
+              require_marker /tmp/analytics-center.css "$marker" COMPILED_CSS
             done
           fi
 
@@ -254,7 +282,7 @@ jobs:
             '030Q Reporting Readiness Closeout' \
             'Build Export Layout' \
             'Save Report Definition Preview'; do
-            if grep -Fq "$forbidden" /tmp/analytics-center.js; then
+            if grep -aFq -- "$forbidden" /tmp/analytics-center.js; then
               echo "Legacy Analytics marker remains in compiled bundle: $forbidden" >&2
               exit 1
             fi
@@ -269,8 +297,9 @@ jobs:
             echo '## Module 030 Analytics Center validation'
             echo
             echo "- Validation mode: ${ANALYTICS_CENTER_VALIDATION_MODE:-UNKNOWN}"
-            echo '- Protected deployment files: guarded'
+            echo '- Active compiled profile: base or enterprise, selected from checked-out source'
+            echo '- Consolidated releases may change only the static web-container Dockerfile; deployment controls remain prohibited.'
             echo '- Migration 055 regression: executed'
-            echo '- Migration 060 extension regression: conditional'
+            echo '- Migration 060 regression: executed when present'
             echo '- API and complete frontend builds: executed'
           } >> "$GITHUB_STEP_SUMMARY"

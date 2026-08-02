@@ -41,7 +41,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify Help-chat ownership, Module 011 integration, or regression mode
+      - name: Verify Help-chat ownership, Module 011 integration, consolidated release, or regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -100,6 +100,24 @@ jobs:
               fi
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_LATER_MODULE_011_INTEGRATION=PASSED'
+              ;;
+            release/consolidated-enterprise-validation-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The consolidated release changed Help-chat runtime source outside the reviewed convergence boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              UNAUTHORIZED_DEPLOYMENT="$(grep -E '^(deployment/azure/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+              if [[ -n "$UNAUTHORIZED_DEPLOYMENT" ]]; then
+                echo 'The consolidated Help-chat validation cannot include an unauthorized deployment operation:' >&2
+                printf '%s\n' "$UNAUTHORIZED_DEPLOYMENT" >&2
+                exit 1
+              fi
+              test -f docs/releases/2026-08-02-consolidated-enterprise-validation.md
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_CONSOLIDATED_RELEASE=PASSED'
               ;;
             security/repository-posture-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"

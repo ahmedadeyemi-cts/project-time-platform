@@ -1,0 +1,15 @@
+.qualification-self-service { scroll-margin-top: 8rem; }
+.qualification-self-service__form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; align-items: end; }
+.qualification-self-service__form label { display: grid; gap: 0.45rem; color: #17365d; font-weight: 700; }
+.qualification-self-service__form label span { font-size: 0.82rem; letter-spacing: 0.03em; }
+.qualification-self-service__form input,
+.qualification-self-service__form select { width: 100%; min-height: 2.85rem; border: 1px solid #b7cce2; border-radius: 0.75rem; background: #fff; color: #102f53; padding: 0.65rem 0.75rem; font: inherit; }
+.qualification-self-service__form input:focus-visible,
+.qualification-self-service__form select:focus-visible,
+.qualification-self-service__actions button:focus-visible { outline: 3px solid rgba(0, 113, 188, 0.28); outline-offset: 2px; }
+.qualification-self-service__actions { display: flex; align-items: end; min-height: 100%; }
+.qualification-self-service__actions button { min-height: 2.85rem; border: 0; border-radius: 0.75rem; background: #0066a1; color: #fff; padding: 0.7rem 1.15rem; font-weight: 800; cursor: pointer; }
+.qualification-self-service__actions button:disabled { cursor: wait; opacity: 0.65; }
+.qualifications-banner.success { border-color: #8bc5a6; background: #edf9f2; color: #155b35; }
+@media (max-width: 1050px) { .qualification-self-service__form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .qualification-self-service__form { grid-template-columns: 1fr; } }

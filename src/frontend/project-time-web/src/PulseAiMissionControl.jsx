@@ -129,7 +129,7 @@ export default function PulseAiMissionControl() {
       <div className="pulse-ai-mission-alert" role="note">
         <strong>Internal-document boundary</strong>
         <p>
-          Raw SOW and GSD files stay inside the private ProjectCelar AI environment. Claude or OpenAI can be used only as a governed reasoning fallback with a sanitized, minimal problem capsule unless a separately approved policy explicitly allows more.
+          Raw SOW and GSD files stay inside the private Celar AI environment. Claude or OpenAI can be used only as a governed reasoning fallback with a sanitized, minimal problem capsule unless a separately approved policy explicitly allows more.
         </p>
       </div>
 

@@ -1,0 +1,511 @@
+.celar-ai-provider-bridge {
+  display: none;
+}
+
+.celar-ai-capability-routing + .ai-provider-center__section {
+  display: none;
+}
+
+.celar-ai-routing {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1.35rem;
+  border: 1px solid rgba(21, 82, 135, 0.2);
+  border-radius: 1.35rem;
+  background:
+    radial-gradient(circle at 94% 0%, rgba(72, 199, 225, 0.16), transparent 30%),
+    linear-gradient(145deg, #ffffff 0%, #f4f9fc 100%);
+  color: #102643;
+  box-shadow: 0 20px 50px rgba(18, 48, 78, 0.08);
+}
+
+.celar-ai-routing button,
+.celar-ai-routing input,
+.celar-ai-routing select,
+.celar-ai-routing textarea {
+  font: inherit;
+}
+
+.celar-ai-routing button {
+  border: 0;
+  border-radius: 0.7rem;
+  padding: 0.72rem 1rem;
+  color: #ffffff;
+  background: #0b5ea8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.celar-ai-routing button:hover:not(:disabled) {
+  background: #064f91;
+}
+
+.celar-ai-routing button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.celar-ai-routing button.is-secondary {
+  color: #0b5ea8;
+  border: 1px solid #85afd1;
+  background: #ffffff;
+}
+
+.celar-ai-routing__header,
+.celar-ai-routing__subheading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.celar-ai-routing__header p,
+.celar-ai-routing__subheading p {
+  margin: 0 0 0.35rem;
+  color: #0872a7;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.celar-ai-routing__header h2,
+.celar-ai-routing__subheading h3 {
+  margin: 0;
+  color: #0d2b50;
+}
+
+.celar-ai-routing__header h2 {
+  font-size: clamp(1.45rem, 2vw, 2rem);
+}
+
+.celar-ai-routing__header span,
+.celar-ai-routing__subheading span {
+  display: block;
+  max-width: 62rem;
+  margin-top: 0.45rem;
+  color: #5f7390;
+  line-height: 1.55;
+}
+
+.celar-ai-routing__notice,
+.celar-ai-routing__error,
+.celar-ai-routing__loading {
+  padding: 0.9rem 1rem;
+  border-radius: 0.85rem;
+  background: #edf7fc;
+  color: #16456c;
+  font-weight: 700;
+}
+
+.celar-ai-routing__error {
+  border: 1px solid #e7a3a3;
+  background: #fff2f2;
+  color: #8d2828;
+}
+
+.celar-ai-routing__architecture {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.celar-ai-routing__architecture article,
+.celar-ai-routing__private-summary article {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #d1e0eb;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.celar-ai-routing__architecture article::after {
+  content: '→';
+  position: absolute;
+  right: -0.7rem;
+  top: calc(50% - 0.7rem);
+  z-index: 2;
+  color: #1ca4c5;
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.celar-ai-routing__architecture article {
+  position: relative;
+}
+
+.celar-ai-routing__architecture article:last-child::after {
+  display: none;
+}
+
+.celar-ai-routing__architecture article.is-primary {
+  border-color: #1a9ec5;
+  background: linear-gradient(145deg, #e6f8fd, #ffffff);
+}
+
+.celar-ai-routing__architecture article.is-local {
+  border-color: #9fc383;
+  background: linear-gradient(145deg, #f2f9ed, #ffffff);
+}
+
+.celar-ai-routing__architecture span,
+.celar-ai-routing__private-summary span {
+  color: #607590;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.celar-ai-routing__architecture strong,
+.celar-ai-routing__private-summary strong {
+  font-size: 1.02rem;
+  color: #0c3158;
+}
+
+.celar-ai-routing__architecture small,
+.celar-ai-routing__private-summary small {
+  color: #62768f;
+  line-height: 1.45;
+}
+
+.celar-ai-routing__private-model,
+.celar-ai-routing__routes,
+.celar-ai-routing__consumers {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #d4e2ec;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.celar-ai-routing__subheading > span.is-ready,
+.celar-ai-routing__subheading > span.is-pending {
+  padding: 0.42rem 0.75rem;
+  border-radius: 999px;
+  background: #e7f6e2;
+  color: #2f6f29;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.celar-ai-routing__subheading > span.is-pending {
+  background: #fff4dc;
+  color: #8c5b00;
+}
+
+.celar-ai-routing__private-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.celar-ai-routing__profile-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.8rem;
+}
+
+.celar-ai-routing__profile-form > label,
+.celar-ai-routing__token-form,
+.celar-ai-routing__route-selects label {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.celar-ai-routing__profile-form > label:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.celar-ai-routing__profile-form label > span,
+.celar-ai-routing__token-form > label,
+.celar-ai-routing__route-selects label > span {
+  color: #173b61;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.celar-ai-routing input,
+.celar-ai-routing select,
+.celar-ai-routing textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #b9ccdc;
+  border-radius: 0.68rem;
+  padding: 0.72rem 0.78rem;
+  color: #102643;
+  background: #ffffff;
+}
+
+.celar-ai-routing textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.celar-ai-routing input:focus,
+.celar-ai-routing select:focus,
+.celar-ai-routing textarea:focus {
+  outline: 3px solid rgba(25, 164, 201, 0.2);
+  border-color: #159abd;
+}
+
+.celar-ai-routing__profile-form small,
+.celar-ai-routing__token-form small {
+  color: #65788f;
+  line-height: 1.4;
+}
+
+.celar-ai-routing__checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  color: #294d71;
+  font-weight: 750;
+}
+
+.celar-ai-routing__checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.celar-ai-routing__checks input {
+  width: auto;
+}
+
+.celar-ai-routing__profile-form > button {
+  justify-self: start;
+}
+
+.celar-ai-routing__token-form > div {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto auto;
+  gap: 0.65rem;
+}
+
+.celar-ai-routing__route-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.celar-ai-routing__route-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid #cfdeea;
+  border-radius: 0.95rem;
+  background: #ffffff;
+}
+
+.celar-ai-routing__route-card header,
+.celar-ai-routing__route-card footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.celar-ai-routing__route-card header > div,
+.celar-ai-routing__route-card header strong,
+.celar-ai-routing__route-card header small {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.celar-ai-routing__route-card header > span {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: #eef5fa;
+  color: #496982;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.celar-ai-routing__route-selects {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.celar-ai-routing__route-card p {
+  margin: 0;
+  color: #536b84;
+  font-size: 0.84rem;
+}
+
+.celar-ai-routing__route-card p.is-error {
+  color: #9c2f2f;
+  font-weight: 800;
+}
+
+.celar-ai-routing__route-card footer {
+  align-items: center;
+  color: #6b7f94;
+  font-size: 0.78rem;
+}
+
+.celar-ai-routing__route-card footer > div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.celar-ai-routing__consumer-table {
+  display: grid;
+  overflow: auto;
+  border: 1px solid #d2e0ea;
+  border-radius: 0.85rem;
+}
+
+.celar-ai-routing__consumer-table > div {
+  display: grid;
+  grid-template-columns: 1.35fr 1.2fr 0.7fr 0.8fr 0.8fr;
+  min-width: 58rem;
+  border-top: 1px solid #e2eaf0;
+}
+
+.celar-ai-routing__consumer-table > div:first-child {
+  border-top: 0;
+}
+
+.celar-ai-routing__consumer-table > div.is-header {
+  background: #edf5fa;
+  color: #244b6d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.celar-ai-routing__consumer-table span {
+  display: grid;
+  align-content: center;
+  gap: 0.22rem;
+  padding: 0.72rem;
+  color: #405d77;
+}
+
+.celar-ai-routing__consumer-table small {
+  color: #708398;
+}
+
+.celar-ai-routing__consumer-table .is-good {
+  color: #2c752e;
+  font-weight: 850;
+}
+
+.celar-ai-routing__consumer-table .is-bad {
+  color: #9c2f2f;
+  font-weight: 850;
+}
+
+.celar-ai-routing__guardrails {
+  padding: 1rem;
+  border: 1px solid #e9c978;
+  border-radius: 1rem;
+  background: #fffaf0;
+  color: #55451e;
+}
+
+.celar-ai-routing__guardrails ul {
+  margin: 0.65rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 1100px) {
+  .celar-ai-routing__architecture,
+  .celar-ai-routing__private-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .celar-ai-routing__architecture article:nth-child(2)::after {
+    display: none;
+  }
+
+  .celar-ai-routing__route-selects {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .celar-ai-routing {
+    padding: 0.85rem;
+  }
+
+  .celar-ai-routing__header,
+  .celar-ai-routing__subheading,
+  .celar-ai-routing__route-card header,
+  .celar-ai-routing__route-card footer {
+    flex-direction: column;
+  }
+
+  .celar-ai-routing__architecture,
+  .celar-ai-routing__private-summary,
+  .celar-ai-routing__profile-form,
+  .celar-ai-routing__route-grid,
+  .celar-ai-routing__route-selects,
+  .celar-ai-routing__token-form > div {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ai-routing__architecture article::after {
+    content: '↓';
+    top: auto;
+    right: calc(50% - 0.4rem);
+    bottom: -0.85rem;
+  }
+
+  .celar-ai-routing__architecture article:nth-child(2)::after {
+    display: block;
+  }
+
+  .celar-ai-routing__profile-form > label:nth-child(3),
+  .celar-ai-routing__checks {
+    grid-column: auto;
+  }
+}
+
+body[data-theme='dark'] .celar-ai-routing,
+[data-theme='dark'] .celar-ai-routing {
+  color: #e8f2fa;
+  border-color: rgba(119, 184, 223, 0.28);
+  background: linear-gradient(145deg, #13283a, #102233);
+}
+
+body[data-theme='dark'] .celar-ai-routing article,
+body[data-theme='dark'] .celar-ai-routing__private-model,
+body[data-theme='dark'] .celar-ai-routing__routes,
+body[data-theme='dark'] .celar-ai-routing__consumers,
+[data-theme='dark'] .celar-ai-routing article,
+[data-theme='dark'] .celar-ai-routing__private-model,
+[data-theme='dark'] .celar-ai-routing__routes,
+[data-theme='dark'] .celar-ai-routing__consumers {
+  background: #172f43;
+  border-color: #315069;
+}
+
+body[data-theme='dark'] .celar-ai-routing h2,
+body[data-theme='dark'] .celar-ai-routing h3,
+body[data-theme='dark'] .celar-ai-routing strong,
+[data-theme='dark'] .celar-ai-routing h2,
+[data-theme='dark'] .celar-ai-routing h3,
+[data-theme='dark'] .celar-ai-routing strong {
+  color: #f0f7fc;
+}
+
+body[data-theme='dark'] .celar-ai-routing input,
+body[data-theme='dark'] .celar-ai-routing select,
+body[data-theme='dark'] .celar-ai-routing textarea,
+[data-theme='dark'] .celar-ai-routing input,
+[data-theme='dark'] .celar-ai-routing select,
+[data-theme='dark'] .celar-ai-routing textarea {
+  color: #f0f7fc;
+  border-color: #47677f;
+  background: #102537;
+}

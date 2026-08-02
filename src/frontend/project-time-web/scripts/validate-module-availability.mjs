@@ -59,8 +59,14 @@ if (fullBackendAvailable) {
     'registeredModuleCount = RegisteredModuleCount',
     'states,',
     'missingOverrideBehavior = "ENABLED"',
-    'actualRoles.Contains("SUPER_ADMINISTRATOR") && !isViewAs',
-    'effectiveRoles.Contains("SUPER_ADMINISTRATOR")',
+    'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync',
+    'actualRoles.Any(ProjectPulseActualSessionAuthority.IsAdministratorRoleCode)',
+    'effectiveRoles.Any(ProjectPulseActualSessionAuthority.IsAdministratorRoleCode)',
+    'permanentFullControl',
+    'actual_session_super_administrator',
+    'storageInstalled',
+    'migrationRequired = !storageInstalled',
+    'app.UsePermanentRoleAuthorityCompatibility();',
     'SELECT module_number, is_enabled, revision_number, reason, updated_at',
     '(Func<HttpContext, Task<IResult>>)GetOverridesAsync',
     'discard the returned IResult'
@@ -72,6 +78,16 @@ if (fullBackendAvailable) {
     overrides,
     'app.MapGet("/api/module-availability/overrides", GetOverridesAsync);',
     'direct method-group binding can return an empty HTTP 200 response'
+  );
+  rejectText(
+    overrides,
+    'actualRoles.Contains("SUPER_ADMINISTRATOR") && !isViewAs',
+    'obsolete exact-role-only administrator check'
+  );
+  rejectText(
+    overrides,
+    'effectiveRoles.Contains("SUPER_ADMINISTRATOR")',
+    'obsolete exact-role-only effective administrator check'
   );
 
   for (const contract of [
@@ -155,4 +171,4 @@ requireText(packageJson, 'validate:module-availability', 'validator registration
 requireText(packageJson, 'npm run validate:module-availability', 'build-chain registration');
 requireText(app, "title: 'Timesheet'", 'canonical Module 001 page title');
 
-console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only resultExecution=typed-delegate default=enabled module001=Timesheet backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
+console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only resultExecution=typed-delegate default=enabled permanentAdmin=shared-resolver module001=Timesheet backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);

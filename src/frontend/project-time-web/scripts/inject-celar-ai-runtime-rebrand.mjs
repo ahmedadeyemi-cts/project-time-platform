@@ -33,7 +33,8 @@ function replaceRequired(content, before, after, label) {
 function rebrandVisibleText(content) {
   return content
     .replaceAll('PULSE AI', 'CELAR AI')
-    .replaceAll('Pulse AI', 'Celar AI');
+    .replaceAll('Pulse AI', 'Celar AI')
+    .replaceAll('ProjectCelar AI', 'Celar AI');
 }
 
 const visibleFiles = [
@@ -202,3 +203,6 @@ console.log(`CELAR_AI_RUNTIME_REBRAND_FILES_CHANGED=${changed.length}`);
 for (const relative of changed) console.log(`CELAR_AI_RUNTIME_REBRAND_CHANGED=${relative}`);
 console.log('CELAR_AI_RUNTIME_REBRAND_VISIBLE_NAME=Celar AI');
 console.log('CELAR_AI_RUNTIME_REBRAND_TECHNICAL_COMPATIBILITY=Pulse AI');
+
+await import('./inject-celar-ai-contextual-chat-workspace.mjs');
+await import('./inject-celar-ai-enterprise-chat-context.mjs');

@@ -6,6 +6,7 @@ const repositoryRoot = path.resolve(root, '..', '..', '..');
 
 const files = {
   main: path.join(root, 'src/main.jsx'),
+  effectiveIdentity: path.join(root, 'src/role-workspace-effective-identity-compatibility.js'),
   transport: path.join(root, 'src/role-policy-authoritative-transport.js'),
   authoritative: path.join(root, 'src/projectpulse-authoritative-api.js'),
   globalMail: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs'),
@@ -26,13 +27,24 @@ for (const [label, file] of Object.entries(files)) {
 }
 
 const main = read(files.main);
+const effectiveIdentity = read(files.effectiveIdentity);
 const transport = read(files.transport);
 const authoritative = read(files.authoritative);
 const globalMail = read(files.globalMail);
 const publicOrigin = read(files.publicOrigin);
 const nginx = read(files.nginx);
 
-requireText(main, "import './runtime-data-compatibility.js';\nimport './role-policy-authoritative-transport.js';", 'main import order');
+requireText(
+  main,
+  "import './runtime-data-compatibility.js';\nimport './role-workspace-effective-identity-compatibility.js';\nimport './role-policy-authoritative-transport.js';",
+  'main import order'
+);
+requireText(effectiveIdentity, '/api/utilization/current-quarter', 'effective identity isolation route');
+requireText(effectiveIdentity, 'not_applicable_for_effective_role', 'effective identity isolation response');
+requireText(effectiveIdentity, 'grantsUtilizationAccess: false', 'effective identity least privilege');
+requireText(effectiveIdentity, 'viewAsMutationAuthority: false', 'effective identity View-As boundary');
+rejectText(effectiveIdentity, "status: 403", 'effective identity compatibility must not forge a denial');
+
 requireText(transport, "import { authoritativeApi } from './projectpulse-authoritative-api.js';", 'role-policy transport');
 requireText(transport, "requiredCollections: ['actions', 'scopes']", 'Module 012 catalog contract');
 requireText(transport, "requiredCollections: ['roles', 'modules', 'grants']", 'Module 037 matrix contract');

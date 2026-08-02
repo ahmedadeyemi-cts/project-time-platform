@@ -315,7 +315,7 @@ export default function PulseAiCenter() {
         <div className="pulse-ai-hero-brand">
           <img src={usSignalLogoDataUrl} alt="US Signal" />
           <div>
-            <p className="pulse-ai-eyebrow">Module 011 · ProjectCelar AI lifecycle control plane</p>
+            <p className="pulse-ai-eyebrow">Module 011 · Celar AI lifecycle control plane</p>
             <h1>Celar AI</h1>
             <p>
               Prepare knowledge, datasets, evaluations, and model versions inside ProjectPulse while Module 064 remains the governed provider and inference gateway.
