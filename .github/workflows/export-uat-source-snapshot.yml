@@ -1,22 +1,25 @@
 name: Export UAT Source Snapshot
 
 on:
-  push:
+  pull_request:
     branches:
-      - diagnose/uat-source-snapshot-20260802
+      - main
+    paths:
+      - '.github/workflows/export-uat-source-snapshot.yml'
 
 permissions:
   contents: read
 
 jobs:
   export:
+    if: github.event.pull_request.head.ref == 'diagnose/uat-source-snapshot-20260802'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
