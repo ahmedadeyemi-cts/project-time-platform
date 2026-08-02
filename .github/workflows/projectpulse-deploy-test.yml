@@ -1,95 +1,250 @@
-name: ProjectPulse Deploy Test
+name: Verify Enterprise Runtime Test Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        required: true
-        default: test
-        type: choice
-        options: [test]
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/projectpulse-deploy-test.yml'
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-test
+  group: verify-enterprise-runtime-test
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/enterprise-runtime-test-f739e856-20260802'
+    name: Independently verify exact enterprise runtime Test release
     environment: test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 30
+    env:
+      EXPECTED_RELEASE_COMMIT: f739e85650ae32e82f49e895ebf95d739bfb4a6a
+      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:f1da6bffde3447ab4860de673df5fdf07c9a656cac994251e51b8c597fee498f
+      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:1e1b4d4d4e2c6e2fb8b72942309fe740e9d888b57ab7ef12c7c1a562961e0e51
+      EXPECTED_WEB_REVISION: ca-phd-test-web-westus3--entweb-30761287049
+      EXPECTED_CONTROL_BRANCH: verify/enterprise-runtime-test-f739e856-20260802
+      CONTROL_WORKFLOW: .github/workflows/projectpulse-deploy-test.yml
 
-      - uses: azure/login@v2
+    steps:
+      - name: Check out exact verification control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact main and read-only verification scope
+        id: guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_CONTROL_BRANCH" ]]
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+
+          git fetch origin main --no-tags
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          [[ "$CURRENT_MAIN" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo "main moved from the exact deployed release: $CURRENT_MAIN" >&2
+            exit 1
+          }
+          CHANGED="$(git diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$CONTROL_WORKFLOW" ]]
+          git diff --check "$EXPECTED_RELEASE_COMMIT"...HEAD
+
+          ! grep -nE '\baz containerapp (update|create|delete|job create|job start|job delete)\b|\baz acr build\b|\bpsql\b' "$CONTROL_WORKFLOW"
+          echo 'ENTERPRISE_RUNTIME_TEST_VERIFIER_SCOPE=READ_ONLY'
+
+      - name: Sign in to Azure Test through OIDC
+        uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current release
-        id: before
+      - name: Verify exact immutable API and web revisions
+        id: azure
         shell: bash
         run: |
           set -Eeuo pipefail
-          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          VERIFIED=false
 
-      - name: Build API and web images
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          API_TAG="ci-${GITHUB_SHA}"
-          WEB_TAG="ci-${GITHUB_SHA}"
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-api:$API_TAG" --file deployment/containers/api/Dockerfile .
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-web:$WEB_TAG" --file deployment/containers/web/Dockerfile .
+          for attempt in $(seq 1 60); do
+            API_JSON="$(az containerapp show -g "$RG" -n "$API_APP" -o json --only-show-errors)"
+            WEB_JSON="$(az containerapp show -g "$RG" -n "$WEB_APP" -o json --only-show-errors)"
 
-      - name: Deploy API
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --set-env-vars PROJECTPULSE_ENVIRONMENT=test --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
+            API_IMAGE="$(jq -r '.properties.template.containers[0].image // ""' <<<"$API_JSON")"
+            WEB_IMAGE="$(jq -r '.properties.template.containers[0].image // ""' <<<"$WEB_JSON")"
+            API_SOURCE="$(jq -r '.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value' <<<"$API_JSON" | head -1)"
+            API_READY="$(jq -r '.properties.latestReadyRevisionName // ""' <<<"$API_JSON")"
+            WEB_READY="$(jq -r '.properties.latestReadyRevisionName // ""' <<<"$WEB_JSON")"
+            API_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // ""' <<<"$API_JSON")"
+            WEB_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // ""' <<<"$WEB_JSON")"
 
-      - name: Validate API
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
-            case "$STATUS" in 200|401) exit 0 ;; esac
+            API_READY_IMAGE=''
+            API_ACTIVE='false'
+            API_HEALTH=''
+            API_RUNNING=''
+            API_PROVISIONING=''
+            WEB_READY_IMAGE=''
+            WEB_ACTIVE='false'
+            WEB_HEALTH=''
+            WEB_RUNNING=''
+            WEB_PROVISIONING=''
+
+            if [[ -n "$API_READY" ]]; then
+              API_REVISION_JSON="$(az containerapp revision show -g "$RG" -n "$API_APP" --revision "$API_READY" -o json --only-show-errors 2>/dev/null || echo '{}')"
+              API_READY_IMAGE="$(jq -r '.properties.template.containers[0].image // ""' <<<"$API_REVISION_JSON")"
+              API_ACTIVE="$(jq -r '.properties.active // false' <<<"$API_REVISION_JSON")"
+              API_HEALTH="$(jq -r '.properties.healthState // ""' <<<"$API_REVISION_JSON")"
+              API_RUNNING="$(jq -r '.properties.runningState // ""' <<<"$API_REVISION_JSON")"
+              API_PROVISIONING="$(jq -r '.properties.provisioningState // ""' <<<"$API_REVISION_JSON")"
+            fi
+
+            if [[ -n "$WEB_READY" ]]; then
+              WEB_REVISION_JSON="$(az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$WEB_READY" -o json --only-show-errors 2>/dev/null || echo '{}')"
+              WEB_READY_IMAGE="$(jq -r '.properties.template.containers[0].image // ""' <<<"$WEB_REVISION_JSON")"
+              WEB_ACTIVE="$(jq -r '.properties.active // false' <<<"$WEB_REVISION_JSON")"
+              WEB_HEALTH="$(jq -r '.properties.healthState // ""' <<<"$WEB_REVISION_JSON")"
+              WEB_RUNNING="$(jq -r '.properties.runningState // ""' <<<"$WEB_REVISION_JSON")"
+              WEB_PROVISIONING="$(jq -r '.properties.provisioningState // ""' <<<"$WEB_REVISION_JSON")"
+            fi
+
+            if [[ "$API_IMAGE" == "$EXPECTED_API_IMAGE" \
+                  && "$WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" \
+                  && "$API_SOURCE" == "$EXPECTED_RELEASE_COMMIT" \
+                  && "${API_MODE,,}" == single \
+                  && "${WEB_MODE,,}" == single \
+                  && "$API_READY_IMAGE" == "$EXPECTED_API_IMAGE" \
+                  && "$WEB_READY_IMAGE" == "$EXPECTED_WEB_IMAGE" \
+                  && "$WEB_READY" == "$EXPECTED_WEB_REVISION" \
+                  && "$API_ACTIVE" == true \
+                  && "$WEB_ACTIVE" == true \
+                  && ( "$API_HEALTH" == Healthy || "$API_RUNNING" == Running ) \
+                  && ( "$WEB_HEALTH" == Healthy || "$WEB_RUNNING" == Running ) ]]; then
+              VERIFIED=true
+              break
+            fi
+
+            echo "attempt=$attempt api_ready=$API_READY api_ready_image=$API_READY_IMAGE api_active=$API_ACTIVE api_health=$API_HEALTH api_running=$API_RUNNING api_provisioning=$API_PROVISIONING web_ready=$WEB_READY web_ready_image=$WEB_READY_IMAGE web_active=$WEB_ACTIVE web_health=$WEB_HEALTH web_running=$WEB_RUNNING web_provisioning=$WEB_PROVISIONING"
             sleep 10
           done
-          exit 1
 
-      - name: Deploy web
+          [[ "$VERIFIED" == true ]] || {
+            echo 'The exact API and web revisions did not converge to active healthy state.' >&2
+            echo "api_template_image=$API_IMAGE" >&2
+            echo "api_source=$API_SOURCE" >&2
+            echo "api_ready=$API_READY" >&2
+            echo "api_ready_image=$API_READY_IMAGE" >&2
+            echo "api_active=$API_ACTIVE api_health=$API_HEALTH api_running=$API_RUNNING api_provisioning=$API_PROVISIONING" >&2
+            echo "web_template_image=$WEB_IMAGE" >&2
+            echo "web_ready=$WEB_READY" >&2
+            echo "web_ready_image=$WEB_READY_IMAGE" >&2
+            echo "web_active=$WEB_ACTIVE web_health=$WEB_HEALTH web_running=$WEB_RUNNING web_provisioning=$WEB_PROVISIONING" >&2
+            exit 1
+          }
+
+          echo "api_ready_revision=$API_READY" >> "$GITHUB_OUTPUT"
+          echo "web_ready_revision=$WEB_READY" >> "$GITHUB_OUTPUT"
+          echo "api_health=$API_HEALTH" >> "$GITHUB_OUTPUT"
+          echo "web_health=$WEB_HEALTH" >> "$GITHUB_OUTPUT"
+          echo 'ENTERPRISE_RUNTIME_TEST_AZURE_STATE=VERIFIED'
+
+      - name: Verify public API boundaries and served enterprise web
+        id: public
         shell: bash
         run: |
           set -Eeuo pipefail
-          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image "$WEB_IMAGE" --revision-suffix "ciweb-${GITHUB_RUN_ID}" --output none
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
 
-      - name: Validate web
+          expect_status() {
+            local url="$1" expected="$2" output="$3" status=''
+            for attempt in $(seq 1 30); do
+              status="$(curl -sS -H 'Cache-Control: no-cache' -o "$output" -w '%{http_code}' "$url?verification=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt" || true)"
+              [[ "$status" == "$expected" ]] && return 0
+              sleep 5
+            done
+            echo "$url returned $status; expected $expected" >&2
+            cat "$output" >&2 || true
+            return 1
+          }
+
+          expect_status "$BASE/health" 200 /tmp/verify-health
+          expect_status "$BASE/api/version" 200 /tmp/verify-version
+          expect_status "$BASE/api/enterprise-notifications/runtime/readiness" 401 /tmp/verify-runtime
+          expect_status "$BASE/api/work-lifecycle/dashboard" 401 /tmp/verify-dashboard
+          expect_status "$BASE/api/celar-ai/v1/platform/readiness" 401 /tmp/verify-celar
+
+          expect_status "$BASE/" 200 /tmp/verify-index
+          JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/verify-index | head -1)"
+          [[ -n "$JS" ]]
+          case "$JS" in
+            http*) JS_URL="$JS" ;;
+            /*) JS_URL="$BASE$JS" ;;
+            *) JS_URL="$BASE/$JS" ;;
+          esac
+          curl -sSL -H 'Cache-Control: no-cache' -o /tmp/verify-app "$JS_URL?verification=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          grep -Fq 'Created by Dr. Ahmed Adeyemi' /tmp/verify-app
+          grep -Fq 'Analytics Center' /tmp/verify-app
+          grep -Fq 'What you need to do now' /tmp/verify-app
+          grep -Fq 'Qualifications & Certifications' /tmp/verify-app
+
+          VERSION_SHA="$(sha256sum /tmp/verify-version | awk '{print $1}')"
+          WEB_SHA="$(sha256sum /tmp/verify-app | awk '{print $1}')"
+          echo "version_response_sha=$VERSION_SHA" >> "$GITHUB_OUTPUT"
+          echo "web_bundle_sha=$WEB_SHA" >> "$GITHUB_OUTPUT"
+          echo 'ENTERPRISE_RUNTIME_TEST_PUBLIC_STATE=VERIFIED'
+
+      - name: Write independent verification evidence
         shell: bash
         run: |
           set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/' || true)"
-            [[ "$STATUS" == "200" ]] && exit 0
-            sleep 10
-          done
-          exit 1
+          mkdir -p evidence
+          cat > evidence/enterprise-runtime-test-verification.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "$EXPECTED_RELEASE_COMMIT",
+            "verificationControlCommit": "${{ github.event.pull_request.head.sha }}",
+            "deploymentRunId": "30761287049",
+            "verificationRunId": "${{ github.run_id }}",
+            "apiImage": "$EXPECTED_API_IMAGE",
+            "webImage": "$EXPECTED_WEB_IMAGE",
+            "apiReadyRevision": "${{ steps.azure.outputs.api_ready_revision }}",
+            "webReadyRevision": "${{ steps.azure.outputs.web_ready_revision }}",
+            "apiHealth": "${{ steps.azure.outputs.api_health }}",
+            "webHealth": "${{ steps.azure.outputs.web_health }}",
+            "versionResponseSha256": "${{ steps.public.outputs.version_response_sha }}",
+            "webBundleSha256": "${{ steps.public.outputs.web_bundle_sha }}",
+            "activeRevisionMode": "Single",
+            "azureMutationCommands": 0,
+            "databaseMigrationsExecuted": 0,
+            "productionOperation": false
+          }
+          JSON
+          sha256sum evidence/enterprise-runtime-test-verification.json > evidence/SHA256SUMS
+          cat evidence/enterprise-runtime-test-verification.json
 
-      - name: Roll back on failure
-        if: failure()
+      - name: Upload independent verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: enterprise-runtime-test-verification-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Sign out of Azure
+        if: always()
         shell: bash
-        run: |
-          set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rbapi-${GITHUB_RUN_ID}" --output none
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbweb-${GITHUB_RUN_ID}" --output none
+        run: az logout || true
