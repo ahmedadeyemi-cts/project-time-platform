@@ -18,12 +18,12 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-role-workspace-entra-crm-governance.mjs'
       - 'src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-069-qualifications.mjs'
-      - 'database/migrations/061_super_administrator_permanent_full_control.sql'
-      - 'database/rollback/061_super_administrator_permanent_full_control_rollback.sql'
-      - 'database/migrations/062_project_management_billing_role_access_repair.sql'
-      - 'database/rollback/062_project_management_billing_role_access_repair_rollback.sql'
-      - 'tests/test-super-administrator-permanent-full-control-migration-061.sh'
-      - 'tests/test-project-management-billing-role-access-migration-062.sh'
+      - 'database/migrations/062_super_administrator_permanent_full_control.sql'
+      - 'database/rollback/062_super_administrator_permanent_full_control_rollback.sql'
+      - 'database/migrations/063_project_management_billing_role_access_repair.sql'
+      - 'database/rollback/063_project_management_billing_role_access_repair_rollback.sql'
+      - 'tests/test-super-administrator-permanent-full-control-migration-062.sh'
+      - 'tests/test-project-management-billing-role-access-migration-063.sh'
       - 'docs/modules/module-069-qualifications-certifications/**'
   workflow_dispatch:
 
@@ -60,6 +60,7 @@ jobs:
           printf '%s\n' "$changed"
           ! grep -Eq '(^|/)(CelarAiEnterprise|CelarAiEnterprisePlatformModule|AnalyticsCenterEnterprise|AnalyticsCenterEnterpriseModule|ProjectCloseoutGuidedCenter)' <<<"$changed"
           ! grep -Eq '^database/migrations/060_analytics_center_enterprise_experience' <<<"$changed"
+          ! grep -Eq '^database/migrations/061_celar_ai_capability_routing' <<<"$changed"
           echo 'ROLE_ACCESS_REPAIR_PROTECTED_PARALLEL_FEATURES_UNCHANGED=YES'
 
       - name: Set up .NET 10
@@ -84,13 +85,13 @@ jobs:
           dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
 
-      - name: Test migration 061 apply rollback and reapply
+      - name: Test migration 062 administrator authority apply rollback and reapply
         shell: bash
-        run: bash tests/test-super-administrator-permanent-full-control-migration-061.sh
+        run: bash tests/test-super-administrator-permanent-full-control-migration-062.sh
 
-      - name: Test migration 062 apply rollback and reapply
+      - name: Test migration 063 PM and Billing apply rollback and reapply
         shell: bash
-        run: bash tests/test-project-management-billing-role-access-migration-062.sh
+        run: bash tests/test-project-management-billing-role-access-migration-063.sh
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
@@ -179,10 +180,10 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           ## Role access repair validation
 
-          - Super Administrator permanent Full Control: validated
+          - Super Administrator permanent Full Control: validated by migration 062
           - Legacy Administrator reconciliation: validated
           - Module 026 and Module 065 authority contract: validated
-          - Project Management own time and project approval: validated
+          - Project Management own time and project approval: validated by migration 063
           - Project Management holiday, expense, and own qualifications: validated
           - Billing Module 008 Audit History exclusion: validated
           - Accounting Audit History preservation: validated
