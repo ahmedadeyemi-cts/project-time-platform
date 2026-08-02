@@ -115,6 +115,8 @@ INSERT INTO app_roles (role_code, role_name, display_order) VALUES
   ('PROJECT_MANAGER', 'Project Manager', 10),
   ('PROJECT_MANAGEMENT', 'Project Management', 20),
   ('PROJECT_MANAGEMENT_LEAD', 'Project Management Lead', 30),
+  ('PROJECT_MANAGEMENT_TEAM_LEAD', 'Project Management Team Lead', 31),
+  ('PM_TEAM_LEAD', 'PM Team Lead', 32),
   ('BILLING', 'Billing', 40),
   ('ACCOUNTING_BILLING', 'Accounting Billing', 50),
   ('FINANCE', 'Finance', 60),
@@ -164,7 +166,7 @@ apply_migration
 
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_project_management_billing_role_access_repair';")" migration_registered_once
 assert_eq 2 "$(value "SELECT COUNT(*) FROM app_permissions WHERE permission_code IN ('VIEW_QUALIFICATIONS_069','MANAGE_OWN_QUALIFICATIONS_069');")" qualification_permissions_created
-assert_eq 45 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('PROJECT_MANAGER','PROJECT_MANAGEMENT','PROJECT_MANAGEMENT_LEAD') AND permission.permission_code IN ('VIEW_TIME_ENTRY','EDIT_OWN_TIME','SUBMIT_OWN_TIME','VIEW_APPROVAL_INBOX','APPROVE_TIME','REJECT_TIME','PROJECT_TIME_APPROVAL','VIEW_HOLIDAYS','VIEW_CALENDAR','VIEW_EXPENSES','MANAGE_EXPENSES','VIEW_PROJECT_WORKSPACE','VIEW_REPORTS','VIEW_QUALIFICATIONS_069','MANAGE_OWN_QUALIFICATIONS_069');")" pm_required_permissions_complete
+assert_eq 75 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('PROJECT_MANAGER','PROJECT_MANAGEMENT','PROJECT_MANAGEMENT_LEAD','PROJECT_MANAGEMENT_TEAM_LEAD','PM_TEAM_LEAD') AND permission.permission_code IN ('VIEW_TIME_ENTRY','EDIT_OWN_TIME','SUBMIT_OWN_TIME','VIEW_APPROVAL_INBOX','APPROVE_TIME','REJECT_TIME','PROJECT_TIME_APPROVAL','VIEW_HOLIDAYS','VIEW_CALENDAR','VIEW_EXPENSES','MANAGE_EXPENSES','VIEW_PROJECT_WORKSPACE','VIEW_REPORTS','VIEW_QUALIFICATIONS_069','MANAGE_OWN_QUALIFICATIONS_069');")" pm_required_permissions_complete
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('BILLING','ACCOUNTING_BILLING','FINANCE') AND permission.permission_code='VIEW_AUDIT_TRAIL';")" billing_audit_removed
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code='ACCOUNTING' AND permission.permission_code='VIEW_AUDIT_TRAIL';")" accounting_audit_preserved
 assert_eq 2 "$(value "SELECT COUNT(*) FROM projectpulse_role_scope_rules WHERE role_code IN ('PROJECT_MANAGEMENT','PROJECT_MANAGEMENT_LEAD') AND can_view_assigned_self=TRUE AND can_approve_time=TRUE;")" pm_scope_corrected
@@ -180,7 +182,7 @@ assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id=
 assert_eq 3 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code IN ('BILLING','ACCOUNTING_BILLING','FINANCE') AND permission.permission_code='VIEW_AUDIT_TRAIL';")" billing_audit_restored
 assert_eq 1 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code='PROJECT_MANAGEMENT' AND permission.permission_code='VIEW_TIME_ENTRY';")" preexisting_pm_grant_preserved
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_role_permissions relationship JOIN app_roles role ON role.app_role_id=relationship.app_role_id JOIN app_permissions permission ON permission.app_permission_id=relationship.app_permission_id WHERE role.role_code='PROJECT_MANAGEMENT' AND permission.permission_code='MANAGE_OWN_QUALIFICATIONS_069';")" migration_pm_grant_removed
-assert_eq 'f|f|original PM scope' "$(value "SELECT can_view_assigned_self::text || '|' || can_approve_time::text || '|' || notes FROM projectpulse_role_scope_rules WHERE role_code='PROJECT_MANAGEMENT';")" pm_scope_restored
+assert_eq 'false|false|original PM scope' "$(value "SELECT can_view_assigned_self::text || '|' || can_approve_time::text || '|' || notes FROM projectpulse_role_scope_rules WHERE role_code='PROJECT_MANAGEMENT';")" pm_scope_restored
 
 apply_migration
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='062_project_management_billing_role_access_repair';")" migration_reapplied
