@@ -1,95 +1,344 @@
-name: ProjectPulse Deploy Test
+name: Verify Live UI Route Authority Test Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        required: true
-        default: test
-        type: choice
-        options: [test]
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/projectpulse-deploy-test.yml'
 
 permissions:
   id-token: write
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-test
+  group: projectpulse-live-ui-route-authority-test-verification
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/live-ui-route-authority-test-fbbd2235-20260802'
+    name: Independently verify live UI route authority in Test
     environment: test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 60
+    env:
+      EXPECTED_RELEASE_COMMIT: fbbd22353e7ef79d8f44348f2936918a8cfe04bb
+      EXPECTED_CONTROL_BRANCH: verify/live-ui-route-authority-test-fbbd2235-20260802
+      CONTROL_WORKFLOW: .github/workflows/projectpulse-deploy-test.yml
+      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:e447cb7fb93f56b2d18ec17dacac939f2b6e733c40c5885a7b7488b218cf659d
+      EXPECTED_WEB_REVISION: ca-phd-test-web-westus3--ui30763746902a1
+      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:f1da6bffde3447ab4860de673df5fdf07c9a656cac994251e51b8c597fee498f
+      EXPECTED_API_SOURCE: f739e85650ae32e82f49e895ebf95d739bfb4a6a
+      EXPECTED_API_REVISION: ca-phd-test-api-westus3--entapi-30761287049
+      USER_REPORTED_URL: https://phd-west-test.onenecklab.com
 
-      - uses: azure/login@v2
+    steps:
+      - name: Check out exact verification control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact main and read-only verification scope
+        id: guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_CONTROL_BRANCH" ]]
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+
+          HEAD="$(git rev-parse HEAD)"
+          [[ "$HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
+          git fetch origin main --no-tags
+          MAIN="$(git rev-parse origin/main)"
+          [[ "$MAIN" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" "$HEAD"
+
+          CHANGED="$(git diff --name-only "$EXPECTED_RELEASE_COMMIT"..."$HEAD")"
+          printf '%s\n' "$CHANGED"
+          [[ "$CHANGED" == "$CONTROL_WORKFLOW" ]]
+
+          ! grep -nE 'az[[:space:]]+containerapp[[:space:]]+(update|create|delete)|az[[:space:]]+acr[[:space:]]+build|psql|PROJECTPULSE_TEST_DATABASE_URL' "$CONTROL_WORKFLOW"
+          echo "control_commit=$HEAD" >> "$GITHUB_OUTPUT"
+          echo 'LIVE_UI_VERIFICATION_SCOPE=READ_ONLY'
+          echo 'LIVE_UI_AZURE_MUTATION_COMMANDS=0'
+          echo 'LIVE_UI_DATABASE_OPERATIONS=0'
+
+      - name: Set up Node.js 24 for browser verification
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Sign in to Azure Test through OIDC
+        uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current release
-        id: before
+      - name: Verify exact immutable web and unchanged API revisions
+        id: azure
         shell: bash
         run: |
           set -Eeuo pipefail
-          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          mkdir -p evidence/azure
 
-      - name: Build API and web images
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          API_TAG="ci-${GITHUB_SHA}"
-          WEB_TAG="ci-${GITHUB_SHA}"
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-api:$API_TAG" --file deployment/containers/api/Dockerfile .
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-web:$WEB_TAG" --file deployment/containers/web/Dockerfile .
+          ACTIVE_WEB="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          WEB_READY="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          WEB_REVISION="$(az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$EXPECTED_WEB_REVISION" --query '{image:properties.template.containers[0].image,provisioningState:properties.provisioningState,healthState:properties.healthState,active:properties.active,trafficWeight:properties.trafficWeight}' -o json --only-show-errors)"
 
-      - name: Deploy API
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --set-env-vars PROJECTPULSE_ENVIRONMENT=test --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
+          ACTIVE_API="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_READY="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          API_SOURCE="$(az containerapp show -g "$RG" -n "$API_APP" --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RG" -n "$API_APP" --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
 
-      - name: Validate API
+          [[ "$ACTIVE_WEB" == "$EXPECTED_WEB_IMAGE" ]]
+          [[ "$WEB_READY" == "$EXPECTED_WEB_REVISION" ]]
+          [[ "${WEB_MODE,,}" == single ]]
+          jq -e --arg image "$EXPECTED_WEB_IMAGE" '.image == $image and (.active == true) and ((.healthState // "") | ascii_downcase) == "healthy"' <<<"$WEB_REVISION" >/dev/null
+
+          [[ "$ACTIVE_API" == "$EXPECTED_API_IMAGE" ]]
+          [[ "$API_READY" == "$EXPECTED_API_REVISION" ]]
+          [[ "$API_SOURCE" == "$EXPECTED_API_SOURCE" ]]
+          [[ "${API_MODE,,}" == single ]]
+
+          cat > evidence/azure/state.json <<JSON
+          {
+            "webImage": "$ACTIVE_WEB",
+            "webReadyRevision": "$WEB_READY",
+            "webRevisionMode": "$WEB_MODE",
+            "webRevision": $WEB_REVISION,
+            "apiImage": "$ACTIVE_API",
+            "apiReadyRevision": "$API_READY",
+            "apiSourceCommit": "$API_SOURCE",
+            "apiRevisionMode": "$API_MODE"
+          }
+          JSON
+          echo 'LIVE_UI_AZURE_REVISION_VERIFICATION=PASSED'
+
+      - name: Verify served bundle from both public Test addresses
         shell: bash
         run: |
           set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
-            case "$STATUS" in 200|401) exit 0 ;; esac
-            sleep 10
+          mkdir -p evidence/live
+          verify_surface() {
+            local label="$1" base="$2" safe status js_rel js_url buster
+            base="${base%/}"
+            safe="$(tr -cs 'A-Za-z0-9' '_' <<<"$label" | sed 's/^_*//;s/_*$//')"
+            buster="verify-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${safe}"
+            status="$(curl -sS -L --connect-timeout 15 --max-time 45 -D "evidence/live/$safe-index.headers" -o "evidence/live/$safe-index.html" -w '%{http_code}' -H 'Cache-Control: no-cache' "$base/?verification=$buster")"
+            [[ "$status" == 200 ]]
+            js_rel="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' "evidence/live/$safe-index.html" | head -1)"
+            [[ -n "$js_rel" ]]
+            case "$js_rel" in
+              http*) js_url="$js_rel" ;;
+              /*) js_url="$base$js_rel" ;;
+              *) js_url="$base/$js_rel" ;;
+            esac
+            curl -sS -L --connect-timeout 15 --max-time 60 -D "evidence/live/$safe-app.headers" -o "evidence/live/$safe-app.js" -H 'Cache-Control: no-cache' "$js_url?verification=$buster"
+            test -s "evidence/live/$safe-app.js"
+            for marker in \
+              'MODULE_030_NATIVE_REACT_ROUTE' \
+              'projectpulse:route-canonicalized' \
+              'Celar AI Architecture Overview' \
+              'Test sender and transport' \
+              'Full Control · Organization-wide' \
+              'Analytics Center'; do
+              grep -Fq "$marker" "evidence/live/$safe-app.js"
+            done
+            sha256sum "evidence/live/$safe-app.js" > "evidence/live/$safe-app.sha256"
+            echo "LIVE_UI_BUNDLE_${safe}=PASSED"
+          }
+
+          verify_surface configured_public '${{ vars.PUBLIC_URL }}'
+          verify_surface user_reported "$USER_REPORTED_URL"
+
+      - name: Exercise live route canonicalization and overlay suppression in headless Chrome
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence/browser
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          [[ -n "$CHROME" ]]
+
+          PROFILE="$RUNNER_TEMP/live-ui-verifier-profile"
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --ignore-certificate-errors \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9222 \
+            --user-data-dir="$PROFILE" \
+            about:blank \
+            > evidence/browser/chrome.log 2>&1 &
+          CHROME_PID=$!
+          cleanup() { kill "$CHROME_PID" 2>/dev/null || true; }
+          trap cleanup EXIT INT TERM
+
+          for attempt in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:9222/json/version > evidence/browser/chrome-version.json 2>/dev/null && break
+            sleep 1
           done
-          exit 1
+          test -s evidence/browser/chrome-version.json
 
-      - name: Deploy web
+          cat > "$RUNNER_TEMP/verify-live-ui-routes.mjs" <<'NODE'
+          import fs from 'node:fs';
+
+          const base = process.env.USER_REPORTED_URL.replace(/\/$/, '');
+          const startUrl = `${base}/?browser_verification=${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}#dashboard`;
+          const targetResponse = await fetch(`http://127.0.0.1:9222/json/new?${encodeURIComponent(startUrl)}`, { method: 'PUT' });
+          if (!targetResponse.ok) throw new Error(`Unable to create Chrome target: HTTP ${targetResponse.status}`);
+          const target = await targetResponse.json();
+          const socket = new WebSocket(target.webSocketDebuggerUrl);
+          const pending = new Map();
+          let commandId = 0;
+
+          await new Promise((resolve, reject) => {
+            socket.addEventListener('open', resolve, { once: true });
+            socket.addEventListener('error', () => reject(new Error('Chrome DevTools WebSocket failed to open.')), { once: true });
+          });
+
+          socket.addEventListener('message', (event) => {
+            const message = JSON.parse(String(event.data));
+            if (!message.id) return;
+            const waiter = pending.get(message.id);
+            if (!waiter) return;
+            pending.delete(message.id);
+            if (message.error) waiter.reject(new Error(message.error.message || 'Chrome DevTools command failed.'));
+            else waiter.resolve(message.result || {});
+          });
+
+          function command(method, params = {}) {
+            const id = ++commandId;
+            socket.send(JSON.stringify({ id, method, params }));
+            return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+          }
+
+          async function evaluate(expression) {
+            const response = await command('Runtime.evaluate', {
+              expression,
+              awaitPromise: true,
+              returnByValue: true
+            });
+            if (response.exceptionDetails) throw new Error(`Browser evaluation failed: ${response.exceptionDetails.text || 'unknown error'}`);
+            return response.result?.value;
+          }
+
+          async function waitFor(predicate, label, maximum = 80) {
+            for (let attempt = 1; attempt <= maximum; attempt += 1) {
+              if (await predicate()) return;
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+            throw new Error(`Timed out waiting for ${label}.`);
+          }
+
+          await command('Page.enable');
+          await command('Runtime.enable');
+          await command('Page.navigate', { url: startUrl });
+          await waitFor(
+            () => evaluate(`document.readyState === 'complete' && window.__projectPulse030RuntimeAuthority === 'MODULE_030_NATIVE_REACT_ROUTE'`),
+            'the live UI runtime authority'
+          );
+
+          const routes = [
+            ['analytics-center', 'reporting'],
+            ['celar-ai', 'work-task-builder'],
+            ['crm-erp', 'crm-integration'],
+            ['microsoft-integration', 'entra-secret-administration'],
+            ['module-065', 'entra-secret-administration']
+          ];
+          const observations = [];
+          for (const [alias, canonical] of routes) {
+            await evaluate(`window.location.hash = ${JSON.stringify(`#${alias}`)}; true`);
+            await waitFor(
+              () => evaluate(`window.location.hash === ${JSON.stringify(`#${canonical}`)}`),
+              `${alias} to canonicalize to ${canonical}`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 750));
+            const observation = await evaluate(`({
+              alias: ${JSON.stringify(alias)},
+              expected: ${JSON.stringify(canonical)},
+              hash: window.location.hash,
+              canonicalRoute: window.__projectPulseCanonicalRoute || '',
+              authority: window.__projectPulse030RuntimeAuthority || '',
+              nativeAnalytics: window.__projectPulse030NativeReactRoute === true,
+              stylePresent: Boolean(document.getElementById('projectpulse-030-native-react-route-style')),
+              retiredShellPresent: Boolean(document.getElementById('projectpulse-030-shell')),
+              retiredCardPresent: Boolean(document.getElementById('projectpulse-030-reporting-card')),
+              documentReadyState: document.readyState
+            })`);
+            if (observation.hash !== `#${canonical}`) throw new Error(`${alias} remained at ${observation.hash}.`);
+            if (observation.authority !== 'MODULE_030_NATIVE_REACT_ROUTE') throw new Error('Runtime authority marker is missing.');
+            if (!observation.nativeAnalytics || !observation.stylePresent) throw new Error('Native Analytics authority did not execute.');
+            if (observation.retiredShellPresent || observation.retiredCardPresent) throw new Error('A retired Module 030 overlay is still present.');
+            observations.push(observation);
+          }
+
+          const result = {
+            startUrl,
+            verifiedAt: new Date().toISOString(),
+            title: await evaluate('document.title'),
+            observations
+          };
+          fs.writeFileSync('evidence/browser/live-route-verification.json', `${JSON.stringify(result, null, 2)}\n`);
+          console.log(JSON.stringify(result, null, 2));
+          socket.close();
+          NODE
+
+          node "$RUNNER_TEMP/verify-live-ui-routes.mjs"
+          test -s evidence/browser/live-route-verification.json
+          echo 'LIVE_UI_BROWSER_ROUTE_VERIFICATION=PASSED'
+
+      - name: Write independent verification evidence
         shell: bash
         run: |
           set -Eeuo pipefail
-          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image "$WEB_IMAGE" --revision-suffix "ciweb-${GITHUB_RUN_ID}" --output none
+          cat > evidence/live-ui-route-authority-test-verification.json <<JSON
+          {
+            "environment": "test",
+            "releaseCommit": "$EXPECTED_RELEASE_COMMIT",
+            "verificationControlCommit": "${{ steps.guard.outputs.control_commit }}",
+            "deploymentRunId": "30763746902",
+            "verificationRunId": "${{ github.run_id }}",
+            "verificationRunAttempt": "${{ github.run_attempt }}",
+            "webImage": "$EXPECTED_WEB_IMAGE",
+            "webReadyRevision": "$EXPECTED_WEB_REVISION",
+            "apiImageUnchanged": "$EXPECTED_API_IMAGE",
+            "apiSourceUnchanged": "$EXPECTED_API_SOURCE",
+            "apiReadyRevisionUnchanged": "$EXPECTED_API_REVISION",
+            "activeRevisionMode": "Single",
+            "configuredPublicBundleVerified": true,
+            "userReportedBundleVerified": true,
+            "browserRouteCanonicalizationVerified": true,
+            "retiredAnalyticsOverlayPresent": false,
+            "azureMutationCommands": 0,
+            "databaseOperations": 0,
+            "productionOperation": false
+          }
+          JSON
+          sha256sum evidence/live-ui-route-authority-test-verification.json > evidence/SHA256SUMS
+          cat evidence/live-ui-route-authority-test-verification.json
 
-      - name: Validate web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/' || true)"
-            [[ "$STATUS" == "200" ]] && exit 0
-            sleep 10
-          done
-          exit 1
+      - name: Upload independent verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-ui-route-authority-test-verification-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Roll back on failure
-        if: failure()
+      - name: Sign out of Azure
+        if: always()
         shell: bash
-        run: |
-          set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rbapi-${GITHUB_RUN_ID}" --output none
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbweb-${GITHUB_RUN_ID}" --output none
+        run: az logout || true
