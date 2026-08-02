@@ -1,31 +1,29 @@
-name: PR436 Build Mutation Diagnostic
+name: PR436 Canonical Build Output Repair
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
     branches:
       - release/consolidated-enterprise-validation-20260802
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: pr436-build-mutation-diagnostic-${{ github.ref }}
+  group: pr436-canonical-build-output-repair-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  capture-build-mutation:
+  commit-canonical-output:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Check out exact source
+      - name: Check out exact branch head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: release/consolidated-enterprise-validation-20260802
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -42,24 +40,38 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: npm run build
 
-      - name: Capture deterministic source mutation
+      - name: Verify and commit only canonical generated outputs
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p /tmp/pr436-build-mutation
-          git status --porcelain=v1 > /tmp/pr436-build-mutation/status.txt
-          git diff --name-status > /tmp/pr436-build-mutation/name-status.txt
-          git diff --stat > /tmp/pr436-build-mutation/stat.txt
-          git diff --binary > /tmp/pr436-build-mutation/build-mutation.patch
-          while IFS= read -r -d '' path; do
-            mkdir -p "/tmp/pr436-build-mutation/files/$(dirname "$path")"
-            cp -- "$path" "/tmp/pr436-build-mutation/files/$path"
-          done < <(git diff --name-only -z --diff-filter=ACMRTUXB)
+          expected="$(cat <<'EOF'
+src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx
+src/frontend/project-time-web/src/HelpAssistant.jsx
+src/frontend/project-time-web/src/PulseAiCenter.jsx
+src/frontend/project-time-web/src/PulseAiMissionControl.jsx
+EOF
+          )"
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' "$expected" | LC_ALL=C sort)"
 
-      - name: Upload exact build mutation
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: pr436-build-mutation-${{ github.sha }}
-          path: /tmp/pr436-build-mutation
-          if-no-files-found: error
-          retention-days: 1
+          if [ "$actual" != "$expected" ]; then
+            echo "The production build changed an unexpected file set." >&2
+            echo "Expected:" >&2
+            printf '%s\n' "$expected" >&2
+            echo "Actual:" >&2
+            printf '%s\n' "$actual" >&2
+            git status --short >&2
+            exit 1
+          fi
+
+          git diff --check
+          git add -- \
+            src/frontend/project-time-web/src/AiProviderConfigurationCenter.jsx \
+            src/frontend/project-time-web/src/HelpAssistant.jsx \
+            src/frontend/project-time-web/src/PulseAiCenter.jsx \
+            src/frontend/project-time-web/src/PulseAiMissionControl.jsx
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(celar-ai): commit canonical frontend build outputs"
+          git push origin HEAD:release/consolidated-enterprise-validation-20260802
