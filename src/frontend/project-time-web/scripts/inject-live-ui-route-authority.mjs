@@ -74,7 +74,17 @@ function normalizeRoute(hash) {
   }`;
 
   const governedPermissionGate = `  function hasActualAdministratorAuthority() {
-    return !securityContext.data?.isViewAs && userIsAdministrator(securityContext.data);
+    if (securityContext.data?.isViewAs) return false;
+    const roleCodes = securityContext.data?.roles?.map((role) =>
+      String(role?.roleCode ?? '').toUpperCase()
+    ) ?? [];
+    const permissions = securityContext.data?.permissions?.map((permission) =>
+      String(permission ?? '').toUpperCase()
+    ) ?? [];
+    return roleCodes.includes('SUPER_ADMINISTRATOR')
+      || roleCodes.includes('ADMINISTRATOR')
+      || permissions.includes('SYSTEM_ADMINISTRATION')
+      || permissions.includes('MANAGE_ALL');
   }
 
   function hasPermission(permissionCode) {
@@ -119,7 +129,10 @@ function normalizeRoute(hash) {
     "'crm-erp': 'crm-integration'",
     "'microsoft-integration': 'entra-secret-administration'",
     'function hasActualAdministratorAuthority()',
-    '!securityContext.data?.isViewAs && userIsAdministrator(securityContext.data)',
+    "roleCodes.includes('SUPER_ADMINISTRATOR')",
+    "roleCodes.includes('ADMINISTRATOR')",
+    "permissions.includes('SYSTEM_ADMINISTRATION')",
+    "permissions.includes('MANAGE_ALL')",
     'data-authoritative-module="030"',
     '<AnalyticsCenter authSession={authSession} />',
     '<CrmErpIntegrationCenter />',
