@@ -49,7 +49,22 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'qualifications-certifications',
     'user-guide'
   ]),
-  accountingBilling: Object.freeze([
+  accounting: Object.freeze([
+    'workflow',
+    'audit-history',
+    'customer-directory',
+    'reporting',
+    'financial-operations-workbench',
+    'notification-delivery-monitor',
+    'certify-integration',
+    'billing-readiness',
+    'project-closeout',
+    'closeout-email',
+    'invoice-billing-center',
+    'contracts',
+    'user-guide'
+  ]),
+  billing: Object.freeze([
     'workflow',
     'customer-directory',
     'reporting',
@@ -184,13 +199,16 @@ export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, mo
 
   const routes = new Set((permissionFilteredModules ?? []).map((module) => module.route));
   const projectManagement = hasAny(roleCodes, PROJECT_MANAGEMENT_ROLES);
-  const accountingBilling = hasAny(roleCodes, ACCOUNTING_ROLES) || hasAny(roleCodes, BILLING_ROLES);
+  const accounting = hasAny(roleCodes, ACCOUNTING_ROLES);
+  const billing = hasAny(roleCodes, BILLING_ROLES);
+  const accountingBilling = accounting || billing;
   const sales = hasAny(roleCodes, SALES_ROLES) || hasAny(roleCodes, INSIDE_SALES_ROLES);
   const coordinator = hasAny(roleCodes, COORDINATOR_ROLES);
 
   const baselineRoutes = new Set();
   if (projectManagement) ROLE_WORKSPACE_BASELINES.projectManagement.forEach((route) => baselineRoutes.add(route));
-  if (accountingBilling) ROLE_WORKSPACE_BASELINES.accountingBilling.forEach((route) => baselineRoutes.add(route));
+  if (accounting) ROLE_WORKSPACE_BASELINES.accounting.forEach((route) => baselineRoutes.add(route));
+  if (billing) ROLE_WORKSPACE_BASELINES.billing.forEach((route) => baselineRoutes.add(route));
   if (sales) ROLE_WORKSPACE_BASELINES.sales.forEach((route) => baselineRoutes.add(route));
   if (coordinator) ROLE_WORKSPACE_BASELINES.coordinator.forEach((route) => baselineRoutes.add(route));
 
@@ -208,13 +226,20 @@ export function applyRoleWorkspaceGovernance(user, permissionFilteredModules, mo
     && !accountingBilling
     && !sales
     && !coordinator;
-  const pureAccountingBilling = accountingBilling
+  const pureAccounting = accounting
+    && !billing
+    && !hasOperationalRole
+    && !projectManagement
+    && !sales
+    && !coordinator;
+  const pureBilling = billing
+    && !accounting
     && !hasOperationalRole
     && !projectManagement
     && !sales
     && !coordinator;
 
-  if (pureProjectManagement || pureAccountingBilling) {
+  if (pureProjectManagement || pureAccounting || pureBilling) {
     return activeRegistryModules(moduleRegistry).filter((module) => (
       baselineRoutes.has(module.route) && routes.has(module.route)
     ));
