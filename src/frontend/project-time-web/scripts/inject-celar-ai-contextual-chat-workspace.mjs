@@ -26,7 +26,7 @@ replaceRequired(
 
 replaceRequired(
   `  text: 'Ask any question about Pulse. I can explain modules and workflows, discover the APIs registered in the running application, use authorized read-only troubleshooting evidence, analyze projects and private documents, explain reports and financials, and prepare detailed future-enhancement blueprints. Completed conversations remain available after closing or refreshing this page.'\n});\n\nfunction asArray(value) {`,
-  `  text: 'Ask any question about Pulse. This opens as a fresh chat: previous conversations remain in your History, but they are not automatically inserted into this conversation. I can explain how to use the platform, summarize authorized work and assignments, discover running APIs, troubleshoot the system, analyze projects and documents, explain reports and financials, and prepare detailed future-enhancement blueprints.'\n});\n\nconst CELAR_AI_CHAT_SIZE_KEY = 'celarAiChatSize';\nconst CELAR_AI_CHAT_SIZES = Object.freeze(['compact', 'standard', 'wide', 'fullscreen']);\n\nfunction initialChatSize() {\n  try {\n    const saved = window.localStorage.getItem(CELAR_AI_CHAT_SIZE_KEY);\n    return CELAR_AI_CHAT_SIZES.includes(saved) ? saved : 'standard';\n  } catch {\n    return 'standard';\n  }\n}\n\nfunction asArray(value) {`,
+  `  text: 'Ask any question about Pulse. This opens as a fresh chat: previous conversations remain in your History, but they are not automatically inserted into this conversation. I can explain how to use the platform, summarize authorized work and assignments, discover running APIs, troubleshoot the system, analyze projects and documents, explain reports and financials, and prepare detailed future-enhancement blueprints.'\n});\n\nconst CELAR_AI_CHAT_SIZES = Object.freeze(['compact', 'standard', 'wide', 'fullscreen']);\n\nfunction initialChatSize() {\n  return 'standard';\n}\n\nfunction asArray(value) {`,
   'fresh_welcome_and_size_contract');
 
 replaceRequired(
@@ -48,11 +48,6 @@ replaceRequired(
   `  async function hydrate() {\n    if (hydrated) return;\n    setHistoryLoading(true);\n    try {\n      const selected = await refreshConversationList();\n      if (selected) {\n        await loadConversation(selected);\n      } else {\n        await createConversation();\n      }\n    } catch {\n      setMessages([WELCOME_MESSAGE]);\n    } finally {\n      setHydrated(true);\n      setHistoryLoading(false);\n    }\n  }`,
   `  async function hydrate() {\n    if (hydrated) return;\n    setHistoryLoading(true);\n    try {\n      await refreshConversationList();\n      setActiveConversationId('');\n      setMessages([WELCOME_MESSAGE]);\n      followLatestRef.current = true;\n    } catch {\n      setActiveConversationId('');\n      setMessages([WELCOME_MESSAGE]);\n    } finally {\n      setHydrated(true);\n      setHistoryLoading(false);\n    }\n  }\n\n  function beginFreshConversation() {\n    setActiveConversationId('');\n    setMessages([WELCOME_MESSAGE]);\n    setQuestion('');\n    setHistoryOpen(false);\n    followLatestRef.current = true;\n    window.setTimeout(() => inputRef.current?.focus(), 40);\n  }`,
   'fresh_hydration_policy');
-
-replaceRequired(
-  `  useEffect(() => {\n    if (!isOpen || !followLatestRef.current) return;`,
-  `  useEffect(() => {\n    try {\n      window.localStorage.setItem(CELAR_AI_CHAT_SIZE_KEY, chatSize);\n    } catch {\n      // Window preference is optional and contains no conversation content.\n    }\n  }, [chatSize]);\n\n  useEffect(() => {\n    if (!isOpen || !followLatestRef.current) return;`,
-  'size_preference_effect');
 
 replaceRequired(
   `          conversationId = await createConversation();`,
