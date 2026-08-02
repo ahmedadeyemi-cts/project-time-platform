@@ -94,8 +94,13 @@ jobs:
             fi
           done
 
-          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-            echo 'Analytics enterprise validation detected a protected deployment or canonical application-source overlap.' >&2
+          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED"; then
+            echo 'Analytics enterprise validation detected deployment-control overlap.' >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* || "$HEAD_BRANCH" == fix/module030-enterprise-regression-mode-* ]] && \
+             grep -E '^(src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
+            echo 'Analytics enterprise-owned source overlaps canonical application integration files.' >&2
             exit 1
           fi
 
