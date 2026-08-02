@@ -70,10 +70,6 @@ jobs:
             fi
             echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
           else
-            # Shared build-target changes from another feature must validate the
-            # already-merged Analytics experience instead of being misclassified
-            # as Analytics-owned source. Direct changes to Analytics-owned files
-            # remain prohibited on unrelated branches.
             DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_ANALYTICS" ]]; then
               echo 'An unrelated branch directly changes Analytics enterprise-owned source:' >&2
@@ -94,8 +90,13 @@ jobs:
             fi
           done
 
-          if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED"; then
-            echo 'Analytics enterprise validation detected deployment-control overlap.' >&2
+          DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
+            echo 'Analytics enterprise validation detected deployment-control overlap:' >&2
+            printf '%s\n' "$DEPLOYMENT_OVERLAP" >&2
             exit 1
           fi
           if [[ "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* || "$HEAD_BRANCH" == fix/module030-enterprise-regression-mode-* ]] && \
@@ -303,6 +304,7 @@ jobs:
             echo
             echo "- Validation mode: ${ANALYTICS_ENTERPRISE_VALIDATION_MODE:-UNKNOWN}"
             echo '- Shared build-target consumers run as regressions rather than Analytics-owned source.'
+            echo '- Consolidated releases may change only the static web-container Dockerfile; deployment controls remain prohibited.'
             echo '- Migration 060, source contract, API, frontend, and dependent-module validations executed.'
             echo '- No connected migration or deployment was performed.'
           } >> "$GITHUB_STEP_SUMMARY"
