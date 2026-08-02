@@ -22,11 +22,9 @@ replaceRequired(
   `  function beginFreshConversation() {\n    setActiveConversationId('');\n    setMessages([WELCOME_MESSAGE]);\n    setQuestion('');\n    setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });\n    setHistoryOpen(false);\n    setContextOpen(false);`,
   'fresh_context_reset');
 
-replaceRequired(
-  `      const path = '/api/celar-ai/v1/chat';\n      const explicitContext = [`,
-  `      const path = '/api/celar-ai/v1/chat';\n      const explicitContext = [`,
-  'question_context_payload_idempotent');
-
+// questionWithContext is the durable idempotency marker. Do not require the
+// original path/explicitContext adjacency on later passes because other owned
+// injectors may add compatible content around the same request construction.
 if (!content.includes(`const questionWithContext = explicitContext.length`)) {
   replaceRequired(
     `      const path = '/api/celar-ai/v1/chat';\n      const payload = await postJson(path, {\n        conversationId: conversationId || null,\n        question: clean,`,
