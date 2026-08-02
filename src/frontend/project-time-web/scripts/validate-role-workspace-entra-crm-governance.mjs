@@ -177,7 +177,8 @@ requireIncludes(moduleAvailabilityBridge, [
 ], 'client navigation administrator invariant');
 
 requireIncludes(crmCenter, [
-  'MODULE 026 · CRM/ERP INTEGRATIONS',
+  'Module 026 · CRM/ERP integrations',
+  'Integration Control Center',
   '/api/integrations/026/providers',
   'state.payload?.access?.canManage',
 ], 'Module 026 administration UI');
