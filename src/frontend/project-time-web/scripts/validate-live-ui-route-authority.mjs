@@ -8,10 +8,11 @@ const exists = (relativePath) => fs.existsSync(path.join(webRoot, relativePath))
 
 const files = {
   generated: 'src/App.Module001.g.jsx',
-  index: 'index.html',
   distIndex: 'dist/index.html',
   chain: 'scripts/inject-celar-ai-enterprise-chat-context.mjs',
   injector: 'scripts/inject-live-ui-route-authority.mjs',
+  main: 'src/main.jsx',
+  analyticsAuthority: 'src/legacy-analytics-overlay-authority.js',
   celarPlatform: 'src/CelarAiEnterprisePlatform.jsx',
   architecture: 'src/CelarAiArchitectureOverview.jsx',
   mailPanel: 'src/MicrosoftMailTransportReadinessPanel.jsx'
@@ -30,9 +31,10 @@ for (const [name, relativePath] of Object.entries(files)) {
 }
 
 const generated = read(files.generated);
-const index = read(files.index);
 const chain = read(files.chain);
 const injector = read(files.injector);
+const main = read(files.main);
+const analyticsAuthority = read(files.analyticsAuthority);
 const celarPlatform = read(files.celarPlatform);
 const architecture = read(files.architecture);
 const mailPanel = read(files.mailPanel);
@@ -64,10 +66,14 @@ test('VIEW_AS_REMAINS_READ_ONLY', generated.includes('if (securityContext.data?.
 test('ANALYTICS_NATIVE_MOUNT', generated.includes('<AnalyticsCenter authSession={authSession} />')
   && generated.includes('data-authoritative-module="030"'));
 test('ANALYTICS_SINGLE_MOUNT', generated.split('<AnalyticsCenter authSession={authSession} />').length - 1 === 1);
-test('LEGACY_ANALYTICS_OVERLAY_DISABLED', index.includes('MODULE_030_NATIVE_REACT_ROUTE')
-  && index.includes('window.__projectPulse030NativeReactRoute = true')
-  && index.includes('removeRetiredModule030Overlay')
-  && index.includes('#projectpulse-030-shell,#projectpulse-030-reporting-card{display:none!important}'));
+test('ANALYTICS_RUNTIME_AUTHORITY_IMPORTED', main.includes("import './legacy-analytics-overlay-authority.js';"));
+test('LEGACY_ANALYTICS_OVERLAY_DISABLED', analyticsAuthority.includes('MODULE_030_NATIVE_REACT_ROUTE')
+  && analyticsAuthority.includes('MutationObserver')
+  && analyticsAuthority.includes("'projectpulse-030-shell'")
+  && analyticsAuthority.includes("'projectpulse-030-reporting-card'")
+  && analyticsAuthority.includes('display: none !important')
+  && analyticsAuthority.includes('removeRetiredModule030Overlay')
+  && analyticsAuthority.includes("window.addEventListener('hashchange', scheduleCleanup)"));
 test('CRM_NATIVE_MOUNT', generated.includes('<CrmErpIntegrationCenter />'));
 test('CELAR_NATIVE_MOUNT', generated.includes('<WorkTaskBuilderPanel />'));
 test('CELAR_ARCHITECTURE_MOUNT', celarPlatform.includes('<CelarAiArchitectureOverview />')
@@ -76,6 +82,7 @@ test('CELAR_ARCHITECTURE_MOUNT', celarPlatform.includes('<CelarAiArchitectureOve
 test('GUIDED_CLOSEOUT_ONLY', generated.includes('<ProjectCloseoutCenter />')
   && !generated.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"'));
 test('MODULE065_READINESS_VISIBLE', mailPanel.includes("const ROUTE = 'entra-secret-administration'")
+  && mailPanel.includes("'microsoft-integration': ROUTE")
   && mailPanel.includes('Test sender and transport')
   && mailPanel.includes('No live message is sent.'));
 
@@ -92,6 +99,7 @@ if (exists(files.distIndex)) {
 
 test('PRODUCTION_BUNDLE_FOUND', bundle.length > 0);
 test('PRODUCTION_BUNDLE_ANALYTICS', bundle.includes('Analytics Center'));
+test('PRODUCTION_BUNDLE_ANALYTICS_AUTHORITY', bundle.includes('MODULE_030_NATIVE_REACT_ROUTE'));
 test('PRODUCTION_BUNDLE_CELAR_ARCHITECTURE', bundle.includes('Celar AI Architecture Overview'));
 test('PRODUCTION_BUNDLE_SUPERADMIN', bundle.includes('Full Control · Organization-wide'));
 test('PRODUCTION_BUNDLE_SMTP_READINESS', bundle.includes('Test sender and transport'));
