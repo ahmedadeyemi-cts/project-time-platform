@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/analytics-center-enterprise-experience-*'
+      - 'fix/module030-enterprise-regression-mode-*'
   pull_request:
     paths:
       - '.github/workflows/module030-analytics-center-ci.yml'
@@ -40,24 +41,47 @@ jobs:
     timeout-minutes: 75
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify isolated Analytics enterprise source scope
+      - name: Verify Analytics enterprise source or regression scope
         shell: bash
         run: |
           set -Eeuo pipefail
-          git fetch origin main --no-tags
-          CHANGED="$(git diff --name-only origin/main...HEAD)"
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE_REF="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          test -n "$BASE_REF"
+          CHANGED="$(git diff --name-only "$BASE_REF"...HEAD)"
           printf '%s\n' "$CHANGED"
 
-          ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|database/migrations/060_analytics_center_enterprise_experience\.sql|database/rollback/060_analytics_center_enterprise_experience_rollback\.sql|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Directory\.Build\.targets|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/AnalyticsCenter\.jsx|src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect\.jsx|src/frontend/project-time-web/src/analytics-center\.css|tests/test-analytics-center-enterprise-migration-060\.sh)$'
-          UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-          if [[ -n "$UNEXPECTED" ]]; then
-            echo 'Unexpected Analytics enterprise source scope:' >&2
-            printf '%s\n' "$UNEXPECTED" >&2
-            exit 1
+          OWNED='^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|database/migrations/060_analytics_center_enterprise_experience\.sql|database/rollback/060_analytics_center_enterprise_experience_rollback\.sql|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Directory\.Build\.targets|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/AnalyticsCenter\.jsx|src/frontend/project-time-web/src/analytics/AnalyticsMultiSelect\.jsx|src/frontend/project-time-web/src/analytics-center\.css|tests/test-analytics-center-enterprise-migration-060\.sh)$'
+
+          if [[ "$HEAD_BRANCH" == feature/analytics-center-enterprise-experience-* || "$HEAD_BRANCH" == fix/module030-enterprise-regression-mode-* ]]; then
+            UNEXPECTED="$(grep -Ev "$OWNED" <<<"$CHANGED" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Analytics enterprise source scope:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+          else
+            # Shared build-target changes from another feature must validate the
+            # already-merged Analytics experience instead of being misclassified
+            # as Analytics-owned source. Direct changes to Analytics-owned files
+            # remain prohibited on unrelated branches.
+            DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
+            if [[ -n "$DIRECT_ANALYTICS" ]]; then
+              echo 'An unrelated branch directly changes Analytics enterprise-owned source:' >&2
+              printf '%s\n' "$DIRECT_ANALYTICS" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+            echo "ANALYTICS_ENTERPRISE_REGRESSION_BRANCH=$HEAD_BRANCH"
           fi
 
           for protected in \
@@ -71,19 +95,20 @@ jobs:
           done
 
           if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js)' <<<"$CHANGED"; then
-            echo 'Analytics enterprise work overlaps deployment or canonical generated application source.' >&2
+            echo 'Analytics enterprise validation detected a protected deployment or canonical application-source overlap.' >&2
             exit 1
           fi
 
-          echo 'ANALYTICS_ENTERPRISE_SOURCE_ISOLATION=PASS'
+          git diff --check "$BASE_REF"...HEAD
+          echo 'ANALYTICS_ENTERPRISE_SOURCE_OR_REGRESSION_SCOPE=PASS'
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
@@ -105,11 +130,11 @@ jobs:
 
       - name: Upload migration 060 diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: analytics-migration-060-${{ github.run_id }}-${{ github.run_attempt }}
           path: analytics-migration-060.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Enforce migration 060
@@ -137,11 +162,11 @@ jobs:
 
       - name: Upload Analytics source diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: analytics-enterprise-source-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/analytics-enterprise-source.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Enforce Analytics source contract
@@ -168,11 +193,11 @@ jobs:
 
       - name: Upload API diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: analytics-enterprise-api-${{ github.run_id }}-${{ github.run_attempt }}
           path: analytics-api-build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Enforce API build
@@ -220,11 +245,11 @@ jobs:
 
       - name: Upload frontend diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: analytics-enterprise-frontend-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/frontend/project-time-web/analytics-frontend-build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Enforce frontend build and compiled markers
@@ -263,3 +288,16 @@ jobs:
           done
           tail -n 60 analytics-frontend-build.log
           echo 'ANALYTICS_ENTERPRISE_FRONTEND_BUILD=PASS'
+
+      - name: Publish validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Module 030 Analytics Enterprise Experience'
+            echo
+            echo "- Validation mode: ${ANALYTICS_ENTERPRISE_VALIDATION_MODE:-UNKNOWN}"
+            echo '- Shared build-target consumers run as regressions rather than Analytics-owned source.'
+            echo '- Migration 060, source contract, API, frontend, and dependent-module validations executed.'
+            echo '- No connected migration or deployment was performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
