@@ -208,8 +208,7 @@ jobs:
             fi
           }
 
-          if [[ -f database/migrations/060_analytics_center_enterprise_experience.sql ]] && \
-             grep -Fq '.analytics-enterprise-shell' src/analytics-center.css; then
+          if grep -Fq '.analytics-enterprise-shell' src/analytics-center.css; then
             echo 'ANALYTICS_CENTER_COMPILED_PROFILE=ENTERPRISE'
             for marker in \
               'Analytics Center' \
