@@ -135,6 +135,7 @@ public static class CrmErpIntegrationModule
             });
         }
 
+        var manageAuthority = await ResolveManageAuthorityAsync(context);
         return Results.Ok(new
         {
             module = ModuleNumber,
@@ -143,7 +144,11 @@ public static class CrmErpIntegrationModule
             access = new
             {
                 canView = true,
-                canManage = await HasManageAuthorityAsync(context),
+                canManage = manageAuthority.Allowed,
+                manageAuthoritySource = manageAuthority.Source,
+                manageMessage = manageAuthority.Message,
+                requiredPermission = "MANAGE_INTEGRATIONS_026",
+                dynamicAction = "MODULE_CONFIGURE",
                 isViewAs = IsViewAs(context),
                 viewAsTransfersMutationAuthority = false
             },

@@ -613,8 +613,7 @@ public static class EntraSecretAdministrationModule
             }
 
             var allowed =
-                roles.Contains("SUPER_ADMINISTRATOR")
-                || roles.Contains("ADMINISTRATOR")
+                ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)
                 || permissions.Contains(DelegatedPermission);
             if (!allowed)
             {

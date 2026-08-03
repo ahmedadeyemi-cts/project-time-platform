@@ -973,8 +973,12 @@ public static class Module064074NativeAdministration
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) roles.Add(reader.GetString(0));
 
-            var canManage = definition.ManageRoles.Any(roles.Contains);
-            if (requireManage && IsViewAs(context))
+            var isViewAs = IsViewAs(context);
+            var permanentFullControl =
+                ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
+            var canManage = permanentFullControl
+                || (!isViewAs && definition.ManageRoles.Any(roles.Contains));
+            if (requireManage && isViewAs)
             {
                 return new(null, Results.Json(new
                 {

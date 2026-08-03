@@ -689,7 +689,7 @@ public static class MicrosoftSsoConnectionProfilesModule
                 if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1))) permissions.Add(reader.GetString(1));
             }
 
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR");
+            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
             var allowed = administrator || permissions.Any((write ? WritePermissions : ReadPermissions).Contains);
             if (!allowed)
             {

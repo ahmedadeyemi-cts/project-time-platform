@@ -60,10 +60,25 @@
   margin-top: auto;
 }
 
-.modules-directory-card-actions > a {
+.modules-directory-card-actions > a,
+.modules-directory-open-link {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  align-items: center;
+  min-height: 40px;
+  flex: 1 1 auto;
   color: #0b6f7d;
   font-weight: 900;
   text-decoration: none;
+}
+
+.modules-directory-open-link:hover,
+.modules-directory-open-link:focus-visible {
+  color: #075985;
+  text-decoration: underline;
+  outline: 3px solid rgba(14, 165, 233, 0.24);
+  outline-offset: 3px;
 }
 
 .module-state {
