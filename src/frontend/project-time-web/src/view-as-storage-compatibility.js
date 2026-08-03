@@ -29,23 +29,22 @@ function normalizeLegacyViewAsStorage() {
       try {
         currentRecord = JSON.parse(currentRaw);
       } catch {
-        // The malformed current record already fails closed. Consume the stale
-        // legacy key so a later Exit View-As cannot recreate it.
-        consumeLegacyViewAsKey();
-        return;
+        // A malformed current record has no usable View-As identity. Preserve
+        // the valid legacy restriction by replacing it below.
+        currentRecord = null;
       }
     }
 
-    const compatibilityOwned =
-      currentRecord?.compatibilitySource === LEGACY_VIEW_AS_KEY;
-
-    if (currentRaw && !compatibilityOwned) {
-      // The current contract is authoritative. Remove the stale legacy value
-      // without replacing the active selection.
+    const currentUserId = String(currentRecord?.userId || '').trim();
+    if (currentUserId) {
+      // A usable current selection is authoritative. Consume the stale legacy
+      // value so Exit View-As cannot recreate a prior selection.
       consumeLegacyViewAsKey();
       return;
     }
 
+    // Missing, null, malformed, or otherwise unusable current state must not
+    // discard a valid legacy View-As selection. Migrate it before App renders.
     window.localStorage.setItem(CURRENT_VIEW_AS_KEY, JSON.stringify({
       userId: legacyUserId,
       compatibilitySource: LEGACY_VIEW_AS_KEY
