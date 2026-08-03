@@ -1,0 +1,331 @@
+name: Verify UAT Functional Completion Release Evidence
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/verify-uat-functional-completion-release-evidence.yml'
+
+permissions:
+  actions: read
+  id-token: write
+  contents: read
+
+concurrency:
+  group: verify-uat-functional-completion-release-evidence
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'verify/uat-functional-completion-release-evidence-0bb15f67-20260803'
+    name: Verify deployment evidence and exact active Test revisions
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_RELEASE_COMMIT: 0bb15f6736c4fb8feee1f83f144c9fbde5e563d0
+      EXPECTED_VERIFY_BRANCH: verify/uat-functional-completion-release-evidence-0bb15f67-20260803
+      VERIFY_WORKFLOW: .github/workflows/verify-uat-functional-completion-release-evidence.yml
+      DEPLOYMENT_RUN_ID: '30780201176'
+      DEPLOYMENT_CONTROL_COMMIT: d5ef6240f91410283784c5768faf25949578251f
+      DEPLOYMENT_ARTIFACT_ID: '8843403024'
+      DEPLOYMENT_ARTIFACT_NAME: uat-functional-completion-test-deployment-30780201176
+      DEPLOYMENT_ZIP_SHA256: 45771f2bf7fe12d0150ebc991e4354b78d32db267571e844f3cb5f4f67e3a505
+      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:e3cb16597fa4bd8fb01462c24ea3a7d7e2c5c6ca126f6305173cb1c1c298c0b2
+      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:284ebfddd6c508169bc9d9d77657b84735c1ca08f54127697a3d7ed64cc9e2d0
+      EXPECTED_MIGRATOR_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-uat-migrator@sha256:00e4f1533cf592f0f833f9a87d771cc895280e0a00b04f8ca2074db35af9cd15
+
+    steps:
+      - name: Check out exact verification control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: verify-control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact merged release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 0bb15f6736c4fb8feee1f83f144c9fbde5e563d0
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard read-only verifier and exact source
+        id: guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == "$EXPECTED_VERIFY_BRANCH" ]]
+          [[ '${{ github.event.pull_request.head.repo.full_name }}' == '${{ github.repository }}' ]]
+          CONTROL_HEAD="$(git -C verify-control rev-parse HEAD)"
+          RELEASE_HEAD="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$RELEASE_HEAD" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git -C verify-control fetch origin main --no-tags
+          [[ "$(git -C verify-control rev-parse origin/main)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git -C verify-control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
+          [[ "$(git -C verify-control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)" == "$VERIFY_WORKFLOW" ]]
+          git -C verify-control diff --check "$EXPECTED_RELEASE_COMMIT"...HEAD
+          grep -Fq 'Engineer Project Over / Under Budget Report' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
+          grep -Fq 'Utilization Over / Under Report by Engineer' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
+          grep -Fq 'Engineer Vacation / PTO Used Report' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
+          grep -Fq 'Overview & Architecture' release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          grep -Fq 'What you need to do now' release/src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx
+          grep -Fq 'SEND MODULE 065 TEST' release/src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx
+          grep -Fq '066_immutable_project_numbers' release/database/migrations/066_immutable_project_numbers.sql
+          bash release/tests/test-uat-functional-completion-contract.sh
+          echo "control_commit=$CONTROL_HEAD" >> "$GITHUB_OUTPUT"
+          echo 'FINAL_RELEASE_EVIDENCE_GUARD=PASSED'
+
+      - name: Validate the successful deployment run and checksummed migration evidence
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$DEPLOYMENT_RUN_ID")"
+          jq -e \
+            --arg expected_sha "$DEPLOYMENT_CONTROL_COMMIT" \
+            --arg expected_event 'pull_request' \
+            '.status == "completed" and .conclusion == "success" and .head_sha == $expected_sha and .event == $expected_event' \
+            <<<"$RUN_JSON" >/dev/null
+
+          ARTIFACTS_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$DEPLOYMENT_RUN_ID/artifacts?per_page=100")"
+          ARTIFACT_JSON="$(jq -c \
+            --arg name "$DEPLOYMENT_ARTIFACT_NAME" \
+            --argjson id "$DEPLOYMENT_ARTIFACT_ID" \
+            '.artifacts[] | select(.name == $name and .id == $id and .expired == false)' \
+            <<<"$ARTIFACTS_JSON")"
+          [[ -n "$ARTIFACT_JSON" ]]
+
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${DEPLOYMENT_ARTIFACT_ID}/zip" \
+            --output /tmp/deployment-evidence.zip
+          echo "$DEPLOYMENT_ZIP_SHA256  /tmp/deployment-evidence.zip" | sha256sum -c -
+
+          rm -rf /tmp/deployment-evidence
+          mkdir -p /tmp/deployment-evidence
+          unzip -q /tmp/deployment-evidence.zip -d /tmp/deployment-evidence
+          (
+            cd /tmp/deployment-evidence
+            sha256sum -c SHA256SUMS
+          )
+          EVIDENCE=/tmp/deployment-evidence/uat-functional-completion-test-deployment.json
+          test -s "$EVIDENCE"
+          jq -e \
+            --arg release "$EXPECTED_RELEASE_COMMIT" \
+            --arg control "$DEPLOYMENT_CONTROL_COMMIT" \
+            --arg run "$DEPLOYMENT_RUN_ID" \
+            --arg migrator "$EXPECTED_MIGRATOR_IMAGE" \
+            --arg api "$EXPECTED_API_IMAGE" \
+            --arg web "$EXPECTED_WEB_IMAGE" \
+            '
+              .environment == "test" and
+              .releaseCommit == $release and
+              .controlCommit == $control and
+              .workflowRunId == $run and
+              .sourcePullRequests == [447] and
+              .migrations == ["060", "061", "062", "063", "064", "065", "066"] and
+              .migrationStatus == "idempotently-reapplied-and-verified" and
+              .migrationImage == $migrator and
+              (.migrationExecution | type == "string" and startswith("uat-r4-30780201176-")) and
+              .apiImage == $api and
+              .webImage == $web and
+              .activeRevisionMode == "Single" and
+              .productionDeployment == false and
+              .emailSent == false and
+              .automaticDatabaseRollback == false
+            ' "$EVIDENCE" >/dev/null
+
+          echo "migration_execution=$(jq -r '.migrationExecution' "$EVIDENCE")" >> "$GITHUB_OUTPUT"
+          echo "deployment_artifact_sha256=$DEPLOYMENT_ZIP_SHA256" >> "$GITHUB_OUTPUT"
+          echo 'FINAL_RELEASE_DEPLOYMENT_AND_MIGRATIONS=PASSED'
+
+      - name: Sign in to Azure Test through OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify exact active revisions, revision-local source marker, and immutable images
+        id: revisions
+        shell: bash
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          API_APP: ${{ vars.AZURE_API_APP }}
+          WEB_APP: ${{ vars.AZURE_WEB_APP }}
+        run: |
+          set -Eeuo pipefail
+          API_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          WEB_REVISION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          [[ -n "$API_REVISION" && "$API_REVISION" != null ]]
+          [[ -n "$WEB_REVISION" && "$WEB_REVISION" != null ]]
+
+          API_REVISION_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$API_APP" --revision "$API_REVISION" -o json --only-show-errors)"
+          WEB_REVISION_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$WEB_APP" --revision "$WEB_REVISION" -o json --only-show-errors)"
+
+          API_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_REVISION_JSON")"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_REVISION_JSON")"
+          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value][0] // empty' <<<"$API_REVISION_JSON")"
+          API_HEALTH="$(jq -r '.properties.healthState // empty' <<<"$API_REVISION_JSON")"
+          WEB_HEALTH="$(jq -r '.properties.healthState // empty' <<<"$WEB_REVISION_JSON")"
+          API_PROVISIONING="$(jq -r '.properties.provisioningState // empty' <<<"$API_REVISION_JSON")"
+          WEB_PROVISIONING="$(jq -r '.properties.provisioningState // empty' <<<"$WEB_REVISION_JSON")"
+          API_ACTIVE="$(jq -r '.properties.active // false' <<<"$API_REVISION_JSON")"
+          WEB_ACTIVE="$(jq -r '.properties.active // false' <<<"$WEB_REVISION_JSON")"
+          API_TRAFFIC="$(jq -r '.properties.trafficWeight // 0' <<<"$API_REVISION_JSON")"
+          WEB_TRAFFIC="$(jq -r '.properties.trafficWeight // 0' <<<"$WEB_REVISION_JSON")"
+
+          [[ "$API_IMAGE" == "$EXPECTED_API_IMAGE" ]]
+          [[ "$WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" ]]
+          [[ "$API_SOURCE" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "${API_HEALTH,,}" == healthy && "${WEB_HEALTH,,}" == healthy ]]
+          [[ "${API_PROVISIONING,,}" == provisioned && "${WEB_PROVISIONING,,}" == provisioned ]]
+          [[ "$API_ACTIVE" == true && "$WEB_ACTIVE" == true ]]
+          [[ "$API_TRAFFIC" == 100 && "$WEB_TRAFFIC" == 100 ]]
+          [[ "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
+          [[ "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
+
+          for image in "$EXPECTED_API_IMAGE" "$EXPECTED_WEB_IMAGE" "$EXPECTED_MIGRATOR_IMAGE"; do
+            relative="${image#${{ vars.AZURE_ACR_NAME }}.azurecr.io/}"
+            repository="${relative%@sha256:*}"
+            digest="sha256:${relative##*@sha256:}"
+            observed="$(az acr repository show-manifests --name '${{ vars.AZURE_ACR_NAME }}' --repository "$repository" --query "[?digest=='$digest'].digest | [0]" -o tsv --only-show-errors)"
+            [[ "$observed" == "$digest" ]]
+          done
+
+          echo "api_revision=$API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "web_revision=$WEB_REVISION" >> "$GITHUB_OUTPUT"
+          echo "api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
+          echo 'FINAL_RELEASE_EXACT_REVISIONS=PASSED'
+
+      - name: Verify public API boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          check_status() {
+            local path="$1" expected="$2" status
+            status="$(curl -sS -o /tmp/final-release-api-response -w '%{http_code}' "$BASE$path")"
+            [[ "$status" == "$expected" ]] || {
+              echo "$path returned $status; expected $expected" >&2
+              exit 1
+            }
+          }
+          check_status '/health' '200'
+          check_status '/api/version' '200'
+          check_status '/api/enterprise-notifications/runtime/readiness' '401'
+          check_status '/api/work-lifecycle/dashboard' '401'
+          check_status '/api/celar-ai/v1/platform/readiness' '401'
+          check_status '/api/financial-operations/modules/040' '401'
+          check_status '/api/financial-operations/reports/catalog' '401'
+          check_status '/api/integrations/026/providers' '401'
+          check_status '/api/entra-secret-expiration/profile' '401'
+          echo 'FINAL_RELEASE_PUBLIC_API_BOUNDARIES=PASSED'
+
+      - name: Verify public web bytes match the immutable candidate image
+        id: web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PUBLIC_BASE='${{ vars.PUBLIC_URL }}'; PUBLIC_BASE="${PUBLIC_BASE%/}"
+          az acr login --name '${{ vars.AZURE_ACR_NAME }}' --only-show-errors
+          docker pull "$EXPECTED_WEB_IMAGE" >/dev/null
+          CONTAINER_ID="$(docker create "$EXPECTED_WEB_IMAGE")"
+          cleanup_container() { docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true; }
+          trap cleanup_container EXIT
+          rm -rf /tmp/final-release-candidate
+          mkdir -p /tmp/final-release-candidate
+          docker cp "$CONTAINER_ID:/usr/share/nginx/html/." /tmp/final-release-candidate/
+
+          CANDIDATE_INDEX=/tmp/final-release-candidate/index.html
+          CANDIDATE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' "$CANDIDATE_INDEX" | head -1 | cut -d'"' -f2)"
+          CANDIDATE_JS_PATH="${CANDIDATE_JS_REF%%\?*}"
+          CANDIDATE_JS_PATH="${CANDIDATE_JS_PATH#/}"
+          test -s "$CANDIDATE_INDEX"
+          test -s "/tmp/final-release-candidate/$CANDIDATE_JS_PATH"
+          CANDIDATE_INDEX_SHA="$(sha256sum "$CANDIDATE_INDEX" | awk '{print $1}')"
+          CANDIDATE_JS_SHA="$(sha256sum "/tmp/final-release-candidate/$CANDIDATE_JS_PATH" | awk '{print $1}')"
+
+          BUSTER="final-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-release-public-index.html -w '%{http_code}' "$PUBLIC_BASE/?release_check=$BUSTER")"
+          [[ "$STATUS" == 200 && -s /tmp/final-release-public-index.html ]]
+          PUBLIC_INDEX_SHA="$(sha256sum /tmp/final-release-public-index.html | awk '{print $1}')"
+          PUBLIC_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/final-release-public-index.html | head -1 | cut -d'"' -f2)"
+          [[ "$PUBLIC_INDEX_SHA" == "$CANDIDATE_INDEX_SHA" ]]
+          [[ "$PUBLIC_JS_REF" == "$CANDIDATE_JS_REF" ]]
+          case "$PUBLIC_JS_REF" in
+            http*) PUBLIC_JS_URL="$PUBLIC_JS_REF" ;;
+            /*) PUBLIC_JS_URL="$PUBLIC_BASE$PUBLIC_JS_REF" ;;
+            *) PUBLIC_JS_URL="$PUBLIC_BASE/$PUBLIC_JS_REF" ;;
+          esac
+          JS_STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-release-public-app.js -w '%{http_code}' "$PUBLIC_JS_URL")"
+          [[ "$JS_STATUS" == 200 && -s /tmp/final-release-public-app.js ]]
+          PUBLIC_JS_SHA="$(sha256sum /tmp/final-release-public-app.js | awk '{print $1}')"
+          [[ "$PUBLIC_JS_SHA" == "$CANDIDATE_JS_SHA" ]]
+
+          echo "index_sha256=$PUBLIC_INDEX_SHA" >> "$GITHUB_OUTPUT"
+          echo "js_sha256=$PUBLIC_JS_SHA" >> "$GITHUB_OUTPUT"
+          echo "js_ref=$PUBLIC_JS_REF" >> "$GITHUB_OUTPUT"
+          echo 'FINAL_RELEASE_PUBLIC_WEB_BYTES=PASSED'
+
+      - name: Write final read-only verification evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          cat > evidence/uat-functional-completion-final-verification.json <<JSON
+          {
+            "environment": "test",
+            "verificationType": "independent-read-only-with-deployment-evidence-validation",
+            "releaseCommit": "$EXPECTED_RELEASE_COMMIT",
+            "verificationControlCommit": "${{ steps.guard.outputs.control_commit }}",
+            "workflowRunId": "${{ github.run_id }}",
+            "deploymentWorkflowRunId": "$DEPLOYMENT_RUN_ID",
+            "deploymentControlCommit": "$DEPLOYMENT_CONTROL_COMMIT",
+            "deploymentArtifactId": "$DEPLOYMENT_ARTIFACT_ID",
+            "deploymentArtifactSha256": "${{ steps.deployment.outputs.deployment_artifact_sha256 }}",
+            "migrationExecution": "${{ steps.deployment.outputs.migration_execution }}",
+            "migrations": ["060", "061", "062", "063", "064", "065", "066"],
+            "migrationImage": "$EXPECTED_MIGRATOR_IMAGE",
+            "apiImage": "$EXPECTED_API_IMAGE",
+            "apiRevision": "${{ steps.revisions.outputs.api_revision }}",
+            "apiRevisionSourceCommit": "${{ steps.revisions.outputs.api_source }}",
+            "webImage": "$EXPECTED_WEB_IMAGE",
+            "webRevision": "${{ steps.revisions.outputs.web_revision }}",
+            "publicIndexSha256": "${{ steps.web.outputs.index_sha256 }}",
+            "publicJavaScriptSha256": "${{ steps.web.outputs.js_sha256 }}",
+            "publicJavaScriptReference": "${{ steps.web.outputs.js_ref }}",
+            "activeRevisionMode": "Single",
+            "productionDeployment": false,
+            "emailSent": false,
+            "azureMutationPerformed": false,
+            "databaseMutationPerformed": false
+          }
+          JSON
+          sha256sum evidence/uat-functional-completion-final-verification.json > evidence/SHA256SUMS
+          cat evidence/uat-functional-completion-final-verification.json
+
+      - name: Upload final verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: uat-functional-completion-final-verification-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
