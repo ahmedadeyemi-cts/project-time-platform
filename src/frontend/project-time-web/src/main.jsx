@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './projectpulse-authoritative-api.js';
+import './view-as-storage-compatibility.js';
 import './module-availability-bridge.js';
 import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
