@@ -316,7 +316,7 @@ public static class MicrosoftSsoRuntimeCompatibility
                 if (!reader.IsDBNull(1) && !string.IsNullOrWhiteSpace(reader.GetString(1))) permissions.Add(reader.GetString(1));
             }
 
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR");
+            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
             if (!administrator && !permissions.Any(WritePermissions.Contains))
             {
                 return new(null, Results.Json(new

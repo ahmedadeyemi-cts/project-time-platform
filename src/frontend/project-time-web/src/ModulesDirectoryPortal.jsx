@@ -608,7 +608,14 @@ export default function ModulesDirectoryPortal() {
               <p>{module.description || `Open the ${module.label} workspace available to your current access scope.`}</p>
               {isSuperAdministrator ? <div className="module-authority-full-control">Full Control · Organization-wide</div> : null}
               <div className="modules-directory-card-actions">
-                <a href={module.href}>Open module →</a>
+                <a
+                  className="modules-directory-open-link"
+                  data-module-open-route={module.route}
+                  href={module.href || `#${module.route}`}
+                  aria-label={`Open Module ${module.moduleNumber} — ${module.label}`}
+                >
+                  Open module →
+                </a>
                 {canManage ? (
                   <label className="module-availability-switch">
                     <input

@@ -55,6 +55,18 @@ public static partial class CrmErpIntegrationModule
                 "Exit Administrator View-As before changing CRM or ERP connector configuration.");
         }
 
+        if ((context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent)
+                && permanent is true)
+            || await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context,
+                cancellationToken: context.RequestAborted))
+        {
+            return new ManageAuthority(
+                true,
+                "actual_session_super_administrator",
+                "Your actual Super Administrator session has permanent Full Control of Module 026.");
+        }
+
         if (await HasManageAuthorityLegacyAsync(context))
         {
             return new ManageAuthority(

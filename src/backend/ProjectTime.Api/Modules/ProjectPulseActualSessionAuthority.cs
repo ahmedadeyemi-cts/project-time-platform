@@ -36,6 +36,20 @@ internal static class ProjectPulseActualSessionAuthority
             StringComparer.OrdinalIgnoreCase);
     }
 
+    internal static bool HasPermanentAdministratorAuthority(
+        HttpContext context,
+        IEnumerable<string> roleCodes)
+    {
+        if (IsViewAs(context)) return false;
+        if (context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent)
+            && permanent is true)
+        {
+            return true;
+        }
+
+        return roleCodes.Any(IsAdministratorRoleCode);
+    }
+
     internal static bool IsViewAs(HttpContext context)
     {
         if (context.Items.TryGetValue("ProjectPulseIsViewAs", out var flag) && flag is true)
@@ -58,6 +72,11 @@ internal static class ProjectPulseActualSessionAuthority
         CancellationToken cancellationToken = default)
     {
         if (IsViewAs(context)) return false;
+        if (context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent)
+            && permanent is true)
+        {
+            return true;
+        }
 
         var sessionUserId = ReadUserId(
             context,

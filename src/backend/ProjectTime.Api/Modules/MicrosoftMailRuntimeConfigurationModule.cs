@@ -339,7 +339,7 @@ public static class MicrosoftMailRuntimeConfigurationModule
                 if (!reader.IsDBNull(0)) roles.Add(reader.GetString(0));
                 if (!reader.IsDBNull(1)) permissions.Add(reader.GetString(1));
             }
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR");
+            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
             if (!administrator && !permissions.Any(WritePermissions.Contains))
             {
                 return Results.Json(new { module = ModuleNumber, status = "microsoft_integration_manage_access_required", message = "Manage Microsoft Integration or global-mail authority is required." }, statusCode: StatusCodes.Status403Forbidden);

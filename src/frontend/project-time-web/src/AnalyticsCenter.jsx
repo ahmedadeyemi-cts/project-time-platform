@@ -483,7 +483,7 @@ function emptySchedule(report, filters = {}) {
 }
 
 export default function AnalyticsCenter({ authSession }) {
-  const [section, setSection] = useState('analytics');
+  const [section, setSection] = useState('reports');
   const [workspace, setWorkspace] = useState('my');
   const [overview, setOverview] = useState(null);
   const [catalog, setCatalog] = useState([]);

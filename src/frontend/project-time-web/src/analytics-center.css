@@ -1378,22 +1378,22 @@
   grid-template-columns: 66px minmax(0, 1fr);
 }
 
-.sidebar-collapsed .analytics-sidebar-brand {
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar-brand {
   min-height: 68px;
   padding: 9px;
 }
 
-.sidebar-collapsed .analytics-sidebar-brand .uss-logo-lockup {
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar-brand .uss-logo-lockup {
   width: 42px;
   overflow: hidden;
 }
 
-.sidebar-collapsed .analytics-sidebar-brand > button { right: 4px; top: 19px; }
-.sidebar-collapsed .analytics-sidebar nav button { justify-content: center; padding: 8px 4px; }
-.sidebar-collapsed .analytics-sidebar nav button strong,
-.sidebar-collapsed .analytics-sidebar nav h3,
-.sidebar-collapsed .analytics-sidebar-return strong { display: none; }
-.sidebar-collapsed .analytics-sidebar-return button { justify-content: center; }
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar-brand > button { right: 4px; top: 19px; }
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar nav button { justify-content: center; padding: 8px 4px; }
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar nav button strong,
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar nav h3,
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar-return strong { display: none; }
+.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar-return button { justify-content: center; }
 
 @media (max-width: 1500px) {
   .analytics-kpi-grid { grid-template-columns: repeat(4, minmax(150px, 1fr)); }

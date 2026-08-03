@@ -1102,8 +1102,25 @@ public static class MicrosoftDirectorySyncModule
                   ON role.app_role_id = assignment.app_role_id
                  AND role.is_active = TRUE
                 WHERE user_record.is_active = TRUE
-                  AND upper(role.role_code) IN ('SUPER_ADMINISTRATOR','ADMINISTRATOR')
-                ORDER BY CASE WHEN upper(role.role_code)='SUPER_ADMINISTRATOR' THEN 0 ELSE 1 END,
+                  AND trim(both '_' from regexp_replace(
+                        upper(btrim(COALESCE(role.role_code, ''))),
+                        '[^A-Z0-9]+',
+                        '_',
+                        'g')) IN (
+                          'SUPER_ADMINISTRATOR',
+                          'SUPERADMINISTRATOR',
+                          'GLOBAL_ADMINISTRATOR',
+                          'GLOBALADMINISTRATOR',
+                          'ADMINISTRATOR'
+                        )
+                ORDER BY CASE
+                           WHEN trim(both '_' from regexp_replace(
+                                  upper(btrim(COALESCE(role.role_code, ''))),
+                                  '[^A-Z0-9]+',
+                                  '_',
+                                  'g')) IN ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR') THEN 0
+                           ELSE 1
+                         END,
                          lower(user_record.email)
                 LIMIT 1;
                 """, connection);
@@ -1170,8 +1187,7 @@ public static class MicrosoftDirectorySyncModule
                 if (!reader.IsDBNull(1)) permissions.Add(reader.GetString(1));
             }
 
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR")
-                || roles.Contains("ADMINISTRATOR");
+            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
             if (!administrator && !permissions.Any(AcceptedPermissions.Contains))
             {
                 return new(null, Results.Json(new

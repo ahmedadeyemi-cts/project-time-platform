@@ -2336,6 +2336,14 @@ function normalizeRoute(hash) {
   return cleaned || 'dashboard';
 }
 
+function canonicalProjectPulseRoleCode(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function userPermissionSet(user) {
   return new Set(user?.permissions ?? []);
 }
@@ -2343,7 +2351,15 @@ function userPermissionSet(user) {
 function userIsAdministrator(user) {
   const roles = user?.roles ?? [];
   const permissions = userPermissionSet(user);
-  return permissions.has('MANAGE_ALL') || permissions.has('SYSTEM_ADMINISTRATION') || roles.some((role) => ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR'].includes(role.roleCode));
+  return permissions.has('MANAGE_ALL')
+    || permissions.has('SYSTEM_ADMINISTRATION')
+    || roles.some((role) => [
+      'SUPER_ADMINISTRATOR',
+      'SUPERADMINISTRATOR',
+      'GLOBAL_ADMINISTRATOR',
+      'GLOBALADMINISTRATOR',
+      'ADMINISTRATOR'
+    ].includes(canonicalProjectPulseRoleCode(role.roleCode ?? role.roleName)));
 }
 
 function userHasAnyPermission(user, permissions) {
@@ -2358,11 +2374,13 @@ function userHasAnyPermission(user, permissions) {
 function getVisibleRoleModules(user) {
   if (!user) return [];
 
-  const assignedRoleCodes = new Set((user?.roles ?? []).map((role) => String(role.roleCode ?? '').toUpperCase()));
+  const assignedRoleCodes = new Set(
+    (user?.roles ?? []).map((role) => canonicalProjectPulseRoleCode(role.roleCode ?? role.roleName))
+  );
   const permissionFilteredModules = roleWorkspaceModules.filter((module) => {
     const strictRoleCodes = module.strictRoleCodes ?? [];
     if (strictRoleCodes.length > 0
-        && !strictRoleCodes.some((roleCode) => assignedRoleCodes.has(String(roleCode).toUpperCase()))) {
+        && !strictRoleCodes.some((roleCode) => assignedRoleCodes.has(canonicalProjectPulseRoleCode(roleCode)))) {
       return false;
     }
 
@@ -5900,13 +5918,44 @@ export default function App() {
     }));
   }
 
+  /* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_START */
+  function localViewAsIsActive() {
+    try {
+      const raw = window.localStorage.getItem('projectPulseViewAsUser');
+      if (!raw) return false;
+      return Boolean(JSON.parse(raw)?.userId);
+    } catch {
+      // A malformed preview record must fail closed rather than granting the
+      // actual-session administrator bypass.
+      return true;
+    }
+  }
+
+  const currentRoleCodes = securityContext.data?.roles
+    ?.map((role) => canonicalProjectPulseRoleCode(role.roleCode ?? role.roleName))
+    .filter(Boolean) ?? [];
+  const actualSessionIsViewAs = Boolean(securityContext.data?.isViewAs) || localViewAsIsActive();
+  const actualSessionHasPermanentFullControl = !actualSessionIsViewAs && (
+    securityContext.data?.permanentFullControl === true
+    || currentRoleCodes.some((roleCode) => [
+      'SUPER_ADMINISTRATOR',
+      'SUPERADMINISTRATOR',
+      'GLOBAL_ADMINISTRATOR',
+      'GLOBALADMINISTRATOR',
+      'ADMINISTRATOR'
+    ].includes(roleCode))
+  );
+
   function hasPermission(permissionCode) {
-    return securityContext.data?.permissions?.includes(permissionCode) ?? false;
+    return actualSessionHasPermanentFullControl
+      || (securityContext.data?.permissions?.includes(permissionCode) ?? false);
   }
 
   function canSeeAny(permissionCodes) {
-    return permissionCodes.some((permissionCode) => hasPermission(permissionCode));
+    return actualSessionHasPermanentFullControl
+      || permissionCodes.some((permissionCode) => hasPermission(permissionCode));
   }
+  /* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_END */
 
   const roleNames = securityContext.data?.roles?.map((role) => role.roleName).join(', ') || 'No role assigned';
   const workspaceFeatures = securityContext.data?.features ?? [];
@@ -5921,7 +5970,6 @@ export default function App() {
   const canManageHolidays = hasPermission('MANAGE_HOLIDAYS') || hasPermission('MANAGE_ALL');
   const canViewHolidayCalendar = hasPermission('VIEW_HOLIDAYS') || canManageHolidays;
   const canViewPsaModules = canSeeAny(['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
-  const currentRoleCodes = securityContext.data?.roles?.map((role) => String(role.roleCode ?? '').toUpperCase()) ?? [];
   const currentRoleNames = securityContext.data?.roles?.map((role) => String(role.roleName ?? '').toLowerCase()) ?? [];
   const canManageRateCards =
     canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'MANAGE_PROJECT_INTAKE']) ||
@@ -7004,6 +7052,7 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* LIVE_MODULE_065_ACTUAL_SESSION_ROUTE_AUTHORITY */}
       {(activeRoute === 'entra-secret-administration' && canSeeAny(['MANAGE_ENTRA_SECRET', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="entra-secret-administration" className="panel entra-secret-administration-route-panel">
           <EntraSecretAdministrationCenter authSession={authSession} />
@@ -8032,6 +8081,7 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
+      {/* LIVE_CELAR_AI_ACTUAL_SESSION_ROUTE_AUTHORITY */}
       {(activeRoute === 'work-task-builder' && canSeeAny(['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <WorkTaskBuilderPanel />
       ) : null}

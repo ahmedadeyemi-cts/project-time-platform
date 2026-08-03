@@ -286,7 +286,33 @@ export default function CrmErpIntegrationCenter() {
   const load = useCallback(async (preferredKey = '') => {
     setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const payload = await jsonRequest('/api/integrations/026/providers');
+      const [providerPayload, moduleAvailability] = await Promise.all([
+        jsonRequest('/api/integrations/026/providers'),
+        jsonRequest('/api/module-availability/overrides').catch(() => null)
+      ]);
+      const isViewAs = Boolean(
+        providerPayload?.access?.isViewAs
+        || moduleAvailability?.access?.isViewAs
+      );
+      const actualSuperAdministrator = Boolean(
+        moduleAvailability?.access?.isSuperAdministrator
+      ) && !isViewAs;
+      const payload = {
+        ...providerPayload,
+        access: {
+          ...(providerPayload?.access || {}),
+          canManage: Boolean(providerPayload?.access?.canManage || actualSuperAdministrator),
+          manageAuthoritySource: providerPayload?.access?.manageAuthoritySource
+            || (actualSuperAdministrator ? 'actual_session_super_administrator' : ''),
+          manageMessage: providerPayload?.access?.manageMessage
+            || (actualSuperAdministrator
+              ? 'Your actual Super Administrator session has permanent Full Control of Module 026.'
+              : ''),
+          requiredPermission: providerPayload?.access?.requiredPermission || 'MANAGE_INTEGRATIONS_026',
+          isViewAs,
+          viewAsTransfersMutationAuthority: false
+        }
+      };
       setState({ loading: false, error: '', payload });
       setSelectedKey((current) => preferredKey || current || 'zendesk_sell');
     } catch (error) {

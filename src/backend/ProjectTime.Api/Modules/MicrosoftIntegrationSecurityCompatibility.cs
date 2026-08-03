@@ -271,7 +271,7 @@ public static class MicrosoftIntegrationSecurityCompatibility
                 if (!string.IsNullOrWhiteSpace(permission)) permissions.Add(permission);
             }
 
-            var administrator = roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR");
+            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
             return new(new BoundaryAccessContext(connectionString, administrator, permissions), null);
         }
         catch
