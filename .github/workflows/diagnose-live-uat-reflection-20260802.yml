@@ -1,0 +1,298 @@
+name: Diagnose Live UAT Reflection
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-uat-reflection-20260802.yml'
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: diagnose-live-uat-reflection-20260802
+  cancel-in-progress: false
+
+env:
+  EXPECTED_RELEASE_COMMIT: 0bb15f6736c4fb8feee1f83f144c9fbde5e563d0
+  CONTROL_WORKFLOW: .github/workflows/diagnose-live-uat-reflection-20260802.yml
+
+jobs:
+  diagnose:
+    name: Diagnose generated frontend, live image, routes, and authority contracts
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out diagnostic control
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact merged release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_RELEASE_COMMIT }}
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard read-only diagnostic scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event.pull_request.base.ref }}' == 'main' ]]
+          [[ '${{ github.event.pull_request.head.ref }}' == 'diagnose/live-uat-reflection-20260802' ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git -C control fetch origin main --no-tags
+          [[ "$(git -C control rev-parse origin/main)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          git -C control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
+          [[ "$(git -C control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)" == "$CONTROL_WORKFLOW" ]]
+          git -C control diff --check "$EXPECTED_RELEASE_COMMIT"...HEAD
+          echo 'DIAGNOSTIC_SCOPE=READ_ONLY'
+
+      - name: Capture checked-in route, module-directory, and authority contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence/source-before evidence/generated evidence/live-web
+          cp release/src/frontend/project-time-web/src/App.jsx evidence/source-before/App.jsx
+          cp release/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx evidence/source-before/ModulesDirectoryPortal.jsx
+          cp release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx evidence/source-before/WorkTaskBuilderPanel.jsx
+          cp release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx evidence/source-before/CrmErpIntegrationCenter.jsx
+          cp release/src/frontend/project-time-web/src/AnalyticsCenter.jsx evidence/source-before/AnalyticsCenter.jsx
+          cp release/src/frontend/project-time-web/src/module-availability-registry.js evidence/source-before/module-availability-registry.js
+          cp release/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs evidence/source-before/CrmErpIntegrationModule.cs
+          cp release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs evidence/source-before/CrmErpAdministrationExperience.cs
+
+          {
+            echo '=== APP ROUTE CONTRACTS ==='
+            grep -nE "WorkTaskBuilderPanel|work-task-builder|celar-ai|AnalyticsCenter|reporting|CrmErpIntegrationCenter|crm-integration|entra-secret-administration" release/src/frontend/project-time-web/src/App.jsx || true
+            echo
+            echo '=== MODULE DIRECTORY CONTRACTS ==='
+            grep -nE "Open module|modules-directory-card-actions|entra-secret-administration|moduleNumber: '065'|Module 065" release/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx release/src/frontend/project-time-web/src/module-availability-registry.js || true
+            echo
+            echo '=== CRM FRONTEND AUTHORITY CONTRACTS ==='
+            grep -nE "MANAGE_INTEGRATIONS_026|View-only access|Not Configured|permanentFullControl|canManage|authority" release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx || true
+            echo
+            echo '=== CRM BACKEND AUTHORITY CONTRACTS ==='
+            grep -nE "HasManageAuthorityAsync|Permanent|SUPER_ADMINISTRATOR|ADMINISTRATOR|MANAGE_INTEGRATIONS_026|IsViewAs|AuthorizeManage" release/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs || true
+            echo
+            echo '=== CELAR COMPONENT CONTRACTS ==='
+            grep -nE "Unified Operational Intelligence|Overview & Architecture|celar-ai-module-shell" release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx || true
+            echo
+            echo '=== ANALYTICS CONTRACTS ==='
+            grep -nE "Engineer Project Over / Under Budget Report|Utilization Over / Under Report by Engineer|Engineer Vacation / PTO Used Report|Reports|Home" release/src/frontend/project-time-web/src/AnalyticsCenter.jsx release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs || true
+          } | tee evidence/source-contracts-before.txt
+
+      - name: Install locked frontend dependencies
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Run the exact prebuild generators and record source mutations
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run prebuild 2>&1 | tee ../../../evidence/prebuild.log
+          git -C ../../.. diff -- src/frontend/project-time-web/src > ../../../evidence/generated/prebuild-source.diff || true
+          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > ../../../evidence/generated/prebuild-changed-files.txt || true
+          cp src/App.jsx ../../../evidence/generated/App.after-prebuild.jsx
+          cp src/ModulesDirectoryPortal.jsx ../../../evidence/generated/ModulesDirectoryPortal.after-prebuild.jsx
+          cp src/WorkTaskBuilderPanel.jsx ../../../evidence/generated/WorkTaskBuilderPanel.after-prebuild.jsx
+          cp src/CrmErpIntegrationCenter.jsx ../../../evidence/generated/CrmErpIntegrationCenter.after-prebuild.jsx
+          cp src/AnalyticsCenter.jsx ../../../evidence/generated/AnalyticsCenter.after-prebuild.jsx
+
+      - name: Build exactly as the production web image builds
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build 2>&1 | tee ../../../evidence/build.log
+          git -C ../../.. diff -- src/frontend/project-time-web/src > ../../../evidence/generated/postbuild-source.diff || true
+          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > ../../../evidence/generated/postbuild-changed-files.txt || true
+          cp src/App.jsx ../../../evidence/generated/App.after-build.jsx
+          cp src/ModulesDirectoryPortal.jsx ../../../evidence/generated/ModulesDirectoryPortal.after-build.jsx
+          cp src/WorkTaskBuilderPanel.jsx ../../../evidence/generated/WorkTaskBuilderPanel.after-build.jsx
+          cp src/CrmErpIntegrationCenter.jsx ../../../evidence/generated/CrmErpIntegrationCenter.after-build.jsx
+          cp src/AnalyticsCenter.jsx ../../../evidence/generated/AnalyticsCenter.after-build.jsx
+          find dist -maxdepth 3 -type f -print -exec sha256sum {} \; > ../../../evidence/generated/local-dist-files.txt
+
+          JS_FILE="$(find dist/assets -maxdepth 1 -type f -name 'index-*.js' | head -1)"
+          test -s "$JS_FILE"
+          {
+            echo "LOCAL_JS_FILE=$JS_FILE"
+            echo "LOCAL_JS_SHA256=$(sha256sum "$JS_FILE" | awk '{print $1}')"
+            for marker in \
+              'Unified Operational Intelligence' \
+              'Overview & Architecture' \
+              'Open module' \
+              'MANAGE_INTEGRATIONS_026' \
+              'View-only access' \
+              'Engineer Project Over / Under Budget Report' \
+              'Utilization Over / Under Report by Engineer' \
+              'Engineer Vacation / PTO Used Report'; do
+              if grep -Fq "$marker" "$JS_FILE"; then
+                echo "LOCAL_BUNDLE_MARKER_PRESENT=$marker"
+              else
+                echo "LOCAL_BUNDLE_MARKER_MISSING=$marker"
+              fi
+            done
+          } | tee ../../../evidence/generated/local-bundle-markers.txt
+
+      - name: Sign in to Azure Test read-only through OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture exact live Container Apps revisions and images
+        id: live
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          API_APP='${{ vars.AZURE_API_APP }}'
+          WEB_APP='${{ vars.AZURE_WEB_APP }}'
+
+          az containerapp show -g "$RG" -n "$API_APP" -o json --only-show-errors > evidence/live-api-app.json
+          az containerapp show -g "$RG" -n "$WEB_APP" -o json --only-show-errors > evidence/live-web-app.json
+          API_REVISION="$(jq -r '.properties.latestReadyRevisionName' evidence/live-api-app.json)"
+          WEB_REVISION="$(jq -r '.properties.latestReadyRevisionName' evidence/live-web-app.json)"
+          az containerapp revision show -g "$RG" -n "$API_APP" --revision "$API_REVISION" -o json --only-show-errors > evidence/live-api-revision.json
+          az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$WEB_REVISION" -o json --only-show-errors > evidence/live-web-revision.json
+
+          API_IMAGE="$(jq -r '.properties.template.containers[0].image' evidence/live-api-revision.json)"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' evidence/live-web-revision.json)"
+          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value][0] // empty' evidence/live-api-revision.json)"
+
+          {
+            echo "LIVE_API_REVISION=$API_REVISION"
+            echo "LIVE_API_IMAGE=$API_IMAGE"
+            echo "LIVE_API_SOURCE_COMMIT=$API_SOURCE"
+            echo "LIVE_API_HEALTH=$(jq -r '.properties.healthState' evidence/live-api-revision.json)"
+            echo "LIVE_API_PROVISIONING=$(jq -r '.properties.provisioningState' evidence/live-api-revision.json)"
+            echo "LIVE_WEB_REVISION=$WEB_REVISION"
+            echo "LIVE_WEB_IMAGE=$WEB_IMAGE"
+            echo "LIVE_WEB_HEALTH=$(jq -r '.properties.healthState' evidence/live-web-revision.json)"
+            echo "LIVE_WEB_PROVISIONING=$(jq -r '.properties.provisioningState' evidence/live-web-revision.json)"
+          } | tee evidence/live-release-state.txt
+
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
+
+      - name: Extract and inspect the exact live web image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az acr login --name '${{ vars.AZURE_ACR_NAME }}' --only-show-errors
+          docker pull '${{ steps.live.outputs.web_image }}' >/dev/null
+          CID="$(docker create '${{ steps.live.outputs.web_image }}')"
+          trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+          docker cp "$CID:/usr/share/nginx/html/." evidence/live-web/
+
+          LIVE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' evidence/live-web/index.html | head -1 | cut -d'"' -f2)"
+          LIVE_JS_PATH="${LIVE_JS_REF%%\?*}"
+          LIVE_JS_PATH="${LIVE_JS_PATH#/}"
+          LIVE_JS="evidence/live-web/$LIVE_JS_PATH"
+          test -s "$LIVE_JS"
+
+          {
+            echo "LIVE_INDEX_SHA256=$(sha256sum evidence/live-web/index.html | awk '{print $1}')"
+            echo "LIVE_JS_REFERENCE=$LIVE_JS_REF"
+            echo "LIVE_JS_SHA256=$(sha256sum "$LIVE_JS" | awk '{print $1}')"
+            for marker in \
+              'Unified Operational Intelligence' \
+              'Overview & Architecture' \
+              'Open module' \
+              'MANAGE_INTEGRATIONS_026' \
+              'View-only access' \
+              'Engineer Project Over / Under Budget Report' \
+              'Utilization Over / Under Report by Engineer' \
+              'Engineer Vacation / PTO Used Report'; do
+              if grep -Fq "$marker" "$LIVE_JS"; then
+                echo "LIVE_BUNDLE_MARKER_PRESENT=$marker"
+              else
+                echo "LIVE_BUNDLE_MARKER_MISSING=$marker"
+              fi
+            done
+          } | tee evidence/live-bundle-markers.txt
+
+          LOCAL_JS="$(find release/src/frontend/project-time-web/dist/assets -maxdepth 1 -type f -name 'index-*.js' | head -1)"
+          LOCAL_SHA="$(sha256sum "$LOCAL_JS" | awk '{print $1}')"
+          LIVE_SHA="$(sha256sum "$LIVE_JS" | awk '{print $1}')"
+          {
+            echo "LOCAL_REBUILD_JS_SHA256=$LOCAL_SHA"
+            echo "LIVE_DEPLOYED_JS_SHA256=$LIVE_SHA"
+            if [[ "$LOCAL_SHA" == "$LIVE_SHA" ]]; then
+              echo 'LOCAL_REBUILD_MATCHES_LIVE=true'
+            else
+              echo 'LOCAL_REBUILD_MATCHES_LIVE=false'
+            fi
+          } | tee evidence/build-to-live-comparison.txt
+
+      - name: Produce diagnosis summary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, pathlib, re
+          root = pathlib.Path('evidence')
+          checked = (root/'source-before/App.jsx').read_text()
+          generated = (root/'generated/App.after-build.jsx').read_text()
+          directory = (root/'generated/ModulesDirectoryPortal.after-build.jsx').read_text()
+          crm_front = (root/'generated/CrmErpIntegrationCenter.after-build.jsx').read_text()
+          crm_back = (root/'source-before/CrmErpIntegrationModule.cs').read_text()
+          live_markers = (root/'live-bundle-markers.txt').read_text()
+          comparison = (root/'build-to-live-comparison.txt').read_text()
+          changed = (root/'generated/postbuild-changed-files.txt').read_text()
+
+          def count(text, needle):
+              return text.count(needle)
+
+          summary = {
+              'environment': 'test',
+              'releaseCommitExpected': '0bb15f6736c4fb8feee1f83f144c9fbde5e563d0',
+              'apiSourceCommitObserved': pathlib.Path('evidence/live-release-state.txt').read_text().split('LIVE_API_SOURCE_COMMIT=',1)[1].splitlines()[0],
+              'sourceWasMutatedDuringBuild': bool(changed.strip()),
+              'generatedChangedFiles': [line for line in changed.splitlines() if line.strip()],
+              'checkedInWorkTaskBuilderImports': count(checked, 'WorkTaskBuilderPanel'),
+              'generatedWorkTaskBuilderImportsAndMounts': count(generated, 'WorkTaskBuilderPanel'),
+              'generatedWorkTaskBuilderRouteReferences': count(generated, "work-task-builder"),
+              'generatedCelarRouteReferences': count(generated, "celar-ai"),
+              'moduleDirectoryOpenLinkUnconditional': '<a href={module.href}>Open module' in directory,
+              'crmFrontendHasViewOnlyFallback': 'View-only access' in crm_front,
+              'crmFrontendHasPermanentFullControlEvidence': 'permanentFullControl' in crm_front,
+              'crmBackendRecognizesSuperAdministratorRole': 'SUPER_ADMINISTRATOR' in crm_back,
+              'liveBundleHasCelarWorkspace': 'LIVE_BUNDLE_MARKER_PRESENT=Unified Operational Intelligence' in live_markers,
+              'liveBundleHasModuleOpenLinkText': 'LIVE_BUNDLE_MARKER_PRESENT=Open module' in live_markers,
+              'liveBundleHasAnalyticsOverUnder': 'LIVE_BUNDLE_MARKER_PRESENT=Engineer Project Over / Under Budget Report' in live_markers,
+              'localRebuildMatchesLive': 'LOCAL_REBUILD_MATCHES_LIVE=true' in comparison,
+              'azureMutationPerformed': False,
+              'databaseMutationPerformed': False,
+              'productionOperationPerformed': False,
+          }
+          (root/'diagnosis-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+          print(json.dumps(summary, indent=2))
+          PY
+          find evidence -type f -print0 | sort -z | xargs -0 sha256sum > evidence/SHA256SUMS
+
+      - name: Upload read-only diagnosis evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-uat-reflection-diagnosis-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Sign out of Azure
+        if: always()
+        shell: bash
+        run: az logout || true
