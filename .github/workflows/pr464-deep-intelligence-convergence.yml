@@ -1,0 +1,133 @@
+name: PR464 One-Time Deep Intelligence Validator Convergence
+
+on:
+  push:
+    branches:
+      - fix/pr459-postdeploy-module011-065-20260803
+    paths:
+      - '.github/workflows/pr464-deep-intelligence-convergence.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr464-deep-intelligence-validator-convergence
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Align legacy validator with the authoritative PR459 production shell
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.ref_name }}' == 'fix/pr459-postdeploy-module011-065-20260803' ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.sha }}' ]]
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/deep-intelligence-read-contract-ci.yml')
+          source = path.read_text()
+
+          trigger_anchor = "      - 'src/frontend/project-time-web/src/help-assistant.css'\n"
+          trigger_replacement = trigger_anchor + (
+              "      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'\n"
+              "      - 'src/frontend/project-time-web/src/celar-ai-production-platform.css'\n"
+          )
+          if "src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx" not in source:
+              if trigger_anchor not in source:
+                  raise SystemExit('PR464_CONVERGENCE_MISSING_TRIGGER_ANCHOR')
+              source = source.replace(trigger_anchor, trigger_replacement, 1)
+
+          legacy = """          # Avoid a brittle non-ASCII exact match while still proving both sides of
+          # the approved workbench heading survived production minification.
+          assert_js_marker 'Build comprehensive, source-grounded answers'
+          assert_js_marker 'surface summaries'
+          assert_js_marker 'Timesheet Grounding'
+          assert_js_marker 'FlowHive Planning'
+          assert_js_marker 'Reports & Financials'
+          assert_js_marker \"$HELP_TITLE\"
+          assert_js_marker 'Automatic multi-tool execution is not yet enabled'
+
+          assert_css_marker '.pulse-ai-deep-workbench'
+          assert_css_marker '.help-detailed-answer'
+          echo \"DEEP_INTELLIGENCE_HELP_TITLE=$HELP_TITLE\"
+          echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
+"""
+          converged = """          # Module 011 now has one authoritative production shell. Preserve the
+          # legacy deep-intelligence contract when that workbench is still
+          # bundled, but validate the intent-first PR #459 production platform
+          # when the selected production mount replaces the legacy full-page
+          # workbench during the build.
+          if grep -Fq 'Celar AI production platform' /tmp/deep-intelligence.js; then
+            for marker in \\
+              'Created by Dr. Ahmed Adeyemi' \\
+              'Knowledge & RAG' \\
+              'Model Registry' \\
+              'Verified current fact' \\
+              '/api/celar-ai/v2/chat' \\
+              '/api/project-flowhive/ai/production-generate'; do
+              assert_js_marker \"$marker\"
+            done
+            assert_css_marker '.celar-production-platform'
+            assert_css_marker '.celar-trust-banner'
+            DEEP_INTELLIGENCE_BUNDLE_MODE='celar_ai_production_platform'
+          else
+            # Avoid a brittle non-ASCII exact match while still proving both
+            # sides of the approved legacy workbench heading survived
+            # production minification.
+            assert_js_marker 'Build comprehensive, source-grounded answers'
+            assert_js_marker 'surface summaries'
+            assert_js_marker 'Timesheet Grounding'
+            assert_js_marker 'FlowHive Planning'
+            assert_js_marker 'Reports & Financials'
+            assert_js_marker 'Automatic multi-tool execution is not yet enabled'
+            assert_css_marker '.pulse-ai-deep-workbench'
+            DEEP_INTELLIGENCE_BUNDLE_MODE='legacy_deep_intelligence_workbench'
+          fi
+
+          assert_js_marker \"$HELP_TITLE\"
+          assert_css_marker '.help-detailed-answer'
+          echo \"DEEP_INTELLIGENCE_HELP_TITLE=$HELP_TITLE\"
+          echo \"DEEP_INTELLIGENCE_BUNDLE_MODE=$DEEP_INTELLIGENCE_BUNDLE_MODE\"
+          echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
+"""
+          if 'DEEP_INTELLIGENCE_BUNDLE_MODE=' not in source:
+              if legacy not in source:
+                  raise SystemExit('PR464_CONVERGENCE_MISSING_MARKER_BLOCK')
+              source = source.replace(legacy, converged, 1)
+
+          source = source.replace(
+              "            echo '- Complete frontend build: passed'\n",
+              "            echo '- Complete frontend build: passed for either the authoritative Celar AI production shell or the recoverable legacy deep-intelligence workbench'\n",
+              1
+          )
+          path.write_text(source)
+          PY
+
+          rm '.github/workflows/pr464-deep-intelligence-convergence.yml'
+          git diff --check
+          grep -Fq "DEEP_INTELLIGENCE_BUNDLE_MODE='celar_ai_production_platform'" .github/workflows/deep-intelligence-read-contract-ci.yml
+          grep -Fq "DEEP_INTELLIGENCE_BUNDLE_MODE='legacy_deep_intelligence_workbench'" .github/workflows/deep-intelligence-read-contract-ci.yml
+          test ! -e .github/workflows/pr464-deep-intelligence-convergence.yml
+
+      - name: Commit converged validator and remove one-time control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email '244059331+ahmedadeyemi-cts@users.noreply.github.com'
+          git add .github/workflows/deep-intelligence-read-contract-ci.yml .github/workflows/pr464-deep-intelligence-convergence.yml
+          git commit -m 'Converge deep-intelligence validation with Celar AI production shell'
+          git push origin HEAD:fix/pr459-postdeploy-module011-065-20260803
+          echo 'PR464_DEEP_INTELLIGENCE_CONVERGENCE=PASSED'
