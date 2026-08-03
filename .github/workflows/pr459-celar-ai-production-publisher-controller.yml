@@ -1,0 +1,161 @@
+name: PR459 One-Time Celar AI Production Publisher
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr459-celar-ai-production-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.number == 459 &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.comment.body == 'PUBLISH CELAR AI PR459 f4745a7eeba9c7319fd54a120db869323758f552'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPECTED_STAGING_SHA: f4745a7eeba9c7319fd54a120db869323758f552
+    steps:
+      - name: Check out exact publication branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/celar-ai-production-platform-20260802
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact staged source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual="$(git rev-parse HEAD)"
+          [[ "$actual" == "$EXPECTED_STAGING_SHA" ]] || { echo "Staging ref moved: $actual" >&2; exit 1; }
+
+      - name: Reconstruct and materialize reviewed package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat .github/celar-ai-production-publisher/chunk-0{0,1,2,3,4,5}.txt > /tmp/celar-primary.b64
+          base64 -d /tmp/celar-primary.b64 > /tmp/celar-primary.tar.gz
+          echo '6079d9333848efd6bcdcb67067e2f317c551dfdf99d9bd5f72d98ed3efd9c3fe  /tmp/celar-primary.tar.gz' | sha256sum -c -
+          mkdir -p /tmp/celar-primary
+          set +e
+          set -o pipefail
+          gzip -dc /tmp/celar-primary.tar.gz 2>/tmp/celar-primary-gzip.log | tar -xf - -C /tmp/celar-primary 2>/tmp/celar-primary-tar.log
+          set -e
+          cp -a /tmp/celar-primary/. ./
+
+          cat .github/celar-ai-production-publisher/supp-*.txt > /tmp/celar-supplement.b64
+          base64 -d /tmp/celar-supplement.b64 > /tmp/celar-supplement.tar.gz
+          echo '7e837746ff98d1e747fa4154c171585e08ef347b250dc13ba006cd3b8e9743a1  /tmp/celar-supplement.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/celar-supplement.tar.gz -C ./
+
+          cat .github/celar-ai-production-publisher/extra-*.txt > /tmp/celar-extra.b64
+          base64 -d /tmp/celar-extra.b64 > /tmp/celar-extra.tar.gz
+          echo 'd9cfff1ef6b8851016f18750667bd8f1adcede18b7483a0920087bbfd8ba62ac  /tmp/celar-extra.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/celar-extra.tar.gz -C ./
+
+      - name: Verify every published source byte
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sha256sum -c <<'HASHES'
+          b79a64480838c7d8d64792cc94e9f6eccbfeab3462c1f3024a39505934e2375c  src/backend/ProjectTime.Api/Ai/CelarAiIntentRouter.cs
+          a8d8b9f5f53af8a07f2dd09df21bc7733d1a3bbc15755014aeaa3913935219ac  src/backend/ProjectTime.Api/Ai/CelarAiAnswerOrchestrator.cs
+          0fcedac41041e9f36485dfb395e55e810ee8e4a8f0eb8605db418865291d8ffc  src/backend/ProjectTime.Api/Ai/CelarAiProductionContracts.cs
+          530a96cb3d47b098f7680e5e5cd0d1a95177030ced8e435023a93ec06c6812ad  src/backend/ProjectTime.Api/Ai/CelarAiProductionRepository.cs
+          0233d0f789c161f4fae9f358b38716731f7f1cc5ca51adf5c6ed13ecf1f26b78  src/backend/ProjectTime.Api/Ai/CelarAiTrainingClient.cs
+          ce870099f74274047f602b354766a1d44f3dbc001142406b6d38cef67726dbef  src/backend/ProjectTime.Api/Ai/CelarAiProductionService.cs
+          dad92b735a9df8a0958a75282eef756c855d522351a3aa8ac6109384b3e0a04a  src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          63ca1115a8d139d3ec4c6508523c41a2605c69bc7fd43104520a096bfee3d8e5  src/backend/ProjectTime.Api/Modules/CelarAiProductionModule.cs
+          b85f89c74043084eeae54092d391590a8d2c7b0611efd97f452c6b091c6d712d  src/backend/ProjectTime.Api/Modules/ProjectFlowHiveCelarAiModule.cs
+          9704fb34060c47e1955e2ad7e4cbc538da9c0113425247bfeaf1fa5f16910ca7  src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs
+          0fe89bd6aba93b270db1fb981cec01e174c78230bbe5d09c1b378414ff4d42ba  src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
+          939e28527a708807170b6ae92c123aea861aeb745c87ab4d92d3842e130c94e0  src/frontend/project-time-web/src/celar-ai-production-platform.css
+          2e842194ecb27bf626b97eba6ccdd96492b0e42ab461aee934e4766774b85b97  src/frontend/project-time-web/src/ProjectFlowHiveAiStudio.jsx
+          16f73136665452f825e3e831115fc7ce28677cd89d23a8cec45a12d90acd1034  src/frontend/project-time-web/src/project-flowhive-ai-studio.css
+          42c36dd4f083f1dfac78e9380de10cd677e4aee905f36d098f8a945fcece5697  src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          37b07800c2568f0dcd9dc2cd20993ec6a11aa8cab90cff0e4e1f1b49f7afa798  src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          48d4a292eda684f7789aaf31c88f962a23103509d8468fa2b197bdbea7f0429f  src/frontend/project-time-web/scripts/inject-celar-ai-production-runtime.mjs
+          6c5cbcb46bb93ac32775212c3216e8cd2e4eaa9aff50582c2b2c0bf523516973  src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs
+          a9ed6e39d65711642ea474578e44798c99893bbf68206241a8efc6891ebec024  src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs
+          c0249398d16b517f4cd17a29b200387a35257e1583ec735a0ba00270df00ea2c  database/migrations/067_celar_ai_production_platform.sql
+          59db797297fe5542006903663958d834e73c5ce311068c07752a8799bdfd2058  database/rollback/067_celar_ai_production_platform_rollback.sql
+          ec4db33321cda9bb120beaae7e225281cedd005fc94365bd56fe43f0304a49b8  .github/workflows/celar-ai-production-platform-ci.yml
+          ef9a782ce7f6070821cb277cf04c97659113d9992f6aa99ce0ee2639e13f3cb2  tests/test-celar-ai-production-platform-migration-067.sh
+          HASHES
+
+      - name: Extend legacy Celar AI validation boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/celar-ai-enterprise-platform-ci.yml')
+          source = path.read_text()
+          marker = 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=PRODUCTION_PLATFORM'
+          if marker not in source:
+              needle = '          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then\n'
+              replacement = (
+                  '          if [[ "$HEAD_BRANCH" == feature/celar-ai-production-platform-20260802 ]]; then\n'
+                  "            ALLOWED_DATABASE='^(database/migrations/067_celar_ai_production_platform\\.sql|database/rollback/067_celar_ai_production_platform_rollback\\.sql)$'\n"
+                  "            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=PRODUCTION_PLATFORM' >> \"$GITHUB_ENV\"\n"
+                  '          elif [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then\n'
+              )
+              if needle not in source:
+                  raise SystemExit('Legacy Celar AI validation anchor was not found.')
+              source = source.replace(needle, replacement, 1)
+          path.write_text(source)
+          PY
+
+      - name: Validate publication integration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-production-runtime.mjs
+          node --check src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs
+          grep -Fq '/api/celar-ai/v2/chat' src/backend/ProjectTime.Api/Ai/CelarAiProductionContracts.cs
+          grep -Fq '/api/project-flowhive/ai/generate-plan' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveCelarAiModule.cs
+          grep -Fq 'Created by Dr. Ahmed Adeyemi' src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
+          grep -Fq 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=PRODUCTION_PLATFORM' .github/workflows/celar-ai-enterprise-platform-ci.yml
+
+      - name: Commit complete production package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -rf .github/celar-ai-production-publisher
+          rm -f .github/workflows/celar-ai-production-package-publisher.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Build Celar AI production platform and FlowHive intelligence'
+          git push origin HEAD:feature/celar-ai-production-platform-20260802
+          echo "PUBLISHED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Record publication result
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment 459 --repo "$GITHUB_REPOSITORY" --body "Celar AI production source was published and committed.\n\n- Previous staging SHA: \`$EXPECTED_STAGING_SHA\`\n- Published implementation SHA: \`$PUBLISHED_SHA\`\n- Migration: \`067_celar_ai_production_platform\`\n- Deployment: not performed by this controller"
+
+      - name: Record publication failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment 459 --repo "$GITHUB_REPOSITORY" --body "Celar AI production publication failed closed. No merge, migration, or deployment was performed. Review the one-time publisher run logs."
