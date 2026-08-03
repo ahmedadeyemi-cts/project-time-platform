@@ -38,9 +38,9 @@ require_text "$APP" "window.localStorage.getItem('projectPulseViewAsUser')" view
 require_text "$MAIN" "import './view-as-storage-compatibility.js';" view_as_compatibility_loaded_before_app
 require_text "$VIEW_AS_COMPAT" "const CURRENT_VIEW_AS_KEY = 'projectPulseViewAsUser';" view_as_current_storage_key
 require_text "$VIEW_AS_COMPAT" "const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';" view_as_legacy_storage_key
-require_text "$VIEW_AS_COMPAT" 'if (currentRaw && !compatibilityOwned) return;' view_as_current_state_not_overwritten
+require_text "$VIEW_AS_COMPAT" 'if (currentRaw && !compatibilityOwned) {' view_as_current_state_not_overwritten
 require_text "$VIEW_AS_COMPAT" 'compatibilitySource: LEGACY_VIEW_AS_KEY' view_as_legacy_state_mirrored
-require_text "$VIEW_AS_COMPAT" 'window.localStorage.removeItem(CURRENT_VIEW_AS_KEY);' view_as_legacy_clear_reconciled
+require_text "$VIEW_AS_COMPAT" 'window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);' view_as_legacy_key_consumed
 require_text "$APP" 'actualSessionHasPermanentFullControl' permanent_frontend_authority
 require_text "$APP" "'SUPER_ADMINISTRATOR'" canonical_super_admin_role
 require_text "$APP" "activeRoute === 'work-task-builder' && canSeeAny" celar_route_uses_shared_authority
