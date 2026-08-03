@@ -1,0 +1,91 @@
+name: PR 459 one-shot generated source repair
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-production-platform-20260802
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: pr459-one-shot-generated-source-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: feature/celar-ai-production-platform-20260802
+
+      - name: Verify one-shot repair parent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_PARENT='3051dbd9e78e1c46737c362783e3d71c698eb5c4'
+          ACTUAL_PARENT="$(git rev-parse HEAD^)"
+          test "$ACTUAL_PARENT" = "$EXPECTED_PARENT"
+          echo "PR459_REPAIR_PARENT=$ACTUAL_PARENT"
+
+      - name: Synchronize tracked Module 026 generated source
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/CrmErpIntegrationModule.g.cs')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'public static class CrmErpIntegrationModule\n',
+                  'public static partial class CrmErpIntegrationModule\n',
+              ),
+              (
+                  'private static async Task<IResult> ListProvidersAsync(HttpContext context)\n',
+                  'private static async Task<IResult> ListProvidersLegacyAsync(HttpContext context)\n',
+              ),
+              (
+                  'private static async Task<IResult?> AuthorizeManageAsync(HttpContext context)\n',
+                  'private static async Task<IResult?> AuthorizeManageLegacyAsync(HttpContext context)\n',
+              ),
+              (
+                  'private static async Task<bool> HasManageAuthorityAsync(HttpContext context)\n',
+                  'private static async Task<bool> HasManageAuthorityLegacyAsync(HttpContext context)\n',
+              ),
+          ]
+          for before, after in replacements:
+              count = text.count(before)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one occurrence of {before.strip()!r}; found {count}.')
+              text = text.replace(before, after, 1)
+          path.write_text(text, encoding='utf-8')
+
+      - name: Validate exact repair boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = 'src/backend/ProjectTime.Api/CrmErpIntegrationModule.g.cs'
+          test "$(git hash-object src/backend/ProjectTime.Api/CrmErpIntegrationModule.g.cs)" = '6181fa92bdb1a5d935128a990f1e0f3751abff9f'
+          echo 'PR459_GENERATED_SOURCE_REPAIR=VALIDATED'
+
+      - name: Remove one-shot workflow and commit repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/pr459-one-shot-generated-source-repair.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/backend/ProjectTime.Api/CrmErpIntegrationModule.g.cs .github/workflows/pr459-one-shot-generated-source-repair.yml
+          git diff --cached --check
+          git commit -m 'Fix stale Module 026 generated source'
+          git push origin HEAD:feature/celar-ai-production-platform-20260802
+          echo "PR459_REPAIR_COMMIT=$(git rev-parse HEAD)"
