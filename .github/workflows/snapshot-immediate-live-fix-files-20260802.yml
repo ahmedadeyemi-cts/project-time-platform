@@ -1,0 +1,59 @@
+name: Snapshot Immediate Live Fix Files
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/snapshot-immediate-live-fix-files-20260802.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.event.pull_request.head.ref == 'diagnose/live-uat-reflection-20260802'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Copy exact repair inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p snapshot
+          files=(
+            src/frontend/project-time-web/src/App.jsx
+            src/frontend/project-time-web/src/AnalyticsCenter.jsx
+            src/frontend/project-time-web/src/analytics-center.css
+            src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+            src/frontend/project-time-web/src/module-availability.css
+            src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+            src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx
+            src/frontend/project-time-web/package.json
+            src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs
+            src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs
+            src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs
+            src/backend/ProjectTime.Api/Modules/PermanentRoleAuthorityCompatibility.cs
+            src/backend/ProjectTime.Api/Modules/ModuleAvailabilityOverridesModule.cs
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+            tests/test-uat-functional-completion-contract.sh
+          )
+          for file in "${files[@]}"; do
+            test -f "$file"
+            mkdir -p "snapshot/$(dirname "$file")"
+            cp "$file" "snapshot/$file"
+          done
+          find snapshot -type f -print0 | sort -z | xargs -0 sha256sum > snapshot/SHA256SUMS
+
+      - name: Upload exact repair inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: immediate-live-fix-source-${{ github.run_id }}
+          path: snapshot
+          retention-days: 3
