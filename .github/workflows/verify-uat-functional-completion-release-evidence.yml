@@ -72,6 +72,7 @@ jobs:
           git -C verify-control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
           [[ "$(git -C verify-control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)" == "$VERIFY_WORKFLOW" ]]
           git -C verify-control diff --check "$EXPECTED_RELEASE_COMMIT"...HEAD
+
           grep -Fq 'Engineer Project Over / Under Budget Report' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
           grep -Fq 'Utilization Over / Under Report by Engineer' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
           grep -Fq 'Engineer Vacation / PTO Used Report' release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs
@@ -80,10 +81,11 @@ jobs:
           grep -Fq 'SEND MODULE 065 TEST' release/src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx
           grep -Fq '066_immutable_project_numbers' release/database/migrations/066_immutable_project_numbers.sql
           bash release/tests/test-uat-functional-completion-contract.sh
+
           echo "control_commit=$CONTROL_HEAD" >> "$GITHUB_OUTPUT"
           echo 'FINAL_RELEASE_EVIDENCE_GUARD=PASSED'
 
-      - name: Validate the successful deployment run and checksummed migration evidence
+      - name: Validate successful deployment run and checksummed migration evidence
         id: deployment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,19 +93,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$DEPLOYMENT_RUN_ID")"
-          jq -e \
-            --arg expected_sha "$DEPLOYMENT_CONTROL_COMMIT" \
-            --arg expected_event 'pull_request' \
-            '.status == "completed" and .conclusion == "success" and .head_sha == $expected_sha and .event == $expected_event' \
+          jq -e --arg sha "$DEPLOYMENT_CONTROL_COMMIT" \
+            '.status == "completed" and .conclusion == "success" and .head_sha == $sha and .event == "pull_request"' \
             <<<"$RUN_JSON" >/dev/null
 
           ARTIFACTS_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$DEPLOYMENT_RUN_ID/artifacts?per_page=100")"
-          ARTIFACT_JSON="$(jq -c \
-            --arg name "$DEPLOYMENT_ARTIFACT_NAME" \
-            --argjson id "$DEPLOYMENT_ARTIFACT_ID" \
+          jq -e --arg name "$DEPLOYMENT_ARTIFACT_NAME" --argjson id "$DEPLOYMENT_ARTIFACT_ID" \
             '.artifacts[] | select(.name == $name and .id == $id and .expired == false)' \
-            <<<"$ARTIFACTS_JSON")"
-          [[ -n "$ARTIFACT_JSON" ]]
+            <<<"$ARTIFACTS_JSON" >/dev/null
 
           curl --fail --location --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -118,8 +115,10 @@ jobs:
           unzip -q /tmp/deployment-evidence.zip -d /tmp/deployment-evidence
           (
             cd /tmp/deployment-evidence
-            sha256sum -c SHA256SUMS
+            sed 's#  evidence/#  #' SHA256SUMS > SHA256SUMS.local
+            sha256sum -c SHA256SUMS.local
           )
+
           EVIDENCE=/tmp/deployment-evidence/uat-functional-completion-test-deployment.json
           test -s "$EVIDENCE"
           jq -e \
@@ -158,7 +157,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify exact active revisions, revision-local source marker, and immutable images
+      - name: Verify exact active revisions and revision-local source marker
         id: revisions
         shell: bash
         env:
@@ -172,28 +171,23 @@ jobs:
           [[ -n "$API_REVISION" && "$API_REVISION" != null ]]
           [[ -n "$WEB_REVISION" && "$WEB_REVISION" != null ]]
 
-          API_REVISION_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$API_APP" --revision "$API_REVISION" -o json --only-show-errors)"
-          WEB_REVISION_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$WEB_APP" --revision "$WEB_REVISION" -o json --only-show-errors)"
+          API_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$API_APP" --revision "$API_REVISION" -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp revision show -g "$RESOURCE_GROUP" -n "$WEB_APP" --revision "$WEB_REVISION" -o json --only-show-errors)"
 
-          API_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_REVISION_JSON")"
-          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_REVISION_JSON")"
-          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value][0] // empty' <<<"$API_REVISION_JSON")"
-          API_HEALTH="$(jq -r '.properties.healthState // empty' <<<"$API_REVISION_JSON")"
-          WEB_HEALTH="$(jq -r '.properties.healthState // empty' <<<"$WEB_REVISION_JSON")"
-          API_PROVISIONING="$(jq -r '.properties.provisioningState // empty' <<<"$API_REVISION_JSON")"
-          WEB_PROVISIONING="$(jq -r '.properties.provisioningState // empty' <<<"$WEB_REVISION_JSON")"
-          API_ACTIVE="$(jq -r '.properties.active // false' <<<"$API_REVISION_JSON")"
-          WEB_ACTIVE="$(jq -r '.properties.active // false' <<<"$WEB_REVISION_JSON")"
-          API_TRAFFIC="$(jq -r '.properties.trafficWeight // 0' <<<"$API_REVISION_JSON")"
-          WEB_TRAFFIC="$(jq -r '.properties.trafficWeight // 0' <<<"$WEB_REVISION_JSON")"
-
+          API_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_JSON")"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_JSON")"
+          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value][0] // empty' <<<"$API_JSON")"
           [[ "$API_IMAGE" == "$EXPECTED_API_IMAGE" ]]
           [[ "$WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" ]]
           [[ "$API_SOURCE" == "$EXPECTED_RELEASE_COMMIT" ]]
-          [[ "${API_HEALTH,,}" == healthy && "${WEB_HEALTH,,}" == healthy ]]
-          [[ "${API_PROVISIONING,,}" == provisioned && "${WEB_PROVISIONING,,}" == provisioned ]]
-          [[ "$API_ACTIVE" == true && "$WEB_ACTIVE" == true ]]
-          [[ "$API_TRAFFIC" == 100 && "$WEB_TRAFFIC" == 100 ]]
+          [[ "$(jq -r '.properties.healthState // empty' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == healthy ]]
+          [[ "$(jq -r '.properties.healthState // empty' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == healthy ]]
+          [[ "$(jq -r '.properties.provisioningState // empty' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == provisioned ]]
+          [[ "$(jq -r '.properties.provisioningState // empty' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == provisioned ]]
+          [[ "$(jq -r '.properties.active // false' <<<"$API_JSON")" == true ]]
+          [[ "$(jq -r '.properties.active // false' <<<"$WEB_JSON")" == true ]]
+          [[ "$(jq -r '.properties.trafficWeight // 0' <<<"$API_JSON")" == 100 ]]
+          [[ "$(jq -r '.properties.trafficWeight // 0' <<<"$WEB_JSON")" == 100 ]]
           [[ "$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
           [[ "$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
 
@@ -217,11 +211,8 @@ jobs:
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           check_status() {
             local path="$1" expected="$2" status
-            status="$(curl -sS -o /tmp/final-release-api-response -w '%{http_code}' "$BASE$path")"
-            [[ "$status" == "$expected" ]] || {
-              echo "$path returned $status; expected $expected" >&2
-              exit 1
-            }
+            status="$(curl -sS -o /tmp/final-api-response -w '%{http_code}' "$BASE$path")"
+            [[ "$status" == "$expected" ]] || { echo "$path returned $status; expected $expected" >&2; exit 1; }
           }
           check_status '/health' '200'
           check_status '/api/version' '200'
@@ -234,7 +225,7 @@ jobs:
           check_status '/api/entra-secret-expiration/profile' '401'
           echo 'FINAL_RELEASE_PUBLIC_API_BOUNDARIES=PASSED'
 
-      - name: Verify public web bytes match the immutable candidate image
+      - name: Verify public web bytes match immutable web image
         id: web
         shell: bash
         run: |
@@ -245,24 +236,23 @@ jobs:
           CONTAINER_ID="$(docker create "$EXPECTED_WEB_IMAGE")"
           cleanup_container() { docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true; }
           trap cleanup_container EXIT
-          rm -rf /tmp/final-release-candidate
-          mkdir -p /tmp/final-release-candidate
-          docker cp "$CONTAINER_ID:/usr/share/nginx/html/." /tmp/final-release-candidate/
+          rm -rf /tmp/final-candidate
+          mkdir -p /tmp/final-candidate
+          docker cp "$CONTAINER_ID:/usr/share/nginx/html/." /tmp/final-candidate/
 
-          CANDIDATE_INDEX=/tmp/final-release-candidate/index.html
+          CANDIDATE_INDEX=/tmp/final-candidate/index.html
           CANDIDATE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' "$CANDIDATE_INDEX" | head -1 | cut -d'"' -f2)"
           CANDIDATE_JS_PATH="${CANDIDATE_JS_REF%%\?*}"
           CANDIDATE_JS_PATH="${CANDIDATE_JS_PATH#/}"
           test -s "$CANDIDATE_INDEX"
-          test -s "/tmp/final-release-candidate/$CANDIDATE_JS_PATH"
+          test -s "/tmp/final-candidate/$CANDIDATE_JS_PATH"
           CANDIDATE_INDEX_SHA="$(sha256sum "$CANDIDATE_INDEX" | awk '{print $1}')"
-          CANDIDATE_JS_SHA="$(sha256sum "/tmp/final-release-candidate/$CANDIDATE_JS_PATH" | awk '{print $1}')"
+          CANDIDATE_JS_SHA="$(sha256sum "/tmp/final-candidate/$CANDIDATE_JS_PATH" | awk '{print $1}')"
 
-          BUSTER="final-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-release-public-index.html -w '%{http_code}' "$PUBLIC_BASE/?release_check=$BUSTER")"
-          [[ "$STATUS" == 200 && -s /tmp/final-release-public-index.html ]]
-          PUBLIC_INDEX_SHA="$(sha256sum /tmp/final-release-public-index.html | awk '{print $1}')"
-          PUBLIC_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/final-release-public-index.html | head -1 | cut -d'"' -f2)"
+          BUSTER="final-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-public-index.html -w '%{http_code}' "$PUBLIC_BASE/?release_check=$BUSTER")" == 200 ]]
+          PUBLIC_INDEX_SHA="$(sha256sum /tmp/final-public-index.html | awk '{print $1}')"
+          PUBLIC_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/final-public-index.html | head -1 | cut -d'"' -f2)"
           [[ "$PUBLIC_INDEX_SHA" == "$CANDIDATE_INDEX_SHA" ]]
           [[ "$PUBLIC_JS_REF" == "$CANDIDATE_JS_REF" ]]
           case "$PUBLIC_JS_REF" in
@@ -270,9 +260,8 @@ jobs:
             /*) PUBLIC_JS_URL="$PUBLIC_BASE$PUBLIC_JS_REF" ;;
             *) PUBLIC_JS_URL="$PUBLIC_BASE/$PUBLIC_JS_REF" ;;
           esac
-          JS_STATUS="$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-release-public-app.js -w '%{http_code}' "$PUBLIC_JS_URL")"
-          [[ "$JS_STATUS" == 200 && -s /tmp/final-release-public-app.js ]]
-          PUBLIC_JS_SHA="$(sha256sum /tmp/final-release-public-app.js | awk '{print $1}')"
+          [[ "$(curl -sSL -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -o /tmp/final-public-app.js -w '%{http_code}' "$PUBLIC_JS_URL")" == 200 ]]
+          PUBLIC_JS_SHA="$(sha256sum /tmp/final-public-app.js | awk '{print $1}')"
           [[ "$PUBLIC_JS_SHA" == "$CANDIDATE_JS_SHA" ]]
 
           echo "index_sha256=$PUBLIC_INDEX_SHA" >> "$GITHUB_OUTPUT"
