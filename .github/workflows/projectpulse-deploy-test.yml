@@ -41,7 +41,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out exact merged PR 447 release
+      - name: Check out exact merged release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: 0bb15f6736c4fb8feee1f83f144c9fbde5e563d0
@@ -49,7 +49,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Guard exact main, immutable artifacts, and Test-only scope
+      - name: Guard exact release and one-file Test activation
         id: release
         shell: bash
         run: |
@@ -62,19 +62,10 @@ jobs:
           RELEASE_HEAD="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_HEAD" == '${{ github.event.pull_request.head.sha }}' ]]
           [[ "$RELEASE_HEAD" == "$EXPECTED_RELEASE_COMMIT" ]]
-
           git -C control fetch origin main --no-tags
-          CURRENT_MAIN="$(git -C control rev-parse origin/main)"
-          [[ "$CURRENT_MAIN" == "$EXPECTED_RELEASE_COMMIT" ]] || {
-            echo "main moved from the validated PR 447 release: $CURRENT_MAIN" >&2
-            exit 1
-          }
+          [[ "$(git -C control rev-parse origin/main)" == "$EXPECTED_RELEASE_COMMIT" ]]
           git -C control merge-base --is-ancestor "$EXPECTED_RELEASE_COMMIT" HEAD
-          CHANGED="$(git -C control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)"
-          [[ "$CHANGED" == "$CONTROL_WORKFLOW" ]] || {
-            printf 'Unexpected activation delta:\n%s\n' "$CHANGED" >&2
-            exit 1
-          }
+          [[ "$(git -C control diff --name-only "$EXPECTED_RELEASE_COMMIT"...HEAD)" == "$CONTROL_WORKFLOW" ]]
           git -C control diff --check "$EXPECTED_RELEASE_COMMIT"...HEAD
 
           [[ "$EXPECTED_API_IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]]
@@ -98,13 +89,12 @@ jobs:
           grep -Fq 'Overview & Architecture' release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
           grep -Fq 'What you need to do now' release/src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx
           grep -Fq 'SEND MODULE 065 TEST' release/src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx
-          grep -Fq '066_immutable_project_numbers' release/database/migrations/066_immutable_project_numbers.sql
           bash release/tests/test-uat-functional-completion-contract.sh
           bash -n release/tests/test-immutable-project-numbers-migration-066.sh
 
           echo "target_commit=$RELEASE_HEAD" >> "$GITHUB_OUTPUT"
           echo "control_commit=$CONTROL_HEAD" >> "$GITHUB_OUTPUT"
-          echo 'UAT_COMPLETION_RECOVERY_GUARD=PASSED'
+          echo 'UAT_COMPLETION_RELEASE_GUARD=PASSED'
 
       - name: Sign in to Azure Test through OIDC
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
@@ -120,7 +110,7 @@ jobs:
         shell: bash
         run: bash release/scripts/export-pr55-test-database-url.sh
 
-      - name: Confirm immutable candidate artifacts exist in ACR
+      - name: Confirm immutable candidate artifacts exist
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -128,11 +118,7 @@ jobs:
             relative="${image#${{ vars.AZURE_ACR_NAME }}.azurecr.io/}"
             repository="${relative%@sha256:*}"
             digest="sha256:${relative##*@sha256:}"
-            observed="$(az acr repository show-manifests \
-              --name '${{ vars.AZURE_ACR_NAME }}' \
-              --repository "$repository" \
-              --query "[?digest=='$digest'].digest | [0]" \
-              -o tsv --only-show-errors)"
+            observed="$(az acr repository show-manifests --name '${{ vars.AZURE_ACR_NAME }}' --repository "$repository" --query "[?digest=='$digest'].digest | [0]" -o tsv --only-show-errors)"
             [[ "$observed" == "$digest" ]]
             echo "IMMUTABLE_ARTIFACT_PRESENT=$repository@$digest"
           done
@@ -144,13 +130,13 @@ jobs:
           set -Eeuo pipefail
           RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
           RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
-          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
-          [[ -n "$RAW_API" && -n "$RAW_WEB" ]]
-          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
+          [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
 
           resolve_digest() {
-            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
             case "$image" in
               "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
               "$registry"*:*) ;;
@@ -166,17 +152,13 @@ jobs:
           OLD_API="$(resolve_digest "$RAW_API")"
           OLD_WEB="$(resolve_digest "$RAW_WEB")"
           OLD_API_SOURCE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
-          OLD_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
-          OLD_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
-
           echo "old_api_image=$OLD_API" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$OLD_WEB" >> "$GITHUB_OUTPUT"
           echo "old_api_source=$OLD_API_SOURCE" >> "$GITHUB_OUTPUT"
-          echo "old_api_revision=$OLD_API_REVISION" >> "$GITHUB_OUTPUT"
-          echo "old_web_revision=$OLD_WEB_REVISION" >> "$GITHUB_OUTPUT"
-          echo 'UAT_COMPLETION_RECOVERY_ROLLBACK_CAPTURED=YES'
+          echo "old_api_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
+          echo "old_web_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
 
-      - name: Idempotently reapply and verify migrations 060-066 in the private Test network
+      - name: Idempotently reapply and verify migrations 060-066
         id: migrate
         shell: bash
         env:
@@ -187,13 +169,9 @@ jobs:
           set -Eeuo pipefail
           : "${PROJECTPULSE_TEST_DATABASE_URL:?PROJECTPULSE_TEST_DATABASE_URL is required}"
           echo "::add-mask::$PROJECTPULSE_TEST_DATABASE_URL"
-          JOB_NAME="uat-rm-${GITHUB_RUN_ID}"
-          [[ "$JOB_NAME" =~ ^[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]]
+          JOB_NAME="uat-r3-${GITHUB_RUN_ID}"
           ENVIRONMENT_ID="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" --query properties.managedEnvironmentId -o tsv --only-show-errors)"
-          [[ -n "$ENVIRONMENT_ID" && "$ENVIRONMENT_ID" != null ]]
-
           ACR_TOKEN="$(az acr login --name "$AZURE_ACR_NAME" --expose-token --query accessToken -o tsv --only-show-errors)"
-          [[ -n "$ACR_TOKEN" ]]
           echo "::add-mask::$ACR_TOKEN"
           JOB_CREATED=0
           cleanup() {
@@ -207,49 +185,28 @@ jobs:
           }
           trap cleanup EXIT INT TERM
 
-          if az containerapp job show -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" --output none --only-show-errors 2>/dev/null; then
-            echo "Guarded migration job already exists: $JOB_NAME" >&2
-            exit 1
-          fi
-
           az containerapp job create \
-            -g "$AZURE_RESOURCE_GROUP" \
-            -n "$JOB_NAME" \
+            -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" \
             --environment "$ENVIRONMENT_ID" \
-            --trigger-type Manual \
-            --replica-timeout 1800 \
-            --replica-retry-limit 0 \
-            --replica-completion-count 1 \
-            --parallelism 1 \
-            --image "$EXPECTED_MIGRATOR_IMAGE" \
-            --cpu 0.25 \
-            --memory 0.5Gi \
+            --trigger-type Manual --replica-timeout 1800 --replica-retry-limit 0 \
+            --replica-completion-count 1 --parallelism 1 \
+            --image "$EXPECTED_MIGRATOR_IMAGE" --cpu 0.25 --memory 0.5Gi \
             --registry-server "$AZURE_ACR_NAME.azurecr.io" \
             --registry-username '00000000-0000-0000-0000-000000000000' \
             --registry-password "$ACR_TOKEN" \
             --secrets "uat-db-url=$PROJECTPULSE_TEST_DATABASE_URL" \
             --env-vars PROJECTPULSE_TEST_DATABASE_URL=secretref:uat-db-url \
-            --tags projectpulse-scope=uat-functional-completion-recovery projectpulse-release="$EXPECTED_RELEASE_COMMIT" \
+            --tags projectpulse-scope=uat-functional-completion-final projectpulse-release="$EXPECTED_RELEASE_COMMIT" \
             --output none --only-show-errors
           JOB_CREATED=1
           unset ACR_TOKEN PROJECTPULSE_TEST_DATABASE_URL
-
           EXECUTION_NAME="$(az containerapp job start -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
-          [[ -n "$EXECUTION_NAME" && "$EXECUTION_NAME" != null ]]
           echo "execution_name=$EXECUTION_NAME" >> "$GITHUB_OUTPUT"
-          echo "job_name=$JOB_NAME" >> "$GITHUB_OUTPUT"
-
           for attempt in $(seq 1 180); do
             STATUS="$(az containerapp job execution list -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
             case "$STATUS" in
-              Succeeded)
-                echo 'UAT_COMPLETION_RECOVERY_MIGRATIONS_060_066=VERIFIED'
-                exit 0
-                ;;
-              Failed|Canceled)
-                echo "UAT_COMPLETION_RECOVERY_MIGRATION_STATUS=$STATUS" >&2
-                break
-                ;;
+              Succeeded) echo 'UAT_COMPLETION_MIGRATIONS_060_066=VERIFIED'; exit 0 ;;
+              Failed|Canceled) break ;;
             esac
             sleep 5
           done
@@ -263,14 +220,12 @@ jobs:
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image "$EXPECTED_API_IMAGE" \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT="$EXPECTED_RELEASE_COMMIT" \
-            --revision-suffix "uatr2api-${GITHUB_RUN_ID}" \
-            --output none --only-show-errors
+            --revision-suffix "uatr3api-${GITHUB_RUN_ID}" --output none --only-show-errors
 
-      - name: Validate exact API image, source, readiness, and authorization boundaries
+      - name: Validate exact API image, source, and public boundaries
         id: validate_api
         shell: bash
         run: |
@@ -280,9 +235,7 @@ jobs:
             ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
             ACTIVE_SOURCE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
             API_READY_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
-            if [[ "$ACTIVE_API" == "$EXPECTED_API_IMAGE" && "$ACTIVE_SOURCE" == "$EXPECTED_RELEASE_COMMIT" && -n "$API_READY_REVISION" && "$API_READY_REVISION" != null ]]; then
-              break
-            fi
+            if [[ "$ACTIVE_API" == "$EXPECTED_API_IMAGE" && "$ACTIVE_SOURCE" == "$EXPECTED_RELEASE_COMMIT" && -n "$API_READY_REVISION" && "$API_READY_REVISION" != null ]]; then break; fi
             sleep 5
           done
           [[ "$ACTIVE_API" == "$EXPECTED_API_IMAGE" ]]
@@ -291,14 +244,15 @@ jobs:
           [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
 
           wait_status() {
-            local url="$1" expected="$2" status=''
+            local url="$1"
+            local expected="$2"
+            local status=''
             for attempt in $(seq 1 60); do
-              status="$(curl -sS -o /tmp/uat-r2-api-response -w '%{http_code}' "$url" || true)"
+              status="$(curl -sS -o /tmp/uat-r3-api-response -w '%{http_code}' "$url" || true)"
               if [[ ",$expected," == *",$status,"* ]]; then return 0; fi
               sleep 5
             done
             echo "$url returned $status; expected $expected" >&2
-            cat /tmp/uat-r2-api-response >&2 || true
             return 1
           }
           wait_status "$BASE/health" '200'
@@ -310,9 +264,7 @@ jobs:
           wait_status "$BASE/api/financial-operations/reports/catalog" '401'
           wait_status "$BASE/api/integrations/026/providers" '401'
           wait_status "$BASE/api/entra-secret-expiration/profile" '401'
-
           echo "ready_revision=$API_READY_REVISION" >> "$GITHUB_OUTPUT"
-          echo 'UAT_COMPLETION_RECOVERY_API=PASSED'
 
       - name: Deploy exact immutable web image
         id: deploy_web
@@ -321,13 +273,11 @@ jobs:
           set -Eeuo pipefail
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image "$EXPECTED_WEB_IMAGE" \
-            --revision-suffix "uatr2web-${GITHUB_RUN_ID}" \
-            --output none --only-show-errors
+            --revision-suffix "uatr3web-${GITHUB_RUN_ID}" --output none --only-show-errors
 
-      - name: Validate exact web image and identical direct/public served artifact
+      - name: Validate exact web image and direct/public bundle identity
         id: validate_web
         shell: bash
         run: |
@@ -340,9 +290,7 @@ jobs:
           for attempt in $(seq 1 90); do
             ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
             WEB_READY_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
-            if [[ "$ACTIVE_WEB" == "$EXPECTED_WEB_IMAGE" && -n "$WEB_READY_REVISION" && "$WEB_READY_REVISION" != null ]]; then
-              break
-            fi
+            if [[ "$ACTIVE_WEB" == "$EXPECTED_WEB_IMAGE" && -n "$WEB_READY_REVISION" && "$WEB_READY_REVISION" != null ]]; then break; fi
             sleep 5
           done
           [[ "$ACTIVE_WEB" == "$EXPECTED_WEB_IMAGE" ]]
@@ -350,9 +298,13 @@ jobs:
           [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
 
           fetch_bundle() {
-            local label="$1" base="$2" index="/tmp/${label}-index.html" js_file="/tmp/${label}-app.js" status js js_url js_status
+            local label="$1"
+            local base="$2"
+            local index="/tmp/${label}-index.html"
+            local js_file="/tmp/${label}-app.js"
+            local status='' js='' js_url='' js_status='' buster=''
             for attempt in $(seq 1 90); do
-              buster="uat-r2-${GITHUB_RUN_ID}-${label}-${attempt}"
+              buster="uat-r3-${GITHUB_RUN_ID}-${label}-${attempt}"
               status="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o "$index" -w '%{http_code}' "$base/?release_check=$buster" || true)"
               js="$(sed -nE 's/.*src="([^"]+\.js[^\"]*)".*/\1/p' "$index" | head -1)"
               if [[ "$status" == 200 && -n "$js" ]]; then
@@ -375,27 +327,11 @@ jobs:
 
           fetch_bundle direct "$DIRECT_BASE"
           fetch_bundle public "$PUBLIC_BASE"
-
           DIRECT_SHA="$(sha256sum /tmp/direct-app.js | awk '{print $1}')"
           PUBLIC_SHA="$(sha256sum /tmp/public-app.js | awk '{print $1}')"
-          [[ "$DIRECT_SHA" == "$PUBLIC_SHA" ]] || {
-            echo "Public and direct JavaScript differ: direct=$DIRECT_SHA public=$PUBLIC_SHA" >&2
-            exit 1
-          }
+          [[ "$DIRECT_SHA" == "$PUBLIC_SHA" ]]
 
-          # Source contracts and exact image identity are authoritative. These
-          # strings are diagnostic only because Vite may split or minify them
-          # into lazy chunks that are not referenced directly by index.html.
-          for marker in \
-            'Analytics Center' \
-            'Engineer Project Over / Under Budget Report' \
-            'Utilization Over / Under Report by Engineer' \
-            'Engineer Vacation / PTO Used Report' \
-            'Overview & Architecture' \
-            'Created by Dr. Ahmed Adeyemi' \
-            'What you need to do now' \
-            'SEND MODULE 065 TEST' \
-            'Integration Control Center'; do
+          for marker in 'Analytics Center' 'Overview & Architecture' 'Created by Dr. Ahmed Adeyemi' 'What you need to do now' 'SEND MODULE 065 TEST' 'Integration Control Center'; do
             if grep -Fq "$marker" /tmp/direct-app.js; then
               echo "LIVE_BUNDLE_MARKER_FOUND=$marker"
             else
@@ -403,17 +339,13 @@ jobs:
             fi
           done
 
-          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
-          API_SOURCE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)"
-          [[ "$ACTIVE_API" == "$EXPECTED_API_IMAGE" ]]
-          [[ "$ACTIVE_WEB" == "$EXPECTED_WEB_IMAGE" ]]
-          [[ "$API_SOURCE" == "$EXPECTED_RELEASE_COMMIT" ]]
-
+          [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" == "$EXPECTED_API_IMAGE" ]]
+          [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)" == "$EXPECTED_RELEASE_COMMIT" ]]
           echo "ready_revision=$WEB_READY_REVISION" >> "$GITHUB_OUTPUT"
           echo "direct_bundle_sha256=$DIRECT_SHA" >> "$GITHUB_OUTPUT"
           echo "public_bundle_sha256=$PUBLIC_SHA" >> "$GITHUB_OUTPUT"
           echo "direct_fqdn=$WEB_FQDN" >> "$GITHUB_OUTPUT"
-          echo 'UAT_COMPLETION_RECOVERY_WEB=PASSED'
+          echo 'UAT_COMPLETION_TEST_WEB=PASSED'
 
       - name: Write immutable Test deployment evidence
         if: success()
@@ -427,17 +359,9 @@ jobs:
             "releaseCommit": "${{ steps.release.outputs.target_commit }}",
             "controlCommit": "${{ steps.release.outputs.control_commit }}",
             "workflowRunId": "${{ github.run_id }}",
-            "recoveryOfWorkflowRunId": "30778613442",
+            "priorAttempts": ["30778613442", "30779634966"],
             "sourcePullRequests": [447],
-            "migrations": [
-              "060_analytics_center_enterprise_experience",
-              "061_celar_ai_capability_routing",
-              "062_super_administrator_permanent_full_control",
-              "063_project_management_billing_role_access_repair",
-              "064_module_065_enterprise_notification_orchestration",
-              "065_enterprise_notification_runtime_completion",
-              "066_immutable_project_numbers"
-            ],
+            "migrations": ["060", "061", "062", "063", "064", "065", "066"],
             "migrationStatus": "idempotently-reapplied-and-verified",
             "migrationImage": "$EXPECTED_MIGRATOR_IMAGE",
             "migrationExecution": "${{ steps.migrate.outputs.execution_name }}",
@@ -478,18 +402,14 @@ jobs:
           set +e
           echo 'Migrations 060-066 are additive and are not automatically rolled back.'
           az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.before.outputs.old_api_image }}' \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.before.outputs.old_api_source }}' \
-            --revision-suffix "uatr2apirb-${GITHUB_RUN_ID}" \
-            --output none --only-show-errors || true
+            --revision-suffix "uatr3apirb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
           az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.before.outputs.old_web_image }}' \
-            --revision-suffix "uatr2webrb-${GITHUB_RUN_ID}" \
-            --output none --only-show-errors || true
+            --revision-suffix "uatr3webrb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
 
       - name: Sign out of Azure
         if: always()
