@@ -1,0 +1,63 @@
+name: Diagnose Actual Session Authority
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-actual-session-authority-20260802.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'diagnose/live-uat-reflection-20260802'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Capture actual-session and security-context contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          {
+            echo '=== CONTEXT ITEM WRITERS AND READERS ==='
+            grep -RInE --exclude-dir=obj --exclude-dir=bin --exclude='*.min.*' \
+              'ProjectPulseActualUserId|ProjectPulseSessionUserId|ProjectPulseActualEmail|ProjectPulseSessionEmail|ProjectPulseActualRoleCodes|ProjectPulseEffectiveRoleCodes|ProjectPulsePermanentFullControl|ProjectPulseAuthorizationSource|ProjectPulseIsViewAs' \
+              src/backend/ProjectTime.Api || true
+            echo
+            echo '=== SECURITY ME ENDPOINT ==='
+            grep -RInE --exclude-dir=obj --exclude-dir=bin \
+              'api/security/me|MapGet\("/api/security/me|security/me' \
+              src/backend/ProjectTime.Api || true
+            echo
+            echo '=== ROLE TABLES AND ASSIGNMENTS ==='
+            grep -RInE --exclude-dir=obj --exclude-dir=bin \
+              'app_user_role_assignments|user_role_assignments|app_roles|role_code|SUPER_ADMINISTRATOR' \
+              src/backend/ProjectTime.Api database/migrations | head -n 2500 || true
+          } > evidence/authority-search.txt
+
+          while IFS=: read -r file _; do
+            [[ -f "$file" ]] || continue
+            safe="$(echo "$file" | tr '/' '_')"
+            cp "$file" "evidence/$safe"
+          done < <(grep -RIlE --exclude-dir=obj --exclude-dir=bin \
+            'ProjectPulseActualUserId|ProjectPulseSessionUserId|api/security/me|MapGet\("/api/security/me' \
+            src/backend/ProjectTime.Api | sort -u)
+
+          find evidence -type f -print0 | sort -z | xargs -0 sha256sum > evidence/SHA256SUMS
+          cat evidence/authority-search.txt
+
+      - name: Upload read-only authority evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-session-authority-${{ github.run_id }}
+          path: evidence
+          retention-days: 3
