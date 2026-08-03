@@ -19,13 +19,22 @@ internal static class ProjectPulseActualSessionAuthority
     private static readonly string[] SuperAdministratorRoleCodes =
     [
         "SUPER_ADMINISTRATOR",
+        "SUPERADMINISTRATOR",
+        "GLOBAL_ADMINISTRATOR",
+        "GLOBALADMINISTRATOR",
         "ADMINISTRATOR"
     ];
 
-    internal static bool IsAdministratorRoleCode(string? roleCode) =>
-        SuperAdministratorRoleCodes.Contains(
+    internal static bool IsAdministratorRoleCode(string? roleCode)
+    {
+        var canonical = System.Text.RegularExpressions.Regex.Replace(
             (roleCode ?? string.Empty).Trim().ToUpperInvariant(),
+            "[^A-Z0-9]+",
+            "_").Trim('_');
+        return SuperAdministratorRoleCodes.Contains(
+            canonical,
             StringComparer.OrdinalIgnoreCase);
+    }
 
     internal static bool IsViewAs(HttpContext context)
     {
@@ -78,7 +87,11 @@ internal static class ProjectPulseActualSessionAuthority
               ON role.app_role_id = assignment.app_role_id
              AND role.is_active = TRUE
             WHERE app_user.is_active = TRUE
-              AND upper(COALESCE(role.role_code, '')) = ANY(@role_codes)
+              AND trim(both '_' from regexp_replace(
+                    upper(btrim(COALESCE(role.role_code, ''))),
+                    '[^A-Z0-9]+',
+                    '_',
+                    'g')) = ANY(@role_codes)
               AND (
                     (@user_id IS NOT NULL AND app_user.user_id = @user_id)
                  OR (@email <> '' AND lower(app_user.email) = lower(@email))

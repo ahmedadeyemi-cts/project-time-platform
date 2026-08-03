@@ -230,3 +230,214 @@
   max-width: 100%;
   box-sizing: border-box;
 }
+
+/* Module 011 unified Celar AI workspace ownership. Only the selected workspace
+ * is mounted, which prevents full-page lifecycle surfaces from covering or
+ * pushing the architecture overview outside the visible route. */
+.celar-ai-module-shell {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 1780px);
+  margin: 0 auto;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border, #cbd5e1) 86%, #1475e8 14%);
+  border-radius: 1.35rem;
+  background: linear-gradient(180deg, #f5f9fd 0%, #eef4fa 100%);
+  box-shadow: 0 20px 55px rgba(8, 35, 64, 0.1);
+}
+
+.celar-ai-module-shell *,
+.celar-ai-module-shell *::before,
+.celar-ai-module-shell *::after {
+  box-sizing: border-box;
+}
+
+.celar-ai-module-shell-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(1rem, 2vw, 1.45rem);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(56, 214, 225, 0.22), transparent 32%),
+    linear-gradient(135deg, #061c36 0%, #0a3e69 68%, #0c6b8d 100%);
+  color: #fff;
+}
+
+.celar-ai-module-shell-header p,
+.celar-ai-module-workspace-heading p {
+  margin: 0;
+  color: #67dbea;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.celar-ai-module-shell-header h1 {
+  margin: 0.25rem 0 0.45rem;
+  color: #fff;
+  font-size: clamp(1.75rem, 3vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.celar-ai-module-shell-header > div:first-child > span {
+  display: block;
+  max-width: 920px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.celar-ai-module-shell-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.celar-ai-module-shell-badges span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
+.celar-ai-module-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.celar-ai-module-tabs button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas:
+    "number label"
+    "number detail";
+  align-items: start;
+  gap: 0.1rem 0.6rem;
+  min-width: 0;
+  min-height: 84px;
+  padding: 0.75rem;
+  border: 1px solid #c9d8e7;
+  border-radius: 0.85rem;
+  background: #fff;
+  color: #12243c;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 6px 18px rgba(8, 35, 64, 0.05);
+}
+
+.celar-ai-module-tabs button:hover,
+.celar-ai-module-tabs button:focus-visible {
+  border-color: #2f8ed1;
+  background: #f2f8fe;
+  outline: 3px solid rgba(47, 142, 209, 0.14);
+}
+
+.celar-ai-module-tabs button.is-active {
+  border-color: #0e71bd;
+  background: linear-gradient(135deg, #eaf5ff, #effcff);
+  box-shadow: inset 4px 0 0 #13acc0, 0 8px 20px rgba(8, 35, 64, 0.09);
+}
+
+.celar-ai-module-tabs button > span {
+  grid-area: number;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e4f3ff;
+  color: #0f5f9e;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.celar-ai-module-tabs button strong {
+  grid-area: label;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+
+.celar-ai-module-tabs button small {
+  grid-area: detail;
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: #5d6f87;
+  font-size: 0.63rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.celar-ai-module-active-workspace {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #cbd8e6;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.celar-ai-module-workspace-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #d8e3ed;
+  background: #f8fbfe;
+}
+
+.celar-ai-module-workspace-heading h2 {
+  margin: 0.2rem 0 0.25rem;
+  color: #10243c;
+  font-size: 1.15rem;
+}
+
+.celar-ai-module-workspace-heading > div > span {
+  color: #5b6d84;
+  font-size: 0.76rem;
+}
+
+.celar-ai-module-workspace-heading button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #1c75bb;
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #0e62a3;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.celar-ai-module-active-workspace > :last-child {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+@media (max-width: 1180px) {
+  .celar-ai-module-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .celar-ai-module-shell { padding: 0.55rem; border-radius: 0.9rem; }
+  .celar-ai-module-shell-header,
+  .celar-ai-module-workspace-heading { flex-direction: column; }
+  .celar-ai-module-shell-badges { justify-content: flex-start; }
+  .celar-ai-module-tabs { grid-template-columns: 1fr; }
+  .celar-ai-module-tabs button { min-height: 72px; }
+}

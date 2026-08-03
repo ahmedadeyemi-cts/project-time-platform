@@ -24,7 +24,7 @@
   --analytics-canvas: #f4f7fb;
   --analytics-shadow: 0 9px 28px rgba(8, 35, 64, 0.08);
   display: grid;
-  grid-template-columns: 214px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr);
   min-height: min(1120px, calc(100vh - 1rem));
   overflow: hidden;
   border: 1px solid #cdd9e6;
@@ -1007,6 +1007,43 @@
   border-top: 1px solid var(--analytics-line);
 }
 
+.analytics-source-coverage-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e4bd82;
+  border-radius: 8px;
+  background: #fff8e9;
+  color: #704409;
+}
+
+.analytics-source-coverage-notice > div {
+  display: grid;
+  gap: 4px;
+}
+
+.analytics-source-coverage-notice strong { font-size: 0.75rem; }
+.analytics-source-coverage-notice > div > span { font-size: 0.66rem; line-height: 1.45; }
+.analytics-source-coverage-notice ul { display: grid; gap: 4px; margin: 4px 0 0; padding-left: 18px; }
+.analytics-source-coverage-notice li { font-size: 0.64rem; line-height: 1.4; }
+.analytics-source-coverage-notice li b { margin-right: 5px; }
+.analytics-source-coverage-notice li span { color: #7f5c2b; }
+.analytics-source-coverage-notice > button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid #c88730;
+  border-radius: 6px;
+  background: #fff;
+  color: #80500e;
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
 .analytics-result-table-wrap {
   max-width: 100%;
   max-height: 520px;
@@ -1365,15 +1402,14 @@
 }
 
 @media (max-width: 1100px) {
-  .analytics-enterprise-shell { grid-template-columns: 72px minmax(0, 1fr); }
-  .analytics-sidebar-brand { min-height: 70px; padding: 8px; }
-  .analytics-sidebar-brand .uss-logo-lockup { width: 48px; overflow: hidden; }
-  .analytics-sidebar-brand > button { display: none; }
-  .analytics-sidebar nav button { justify-content: center; }
+  .analytics-enterprise-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .analytics-sidebar-brand { min-height: 78px; padding: 9px 24px 9px 12px; }
+  .analytics-sidebar-brand .uss-logo-lockup { width: 150px; overflow: visible; }
+  .analytics-sidebar nav button,
+  .analytics-sidebar-return button { justify-content: flex-start; }
   .analytics-sidebar nav button strong,
   .analytics-sidebar nav h3,
-  .analytics-sidebar-return strong { display: none; }
-  .analytics-sidebar-return button { justify-content: center; }
+  .analytics-sidebar-return strong { display: block; }
   .analytics-topbar { align-items: flex-start; }
   .analytics-topbar-actions { flex-wrap: wrap; }
   .analytics-profile { min-width: 42px; }

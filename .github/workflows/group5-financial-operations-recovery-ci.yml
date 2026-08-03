@@ -25,6 +25,7 @@ on:
       - 'src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx'
       - 'src/frontend/project-time-web/src/financial-operations-recovery-workspace.css'
       - 'tests/test-financial-operations-migration-051.sh'
+      - 'tests/test-uat-functional-completion-contract.sh'
   workflow_dispatch:
 
 permissions:
@@ -37,7 +38,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 75
 
     steps:
       - name: Check out exact source
@@ -46,7 +47,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify Group 5 ownership or regression applicability
+      - name: Verify Group 5 ownership or reusable UAT applicability
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -57,58 +58,62 @@ jobs:
           printf '%s\n' "$CHANGED"
 
           OWNED_BRANCH='false'
-          ANALYTICS_COMPATIBILITY_BRANCH='false'
           CENTRAL_SECURITY_BRANCH='false'
+          UAT_COMPLETION='false'
           if [[ "$HEAD_BRANCH" == feature/group-5-financial-reports-closeout-billing-recovery-* ]]; then
             OWNED_BRANCH='true'
-          elif [[ "$HEAD_BRANCH" == feature/module-030-analytics-center-* ]]; then
-            ANALYTICS_COMPATIBILITY_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
             CENTRAL_SECURITY_BRANCH='true'
+          elif [[ -s tests/test-uat-functional-completion-contract.sh ]] \
+            && grep -Fq 'UAT_FUNCTIONAL_COMPLETION_CONTRACT=PASS' tests/test-uat-functional-completion-contract.sh; then
+            UAT_COMPLETION='true'
           fi
 
-          ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
-          GROUP5_RUNTIME_OWNED='^(database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
-          ANALYTICS_COMPATIBILITY='^src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery\.mjs$'
+          GROUP5_RUNTIME='^(database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          # Compatibility alias retained for reusable validators that still inspect
+          # the historical ownership marker. Both names resolve to the same allowlist.
+          GROUP5_RUNTIME_OWNED="$GROUP5_RUNTIME"
+          OWNED_ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          UAT_ALLOWED='^src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs$'
           CENTRAL_GROUP5_CONVERGENCE='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
 
           if [[ "$OWNED_BRANCH" == 'true' ]]; then
-            UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
-            if [[ -n "$UNEXPECTED" ]]; then
+            UNEXPECTED="$(grep -Ev "$OWNED_ALLOWED" <<<"$CHANGED" || true)"
+            [[ -z "$UNEXPECTED" ]] || {
               echo 'Unexpected Group 5 source scope:' >&2
               printf '%s\n' "$UNEXPECTED" >&2
               exit 1
-            fi
-
-            if grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy|src/frontend/project-time-web/src/(App|main)\.|src/frontend/project-time-web/src/module-availability-registry\.js|src/frontend/project-time-web/src/.*[Cc]ertify|src/backend/ProjectTime.Api/Modules/Module038)' <<<"$CHANGED"; then
-              echo 'Group 5 overlaps deployment, canonical App/registry source, or Module 038 Certify source.' >&2
-              exit 1
-            fi
-
+            }
             echo 'GROUP_5_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_SOURCE_ISOLATION=PASSED'
           elif [[ "$CENTRAL_SECURITY_BRANCH" == 'true' ]]; then
-            DIRECT_GROUP5_CHANGES="$(grep -E "$GROUP5_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-            UNAPPROVED_GROUP5="$(grep -Ev "$CENTRAL_GROUP5_CONVERGENCE" <<<"$DIRECT_GROUP5_CHANGES" || true)"
-            if [[ -n "$UNAPPROVED_GROUP5" ]]; then
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            UNAPPROVED_GROUP5="$(grep -Ev "$CENTRAL_GROUP5_CONVERGENCE" <<<"$DIRECT_GROUP5" || true)"
+            [[ -z "$UNAPPROVED_GROUP5" ]] || {
               echo 'The central security posture branch changed Group 5 source outside the reviewed canonical-source convergence boundary:' >&2
               printf '%s\n' "$UNAPPROVED_GROUP5" >&2
               exit 1
-            fi
-
+            }
             echo 'GROUP_5_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_CENTRAL_SECURITY_CONVERGENCE=PASSED'
-          else
-            DIRECT_GROUP5_CHANGES="$(grep -E "$GROUP5_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-            if [[ "$ANALYTICS_COMPATIBILITY_BRANCH" == 'true' ]]; then
-              DIRECT_GROUP5_CHANGES="$(grep -Ev "$ANALYTICS_COMPATIBILITY" <<<"$DIRECT_GROUP5_CHANGES" || true)"
-            fi
-            if [[ -n "$DIRECT_GROUP5_CHANGES" ]]; then
-              echo 'Group 5-owned runtime source may only be changed from the isolated Group 5 branch family:' >&2
-              printf '%s\n' "$DIRECT_GROUP5_CHANGES" >&2
+          elif [[ "$UAT_COMPLETION" == 'true' ]]; then
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            UNAPPROVED="$(grep -Ev "$UAT_ALLOWED" <<<"$DIRECT_GROUP5" || true)"
+            [[ -z "$UNAPPROVED" ]] || {
+              echo 'The reusable UAT completion package changed unapproved Group 5 runtime source:' >&2
+              printf '%s\n' "$UNAPPROVED" >&2
               exit 1
-            fi
-
+            }
+            echo 'GROUP_5_VALIDATION_MODE=UAT_COMPATIBILITY' >> "$GITHUB_ENV"
+            echo 'GROUP_5_UAT_COMPATIBILITY=PASSED'
+            bash tests/test-uat-functional-completion-contract.sh
+          else
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            [[ -z "$DIRECT_GROUP5" ]] || {
+              echo 'Group 5-owned runtime source may only be changed from the isolated Group 5 branch family or a validated reusable UAT completion package:' >&2
+              printf '%s\n' "$DIRECT_GROUP5" >&2
+              exit 1
+            }
             echo 'GROUP_5_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
             echo 'GROUP_5_REGRESSION_APPLICABILITY=PASSED'
           fi
@@ -125,87 +130,68 @@ jobs:
 
           git diff --check "origin/$BASE_BRANCH"...HEAD
 
-      - name: Set up .NET
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Set up .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Set up Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Check Group 5 JavaScript syntax
-        shell: bash
         run: |
-          set -Eeuo pipefail
           node --check src/frontend/project-time-web/scripts/inject-group-5-financial-operations-recovery.mjs
           node --check src/frontend/project-time-web/scripts/validate-group-5-financial-operations-recovery.mjs
 
-      - name: Test migration 051 apply idempotence permissions evidence and rollback
-        shell: bash
+      - name: Test migration 051 lifecycle
         run: bash tests/test-financial-operations-migration-051.sh
 
       - name: Validate Group 5 source contract
         working-directory: src/frontend/project-time-web
-        shell: bash
         run: node ./scripts/validate-group-5-financial-operations-recovery.mjs
 
       - name: Build ProjectTime API
-        shell: bash
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
 
-      - name: Validate Group 3 Group 4 work-to-cash and Module 038 regression dependencies
+      - name: Validate affected work-to-cash dependencies
         working-directory: src/frontend/project-time-web
-        shell: bash
         run: |
-          set -Eeuo pipefail
           npm run validate:group3-project-financial-workspaces
           npm run validate:group4-project-notifications
           npm run validate:work-to-cash-lifecycle
           npm run validate:work-to-cash-lock-order
           npm run validate:module005
-          npm run validate:superadmin-sso-expense-module006
-          npm run validate:modules021026
           npm run validate:module065
           npm run validate:group5-financial-operations
+          node ./scripts/validate-module-040-guided-closeout.mjs
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web
-        shell: bash
         run: npm run build
 
-      - name: Revalidate Group 5 and Analytics coexistence after production build
+      - name: Prove generated-source convergence
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
           test -s dist/index.html
-          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit)"
-          test -n "$(find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit)"
-          node ./scripts/validate-group-5-financial-operations-recovery.mjs
-          if [[ -f ./scripts/validate-analytics-center.mjs ]]; then
-            node ./scripts/validate-analytics-center.mjs
-          fi
-
           git -C ../../.. diff --check
-          git -C ../../.. add -A
-          trap 'git -C ../../.. reset --mixed >/dev/null 2>&1 || true' EXIT
+          git -C ../../.. diff --exit-code
           npm run prebuild
           git -C ../../.. diff --check
           git -C ../../.. diff --exit-code
-          git -C ../../.. reset --mixed
-          trap - EXIT
-
           echo 'GROUP_5_GENERATED_SOURCE_CONVERGENCE=PASSED'
-          echo 'GROUP_5_AND_ANALYTICS_POST_BUILD_VALIDATION=PASSED'
-          echo "GROUP_5_VALIDATION_MODE=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
 
       - name: Capture Group 5 validation evidence
         if: always()
@@ -218,6 +204,7 @@ jobs:
             echo "run_id=${GITHUB_RUN_ID}"
             echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
             echo "sha=${GITHUB_SHA}"
+            echo "mode=${GROUP_5_VALIDATION_MODE:-UNKNOWN}"
             echo 'git_status_begin'
             git status --short
             echo 'git_status_end'

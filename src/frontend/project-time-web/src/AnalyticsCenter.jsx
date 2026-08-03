@@ -34,8 +34,11 @@ const WORKSPACES = Object.freeze([
 ]);
 const CATEGORY_ICONS = Object.freeze({
   Financials: '$',
+  Financial: '$',
   Projects: '▣',
+  'Project Delivery': '▣',
   People: '♙',
+  'People & Capacity': '♙',
   Customers: '▥',
   'Time & Utilization': '◷',
   Billing: '▤',
@@ -43,6 +46,11 @@ const CATEGORY_ICONS = Object.freeze({
   Operations: '⌁',
   Governance: '◇',
   Delivery: '⇢',
+  'Sales & Delivery': '⇢',
+  'Operational Control': '⌁',
+  Executive: '▦',
+  'AI & Governance': '◇',
+  'Report Administration': '⚙',
   Other: '◈'
 });
 const CADENCES = Object.freeze([
@@ -480,7 +488,7 @@ export default function AnalyticsCenter({ authSession }) {
   const [overview, setOverview] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState(() => new Set(['Financials']));
+  const [expandedCategories, setExpandedCategories] = useState(() => new Set(['Financial', 'Time & Utilization', 'People & Capacity', 'Project Delivery']));
   const [selectedReportCode, setSelectedReportCode] = useState(DEFAULT_REPORT);
   const [reportTab, setReportTab] = useState('criteria');
   const [filterDefinition, setFilterDefinition] = useState(null);
@@ -507,6 +515,10 @@ export default function AnalyticsCenter({ authSession }) {
   }, [catalog, catalogSearch]);
   const capabilities = overview?.capabilities ?? {};
   const sources = result?.sources ?? overview?.sourceQuality?.sources ?? [];
+  const limitedSources = useMemo(
+    () => sources.filter((source) => ['partial', 'unavailable', 'restricted'].includes(String(source?.status || '').toLowerCase())),
+    [sources]
+  );
 
   const loadHistory = useCallback(async () => {
     try {
@@ -747,7 +759,7 @@ export default function AnalyticsCenter({ authSession }) {
                     <div className="analytics-criteria-intro"><strong>Set criteria</strong><span>Only criteria relevant to {selectedReport.name} are shown.</span><button type="button" onClick={loadFilters} disabled={loading.filters}>{loading.filters ? 'Refreshing…' : 'Refresh filter lists'}</button></div>
                     <div className="analytics-filter-grid">{(filterDefinition?.filters ?? []).map((filter) => <FilterControl key={filter.key} filter={filter} options={filterOptions[filter.optionSource] ?? []} value={filters[filter.key] ?? filter.defaultValue ?? (filter.type === 'multiselect' ? [] : '')} onChange={(value) => updateFilter(filter.key, value)} />)}</div>
                     <div className="analytics-criteria-actions"><div><button type="button" className="analytics-button secondary" onClick={clearCriteria}>Clear Criteria</button><button type="button" className="analytics-button secondary" onClick={restoreCriteria}>Restore Criteria</button><button type="button" className="analytics-button secondary" onClick={saveCriteria}>Save Criteria</button></div><div><button type="button" className="analytics-button secondary" disabled={loading.report} onClick={() => execute(false)}>Preview report</button><button type="button" className="analytics-button primary" disabled={loading.report} onClick={() => execute(true)}>{loading.report ? 'Running…' : 'Run & save'}</button></div></div>
-                    {result ? <div className="analytics-inline-results"><div className="analytics-result-heading"><div><span>Actual analytics results</span><h3>{result.reportName}</h3><p>{result.message}</p></div><Status value={result.resultStatus} /></div><ResultTable result={result} definition={filterDefinition} />{runId ? <div className="analytics-export-actions"><strong>Export this report</strong><button type="button" className="analytics-button pdf" onClick={() => exportRun('pdf')}>US Signal PDF</button><button type="button" className="analytics-button excel" onClick={() => exportRun('xlsx')}>Excel</button><details><summary>Additional formats</summary>{LEGACY_COMPATIBLE_EXPORTS.filter((format) => !PRIMARY_EXPORTS.includes(format)).map((format) => <button type="button" key={format} onClick={() => exportRun(format)}>{format.toUpperCase()}</button>)}</details></div> : null}</div> : null}
+                    {result ? <div className="analytics-inline-results"><div className="analytics-result-heading"><div><span>Actual analytics results</span><h3>{result.reportName}</h3><p>{result.message}</p></div><Status value={result.resultStatus} /></div>{limitedSources.length ? <div className="analytics-source-coverage-notice" role="status"><div><strong>Limited source coverage</strong><span>The report rows shown below remain valid. Fields supplied by these sources may be incomplete.</span><ul>{limitedSources.map((source) => <li key={source.key ?? source.name}><b>{source.name}</b><span>{source.required ? 'Required' : 'Optional'} · {words(source.status)}{source.message ? ` · ${source.message}` : ''}</span></li>)}</ul></div><button type="button" onClick={() => setSection('data-quality')}>Review source details</button></div> : null}<ResultTable result={result} definition={filterDefinition} />{runId ? <div className="analytics-export-actions"><strong>Export this report</strong><button type="button" className="analytics-button pdf" onClick={() => exportRun('pdf')}>US Signal PDF</button><button type="button" className="analytics-button excel" onClick={() => exportRun('xlsx')}>Excel</button><details><summary>Additional formats</summary>{LEGACY_COMPATIBLE_EXPORTS.filter((format) => !PRIMARY_EXPORTS.includes(format)).map((format) => <button type="button" key={format} onClick={() => exportRun(format)}>{format.toUpperCase()}</button>)}</details></div> : null}</div> : null}
                   </div>
                 ) : null}
                 {reportTab === 'schedules' ? <ScheduleEditor selectedReport={selectedReport} filters={filters} schedules={schedules.filter((schedule) => schedule.reportCode === selectedReport.code)} recipientOptions={recipientOptions} capabilities={capabilities} onSaved={saveSchedule} onRunNow={runScheduleNow} onDelete={deleteSchedule} busy={loading.schedule} /> : null}
@@ -765,7 +777,7 @@ export default function AnalyticsCenter({ authSession }) {
     <section className={`analytics-center analytics-enterprise-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`} data-projectpulse-module="030" data-enterprise-analytics="true">
       <aside className="analytics-sidebar">
         <div className="analytics-sidebar-brand"><USSignalLogo size="large" alt="US Signal" /><button type="button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? 'Expand Analytics navigation' : 'Collapse Analytics navigation'}>{sidebarCollapsed ? '»' : '«'}</button></div>
-        <nav aria-label="Analytics Center"><div>{NAVIGATION.map(([key, icon, label]) => <button type="button" key={key} className={(section === key || key === 'analytics' && section === 'overview') ? 'active' : ''} onClick={() => setSection(key)}><span>{icon}</span><strong>{label}</strong></button>)}</div><h3>Workspaces</h3><div>{WORKSPACES.map(([key, label]) => <button type="button" key={key} className={workspace === key ? 'active-workspace' : ''} onClick={() => setWorkspace(key)}><span>♙</span><strong>{label}</strong></button>)}</div></nav>
+        <nav aria-label="Analytics Center"><div>{NAVIGATION.map(([key, icon, label]) => <button type="button" key={key} title={label} aria-label={label} className={(section === key || key === 'analytics' && section === 'overview') ? 'active' : ''} onClick={() => setSection(key)}><span aria-hidden="true">{icon}</span><strong>{label}</strong></button>)}</div><h3>Workspaces</h3><div>{WORKSPACES.map(([key, label]) => <button type="button" key={key} title={label} aria-label={label} className={workspace === key ? 'active-workspace' : ''} onClick={() => setWorkspace(key)}><span aria-hidden="true">♙</span><strong>{label}</strong></button>)}</div></nav>
         <div className="analytics-sidebar-return"><button type="button" onClick={() => navigate('#modules')}>← <strong>Back to Modules</strong></button><button type="button" onClick={() => navigate('#dashboard')}>← <strong>Back to Dashboard</strong></button></div>
       </aside>
       <main className="analytics-main">

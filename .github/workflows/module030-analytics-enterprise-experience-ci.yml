@@ -69,6 +69,17 @@ jobs:
               exit 1
             fi
             echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+          elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
+            UAT_DIRECT_ANALYTICS="$(grep -E '^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css))$' <<<"$CHANGED" || true)"
+            UAT_ALLOWED='^(\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml|src/backend/ProjectTime.Api/Modules/AnalyticsCenterExperienceScope\.cs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics-center\.css))$'
+            UNEXPECTED="$(grep -Ev "$UAT_ALLOWED" <<<"$UAT_DIRECT_ANALYTICS" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'Unexpected Analytics enterprise source in UAT functional-completion mode:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=UAT_FUNCTIONAL_COMPLETION' >> "$GITHUB_ENV"
+            echo 'ANALYTICS_ENTERPRISE_UAT_OWNED_SUBSET=PASSED'
           else
             DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_ANALYTICS" ]]; then

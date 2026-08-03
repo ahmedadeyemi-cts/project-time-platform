@@ -194,3 +194,117 @@
     grid-template-columns: 1fr;
   }
 }
+
+.microsoft-mail-governed-test {
+  margin-top: 1.25rem;
+  padding-top: 1.15rem;
+  border-top: 2px solid rgba(11, 56, 95, 0.16);
+}
+
+.microsoft-mail-governed-test-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.microsoft-mail-governed-test-heading h3 {
+  margin: 0.15rem 0 0.4rem;
+  font-size: 1.15rem;
+}
+
+.microsoft-mail-governed-test-heading p:not(.eyebrow) {
+  max-width: 900px;
+  margin: 0;
+  color: var(--muted, #60708d);
+  line-height: 1.5;
+}
+
+.microsoft-mail-governed-test-heading > span {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #155d96;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.microsoft-mail-governed-test-warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(217, 119, 6, 0.34);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, #fef3c7 72%, var(--surface, #fff));
+  color: #7c4308;
+}
+
+.microsoft-mail-governed-test-warning code {
+  padding: 0.12rem 0.3rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.8);
+  color: #6b3300;
+  font-weight: 900;
+}
+
+.microsoft-mail-governed-test-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.25fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.microsoft-mail-governed-test-form label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.microsoft-mail-governed-test-form label > span {
+  color: var(--muted, #60708d);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.microsoft-mail-governed-test-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border, rgba(23, 32, 51, 0.15));
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--surface, #fff);
+  color: var(--text, #172033);
+  font: inherit;
+}
+
+.microsoft-mail-governed-test-form input:focus {
+  border-color: #1475e8;
+  outline: 3px solid rgba(20, 117, 232, 0.13);
+}
+
+.microsoft-mail-governed-test-form small {
+  color: var(--muted, #60708d);
+  font-size: 0.68rem;
+}
+
+.microsoft-mail-governed-test-result {
+  margin-top: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  .microsoft-mail-governed-test-heading,
+  .microsoft-mail-governed-test-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .microsoft-mail-governed-test-form button {
+    width: 100%;
+  }
+}

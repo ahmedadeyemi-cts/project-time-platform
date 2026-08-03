@@ -3,6 +3,8 @@ import './microsoft-mail-transport-readiness.css';
 
 const ROUTE = 'entra-secret-administration';
 const TEST_PATH = '/api/microsoft-integration/mail-runtime/test';
+const DELIVERY_TEST_PATH = '/api/microsoft-integration/mail-runtime/test-delivery';
+const DELIVERY_CONFIRMATION = 'SEND MODULE 065 TEST';
 const ROUTE_ALIASES = Object.freeze({
   'microsoft-integration': ROUTE,
   'module-065': ROUTE,
@@ -27,6 +29,21 @@ function sessionToken() {
         const session = JSON.parse(storage.getItem(key) || 'null');
         const token = session?.sessionToken || session?.token || session?.accessToken || session?.session_token || '';
         if (token && (!session?.expiresAt || Date.now() < Date.parse(session.expiresAt))) return token;
+      } catch {
+        // Continue through supported storage contracts.
+      }
+    }
+  }
+  return '';
+}
+
+function sessionEmail() {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    for (const key of ['projectPulseAuthSession', 'ProjectPulseAuthSession', 'projectPulseSession']) {
+      try {
+        const session = JSON.parse(storage.getItem(key) || 'null');
+        const email = String(session?.email || session?.userEmail || session?.actualEmail || '').trim().toLowerCase();
+        if (email.includes('@')) return email;
       } catch {
         // Continue through supported storage contracts.
       }
@@ -60,6 +77,11 @@ export default function MicrosoftMailTransportReadinessPanel() {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [deliveryRecipient, setDeliveryRecipient] = useState(sessionEmail);
+  const [deliveryConfirmation, setDeliveryConfirmation] = useState('');
+  const [deliveryTesting, setDeliveryTesting] = useState(false);
+  const [deliveryResult, setDeliveryResult] = useState(null);
+  const [deliveryError, setDeliveryError] = useState('');
 
   useEffect(() => {
     const synchronize = () => setRoute(currentRoute());
@@ -69,6 +91,8 @@ export default function MicrosoftMailTransportReadinessPanel() {
         setEnvironmentMode(next);
         setResult(null);
         setError('');
+        setDeliveryResult(null);
+        setDeliveryError('');
       }
     };
     window.addEventListener('hashchange', synchronize);
@@ -132,6 +156,61 @@ export default function MicrosoftMailTransportReadinessPanel() {
       setError(testError instanceof Error ? testError.message : 'The readiness test could not complete.');
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function runDeliveryTest() {
+    const token = sessionToken();
+    if (!token) {
+      setDeliveryError('Sign in again before sending a governed Module 065 Test message.');
+      return;
+    }
+    if (environmentMode !== 'test') {
+      setDeliveryError('Select the Test environment. A real governed test message cannot be sent from the Production profile here.');
+      return;
+    }
+    if (deliveryConfirmation !== DELIVERY_CONFIRMATION) {
+      setDeliveryError(`Type ${DELIVERY_CONFIRMATION} exactly before sending.`);
+      return;
+    }
+
+    setDeliveryTesting(true);
+    setDeliveryError('');
+    setDeliveryResult(null);
+    try {
+      const response = await fetch(DELIVERY_TEST_PATH, {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-ProjectPulse-Session': token,
+          'X-Project-Pulse-Session': token,
+          'X-Session-Token': token,
+          'X-ProjectPulse-Module-Number': '065'
+        },
+        body: JSON.stringify({
+          environmentMode,
+          recipientEmail: deliveryRecipient,
+          confirmation: deliveryConfirmation
+        })
+      });
+      const payload = await readJson(response);
+      if (!response.ok) {
+        throw new Error([
+          payload?.message,
+          payload?.diagnosticCode,
+          payload?.correlationId ? `Correlation: ${payload.correlationId}` : ''
+        ].filter(Boolean).join(' ') || `Governed delivery test returned HTTP ${response.status}.`);
+      }
+      setDeliveryResult(payload);
+      setDeliveryConfirmation('');
+    } catch (testError) {
+      setDeliveryError(testError instanceof Error ? testError.message : 'The governed Test message could not be sent.');
+    } finally {
+      setDeliveryTesting(false);
     }
   }
 
@@ -216,6 +295,75 @@ export default function MicrosoftMailTransportReadinessPanel() {
           Select Test or Production, save that environment’s sender and transport configuration, then run the non-delivery readiness test.
         </div>
       )}
+
+      <section className="microsoft-mail-governed-test" aria-label="Governed Module 065 Test delivery">
+        <div className="microsoft-mail-governed-test-heading">
+          <div>
+            <p className="eyebrow">MODULE 065 · REAL TEST DELIVERY</p>
+            <h3>Send one governed Microsoft 365 Test message</h3>
+            <p>
+              This is separate from the readiness check. It creates a durable dispatch and delivery-attempt record, keeps the general Test boundary unchanged, and permits only the signed-in user's own email or a server-side allowlisted recipient.
+            </p>
+          </div>
+          <span>View-As blocked · No secrets returned</span>
+        </div>
+
+        <div className="microsoft-mail-governed-test-warning">
+          <strong>A real email will be sent.</strong>
+          <span>Type <code>{DELIVERY_CONFIRMATION}</code> exactly. The Test message contains no customer, project, financial, credential, token, or private-document data.</span>
+        </div>
+
+        <div className="microsoft-mail-governed-test-form">
+          <label>
+            <span>Recipient</span>
+            <input
+              type="email"
+              value={deliveryRecipient}
+              onChange={(event) => { setDeliveryRecipient(event.target.value); setDeliveryResult(null); setDeliveryError(''); }}
+              placeholder="your.name@ussignal.com"
+              autoComplete="email"
+            />
+            <small>Your signed-in address is used by default when available.</small>
+          </label>
+          <label>
+            <span>Exact confirmation phrase</span>
+            <input
+              value={deliveryConfirmation}
+              onChange={(event) => { setDeliveryConfirmation(event.target.value); setDeliveryError(''); }}
+              placeholder={DELIVERY_CONFIRMATION}
+              autoComplete="off"
+            />
+            <small>Case and spacing must match exactly.</small>
+          </label>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => void runDeliveryTest()}
+            disabled={deliveryTesting || environmentMode !== 'test' || deliveryConfirmation !== DELIVERY_CONFIRMATION || !deliveryRecipient.trim()}
+          >
+            {deliveryTesting ? 'Sending governed Test message…' : 'Send Module 065 Test email'}
+          </button>
+        </div>
+
+        {deliveryError ? <div className="microsoft-mail-readiness-message error">{deliveryError}</div> : null}
+        {deliveryResult ? (
+          <div className="microsoft-mail-governed-test-result">
+            <div className={`microsoft-mail-readiness-message ${deliveryResult.sent ? 'success' : 'warning'}`}>
+              {deliveryResult.message || (deliveryResult.sent ? 'The governed Test message was accepted by the configured provider.' : 'The governed Test message was not delivered.')}
+            </div>
+            <div className="microsoft-mail-readiness-facts">
+              <Fact label="Delivery status" value={title(deliveryResult.deliveryStatus)} tone={deliveryResult.sent ? 'ready' : 'attention'} />
+              <Fact label="Provider" value={title(deliveryResult.configuredProvider)} />
+              <Fact label="Recipient" value={deliveryResult.recipientEmail} />
+              <Fact label="Recipient authority" value={title(deliveryResult.recipientAuthorization)} />
+              <Fact label="Dispatch ID" value={deliveryResult.dispatchId} />
+              <Fact label="Provider message ID" value={deliveryResult.providerMessageIdPresent ? 'Recorded' : 'Not returned'} />
+              <Fact label="General Test boundary" value={deliveryResult.generalTestBoundaryChanged ? 'Changed' : 'Unchanged'} />
+              <Fact label="Audit evidence" value={deliveryResult.auditEvidenceRecorded ? 'Recorded' : 'Dispatch ledger only'} />
+            </div>
+          </div>
+        ) : null}
+      </section>
     </section>
   );
 }

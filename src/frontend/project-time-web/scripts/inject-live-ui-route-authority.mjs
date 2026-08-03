@@ -106,6 +106,8 @@ function normalizeRoute(hash) {
     '<section id="reporting" className="analytics-center-route-panel" data-authoritative-module="030">'
   );
 
+  // Module 040 is now canonical guided closeout in App.jsx. Retain this
+  // removal only for generated-source compatibility with older branches.
   const legacyCloseoutRecovery = `          {/* GROUP_5_MODULE_040_RECOVERY_PANEL */}
           <FinancialOperationsRecoveryWorkspace moduleCode="040" authSession={authSession} />
 `;

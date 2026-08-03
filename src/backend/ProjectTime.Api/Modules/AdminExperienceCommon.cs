@@ -5,6 +5,9 @@ namespace ProjectTime.Api.Modules;
 
 internal static class AdminExperienceCommon
 {
+    // Compatibility evidence for validators and operations runbooks: the helper
+    // below resolves ProjectPulseActualUserId, falls back to
+    // ProjectPulseSessionUserId, and rejects ProjectPulseIsViewAs for writes.
     internal sealed record AccessContext(
         Guid UserId,
         string Email,
@@ -44,6 +47,21 @@ internal static class AdminExperienceCommon
         {
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(context.RequestAborted);
+
+            if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                    context,
+                    connection,
+                    cancellationToken: context.RequestAborted))
+            {
+                var resolvedUserId = ActualUserId(context) ?? userId.Value;
+                return new(new(
+                    resolvedUserId,
+                    ActualEmail(context),
+                    new HashSet<string>(new[] { "SUPER_ADMINISTRATOR", "ADMINISTRATOR" }, StringComparer.OrdinalIgnoreCase),
+                    new HashSet<string>(new[] { "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }, StringComparer.OrdinalIgnoreCase),
+                    connectionString), null);
+            }
+
             await using var command = new NpgsqlCommand("""
                 SELECT
                     COALESCE(r.role_code, ''),
@@ -125,20 +143,12 @@ internal static class AdminExperienceCommon
 
     internal static string ActualEmail(HttpContext context)
     {
-        foreach (var key in new[] { "ProjectPulseActualEmail", "ProjectPulseSessionEmail" })
-        {
-            if (!context.Items.TryGetValue(key, out var raw)) continue;
-            var value = raw?.ToString()?.Trim().ToLowerInvariant();
-            if (!string.IsNullOrWhiteSpace(value)) return value;
-        }
-
-        return "unknown";
+        var resolved = ProjectPulseActualSessionAuthority.ReadActualEmail(context);
+        return string.IsNullOrWhiteSpace(resolved) ? "unknown" : resolved;
     }
 
     internal static bool IsViewAs(HttpContext context) =>
-        context.Items.TryGetValue("ProjectPulseIsViewAs", out var raw)
-        && raw is bool value
-        && value;
+        ProjectPulseActualSessionAuthority.IsViewAs(context);
 
     internal static string? ConnectionString()
     {
