@@ -14,6 +14,10 @@ AUTHORITY="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAu
 CRM_SOURCE="$ROOT/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs"
 CRM_RUNTIME="$ROOT/src/backend/ProjectTime.Api/Modules/CrmErpOAuthPersistence.cs"
 NATIVE="$ROOT/src/backend/ProjectTime.Api/Modules/Module064074NativeAdministration.cs"
+SECURITY_CONVERGENCE="$ROOT/src/backend/ProjectTime.Api/Modules/SecurityContextAuthorityConvergence.cs"
+PROJECT_FILE="$ROOT/src/backend/ProjectTime.Api/ProjectTime.Api.csproj"
+PAGE_CONTEXT="$ROOT/src/frontend/project-time-web/src/PageContextGuide.jsx"
+NAVIGATION_BRIDGE="$ROOT/src/frontend/project-time-web/src/module-availability-bridge.js"
 
 require_text() {
   local file="$1" needle="$2" label="$3"
@@ -47,6 +51,24 @@ require_text "$APP" "'SUPER_ADMINISTRATOR'" canonical_super_admin_role
 require_text "$APP" "activeRoute === 'work-task-builder' && canSeeAny" celar_route_uses_shared_authority
 require_text "$APP" "activeRoute === 'entra-secret-administration' && canSeeAny" module065_route_uses_shared_authority
 require_text "$APP" 'return actualSessionHasPermanentFullControl' route_permission_bypass
+
+require_text "$SECURITY_CONVERGENCE" 'UseSecurityContextAuthorityConvergence(' security_me_convergence_middleware
+require_text "$SECURITY_CONVERGENCE" 'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(' security_me_permanent_authority_resolution
+require_text "$SECURITY_CONVERGENCE" 'payload["permanentFullControl"] = permanentFullControl;' security_me_permanent_authority_payload
+require_text "$SECURITY_CONVERGENCE" 'payload["isViewAs"] = isViewAs;' security_me_view_as_payload
+require_text "$SECURITY_CONVERGENCE" 'actual_session_super_administrator' security_me_authority_source_payload
+require_text "$SECURITY_CONVERGENCE" 'View-As always remains read-only' security_me_view_as_contract
+require_text "$PROJECT_FILE" 'app.UseSecurityContextAuthorityConvergence();' security_me_convergence_registered
+require_text "$PAGE_CONTEXT" "page: 'Celar AI — Module 011'" celar_page_context_identity
+require_text "$PAGE_CONTEXT" '/api/celar-ai/v2/chat' celar_page_context_chat_v2
+require_text "$PAGE_CONTEXT" '/api/project-flowhive/ai/production-generate' celar_page_context_flowhive
+require_text "$NAVIGATION_BRIDGE" "nativeFetch('/api/security/me', request)" navigation_uses_security_context
+require_text "$NAVIGATION_BRIDGE" 'security?.permanentFullControl === true' navigation_uses_permanent_authority
+require_text "$NAVIGATION_BRIDGE" 'function canonicalRoleCode(value)' navigation_canonical_role_codes
+require_text "$NAVIGATION_BRIDGE" "'GLOBAL_ADMINISTRATOR'" navigation_global_admin_alias
+require_text "$NAVIGATION_BRIDGE" 'isViewAs: effectiveViewAs' navigation_view_as_fail_closed
+require_text "$NAVIGATION_BRIDGE" "authoritySource: effectiveActor.authoritySource || ''" navigation_authority_evidence_published
+require_text "$NAVIGATION_BRIDGE" 'roleSet.has(canonicalRoleCode(grant.roleCode))' navigation_grant_role_canonicalization
 
 require_text "$ANALYTICS" "const [section, setSection] = useState('reports');" analytics_opens_report_library
 require_text "$ANALYTICS_CSS" '.analytics-enterprise-shell.sidebar-collapsed .analytics-sidebar nav button strong,' analytics_collapse_scoped
