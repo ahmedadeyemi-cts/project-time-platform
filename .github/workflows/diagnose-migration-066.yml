@@ -1,4 +1,4 @@
-name: Diagnose Migration 066 Exact Failure
+name: Diagnose PR 447 Exact Failures
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  migration:
     if: github.event.pull_request.head.ref == 'diagnose/uat-447-migration-066'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -27,7 +27,6 @@ jobs:
           persist-credentials: false
 
       - name: Run migration 066 lifecycle and preserve complete output
-        id: migration
         shell: bash
         run: |
           set +e
@@ -48,4 +47,55 @@ jobs:
         with:
           name: migration-066-diagnostics-${{ github.run_id }}
           path: /tmp/migration-066-evidence
+          retention-days: 3
+
+  frontend-generated-diff:
+    if: github.event.pull_request.head.ref == 'diagnose/uat-447-migration-066'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build and capture every tracked-source mutation
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/frontend-diff-evidence
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund > /tmp/frontend-diff-evidence/npm-ci.log 2>&1
+          ci_status=$?
+          if [[ "$ci_status" -eq 0 ]]; then
+            npm run build > /tmp/frontend-diff-evidence/build.log 2>&1
+            build_status=$?
+          else
+            build_status=99
+          fi
+          cd ../../..
+          git status --short > /tmp/frontend-diff-evidence/status.txt
+          git diff --name-status > /tmp/frontend-diff-evidence/name-status.txt
+          git diff --binary > /tmp/frontend-diff-evidence/tracked-source.patch
+          git diff > /tmp/frontend-diff-evidence/tracked-source.txt
+          printf 'npm_ci=%s\nbuild=%s\n' "$ci_status" "$build_status" > /tmp/frontend-diff-evidence/exit-codes.txt
+          cat /tmp/frontend-diff-evidence/status.txt
+          cat /tmp/frontend-diff-evidence/name-status.txt
+          exit "$build_status"
+
+      - name: Upload complete frontend mutation diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-generated-diff-${{ github.run_id }}
+          path: /tmp/frontend-diff-evidence
           retention-days: 3
