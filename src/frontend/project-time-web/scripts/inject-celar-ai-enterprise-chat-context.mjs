@@ -45,4 +45,5 @@ console.log('CELAR_AI_ENTERPRISE_CHAT_CONTEXT_DATE_RANGE=SUPPORTED');
 
 await import('./inject-celar-ai-capability-routing.mjs');
 await import('./inject-live-ui-route-authority.mjs');
+await import('./backup-celar-ai-production-sources.mjs');
 await import('./inject-celar-ai-production-platform.mjs');
