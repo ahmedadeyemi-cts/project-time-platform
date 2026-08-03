@@ -18,7 +18,13 @@ const BODY_NOTICE_ID = 'projectpulse-module-011-retirement-notice';
 const RETIRED_MODULE_NUMBERS = new Set(
   RETIRED_PROJECTPULSE_MODULES.map((module) => module.moduleNumber.toUpperCase())
 );
-const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);
+const SUPER_ADMINISTRATOR_ROLE_CODES = new Set([
+  'SUPER_ADMINISTRATOR',
+  'SUPERADMINISTRATOR',
+  'GLOBAL_ADMINISTRATOR',
+  'GLOBALADMINISTRATOR',
+  'ADMINISTRATOR'
+]);
 
 function isSameOriginApiRequest(input) {
   try {
@@ -65,12 +71,20 @@ function permissionHeaders() {
   return headers;
 }
 
+function canonicalRoleCode(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function normalizedRoleCodes(value) {
   const source = Array.isArray(value)
     ? value
-    : String(value || '').split(/[\s,;|]+/);
+    : String(value || '').split(/[,;|]+/);
   return source
-    .map((item) => String(item || '').trim().toUpperCase())
+    .map(canonicalRoleCode)
     .filter(Boolean);
 }
 
@@ -281,6 +295,7 @@ function installPermissionNavigationGuard(nativeFetch) {
       isViewAs: effectiveActor.isViewAs,
       roleCodes: [...effectiveActor.roleCodes],
       permanentFullControl: Boolean(effectiveActor.permanentFullControl),
+      authoritySource: effectiveActor.authoritySource || '',
       deniedModuleNumbers: [...deniedModuleNumbers],
       retiredModuleNumbers: [...RETIRED_MODULE_NUMBERS],
       evidenceContract: 'projectpulse-rbac-v1',
@@ -343,17 +358,19 @@ function installPermissionNavigationGuard(nativeFetch) {
         credentials: 'include',
         headers: permissionHeaders()
       };
-      const [bootstrapResponse, matrixResponse] = await Promise.all([
+      const [bootstrapResponse, matrixResponse, securityResponse] = await Promise.all([
         nativeFetch('/api/rbac/v1/bootstrap', request),
-        nativeFetch('/api/rbac/v1/matrix', request)
+        nativeFetch('/api/rbac/v1/matrix', request),
+        nativeFetch('/api/security/me', request)
       ]);
       if (!bootstrapResponse.ok || !matrixResponse.ok) {
         throw new Error('Dynamic RBAC navigation evidence could not be loaded.');
       }
 
-      const [bootstrap, matrix] = await Promise.all([
+      const [bootstrap, matrix, security] = await Promise.all([
         bootstrapResponse.json(),
-        matrixResponse.json()
+        matrixResponse.json(),
+        securityResponse.ok ? securityResponse.json() : Promise.resolve({})
       ]);
       if (!Array.isArray(bootstrap?.roles)
           || !Array.isArray(bootstrap?.modules)
@@ -364,11 +381,21 @@ function installPermissionNavigationGuard(nativeFetch) {
       }
 
       const viewAs = activeViewAs();
+      const serverViewAs = security?.isViewAs === true;
+      const effectiveViewAs = Boolean(viewAs) || serverViewAs;
       let actorRoles = normalizedRoleCodes(bootstrap?.actor?.roleCodes);
-      if (viewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs.roleCodes);
+      if (actorRoles.length === 0) {
+        actorRoles = normalizedRoleCodes(
+          security?.roles?.map((role) => role?.roleCode ?? role?.roleName)
+        );
+      }
+      if (effectiveViewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs?.roleCodes);
       const roleSet = new Set(actorRoles);
-      const actualSuperAdministrator = !viewAs
-        && actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode));
+      const actualSuperAdministrator = !effectiveViewAs && (
+        security?.permanentFullControl === true
+        || bootstrap?.actor?.permanentFullControl === true
+        || actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode))
+      );
       const activeModuleNumbers = new Set(matrix.modules
         .map((module) => String(module?.moduleCode || '').trim().toUpperCase())
         .filter(Boolean));
@@ -381,7 +408,7 @@ function installPermissionNavigationGuard(nativeFetch) {
         }
 
         matrix.grants
-          .filter((grant) => roleSet.has(String(grant.roleCode || '').toUpperCase()))
+          .filter((grant) => roleSet.has(canonicalRoleCode(grant.roleCode)))
           .filter((grant) => String(grant.actionCode || '').toUpperCase() === 'MODULE_ACCESS')
           .filter((grant) => String(grant.grantEffect || '').toUpperCase() === 'DENY')
           .forEach((grant) => denied.add(String(grant.moduleCode || '').toUpperCase()));
@@ -391,8 +418,11 @@ function installPermissionNavigationGuard(nativeFetch) {
       permissionEvidenceState = 'ready';
       effectiveActor = {
         roleCodes: actorRoles,
-        isViewAs: Boolean(viewAs),
-        permanentFullControl: actualSuperAdministrator
+        isViewAs: effectiveViewAs,
+        permanentFullControl: actualSuperAdministrator,
+        authoritySource: security?.authoritySource
+          || bootstrap?.actor?.authoritySource
+          || (actualSuperAdministrator ? 'actual_session_super_administrator' : 'published_rbac_matrix')
       };
       applyVisibility();
       publishNavigationState();
