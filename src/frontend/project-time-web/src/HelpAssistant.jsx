@@ -531,7 +531,7 @@ export default function HelpAssistant() {
           conversationId = '';
         }
       }
-      const path = '/api/celar-ai/v1/chat';
+      const path = '/api/celar-ai/v2/chat'; // compatibility: /api/celar-ai/v1/chat
       const explicitContext = [
         questionContext.projectCode ? `Project code: ${questionContext.projectCode}` : '',
         questionContext.projectName ? `Project name: ${questionContext.projectName}` : '',
