@@ -265,18 +265,23 @@ if (crmOAuth && crmAdministration) {
 
 if (entraAdministration) {
   requireIncludes(entraAdministration, [
-    'roles.Contains("SUPER_ADMINISTRATOR")',
-    'roles.Contains("ADMINISTRATOR")',
+    'ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)',
     'permissions.Contains(DelegatedPermission)',
     'View-As cannot grant Entra credential-mutation authority.',
   ], 'Module 065 actual-session authorization');
+  requireExcludes(entraAdministration, [
+    'roles.Contains("SUPER_ADMINISTRATOR")',
+  ], 'Module 065 stale exact-role authorization');
 }
 
 if (microsoftSecurity) {
   requireIncludes(microsoftSecurity, [
-    'roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR")',
+    'ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)',
     'Exit Administrator View-As before changing or testing Microsoft Integration credentials.',
   ], 'Microsoft Integration administrator authority');
+  requireExcludes(microsoftSecurity, [
+    'roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR")',
+  ], 'Microsoft Integration stale exact-role authority');
 }
 
 if (projectFile) {

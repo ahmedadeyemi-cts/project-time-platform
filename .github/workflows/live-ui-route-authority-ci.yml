@@ -10,12 +10,14 @@ on:
       - 'src/frontend/project-time-web/scripts/inject-live-ui-route-authority.mjs'
       - 'src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs'
       - 'src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js'
+      - 'src/frontend/project-time-web/src/view-as-storage-compatibility.js'
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx'
       - 'src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx'
       - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'tests/test-live-authenticated-route-authority.sh'
 
 permissions:
   contents: read
@@ -53,6 +55,7 @@ jobs:
           test -f src/frontend/project-time-web/scripts/inject-live-ui-route-authority.mjs
           test -f src/frontend/project-time-web/scripts/validate-live-ui-route-authority.mjs
           test -f src/frontend/project-time-web/src/legacy-analytics-overlay-authority.js
+          test -f src/frontend/project-time-web/src/view-as-storage-compatibility.js
           test -f src/frontend/project-time-web/src/MicrosoftIntegrationDualConnectionPortal.jsx
           echo "LIVE_UI_EXACT_HEAD=$HEAD"
           echo "LIVE_UI_BASE_SHA=$BASE"
@@ -115,7 +118,9 @@ jobs:
           grep -Fq '<ProjectCloseoutCenter />' "$APP"
           grep -Fq "'celar-ai': 'work-task-builder'" "$APP"
           grep -Fq "'crm-erp': 'crm-integration'" "$APP"
-          grep -Fq "roleCodes.includes('SUPER_ADMINISTRATOR')" "$APP"
+          grep -Fq 'actualSessionHasPermanentFullControl' "$APP"
+          grep -Fq "'SUPER_ADMINISTRATOR'" "$APP"
+          grep -Fq 'const actualSessionHasPermanentFullControl = !actualSessionIsViewAs' "$APP"
           ! grep -Fq '<FinancialOperationsRecoveryWorkspace moduleCode="040"' "$APP"
           echo 'LIVE_UI_GENERATED_RUNTIME=PASSED'
 

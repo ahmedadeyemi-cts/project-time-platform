@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const generatedAppPath = path.join(webRoot, 'src', 'App.Module001.g.jsx');
+const viewAsCompatibilityPath = path.join(webRoot, 'src', 'view-as-storage-compatibility.js');
 const APP_MARKER = '/* LIVE_UI_ROUTE_AUTHORITY_COMPATIBILITY */';
 
 function count(source, marker) {
@@ -21,6 +22,9 @@ function installGeneratedAppCorrection() {
   }
 
   let source = fs.readFileSync(generatedAppPath, 'utf8');
+  const viewAsCompatibility = fs.existsSync(viewAsCompatibilityPath)
+    ? fs.readFileSync(viewAsCompatibilityPath, 'utf8')
+    : '';
 
   const legacyNormalizer = `function normalizeRoute(hash) {
   const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
@@ -70,15 +74,35 @@ function normalizeRoute(hash) {
     return permissionCodes.some((permissionCode) => hasPermission(permissionCode));
   }`;
 
-  const governedPermissionGate = `  function hasActualAdministratorAuthority() {
-    if (securityContext.data?.isViewAs) return false;
+  const governedPermissionGate = `  function localViewAsIsActive() {
+    try {
+      const legacyUserId = window.localStorage.getItem('projectPulseViewAsUserId')?.trim();
+      const raw = window.localStorage.getItem('projectPulseViewAsUser');
+      if (!raw) return Boolean(legacyUserId);
+      return Boolean(JSON.parse(raw)?.userId || legacyUserId);
+    } catch {
+      return true;
+    }
+  }
+
+  function hasActualAdministratorAuthority() {
+    if (securityContext.data?.isViewAs || localViewAsIsActive()) return false;
+    const canonicalRoleCode = (value) => String(value ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
     const roleCodes = securityContext.data?.roles?.map((role) =>
-      String(role?.roleCode ?? '').toUpperCase()
+      canonicalRoleCode(role?.roleCode ?? role?.roleName)
     ) ?? [];
     const permissions = securityContext.data?.permissions?.map((permission) =>
       String(permission ?? '').toUpperCase()
     ) ?? [];
-    return roleCodes.includes('SUPER_ADMINISTRATOR')
+    return securityContext.data?.permanentFullControl === true
+      || roleCodes.includes('SUPER_ADMINISTRATOR')
+      || roleCodes.includes('SUPERADMINISTRATOR')
+      || roleCodes.includes('GLOBAL_ADMINISTRATOR')
+      || roleCodes.includes('GLOBALADMINISTRATOR')
       || roleCodes.includes('ADMINISTRATOR')
       || permissions.includes('SYSTEM_ADMINISTRATION')
       || permissions.includes('MANAGE_ALL');
@@ -94,9 +118,20 @@ function normalizeRoute(hash) {
       || permissionCodes.some((permissionCode) => hasPermission(permissionCode));
   }`;
 
-  if (!source.includes(governedPermissionGate)) {
+  const sharedAuthorityGatePresent = [
+    '/* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_START */',
+    '/* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_END */',
+    'actualSessionHasPermanentFullControl',
+    "window.localStorage.getItem('projectPulseViewAsUser')"
+  ].every((marker) => source.includes(marker));
+  const legacyViewAsCompatibilityPresent = [
+    "const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';",
+    'window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);'
+  ].every((marker) => viewAsCompatibility.includes(marker));
+
+  if (!sharedAuthorityGatePresent && !source.includes(governedPermissionGate)) {
     if (!source.includes(legacyPermissionGate)) {
-      throw new Error('Live UI correction could not locate the generated permission gate.');
+      throw new Error('Live UI correction could not locate a supported generated permission gate.');
     }
     source = source.replace(legacyPermissionGate, governedPermissionGate);
   }
@@ -106,8 +141,6 @@ function normalizeRoute(hash) {
     '<section id="reporting" className="analytics-center-route-panel" data-authoritative-module="030">'
   );
 
-  // Module 040 is now canonical guided closeout in App.jsx. Retain this
-  // removal only for generated-source compatibility with older branches.
   const legacyCloseoutRecovery = `          {/* GROUP_5_MODULE_040_RECOVERY_PANEL */}
           <FinancialOperationsRecoveryWorkspace moduleCode="040" authSession={authSession} />
 `;
@@ -127,11 +160,7 @@ function normalizeRoute(hash) {
     "'financial-report-center': 'reporting'",
     "'crm-erp': 'crm-integration'",
     "'microsoft-integration': 'entra-secret-administration'",
-    'function hasActualAdministratorAuthority()',
-    "roleCodes.includes('SUPER_ADMINISTRATOR')",
-    "roleCodes.includes('ADMINISTRATOR')",
-    "permissions.includes('SYSTEM_ADMINISTRATION')",
-    "permissions.includes('MANAGE_ALL')",
+    "window.localStorage.getItem('projectPulseViewAsUser')",
     'data-authoritative-module="030"',
     '<AnalyticsCenter authSession={authSession} />',
     '<CrmErpIntegrationCenter />',
@@ -139,6 +168,15 @@ function normalizeRoute(hash) {
     '<ProjectCloseoutCenter />'
   ]) {
     if (!source.includes(required)) throw new Error(`Generated runtime is missing: ${required}`);
+  }
+
+  const authorityContractPresent = sharedAuthorityGatePresent
+    || source.includes('function hasActualAdministratorAuthority()');
+  if (!authorityContractPresent) {
+    throw new Error('Generated runtime is missing the governed actual-session authority contract.');
+  }
+  if (!legacyViewAsCompatibilityPresent && !source.includes("window.localStorage.getItem('projectPulseViewAsUserId')")) {
+    throw new Error('Generated runtime is missing fail-closed legacy View-As compatibility.');
   }
 
   if (source.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"')) {

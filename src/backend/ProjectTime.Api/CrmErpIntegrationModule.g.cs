@@ -9,7 +9,7 @@ using Npgsql;
 
 namespace ProjectTime.Api.Modules;
 
-public static partial class CrmErpIntegrationModule
+public static class CrmErpIntegrationModule
 {
     private const string ModuleNumber = "026";
     private const int MaximumBodyBytes = 32 * 1024;
@@ -43,7 +43,7 @@ public static partial class CrmErpIntegrationModule
         return endpoints;
     }
 
-    private static async Task<IResult> ListProvidersLegacyAsync(HttpContext context)
+    private static async Task<IResult> ListProvidersAsync(HttpContext context)
     {
         var authorization = await AuthorizeViewAsync(context);
         if (authorization is not null) return authorization;
@@ -135,6 +135,7 @@ public static partial class CrmErpIntegrationModule
             });
         }
 
+        var manageAuthority = await ResolveManageAuthorityAsync(context);
         return Results.Ok(new
         {
             module = ModuleNumber,
@@ -143,7 +144,11 @@ public static partial class CrmErpIntegrationModule
             access = new
             {
                 canView = true,
-                canManage = await HasManageAuthorityAsync(context),
+                canManage = manageAuthority.Allowed,
+                manageAuthoritySource = manageAuthority.Source,
+                manageMessage = manageAuthority.Message,
+                requiredPermission = "MANAGE_INTEGRATIONS_026",
+                dynamicAction = "MODULE_CONFIGURE",
                 isViewAs = IsViewAs(context),
                 viewAsTransfersMutationAuthority = false
             },
@@ -720,7 +725,7 @@ public static partial class CrmErpIntegrationModule
             ViewRoles,
             ["VIEW_INTEGRATIONS_026", "MANAGE_INTEGRATIONS_026", "MANAGE_ALL"]);
 
-    private static async Task<IResult?> AuthorizeManageLegacyAsync(HttpContext context)
+    private static async Task<IResult?> AuthorizeManageAsync(HttpContext context)
     {
         if (IsViewAs(context)) return Results.Forbid();
         return await GovernedOperationsReadModule.AuthorizeAsync(
@@ -730,7 +735,7 @@ public static partial class CrmErpIntegrationModule
             ["MANAGE_INTEGRATIONS_026", "MANAGE_ALL"]);
     }
 
-    private static async Task<bool> HasManageAuthorityLegacyAsync(HttpContext context)
+    private static async Task<bool> HasManageAuthorityAsync(HttpContext context)
     {
         if (IsViewAs(context)) return false;
         return await GovernedOperationsReadModule.AuthorizeAsync(

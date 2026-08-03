@@ -64,6 +64,8 @@ const module065Authorization = read(files.module065Authorization);
 const module071Authorization = read(files.module071Authorization);
 const tracker = read(files.tracker);
 const packageJson = JSON.parse(read(files.package));
+const module065PermanentAdministratorAuthority =
+  module065.includes('ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)');
 
 check(
   'SHARED_STYLE_SCOPED',
@@ -79,10 +81,10 @@ check(
 );
 check(
   'MODULE_065_PLATFORM_ADMIN_AUTHORITY',
-  module065.includes('roles.Contains("SUPER_ADMINISTRATOR")')
-    && module065.includes('roles.Contains("ADMINISTRATOR")')
-    && module065.includes('permissions.Contains(DelegatedPermission)'),
-  'platform administrators and delegated permission'
+  module065PermanentAdministratorAuthority
+    && module065.includes('permissions.Contains(DelegatedPermission)')
+    && !module065.includes('permissions.Contains("MANAGE_ALL")'),
+  'centralized permanent actual-session administrators and delegated permission'
 );
 check(
   'MODULE_065_VIEW_AS_GUARD',
