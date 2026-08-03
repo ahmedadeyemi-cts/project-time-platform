@@ -117,13 +117,18 @@ function rebrandCelarValue(value) {
     `  const plan = rebrandCelarValue(payload?.plan ?? {});`,
     'help_legacy_response_rebrand');
 
-  content = replaceRequired(
-    content,
-    `      const path = conversationId
+  // Production builds use the v2 intent-first route. Older source still gets
+  // upgraded through the v1 compatibility route before the production injector
+  // performs its final transformation. Repeated builds must accept either state.
+  if (!content.includes(`const path = '/api/celar-ai/v2/chat';`)) {
+    content = replaceRequired(
+      content,
+      `      const path = conversationId
         ? \`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(conversationId)}/messages\`
         : '/api/pulse-ai/v1/system/questions';`,
-    `      const path = '/api/celar-ai/v1/chat';`,
-    'help_celar_chat_route');
+      `      const path = '/api/celar-ai/v1/chat';`,
+      'help_celar_chat_route');
+  }
 
   content = replaceRequired(
     content,
