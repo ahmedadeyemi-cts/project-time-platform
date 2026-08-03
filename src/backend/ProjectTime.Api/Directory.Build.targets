@@ -18,6 +18,9 @@
       to an explicitly ignored intermediate directory for every build.
     -->
     <ScopedRbacGeneratedProgram>$(AnalyticsGeneratedDirectory)/Program.ScopedRbac.g.cs</ScopedRbacGeneratedProgram>
+    <!-- Module 026 has the same early-evaluation issue. Keep its transformed
+         compiler copy under the ignored intermediate boundary as well. -->
+    <Module026GeneratedIntegration>$(AnalyticsGeneratedDirectory)/CrmErpIntegrationModule.g.cs</Module026GeneratedIntegration>
   </PropertyGroup>
 
   <!--
@@ -26,6 +29,7 @@
   -->
   <ItemGroup>
     <Compile Remove="Program.ScopedRbac.g.cs" />
+    <Compile Remove="CrmErpIntegrationModule.g.cs" />
     <Compile Remove="Modules/AnalyticsCenterScheduleService.cs" />
     <Compile Remove="Modules/AnalyticsCenterEnterpriseExperienceModule.cs" />
     <Compile Remove="Ai/CelarAiPeopleAndGuidanceService.cs" />
