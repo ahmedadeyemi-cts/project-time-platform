@@ -38,7 +38,8 @@ require_text "$APP" "window.localStorage.getItem('projectPulseViewAsUser')" view
 require_text "$MAIN" "import './view-as-storage-compatibility.js';" view_as_compatibility_loaded_before_app
 require_text "$VIEW_AS_COMPAT" "const CURRENT_VIEW_AS_KEY = 'projectPulseViewAsUser';" view_as_current_storage_key
 require_text "$VIEW_AS_COMPAT" "const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';" view_as_legacy_storage_key
-require_text "$VIEW_AS_COMPAT" 'if (currentRaw && !compatibilityOwned) {' view_as_current_state_not_overwritten
+require_text "$VIEW_AS_COMPAT" "const currentUserId = String(currentRecord?.userId || '').trim();" view_as_current_identity_validation
+require_text "$VIEW_AS_COMPAT" 'if (currentUserId) {' view_as_only_usable_current_state_authoritative
 require_text "$VIEW_AS_COMPAT" 'compatibilitySource: LEGACY_VIEW_AS_KEY' view_as_legacy_state_mirrored
 require_text "$VIEW_AS_COMPAT" 'window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);' view_as_legacy_key_consumed
 require_text "$APP" 'actualSessionHasPermanentFullControl' permanent_frontend_authority
@@ -109,5 +110,68 @@ for file in files:
             raise SystemExit(f'ASSERTION_FAILED {file} unbalanced_{label} left={text.count(left)} right={text.count(right)}')
 print('ASSERTION_PASSED frontend_structural_delimiters')
 PY
+
+node --input-type=module - "$VIEW_AS_COMPAT" <<'NODE'
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const file = process.argv[2];
+const source = fs.readFileSync(file, 'utf8')
+  .replace(/export\s*\{\s*normalizeLegacyViewAsStorage\s*\};?\s*$/m, '');
+const CURRENT = 'projectPulseViewAsUser';
+const LEGACY = 'projectPulseViewAsUserId';
+
+function execute(initial) {
+  const values = new Map(Object.entries(initial));
+  const events = [];
+  const context = {
+    window: {
+      localStorage: {
+        getItem(key) { return values.has(key) ? values.get(key) : null; },
+        setItem(key, value) { values.set(key, String(value)); },
+        removeItem(key) { values.delete(key); }
+      },
+      dispatchEvent(event) { events.push(event); },
+      addEventListener() {}
+    },
+    CustomEvent: class CustomEvent {
+      constructor(type, options = {}) {
+        this.type = type;
+        this.detail = options.detail;
+      }
+    }
+  };
+  vm.runInNewContext(source, context, { filename: file });
+  return { values, events };
+}
+
+function assert(condition, label) {
+  if (!condition) throw new Error(`ASSERTION_FAILED ${label}`);
+  console.log(`ASSERTION_PASSED ${label}`);
+}
+
+for (const [name, current] of [
+  ['missing_current', undefined],
+  ['null_current', 'null'],
+  ['empty_object_current', '{}'],
+  ['missing_user_current', JSON.stringify({ displayName: 'Legacy preview' })],
+  ['malformed_current', '{not-json']
+]) {
+  const initial = { [LEGACY]: 'legacy-user-123' };
+  if (current !== undefined) initial[CURRENT] = current;
+  const { values } = execute(initial);
+  const migrated = JSON.parse(values.get(CURRENT));
+  assert(migrated.userId === 'legacy-user-123', `${name}_migrates_legacy_identity`);
+  assert(!values.has(LEGACY), `${name}_consumes_legacy_key`);
+}
+
+const currentRecord = JSON.stringify({ userId: 'current-user-456', displayName: 'Current preview' });
+const authoritative = execute({ [CURRENT]: currentRecord, [LEGACY]: 'legacy-user-123' });
+assert(authoritative.values.get(CURRENT) === currentRecord, 'usable_current_identity_remains_authoritative');
+assert(!authoritative.values.has(LEGACY), 'usable_current_identity_consumes_stale_legacy_key');
+
+const noLegacy = execute({ [CURRENT]: currentRecord });
+assert(noLegacy.values.get(CURRENT) === currentRecord, 'absence_of_legacy_key_leaves_current_state_unchanged');
+NODE
 
 echo 'LIVE_AUTHENTICATED_ROUTE_AUTHORITY_HOTFIX=PASS celar=visible module065=open crm=permanent_super_admin analytics=reports_first view_as=current_and_legacy_read_only'
