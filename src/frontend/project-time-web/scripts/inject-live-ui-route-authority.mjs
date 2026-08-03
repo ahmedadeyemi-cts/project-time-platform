@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const generatedAppPath = path.join(webRoot, 'src', 'App.Module001.g.jsx');
+const viewAsCompatibilityPath = path.join(webRoot, 'src', 'view-as-storage-compatibility.js');
 const APP_MARKER = '/* LIVE_UI_ROUTE_AUTHORITY_COMPATIBILITY */';
 
 function count(source, marker) {
@@ -21,6 +22,9 @@ function installGeneratedAppCorrection() {
   }
 
   let source = fs.readFileSync(generatedAppPath, 'utf8');
+  const viewAsCompatibility = fs.existsSync(viewAsCompatibilityPath)
+    ? fs.readFileSync(viewAsCompatibilityPath, 'utf8')
+    : '';
 
   const legacyNormalizer = `function normalizeRoute(hash) {
   const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
@@ -118,9 +122,12 @@ function normalizeRoute(hash) {
     '/* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_START */',
     '/* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_END */',
     'actualSessionHasPermanentFullControl',
-    "window.localStorage.getItem('projectPulseViewAsUser')",
-    "window.localStorage.getItem('projectPulseViewAsUserId')"
+    "window.localStorage.getItem('projectPulseViewAsUser')"
   ].every((marker) => source.includes(marker));
+  const legacyViewAsCompatibilityPresent = [
+    "const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';",
+    'window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);'
+  ].every((marker) => viewAsCompatibility.includes(marker));
 
   if (!sharedAuthorityGatePresent && !source.includes(governedPermissionGate)) {
     if (!source.includes(legacyPermissionGate)) {
@@ -154,7 +161,6 @@ function normalizeRoute(hash) {
     "'crm-erp': 'crm-integration'",
     "'microsoft-integration': 'entra-secret-administration'",
     "window.localStorage.getItem('projectPulseViewAsUser')",
-    "window.localStorage.getItem('projectPulseViewAsUserId')",
     'data-authoritative-module="030"',
     '<AnalyticsCenter authSession={authSession} />',
     '<CrmErpIntegrationCenter />',
@@ -168,6 +174,9 @@ function normalizeRoute(hash) {
     || source.includes('function hasActualAdministratorAuthority()');
   if (!authorityContractPresent) {
     throw new Error('Generated runtime is missing the governed actual-session authority contract.');
+  }
+  if (!legacyViewAsCompatibilityPresent && !source.includes("window.localStorage.getItem('projectPulseViewAsUserId')")) {
+    throw new Error('Generated runtime is missing fail-closed legacy View-As compatibility.');
   }
 
   if (source.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"')) {
