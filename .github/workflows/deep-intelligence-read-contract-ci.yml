@@ -37,6 +37,8 @@ on:
       - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
       - 'src/frontend/project-time-web/src/help.css'
       - 'src/frontend/project-time-web/src/help-assistant.css'
+      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-production-platform.css'
 
 permissions:
   contents: read
@@ -268,19 +270,42 @@ jobs:
             exit 1
           fi
 
-          # Avoid a brittle non-ASCII exact match while still proving both sides of
-          # the approved workbench heading survived production minification.
-          assert_js_marker 'Build comprehensive, source-grounded answers'
-          assert_js_marker 'surface summaries'
-          assert_js_marker 'Timesheet Grounding'
-          assert_js_marker 'FlowHive Planning'
-          assert_js_marker 'Reports & Financials'
-          assert_js_marker "$HELP_TITLE"
-          assert_js_marker 'Automatic multi-tool execution is not yet enabled'
+          # Module 011 now has one authoritative production shell. Preserve the
+          # legacy deep-intelligence contract when that workbench is still
+          # bundled, but validate the intent-first PR #459 production platform
+          # when the selected production mount replaces the legacy full-page
+          # workbench during the build.
+          if grep -Fq 'Celar AI production platform' /tmp/deep-intelligence.js; then
+            for marker in \
+              'Created by Dr. Ahmed Adeyemi' \
+              'Knowledge & RAG' \
+              'Model Registry' \
+              'Verified current fact' \
+              '/api/celar-ai/v2/chat' \
+              '/api/project-flowhive/ai/production-generate'; do
+              assert_js_marker "$marker"
+            done
+            assert_css_marker '.celar-production-platform'
+            assert_css_marker '.celar-trust-banner'
+            DEEP_INTELLIGENCE_BUNDLE_MODE='celar_ai_production_platform'
+          else
+            # Avoid a brittle non-ASCII exact match while still proving both
+            # sides of the approved legacy workbench heading survived
+            # production minification.
+            assert_js_marker 'Build comprehensive, source-grounded answers'
+            assert_js_marker 'surface summaries'
+            assert_js_marker 'Timesheet Grounding'
+            assert_js_marker 'FlowHive Planning'
+            assert_js_marker 'Reports & Financials'
+            assert_js_marker 'Automatic multi-tool execution is not yet enabled'
+            assert_css_marker '.pulse-ai-deep-workbench'
+            DEEP_INTELLIGENCE_BUNDLE_MODE='legacy_deep_intelligence_workbench'
+          fi
 
-          assert_css_marker '.pulse-ai-deep-workbench'
+          assert_js_marker "$HELP_TITLE"
           assert_css_marker '.help-detailed-answer'
           echo "DEEP_INTELLIGENCE_HELP_TITLE=$HELP_TITLE"
+          echo "DEEP_INTELLIGENCE_BUNDLE_MODE=$DEEP_INTELLIGENCE_BUNDLE_MODE"
           echo 'DEEP_INTELLIGENCE_FRONTEND_BUILD=PASSED'
 
       - name: Validate web container build context
@@ -305,7 +330,7 @@ jobs:
             echo '- Existing Module 066 contract: passed'
             echo '- Stacked private-document source contract: passed when present'
             echo '- .NET 10 API build: passed'
-            echo '- Complete frontend build: passed'
+            echo '- Complete frontend build: passed for either the authoritative Celar AI production shell or the recoverable legacy deep-intelligence workbench'
             echo '- Web container build context: passed'
             echo '- Database migration: none'
             echo '- External model call: none'
