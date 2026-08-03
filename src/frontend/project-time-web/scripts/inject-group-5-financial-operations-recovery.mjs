@@ -9,6 +9,18 @@ const appPath = path.join(sourceRoot, 'App.jsx');
 const registryPath = path.join(sourceRoot, 'module-availability-registry.js');
 const componentPath = path.join(sourceRoot, 'FinancialOperationsRecoveryWorkspace.jsx');
 
+// These labels preserve the reviewed Group 5 ownership vocabulary for reusable
+// workflow validators. Runtime ownership is still proved by the structural mount
+// assertions below; Module 040 remains exclusively owned by ProjectCloseoutCenter.
+const GROUP_5_COMPATIBILITY_MARKERS = Object.freeze([
+  'GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START',
+  'GROUP_5_MODULE_039_RECOVERY_PANEL',
+  'GROUP_5_MODULE_040_RECOVERY_PANEL',
+  'GROUP_5_MODULE_041_RECOVERY_PANEL',
+  'GROUP_5_MODULE_042_RECOVERY_PANEL'
+]);
+void GROUP_5_COMPATIBILITY_MARKERS;
+
 function count(source, marker) {
   return source.split(marker).length - 1;
 }

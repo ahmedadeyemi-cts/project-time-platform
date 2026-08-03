@@ -18,7 +18,7 @@ const workRegister = read('src/frontend/project-time-web/src/WorkRegisterCenter.
 const workRegisterValidator = read('src/frontend/project-time-web/scripts/validate-work-register-055c-055d.mjs');
 
 for (const marker of [
-  '/api/work-lifecycle/dashboard',
+  '/api/financial-operations/modules/040',
   '/api/work-lifecycle/projects/${projectId}',
   '/closeout/request',
   '/closeout/complete',
