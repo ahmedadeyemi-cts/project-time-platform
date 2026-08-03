@@ -11,6 +11,10 @@ function publishCompatibilityChange(userId) {
   }));
 }
 
+function consumeLegacyViewAsKey() {
+  window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);
+}
+
 function normalizeLegacyViewAsStorage() {
   if (typeof window === 'undefined') return;
 
@@ -18,13 +22,16 @@ function normalizeLegacyViewAsStorage() {
     const currentRaw = window.localStorage.getItem(CURRENT_VIEW_AS_KEY);
     const legacyUserId = String(window.localStorage.getItem(LEGACY_VIEW_AS_KEY) || '').trim();
 
+    if (!legacyUserId) return;
+
     let currentRecord = null;
     if (currentRaw) {
       try {
         currentRecord = JSON.parse(currentRaw);
       } catch {
-        // A malformed current record is already treated as active by the
-        // application authority helper. Do not replace that fail-closed state.
+        // The malformed current record already fails closed. Consume the stale
+        // legacy key so a later Exit View-As cannot recreate it.
+        consumeLegacyViewAsKey();
         return;
       }
     }
@@ -32,22 +39,19 @@ function normalizeLegacyViewAsStorage() {
     const compatibilityOwned =
       currentRecord?.compatibilitySource === LEGACY_VIEW_AS_KEY;
 
-    if (legacyUserId) {
-      if (currentRaw && !compatibilityOwned) return;
-      if (compatibilityOwned && String(currentRecord?.userId || '') === legacyUserId) return;
-
-      window.localStorage.setItem(CURRENT_VIEW_AS_KEY, JSON.stringify({
-        userId: legacyUserId,
-        compatibilitySource: LEGACY_VIEW_AS_KEY
-      }));
-      publishCompatibilityChange(legacyUserId);
+    if (currentRaw && !compatibilityOwned) {
+      // The current contract is authoritative. Remove the stale legacy value
+      // without replacing the active selection.
+      consumeLegacyViewAsKey();
       return;
     }
 
-    if (compatibilityOwned) {
-      window.localStorage.removeItem(CURRENT_VIEW_AS_KEY);
-      publishCompatibilityChange(null);
-    }
+    window.localStorage.setItem(CURRENT_VIEW_AS_KEY, JSON.stringify({
+      userId: legacyUserId,
+      compatibilitySource: LEGACY_VIEW_AS_KEY
+    }));
+    consumeLegacyViewAsKey();
+    publishCompatibilityChange(legacyUserId);
   } catch {
     // The consuming authority checks fail closed when browser storage cannot be
     // read. This bridge only preserves an existing View-As restriction and
