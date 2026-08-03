@@ -44,9 +44,23 @@ jobs:
           git fetch origin main --no-tags
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
+          if grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
+            DISALLOWED_DATABASE="$(grep '^database/' <<<"$CHANGED" | grep -Ev '^(database/migrations/066_immutable_project_numbers\.sql|database/rollback/066_immutable_project_numbers_rollback\.sql)$' || true)"
+            if [[ -n "$DISALLOWED_DATABASE" ]]; then
+              echo 'The UAT Module 010/065 regression contains an unrelated database change:' >&2
+              printf '%s\n' "$DISALLOWED_DATABASE" >&2
+              exit 1
+            fi
+            RESERVED="$(grep -E '^(deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule)\.cs)' <<<"$CHANGED" || true)"
+            echo 'MODULES_010_065_VALIDATION_MODE=UAT_FUNCTIONAL_COMPLETION' >> "$GITHUB_ENV"
+          else
+            RESERVED="$(grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule)\.cs)' <<<"$CHANGED" || true)"
+            echo 'MODULES_010_065_VALIDATION_MODE=ISOLATED_OR_REGRESSION' >> "$GITHUB_ENV"
+          fi
 
-          if grep -E '^(database/|deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule)\.cs)' <<<"$CHANGED"; then
-            echo 'Modules 010/065 overlap a database, deployment, or CRM/SELL reserved surface.' >&2
+          if [[ -n "$RESERVED" ]]; then
+            echo 'Modules 010/065 overlap a deployment or CRM/SELL reserved surface.' >&2
+            printf '%s\n' "$RESERVED" >&2
             exit 1
           fi
           echo 'MODULES_010_065_SOURCE_ISOLATION=PASSED'

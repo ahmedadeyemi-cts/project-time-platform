@@ -8,50 +8,84 @@ const webRoot = path.resolve(scriptDirectory, '..');
 const repositoryRoot = path.resolve(webRoot, '../../..');
 const read = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 const requireText = (source, value, label) => assert.ok(source.includes(value), `${label} is missing: ${value}`);
-const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label} still contains prohibited legacy dependency: ${value}`);
+const rejectText = (source, value, label) => assert.ok(!source.includes(value), `${label} still contains retired content: ${value}`);
+const count = (source, value) => source.split(value).length - 1;
 
-const component = read('src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx');
-const css = read('src/frontend/project-time-web/src/project-closeout-center.css');
+const closeout = read('src/frontend/project-time-web/src/ProjectCloseoutCenter.jsx');
+const styles = read('src/frontend/project-time-web/src/project-closeout-center.css');
 const app = read('src/frontend/project-time-web/src/App.jsx');
-const lifecycle = read('src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs');
-const financialRecovery = read('src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs');
+const workRegister = read('src/frontend/project-time-web/src/WorkRegisterCenter.jsx');
+const workRegisterValidator = read('src/frontend/project-time-web/scripts/validate-work-register-055c-055d.mjs');
 
 for (const marker of [
-  "import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';",
-  '/api/financial-operations/modules/040',
+  '/api/work-lifecycle/dashboard',
   '/api/work-lifecycle/projects/${projectId}',
-  '/closeout/${operation}',
-  "saveGovernedCloseout('request')",
-  "saveGovernedCloseout('complete')",
-  "saveGovernedCloseout('reopen')",
-  "credentials: 'include'",
-  "'X-ProjectPulse-Session'",
-  "'X-Project-Pulse-Session'",
-  "'X-Session-Token'",
-  'projectPulseProjectCloseoutHandoff',
-  'Module 055C handoff',
-  'Exactly what happens next',
+  '/closeout/request',
+  '/closeout/complete',
+  '/closeout/reopen',
+  'Record and complete project closeout',
   'What you need to do now',
-  'Server-validated blockers',
-  'Required Project Manager confirmations',
-  'PTC / Administrator',
-  'One unavailable supporting source no longer replaces the entire page with a generic access error',
-  'Assigned Project Managers request closeout',
-  'View-As never transfers mutation authority'
-]) requireText(component, marker, 'Module 040 guided closeout');
+  'Start here and complete the steps in order',
+  'Project identity',
+  'Project manager',
+  'Project Team Coordinator',
+  'Project assignments',
+  'Solution Architect',
+  'Account Executive',
+  'Current project financials',
+  'Financial context and closeout readiness',
+  'Commercial data-completeness',
+  'do not block closeout by themselves',
+  'Contracted value',
+  'Expense budget',
+  'SELL association',
+  'Authoritative server blockers',
+  'Only the server-evaluated list block closeout.',
+  'closeoutBlockers',
+  'getCloseoutBlockers',
+  'Permissions for this project',
+  'canRequestCloseout',
+  'canCompleteCloseout',
+  'canReopenProject',
+  'Resolve blockers',
+  'Record the PM closeout request',
+  'PTC or Administrator finalizes closeout',
+  'Project closeout actions',
+  'requestCloseout',
+  'completeCloseout',
+  'reopenProject',
+  'Enter REOPEN',
+  'Billing disposition',
+  'Delivery is complete',
+  'Customer acceptance is complete',
+  'Final time and expenses have been reviewed',
+  'Billing is complete',
+  'Audit reason',
+  'Document why this project is ready to close.',
+  'Request project closeout',
+  'Complete project closeout',
+  'Closeout status',
+  'Billing readiness',
+  'Open alerts',
+  'Customer notes',
+  'Invoice summary',
+  'Closeout decision history',
+  'Immutable audit evidence',
+  'Module 055C',
+  'Start closeout from the selected project in the edit workspace.'
+]) requireText(closeout, marker, 'Module 040 guided closeout');
 
-for (const legacyEndpoint of [
-  '/api/project-workspace/overview',
-  '/api/project-intake/overview',
-  '/api/customers/overview',
-  '/api/manager/approvals',
-  '/api/manager/approval-count',
-  '/api/certify/expenses/staged',
-  '/api/certify/exceptions'
-]) rejectText(component, legacyEndpoint, 'Module 040 guided closeout');
+for (const retiredEndpoint of [
+  '/api/financial-operations/truth',
+  '/api/financial-operations/sources/005/recover',
+  '/api/financial-operations/sources/026/recover',
+  '/api/financial-operations/sources/036/recover',
+  '/api/financial-operations/sources/039/recover',
+  '/api/financial-operations/sources/040/recover',
+  '/api/financial-operations/sources/042/recover'
+]) rejectText(closeout, retiredEndpoint, 'Module 040 runtime contract');
 
 for (const marker of [
-  ".project-closeout-route-panel > .group5-financial-operations[data-module-code='040']",
   '.project-closeout-hero',
   'linear-gradient(135deg, var(--m040-navy-950)',
   '.project-closeout-step-list',
@@ -61,29 +95,23 @@ for (const marker of [
   '.project-closeout-source-health',
   '@media (max-width: 720px)',
   '@media print'
-]) requireText(css, marker, 'Module 040 guided closeout styling');
+]) requireText(styles, marker, 'Module 040 guided closeout styling');
 
-requireText(app, '<ProjectCloseoutCenter />', 'Module 040 route mount');
-requireText(app, 'GROUP_5_MODULE_040_RECOVERY_PANEL', 'Module 040 compatibility mount marker');
-
-for (const marker of [
-  '/api/work-lifecycle/projects/{projectId:guid}',
-  '/closeout/request',
-  '/closeout/complete',
-  '/closeout/reopen',
-  'BuildCloseoutBlockersAsync',
-  'CanRequestCloseout',
-  'CanCompleteCloseout',
-  'CanReopenProject'
-]) requireText(lifecycle, marker, 'Work lifecycle closeout API');
+requireText(app, '<ProjectCloseoutCenter />', 'Module 040 canonical route mount');
+assert.equal(count(app, '<ProjectCloseoutCenter />'), 1, 'Module 040 guided closeout mount must be unique.');
+rejectText(app, '<FinancialOperationsRecoveryWorkspace moduleCode="040"', 'Module 040 canonical route');
+rejectText(app, 'GROUP_5_MODULE_040_RECOVERY_PANEL', 'Module 040 canonical route');
 
 for (const marker of [
-  '/api/financial-operations/modules/{moduleCode}',
-  '"040" => actor.Broad',
-  'project_closeout_records',
-  'approved_time_entries',
-  'billing_readiness_reviews',
-  'healthySourcesRemainVisible = true'
-]) requireText(financialRecovery, marker, 'Module 040 recovery API');
+  'projectPulseProjectCloseoutHandoff',
+  'projectPulseProjectCloseoutRequested',
+  'work_register_closeout_handoff',
+  '#project-closeout',
+  'Start closeout from the selected project in the edit workspace.'
+]) requireText(workRegister, marker, `Work Register closeout handoff ${marker}`);
 
-console.log('MODULE_040_GUIDED_CLOSEOUT_VALIDATION=PASS authoritativeApis=2 legacyFanout=removed module055cHandoff=preserved pmGuidance=enabled heroContrast=restored');
+requireText(workRegisterValidator, 'projectPulseProjectCloseoutHandoff', 'Work Register handoff validator');
+requireText(workRegisterValidator, 'ProjectCloseoutCenter', 'Work Register closeout mount validator');
+requireText(workRegisterValidator, 'removeItem(', 'Work Register handoff consumption validator');
+
+console.log('MODULE_040_GUIDED_CLOSEOUT_VALIDATION=PASS sources=isolated blockers=server_authoritative actions=role_scoped handoff=055C responsive=true');

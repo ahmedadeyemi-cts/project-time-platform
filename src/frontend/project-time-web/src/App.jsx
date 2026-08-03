@@ -7130,8 +7130,6 @@ Analytics - Variphy / Infortel`}
       {/* GROUP_5_FINANCIAL_OPERATIONS_ROUTES_END */}
       {(activeRoute === 'project-closeout' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-closeout" className="panel project-closeout-route-panel">
-          {/* GROUP_5_MODULE_040_RECOVERY_PANEL */}
-          <FinancialOperationsRecoveryWorkspace moduleCode="040" authSession={authSession} />
           <ProjectCloseoutCenter />
         </section>
       ) : null}
