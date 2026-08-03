@@ -60,15 +60,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p evidence/source-before evidence/generated evidence/live-web
-          cp release/src/frontend/project-time-web/src/App.jsx evidence/source-before/App.jsx
-          cp release/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx evidence/source-before/ModulesDirectoryPortal.jsx
-          cp release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx evidence/source-before/WorkTaskBuilderPanel.jsx
-          cp release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx evidence/source-before/CrmErpIntegrationCenter.jsx
-          cp release/src/frontend/project-time-web/src/AnalyticsCenter.jsx evidence/source-before/AnalyticsCenter.jsx
-          cp release/src/frontend/project-time-web/src/module-availability-registry.js evidence/source-before/module-availability-registry.js
-          cp release/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs evidence/source-before/CrmErpIntegrationModule.cs
-          cp release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs evidence/source-before/CrmErpAdministrationExperience.cs
+          EVIDENCE="$GITHUB_WORKSPACE/evidence"
+          mkdir -p "$EVIDENCE/source-before" "$EVIDENCE/generated" "$EVIDENCE/live-web"
+          cp release/src/frontend/project-time-web/src/App.jsx "$EVIDENCE/source-before/App.jsx"
+          cp release/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx "$EVIDENCE/source-before/ModulesDirectoryPortal.jsx"
+          cp release/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx "$EVIDENCE/source-before/WorkTaskBuilderPanel.jsx"
+          cp release/src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx "$EVIDENCE/source-before/CrmErpIntegrationCenter.jsx"
+          cp release/src/frontend/project-time-web/src/AnalyticsCenter.jsx "$EVIDENCE/source-before/AnalyticsCenter.jsx"
+          cp release/src/frontend/project-time-web/src/module-availability-registry.js "$EVIDENCE/source-before/module-availability-registry.js"
+          cp release/src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs "$EVIDENCE/source-before/CrmErpIntegrationModule.cs"
+          cp release/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs "$EVIDENCE/source-before/CrmErpAdministrationExperience.cs"
 
           {
             echo '=== APP ROUTE CONTRACTS ==='
@@ -88,41 +89,43 @@ jobs:
             echo
             echo '=== ANALYTICS CONTRACTS ==='
             grep -nE "Engineer Project Over / Under Budget Report|Utilization Over / Under Report by Engineer|Engineer Vacation / PTO Used Report|Reports|Home" release/src/frontend/project-time-web/src/AnalyticsCenter.jsx release/src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs || true
-          } | tee evidence/source-contracts-before.txt
+          } | tee "$EVIDENCE/source-contracts-before.txt"
 
       - name: Install locked frontend dependencies
         working-directory: release/src/frontend/project-time-web
         shell: bash
         run: npm ci --no-audit --no-fund
 
-      - name: Run the exact prebuild generators and record source mutations
+      - name: Run exact prebuild generators and record source mutations
         working-directory: release/src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
-          npm run prebuild 2>&1 | tee ../../../evidence/prebuild.log
-          git -C ../../.. diff -- src/frontend/project-time-web/src > ../../../evidence/generated/prebuild-source.diff || true
-          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > ../../../evidence/generated/prebuild-changed-files.txt || true
-          cp src/App.jsx ../../../evidence/generated/App.after-prebuild.jsx
-          cp src/ModulesDirectoryPortal.jsx ../../../evidence/generated/ModulesDirectoryPortal.after-prebuild.jsx
-          cp src/WorkTaskBuilderPanel.jsx ../../../evidence/generated/WorkTaskBuilderPanel.after-prebuild.jsx
-          cp src/CrmErpIntegrationCenter.jsx ../../../evidence/generated/CrmErpIntegrationCenter.after-prebuild.jsx
-          cp src/AnalyticsCenter.jsx ../../../evidence/generated/AnalyticsCenter.after-prebuild.jsx
+          EVIDENCE="$GITHUB_WORKSPACE/evidence"
+          npm run prebuild 2>&1 | tee "$EVIDENCE/prebuild.log"
+          git -C ../../.. diff -- src/frontend/project-time-web/src > "$EVIDENCE/generated/prebuild-source.diff" || true
+          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > "$EVIDENCE/generated/prebuild-changed-files.txt" || true
+          cp src/App.jsx "$EVIDENCE/generated/App.after-prebuild.jsx"
+          cp src/ModulesDirectoryPortal.jsx "$EVIDENCE/generated/ModulesDirectoryPortal.after-prebuild.jsx"
+          cp src/WorkTaskBuilderPanel.jsx "$EVIDENCE/generated/WorkTaskBuilderPanel.after-prebuild.jsx"
+          cp src/CrmErpIntegrationCenter.jsx "$EVIDENCE/generated/CrmErpIntegrationCenter.after-prebuild.jsx"
+          cp src/AnalyticsCenter.jsx "$EVIDENCE/generated/AnalyticsCenter.after-prebuild.jsx"
 
       - name: Build exactly as the production web image builds
         working-directory: release/src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
-          npm run build 2>&1 | tee ../../../evidence/build.log
-          git -C ../../.. diff -- src/frontend/project-time-web/src > ../../../evidence/generated/postbuild-source.diff || true
-          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > ../../../evidence/generated/postbuild-changed-files.txt || true
-          cp src/App.jsx ../../../evidence/generated/App.after-build.jsx
-          cp src/ModulesDirectoryPortal.jsx ../../../evidence/generated/ModulesDirectoryPortal.after-build.jsx
-          cp src/WorkTaskBuilderPanel.jsx ../../../evidence/generated/WorkTaskBuilderPanel.after-build.jsx
-          cp src/CrmErpIntegrationCenter.jsx ../../../evidence/generated/CrmErpIntegrationCenter.after-build.jsx
-          cp src/AnalyticsCenter.jsx ../../../evidence/generated/AnalyticsCenter.after-build.jsx
-          find dist -maxdepth 3 -type f -print -exec sha256sum {} \; > ../../../evidence/generated/local-dist-files.txt
+          EVIDENCE="$GITHUB_WORKSPACE/evidence"
+          npm run build 2>&1 | tee "$EVIDENCE/build.log"
+          git -C ../../.. diff -- src/frontend/project-time-web/src > "$EVIDENCE/generated/postbuild-source.diff" || true
+          git -C ../../.. diff --name-status -- src/frontend/project-time-web/src > "$EVIDENCE/generated/postbuild-changed-files.txt" || true
+          cp src/App.jsx "$EVIDENCE/generated/App.after-build.jsx"
+          cp src/ModulesDirectoryPortal.jsx "$EVIDENCE/generated/ModulesDirectoryPortal.after-build.jsx"
+          cp src/WorkTaskBuilderPanel.jsx "$EVIDENCE/generated/WorkTaskBuilderPanel.after-build.jsx"
+          cp src/CrmErpIntegrationCenter.jsx "$EVIDENCE/generated/CrmErpIntegrationCenter.after-build.jsx"
+          cp src/AnalyticsCenter.jsx "$EVIDENCE/generated/AnalyticsCenter.after-build.jsx"
+          find dist -maxdepth 3 -type f -print -exec sha256sum {} \; > "$EVIDENCE/generated/local-dist-files.txt"
 
           JS_FILE="$(find dist/assets -maxdepth 1 -type f -name 'index-*.js' | head -1)"
           test -s "$JS_FILE"
@@ -144,7 +147,7 @@ jobs:
                 echo "LOCAL_BUNDLE_MARKER_MISSING=$marker"
               fi
             done
-          } | tee ../../../evidence/generated/local-bundle-markers.txt
+          } | tee "$EVIDENCE/generated/local-bundle-markers.txt"
 
       - name: Sign in to Azure Test read-only through OIDC
         uses: azure/login@v2
@@ -158,54 +161,63 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          EVIDENCE="$GITHUB_WORKSPACE/evidence"
           RG='${{ vars.AZURE_RESOURCE_GROUP }}'
           API_APP='${{ vars.AZURE_API_APP }}'
           WEB_APP='${{ vars.AZURE_WEB_APP }}'
 
-          az containerapp show -g "$RG" -n "$API_APP" -o json --only-show-errors > evidence/live-api-app.json
-          az containerapp show -g "$RG" -n "$WEB_APP" -o json --only-show-errors > evidence/live-web-app.json
-          API_REVISION="$(jq -r '.properties.latestReadyRevisionName' evidence/live-api-app.json)"
-          WEB_REVISION="$(jq -r '.properties.latestReadyRevisionName' evidence/live-web-app.json)"
-          az containerapp revision show -g "$RG" -n "$API_APP" --revision "$API_REVISION" -o json --only-show-errors > evidence/live-api-revision.json
-          az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$WEB_REVISION" -o json --only-show-errors > evidence/live-web-revision.json
+          API_REVISION="$(az containerapp show -g "$RG" -n "$API_APP" --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          WEB_REVISION="$(az containerapp show -g "$RG" -n "$WEB_APP" --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g "$RG" -n "$API_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g "$RG" -n "$WEB_APP" --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
 
-          API_IMAGE="$(jq -r '.properties.template.containers[0].image' evidence/live-api-revision.json)"
-          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' evidence/live-web-revision.json)"
-          API_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value][0] // empty' evidence/live-api-revision.json)"
+          az containerapp revision show -g "$RG" -n "$API_APP" --revision "$API_REVISION" \
+            --query '{revision:name,image:properties.template.containers[0].image,sourceCommit:properties.template.containers[0].env[?name==`PROJECTPULSE_SOURCE_COMMIT`].value|[0],health:properties.healthState,provisioning:properties.provisioningState,active:properties.active,traffic:properties.trafficWeight}' \
+            -o json --only-show-errors > "$EVIDENCE/live-api-revision-sanitized.json"
+          az containerapp revision show -g "$RG" -n "$WEB_APP" --revision "$WEB_REVISION" \
+            --query '{revision:name,image:properties.template.containers[0].image,health:properties.healthState,provisioning:properties.provisioningState,active:properties.active,traffic:properties.trafficWeight}' \
+            -o json --only-show-errors > "$EVIDENCE/live-web-revision-sanitized.json"
+
+          API_IMAGE="$(jq -r '.image' "$EVIDENCE/live-api-revision-sanitized.json")"
+          WEB_IMAGE="$(jq -r '.image' "$EVIDENCE/live-web-revision-sanitized.json")"
+          API_SOURCE="$(jq -r '.sourceCommit // empty' "$EVIDENCE/live-api-revision-sanitized.json")"
 
           {
             echo "LIVE_API_REVISION=$API_REVISION"
             echo "LIVE_API_IMAGE=$API_IMAGE"
             echo "LIVE_API_SOURCE_COMMIT=$API_SOURCE"
-            echo "LIVE_API_HEALTH=$(jq -r '.properties.healthState' evidence/live-api-revision.json)"
-            echo "LIVE_API_PROVISIONING=$(jq -r '.properties.provisioningState' evidence/live-api-revision.json)"
+            echo "LIVE_API_HEALTH=$(jq -r '.health' "$EVIDENCE/live-api-revision-sanitized.json")"
+            echo "LIVE_API_PROVISIONING=$(jq -r '.provisioning' "$EVIDENCE/live-api-revision-sanitized.json")"
+            echo "LIVE_API_MODE=$API_MODE"
             echo "LIVE_WEB_REVISION=$WEB_REVISION"
             echo "LIVE_WEB_IMAGE=$WEB_IMAGE"
-            echo "LIVE_WEB_HEALTH=$(jq -r '.properties.healthState' evidence/live-web-revision.json)"
-            echo "LIVE_WEB_PROVISIONING=$(jq -r '.properties.provisioningState' evidence/live-web-revision.json)"
-          } | tee evidence/live-release-state.txt
+            echo "LIVE_WEB_HEALTH=$(jq -r '.health' "$EVIDENCE/live-web-revision-sanitized.json")"
+            echo "LIVE_WEB_PROVISIONING=$(jq -r '.provisioning' "$EVIDENCE/live-web-revision-sanitized.json")"
+            echo "LIVE_WEB_MODE=$WEB_MODE"
+          } | tee "$EVIDENCE/live-release-state.txt"
 
           echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
           echo "api_source=$API_SOURCE" >> "$GITHUB_OUTPUT"
 
-      - name: Extract and inspect the exact live web image
+      - name: Extract and inspect exact live web image
         shell: bash
         run: |
           set -Eeuo pipefail
+          EVIDENCE="$GITHUB_WORKSPACE/evidence"
           az acr login --name '${{ vars.AZURE_ACR_NAME }}' --only-show-errors
           docker pull '${{ steps.live.outputs.web_image }}' >/dev/null
           CID="$(docker create '${{ steps.live.outputs.web_image }}')"
           trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
-          docker cp "$CID:/usr/share/nginx/html/." evidence/live-web/
+          docker cp "$CID:/usr/share/nginx/html/." "$EVIDENCE/live-web/"
 
-          LIVE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' evidence/live-web/index.html | head -1 | cut -d'"' -f2)"
+          LIVE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' "$EVIDENCE/live-web/index.html" | head -1 | cut -d'"' -f2)"
           LIVE_JS_PATH="${LIVE_JS_REF%%\?*}"
           LIVE_JS_PATH="${LIVE_JS_PATH#/}"
-          LIVE_JS="evidence/live-web/$LIVE_JS_PATH"
+          LIVE_JS="$EVIDENCE/live-web/$LIVE_JS_PATH"
           test -s "$LIVE_JS"
 
           {
-            echo "LIVE_INDEX_SHA256=$(sha256sum evidence/live-web/index.html | awk '{print $1}')"
+            echo "LIVE_INDEX_SHA256=$(sha256sum "$EVIDENCE/live-web/index.html" | awk '{print $1}')"
             echo "LIVE_JS_REFERENCE=$LIVE_JS_REF"
             echo "LIVE_JS_SHA256=$(sha256sum "$LIVE_JS" | awk '{print $1}')"
             for marker in \
@@ -223,7 +235,7 @@ jobs:
                 echo "LIVE_BUNDLE_MARKER_MISSING=$marker"
               fi
             done
-          } | tee evidence/live-bundle-markers.txt
+          } | tee "$EVIDENCE/live-bundle-markers.txt"
 
           LOCAL_JS="$(find release/src/frontend/project-time-web/dist/assets -maxdepth 1 -type f -name 'index-*.js' | head -1)"
           LOCAL_SHA="$(sha256sum "$LOCAL_JS" | awk '{print $1}')"
@@ -236,14 +248,14 @@ jobs:
             else
               echo 'LOCAL_REBUILD_MATCHES_LIVE=false'
             fi
-          } | tee evidence/build-to-live-comparison.txt
+          } | tee "$EVIDENCE/build-to-live-comparison.txt"
 
       - name: Produce diagnosis summary
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import json, pathlib, re
+          import json, pathlib
           root = pathlib.Path('evidence')
           checked = (root/'source-before/App.jsx').read_text()
           generated = (root/'generated/App.after-build.jsx').read_text()
@@ -253,20 +265,22 @@ jobs:
           live_markers = (root/'live-bundle-markers.txt').read_text()
           comparison = (root/'build-to-live-comparison.txt').read_text()
           changed = (root/'generated/postbuild-changed-files.txt').read_text()
+          state = (root/'live-release-state.txt').read_text()
 
           def count(text, needle):
               return text.count(needle)
 
+          api_source = state.split('LIVE_API_SOURCE_COMMIT=', 1)[1].splitlines()[0]
           summary = {
               'environment': 'test',
               'releaseCommitExpected': '0bb15f6736c4fb8feee1f83f144c9fbde5e563d0',
-              'apiSourceCommitObserved': pathlib.Path('evidence/live-release-state.txt').read_text().split('LIVE_API_SOURCE_COMMIT=',1)[1].splitlines()[0],
+              'apiSourceCommitObserved': api_source,
               'sourceWasMutatedDuringBuild': bool(changed.strip()),
               'generatedChangedFiles': [line for line in changed.splitlines() if line.strip()],
-              'checkedInWorkTaskBuilderImports': count(checked, 'WorkTaskBuilderPanel'),
-              'generatedWorkTaskBuilderImportsAndMounts': count(generated, 'WorkTaskBuilderPanel'),
-              'generatedWorkTaskBuilderRouteReferences': count(generated, "work-task-builder"),
-              'generatedCelarRouteReferences': count(generated, "celar-ai"),
+              'checkedInWorkTaskBuilderReferences': count(checked, 'WorkTaskBuilderPanel'),
+              'generatedWorkTaskBuilderReferences': count(generated, 'WorkTaskBuilderPanel'),
+              'generatedWorkTaskBuilderRouteReferences': count(generated, 'work-task-builder'),
+              'generatedCelarRouteReferences': count(generated, 'celar-ai'),
               'moduleDirectoryOpenLinkUnconditional': '<a href={module.href}>Open module' in directory,
               'crmFrontendHasViewOnlyFallback': 'View-only access' in crm_front,
               'crmFrontendHasPermanentFullControlEvidence': 'permanentFullControl' in crm_front,
@@ -282,9 +296,10 @@ jobs:
           (root/'diagnosis-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
           print(json.dumps(summary, indent=2))
           PY
-          find evidence -type f -print0 | sort -z | xargs -0 sha256sum > evidence/SHA256SUMS
+          find evidence -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > evidence/SHA256SUMS
 
       - name: Upload read-only diagnosis evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: live-uat-reflection-diagnosis-${{ github.run_id }}
