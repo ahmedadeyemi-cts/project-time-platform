@@ -12,6 +12,7 @@ const files = {
   chain: 'scripts/inject-celar-ai-enterprise-chat-context.mjs',
   injector: 'scripts/inject-live-ui-route-authority.mjs',
   main: 'src/main.jsx',
+  viewAsCompatibility: 'src/view-as-storage-compatibility.js',
   analyticsAuthority: 'src/legacy-analytics-overlay-authority.js',
   celarPlatform: 'src/CelarAiEnterprisePlatform.jsx',
   architecture: 'src/CelarAiArchitectureOverview.jsx',
@@ -35,6 +36,7 @@ const generated = read(files.generated);
 const chain = read(files.chain);
 const injector = read(files.injector);
 const main = read(files.main);
+const viewAsCompatibility = read(files.viewAsCompatibility);
 const analyticsAuthority = read(files.analyticsAuthority);
 const celarPlatform = read(files.celarPlatform);
 const architecture = read(files.architecture);
@@ -55,24 +57,33 @@ const requiredAliases = [
 ];
 
 test('BUILD_CHAIN', chain.includes("await import('./inject-live-ui-route-authority.mjs');"));
-test('INJECTOR_READS_GENERATED_APP', injector.includes("App.Module001.g.jsx"));
+test('INJECTOR_READS_GENERATED_APP', injector.includes('App.Module001.g.jsx'));
 test('ROUTE_ALIASES', requiredAliases.every((marker) => generated.includes(marker)), requiredAliases.join(', '));
 test('ROUTE_QUERY_NORMALIZATION', generated.includes(".replace(/^#/, '').split('?')[0].trim()"));
-test('SUPER_ADMIN_ROUTE_AUTHORITY', generated.includes('function hasActualAdministratorAuthority()')
-  && generated.includes("roleCodes.includes('SUPER_ADMINISTRATOR')")
-  && generated.includes("roleCodes.includes('ADMINISTRATOR')")
-  && generated.includes("permissions.includes('SYSTEM_ADMINISTRATION')")
-  && generated.includes("permissions.includes('MANAGE_ALL')")
-  && generated.includes('return hasActualAdministratorAuthority()')
-  && generated.includes('|| permissionCodes.some((permissionCode) => hasPermission(permissionCode));'));
-test('VIEW_AS_REMAINS_READ_ONLY', generated.includes('if (securityContext.data?.isViewAs) return false;'));
+test('SUPER_ADMIN_ROUTE_AUTHORITY',
+  generated.includes('/* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_START */')
+    && generated.includes('actualSessionHasPermanentFullControl')
+    && generated.includes("'SUPER_ADMINISTRATOR'")
+    && generated.includes("'ADMINISTRATOR'")
+    && generated.includes('securityContext.data?.permanentFullControl === true')
+    && generated.includes('return actualSessionHasPermanentFullControl')
+    && generated.includes('|| permissionCodes.some((permissionCode) => hasPermission(permissionCode));'),
+  'shared permanent actual-session authority gate');
+test('VIEW_AS_REMAINS_READ_ONLY',
+  generated.includes('const actualSessionIsViewAs = Boolean(securityContext.data?.isViewAs) || localViewAsIsActive();')
+    && generated.includes('const actualSessionHasPermanentFullControl = !actualSessionIsViewAs')
+    && main.indexOf("import './view-as-storage-compatibility.js';") >= 0
+    && main.indexOf("import './view-as-storage-compatibility.js';") < main.indexOf("import App from './App.Module001.g.jsx';")
+    && viewAsCompatibility.includes("const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';")
+    && viewAsCompatibility.includes('window.localStorage.removeItem(LEGACY_VIEW_AS_KEY);'),
+  'current and legacy View-As state fail closed before App renders');
 test('ANALYTICS_NATIVE_MOUNT', generated.includes('<AnalyticsCenter authSession={authSession} />')
   && generated.includes('data-authoritative-module="030"'));
 test('ANALYTICS_SINGLE_MOUNT', generated.split('<AnalyticsCenter authSession={authSession} />').length - 1 === 1);
 test('ANALYTICS_RUNTIME_AUTHORITY_IMPORTED', main.includes("import './legacy-analytics-overlay-authority.js';"));
 test('ANALYTICS_RUNTIME_AUTHORITY_PRECEDES_PORTALS',
   main.indexOf("import './legacy-analytics-overlay-authority.js';") >= 0
-  && main.indexOf("import './legacy-analytics-overlay-authority.js';") < main.indexOf("import MicrosoftIntegrationDualConnectionPortal"));
+  && main.indexOf("import './legacy-analytics-overlay-authority.js';") < main.indexOf('import MicrosoftIntegrationDualConnectionPortal'));
 test('RAW_HASH_CANONICALIZATION', analyticsAuthority.includes('function canonicalizeRuntimeHash()')
   && analyticsAuthority.includes('window.history.replaceState')
   && analyticsAuthority.includes("'celar-ai': 'work-task-builder'")
