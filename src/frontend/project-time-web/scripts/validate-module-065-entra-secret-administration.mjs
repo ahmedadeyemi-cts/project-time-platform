@@ -62,6 +62,8 @@ const mutationAccess = backend.slice(
   backend.indexOf('private static async Task<AccessOutcome> ResolveMutationAccessAsync'),
   backend.indexOf('private static async Task<AccessOutcome> ResolveAccessAsync')
 );
+const permanentAdministratorAuthority =
+  backend.includes('ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)');
 
 check('MAP_METHOD', backend.includes('MapEntraSecretAdministrationEndpoints'), 'isolated endpoint registration');
 check('COMPLETE_READ_SURFACE', [
@@ -72,9 +74,9 @@ check('COMPLETE_ROTATION_SURFACE', [
 ].every((value) => backend.includes(value)), 'six guarded lifecycle contracts');
 check('CONTRACT_VERSION', backend.includes('2026-07-19.2'), 'complete-source contract version');
 check('CURRENT_MAIN_BASELINE', backend.includes('2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4'), 'Module 002-enabled main');
-check('SUPER_ADMIN', backend.includes('roles.Contains("SUPER_ADMINISTRATOR")'), 'tracker role');
+check('SUPER_ADMIN', permanentAdministratorAuthority, 'shared permanent actual-session administrator authority');
 check('DELEGATED_PERMISSION', backend.includes('permissions.Contains(DelegatedPermission)') && backend.includes('MANAGE_ENTRA_SECRET'), 'explicit capability');
-check('PLATFORM_ADMIN', backend.includes('roles.Contains("SUPER_ADMINISTRATOR")') && backend.includes('roles.Contains("ADMINISTRATOR")') && !backend.includes('permissions.Contains("MANAGE_ALL")'), 'explicit platform administrator authority without a global wildcard');
+check('PLATFORM_ADMIN', permanentAdministratorAuthority && backend.includes('Super Administrator, Administrator, or explicitly delegated') && !backend.includes('permissions.Contains("MANAGE_ALL")'), 'centralized administrator authority without a global wildcard');
 check('ACTUAL_SESSION', backend.includes('ProjectPulseActualUserId') && backend.includes('ActualEmail(context)'), 'actual user and email authority');
 check('VIEW_AS_BLOCKED', mutationAccess.includes('IsViewAs(context)') && mutationAccess.includes('actual_session_required'), 'no View-As mutation authority');
 check('MODULE_010_METADATA', backend.includes('FROM azure_entra_settings') && backend.includes('module_010_azure_entra_settings'), 'existing tenant settings are primary');
