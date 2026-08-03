@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/src/frontend/project-time-web/src/App.jsx"
+MAIN="$ROOT/src/frontend/project-time-web/src/main.jsx"
+VIEW_AS_COMPAT="$ROOT/src/frontend/project-time-web/src/view-as-storage-compatibility.js"
 ANALYTICS="$ROOT/src/frontend/project-time-web/src/AnalyticsCenter.jsx"
 ANALYTICS_CSS="$ROOT/src/frontend/project-time-web/src/analytics-center.css"
 MODULES="$ROOT/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx"
@@ -32,7 +34,12 @@ reject_text() {
 }
 
 require_text "$APP" 'LIVE_AUTHENTICATED_ROUTE_AUTHORITY_START' route_authority_marker
-require_text "$APP" "window.localStorage.getItem('projectPulseViewAsUser')" view_as_fail_closed
+require_text "$APP" "window.localStorage.getItem('projectPulseViewAsUser')" view_as_current_key_fail_closed
+require_text "$MAIN" "import './view-as-storage-compatibility.js';" view_as_compatibility_loaded_before_app
+require_text "$VIEW_AS_COMPAT" "const CURRENT_VIEW_AS_KEY = 'projectPulseViewAsUser';" view_as_current_storage_key
+require_text "$VIEW_AS_COMPAT" "const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';" view_as_legacy_storage_key
+require_text "$VIEW_AS_COMPAT" 'if (current || !legacyUserId) return;' view_as_no_authority_overwrite
+require_text "$VIEW_AS_COMPAT" 'compatibilitySource: LEGACY_VIEW_AS_KEY' view_as_legacy_state_mirrored
 require_text "$APP" 'actualSessionHasPermanentFullControl' permanent_frontend_authority
 require_text "$APP" "'SUPER_ADMINISTRATOR'" canonical_super_admin_role
 require_text "$APP" "activeRoute === 'work-task-builder' && canSeeAny" celar_route_uses_shared_authority
@@ -88,6 +95,8 @@ import sys
 root = Path(sys.argv[1])
 files = [
     root / 'src/frontend/project-time-web/src/App.jsx',
+    root / 'src/frontend/project-time-web/src/main.jsx',
+    root / 'src/frontend/project-time-web/src/view-as-storage-compatibility.js',
     root / 'src/frontend/project-time-web/src/AnalyticsCenter.jsx',
     root / 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
     root / 'src/frontend/project-time-web/src/CrmErpIntegrationCenter.jsx',
@@ -100,4 +109,4 @@ for file in files:
 print('ASSERTION_PASSED frontend_structural_delimiters')
 PY
 
-echo 'LIVE_AUTHENTICATED_ROUTE_AUTHORITY_HOTFIX=PASS celar=visible module065=open crm=permanent_super_admin analytics=reports_first view_as=read_only'
+echo 'LIVE_AUTHENTICATED_ROUTE_AUTHORITY_HOTFIX=PASS celar=visible module065=open crm=permanent_super_admin analytics=reports_first view_as=current_and_legacy_read_only'
