@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 # Install the locked frontend dependencies before copying the complete
 # non-secret repository context so Docker can retain the dependency cache.
