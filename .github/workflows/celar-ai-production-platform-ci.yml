@@ -1,0 +1,179 @@
+name: Validate Celar AI Production Platform
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-production-platform-20260802
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-production-platform-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs'
+      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-production-platform.css'
+      - 'docs/modules/module-011-pulse-ai/CELAR-AI-PRODUCTION-PLATFORM.md'
+      - 'docs/modules/module-066-project-flowhive/CELAR-AI-GENERATION.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-production-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          test -n "$CHANGED"
+          git diff --check "$BASE"...HEAD
+          if grep -E '^(deployment/|database/migrations/|database/rollback/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+            echo 'Celar AI production source may not alter protected deployment controls or numbered migrations.' >&2
+            exit 1
+          fi
+          echo "CELAR_AI_PRODUCTION_BASE=$BASE"
+          echo "CELAR_AI_PRODUCTION_HEAD=$(git rev-parse HEAD)"
+          echo 'CELAR_AI_PRODUCTION_SOURCE_BOUNDARY=PASSED'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate JavaScript source
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check ./scripts/inject-celar-ai-production-platform.mjs
+          node --check ./scripts/inject-celar-ai-enterprise-chat-context.mjs
+          node --check ./scripts/validate-celar-ai-production-platform.mjs
+          echo 'CELAR_AI_PRODUCTION_JAVASCRIPT_SYNTAX=PASSED'
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee celar-ai-production-api-build.log
+          grep -Fq '0 Error(s)' celar-ai-production-api-build.log
+          echo 'CELAR_AI_PRODUCTION_API_BUILD=PASSED'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Prove production injector idempotence and validate contract
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/inject-celar-ai-production-platform.mjs
+          sha256sum \
+            src/WorkTaskBuilderPanel.jsx \
+            src/HelpAssistant.jsx \
+            src/ProjectFlowHiveCenter.jsx > /tmp/celar-ai-production-first.sha
+          node ./scripts/inject-celar-ai-production-platform.mjs
+          sha256sum \
+            src/WorkTaskBuilderPanel.jsx \
+            src/HelpAssistant.jsx \
+            src/ProjectFlowHiveCenter.jsx > /tmp/celar-ai-production-second.sha
+          diff -u /tmp/celar-ai-production-first.sha /tmp/celar-ai-production-second.sha
+          node ./scripts/validate-celar-ai-production-platform.mjs
+          echo 'CELAR_AI_PRODUCTION_INJECTOR_IDEMPOTENCE=PASSED'
+
+      - name: Restore canonical frontend sources before aggregate build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout -- \
+            src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx \
+            src/frontend/project-time-web/src/HelpAssistant.jsx \
+            src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          git diff --exit-code -- \
+            src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx \
+            src/frontend/project-time-web/src/HelpAssistant.jsx \
+            src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          echo 'CELAR_AI_PRODUCTION_CANONICAL_SOURCES_RESTORED=PASSED'
+
+      - name: Build complete production frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build | tee celar-ai-production-frontend-build.log
+          test -s dist/index.html
+          cat dist/assets/*.js > /tmp/celar-ai-production.js
+          cat dist/assets/*.css > /tmp/celar-ai-production.css
+          for marker in \
+            'Celar AI production platform' \
+            'Created by Dr. Ahmed Adeyemi' \
+            '/api/celar-ai/v2/chat' \
+            '/api/celar-ai/v1/production/readiness' \
+            '/api/project-flowhive/ai/production-generate' \
+            'Generate detailed Celar AI plan' \
+            'Initialize production lifecycle schema' \
+            'Verified current fact' \
+            'Knowledge & RAG' \
+            'Model Registry'; do
+            grep -Fqi "$marker" /tmp/celar-ai-production.js
+          done
+          for marker in \
+            '.celar-production-platform' \
+            '.celar-trust-banner' \
+            '.celar-flowhive-production-result'; do
+            grep -Fq "$marker" /tmp/celar-ai-production.css
+          done
+          echo 'CELAR_AI_PRODUCTION_FRONTEND_BUILD=PASSED'
+
+      - name: Build production web container
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build \
+            --file deployment/containers/web/Dockerfile \
+            --tag celar-ai-production-web:${{ github.run_id }}-${{ github.run_attempt }} \
+            .
+          echo 'CELAR_AI_PRODUCTION_WEB_CONTAINER=PASSED'
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Celar AI Production Platform validation'
+            echo
+            echo "- Exact head: \`${GITHUB_SHA}\`"
+            echo '- Module 011: one authoritative populated production shell'
+            echo '- Chat: intent-first v2 with deterministic utility answers and visible trust classification'
+            echo '- Project FlowHive: detailed Celar AI generation plus deterministic schedule validation'
+            echo '- Lifecycle: dataset references, private training jobs, frozen evaluations, model registry, deployment plans, and answer-quality evidence'
+            echo '- Privacy: private documents remain private; external fallback is generic and sanitized only'
+            echo '- Deployment/database mutation: none in this validation workflow'
+          } >> "$GITHUB_STEP_SUMMARY"
