@@ -1,0 +1,41 @@
+name: Export PR465 HelpAssistant Source
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/export-pr465-help-assistant.yml'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.event.pull_request.head.ref == 'diagnose/pr465-frontend-source-mutation-20260803'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Capture exact source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/pr465-help-assistant
+          cp src/frontend/project-time-web/src/HelpAssistant.jsx /tmp/pr465-help-assistant/HelpAssistant.jsx
+          git rev-parse HEAD > /tmp/pr465-help-assistant/head.txt
+          sha256sum /tmp/pr465-help-assistant/HelpAssistant.jsx > /tmp/pr465-help-assistant/SHA256SUMS.txt
+
+      - name: Upload exact source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr465-help-assistant-${{ github.run_id }}
+          path: /tmp/pr465-help-assistant
+          retention-days: 3
