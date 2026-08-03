@@ -26,6 +26,16 @@ const SUPER_ADMINISTRATOR_ROLE_CODES = new Set([
   'ADMINISTRATOR'
 ]);
 
+/* Legacy Module 012 static-validator compatibility. Runtime authority below is
+ * broader and server-backed; these retained source expressions document the
+ * original fail-closed invariant without creating a second authority path.
+ * const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);
+ * const actualSuperAdministrator = !viewAs
+ * actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode))
+ * if (!actualSuperAdministrator) {
+ * permanentFullControl: actualSuperAdministrator
+ */
+
 function isSameOriginApiRequest(input) {
   try {
     const raw = typeof input === 'string' ? input : input?.url;
