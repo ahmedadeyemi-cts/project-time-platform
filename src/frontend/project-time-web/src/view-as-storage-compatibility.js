@@ -1,29 +1,57 @@
 const CURRENT_VIEW_AS_KEY = 'projectPulseViewAsUser';
 const LEGACY_VIEW_AS_KEY = 'projectPulseViewAsUserId';
 
+function publishCompatibilityChange(userId) {
+  window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed', {
+    detail: {
+      userId: userId || null,
+      active: Boolean(userId),
+      compatibilitySource: LEGACY_VIEW_AS_KEY
+    }
+  }));
+}
+
 function normalizeLegacyViewAsStorage() {
   if (typeof window === 'undefined') return;
 
   try {
-    const current = window.localStorage.getItem(CURRENT_VIEW_AS_KEY);
+    const currentRaw = window.localStorage.getItem(CURRENT_VIEW_AS_KEY);
     const legacyUserId = String(window.localStorage.getItem(LEGACY_VIEW_AS_KEY) || '').trim();
 
-    if (current || !legacyUserId) return;
+    let currentRecord = null;
+    if (currentRaw) {
+      try {
+        currentRecord = JSON.parse(currentRaw);
+      } catch {
+        // A malformed current record is already treated as active by the
+        // application authority helper. Do not replace that fail-closed state.
+        return;
+      }
+    }
 
-    window.localStorage.setItem(CURRENT_VIEW_AS_KEY, JSON.stringify({
-      userId: legacyUserId,
-      compatibilitySource: LEGACY_VIEW_AS_KEY
-    }));
+    const compatibilityOwned =
+      currentRecord?.compatibilitySource === LEGACY_VIEW_AS_KEY;
 
-    window.dispatchEvent(new CustomEvent('projectpulse:view-as-changed', {
-      detail: {
+    if (legacyUserId) {
+      if (currentRaw && !compatibilityOwned) return;
+      if (compatibilityOwned && String(currentRecord?.userId || '') === legacyUserId) return;
+
+      window.localStorage.setItem(CURRENT_VIEW_AS_KEY, JSON.stringify({
         userId: legacyUserId,
         compatibilitySource: LEGACY_VIEW_AS_KEY
-      }
-    }));
+      }));
+      publishCompatibilityChange(legacyUserId);
+      return;
+    }
+
+    if (compatibilityOwned) {
+      window.localStorage.removeItem(CURRENT_VIEW_AS_KEY);
+      publishCompatibilityChange(null);
+    }
   } catch {
     // The consuming authority checks fail closed when browser storage cannot be
-    // read or contains malformed state. This bridge never grants authority.
+    // read. This bridge only preserves an existing View-As restriction and
+    // never grants administrator authority.
   }
 }
 
