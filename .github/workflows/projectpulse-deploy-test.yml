@@ -1,4 +1,4 @@
-name: ProjectPulse Recover UAT Functional Completion Test
+name: ProjectPulse Final UAT Functional Completion Test Deployment
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'deploy/uat-functional-completion-test-0bb15f67-20260803'
-    name: Re-verify migrations 060-066 and deploy exact PR 447 release to Test
+    name: Verify migrations 060-066 and deploy exact PR 447 release to Test
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -118,10 +118,49 @@ jobs:
             relative="${image#${{ vars.AZURE_ACR_NAME }}.azurecr.io/}"
             repository="${relative%@sha256:*}"
             digest="sha256:${relative##*@sha256:}"
-            observed="$(az acr repository show-manifests --name '${{ vars.AZURE_ACR_NAME }}' --repository "$repository" --query "[?digest=='$digest'].digest | [0]" -o tsv --only-show-errors)"
+            observed="$(az acr repository show-manifests \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --repository "$repository" \
+              --query "[?digest=='$digest'].digest | [0]" \
+              -o tsv --only-show-errors)"
             [[ "$observed" == "$digest" ]]
             echo "IMMUTABLE_ARTIFACT_PRESENT=$repository@$digest"
           done
+
+      - name: Extract expected web artifacts from the immutable candidate image
+        id: candidate_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az acr login --name '${{ vars.AZURE_ACR_NAME }}' --only-show-errors
+          docker pull "$EXPECTED_WEB_IMAGE" >/dev/null
+          CONTAINER_ID="$(docker create "$EXPECTED_WEB_IMAGE")"
+          cleanup_container() {
+            docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true
+          }
+          trap cleanup_container EXIT
+
+          rm -rf /tmp/uat-candidate-html
+          mkdir -p /tmp/uat-candidate-html
+          docker cp "$CONTAINER_ID:/usr/share/nginx/html/." /tmp/uat-candidate-html/
+          test -s /tmp/uat-candidate-html/index.html
+
+          CANDIDATE_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/uat-candidate-html/index.html | head -1 | cut -d'"' -f2)"
+          [[ -n "$CANDIDATE_JS_REF" ]]
+          CANDIDATE_JS_PATH="${CANDIDATE_JS_REF%%\?*}"
+          CANDIDATE_JS_PATH="${CANDIDATE_JS_PATH#/}"
+          test -s "/tmp/uat-candidate-html/$CANDIDATE_JS_PATH"
+
+          INDEX_SHA="$(sha256sum /tmp/uat-candidate-html/index.html | awk '{print $1}')"
+          JS_SHA="$(sha256sum "/tmp/uat-candidate-html/$CANDIDATE_JS_PATH" | awk '{print $1}')"
+          [[ "$INDEX_SHA" =~ ^[0-9a-f]{64}$ && "$JS_SHA" =~ ^[0-9a-f]{64}$ ]]
+
+          echo "index_sha256=$INDEX_SHA" >> "$GITHUB_OUTPUT"
+          echo "js_sha256=$JS_SHA" >> "$GITHUB_OUTPUT"
+          echo "js_ref=$CANDIDATE_JS_REF" >> "$GITHUB_OUTPUT"
+          echo "CANDIDATE_WEB_INDEX_SHA256=$INDEX_SHA"
+          echo "CANDIDATE_WEB_JS_SHA256=$JS_SHA"
+          echo "CANDIDATE_WEB_JS_REF=$CANDIDATE_JS_REF"
 
       - name: Capture current rollback release
         id: before
@@ -169,12 +208,14 @@ jobs:
           set -Eeuo pipefail
           : "${PROJECTPULSE_TEST_DATABASE_URL:?PROJECTPULSE_TEST_DATABASE_URL is required}"
           echo "::add-mask::$PROJECTPULSE_TEST_DATABASE_URL"
-          JOB_NAME="uat-r3-${GITHUB_RUN_ID}"
+          JOB_NAME="uat-r4-${GITHUB_RUN_ID}"
           ENVIRONMENT_ID="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" --query properties.managedEnvironmentId -o tsv --only-show-errors)"
+          [[ -n "$ENVIRONMENT_ID" && "$ENVIRONMENT_ID" != null ]]
           ACR_TOKEN="$(az acr login --name "$AZURE_ACR_NAME" --expose-token --query accessToken -o tsv --only-show-errors)"
+          [[ -n "$ACR_TOKEN" ]]
           echo "::add-mask::$ACR_TOKEN"
           JOB_CREATED=0
-          cleanup() {
+          cleanup_job() {
             local status=$?
             trap - EXIT INT TERM
             unset ACR_TOKEN PROJECTPULSE_TEST_DATABASE_URL
@@ -183,7 +224,7 @@ jobs:
             fi
             exit "$status"
           }
-          trap cleanup EXIT INT TERM
+          trap cleanup_job EXIT INT TERM
 
           az containerapp job create \
             -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" \
@@ -200,7 +241,9 @@ jobs:
             --output none --only-show-errors
           JOB_CREATED=1
           unset ACR_TOKEN PROJECTPULSE_TEST_DATABASE_URL
+
           EXECUTION_NAME="$(az containerapp job start -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
+          [[ -n "$EXECUTION_NAME" && "$EXECUTION_NAME" != null ]]
           echo "execution_name=$EXECUTION_NAME" >> "$GITHUB_OUTPUT"
           for attempt in $(seq 1 180); do
             STATUS="$(az containerapp job execution list -g "$AZURE_RESOURCE_GROUP" -n "$JOB_NAME" --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
@@ -223,7 +266,7 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image "$EXPECTED_API_IMAGE" \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT="$EXPECTED_RELEASE_COMMIT" \
-            --revision-suffix "uatr3api-${GITHUB_RUN_ID}" --output none --only-show-errors
+            --revision-suffix "uatr4api-${GITHUB_RUN_ID}" --output none --only-show-errors
 
       - name: Validate exact API image, source, and public boundaries
         id: validate_api
@@ -248,7 +291,7 @@ jobs:
             local expected="$2"
             local status=''
             for attempt in $(seq 1 60); do
-              status="$(curl -sS -o /tmp/uat-r3-api-response -w '%{http_code}' "$url" || true)"
+              status="$(curl -sS -o /tmp/uat-r4-api-response -w '%{http_code}' "$url" || true)"
               if [[ ",$expected," == *",$status,"* ]]; then return 0; fi
               sleep 5
             done
@@ -265,6 +308,7 @@ jobs:
           wait_status "$BASE/api/integrations/026/providers" '401'
           wait_status "$BASE/api/entra-secret-expiration/profile" '401'
           echo "ready_revision=$API_READY_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'UAT_COMPLETION_TEST_API=PASSED'
 
       - name: Deploy exact immutable web image
         id: deploy_web
@@ -275,17 +319,18 @@ jobs:
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image "$EXPECTED_WEB_IMAGE" \
-            --revision-suffix "uatr3web-${GITHUB_RUN_ID}" --output none --only-show-errors
+            --revision-suffix "uatr4web-${GITHUB_RUN_ID}" --output none --only-show-errors
 
-      - name: Validate exact web image and direct/public bundle identity
+      - name: Validate public Test serves the exact immutable candidate web artifacts
         id: validate_web
         shell: bash
+        env:
+          CANDIDATE_INDEX_SHA: ${{ steps.candidate_web.outputs.index_sha256 }}
+          CANDIDATE_JS_SHA: ${{ steps.candidate_web.outputs.js_sha256 }}
+          CANDIDATE_JS_REF: ${{ steps.candidate_web.outputs.js_ref }}
         run: |
           set -Eeuo pipefail
           PUBLIC_BASE='${{ vars.PUBLIC_URL }}'; PUBLIC_BASE="${PUBLIC_BASE%/}"
-          WEB_FQDN="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.ingress.fqdn' -o tsv --only-show-errors)"
-          [[ -n "$WEB_FQDN" && "$WEB_FQDN" != null ]]
-          DIRECT_BASE="https://$WEB_FQDN"
 
           for attempt in $(seq 1 90); do
             ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
@@ -297,55 +342,62 @@ jobs:
           [[ -n "$WEB_READY_REVISION" && "$WEB_READY_REVISION" != null ]]
           [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors | tr '[:upper:]' '[:lower:]')" == single ]]
 
-          fetch_bundle() {
-            local label="$1"
-            local base="$2"
-            local index="/tmp/${label}-index.html"
-            local js_file="/tmp/${label}-app.js"
-            local status='' js='' js_url='' js_status='' buster=''
-            for attempt in $(seq 1 90); do
-              buster="uat-r3-${GITHUB_RUN_ID}-${label}-${attempt}"
-              status="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o "$index" -w '%{http_code}' "$base/?release_check=$buster" || true)"
-              js="$(sed -nE 's/.*src="([^"]+\.js[^\"]*)".*/\1/p' "$index" | head -1)"
-              if [[ "$status" == 200 && -n "$js" ]]; then
-                case "$js" in
-                  http*) js_url="$js" ;;
-                  /*) js_url="$base$js" ;;
-                  *) js_url="$base/$js" ;;
+          READY=false
+          PUBLIC_INDEX_SHA=''
+          PUBLIC_JS_SHA=''
+          PUBLIC_JS_REF=''
+          for attempt in $(seq 1 120); do
+            BUSTER="uat-r4-${GITHUB_RUN_ID}-${attempt}"
+            STATUS="$(curl -sSL \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              -H 'Pragma: no-cache' \
+              -o /tmp/uat-r4-public-index.html \
+              -w '%{http_code}' \
+              "$PUBLIC_BASE/?release_check=$BUSTER" || true)"
+            if [[ "$STATUS" == 200 && -s /tmp/uat-r4-public-index.html ]]; then
+              PUBLIC_INDEX_SHA="$(sha256sum /tmp/uat-r4-public-index.html | awk '{print $1}')"
+              PUBLIC_JS_REF="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/uat-r4-public-index.html | head -1 | cut -d'"' -f2 || true)"
+              if [[ "$PUBLIC_INDEX_SHA" == "$CANDIDATE_INDEX_SHA" && "$PUBLIC_JS_REF" == "$CANDIDATE_JS_REF" ]]; then
+                case "$PUBLIC_JS_REF" in
+                  http*) PUBLIC_JS_URL="$PUBLIC_JS_REF" ;;
+                  /*) PUBLIC_JS_URL="$PUBLIC_BASE$PUBLIC_JS_REF" ;;
+                  *) PUBLIC_JS_URL="$PUBLIC_BASE/$PUBLIC_JS_REF" ;;
                 esac
-                js_status="$(curl -sSL -H 'Cache-Control: no-cache, no-store' -o "$js_file" -w '%{http_code}' "$js_url" || true)"
-                if [[ "$js_status" == 200 && -s "$js_file" && "$(wc -c < "$js_file")" -gt 10000 ]]; then
-                  printf '%s\n' "$js_url" > "/tmp/${label}-js-url.txt"
-                  return 0
+                JS_STATUS="$(curl -sSL \
+                  -H 'Cache-Control: no-cache, no-store, max-age=0' \
+                  -H 'Pragma: no-cache' \
+                  -o /tmp/uat-r4-public-app.js \
+                  -w '%{http_code}' \
+                  "$PUBLIC_JS_URL" || true)"
+                if [[ "$JS_STATUS" == 200 && -s /tmp/uat-r4-public-app.js ]]; then
+                  PUBLIC_JS_SHA="$(sha256sum /tmp/uat-r4-public-app.js | awk '{print $1}')"
+                  if [[ "$PUBLIC_JS_SHA" == "$CANDIDATE_JS_SHA" ]]; then
+                    READY=true
+                    break
+                  fi
                 fi
               fi
-              sleep 5
-            done
-            echo "Failed to retrieve a ready JavaScript bundle from $base" >&2
-            return 1
-          }
-
-          fetch_bundle direct "$DIRECT_BASE"
-          fetch_bundle public "$PUBLIC_BASE"
-          DIRECT_SHA="$(sha256sum /tmp/direct-app.js | awk '{print $1}')"
-          PUBLIC_SHA="$(sha256sum /tmp/public-app.js | awk '{print $1}')"
-          [[ "$DIRECT_SHA" == "$PUBLIC_SHA" ]]
-
-          for marker in 'Analytics Center' 'Overview & Architecture' 'Created by Dr. Ahmed Adeyemi' 'What you need to do now' 'SEND MODULE 065 TEST' 'Integration Control Center'; do
-            if grep -Fq "$marker" /tmp/direct-app.js; then
-              echo "LIVE_BUNDLE_MARKER_FOUND=$marker"
-            else
-              echo "LIVE_BUNDLE_MARKER_LAZY_OR_MINIFIED=$marker"
             fi
+            sleep 5
           done
+
+          [[ "$READY" == true ]] || {
+            echo "Public Test did not converge to the immutable candidate artifacts." >&2
+            echo "candidate_index=$CANDIDATE_INDEX_SHA public_index=$PUBLIC_INDEX_SHA" >&2
+            echo "candidate_js_ref=$CANDIDATE_JS_REF public_js_ref=$PUBLIC_JS_REF" >&2
+            echo "candidate_js=$CANDIDATE_JS_SHA public_js=$PUBLIC_JS_SHA" >&2
+            exit 1
+          }
 
           [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" == "$EXPECTED_API_IMAGE" ]]
           [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query "properties.template.containers[0].env[?name=='PROJECTPULSE_SOURCE_COMMIT'].value | [0]" -o tsv --only-show-errors)" == "$EXPECTED_RELEASE_COMMIT" ]]
+          [[ "$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)" == "$EXPECTED_WEB_IMAGE" ]]
+
           echo "ready_revision=$WEB_READY_REVISION" >> "$GITHUB_OUTPUT"
-          echo "direct_bundle_sha256=$DIRECT_SHA" >> "$GITHUB_OUTPUT"
-          echo "public_bundle_sha256=$PUBLIC_SHA" >> "$GITHUB_OUTPUT"
-          echo "direct_fqdn=$WEB_FQDN" >> "$GITHUB_OUTPUT"
-          echo 'UAT_COMPLETION_TEST_WEB=PASSED'
+          echo "public_index_sha256=$PUBLIC_INDEX_SHA" >> "$GITHUB_OUTPUT"
+          echo "public_js_sha256=$PUBLIC_JS_SHA" >> "$GITHUB_OUTPUT"
+          echo "public_js_ref=$PUBLIC_JS_REF" >> "$GITHUB_OUTPUT"
+          echo 'UAT_COMPLETION_PUBLIC_WEB_EXACT_ARTIFACT=PASSED'
 
       - name: Write immutable Test deployment evidence
         if: success()
@@ -359,7 +411,7 @@ jobs:
             "releaseCommit": "${{ steps.release.outputs.target_commit }}",
             "controlCommit": "${{ steps.release.outputs.control_commit }}",
             "workflowRunId": "${{ github.run_id }}",
-            "priorAttempts": ["30778613442", "30779634966"],
+            "priorAttempts": ["30778613442", "30779634966", "30779876660"],
             "sourcePullRequests": [447],
             "migrations": ["060", "061", "062", "063", "064", "065", "066"],
             "migrationStatus": "idempotently-reapplied-and-verified",
@@ -369,9 +421,11 @@ jobs:
             "webImage": "$EXPECTED_WEB_IMAGE",
             "apiReadyRevision": "${{ steps.validate_api.outputs.ready_revision }}",
             "webReadyRevision": "${{ steps.validate_web.outputs.ready_revision }}",
-            "directWebFqdn": "${{ steps.validate_web.outputs.direct_fqdn }}",
-            "directBundleSha256": "${{ steps.validate_web.outputs.direct_bundle_sha256 }}",
-            "publicBundleSha256": "${{ steps.validate_web.outputs.public_bundle_sha256 }}",
+            "candidateIndexSha256": "${{ steps.candidate_web.outputs.index_sha256 }}",
+            "publicIndexSha256": "${{ steps.validate_web.outputs.public_index_sha256 }}",
+            "candidateJavaScriptSha256": "${{ steps.candidate_web.outputs.js_sha256 }}",
+            "publicJavaScriptSha256": "${{ steps.validate_web.outputs.public_js_sha256 }}",
+            "publicJavaScriptReference": "${{ steps.validate_web.outputs.public_js_ref }}",
             "previousApiImage": "${{ steps.before.outputs.old_api_image }}",
             "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
             "previousApiRevision": "${{ steps.before.outputs.old_api_revision }}",
@@ -405,11 +459,11 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.before.outputs.old_api_image }}' \
             --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.before.outputs.old_api_source }}' \
-            --revision-suffix "uatr3apirb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
+            --revision-suffix "uatr4apirb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.before.outputs.old_web_image }}' \
-            --revision-suffix "uatr3webrb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
+            --revision-suffix "uatr4webrb-${GITHUB_RUN_ID}" --output none --only-show-errors || true
 
       - name: Sign out of Azure
         if: always()
