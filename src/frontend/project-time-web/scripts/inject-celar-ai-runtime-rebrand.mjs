@@ -117,17 +117,23 @@ function rebrandCelarValue(value) {
     `  const plan = rebrandCelarValue(payload?.plan ?? {});`,
     'help_legacy_response_rebrand');
 
-  // Production builds use the v2 intent-first route. Older source still gets
-  // upgraded through the v1 compatibility route before the production injector
-  // performs its final transformation. Repeated builds must accept either state.
-  if (!content.includes(`const path = '/api/celar-ai/v2/chat';`)) {
-    content = replaceRequired(
-      content,
-      `      const path = conversationId
-        ? \`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(conversationId)}/messages\`
-        : '/api/pulse-ai/v1/system/questions';`,
-      `      const path = '/api/celar-ai/v1/chat';`,
-      'help_celar_chat_route');
+  // The checked-in HelpAssistant source can already be on either the original
+  // system-question route or the v1 Celar compatibility route. Development
+  // and production builds must converge both states on the v2 intent-first route.
+  if (!content.includes("const path = '/api/celar-ai/v2/chat';")) {
+    const v1Route = "      const path = '/api/celar-ai/v1/chat';";
+    const legacyRoute = [
+      '      const path = conversationId',
+      '        ? `/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}/messages`',
+      "        : '/api/pulse-ai/v1/system/questions';"
+    ].join('\n');
+    const v2Route = "      const path = '/api/celar-ai/v2/chat'; // compatibility: /api/celar-ai/v1/chat";
+
+    if (content.includes(v1Route)) {
+      content = content.replace(v1Route, v2Route);
+    } else {
+      content = replaceRequired(content, legacyRoute, v2Route, 'help_celar_chat_route_v2');
+    }
   }
 
   content = replaceRequired(
