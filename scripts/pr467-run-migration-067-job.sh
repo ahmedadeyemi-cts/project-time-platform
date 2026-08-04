@@ -84,7 +84,7 @@ emit_logs() {
     -n "$JOB_NAME" \
     --execution "$EXECUTION_NAME" \
     --container "$JOB_NAME" \
-    --tail 500 \
+    --tail 300 \
     --only-show-errors \
     > "$LOG_DIR/${JOB_NAME}-${MODE}.log" 2>&1 || true
 }
