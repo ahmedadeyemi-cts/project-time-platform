@@ -4,7 +4,18 @@ namespace ProjectTime.Api.Modules;
 
 public static partial class Module005ProjectExpenseUploadModule
 {
-    private sealed record ExpenseLifecycleConflict(int StatusCode, string Code, string Message) : Exception(Message);
+    private sealed class ExpenseLifecycleConflict : Exception
+    {
+        public ExpenseLifecycleConflict(int statusCode, string code, string message)
+            : base(message)
+        {
+            StatusCode = statusCode;
+            Code = code;
+        }
+
+        public int StatusCode { get; }
+        public string Code { get; }
+    }
 
     private static IResult LifecycleConflictResult(ExpenseLifecycleConflict conflict) =>
         Results.Json(new { status = conflict.Code, message = conflict.Message }, statusCode: conflict.StatusCode);
