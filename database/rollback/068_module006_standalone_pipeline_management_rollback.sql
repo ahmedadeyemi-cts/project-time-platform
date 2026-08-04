@@ -3,9 +3,14 @@
 
 BEGIN;
 
+DROP TRIGGER IF EXISTS trg_module006_pipeline_task_events_immutable
+    ON module006_pipeline_task_events;
 DROP TRIGGER IF EXISTS trg_module006_pipeline_updates_immutable
     ON module006_pipeline_updates;
+DROP FUNCTION IF EXISTS projectpulse068_block_pipeline_history_mutation();
 DROP FUNCTION IF EXISTS projectpulse068_block_pipeline_update_mutation();
+DROP TABLE IF EXISTS module006_pipeline_task_events;
+DROP TABLE IF EXISTS module006_pipeline_tasks;
 DROP TABLE IF EXISTS module006_pipeline_updates;
 DROP TABLE IF EXISTS module006_pipeline_records;
 
