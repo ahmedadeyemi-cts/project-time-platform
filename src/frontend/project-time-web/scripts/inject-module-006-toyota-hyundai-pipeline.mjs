@@ -225,12 +225,32 @@ function installModule006Route() {
   if (!source.includes(centerImport)) source = source.replace(importAnchor, `${importAnchor}\n${centerImport}`);
 
   const normalizeRoutePattern = /function normalizeRoute\(hash\) \{[\s\S]*?\n\}/;
-  const normalizeRoute = `function normalizeRoute(hash) {
-  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').split('?')[0].trim();
-  const route = cleaned || 'dashboard';
-  return route === 'psa-modules' || route === 'project-register'
-    ? 'toyota-hyundai-pipelines'
-    : route;
+  const normalizeRoute = `const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({
+  'celar-ai': 'work-task-builder',
+  'pulse-ai': 'work-task-builder',
+  'analytics': 'reporting',
+  'analytics-center': 'reporting',
+  'reports': 'reporting',
+  'executive-reporting': 'reporting',
+  'financial-report-center': 'reporting',
+  'enterprise-reporting': 'reporting',
+  'crm': 'crm-integration',
+  'crm-erp': 'crm-integration',
+  'crm-erp-integration': 'crm-integration',
+  'crm-integration-center': 'crm-integration',
+  'microsoft-integration': 'entra-secret-administration',
+  'module-065': 'entra-secret-administration',
+  'psa-modules': 'toyota-hyundai-pipelines',
+  'project-register': 'toyota-hyundai-pipelines',
+  'project-manager-workload': 'project-workload',
+  'project-management-workload': 'project-workload',
+  'resource-assignment-handoff': 'signed-handoff',
+  'global-mail-configuration': 'entra-secret-administration'
+});
+
+function normalizeRoute(hash) {
+  const cleaned = (hash || window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].trim();
+  return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard';
 }`;
   if (!normalizeRoutePattern.test(source)) throw new Error('Module 006 normalizeRoute anchor is missing.');
   source = source.replace(normalizeRoutePattern, normalizeRoute);
@@ -285,7 +305,9 @@ ${source.slice(closeIndex)}`;
   for (const required of [
     centerImport,
     "route: 'toyota-hyundai-pipelines'",
-    "return route === 'psa-modules' || route === 'project-register'",
+    'PROJECTPULSE_RUNTIME_ROUTE_ALIASES',
+    "'psa-modules': 'toyota-hyundai-pipelines'",
+    "'project-register': 'toyota-hyundai-pipelines'",
     'PR467_MODULE_006_EXCLUSIVE_ROUTE_START',
     '<ProjectRegisterCenter legacyRoute={false} />',
     'PR467_MODULE_006_EXCLUSIVE_ROUTE_END'
