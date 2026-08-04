@@ -1,0 +1,57 @@
+name: Apply PR467 generated-startup line correction
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/pr467-csproj-line-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr467-csproj-line-fix
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/uat-modules-005-006-039-work-identifiers-20260803'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Correct generated-startup registration and remove this control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+          text = path.read_text()
+          malformed = 'print &quot;app.MapCrmErpOAuthPersistenceEndpoints();\napp.MapPr467UatRepairEndpoints();&quot;; print &quot;app.UseCrmErpOAuthPersistence();&quot;;'
+          corrected = 'print &quot;app.MapCrmErpOAuthPersistenceEndpoints();&quot;; print &quot;app.MapPr467UatRepairEndpoints();&quot;; print &quot;app.UseCrmErpOAuthPersistence();&quot;;'
+          if text.count(malformed) != 1:
+              raise SystemExit('The exact malformed PR467 startup sequence was not found once.')
+          path.write_text(text.replace(malformed, corrected, 1))
+          PY
+          rm -f .github/workflows/pr467-csproj-line-fix.yml
+          git diff --check
+          grep -F 'print &quot;app.MapCrmErpOAuthPersistenceEndpoints();&quot;; print &quot;app.MapPr467UatRepairEndpoints();&quot;; print &quot;app.UseCrmErpOAuthPersistence();&quot;;' src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+
+      - name: Commit the clean corrected tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ProjectPulse PR467 Repair'
+          git config user.email 'projectpulse-pr467-repair@users.noreply.github.com'
+          git add src/backend/ProjectTime.Api/ProjectTime.Api.csproj .github/workflows/pr467-csproj-line-fix.yml
+          git commit -m 'Fix PR467 generated API startup registration'
+          git push origin HEAD:fix/uat-modules-005-006-039-work-identifiers-20260803
