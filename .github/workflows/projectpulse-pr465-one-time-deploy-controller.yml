@@ -1,0 +1,93 @@
+name: ProjectPulse PR465 One-Time Test Deploy Controller
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: projectpulse-pr465-one-time-test-deploy
+  cancel-in-progress: false
+
+jobs:
+  dispatch-and-watch:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.number == 465 &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.comment.body == 'DEPLOY PR465 TEST ed70fcc322449c7924adc25f35f570a78889fd6b'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_REF: release/pr465-test-ed70fcc3-20260804
+      EXPECTED_SHA: ed70fcc322449c7924adc25f35f570a78889fd6b
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+    steps:
+      - name: Verify immutable release ref
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RELEASE_REF}" --jq '.object.sha')"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Release ref drifted: expected $EXPECTED_SHA, found $actual_sha" >&2
+            exit 1
+          fi
+          echo "PROJECTPULSE_TEST_RELEASE_SHA=$actual_sha"
+
+      - name: Dispatch exact Test deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_REF" -f environment=test
+
+      - name: Locate dispatched deployment run
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          run_id=""
+          run_url=""
+          for attempt in $(seq 1 60); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" --branch "$RELEASE_REF" --event workflow_dispatch --limit 10 --json databaseId,headSha,createdAt --jq "map(select(.headSha == \"$EXPECTED_SHA\")) | sort_by(.createdAt) | last | .databaseId // empty")"
+            if [[ -n "$run_id" ]]; then
+              run_url="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+              break
+            fi
+            sleep 5
+          done
+          if [[ -z "$run_id" ]]; then
+            echo "The Test deployment run was not created." >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "PROJECTPULSE_TEST_DEPLOYMENT_RUN_ID=$run_id"
+          echo "PROJECTPULSE_TEST_DEPLOYMENT_RUN_URL=$run_url"
+
+      - name: Watch deployment through completion
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh run watch '${{ steps.deployment.outputs.run_id }}' --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
+
+      - name: Record successful deployment
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr comment 465 --repo "$GITHUB_REPOSITORY" --body "Test deployment completed successfully.\n\n- Release ref: \`$RELEASE_REF\`\n- Exact deployed SHA: \`$EXPECTED_SHA\`\n- Deployment run: ${{ steps.deployment.outputs.run_url }}\n- Database migration: none\n- Included application releases: PR #464 and PR #465"
+
+      - name: Record failed deployment
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          run_url='${{ steps.deployment.outputs.run_url }}'
+          [[ -n "$run_url" ]] || run_url='Deployment run was not created.'
+          gh pr comment 465 --repo "$GITHUB_REPOSITORY" --body "Test deployment failed or could not be dispatched.\n\n- Release ref: \`$RELEASE_REF\`\n- Expected SHA: \`$EXPECTED_SHA\`\n- Evidence: $run_url\n- Automatic rollback: handled by the existing ProjectPulse Deploy Test workflow when a deployment step fails."
