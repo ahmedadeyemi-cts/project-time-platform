@@ -22,7 +22,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CONTROLLER_WORKFLOW: projectpulse-pr467-one-time-test-release-controller.yml
-      EXPECTED_CONTROLLER_SHA: bf1ca01ff5cfb76cc9da78a00f5f7f91d0824ec9
+      EXPECTED_CONTROLLER_SHA: 75f7ed177a0300e0e29b5491dcb81ebad540782b
       EXPECTED_RELEASE_SHA: a536e33b48c41bf1dd867d7319e88f98e8aa152c
     steps:
       - name: Check out observer only
