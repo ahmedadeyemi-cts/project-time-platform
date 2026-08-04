@@ -15,7 +15,10 @@ const stackedLogoSourcePath = path.resolve(
   'Branding',
   'USSNavyStacked.png'
 );
-const stackedLogoTargetPath = path.join(webRoot, 'brand', 'ussignal.png');
+const stackedLogoTargetPaths = [
+  path.join(webRoot, 'brand', 'ussignal.png'),
+  path.join(webRoot, 'brand', 'USSNavyStacked.png')
+];
 
 function count(source, needle) {
   return source.split(needle).length - 1;
@@ -200,13 +203,15 @@ function installStackedLogo() {
   }
 
   const approvedLogo = fs.readFileSync(stackedLogoSourcePath);
-  const installedLogo = fs.existsSync(stackedLogoTargetPath)
-    ? fs.readFileSync(stackedLogoTargetPath)
-    : null;
+  for (const stackedLogoTargetPath of stackedLogoTargetPaths) {
+    const installedLogo = fs.existsSync(stackedLogoTargetPath)
+      ? fs.readFileSync(stackedLogoTargetPath)
+      : null;
 
-  if (!installedLogo || !approvedLogo.equals(installedLogo)) {
-    fs.mkdirSync(path.dirname(stackedLogoTargetPath), { recursive: true });
-    fs.writeFileSync(stackedLogoTargetPath, approvedLogo);
+    if (!installedLogo || !approvedLogo.equals(installedLogo)) {
+      fs.mkdirSync(path.dirname(stackedLogoTargetPath), { recursive: true });
+      fs.writeFileSync(stackedLogoTargetPath, approvedLogo);
+    }
   }
 }
 

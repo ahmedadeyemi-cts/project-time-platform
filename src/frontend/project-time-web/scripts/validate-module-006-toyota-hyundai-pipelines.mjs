@@ -7,6 +7,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 const component = read('src/frontend/project-time-web/src/ProjectRegisterCenter.jsx');
 const css = read('src/frontend/project-time-web/src/module006-standalone.css');
+const registerCss = read('src/frontend/project-time-web/src/project-register-center.css');
 const api = read('src/backend/ProjectTime.Api/Modules/Module006StandalonePipelineModule.cs');
 const tasks = read('src/backend/ProjectTime.Api/Modules/Module006StandaloneTaskModule.cs');
 const migration = read('database/migrations/068_module006_standalone_pipeline_management.sql');
@@ -56,6 +57,24 @@ requireAll(component, [
   'TOYOTA_HYUNDAI_PIPELINE_PROJECTS',
   'TOYOTA_HYUNDAI_PIPELINE_EVENTS'
 ], 'Module 006 standalone workspace');
+
+requireAll(component, [
+  '<th className="project-register-status-column">Status</th>',
+  '<td className="project-register-status-column"><span className={`project-register-state ${record.isArchived ? \'historical\' : \'active\'}`}>{record.isArchived ? \'Historical\' : labelize(record.status || \'Active\')}</span></td>'
+], 'Module 006 single status presentation');
+rejectAll(component, [
+  "</span><small>{labelize(record.status)}</small>"
+], 'Module 006 duplicate status presentation');
+requireAll(registerCss, [
+  `.project-register-table .project-register-status-column {
+  width: 7rem;
+  min-width: 7rem;
+  white-space: nowrap;
+}`,
+  `.project-register-status-column .project-register-state {
+  margin-bottom: 0;
+}`
+], 'Module 006 status column presentation');
 
 rejectAll(component, [
   '#work-register',
@@ -158,6 +177,7 @@ requireAll(injector, [
   'All customers',
   'US-Signal-Customer-Pipelines-',
   'installStackedLogo',
+  'stackedLogoTargetPaths',
   'USSNavyStacked.png',
   'customers=extensible stacked_logo=approved'
 ], 'Module 006 route, customer, and branding injection');
@@ -178,5 +198,6 @@ console.log('MODULE_006_PROJECT_CREATE_EDIT_NOTES=PASS');
 console.log('MODULE_006_STANDALONE_TASKS=PASS');
 console.log('MODULE_006_NO_055C_DEPENDENCY=PASS');
 console.log('MODULE_006_CUSTOMER_EXPANSION=PASS baseline=Toyota,Hyundai additional_customers=enabled migration=069');
+console.log('MODULE_006_STATUS_PRESENTATION=PASS header=nowrap indicator=single');
 console.log('MODULE_006_STACKED_US_SIGNAL_BRANDING=PASS');
 console.log('MODULE_006_REVIEWED_SNAPSHOT_CONTINUITY=projects:38 events:387');

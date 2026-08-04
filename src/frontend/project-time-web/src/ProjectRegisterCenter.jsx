@@ -7,6 +7,8 @@ import {
 import './project-register-center.css';
 import './module006-standalone.css';
 
+// MODULE_006_CUSTOMER_EXPANSION_START
+
 const PAGE_SIZES = Object.freeze([10, 15, 25]);
 const TASK_STATUSES = Object.freeze(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled']);
 const PROJECT_STATUSES = Object.freeze(['No Status', 'On Track', 'At Risk', 'Blocked', 'Pending', 'Complete']);
@@ -302,7 +304,7 @@ function Pagination({ page, pageCount, pageSize, total, onPage, onPageSize }) {
   const start = ((page - 1) * pageSize) + 1;
   const end = Math.min(page * pageSize, total);
   return (
-    <nav className="project-register-pagination" aria-label="Toyota and Hyundai pipeline pagination">
+    <nav className="project-register-pagination" aria-label="Customer pipeline pagination">
       <span>Showing {start}–{end} of {total}</span>
       <label>Rows
         <select value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
@@ -470,6 +472,10 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
   async function saveDetails() {
     if (!selectedRecord || !canEdit) return;
+    if (clean(editForm.customer).length < 2) {
+      setMessage('Enter a customer name containing at least two characters.');
+      return;
+    }
     setBusy('details');
     setMessage('');
     try {
@@ -515,7 +521,15 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
   }
 
   async function createProject() {
-    if (!canEdit || !clean(newProjectForm.projectName)) return;
+    if (!canEdit) return;
+    if (clean(newProjectForm.customer).length < 2) {
+      setMessage('Enter a customer name containing at least two characters.');
+      return;
+    }
+    if (clean(newProjectForm.projectName).length < 3) {
+      setMessage('Enter a project name containing at least three characters.');
+      return;
+    }
     setBusy('create');
     setMessage('');
     try {
@@ -650,16 +664,19 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
   function exportExcel() {
     const workbook = buildWorkbook(filteredRecords, updates, taskRuntime.tasks);
-    downloadText(workbook, `US-Signal-Toyota-Hyundai-Pipelines-${new Date().toISOString().slice(0, 10)}.xls`, 'application/vnd.ms-excel;charset=utf-8');
+    downloadText(workbook, `US-Signal-Customer-Pipelines-${new Date().toISOString().slice(0, 10)}.xls`, 'application/vnd.ms-excel;charset=utf-8');
   }
 
   return (
     <section className="project-register-center projectpulse-module-standard module006-standalone" data-module="006" data-module-name="Toyota & Hyundai Pipelines" data-canonical-route="toyota-hyundai-pipelines" data-project-register-contract="module006-standalone-pipeline-v1">
+      <datalist id="module006-customer-options">
+        {customerOptions.map((value) => <option value={value} key={value} />)}
+      </datalist>
       <header className="project-register-hero">
         <div>
           <p className="eyebrow">MODULE 006 · STANDALONE TOYOTA & HYUNDAI PIPELINE</p>
           <h2>Toyota &amp; Hyundai Pipelines</h2>
-          <p>Manage Toyota and Hyundai pipeline projects, action items, review dates, status updates, and append-only note history directly in Module 006.</p>
+          <p>Manage the reviewed Toyota and Hyundai pipeline baseline plus additional customer projects, action items, review dates, status updates, and append-only note history directly in Module 006.</p>
           <small>Reviewed snapshot: {TOYOTA_HYUNDAI_SNAPSHOT_METADATA.sourceAsOf} · {TOYOTA_HYUNDAI_PIPELINE_EVENTS.length} historical updates preserved</small>
         </div>
         <div className="project-register-hero-actions">
@@ -679,7 +696,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
       {taskRuntime.error ? <div className="project-register-banner warning">Task service: {taskRuntime.error}</div> : null}
       {message ? <div className="project-register-banner" aria-live="polite">{message}</div> : null}
 
-      <div className="project-register-summary" aria-label="Toyota and Hyundai pipeline summary">
+      <div className="project-register-summary" aria-label="Customer pipeline summary">
         <article><span>Total projects</span><strong>{summary.total}</strong><small>{filteredRecords.length} match the current filters</small></article>
         <article><span>Active</span><strong>{summary.active}</strong><small>Current pipeline records</small></article>
         <article><span>Archived / closed</span><strong>{summary.historical}</strong><small>History remains searchable</small></article>
@@ -695,7 +712,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
           <select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}><option value="active">Active</option><option value="historical">Archived / historical</option><option value="all">All records</option></select>
         </label>
         <label>Customer
-          <select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">Toyota and Hyundai</option>{customerOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select>
+          <select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">All customers</option>{customerOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select>
         </label>
         <label>Status
           <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{statusOptions.map((value) => <option value={value} key={value}>{labelize(value)}</option>)}</select>
@@ -708,7 +725,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
       <Pagination page={currentPage} pageCount={pageCount} pageSize={pageSize} total={filteredRecords.length} onPage={setPage} onPageSize={setPageSize} />
       <div className="project-register-table-wrap">
         <table className="project-register-table">
-          <thead><tr><th>Project</th><th>Customer / Business Unit</th><th>Status</th><th>USS Owner</th><th>Dates</th><th>Quote / Estimated Value</th><th>Latest Update</th><th>Tasks</th><th>Action</th></tr></thead>
+          <thead><tr><th>Project</th><th>Customer / Business Unit</th><th className="project-register-status-column">Status</th><th>USS Owner</th><th>Dates</th><th>Quote / Estimated Value</th><th>Latest Update</th><th>Tasks</th><th>Action</th></tr></thead>
           <tbody>
             {visibleRecords.map((record) => {
               const taskCount = taskRuntime.tasks.filter((task) => String(task.recordId) === String(record.recordId) && !task.isArchived).length;
@@ -716,7 +733,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
                 <tr key={record.recordId} data-pipeline-entry-id={record.recordId} onDoubleClick={() => openRecord(record)}>
                   <td><strong>{record.sourceProjectCode}</strong><small>{record.projectName || 'Unnamed project'}</small><small className="project-register-immutable-id">Module 006 ID: {record.recordId}</small></td>
                   <td><strong>{record.customer}</strong><small>{record.businessUnit || 'Business unit not set'}</small></td>
-                  <td><span className={`project-register-state ${record.isArchived ? 'historical' : 'active'}`}>{record.isArchived ? 'Historical' : 'Active'}</span><small>{labelize(record.status)}</small></td>
+                  <td className="project-register-status-column"><span className={`project-register-state ${record.isArchived ? 'historical' : 'active'}`}>{record.isArchived ? 'Historical' : labelize(record.status || 'Active')}</span></td>
                   <td><strong>{record.ussOwner || 'Not assigned'}</strong></td>
                   <td><small>Updated: {dateLabel(record.updateDate)}</small><small>Next review: {dateLabel(record.nextReviewDate)}</small></td>
                   <td><small>Quote(s): {record.quoteText || 'Not set'}</small><small>Estimate: {money(record.estimatedValue)}</small></td>
@@ -726,7 +743,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
                 </tr>
               );
             })}
-            {!visibleRecords.length ? <tr><td colSpan="9" className="project-register-empty-cell">No Toyota or Hyundai records match the current filters.</td></tr> : null}
+            {!visibleRecords.length ? <tr><td colSpan="9" className="project-register-empty-cell">No customer pipeline records match the current filters.</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -734,7 +751,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
       {selectedRecord ? (
         <div className="project-register-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedId(''); }}>
-          <aside className="project-register-drawer module006-drawer" role="dialog" aria-modal="true" aria-label="Toyota and Hyundai pipeline project editor">
+          <aside className="project-register-drawer module006-drawer" role="dialog" aria-modal="true" aria-label="Customer pipeline project editor">
             <header>
               <div><p className="eyebrow">MODULE 006 PROJECT</p><h3>{selectedRecord.projectName}</h3><p>{selectedRecord.customer} · {selectedRecord.sourceProjectCode}</p></div>
               <button type="button" className="secondary-action" onClick={() => setSelectedId('')}>Close</button>
@@ -749,7 +766,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
                 <h4>Project details</h4>
                 <div className="module006-form-grid">
                   <label>Project ID<input value={editForm.sourceProjectCode} onChange={(event) => setEditForm((current) => ({ ...current, sourceProjectCode: event.target.value.toUpperCase() }))} disabled={!canEdit || selectedRecord.persisted} /></label>
-                  <label>Customer<select value={editForm.customer} onChange={(event) => setEditForm((current) => ({ ...current, customer: event.target.value }))} disabled={!canEdit}><option>Toyota</option><option>Hyundai</option></select></label>
+                  <label>Customer<small>Choose an existing customer or type a new customer name.</small><input list="module006-customer-options" maxLength="120" value={editForm.customer} onChange={(event) => setEditForm((current) => ({ ...current, customer: event.target.value }))} disabled={!canEdit} /></label>
                   <label>Business Unit<input value={editForm.businessUnit} onChange={(event) => setEditForm((current) => ({ ...current, businessUnit: event.target.value }))} disabled={!canEdit} /></label>
                   <label>USS Owner<input value={editForm.ussOwner} onChange={(event) => setEditForm((current) => ({ ...current, ussOwner: event.target.value }))} disabled={!canEdit} /></label>
                   <label className="wide">Project Name<input value={editForm.projectName} onChange={(event) => setEditForm((current) => ({ ...current, projectName: event.target.value }))} disabled={!canEdit} /></label>
@@ -761,7 +778,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
                   <label>Lifecycle<select value={editForm.lifecycle} onChange={(event) => setEditForm((current) => ({ ...current, lifecycle: event.target.value }))} disabled={!canEdit}><option value="active">Active</option><option value="historical">Archived / historical</option></select></label>
                 </div>
                 <div className="module006-form-actions">
-                  <button type="button" className="primary-action" disabled={!canEdit || busy === 'details'} onClick={() => void saveDetails()}>{busy === 'details' ? 'Saving…' : 'Save Project Details'}</button>
+                  <button type="button" className="primary-action" disabled={!canEdit || busy === 'details' || clean(editForm.customer).length < 2} onClick={() => void saveDetails()}>{busy === 'details' ? 'Saving…' : 'Save Project Details'}</button>
                   <button type="button" className="secondary-action" disabled={!canEdit || busy === 'archive'} onClick={() => void changeArchiveState(selectedRecord, !selectedRecord.isArchived)}>{selectedRecord.isArchived ? 'Restore Project' : 'Archive Project'}</button>
                 </div>
               </section>
@@ -821,11 +838,11 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
 
       {newProjectOpen ? (
         <div className="module006-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setNewProjectOpen(false); }}>
-          <section className="module006-modal" role="dialog" aria-modal="true" aria-label="Add new Toyota or Hyundai pipeline project">
-            <header><div><p className="eyebrow">MODULE 006</p><h3>Add New Project</h3><p>Create a standalone Toyota or Hyundai pipeline record.</p></div><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Close</button></header>
+          <section className="module006-modal" role="dialog" aria-modal="true" aria-label="Add new customer pipeline project">
+            <header><div><p className="eyebrow">MODULE 006</p><h3>Add New Project</h3><p>Create a standalone pipeline record for any customer.</p></div><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Close</button></header>
             <div className="module006-form-grid">
               <label>Project ID <small>Optional; the next P.#### ID is generated when blank.</small><input value={newProjectForm.sourceProjectCode} onChange={(event) => setNewProjectForm((current) => ({ ...current, sourceProjectCode: event.target.value.toUpperCase() }))} /></label>
-              <label>Customer<select value={newProjectForm.customer} onChange={(event) => setNewProjectForm((current) => ({ ...current, customer: event.target.value }))}><option>Toyota</option><option>Hyundai</option></select></label>
+              <label>Customer<small>Choose an existing customer or type a new customer name.</small><input list="module006-customer-options" maxLength="120" value={newProjectForm.customer} onChange={(event) => setNewProjectForm((current) => ({ ...current, customer: event.target.value }))} /></label>
               <label>Business Unit<input value={newProjectForm.businessUnit} onChange={(event) => setNewProjectForm((current) => ({ ...current, businessUnit: event.target.value }))} /></label>
               <label>USS Owner<input value={newProjectForm.ussOwner} onChange={(event) => setNewProjectForm((current) => ({ ...current, ussOwner: event.target.value }))} /></label>
               <label className="wide">Project Name<input value={newProjectForm.projectName} onChange={(event) => setNewProjectForm((current) => ({ ...current, projectName: event.target.value }))} /></label>
@@ -836,7 +853,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
               <label>Next Review Date<input type="date" value={newProjectForm.nextReviewDate} onChange={(event) => setNewProjectForm((current) => ({ ...current, nextReviewDate: event.target.value }))} /></label>
               <label className="wide">Initial Status Note<textarea rows={4} value={newProjectForm.note} onChange={(event) => setNewProjectForm((current) => ({ ...current, note: event.target.value }))} /></label>
             </div>
-            <footer><button type="button" className="primary-action" disabled={busy === 'create' || clean(newProjectForm.projectName).length < 3} onClick={() => void createProject()}>{busy === 'create' ? 'Creating…' : 'Save New Project'}</button><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Cancel</button></footer>
+            <footer><button type="button" className="primary-action" disabled={busy === 'create' || clean(newProjectForm.customer).length < 2 || clean(newProjectForm.projectName).length < 3} onClick={() => void createProject()}>{busy === 'create' ? 'Creating…' : 'Save New Project'}</button><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Cancel</button></footer>
           </section>
         </div>
       ) : null}
