@@ -113,6 +113,20 @@ function installPermissionNavigationGuard(nativeFetch) {
   let applyTimer = 0;
   let moreSearchValue = '';
 
+  function isModulesDirectoryOwned(element) {
+    return Boolean(element?.closest?.('#modules-directory-portal-host'));
+  }
+
+  function restoreModulesDirectoryAction(element) {
+    if (!isModulesDirectoryOwned(element)) return false;
+    element.hidden = false;
+    element.removeAttribute('hidden');
+    element.removeAttribute('aria-hidden');
+    element.removeAttribute(HIDDEN_ATTRIBUTE);
+    element.removeAttribute('data-module-availability-hidden');
+    return true;
+  }
+
   function routeOf(element) {
     const declared = element.getAttribute?.('data-route');
     if (declared) return rawModuleRoute(declared);
@@ -156,10 +170,12 @@ function installPermissionNavigationGuard(nativeFetch) {
 
   function applyElementVisibility() {
     document.querySelectorAll(`[${HIDDEN_ATTRIBUTE}="true"]`).forEach((element) => {
+      if (restoreModulesDirectoryAction(element)) return;
       if (!isBlocked(descriptorOf(element))) restorePermissionVisibility(element);
     });
 
     document.querySelectorAll('a[href], button[data-route], [data-module-number]').forEach((element) => {
+      if (restoreModulesDirectoryAction(element)) return;
       const descriptor = descriptorOf(element);
       if (!descriptor.module && !descriptor.retired) return;
       if (!isBlocked(descriptor)) return;

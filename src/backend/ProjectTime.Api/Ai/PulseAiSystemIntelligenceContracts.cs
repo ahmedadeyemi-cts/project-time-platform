@@ -122,7 +122,7 @@ public sealed record PulseAiSystemAccess(
     IReadOnlySet<string> RoleCodes,
     IReadOnlySet<string> PermissionCodes)
 {
-    public bool IsSuperAdministrator => RoleCodes.Contains("SUPER_ADMINISTRATOR");
+    public bool IsSuperAdministrator => PulseAiRoleAuthority.HasAdministratorRole(RoleCodes);
     public bool CanAsk => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AskPermission);
     public bool CanViewApis => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.ApiInventoryPermission);
     public bool CanTroubleshoot => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.TroubleshootingPermission);

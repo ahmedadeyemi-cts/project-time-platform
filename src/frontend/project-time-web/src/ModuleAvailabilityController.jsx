@@ -62,6 +62,20 @@ function normalizeTimesheetLabels(root = document) {
   }
 }
 
+function isModulesDirectoryOwned(element) {
+  return Boolean(element?.closest?.('#modules-directory-portal-host'));
+}
+
+function restoreModulesDirectoryAction(element) {
+  if (!isModulesDirectoryOwned(element)) return false;
+  element.hidden = false;
+  element.removeAttribute('hidden');
+  element.removeAttribute('aria-hidden');
+  delete element.dataset.moduleAvailabilityHidden;
+  delete element.dataset.projectpulsePermissionHidden;
+  return true;
+}
+
 function selectorsForModule(module) {
   const selectors = [`a[href="#${module.route}"]`];
   if (module.route === 'project-workload') {
@@ -74,7 +88,12 @@ function selectorsForModule(module) {
 function clearAvailabilityNavigationState() {
   for (const element of document.querySelectorAll('[data-module-availability-hidden="true"]')) {
     element.hidden = false;
+    element.removeAttribute('hidden');
+    element.removeAttribute('aria-hidden');
     delete element.dataset.moduleAvailabilityHidden;
+  }
+  for (const element of document.querySelectorAll('#modules-directory-portal-host a[href], #modules-directory-portal-host button[data-route]')) {
+    restoreModulesDirectoryAction(element);
   }
   for (const element of document.querySelectorAll('.projectpulse-module-disabled')) {
     element.classList.remove('projectpulse-module-disabled');
@@ -89,6 +108,7 @@ function applyModuleNavigationState(states, isSuperAdministrator) {
     const isEnabled = stored?.isEnabled !== false;
 
     for (const element of document.querySelectorAll(selectorsForModule(module))) {
+      if (restoreModulesDirectoryAction(element)) continue;
       const hiddenForAvailability = !isEnabled && !isSuperAdministrator;
       if (hiddenForAvailability) {
         element.hidden = true;

@@ -365,15 +365,37 @@ public sealed class PulseAiSystemToolExecutor
     private static bool ValidRelativeApiPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
-        if (Uri.TryCreate(path, UriKind.Absolute, out _)) return false;
-        var cleanPath = path.Split('?', 2)[0];
-        if (!cleanPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
-            && !cleanPath.Equals("/health", StringComparison.OrdinalIgnoreCase))
+        var candidate = path.Trim();
+        if (!candidate.StartsWith("/", StringComparison.Ordinal)
+            || candidate.StartsWith("//", StringComparison.Ordinal)
+            || candidate.Contains("://", StringComparison.Ordinal)
+            || candidate.Contains('#')
+            || candidate.Contains('\\')
+            || candidate.Any(char.IsControl))
         {
             return false;
         }
-        return !cleanPath.Contains("..", StringComparison.Ordinal)
-            && !cleanPath.Contains('\\');
+
+        var cleanPath = candidate.Split('?', 2)[0];
+        string decodedPath;
+        try
+        {
+            decodedPath = Uri.UnescapeDataString(cleanPath);
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+
+        if (decodedPath.StartsWith("//", StringComparison.Ordinal)
+            || decodedPath.Contains("..", StringComparison.Ordinal)
+            || decodedPath.Contains('\\'))
+        {
+            return false;
+        }
+
+        return decodedPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            || decodedPath.Equals("/health", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<byte[]> ReadBoundedAsync(

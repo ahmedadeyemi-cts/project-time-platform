@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
 import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
-import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
+import { applyHelpAnswerPreferences, effectiveHelpAnswerPreferences } from './help/help-answer-preferences.js';
 import './pulse-ai-system-chat.css';
 import './celar-ai-contextual-chat.css';
 
@@ -282,34 +282,38 @@ function ToolEvidence({ tools }) {
 function SystemAnswer({ result, close }) {
   const answer = result?.answer ?? {};
   /* GROUP_7_HELP_ANSWER_DETAIL_START */
-  const detailLevel = result?.detailLevel ?? 'comprehensive';
+  const detailLevel = result?.detailLevel ?? 'standard';
   /* GROUP_7_HELP_ANSWER_DETAIL_END */
+  const detailedProfile = ['detailed', 'highly_detailed', 'technical', 'comprehensive', 'executive_and_detailed']
+    .includes(detailLevel);
+  const troubleshootingProfile = result?.intentCode === 'troubleshooting';
+  const enhancementProfile = result?.intentCode === 'future_enhancement';
   return (
     <div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>
       <div className="help-answer-heading">
-        <span>Celar AI comprehensive system answer</span>
+        <span>Celar AI answer</span>
         <strong>{answer.directConclusion || 'Celar AI completed the request.'}</strong>
       </div>
       {answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}
       <EvidenceBadges result={result} />
       <div className="help-answer-preference-evidence" role="note">
         <span>Answer detail: {titleFrom(detailLevel)}</span>
-        <span>Source: saved profile, per-question command, or comprehensive system default</span>
+        <span>Source: saved profile, per-question command, or standard intent-aware default</span>
       </div>
-      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open />
-      <AnswerList heading="Current state" values={answer.currentState} open />
-      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open />
-      <AnswerList heading="API findings" values={answer.apiFindings} open={result?.intentCode === 'api_inventory'} />
-      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={result?.intentCode === 'troubleshooting'} />
-      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={result?.intentCode === 'troubleshooting'} />
-      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={result?.intentCode === 'troubleshooting'} ordered />
+      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open={detailedProfile} />
+      <AnswerList heading="Current state" values={answer.currentState} open={troubleshootingProfile || detailedProfile} />
+      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open={detailedProfile} />
+      <AnswerList heading="API findings" values={answer.apiFindings} open={detailedProfile} />
+      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={troubleshootingProfile} />
+      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={troubleshootingProfile} />
+      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={troubleshootingProfile} ordered />
       <AnswerList heading="Source evidence" values={answer.sourceEvidence} />
       <AnswerList heading="Known, unknown, stale, unavailable, and unauthorized values" values={answer.knownUnknownAndStaleValues} />
       <AnswerList heading="Assumptions" values={answer.assumptions} />
       <AnswerList heading="Conflicts" values={answer.conflicts} />
       <AnswerList heading="Limitations" values={answer.limitations} />
       <AnswerList heading="Risks and implications" values={answer.risksAndImplications} />
-      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open ordered />
+      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open={troubleshootingProfile || enhancementProfile || detailedProfile} ordered />
       <EnhancementBlueprint blueprint={answer.futureEnhancementBlueprint} />
       <ApiInventory apis={result?.relevantApis} />
       <ToolEvidence tools={result?.toolResults} />
@@ -353,7 +357,7 @@ function LegacyPlanAnswer({ payload, close }) {
 
 function AssistantMessage({ message, close }) {
   if (message.loading) {
-    return <div className="help-message assistant help-message-loading">Retrieving authorized evidence and building a comprehensive answer…</div>;
+    return <div className="help-message assistant help-message-loading">Retrieving authorized evidence and preparing a direct answer…</div>;
   }
   if (message.payload?.answer) {
     return <div className="help-message assistant is-detailed"><SystemAnswer result={message.payload} close={close} /></div>;
@@ -542,13 +546,14 @@ export default function HelpAssistant() {
       const questionWithContext = explicitContext.length
         ? `${clean}\n\nExplicit current-question context:\n- ${explicitContext.join('\n- ')}`
         : clean;
+      const answerPreferences = effectiveHelpAnswerPreferences(clean);
       const payload = await postJson(path, {
         conversationId: conversationId || null,
         question: questionWithContext,
         projectCode: questionContext.projectCode || null,
         projectName: questionContext.projectName || null,
         mode: 'system_help',
-        detailLevel: 'comprehensive',
+        detailLevel: answerPreferences.detailLevel,
         includeApiInventory: true,
         includeTroubleshooting: true,
         includeFutureEnhancement: true,

@@ -386,7 +386,18 @@ public static partial class CelarAiProductionPlatformModule
         if (CelarAiBrandProfile.IsIdentityQuestion(question)) return new("identity", false, false, false, false, 0, false, "Canonical Celar AI identity profile.");
         if (value.StartsWith("how do i ") || value.StartsWith("how can i ") || value.StartsWith("how to ") || value.StartsWith("where do i ") || value.Contains("steps to ")) return new("procedure", false, false, false, false, 1, false, "Source-controlled Pulse procedure catalog.");
         if (CelarAiPeopleAndGuidanceService.IsPeopleActivityQuestion(question)) return new("people_activity", false, false, false, false, 6, true, "Current authorized people, assignment, workload, approval, capacity, and planning evidence.");
-        if ((value.Contains("api") || value.Contains("endpoint")) && (value.Contains("running") || value.Contains("registered") || value.Contains("list") || value.Contains("show"))) return new("api_inventory", true, false, false, false, 2, true, "Current ASP.NET endpoint registry.");
+        if ((value.Contains("api") || value.Contains("endpoint"))
+            && (value.Contains("running")
+                || value.Contains("registered")
+                || value.Contains("list")
+                || value.Contains("show")
+                || value.Contains("inventory")
+                || value.Contains("count")
+                || value.Contains("how many")
+                || value.Contains("do i have")))
+        {
+            return new("api_inventory", true, false, false, false, 3, true, "Current ASP.NET endpoint registry.");
+        }
         if (value.Contains("troubleshoot") || value.Contains("error") || value.Contains("failed") || value.Contains("not working") || value.Contains("why did") || value.Contains("why is") || HttpStatus().IsMatch(value) || value.Contains("correlation id")) return new("troubleshooting", true, true, false, false, 12, true, "Current API, diagnostic, release, dependency, and observability evidence.");
         if (FinancialQuestion().IsMatch(value)) return new("financial_and_reporting", false, false, false, false, 10, true, "Governed financial and reporting tools.");
         if (value.Contains("flowhive") || value.Contains("project plan") || value.Contains("project schedule") || value.Contains("project timeline") || value.Contains("wbs") || value.Contains("sow draft") || value.Contains("gsd planning")) return new("projects_and_delivery", false, false, false, true, 8, true, "Private project evidence and deterministic planning.");
@@ -397,6 +408,65 @@ public static partial class CelarAiProductionPlatformModule
 
     private static PulseAiSystemQuestionResult EnforceAnswer(PulseAiSystemQuestionResult result, Intent intent, string question)
     {
+        if (intent.Code == "api_inventory" && result.RelevantApis.Count > 0)
+        {
+            var apiCount = result.RelevantApis.Count;
+            var moduleCount = result.RelevantApis
+                .Select(api => api.ModuleCode)
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            var getCount = result.RelevantApis.Count(api => HttpMethods.IsGet(api.Method));
+            var writeCount = result.RelevantApis.Count(api =>
+                HttpMethods.IsPost(api.Method)
+                || HttpMethods.IsPut(api.Method)
+                || HttpMethods.IsPatch(api.Method)
+                || HttpMethods.IsDelete(api.Method));
+            var safeRetestCount = result.RelevantApis.Count(api => api.SafeRetestSupported);
+            var source = result.Sources
+                .FirstOrDefault(item => item.SourceCode == "live_endpoint_registry")
+                ?? result.Sources.FirstOrDefault();
+            var dataAsOf = source?.ObservedAt ?? DateTimeOffset.UtcNow;
+            var answer = result.Answer with
+            {
+                DirectConclusion = $"The running application currently registers {apiCount} API route/method combination{(apiCount == 1 ? string.Empty : "s")} across {moduleCount} module owner{(moduleCount == 1 ? string.Empty : "s")}.",
+                ExecutiveSummary = "The count comes from the live ASP.NET endpoint registry for the current application revision. Registration confirms that a route is present; it does not by itself prove every downstream dependency is healthy.",
+                ScopeAndFilters =
+                [
+                    "Environment: current authenticated application revision.",
+                    "Source: live ASP.NET EndpointDataSource.",
+                    "Scope: routes authorized for API-inventory evidence in the current effective-user session."
+                ],
+                CurrentState =
+                [
+                    $"Registered route/method combinations: {apiCount}.",
+                    $"Module owners represented: {moduleCount}.",
+                    $"Method summary: GET {getCount}; write methods {writeCount}; other methods {Math.Max(0, apiCount - getCount - writeCount)}.",
+                    $"Explicitly safe read-only retest candidates: {safeRetestCount}."
+                ],
+                DetailedAnalysis = [],
+                TroubleshootingFindings = [],
+                RootCauseHypotheses = [],
+                DiagnosticSteps = [],
+                KnownUnknownAndStaleValues =
+                [
+                    "Known: these route/method combinations are registered in the running application revision.",
+                    "Not implied: route registration alone does not verify database, identity, connector, or downstream service health."
+                ],
+                Assumptions = [],
+                Conflicts = [],
+                RisksAndImplications = [],
+                RecommendedActions =
+                [
+                    "Open the collapsed API inventory below to search by module, method, route, purpose, registration status, or safe-retest eligibility."
+                ],
+                Confidence = .98m,
+                ConfidenceExplanation = "High confidence because the count is generated from the current runtime endpoint registry.",
+                DataAsOf = dataAsOf
+            };
+            return result with { Status = "completed", Answer = answer };
+        }
+
         var direct = result.Answer.DirectConclusion?.Trim() ?? string.Empty;
         var boilerplate = direct.Contains("answered the question using 0 successful governed", StringComparison.OrdinalIgnoreCase)
             || direct.Contains("registered API route/method combinations, and approved operating knowledge", StringComparison.OrdinalIgnoreCase);

@@ -145,13 +145,52 @@ public sealed record PulseAiPrivateRagOptions(
     }
 }
 
+public static class PulseAiRoleAuthority
+{
+    private static readonly HashSet<string> AdministratorRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SUPER_ADMINISTRATOR",
+        "SUPERADMINISTRATOR",
+        "GLOBAL_ADMINISTRATOR",
+        "GLOBALADMINISTRATOR",
+        "SYSTEM_ADMINISTRATOR",
+        "SYSTEMADMINISTRATOR",
+        "ADMINISTRATOR"
+    };
+
+    public static bool HasAdministratorRole(IEnumerable<string> roleCodes) =>
+        roleCodes.Any(roleCode => AdministratorRoles.Contains(Canonical(roleCode)));
+
+    private static string Canonical(string? value)
+    {
+        var source = value?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (source.Length == 0) return string.Empty;
+        var builder = new System.Text.StringBuilder(source.Length);
+        var separator = false;
+        foreach (var character in source)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (separator && builder.Length > 0) builder.Append('_');
+                builder.Append(character);
+                separator = false;
+            }
+            else
+            {
+                separator = true;
+            }
+        }
+        return builder.ToString().Trim('_');
+    }
+}
+
 public sealed record PulseAiPrivateRagAccess(
     Guid UserId,
     bool IsActive,
     IReadOnlySet<string> RoleCodes,
     IReadOnlySet<string> PermissionCodes)
 {
-    public bool IsSuperAdministrator => RoleCodes.Contains("SUPER_ADMINISTRATOR");
+    public bool IsSuperAdministrator => PulseAiRoleAuthority.HasAdministratorRole(RoleCodes);
     public bool IsBroadScope => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SUPER_ADMINISTRATOR",
