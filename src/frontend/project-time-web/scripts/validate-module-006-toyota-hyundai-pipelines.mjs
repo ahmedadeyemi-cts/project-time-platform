@@ -90,8 +90,9 @@ requireAll(injector, [
   "route: 'toyota-hyundai-pipelines'",
   "href: '#toyota-hyundai-pipelines'",
   "title: 'Toyota & Hyundai Pipelines'",
-  "activeRoute === 'psa-modules'",
-  "activeRoute === 'project-register'",
+  "return route === 'psa-modules' || route === 'project-register'",
+  'PR467_MODULE_006_EXCLUSIVE_ROUTE_START',
+  '<ProjectRegisterCenter legacyRoute={false} />',
   'MODULE_006_TOYOTA_HYUNDAI_PIPELINES_GENERATION=PASS',
   'MODULE_006_AUTHORITATIVE_MODULE_DIRECTORY_PATCH',
   'PROJECTPULSE_MODULES',
@@ -126,11 +127,17 @@ if (exists('docs/modules/module-006-toyota-hyundai-pipelines/IMPLEMENTATION-PLAN
 
 const generated = 'src/frontend/project-time-web/src/App.Module001.g.jsx';
 if (exists(generated)) {
-  requireAll(read(generated), [
+  const generatedApp = read(generated);
+  requireAll(generatedApp, [
     "route: 'toyota-hyundai-pipelines'",
     "title: 'Toyota & Hyundai Pipelines'",
-    '<ProjectRegisterCenter legacyRoute={activeRoute !== \'toyota-hyundai-pipelines\'} />'
+    'PR467_MODULE_006_EXCLUSIVE_ROUTE_START',
+    'PR467_MODULE_006_EXCLUSIVE_ROUTE_END',
+    '<ProjectRegisterCenter legacyRoute={false} />'
   ], 'Generated Module 006 app');
+  if ((generatedApp.match(/<ProjectRegisterCenter/g) || []).length !== 1) {
+    throw new Error('PR467 Module 006 must have exactly one generated mount.');
+  }
 }
 
 const portal = 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx';

@@ -18,6 +18,17 @@ function installModule006Route() {
   if (!source.includes(importAnchor)) throw new Error('Module 006 Work Register import anchor is missing.');
   if (!source.includes(centerImport)) source = source.replace(importAnchor, `${importAnchor}\n${centerImport}`);
 
+  const normalizeRoutePattern = /function normalizeRoute\(hash\) \{[\s\S]*?\n\}/;
+  const normalizeRoute = `function normalizeRoute(hash) {
+  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').split('?')[0].trim();
+  const route = cleaned || 'dashboard';
+  return route === 'psa-modules' || route === 'project-register'
+    ? 'toyota-hyundai-pipelines'
+    : route;
+}`;
+  if (!normalizeRoutePattern.test(source)) throw new Error('Module 006 normalizeRoute anchor is missing.');
+  source = source.replace(normalizeRoutePattern, normalizeRoute);
+
   const oldDefinition = /\{\s*\n\s*route: 'psa-modules',[\s\S]*?\n\s*\},/;
   const newDefinition = `  {
   route: 'toyota-hyundai-pipelines',
@@ -31,34 +42,52 @@ function installModule006Route() {
   source = source.replace(oldDefinition, newDefinition);
 
   const oldGuide = "'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'";
-  const newGuide = "'toyota-hyundai-pipelines': 'Tracks the reviewed Toyota and Hyundai workbook pipeline with active, archived, ownership, SELL, estimate, note, export, and historical-update context.',\n  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',\n  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'";
+  const newGuide = "'toyota-hyundai-pipelines': 'Toyota & Hyundai Pipelines — Module 006. Reviewed source records, bounded history, filters, and exports.',\n  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',\n  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'";
   if (!source.includes(oldGuide)) throw new Error('Module 006 legacy guide marker is missing.');
   source = source.replace(oldGuide, newGuide);
 
-  const panelStart = "      {(activeRoute === 'dashboard') ? (\n<section id=\"psa-modules\"";
-  const panelEnd = "\n\n\n      <section id=\"current-quarter-utilization\"";
-  const start = source.indexOf(panelStart);
-  const end = source.indexOf(panelEnd, start);
-  if (start < 0 || end < 0) throw new Error('Module 006 legacy dashboard panel was not found.');
-  const mount = `      {((activeRoute === 'toyota-hyundai-pipelines' || activeRoute === 'psa-modules' || activeRoute === 'project-register') && canViewPsaModules) ? (
-  <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
-    <ProjectRegisterCenter legacyRoute={activeRoute !== 'toyota-hyundai-pipelines'} />
-  </section>
-) : null}`;
-  source = source.slice(0, start) + mount + source.slice(end);
+  const retiredPanel = /\s*\{\(\(activeRoute === 'toyota-hyundai-pipelines'[\s\S]*?<ProjectRegisterCenter[\s\S]*?\) : null\}/g;
+  source = source.replace(retiredPanel, '');
+
+  const legacyPanelStart = "      {(activeRoute === 'dashboard') ? (\n<section id=\"psa-modules\"";
+  const legacyPanelEnd = "\n\n\n      <section id=\"current-quarter-utilization\"";
+  const legacyStart = source.indexOf(legacyPanelStart);
+  const legacyEnd = source.indexOf(legacyPanelEnd, legacyStart);
+  if (legacyStart >= 0 && legacyEnd >= 0) {
+    source = source.slice(0, legacyStart) + legacyPanelEnd + source.slice(legacyEnd + legacyPanelEnd.length);
+  }
+
+  const routeBoundaryAnchor = '      {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}';
+  if (!source.includes(routeBoundaryAnchor)) throw new Error('Module 006 route boundary anchor is missing.');
+  const exclusiveRoute = `      {/* PR467_MODULE_006_EXCLUSIVE_ROUTE_START */}
+      {activeRoute === 'toyota-hyundai-pipelines' ? (
+        <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
+          <ProjectRegisterCenter legacyRoute={false} />
+        </section>
+      ) : (
+        <>
+${routeBoundaryAnchor}`;
+  source = source.replace(routeBoundaryAnchor, exclusiveRoute);
+
+  const closeIndex = source.lastIndexOf('</main>');
+  if (closeIndex < 0) throw new Error('Module 006 application-shell close anchor is missing.');
+  source = `${source.slice(0, closeIndex)}        </>
+      )}
+      {/* PR467_MODULE_006_EXCLUSIVE_ROUTE_END */}
+${source.slice(closeIndex)}`;
 
   for (const required of [
     centerImport,
     "route: 'toyota-hyundai-pipelines'",
-    "href: '#toyota-hyundai-pipelines'",
-    "title: 'Toyota & Hyundai Pipelines'",
-    "activeRoute === 'toyota-hyundai-pipelines'",
-    '<ProjectRegisterCenter legacyRoute={activeRoute !== \'toyota-hyundai-pipelines\'} />'
+    "return route === 'psa-modules' || route === 'project-register'",
+    'PR467_MODULE_006_EXCLUSIVE_ROUTE_START',
+    '<ProjectRegisterCenter legacyRoute={false} />',
+    'PR467_MODULE_006_EXCLUSIVE_ROUTE_END'
   ]) {
     if (!source.includes(required)) throw new Error(`Generated Module 006 source is missing: ${required}`);
   }
-  if (source.includes("title: 'PSA Modules'") || source.includes('<section id="psa-modules"')) {
-    throw new Error('Generated Module 006 source still exposes the retired PSA presentation.');
+  if ((source.match(/<ProjectRegisterCenter/g) || []).length !== 1) {
+    throw new Error('Generated Module 006 source must contain exactly one ProjectRegisterCenter mount.');
   }
 
   fs.writeFileSync(appPath, source, 'utf8');

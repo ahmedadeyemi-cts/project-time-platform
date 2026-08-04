@@ -207,3 +207,26 @@ console.log('WORK_REGISTER_055D_SOURCES=GSD_SELL');
 console.log('WORK_REGISTER_055C_055D_MIGRATION_037=CREATED_NOT_APPLIED');
 console.log(`WORK_REGISTER_055C_055D_CONTRACT=${failures ? 'FAILED' : 'PASSED'}`);
 process.exitCode = failures ? 1 : 0;
+
+
+const projectApiSource = exists('src/backend/ProjectTime.Api/Modules/Pr467UatRepairModule.cs')
+  ? read('src/backend/ProjectTime.Api/Modules/Pr467UatRepairModule.cs')
+  : '';
+const pr467WorkIdentifierSource = `${frontend}
+${projectApiSource}`;
+for (const marker of [
+  'work_creation_receipt_loaded',
+  'work-register-creation-receipt',
+  'Copy ID',
+  'Open in Module 055C',
+  'Create Another',
+  'data-pr467-work-identifier',
+  'Project Number',
+  'Service Request Number',
+  'IQS Number',
+  'Internal Project Number',
+  'Pre-Sales Number'
+]) {
+  if (!pr467WorkIdentifierSource.includes(marker)) throw new Error(`PR467 Work Register identifier marker missing: ${marker}`);
+}
+console.log('PR467_WORK_IDENTIFIERS=PASS');
