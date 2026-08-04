@@ -1,9 +1,6 @@
 name: Export Post-PR465 Live UAT Source
 
 on:
-  push:
-    branches:
-      - diagnose/post-pr465-live-uat-source-20260804
   pull_request:
     branches:
       - main
@@ -13,64 +10,78 @@ on:
 permissions:
   contents: read
 
-# Temporary source-only diagnostic. Close without merge after artifact capture.
+# Temporary read-only diagnostic. Close without merge after artifact capture.
 jobs:
-  export:
+  pr470-diagnostics:
+    if: github.event.pull_request.head.ref == 'diagnose/post-pr465-live-uat-source-20260804'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
+    env:
+      PR470_HEAD: e366b3abe9cccb7d783972fce20fa42ee0f3dc09
     steps:
-      - name: Check out exact diagnostic source
+      - name: Check out exact PR470 source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ env.PR470_HEAD }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Archive exact checked-in source
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Capture complete API build output
         shell: bash
         run: |
-          set -Eeuo pipefail
-          git rev-parse HEAD | tee /tmp/exact-head.txt
-          tar --exclude='.git' --exclude='node_modules' --exclude='dist' -czf /tmp/project-time-platform-source.tar.gz .
+          set +e
+          mkdir -p /tmp/pr470-diagnostics
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --verbosity diagnostic \
+            > /tmp/pr470-diagnostics/api-build.log 2>&1
+          status=$?
+          printf '%s\n' "$status" > /tmp/pr470-diagnostics/api-build-exit-code.txt
+          grep -E '(^|[ :])(error|warning) (CS|MSB|NETSDK)[0-9]+' /tmp/pr470-diagnostics/api-build.log \
+            > /tmp/pr470-diagnostics/api-build-errors.txt || true
+          tail -n 500 /tmp/pr470-diagnostics/api-build.log
+          exit 0
 
       - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 24
+          node-version: '24'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Materialize exact production frontend source and bundle
+      - name: Capture complete frontend and focused validator output
         shell: bash
-        working-directory: src/frontend/project-time-web
         run: |
-          set -Eeuo pipefail
-          npm ci
-          npm run prebuild
-          node ./scripts/inject-celar-ai-runtime-rebrand.mjs
-          mkdir -p /tmp/generated-frontend/src /tmp/generated-frontend/scripts /tmp/generated-frontend/dist
-          cp src/WorkTaskBuilderPanel.jsx /tmp/generated-frontend/src/
-          cp src/CelarAiProductionPlatform.jsx /tmp/generated-frontend/src/
-          cp src/CelarAiEnterprisePlatform.jsx /tmp/generated-frontend/src/
-          cp src/CelarAiArchitectureOverview.jsx /tmp/generated-frontend/src/
-          cp src/HelpAssistant.jsx /tmp/generated-frontend/src/
-          cp src/ModulesDirectoryPortal.jsx /tmp/generated-frontend/src/
-          cp src/module-availability-registry.js /tmp/generated-frontend/src/
-          cp src/celar-ai-production-platform.css /tmp/generated-frontend/src/
-          cp src/celar-ai-enterprise-platform.css /tmp/generated-frontend/src/
-          cp src/celar-ai-architecture-overview.css /tmp/generated-frontend/src/
-          cp scripts/inject-celar-ai-runtime-rebrand.mjs /tmp/generated-frontend/scripts/
-          cp scripts/inject-celar-ai-production-platform.mjs /tmp/generated-frontend/scripts/
-          npx vite build
-          cp -a dist/. /tmp/generated-frontend/dist/
-          (cd /tmp/generated-frontend && find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
-          tar -C /tmp -czf /tmp/project-time-platform-generated-frontend.tar.gz generated-frontend
+          set +e
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund > /tmp/pr470-diagnostics/npm-ci.log 2>&1
+          npm_status=$?
+          if [[ "$npm_status" -eq 0 ]]; then
+            npm run build > /tmp/pr470-diagnostics/frontend-build.log 2>&1
+            build_status=$?
+          else
+            build_status=99
+          fi
+          node ./scripts/validate-module-011-system-intelligence-package.mjs \
+            > /tmp/pr470-diagnostics/system-intelligence-validator.log 2>&1
+          validator_status=$?
+          cd ../../..
+          git status --short > /tmp/pr470-diagnostics/git-status.txt
+          git diff --name-status > /tmp/pr470-diagnostics/git-diff-name-status.txt
+          printf 'npm=%s\nfrontend_build=%s\nsystem_validator=%s\n' \
+            "$npm_status" "$build_status" "$validator_status" \
+            > /tmp/pr470-diagnostics/frontend-exit-codes.txt
+          cat /tmp/pr470-diagnostics/frontend-build.log || true
+          cat /tmp/pr470-diagnostics/system-intelligence-validator.log || true
+          exit 0
 
-      - name: Upload exact source and generated frontend
+      - name: Upload complete PR470 diagnostics
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: post-pr465-live-uat-source-${{ github.run_id }}
-          path: |
-            /tmp/exact-head.txt
-            /tmp/project-time-platform-source.tar.gz
-            /tmp/project-time-platform-generated-frontend.tar.gz
+          name: pr470-exact-failure-diagnostics-${{ github.run_id }}
+          path: /tmp/pr470-diagnostics
           retention-days: 3
