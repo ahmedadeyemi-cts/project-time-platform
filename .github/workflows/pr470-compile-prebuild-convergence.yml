@@ -1,0 +1,137 @@
+name: PR470 One-Time Compile and Prebuild Convergence
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/pr470-compile-prebuild-convergence.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr470-compile-prebuild-convergence
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    if: github.event.pull_request.head.ref == 'fix/post-pr465-module011-065-celar-uat-20260804'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Converge C# scope and Help preference compatibility
+        id: converge
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          module = Path('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs')
+          source = module.read_text()
+          source = source.replace(
+              '            var answer = result.Answer with\n            {\n                DirectConclusion = $"The running application currently registers',
+              '            var apiInventoryAnswer = result.Answer with\n            {\n                DirectConclusion = $"The running application currently registers',
+              1
+          )
+          source = source.replace(
+              '            return result with { Status = "completed", Answer = answer };\n        }\n\n        var direct =',
+              '            return result with { Status = "completed", Answer = apiInventoryAnswer };\n        }\n\n        var direct =',
+              1
+          )
+          if 'var apiInventoryAnswer = result.Answer with' not in source:
+              raise SystemExit('PR470_CSHARP_SCOPE_CONVERGENCE_FAILED')
+          module.write_text(source)
+
+          help_file = Path('src/frontend/project-time-web/src/HelpAssistant.jsx')
+          source = help_file.read_text()
+          source = source.replace(
+              "import { applyHelpAnswerPreferences, effectiveHelpAnswerPreferences } from './help/help-answer-preferences.js';",
+              "import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';",
+              1
+          )
+          source = source.replace(
+              '      const answerPreferences = effectiveHelpAnswerPreferences(clean);\n      const payload = await postJson(path, {',
+              '      const preferenceUrl = new URL(path, window.location.origin);\n      const answerPreferences = applyHelpAnswerPreferences(preferenceUrl, clean);\n      const payload = await postJson(path, {',
+              1
+          )
+          if "import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';" not in source:
+              raise SystemExit('PR470_HELP_IMPORT_CONVERGENCE_FAILED')
+          if 'effectiveHelpAnswerPreferences' in source:
+              raise SystemExit('PR470_HELP_LEGACY_EFFECTIVE_IMPORT_REMAINS')
+          if 'applyHelpAnswerPreferences(preferenceUrl, clean)' not in source:
+              raise SystemExit('PR470_HELP_PREFERENCE_CALL_CONVERGENCE_FAILED')
+          help_file.write_text(source)
+          PY
+
+          git diff --check
+          if git diff --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'PR470_SOURCE_ALREADY_CONVERGED=PASS'
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo 'PR470_SOURCE_CONVERGENCE_STAGED=PASS'
+          fi
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API after convergence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee /tmp/pr470-api-build.log
+          grep -Fq '0 Error(s)' /tmp/pr470-api-build.log
+          echo 'PR470_API_BUILD=PASS'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build complete frontend after convergence
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          echo 'PR470_FRONTEND_BUILD=PASS'
+
+      - name: Run focused contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-post-pr465-module011-065-celar-uat.sh
+          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+          echo 'PR470_FOCUSED_CONTRACTS=PASS'
+
+      - name: Commit converged application source
+        if: steps.converge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Production build injectors are required to restore canonical tracked source.
+          git diff --check
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email '244059331+ahmedadeyemi-cts@users.noreply.github.com'
+          git add \
+            src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs \
+            src/frontend/project-time-web/src/HelpAssistant.jsx
+          git commit -m 'Fix Celar AI API answer compilation and Help preference compatibility'
+          git push origin "HEAD:refs/heads/${{ github.event.pull_request.head.ref }}" \
+            --force-with-lease="refs/heads/${{ github.event.pull_request.head.ref }}:${{ github.event.pull_request.head.sha }}"
+          echo 'PR470_CONVERGED_SOURCE_PUBLISHED=PASS'
