@@ -110,8 +110,8 @@ require(
 )
 require(
     "src/frontend/project-time-web/src/project-expense-upload.css",
-    "MODULE_005_ENTERPRISE_TABLE_POLISH",
-    "grid-template-columns:repeat(2,minmax(110px,1fr))",
+    "MODULE_005_ENTERPRISE_UPLOAD_HISTORY_LAYOUT",
+    "grid-template-columns: repeat(2, minmax(0, 1fr));",
     ".expense-actions .primary-action",
 )
 require(
@@ -128,14 +128,15 @@ require(
 )
 require(
     "src/frontend/project-time-web/src/module-availability.css",
-    "MODULE_065_OPEN_ACTION_VISUAL_PARITY",
-    '.modules-directory-open-button:hover',
+    "MODULE_065_MATCHED_OPEN_ACTION_STYLE",
+    ".modules-directory-card-actions > button.modules-directory-open-button:hover",
 )
 require(
     "src/frontend/project-time-web/src/intuitive-more-menu.css",
-    "MORE_MENU_ENTERPRISE_APPLICATION_LAUNCHER",
-    "grid-template-columns:repeat(3,minmax(0,1fr))",
-    "text-overflow:ellipsis",
+    "ENTERPRISE_MORE_MENU_V2",
+    "grid-template-columns: repeat(2, minmax(0, 1fr));",
+    "text-overflow: clip;",
+    "server-backed permission bridge",
 )
 require(
     "src/frontend/project-time-web/src/WorkRegisterCenter.jsx",
