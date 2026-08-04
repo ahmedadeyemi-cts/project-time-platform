@@ -395,7 +395,12 @@ jobs:
                 [[ -n "$asset" ]] || continue
                 case "$asset" in http*) url="$asset" ;; /*) url="$BASE$asset" ;; *) url="$BASE/$asset" ;; esac
                 curl -sSL -H 'Cache-Control: no-cache' "$url?release_check=$BUSTER" >> /tmp/pr477-app.css || true
-              done < <(grep -oE 'href="[^"]+\.css"' /tmp/pr477-index | sed -E 's/^href="|"$//g')
+              done < <(
+                {
+                  grep -oE 'href="[^"]+\.css"' /tmp/pr477-index | sed -E 's/^href="|"$//g'
+                  grep -hoE 'assets/[A-Za-z0-9_.-]+\.css' /tmp/pr477-app.js
+                } | sort -u
+              )
               if grep -Fq 'Standalone authority' /tmp/pr477-app.js \
                 && grep -Fq 'Add New Project' /tmp/pr477-app.js \
                 && grep -Fq 'Create New Task' /tmp/pr477-app.js \
