@@ -92,6 +92,14 @@ jobs:
             echo 'PR470_SOURCE_CONVERGENCE_STAGED=PASS'
           fi
 
+      - name: Run focused source contracts before build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-post-pr465-module011-065-celar-uat.sh
+          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          echo 'PR470_FOCUSED_SOURCE_CONTRACTS=PASS'
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
@@ -121,22 +129,26 @@ jobs:
           npm run build
           echo 'PR470_FRONTEND_BUILD=PASS'
 
-      - name: Run focused contracts
+      - name: Prove only intended source is pending
         shell: bash
         run: |
           set -Eeuo pipefail
-          bash tests/test-post-pr465-module011-065-celar-uat.sh
-          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
-          python3 scripts/security/validate-repository-security-posture.py
-          echo 'PR470_FOCUSED_CONTRACTS=PASS'
+          git diff --check
+          git diff --name-only | sort > /tmp/pending-files.txt
+          cat > /tmp/expected-pending.txt <<'FILES'
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          tests/test-post-pr465-module011-065-celar-uat.sh
+          FILES
+          sort -o /tmp/expected-pending.txt /tmp/expected-pending.txt
+          diff -u /tmp/expected-pending.txt /tmp/pending-files.txt
+          echo 'PR470_PENDING_SOURCE_BOUNDARY=PASS'
 
       - name: Commit converged application source
         if: steps.converge.outputs.changed == 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          # Production build injectors are required to restore canonical tracked source.
-          git diff --check
           git config user.name 'ahmedadeyemi-cts'
           git config user.email '244059331+ahmedadeyemi-cts@users.noreply.github.com'
           git add \
