@@ -1,0 +1,70 @@
+name: Export Post-PR465 Live UAT Source
+
+on:
+  push:
+    branches:
+      - diagnose/post-pr465-live-uat-source-20260804
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Archive exact checked-in source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git rev-parse HEAD | tee /tmp/exact-head.txt
+          tar --exclude='.git' --exclude='node_modules' --exclude='dist' -czf /tmp/project-time-platform-source.tar.gz .
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Materialize exact production frontend source and bundle
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run prebuild
+          node ./scripts/inject-celar-ai-runtime-rebrand.mjs
+          mkdir -p /tmp/generated-frontend/src /tmp/generated-frontend/scripts /tmp/generated-frontend/dist
+          cp src/WorkTaskBuilderPanel.jsx /tmp/generated-frontend/src/
+          cp src/CelarAiProductionPlatform.jsx /tmp/generated-frontend/src/
+          cp src/CelarAiEnterprisePlatform.jsx /tmp/generated-frontend/src/
+          cp src/CelarAiArchitectureOverview.jsx /tmp/generated-frontend/src/
+          cp src/HelpAssistant.jsx /tmp/generated-frontend/src/
+          cp src/ModulesDirectoryPortal.jsx /tmp/generated-frontend/src/
+          cp src/module-availability-registry.js /tmp/generated-frontend/src/
+          cp src/celar-ai-production-platform.css /tmp/generated-frontend/src/
+          cp src/celar-ai-enterprise-platform.css /tmp/generated-frontend/src/
+          cp src/celar-ai-architecture-overview.css /tmp/generated-frontend/src/
+          cp scripts/inject-celar-ai-runtime-rebrand.mjs /tmp/generated-frontend/scripts/
+          cp scripts/inject-celar-ai-production-platform.mjs /tmp/generated-frontend/scripts/
+          npx vite build
+          cp -a dist/. /tmp/generated-frontend/dist/
+          (cd /tmp/generated-frontend && find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          tar -C /tmp -czf /tmp/project-time-platform-generated-frontend.tar.gz generated-frontend
+
+      - name: Upload exact source and generated frontend
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: post-pr465-live-uat-source-${{ github.run_id }}
+          path: |
+            /tmp/exact-head.txt
+            /tmp/project-time-platform-source.tar.gz
+            /tmp/project-time-platform-generated-frontend.tar.gz
+          retention-days: 3
