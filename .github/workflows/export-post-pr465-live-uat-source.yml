@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
 
+# Temporary source-only diagnostic. Close without merge after artifact capture.
 jobs:
   export:
     runs-on: ubuntu-latest
