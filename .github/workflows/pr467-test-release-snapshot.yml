@@ -1,0 +1,37 @@
+name: Snapshot PR467 Test Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr467-test-release-snapshot.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CONTROLLER_WORKFLOW: projectpulse-pr467-one-time-test-release-controller.yml
+      EXPECTED_CONTROLLER_SHA: 75f7ed177a0300e0e29b5491dcb81ebad540782b
+    steps:
+      - name: Capture current exact controller run
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo="$GITHUB_REPOSITORY"
+          run_id="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/workflows/$CONTROLLER_WORKFLOW/runs?event=issue_comment&per_page=50" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"$EXPECTED_CONTROLLER_SHA\")] | sort_by(.created_at) | last | .id // empty")"
+          [[ -n "$run_id" ]]
+          gh api -H 'Accept: application/vnd.github+json' "repos/$repo/actions/runs/$run_id" > run.json
+          gh api -H 'Accept: application/vnd.github+json' "repos/$repo/actions/runs/$run_id/jobs?per_page=100" > jobs.json
+          echo "PR467_CONTROLLER_RUN_ID=$run_id"
+          jq -r '"PR467_CONTROLLER_RUN_STATUS=" + .status + " conclusion=" + (.conclusion // "pending")' run.json
+          jq -r '.jobs[] | "PR467_CONTROLLER_JOB=" + .name + " status=" + .status + " conclusion=" + (.conclusion // "pending")' jobs.json
+          jq -r '.jobs[].steps[]? | select(.status == "in_progress" or .conclusion == "failure") | "PR467_CONTROLLER_STEP=" + .name + " status=" + .status + " conclusion=" + (.conclusion // "pending")' jobs.json
