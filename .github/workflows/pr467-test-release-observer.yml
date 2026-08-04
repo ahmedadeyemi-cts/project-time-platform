@@ -1,0 +1,144 @@
+name: Observe PR467 Test Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr467-test-release-observer.yml'
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: observe-pr467-test-release
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CONTROLLER_WORKFLOW: projectpulse-pr467-one-time-test-release-controller.yml
+      EXPECTED_CONTROLLER_SHA: bf1ca01ff5cfb76cc9da78a00f5f7f91d0824ec9
+      EXPECTED_RELEASE_SHA: a536e33b48c41bf1dd867d7319e88f98e8aa152c
+    steps:
+      - name: Check out observer only
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Find and watch the exact issue-comment release run
+        id: observer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          repo="$GITHUB_REPOSITORY"
+          run_id=''
+
+          for attempt in $(seq 1 120); do
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$repo/actions/workflows/$CONTROLLER_WORKFLOW/runs?event=issue_comment&per_page=50" \
+              > evidence/controller-runs.json
+
+            run_id="$(jq -r --arg sha "$EXPECTED_CONTROLLER_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha)]
+              | sort_by(.created_at)
+              | last
+              | .id // empty
+            ' evidence/controller-runs.json)"
+
+            if [[ -n "$run_id" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          [[ -n "$run_id" ]] || {
+            echo 'No exact PR467 issue-comment controller run was found.' >&2
+            exit 1
+          }
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "PR467_CONTROLLER_RUN_ID=$run_id"
+
+          for attempt in $(seq 1 720); do
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$repo/actions/runs/$run_id" \
+              > evidence/controller-run.json
+
+            status="$(jq -r '.status' evidence/controller-run.json)"
+            conclusion="$(jq -r '.conclusion // ""' evidence/controller-run.json)"
+            echo "PR467_CONTROLLER_STATUS=$status conclusion=${conclusion:-pending}"
+            if [[ "$status" == completed ]]; then
+              break
+            fi
+            sleep 10
+          done
+
+          status="$(jq -r '.status' evidence/controller-run.json)"
+          conclusion="$(jq -r '.conclusion // ""' evidence/controller-run.json)"
+          [[ "$status" == completed ]] || {
+            echo 'The PR467 controller did not complete within the observer window.' >&2
+            exit 1
+          }
+
+          gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/runs/$run_id/jobs?per_page=100" \
+            > evidence/controller-jobs.json
+          gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/runs/$run_id/artifacts?per_page=100" \
+            > evidence/controller-artifacts.json
+          gh run view "$run_id" --repo "$repo" --log > evidence/controller.log 2>&1 || true
+          gh run view "$run_id" --repo "$repo" --json databaseId,status,conclusion,url,headSha,event,createdAt,updatedAt,jobs \
+            > evidence/controller-summary.json
+
+          jq -r '.jobs[] | [.name, .status, (.conclusion // "")] | @tsv' \
+            evidence/controller-jobs.json > evidence/job-status.tsv
+          grep -E 'PROJECTPULSE_|MIGRATION_067|release_sha=|api_image=|web_image=|deployment=' \
+            evidence/controller.log > evidence/release-markers.txt || true
+
+          {
+            echo "controller_run_id=$run_id"
+            echo "controller_status=$status"
+            echo "controller_conclusion=$conclusion"
+            echo "controller_head_sha=$(jq -r '.head_sha' evidence/controller-run.json)"
+            echo "expected_controller_sha=$EXPECTED_CONTROLLER_SHA"
+            echo "expected_release_sha=$EXPECTED_RELEASE_SHA"
+            echo "controller_url=$(jq -r '.html_url' evidence/controller-run.json)"
+          } > evidence/result.txt
+
+          echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+          cat evidence/result.txt
+          echo 'PR467_RELEASE_OBSERVER_CAPTURE=COMPLETE'
+
+      - name: Comment observer result
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          result='Observer failed before a final controller result was captured.'
+          if [[ -s evidence/result.txt ]]; then
+            result="$(cat evidence/result.txt)"
+          fi
+          gh pr comment '${{ github.event.pull_request.number }}' \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "PR #467 Test release observer completed.\n\n\`\`\`text\n$result\n\`\`\`\n\nThis observer is read-only and must not be merged."
+
+      - name: Upload complete controller evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr467-test-release-observer-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
