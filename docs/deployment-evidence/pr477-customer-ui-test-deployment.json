@@ -1,0 +1,35 @@
+{
+  "environment": "test",
+  "productionChanged": false,
+  "releaseCommit": "6f2b5ef459e1a8efa234a9efb1dc14e1fc56379b",
+  "workflowCommit": "e5781cb23efe9fc47a0d798db5d99bacc46bb3f6",
+  "migration": "069_module006_customer_pipeline_expansion",
+  "migrationImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-uat477-migrator@sha256:1ebf4fc7b2f718de64869b350631d2f240bdbcba4d7ef35a3bf5aed85a3c765f",
+  "apiImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:6298ea5a9dea83dd0f527e666ec0aff8b3378f17d5584e2c805da0a28985e8f4",
+  "webImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:52269ba8797a1cbaa0279b59bb156198d33446fd101631d06c2eb0beda5584ef",
+  "previousApiImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:32bae24e493ecfb620d37c862a957b7ea6d1197da12d0df3eb0bc047be90abbe",
+  "previousWebImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:44d443fbc01f0b66e4954475b4de24a073ead7cfbc6b7e9dffeb9d7ef173d2cc",
+  "apiRevision": "ca-phd-test-api-westus3--u477api-30957382960-1",
+  "webRevision": "ca-phd-test-web-westus3--u477web-30957382960-1",
+  "stackedLogoSha256": "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b",
+  "runId": "30957382960",
+  "runAttempt": "1",
+  "modules": [
+    "005",
+    "006",
+    "039",
+    "055C",
+    "065"
+  ],
+  "features": [
+    "module006-extensible-customers",
+    "module006-nowrap-status-header",
+    "module006-single-status-indicator",
+    "module005-enterprise-upload-history",
+    "module065-matched-open-action",
+    "permission-scoped-more-menu",
+    "approved-stacked-us-signal-logo"
+  ],
+  "module011Deferred": true,
+  "emailSent": false
+}
