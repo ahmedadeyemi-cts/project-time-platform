@@ -31,8 +31,16 @@ require(
     "src/backend/ProjectTime.Api/Modules/Module006StandalonePipelineModule.cs",
     "MapModule006StandalonePipelineEndpoints",
     "linkedToModule055C = false",
+    'customerEntryMode = "extensible"',
+    "CustomerNameMaxLength = 120",
+    "069_module006_customer_pipeline_expansion",
+    "Customer names must contain between",
     "request.Archive",
     "module006_pipeline_record_restored",
+)
+reject(
+    "src/backend/ProjectTime.Api/Modules/Module006StandalonePipelineModule.cs",
+    "Module 006 accepts only Toyota or Hyundai pipeline records.",
 )
 require(
     "src/backend/ProjectTime.Api/Modules/Module006StandaloneTaskModule.cs",
@@ -48,6 +56,30 @@ require(
     "module006_pipeline_tasks",
     "module006_pipeline_task_events",
     "projectpulse068_block_pipeline_history_mutation",
+)
+require(
+    "database/migrations/069_module006_customer_pipeline_expansion.sql",
+    "069_module006_customer_pipeline_expansion",
+    "DROP CONSTRAINT IF EXISTS module006_pipeline_records_customer_check",
+    "ck_module006_pipeline_records_customer_name",
+    "char_length(customer) BETWEEN 2 AND 120",
+    "ix_module006_pipeline_records_customer_name",
+)
+require(
+    "database/rollback/069_module006_customer_pipeline_expansion_rollback.sql",
+    "additional-customer Module 006 records exist",
+    "lower(btrim(customer)) NOT IN ('toyota', 'hyundai')",
+    "module006_pipeline_records_customer_check",
+)
+require(
+    "src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs",
+    "MODULE_006_CUSTOMER_EXPANSION_START",
+    "module006-customer-options",
+    "All customers",
+    "US-Signal-Customer-Pipelines-",
+    "installStackedLogo",
+    "USSNavyStacked.png",
+    "customers=extensible stacked_logo=approved",
 )
 require(
     "src/frontend/project-time-web/src/ProjectRegisterCenter.jsx",
@@ -77,6 +109,12 @@ require(
     "Deleting upload…",
 )
 require(
+    "src/frontend/project-time-web/src/project-expense-upload.css",
+    "MODULE_005_ENTERPRISE_TABLE_POLISH",
+    "grid-template-columns:repeat(2,minmax(110px,1fr))",
+    ".expense-actions .primary-action",
+)
+require(
     "src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace.jsx",
     "canRetry = false, compact = false",
     "function ModuleRecovery({ moduleCode, authSession, compact = false })",
@@ -87,6 +125,17 @@ require(
     "MODULE_065_REACT_OWNED_OPEN_ACTION",
     "modules-directory-open-button",
     "window.location.hash = module.route",
+)
+require(
+    "src/frontend/project-time-web/src/module-availability.css",
+    "MODULE_065_OPEN_ACTION_VISUAL_PARITY",
+    '.modules-directory-open-button:hover',
+)
+require(
+    "src/frontend/project-time-web/src/intuitive-more-menu.css",
+    "MORE_MENU_ENTERPRISE_APPLICATION_LAUNCHER",
+    "grid-template-columns:repeat(3,minmax(0,1fr))",
+    "text-overflow:ellipsis",
 )
 require(
     "src/frontend/project-time-web/src/WorkRegisterCenter.jsx",
@@ -100,8 +149,10 @@ require(
     "shouldReplaceLegacyText",
 )
 
-print("UAT_FOLLOWUP_MODULE005=PASS history_resilient lifecycle_routes=registered")
-print("UAT_FOLLOWUP_MODULE006=PASS standalone_projects_tasks_notes=true linked_to_055c=false")
+print("UAT_FOLLOWUP_MODULE005=PASS history_resilient lifecycle_routes=registered table_layout=bounded pm_acceptance=visible")
+print("UAT_FOLLOWUP_MODULE006=PASS standalone_projects_tasks_notes=true linked_to_055c=false customers=extensible migration=069")
 print("UAT_FOLLOWUP_MODULE039=PASS compact_source_health=true")
 print("UAT_FOLLOWUP_MODULE055C=PASS visible_immutable_identifier=true")
-print("UAT_FOLLOWUP_MODULE065=PASS react_owned_open_action=true")
+print("UAT_FOLLOWUP_MODULE065=PASS react_owned_open_action=true visual_parity=true")
+print("UAT_FOLLOWUP_MORE_MENU=PASS enterprise_launcher=true permission_evidence=preserved")
+print("UAT_FOLLOWUP_BRANDING=PASS stacked_us_signal_logo=approved")
