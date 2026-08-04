@@ -1,0 +1,77 @@
+name: Finalize UAT follow-up pull request
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/uat-followup-pr-finalizer.yml'
+      - 'scripts/finalize-uat-followup-source.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: uat-followup-pr-finalizer-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.head_ref == 'fix/uat-followup-modules-005-006-039-055c-065-20260804'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply exact source finalizer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/finalize-uat-followup-source.py
+          git diff --check
+          python3 tests/validate-uat-followup-modules.py
+          node --check src/frontend/project-time-web/src/ProjectRegisterCenter.jsx || true
+          node --check src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+          node src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compile API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Commit final clean source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          python3 tests/validate-uat-followup-modules.py
+          test ! -e .github/workflows/uat-followup-source-finalizer.yml
+          test ! -e .github/workflows/uat-followup-trigger.yml
+          test ! -e .github/workflows/uat-followup-pr-finalizer.yml
+          test ! -e scripts/finalize-uat-followup-source.py
+          git config user.name 'Project Health Dashboard UAT Repair'
+          git config user.email 'project-health-dashboard-uat@users.noreply.github.com'
+          git add -A
+          git commit -m 'Complete Modules 005, 006, 039, 055C, and 065 UAT repairs'
+          git push origin HEAD:fix/uat-followup-modules-005-006-039-055c-065-20260804
