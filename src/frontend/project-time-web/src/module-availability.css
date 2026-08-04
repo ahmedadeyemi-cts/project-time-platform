@@ -229,3 +229,19 @@
     display: grid;
   }
 }
+
+/* MODULE_065_REACT_OWNED_OPEN_ACTION_STYLE */
+.modules-directory-open-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+[data-module-number="065"] .modules-directory-open-button {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}

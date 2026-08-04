@@ -436,7 +436,7 @@ public static class Module006StandaloneTaskModule
         command.Parameters.AddWithValue("description", Clean(description));
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("assigned_to", Clean(assignedTo));
-        command.Parameters.AddWithValue("due_date", dueDate.HasValue ? dueDate.Value : DBNull.Value);
+        command.Parameters.AddWithValue("due_date", dueDate.HasValue ? (object)dueDate.Value : DBNull.Value);
         command.Parameters.AddWithValue("actor_id", actorId);
     }
 
@@ -478,7 +478,7 @@ public static class Module006StandaloneTaskModule
         command.Parameters.AddWithValue("note_text", Clean(note));
         command.Parameters.AddWithValue("task_status", status);
         command.Parameters.AddWithValue("assigned_to", Clean(assignedTo));
-        command.Parameters.AddWithValue("due_date", dueDate.HasValue ? dueDate.Value : DBNull.Value);
+        command.Parameters.AddWithValue("due_date", dueDate.HasValue ? (object)dueDate.Value : DBNull.Value);
         command.Parameters.AddWithValue("actor_id", actorId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

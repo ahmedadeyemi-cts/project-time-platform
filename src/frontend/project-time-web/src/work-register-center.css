@@ -1786,3 +1786,44 @@ button[data-marker="055D_4E_TEST_FINAL_SAVE_BUTTON"] {
 .work-register-creation-receipt { display: grid; gap: .65rem; margin: 1rem 0; padding: 1rem; border: 2px solid #58b68b; border-radius: .9rem; background: #eefbf5; }
 .work-register-creation-receipt > div { display: grid; gap: .2rem; }
 .work-register-creation-receipt nav { display: flex; flex-wrap: wrap; gap: .55rem; }
+
+/* PR467_VISIBLE_WORK_IDENTIFIER_STYLE */
+.work-register-row-identifier,
+.work-register-drawer-identifier {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin: .35rem 0;
+  padding: .38rem .5rem;
+  border: 1px solid rgba(14, 116, 144, .25);
+  border-radius: .65rem;
+  background: rgba(224, 242, 254, .7);
+}
+.work-register-row-identifier span,
+.work-register-drawer-identifier span {
+  color: #475569;
+  font-size: .7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.work-register-row-identifier strong,
+.work-register-drawer-identifier strong {
+  color: #075985;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .03em;
+}
+.work-register-row-identifier button,
+.work-register-drawer-identifier button {
+  border: 0;
+  border-radius: .45rem;
+  padding: .24rem .42rem;
+  color: #075985;
+  background: #fff;
+  cursor: pointer;
+  font-size: .7rem;
+  font-weight: 800;
+}
+.work-register-row-identifier-missing {
+  color: #92400e;
+}

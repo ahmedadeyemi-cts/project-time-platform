@@ -137,7 +137,7 @@ function EmptyState({ title, children }) {
   );
 }
 
-function SourceGrid({ sources = [], busySource, onRetry, canRetry = false }) {
+function SourceGrid({ sources = [], busySource, onRetry, canRetry = false, compact = false }) {
   // PR467_COMPACT_SOURCE_HEALTH
   if (compact) {
     return (
@@ -571,7 +571,7 @@ function Workbench({ authSession }) {
   );
 }
 
-function ModuleRecovery({ moduleCode, authSession }) {
+function ModuleRecovery({ moduleCode, authSession, compact = false }) {
   const metadata = moduleMetadata[moduleCode] ?? moduleMetadata['039'];
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [busySource, setBusySource] = useState('');
@@ -633,7 +633,7 @@ function ModuleRecovery({ moduleCode, authSession }) {
         </div>
         {!state.loading && !projects.length ? <EmptyState title="No role-scoped project data">No projects matched the current server-enforced access scope.</EmptyState> : null}
       </section>
-      <SourceGrid sources={state.data?.sources ?? []} canRetry busySource={busySource} onRetry={retrySource} />
+      <SourceGrid sources={state.data?.sources ?? []} canRetry busySource={busySource} onRetry={retrySource} compact={compact} />
     </div>
   );
 }
@@ -662,7 +662,7 @@ export default function FinancialOperationsRecoveryWorkspace({ mode = 'reporting
       <aside className="group5-enterprise-note"><strong>US Signal financial operations</strong><span>Friendly page messages remain separate from sanitized diagnostic codes. One unavailable source never blanks otherwise complete work.</span></aside>
       {mode === 'reporting' && !moduleCode ? <ReportCenter authSession={authSession} /> : null}
       {mode === 'workbench' ? <Workbench authSession={authSession} /> : null}
-      {moduleCode ? <ModuleRecovery moduleCode={moduleCode} authSession={authSession} /> : null}
+      {moduleCode ? <ModuleRecovery moduleCode={moduleCode} authSession={authSession} compact={compact} /> : null}
     </section>
   );
 }

@@ -65,7 +65,7 @@ public static class Module006StandalonePipelineModule
         DateOnly? NextReviewDate,
         int ExpectedRevision);
 
-    public sealed record Module006ArchiveRequest(string? Reason, int ExpectedRevision);
+    public sealed record Module006ArchiveRequest(string? Reason, int ExpectedRevision, bool Archive = true);
 
     private sealed record Module006Actor(
         Guid ActualUserId,
@@ -574,7 +574,7 @@ public static class Module006StandalonePipelineModule
         try
         {
             var reason = Clean(request.Reason);
-            if (reason.Length < 5) return Invalid("Enter an archive reason of at least five characters.");
+            if (reason.Length < 5) return Invalid("Enter a lifecycle reason of at least five characters.");
 
             await using var connection = await OpenConnectionAsync();
             var actor = await LoadActorAsync(connection, context);
@@ -595,24 +595,28 @@ public static class Module006StandalonePipelineModule
                 command.Parameters.AddWithValue("record_id", recordId);
                 revision = await command.ExecuteScalarAsync(context.RequestAborted) as int?;
             }
-            if (revision is null) return Results.NotFound(new { status = "module006_record_not_found", message = "The Module 006 row was not found." });
+            if (revision is null)
+                return Results.NotFound(new { status = "module006_record_not_found", message = "The Module 006 row was not found." });
             if (request.ExpectedRevision > 0 && request.ExpectedRevision != revision.Value)
                 return Results.Conflict(new
                 {
                     status = "module006_revision_conflict",
-                    message = "Someone else updated this Module 006 row. Refresh before archiving it.",
+                    message = "Someone else updated this Module 006 row. Refresh before changing its lifecycle.",
                     currentRevision = revision
                 });
 
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            await InsertUpdateAsync(connection, transaction, recordId, $"Archived: {reason}", "Archived",
+            var action = request.Archive ? "Archived" : "Restored";
+            var nextStatus = request.Archive ? "Archived" : "Active";
+            var note = $"{action}: {reason}";
+            await InsertUpdateAsync(connection, transaction, recordId, note, nextStatus,
                 today, null, actor.EffectiveUserId, context.RequestAborted);
 
             await using (var command = new NpgsqlCommand("""
                 UPDATE module006_pipeline_records
-                SET lifecycle = 'historical',
-                    is_archived = TRUE,
-                    status = 'Archived',
+                SET lifecycle = @lifecycle,
+                    is_archived = @archive,
+                    status = @status,
                     latest_note = @note,
                     update_date = @update_date,
                     revision = revision + 1,
@@ -622,7 +626,10 @@ public static class Module006StandalonePipelineModule
                 """, connection, transaction))
             {
                 command.Parameters.AddWithValue("record_id", recordId);
-                command.Parameters.AddWithValue("note", $"Archived: {reason}");
+                command.Parameters.AddWithValue("lifecycle", request.Archive ? "historical" : "active");
+                command.Parameters.AddWithValue("archive", request.Archive);
+                command.Parameters.AddWithValue("status", nextStatus);
+                command.Parameters.AddWithValue("note", note);
                 command.Parameters.AddWithValue("update_date", today);
                 command.Parameters.AddWithValue("actor_id", actor.EffectiveUserId);
                 await command.ExecuteNonQueryAsync(context.RequestAborted);
@@ -631,15 +638,19 @@ public static class Module006StandalonePipelineModule
             await transaction.CommitAsync(context.RequestAborted);
             return Results.Ok(new
             {
-                status = "module006_pipeline_record_archived",
-                message = "The Module 006 row was archived and its history was preserved.",
+                status = request.Archive ? "module006_pipeline_record_archived" : "module006_pipeline_record_restored",
+                message = request.Archive
+                    ? "The Module 006 row was archived and its history was preserved."
+                    : "The Module 006 row was restored to the active pipeline.",
                 recordId,
-                revision = revision.Value + 1
+                revision = revision.Value + 1,
+                authority = "module006",
+                linkedToModule055C = false
             });
         }
         catch (Exception exception)
         {
-            return RuntimeFailure(exception, "archive");
+            return RuntimeFailure(exception, request.Archive ? "archive" : "restore");
         }
     }
 
