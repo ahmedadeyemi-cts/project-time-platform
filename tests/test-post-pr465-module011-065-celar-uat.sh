@@ -72,7 +72,7 @@ require_text "$RAG_CONTRACTS" 'GLOBAL_ADMINISTRATOR' ai_role_authority_global_ad
 require_text "$RAG_CONTRACTS" 'SYSTEM_ADMINISTRATOR' ai_role_authority_system_admin_alias
 require_text "$RAG_CONTRACTS" 'PulseAiRoleAuthority.HasAdministratorRole(RoleCodes)' private_rag_uses_canonical_admin_authority
 require_text "$SYSTEM_CONTRACTS" 'PulseAiRoleAuthority.HasAdministratorRole(RoleCodes)' system_intelligence_uses_canonical_admin_authority
-require_text "$HELP" 'effectiveHelpAnswerPreferences(clean)' help_uses_saved_or_query_detail_preference
+require_text "$HELP" 'applyHelpAnswerPreferences(preferenceUrl, clean)' help_uses_saved_or_query_detail_preference
 require_text "$HELP" "const detailLevel = result?.detailLevel ?? 'standard';" help_standard_default
 reject_text "$HELP" "detailLevel: 'comprehensive'," help_no_forced_comprehensive_request
 require_text "$HELP" 'open={troubleshootingProfile || detailedProfile}' help_current_state_intent_aware

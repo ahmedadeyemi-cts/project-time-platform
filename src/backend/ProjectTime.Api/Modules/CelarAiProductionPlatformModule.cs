@@ -427,7 +427,7 @@ public static partial class CelarAiProductionPlatformModule
                 .FirstOrDefault(item => item.SourceCode == "live_endpoint_registry")
                 ?? result.Sources.FirstOrDefault();
             var dataAsOf = source?.ObservedAt ?? DateTimeOffset.UtcNow;
-            var answer = result.Answer with
+            var apiInventoryAnswer = result.Answer with
             {
                 DirectConclusion = $"The running application currently registers {apiCount} API route/method combination{(apiCount == 1 ? string.Empty : "s")} across {moduleCount} module owner{(moduleCount == 1 ? string.Empty : "s")}.",
                 ExecutiveSummary = "The count comes from the live ASP.NET endpoint registry for the current application revision. Registration confirms that a route is present; it does not by itself prove every downstream dependency is healthy.",
@@ -464,7 +464,7 @@ public static partial class CelarAiProductionPlatformModule
                 ConfidenceExplanation = "High confidence because the count is generated from the current runtime endpoint registry.",
                 DataAsOf = dataAsOf
             };
-            return result with { Status = "completed", Answer = answer };
+            return result with { Status = "completed", Answer = apiInventoryAnswer };
         }
 
         var direct = result.Answer.DirectConclusion?.Trim() ?? string.Empty;

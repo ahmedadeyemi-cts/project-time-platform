@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './help.css';
 import './help-assistant.css';
 import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
-import { applyHelpAnswerPreferences, effectiveHelpAnswerPreferences } from './help/help-answer-preferences.js';
+import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
 import './pulse-ai-system-chat.css';
 import './celar-ai-contextual-chat.css';
 
@@ -546,7 +546,8 @@ export default function HelpAssistant() {
       const questionWithContext = explicitContext.length
         ? `${clean}\n\nExplicit current-question context:\n- ${explicitContext.join('\n- ')}`
         : clean;
-      const answerPreferences = effectiveHelpAnswerPreferences(clean);
+      const preferenceUrl = new URL(path, window.location.origin);
+      const answerPreferences = applyHelpAnswerPreferences(preferenceUrl, clean);
       const payload = await postJson(path, {
         conversationId: conversationId || null,
         question: questionWithContext,
