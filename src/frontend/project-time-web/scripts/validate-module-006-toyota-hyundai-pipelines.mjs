@@ -64,8 +64,9 @@ rejectAll(component, [
 
 requireAll(api, [
   'MapModule006StandalonePipelineEndpoints',
-  'GET',
-  '/api/module-006/pipeline',
+  'app.MapGet("/api/module-006/pipeline"',
+  'app.MapPost("/api/module-006/pipeline"',
+  'app.MapPut("/api/module-006/pipeline/{recordId:guid}"',
   'module006_pipeline_records',
   'module006_pipeline_updates',
   'linkedToModule055C = false',
@@ -75,8 +76,8 @@ requireAll(api, [
 
 requireAll(tasks, [
   'MapModule006StandaloneTaskEndpoints',
-  '/api/module-006/tasks',
-  '/api/module-006/pipeline/{recordId:guid}/tasks',
+  'app.MapGet("/api/module-006/tasks"',
+  'app.MapPost("/api/module-006/pipeline/{recordId:guid}/tasks"',
   'module006_pipeline_tasks',
   'module006_pipeline_task_events',
   'linkedToModule055C = false',
