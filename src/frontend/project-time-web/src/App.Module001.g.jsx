@@ -1,3 +1,7 @@
+/* MODULE_001_GENERATOR_ALREADY_APPLIED - generated; do not edit */
+/* LIVE_UI_ROUTE_AUTHORITY_COMPATIBILITY */
+/* PROJECTPULSE_REACT_OWNED_MORE_MENU */
+/* MODULE_001_REACT_OWNED_EXTENSION_SLOTS */
 import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
@@ -31,7 +35,7 @@ const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
 ]);
 
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
-import SystemUserGuide from './SystemUserGuide.jsx';
+import SystemUserGuide from './SystemUserGuide.Module001.g.jsx';
 import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
 import EnterpriseModulePresentation from './enterprise/EnterpriseModulePresentation.jsx';
 import AiProviderReadinessController from './ai/AiProviderReadinessController.jsx';
@@ -581,6 +585,7 @@ import './timesheet.css';
 import './mobile-readiness.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
+import { getRollingYearOptions } from './rolling-year-window.js';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
 import ManagerTeamUtilizationPanel from './ManagerTeamUtilizationPanel.jsx';
 import ApprovalCenter from './ApprovalCenter.jsx';
@@ -608,6 +613,7 @@ import CustomerDirectoryCenter from './CustomerDirectoryCenter.jsx';
 import ContractsCenter from './ContractsCenter.jsx';
 import RateCardAdministrationCenter from './RateCardAdministrationCenter.jsx';
 import WorkRegisterCenter from './WorkRegisterCenter.jsx';
+import ProjectRegisterCenter from './ProjectRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
@@ -1352,6 +1358,22 @@ function getProjectPulseCachedApprovalActionableCounts() {
 /* 039E_ACTIONABLE_APPROVAL_COUNT_END */
 
 
+async function projectPulseOptionalModuleFetch(loader, fallback, contextLabel) {
+  try {
+    return await loader();
+  } catch (error) {
+    if (window.ProjectPulseErrorPresentation?.capture) {
+      window.ProjectPulseErrorPresentation.capture(error, {
+        optional: true,
+        contextLabel
+      });
+    } else {
+      console.error('[ProjectPulse optional module request]', contextLabel, error);
+    }
+    return fallback;
+  }
+}
+
 function getStoredAuthSession() {
   try {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
@@ -2005,14 +2027,14 @@ const roleWorkspaceModules = sortProjectPulseModules([
     description: 'View project allocations, engineer hours, and SOW/GSD documents.',
     permissions: ['VIEW_PROJECT_ALLOCATION_INFO', 'MANAGE_PROJECT_ALLOCATION_INFO', 'MANAGE_ALL']
   },
-  {
-    route: 'psa-modules',
-    href: '#psa-modules',
-    title: 'PSA Modules',
-    navLabel: 'MODULE 006',
-    description: 'Review project intake, resource scheduling, expense management, and executive reporting workflows.',
-    permissions: ['VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING']
-  },
+    {
+  route: 'toyota-hyundai-pipelines',
+  href: '#toyota-hyundai-pipelines',
+  title: 'Toyota & Hyundai Pipelines',
+  navLabel: 'MODULE 006',
+  description: 'Track the reviewed Toyota and Hyundai workbook baseline plus additional customer pipeline records, active and archived work, ownership, SELL references, estimates, notes, and historical update evidence.',
+  permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+},
   {
     route: 'workflow',
     href: '#workflow',
@@ -2331,9 +2353,32 @@ const roleWorkspaceModules = sortProjectPulseModules([
   }
 ]);
 
+const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({
+  'celar-ai': 'work-task-builder',
+  'pulse-ai': 'work-task-builder',
+  'analytics': 'reporting',
+  'analytics-center': 'reporting',
+  'reports': 'reporting',
+  'executive-reporting': 'reporting',
+  'financial-report-center': 'reporting',
+  'enterprise-reporting': 'reporting',
+  'crm': 'crm-integration',
+  'crm-erp': 'crm-integration',
+  'crm-erp-integration': 'crm-integration',
+  'crm-integration-center': 'crm-integration',
+  'microsoft-integration': 'entra-secret-administration',
+  'module-065': 'entra-secret-administration',
+  'psa-modules': 'toyota-hyundai-pipelines',
+  'project-register': 'toyota-hyundai-pipelines',
+  'project-manager-workload': 'project-workload',
+  'project-management-workload': 'project-workload',
+  'resource-assignment-handoff': 'signed-handoff',
+  'global-mail-configuration': 'entra-secret-administration'
+});
+
 function normalizeRoute(hash) {
-  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
-  return cleaned || 'dashboard';
+  const cleaned = (hash || window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].trim();
+  return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard';
 }
 
 function canonicalProjectPulseRoleCode(value) {
@@ -3821,7 +3866,9 @@ function getInstalledModuleDescription(module) {
     'restore-validation': 'Validates restore points, restore readiness, and restore test evidence before relying on backups.',
     'replication-sync': 'Shows replication and synchronization status across backup, database, and operational readiness workflows.',
     'invoice-billing-center': 'Prepares partial and final invoice packages, preserves detailed time and rate evidence, and supports billing and Over / Under reporting.',
-    'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
+    'toyota-hyundai-pipelines': 'Toyota & Hyundai Pipelines — Module 006. Reviewed baseline plus additional customer pipeline records, bounded history, filters, and exports.',
+  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',
+  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'
   };
 
   return module?.description || descriptions[route] || 'Installed Project Health Dashboard module available to this role. Review the module for workflow details, operational status, and next actions.';
@@ -4007,10 +4054,7 @@ export default function App() {
   const [activitySearch, setActivitySearch] = useState('');
   const [focusedDayDate, setFocusedDayDate] = useState('');
   /* MODULE_001_TIMESHEET_MULTIVIEW_STATE_END */
-  const holidayYearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    return Array.from({ length: 11 }, (_, index) => String(currentYear + index));
-  }, []);
+  const holidayYearOptions = getRollingYearOptions().map(String);
   const [holidayUploadText, setHolidayUploadText] = useState('');
   const [holidayUploadStatus, setHolidayUploadStatus] = useState('No holiday upload yet');
   const [holidayUploadYear, setHolidayUploadYear] = useState(String(new Date().getFullYear()));
@@ -4167,8 +4211,8 @@ export default function App() {
           fetchJson(`/api/timesheets/week?weekStart=${selectedWeekStart}`, authSession),
           fetchJson('/api/work-location-groups', authSession),
           fetchJson('/api/work-locations', authSession),
-          fetchJson('/api/utilization/policies', authSession),
-          fetchJson('/api/utilization/targets', authSession),
+          projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/policies', authSession), { policies: [] }, 'Module 003 utilization policies'),
+          projectPulseOptionalModuleFetch(() => fetchJson('/api/utilization/targets', authSession), { targets: [] }, 'Module 003 utilization targets'),
           fetchJson(`/api/assignments/available-tasks?weekStart=${selectedWeekStart}`, authSession),
           fetchJson('/api/users/timesheet-preferences', authSession),
           fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`, authSession),
@@ -5735,12 +5779,6 @@ export default function App() {
     const payload = buildTimesheetPayload();
     if (payload.entries.length === 0) return;
 
-    const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
-    if (missingDescriptions.length > 0) {
-      setSaveStatus(getMissingDescriptionMessage(missingDescriptions));
-      return;
-    }
-
     setSaveStatus(statusMessage);
 
     try {
@@ -5761,12 +5799,6 @@ export default function App() {
 
     try {
       const payload = buildTimesheetPayload();
-      const missingDescriptions = getEntriesMissingDescriptions(payload.entries);
-
-      if (missingDescriptions.length > 0) {
-        setSaveStatus(getMissingDescriptionMessage(missingDescriptions));
-        return;
-      }
 
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/week/draft', payload);
       setTimesheet({ loading: false, data: result.timesheet, error: null });
@@ -6030,6 +6062,94 @@ export default function App() {
     currentRoleNames.some((roleName) => roleName.includes('project/team coordinator') || roleName.includes('project team coordinator') || roleName.includes('team coordinator'));
 
 
+
+  /* MODULE_001_CANONICAL_STATE_BRIDGE_START */
+  useEffect(() => {
+    if (timesheetView === 'queue' || timesheetView === 'calendar') {
+      setTimesheetView('weekly');
+      window.localStorage.setItem('projectPulseTimesheetView', 'weekly');
+    }
+  }, [timesheetView]);
+
+  useEffect(() => {
+    const canonicalCalendarEntries = activeRows.flatMap((row) =>
+      days.flatMap((day) =>
+        timeTypes.map((type) => ({
+          row,
+          day,
+          timeType: type,
+          entry: getEntry(row.id, day.date, type.key)
+        }))
+      )
+    );
+
+    const snapshot = {
+      selectedWeekStart,
+      days,
+      timeTypes,
+      activeRows,
+      entries,
+      timesheetView,
+      focusedDayDate,
+      draftPayload: buildTimesheetPayload(),
+      calendarEntries: canonicalCalendarEntries,
+      grandTotal,
+      normalTotal,
+      afterhoursTotal,
+      submissionStatus,
+      saveStatus,
+      isSaving,
+      isAnyDayEditable,
+      assignedTasks: assignedOpenTasks,
+      nonProjectCategories: categories,
+      isViewAs: Boolean(securityContext.data?.isViewAs)
+    };
+
+    window.__projectPulseModule001Snapshot = snapshot;
+    window.dispatchEvent(new CustomEvent('projectpulse:module001-state', { detail: snapshot }));
+  }, [
+    selectedWeekStart,
+    days,
+    timeTypes,
+    activeRows,
+    entries,
+    timesheetView,
+    focusedDayDate,
+    grandTotal,
+    normalTotal,
+    afterhoursTotal,
+    submissionStatus,
+    saveStatus,
+    isSaving,
+    isAnyDayEditable,
+    openTasks.data?.tasks,
+    timesheet.data?.nonProjectCategories,
+    securityContext.data?.isViewAs
+  ]);
+
+  useEffect(() => {
+    const handleModule001Action = (event) => {
+      const detail = event?.detail ?? {};
+      if (detail.type === 'add-assignment') {
+        const task = assignedOpenTasks.find((item) =>
+          String(item.assignmentId ?? item.projectAssignmentId ?? '') === String(detail.assignmentId ?? '')
+          || (
+            String(item.projectId ?? '') === String(detail.projectId ?? '')
+            && String(item.taskId ?? '') === String(detail.taskId ?? '')
+          )
+        );
+        if (task) addTask(task);
+      }
+
+      if (detail.type === 'open-entry' && detail.rowId && detail.workDate && detail.timeType) {
+        openEntryDetails(detail.rowId, detail.workDate, detail.timeType);
+      }
+    };
+
+    window.addEventListener('projectpulse:module001-action', handleModule001Action);
+    return () => window.removeEventListener('projectpulse:module001-action', handleModule001Action);
+  }, [openTasks.data?.tasks, activeRows, entries, selectedWeekStart]);
+  /* MODULE_001_CANONICAL_STATE_BRIDGE_END */
 
   if (!authSession) {
     return (
@@ -6418,7 +6538,37 @@ Analytics - Variphy / Infortel`}
               </button>
 
               {isTopMoreNavigationOpen ? (
-                <div id="enterprise-more-navigation-menu" className="enterprise-more-dropdown">
+                <div id="enterprise-more-navigation-menu" className="enterprise-more-dropdown projectpulse-more-intuitive" data-projectpulse-react-owned-menu="true" data-permission-evidence="loading">
+                  <div className="projectpulse-more-menu-tools">
+                    <div className="projectpulse-more-intuitive-heading">
+                      <strong>More pages</strong>
+                      <span>Open another page available to your current role or View-As identity.</span>
+                    </div>
+                    <label htmlFor="projectpulse-more-menu-search">Search pages</label>
+                    <div className="projectpulse-more-menu-search-row">
+                      <span aria-hidden="true">⌕</span>
+                      <input
+                        id="projectpulse-more-menu-search"
+                        type="search"
+                        autoComplete="off"
+                        placeholder="Search by page name"
+                        aria-label="Search available pages by name"
+                        onChange={(event) => window.ProjectPulseMoreNavigation?.filter(event.currentTarget.value)}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Clear More menu search"
+                        onClick={(event) => {
+                          const input = event.currentTarget.parentElement?.querySelector('input');
+                          if (input) { input.value = ''; input.focus(); }
+                          window.ProjectPulseMoreNavigation?.filter('');
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <p className="projectpulse-more-menu-status" role="status">Pages remain hidden until dynamic RBAC permission evidence is verified.</p>
+                  </div>
                   {navigationModel.groups.map((group) => (
                     <div className="enterprise-more-group" key={group.name}>
                       <strong>{group.name}</strong>
@@ -6428,9 +6578,11 @@ Analytics - Variphy / Infortel`}
                             href={item.href}
                             key={`enterprise-more-${group.name}-${item.route}`}
                             className={activeRoute === item.route ? 'active' : ''}
+                            data-page-name={item.label}
                             onClick={() => setIsTopMoreNavigationOpen(false)}
                           >
-                            {getNavigationDisplayLabel(item)}
+                            <strong className="projectpulse-more-intuitive-name">{item.label}</strong>
+                            <span className="projectpulse-more-intuitive-arrow" aria-hidden="true">›</span>
                           </a>
                         ))}
                       </div>
@@ -6553,6 +6705,13 @@ Analytics - Variphy / Infortel`}
       <AiProviderReadinessController authSession={authSession} />
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_END */}
 
+      {/* PR467_MODULE_006_EXCLUSIVE_ROUTE_START */}
+      {activeRoute === 'toyota-hyundai-pipelines' ? (
+        <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
+          <ProjectRegisterCenter legacyRoute={false} />
+        </section>
+      ) : (
+        <>
       {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
       {(activeRoute === 'contracts' && canSeeAny(['VIEW_CUSTOMERS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'MANAGE_PROJECT_INTAKE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="contracts" className="panel contracts-route-panel">
@@ -7166,7 +7325,7 @@ Analytics - Variphy / Infortel`}
       ) : null}
       {/* GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START */}
       {(activeRoute === 'reporting' && canSeeAny(['VIEW_FINANCIAL_REPORT_CENTER', 'RUN_FINANCIAL_REPORTS', 'VIEW_REPORTS', 'MANAGE_REPORTS', 'VIEW_EXECUTIVE_REPORTING', 'VIEW_ACCOUNT_RECONCILIATION', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
-        <section id="reporting" className="panel financial-report-center-route-panel">
+        <section id="reporting" className="analytics-center-route-panel" data-authoritative-module="030">
           <AnalyticsCenter authSession={authSession} />
         </section>
       ) : null}
@@ -7350,6 +7509,8 @@ Analytics - Variphy / Infortel`}
       </section>
 
       <section id="timesheet" className="panel timesheet-page">
+        <div id="module001-active-timer-recovery-host" className="module001-active-timer-recovery-host" data-projectpulse-react-owned-slot="true" />
+        <div id="module001-ptc-time-steward-host" className="module001-ptc-time-steward-host" data-projectpulse-react-owned-slot="true" />
         <div className="timesheet-toolbar">
           <div>
             <p className="eyebrow">MODULE 001</p>
@@ -7360,6 +7521,7 @@ Analytics - Variphy / Infortel`}
           </div>
 
           <div className="toolbar-actions">
+            <div id="module001-toolbar-host" className="module001-toolbar-host" data-projectpulse-react-owned-slot="true" />
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, -7))}>← Previous</button>
             <button type="button" onClick={() => setSelectedWeekStart(getSundayIso())}>Current week</button>
             <button type="button" onClick={() => setSelectedWeekStart(addDaysIso(selectedWeekStart, 7))}>Next →</button>
@@ -7370,12 +7532,11 @@ Analytics - Variphy / Infortel`}
         </div>
 
         <div className="timesheet-view-switcher" role="tablist" aria-label="Timesheet views">
+          <div id="module001-view-tab-host" className="module001-view-tab-host" data-projectpulse-react-owned-slot="true" />
           {[
             { key: 'weekly', label: 'Weekly Grid', description: 'Full seven-day grid' },
             { key: 'daily', label: 'Daily Focus', description: 'Mobile-friendly day entry' },
-            { key: 'queue', label: 'My Work Queue', description: 'Assigned tasks and requests' },
-            { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' },
-            { key: 'calendar', label: 'Calendar / Timeline', description: 'Week-at-a-glance totals' }
+            { key: 'quick', label: 'Quick Entry List', description: 'Compact activity entry' }
           ].map((view) => (
             <button
               type="button"
@@ -7407,6 +7568,7 @@ Analytics - Variphy / Infortel`}
 
         <DataState loading={timesheet.loading} error={timesheet.error}>
           <div className="timesheet-workspace">
+            <div id="module001-enhancement-view-host" className="module001-enhancement-view-host" data-projectpulse-react-owned-slot="true" />
             <aside className="activities-panel" aria-label="Activities">
               <div className="panel-title-row">
                 <h3>Activities</h3>
@@ -8233,74 +8395,7 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(activeRoute === 'dashboard') ? (
-<section id="psa-modules" className={`panel module-foundation-panel ${canViewPsaModules ? '' : 'access-hidden'}`}>
-        <div className="section-header compact">
-          <div>
-            <p className="eyebrow">PSA platform modules</p>
-            <h2>Remaining sections foundation</h2>
-            <p className="muted">These sections prepare the rest of Project Health Dashboard beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
-          </div>
-          <span className="pill">Foundation ready</span>
-        </div>
 
-        {remainingModules.error ? <p className="error-text">{remainingModules.error}</p> : null}
-
-        <div className="module-grid">
-          <article className="module-card">
-            <span className="status-label">Project intake</span>
-            <strong>{intakeCount} request{intakeCount === 1 ? '' : 's'}</strong>
-            <small>Sales handoff, client intake, project templates, and PM assignment.</small>
-          </article>
-          <article className="module-card">
-            <span className="status-label">Project management</span>
-            <strong>{milestoneCount} milestones</strong>
-            <small>{riskCount} tracked risk{riskCount === 1 ? '' : 's'} for project delivery governance.</small>
-          </article>
-          <article className="module-card">
-            <span className="status-label">Resource scheduling</span>
-            <strong>{capacityCount} capacity rows</strong>
-            <small>Weekly availability, assigned hours, and utilization capacity planning.</small>
-          </article>
-          <article className="module-card">
-            <span className="status-label">Expense management</span>
-            <strong>{expenseCount} report{expenseCount === 1 ? '' : 's'}</strong>
-            <small>Expense report shell, receipt tracking, reimbursable expenses, and approval state.</small>
-          </article>
-          <article className="module-card">
-            <span className="status-label">Invoicing</span>
-            <strong>{invoiceCount} invoice{invoiceCount === 1 ? '' : 's'}</strong>
-            <small>Draft client invoice staging for labor, expenses, export, and accounting review.</small>
-          </article>
-          <article className="module-card">
-            <span className="status-label">Executive reporting</span>
-            <strong>{executiveMetricCount} metrics</strong>
-            <small>Snapshot-based executive dashboard foundation for operational reporting.</small>
-          </article>
-        </div>
-
-        <div className="module-detail-grid">
-          <article>
-            <h3>Project milestones</h3>
-            {(moduleData.projectManagement?.milestones ?? []).slice(0, 7).map((milestone) => (
-              <div className="module-list-row" key={`${milestone.projectCode}-${milestone.name}`}>
-                <strong>{milestone.name}</strong>
-                <span>{milestone.projectCode} • {milestone.status} • due {milestone.dueDate ?? 'TBD'}</span>
-              </div>
-            ))}
-          </article>
-          <article>
-            <h3>Resource capacity</h3>
-            {(moduleData.resourceCapacity?.capacity ?? []).map((capacity) => (
-              <div className="module-list-row" key={`${capacity.resourceEmail}-${capacity.weekStart}`}>
-                <strong>{capacity.resourceName}</strong>
-                <span>{capacity.weekStart}: {formatNumber(capacity.assignedHours)} assigned / {formatNumber(capacity.availableHours)} available • {capacity.status}</span>
-              </div>
-            ))}
-          </article>
-        </div>
-      </section>
-      ) : null}
 
 
       <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">
@@ -8433,6 +8528,9 @@ Analytics - Variphy / Infortel`}
       </div>
 
       <HelpAssistant />
+        </>
+      )}
+      {/* PR467_MODULE_006_EXCLUSIVE_ROUTE_END */}
 </main>
   );
 }
