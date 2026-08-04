@@ -66,7 +66,7 @@ jobs:
 
           case "$HEAD_BRANCH" in
             fix/module-011-help-chat-usability-*)
-              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime.Api.csproj)$'
               UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
               if [[ -n "$UNEXPECTED" ]]; then
                 echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
@@ -80,7 +80,7 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
               ;;
-            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*)
+            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*|fix/post-pr465-module011-065-celar-uat-*)
               UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
                 | grep -Ev '^database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)$' \
                 || true)"

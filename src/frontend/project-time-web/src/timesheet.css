@@ -5427,7 +5427,7 @@ body:has(.app-shell.route-cost-alerts) .app-shell.route-cost-alerts > #cost-aler
 }
 
 /* 019M-AP repair: Work Task Builder route isolation */
-.app-shell.route-work-task-builder section:not(#work-task-builder):not(:has(#work-task-builder)) {
+.app-shell.route-work-task-builder > section:not(#work-task-builder) {
   display: none !important;
 }
 

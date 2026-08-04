@@ -1,0 +1,138 @@
+name: Validate Post-PR465 Module 011, Module 065, and Celar AI UAT Repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/post-pr465-live-uat-repair-ci.yml'
+      - 'tests/test-post-pr465-module011-065-celar-uat.sh'
+      - 'src/frontend/project-time-web/src/timesheet.css'
+      - 'src/frontend/project-time-web/src/ModuleAvailabilityController.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
+      - 'src/frontend/project-time-web/src/HelpAssistant.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-pr465-live-uat-repair-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact head and source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          git fetch origin '${{ github.event.pull_request.base.ref }}' --no-tags
+          BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
+          git merge-base --is-ancestor "$BASE" HEAD
+          git diff --check "$BASE"...HEAD
+          if git diff --name-only "$BASE"...HEAD -- database/migrations database/rollback | grep -q .; then
+            echo 'This source-only UAT repair must not add or modify migrations.' >&2
+            exit 1
+          fi
+          echo "POST_PR465_BASE_SHA=$BASE"
+          echo "POST_PR465_HEAD_SHA=$(git rev-parse HEAD)"
+
+      - name: Validate repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Run focused UAT source contract
+        run: bash tests/test-post-pr465-module011-065-celar-uat.sh
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check src/frontend/project-time-web/src/module-availability-bridge.js
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee /tmp/post-pr465-api-build.log
+          grep -Fq '0 Error(s)' /tmp/post-pr465-api-build.log
+          echo 'POST_PR465_API_BUILD=PASS'
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete production frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Verify production bundle markers
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat dist/assets/*.js > /tmp/post-pr465.js
+          cat dist/assets/*.css > /tmp/post-pr465.css
+          for marker in \
+            'Celar AI Architecture Overview' \
+            'Created by Dr. Ahmed Adeyemi' \
+            '/api/celar-ai/v2/chat' \
+            'Registered APIs returned for this answer' \
+            'standard intent-aware default' \
+            'Open module'; do
+            grep -Fq "$marker" /tmp/post-pr465.js
+          done
+          grep -Fq '.celar-ai-architecture-overview' /tmp/post-pr465.css
+          grep -Fq '.celar-production-content' /tmp/post-pr465.css
+          if grep -Fq '.app-shell.route-work-task-builder section:not(#work-task-builder):not(:has(#work-task-builder))' /tmp/post-pr465.css; then
+            echo 'Production CSS still contains recursive Module 011 section hiding.' >&2
+            exit 1
+          fi
+          echo 'POST_PR465_PRODUCTION_MARKERS=PASS'
+
+      - name: Confirm build restored tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! git diff --quiet; then
+            echo 'The production build mutated tracked source:' >&2
+            git diff --stat >&2
+            git diff --name-only >&2
+            exit 1
+          fi
+          echo 'POST_PR465_TRACKED_SOURCE_MUTATION=0'
+
+      - name: Build production web container
+        run: docker build --file deployment/containers/web/Dockerfile --tag projectpulse-post-pr465-uat:${{ github.sha }} .
