@@ -54,6 +54,7 @@ public static class Pr467UatRepairModule
             return Results.NotFound(new { status = "project_not_found_or_unauthorized", message = "The created work record is unavailable in the current scope." });
 
         var workType = CanonicalWorkType(reader.GetString(4));
+        var createdAt = reader.GetString(5);
         return Results.Ok(new
         {
             status = "work_creation_receipt_loaded",
@@ -61,7 +62,7 @@ public static class Pr467UatRepairModule
             workCode = reader.GetString(1),
             workType,
             workTypeLabel = WorkTypeLabel(workType),
-            createdAt = string.IsNullOrWhiteSpace(reader.GetString(5)) ? DateTimeOffset.UtcNow : reader.GetString(5),
+            createdAt = string.IsNullOrWhiteSpace(createdAt) ? DateTimeOffset.UtcNow.ToString("O") : createdAt,
             customerName = reader.GetString(3),
             workName = reader.GetString(2),
             identifierLabel = IdentifierLabel(workType),
