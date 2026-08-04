@@ -76,10 +76,20 @@ assert('MORE_MENU_NAME_ONLY_SEARCH', moreInjector.includes('Search by page name'
 
 assert('MORE_MENU_NAME_ONLY_OPTIONS', moreInjector.includes('projectpulse-more-intuitive-name')
   && moreInjector.includes('projectpulse-more-intuitive-arrow')
-  && moreInjector.includes('data-page-name={item.label}')
+  && moreInjector.includes('data-more-label-source="module-registry"')
+  && moreInjector.includes('data-page-name={getNavigationDisplayLabel(item)}')
+  && moreInjector.includes('<strong className="projectpulse-more-intuitive-name">{getNavigationDisplayLabel(item)}</strong>')
+  && !moreInjector.includes('data-page-name={item.label}')
+  && !moreInjector.includes('<strong className="projectpulse-more-intuitive-name">{item.label}</strong>')
+  && app.includes("import { moduleForRoute } from './module-availability-registry.js';")
+  && app.includes("return moduleForRoute(item?.route)?.displayName || item?.title || item?.label || 'Dashboard';")
+  && app.includes('const canonicalRoute = moduleForRoute(item.route)?.route || item.route;')
+  && app.includes('if (!availableByRoute.has(canonicalRoute))')
+  && registry.includes("moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'")
+  && registry.includes("moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox'")
   && intuitiveCss.includes('.projectpulse-more-intuitive .projectpulse-more-module-number')
   && intuitiveCss.includes('display: none !important'),
-'each More option renders the friendly page name and navigation affordance without a visible module number');
+'each More option and its search metadata use the canonical registry name instead of the internal module label');
 
 assert('MORE_MENU_RUNTIME_NON_MUTATING', intuitive.includes("moreMenu: 'react-owned-v1'")
   && intuitive.includes('must never replace, prepend, append, or remove children')

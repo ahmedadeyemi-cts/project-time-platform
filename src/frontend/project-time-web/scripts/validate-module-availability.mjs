@@ -108,6 +108,7 @@ if (fullBackendAvailable) {
 }
 
 requireText(registry, "moduleNumber: '001', route: 'timesheet', displayName: 'Timesheet'", 'Module 001 Timesheet name');
+requireText(registry, "moduleNumber: '002', route: 'manager-approval', displayName: 'Approval Inbox'", 'Module 002 Approval Inbox name');
 requireText(registry, 'PROJECTPULSE_MODULES', 'shared module registry');
 requireText(registry, 'replaceTimesheetLabel', 'Time Entry label normalization');
 rejectText(registry, "displayName: 'Time Entry'", 'retired Module 001 display name');
@@ -170,5 +171,8 @@ requireText(project, 'app.MapModuleAvailabilityOverrideEndpoints();', 'lightweig
 requireText(packageJson, 'validate:module-availability', 'validator registration');
 requireText(packageJson, 'npm run validate:module-availability', 'build-chain registration');
 requireText(app, "title: 'Timesheet'", 'canonical Module 001 page title');
+requireText(app, "import { moduleForRoute } from './module-availability-registry.js';", 'canonical navigation label resolver import');
+requireText(app, "return moduleForRoute(item?.route)?.displayName || item?.title || item?.label || 'Dashboard';", 'canonical navigation display name preference');
+requireText(app, 'const canonicalRoute = moduleForRoute(item.route)?.route || item.route;', 'canonical navigation alias deduplication');
 
-console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only resultExecution=typed-delegate default=enabled permanentAdmin=shared-resolver module001=Timesheet backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);
+console.log(`MODULE_AVAILABILITY_VALIDATION=PASS design=existing-directory overrides-only resultExecution=typed-delegate default=enabled permanentAdmin=shared-resolver navigationNames=canonical module001=Timesheet module002=Approval-Inbox backend=${fullBackendAvailable ? 'full' : 'frontend-container'}`);

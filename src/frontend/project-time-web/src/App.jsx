@@ -9,6 +9,7 @@ import {
   compareProjectPulseModules,
   sortProjectPulseModules
 } from './module-ordering.js';
+import { moduleForRoute } from './module-availability-registry.js';
 
 const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'ai-provider-configuration': '064',
@@ -2422,7 +2423,7 @@ function getRoleNavigation(user) {
 
 
 function getNavigationDisplayLabel(item) {
-  return item?.title || item?.label || 'Dashboard';
+  return moduleForRoute(item?.route)?.displayName || item?.title || item?.label || 'Dashboard';
 }
 
 function userHasRoleText(user, fragments) {
@@ -3091,8 +3092,9 @@ function buildRoleNavigationModel(user, navigationItems) {
   const availableByRoute = new Map();
 
   availableItems.forEach((item) => {
-    if (!availableByRoute.has(item.route)) {
-      availableByRoute.set(item.route, item);
+    const canonicalRoute = moduleForRoute(item.route)?.route || item.route;
+    if (!availableByRoute.has(canonicalRoute)) {
+      availableByRoute.set(canonicalRoute, item);
     }
   });
 
