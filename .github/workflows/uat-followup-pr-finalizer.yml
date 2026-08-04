@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/uat-followup-pr-finalizer.yml'
       - 'scripts/finalize-uat-followup-source.py'
+      - 'src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs'
 
 permissions:
   contents: write
@@ -35,7 +36,6 @@ jobs:
           python3 scripts/finalize-uat-followup-source.py
           git diff --check
           python3 tests/validate-uat-followup-modules.py
-          node --check src/frontend/project-time-web/src/ProjectRegisterCenter.jsx || true
           node --check src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
           node src/frontend/project-time-web/scripts/validate-module-006-toyota-hyundai-pipelines.mjs
 
