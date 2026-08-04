@@ -1,0 +1,65 @@
+name: PR467 Generated Source Compile Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/pr467-compile-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr467-generated-source-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/uat-modules-005-006-039-work-identifiers-20260803'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Capture canonical and generated source evidence
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "PR467_DIAGNOSTIC_HEAD=$(git rev-parse HEAD)"
+          echo '--- canonical repair module ---'
+          wc -l src/backend/ProjectTime.Api/Modules/Pr467UatRepairModule.cs
+          nl -ba src/backend/ProjectTime.Api/Modules/Pr467UatRepairModule.cs | tail -n 40
+          echo '--- pre-build mutation-request matches ---'
+          grep -R -n --include='*.cs' 'Pr467UatRepairMutationRequest' src . || true
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore > /tmp/pr467-build.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/pr467-build.log
+          echo '--- post-build mutation-request matches ---'
+          grep -R -n --include='*.cs' 'Pr467UatRepairMutationRequest' src . || true
+          echo '--- generated and compiler input candidates ---'
+          find src/backend/ProjectTime.Api -type f \( -name '*.g.cs' -o -name '*.cs' \) -print0 |
+            xargs -0 grep -l 'Pr467UatRepairMutationRequest' 2>/dev/null || true
+          echo '--- source around every mutation-request match ---'
+          while IFS=: read -r file line rest; do
+            [[ -n "$file" && -n "$line" ]] || continue
+            start=$(( line > 15 ? line - 15 : 1 ))
+            end=$(( line + 25 ))
+            echo "### $file:$line"
+            nl -ba "$file" | sed -n "${start},${end}p"
+          done < <(grep -R -n --include='*.cs' 'Pr467UatRepairMutationRequest' src . 2>/dev/null || true)
+          echo "PR467_BUILD_EXIT_CODE=$status"
+          exit 0
