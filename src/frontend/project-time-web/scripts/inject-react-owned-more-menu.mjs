@@ -20,7 +20,7 @@ if (!source.includes(dropdown)) {
 }
 source = source.replace(
   dropdown,
-  `<div id="enterprise-more-navigation-menu" className="enterprise-more-dropdown projectpulse-more-intuitive" data-projectpulse-react-owned-menu="true" data-permission-evidence="loading">\n                  <div className="projectpulse-more-menu-tools">\n                    <div className="projectpulse-more-intuitive-heading">\n                      <strong>More pages</strong>\n                      <span>Open another page available to your current role or View-As identity.</span>\n                    </div>\n                    <label htmlFor="projectpulse-more-menu-search">Search pages</label>\n                    <div className="projectpulse-more-menu-search-row">\n                      <span aria-hidden="true">⌕</span>\n                      <input\n                        id="projectpulse-more-menu-search"\n                        type="search"\n                        autoComplete="off"\n                        placeholder="Search by page name"\n                        aria-label="Search available pages by name"\n                        onChange={(event) => window.ProjectPulseMoreNavigation?.filter(event.currentTarget.value)}\n                      />\n                      <button\n                        type="button"\n                        aria-label="Clear More menu search"\n                        onClick={(event) => {\n                          const input = event.currentTarget.parentElement?.querySelector('input');\n                          if (input) { input.value = ''; input.focus(); }\n                          window.ProjectPulseMoreNavigation?.filter('');\n                        }}\n                      >\n                        Clear\n                      </button>\n                    </div>\n                    <p className="projectpulse-more-menu-status" role="status">Pages remain hidden until dynamic RBAC permission evidence is verified.</p>\n                  </div>`
+  `<div id="enterprise-more-navigation-menu" className="enterprise-more-dropdown projectpulse-more-intuitive" data-projectpulse-react-owned-menu="true" data-more-label-source="module-registry" data-permission-evidence="loading">\n                  <div className="projectpulse-more-menu-tools">\n                    <div className="projectpulse-more-intuitive-heading">\n                      <strong>More pages</strong>\n                      <span>Open another page available to your current role or View-As identity.</span>\n                    </div>\n                    <label htmlFor="projectpulse-more-menu-search">Search pages</label>\n                    <div className="projectpulse-more-menu-search-row">\n                      <span aria-hidden="true">⌕</span>\n                      <input\n                        id="projectpulse-more-menu-search"\n                        type="search"\n                        autoComplete="off"\n                        placeholder="Search by page name"\n                        aria-label="Search available pages by name"\n                        onChange={(event) => window.ProjectPulseMoreNavigation?.filter(event.currentTarget.value)}\n                      />\n                      <button\n                        type="button"\n                        aria-label="Clear More menu search"\n                        onClick={(event) => {\n                          const input = event.currentTarget.parentElement?.querySelector('input');\n                          if (input) { input.value = ''; input.focus(); }\n                          window.ProjectPulseMoreNavigation?.filter('');\n                        }}\n                      >\n                        Clear\n                      </button>\n                    </div>\n                    <p className="projectpulse-more-menu-status" role="status">Pages remain hidden until dynamic RBAC permission evidence is verified.</p>\n                  </div>`
 );
 
 const link = `                          <a
@@ -35,10 +35,10 @@ const reactOwnedLink = `                          <a
                             href={item.href}
                             key={\`enterprise-more-\${group.name}-\${item.route}\`}
                             className={activeRoute === item.route ? 'active' : ''}
-                            data-page-name={item.label}
+                            data-page-name={getNavigationDisplayLabel(item)}
                             onClick={() => setIsTopMoreNavigationOpen(false)}
                           >
-                            <strong className="projectpulse-more-intuitive-name">{item.label}</strong>
+                            <strong className="projectpulse-more-intuitive-name">{getNavigationDisplayLabel(item)}</strong>
                             <span className="projectpulse-more-intuitive-arrow" aria-hidden="true">›</span>
                           </a>`;
 if (!source.includes(link)) {
@@ -53,14 +53,24 @@ source = source.replace(
 
 for (const required of [
   'data-projectpulse-react-owned-menu="true"',
+  'data-more-label-source="module-registry"',
   'Search by page name',
   'window.ProjectPulseMoreNavigation?.filter',
   'projectpulse-more-intuitive-name',
   'projectpulse-more-intuitive-arrow',
-  'data-page-name={item.label}'
+  'data-page-name={getNavigationDisplayLabel(item)}',
+  '<strong className="projectpulse-more-intuitive-name">{getNavigationDisplayLabel(item)}</strong>'
 ]) {
   if (!source.includes(required)) throw new Error(`React-owned More menu missing: ${required}`);
 }
 
+const internalModuleLabelExpression = `item.${'label'}`;
+for (const forbidden of [
+  `data-page-name={${internalModuleLabelExpression}}`,
+  `<strong className="projectpulse-more-intuitive-name">{${internalModuleLabelExpression}}</strong>`
+]) {
+  if (source.includes(forbidden)) throw new Error(`React-owned More menu retained internal module label: ${forbidden}`);
+}
+
 fs.writeFileSync(generatedAppPath, source, 'utf8');
-console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0');
+console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0 labels=module-registry');

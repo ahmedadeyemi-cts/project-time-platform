@@ -103,11 +103,18 @@ requireAll(moreInjector, [
   'PROJECTPULSE_REACT_OWNED_MORE_MENU',
   'data-projectpulse-react-owned-menu="true"',
   'Search by page name',
+  'data-more-label-source="module-registry"',
+  'data-page-name={getNavigationDisplayLabel(item)}',
+  '<strong className="projectpulse-more-intuitive-name">{getNavigationDisplayLabel(item)}</strong>',
   'window.ProjectPulseMoreNavigation?.filter',
   'projectpulse-more-intuitive-name',
   'projectpulse-more-intuitive-arrow',
   'runtimeChildReplacement=0'
 ], 'React-owned More menu generator');
+rejectAll(moreInjector, [
+  'data-page-name={item.label}',
+  '<strong className="projectpulse-more-intuitive-name">{item.label}</strong>'
+], 'internal module labels in More menu');
 
 requireAll(timerPortal, [
   "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
