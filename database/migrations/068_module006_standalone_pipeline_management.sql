@@ -62,25 +62,68 @@ CREATE TABLE IF NOT EXISTS module006_pipeline_updates (
 CREATE INDEX IF NOT EXISTS ix_module006_pipeline_updates_record_time
     ON module006_pipeline_updates(module006_pipeline_record_id, created_at DESC);
 
-CREATE OR REPLACE FUNCTION projectpulse068_block_pipeline_update_mutation()
+CREATE TABLE IF NOT EXISTS module006_pipeline_tasks (
+    module006_pipeline_task_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    module006_pipeline_record_id UUID NOT NULL
+        REFERENCES module006_pipeline_records(module006_pipeline_record_id) ON DELETE RESTRICT,
+    task_title TEXT NOT NULL CHECK (length(btrim(task_title)) >= 3),
+    task_description TEXT NOT NULL DEFAULT '',
+    task_status TEXT NOT NULL DEFAULT 'not_started'
+        CHECK (task_status IN ('not_started', 'in_progress', 'blocked', 'completed', 'cancelled')),
+    assigned_to TEXT NOT NULL DEFAULT '',
+    due_date DATE,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by_user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    updated_by_user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_module006_pipeline_tasks_record_status
+    ON module006_pipeline_tasks(module006_pipeline_record_id, is_archived, task_status, due_date NULLS LAST);
+
+CREATE TABLE IF NOT EXISTS module006_pipeline_task_events (
+    module006_pipeline_task_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    module006_pipeline_task_id UUID NOT NULL
+        REFERENCES module006_pipeline_tasks(module006_pipeline_task_id) ON DELETE RESTRICT,
+    event_type TEXT NOT NULL CHECK (event_type IN ('created', 'updated', 'archived', 'restored')),
+    note_text TEXT NOT NULL DEFAULT '',
+    task_status TEXT NOT NULL DEFAULT '',
+    assigned_to TEXT NOT NULL DEFAULT '',
+    due_date DATE,
+    created_by_user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_module006_pipeline_task_events_task_time
+    ON module006_pipeline_task_events(module006_pipeline_task_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION projectpulse068_block_pipeline_history_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse068_updates_immutable$
+AS $projectpulse068_history_immutable$
 BEGIN
-    RAISE EXCEPTION 'Module 006 pipeline update history is append-only.';
+    RAISE EXCEPTION 'Module 006 pipeline update and task history is append-only.';
 END;
-$projectpulse068_updates_immutable$;
+$projectpulse068_history_immutable$;
 
 DROP TRIGGER IF EXISTS trg_module006_pipeline_updates_immutable
     ON module006_pipeline_updates;
 CREATE TRIGGER trg_module006_pipeline_updates_immutable
 BEFORE UPDATE OR DELETE ON module006_pipeline_updates
-FOR EACH ROW EXECUTE FUNCTION projectpulse068_block_pipeline_update_mutation();
+FOR EACH ROW EXECUTE FUNCTION projectpulse068_block_pipeline_history_mutation();
+
+DROP TRIGGER IF EXISTS trg_module006_pipeline_task_events_immutable
+    ON module006_pipeline_task_events;
+CREATE TRIGGER trg_module006_pipeline_task_events_immutable
+BEFORE UPDATE OR DELETE ON module006_pipeline_task_events
+FOR EACH ROW EXECUTE FUNCTION projectpulse068_block_pipeline_history_mutation();
 
 INSERT INTO schema_migrations(migration_id, description, applied_at)
 VALUES (
     '068_module006_standalone_pipeline_management',
-    'Add standalone Toyota and Hyundai pipeline records, editable status fields, and append-only update history for Module 006 without a Module 055C dependency',
+    'Add standalone Toyota and Hyundai pipeline records, editable status fields, standalone tasks, and append-only update history for Module 006 without a Module 055C dependency',
     NOW()
 )
 ON CONFLICT (migration_id) DO UPDATE
