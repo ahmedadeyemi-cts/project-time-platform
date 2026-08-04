@@ -263,6 +263,16 @@
   color: #cfe8ff;
 }
 
+@media (min-width: 1160px) {
+  .enterprise-more-dropdown.projectpulse-more-intuitive {
+    width: min(900px, calc(100vw - 2rem));
+  }
+
+  .projectpulse-more-intuitive .enterprise-more-links {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 920px) {
   .brand-lockup {
     min-width: 250px;
