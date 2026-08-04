@@ -4,9 +4,210 @@ import path from 'node:path';
 const webRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const appPath = path.join(webRoot, 'src', 'App.Module001.g.jsx');
 const modulesPortalPath = path.join(webRoot, 'src', 'ModulesDirectoryPortal.jsx');
+const projectRegisterPath = path.join(webRoot, 'src', 'ProjectRegisterCenter.jsx');
+const stackedLogoSourcePath = path.resolve(
+  webRoot,
+  '..',
+  '..',
+  'backend',
+  'ProjectTime.Api',
+  'Assets',
+  'Branding',
+  'USSNavyStacked.png'
+);
+const stackedLogoTargetPath = path.join(webRoot, 'brand', 'ussignal.png');
 
 function count(source, needle) {
   return source.split(needle).length - 1;
+}
+
+function replaceExact(source, current, replacement, label) {
+  if (!source.includes(current)) throw new Error(`Module 006 customer expansion anchor is missing: ${label}`);
+  return source.replace(current, replacement);
+}
+
+function installCustomerExpansion() {
+  if (!fs.existsSync(projectRegisterPath)) {
+    throw new Error('Module 006 customer expansion requires ProjectRegisterCenter.jsx.');
+  }
+
+  let source = fs.readFileSync(projectRegisterPath, 'utf8');
+  if (source.includes('MODULE_006_CUSTOMER_EXPANSION_START')) return;
+
+  source = replaceExact(
+    source,
+    "import './module006-standalone.css';",
+    "import './module006-standalone.css';\n\n// MODULE_006_CUSTOMER_EXPANSION_START",
+    'installation marker'
+  );
+
+  source = replaceExact(
+    source,
+    '<nav className="project-register-pagination" aria-label="Toyota and Hyundai pipeline pagination">',
+    '<nav className="project-register-pagination" aria-label="Customer pipeline pagination">',
+    'pagination label'
+  );
+
+  source = replaceExact(
+    source,
+    `  async function saveDetails() {
+    if (!selectedRecord || !canEdit) return;`,
+    `  async function saveDetails() {
+    if (!selectedRecord || !canEdit) return;
+    if (clean(editForm.customer).length < 2) {
+      setMessage('Enter a customer name containing at least two characters.');
+      return;
+    }`,
+    'project details customer validation'
+  );
+
+  source = replaceExact(
+    source,
+    `  async function createProject() {
+    if (!canEdit || !clean(newProjectForm.projectName)) return;`,
+    `  async function createProject() {
+    if (!canEdit) return;
+    if (clean(newProjectForm.customer).length < 2) {
+      setMessage('Enter a customer name containing at least two characters.');
+      return;
+    }
+    if (clean(newProjectForm.projectName).length < 3) {
+      setMessage('Enter a project name containing at least three characters.');
+      return;
+    }`,
+    'new project validation'
+  );
+
+  source = replaceExact(
+    source,
+    'downloadText(workbook, `US-Signal-Toyota-Hyundai-Pipelines-${new Date().toISOString().slice(0, 10)}.xls`,',
+    'downloadText(workbook, `US-Signal-Customer-Pipelines-${new Date().toISOString().slice(0, 10)}.xls`,',
+    'export filename'
+  );
+
+  source = replaceExact(
+    source,
+    `    <section className="project-register-center projectpulse-module-standard module006-standalone" data-module="006" data-module-name="Toyota & Hyundai Pipelines" data-canonical-route="toyota-hyundai-pipelines" data-project-register-contract="module006-standalone-pipeline-v1">
+      <header className="project-register-hero">`,
+    `    <section className="project-register-center projectpulse-module-standard module006-standalone" data-module="006" data-module-name="Toyota & Hyundai Pipelines" data-canonical-route="toyota-hyundai-pipelines" data-project-register-contract="module006-standalone-pipeline-v1">
+      <datalist id="module006-customer-options">
+        {customerOptions.map((value) => <option value={value} key={value} />)}
+      </datalist>
+      <header className="project-register-hero">`,
+    'customer datalist'
+  );
+
+  source = replaceExact(
+    source,
+    '<p>Manage Toyota and Hyundai pipeline projects, action items, review dates, status updates, and append-only note history directly in Module 006.</p>',
+    '<p>Manage the reviewed Toyota and Hyundai pipeline baseline plus additional customer projects, action items, review dates, status updates, and append-only note history directly in Module 006.</p>',
+    'workspace description'
+  );
+
+  source = replaceExact(
+    source,
+    '<div className="project-register-summary" aria-label="Toyota and Hyundai pipeline summary">',
+    '<div className="project-register-summary" aria-label="Customer pipeline summary">',
+    'summary label'
+  );
+
+  source = replaceExact(
+    source,
+    '<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">Toyota and Hyundai</option>{customerOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select>',
+    '<select value={customer} onChange={(event) => setCustomer(event.target.value)}><option value="all">All customers</option>{customerOptions.map((value) => <option value={value} key={value}>{value}</option>)}</select>',
+    'customer filter'
+  );
+
+  source = replaceExact(
+    source,
+    'No Toyota or Hyundai records match the current filters.',
+    'No customer pipeline records match the current filters.',
+    'empty state'
+  );
+
+  source = replaceExact(
+    source,
+    'aria-label="Toyota and Hyundai pipeline project editor"',
+    'aria-label="Customer pipeline project editor"',
+    'drawer label'
+  );
+
+  source = replaceExact(
+    source,
+    '<label>Customer<select value={editForm.customer} onChange={(event) => setEditForm((current) => ({ ...current, customer: event.target.value }))} disabled={!canEdit}><option>Toyota</option><option>Hyundai</option></select></label>',
+    '<label>Customer<small>Choose an existing customer or type a new customer name.</small><input list="module006-customer-options" maxLength="120" value={editForm.customer} onChange={(event) => setEditForm((current) => ({ ...current, customer: event.target.value }))} disabled={!canEdit} /></label>',
+    'editable customer input'
+  );
+
+  source = replaceExact(
+    source,
+    '<button type="button" className="primary-action" disabled={!canEdit || busy === \'details\'} onClick={() => void saveDetails()}>',
+    '<button type="button" className="primary-action" disabled={!canEdit || busy === \'details\' || clean(editForm.customer).length < 2} onClick={() => void saveDetails()}>',
+    'project details save guard'
+  );
+
+  source = replaceExact(
+    source,
+    'aria-label="Add new Toyota or Hyundai pipeline project"',
+    'aria-label="Add new customer pipeline project"',
+    'new project dialog label'
+  );
+
+  source = replaceExact(
+    source,
+    '<header><div><p className="eyebrow">MODULE 006</p><h3>Add New Project</h3><p>Create a standalone Toyota or Hyundai pipeline record.</p></div><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Close</button></header>',
+    '<header><div><p className="eyebrow">MODULE 006</p><h3>Add New Project</h3><p>Create a standalone pipeline record for any customer.</p></div><button type="button" className="secondary-action" onClick={() => setNewProjectOpen(false)}>Close</button></header>',
+    'new project description'
+  );
+
+  source = replaceExact(
+    source,
+    '<label>Customer<select value={newProjectForm.customer} onChange={(event) => setNewProjectForm((current) => ({ ...current, customer: event.target.value }))}><option>Toyota</option><option>Hyundai</option></select></label>',
+    '<label>Customer<small>Choose an existing customer or type a new customer name.</small><input list="module006-customer-options" maxLength="120" value={newProjectForm.customer} onChange={(event) => setNewProjectForm((current) => ({ ...current, customer: event.target.value }))} /></label>',
+    'new project customer input'
+  );
+
+  source = replaceExact(
+    source,
+    "disabled={busy === 'create' || clean(newProjectForm.projectName).length < 3}",
+    "disabled={busy === 'create' || clean(newProjectForm.customer).length < 2 || clean(newProjectForm.projectName).length < 3}",
+    'new project save guard'
+  );
+
+  for (const required of [
+    'MODULE_006_CUSTOMER_EXPANSION_START',
+    'module006-customer-options',
+    'list="module006-customer-options"',
+    'All customers',
+    'any customer',
+    'No customer pipeline records match the current filters.',
+    'US-Signal-Customer-Pipelines-'
+  ]) {
+    if (!source.includes(required)) throw new Error(`Module 006 customer expansion is missing: ${required}`);
+  }
+
+  if (source.includes('<label>Customer<select value={editForm.customer}')
+      || source.includes('<label>Customer<select value={newProjectForm.customer}')) {
+    throw new Error('Module 006 customer expansion left a Toyota/Hyundai-only customer selector.');
+  }
+
+  fs.writeFileSync(projectRegisterPath, source, 'utf8');
+}
+
+function installStackedLogo() {
+  if (!fs.existsSync(stackedLogoSourcePath)) {
+    throw new Error(`Stacked US Signal logo source was not found: ${stackedLogoSourcePath}`);
+  }
+
+  const approvedLogo = fs.readFileSync(stackedLogoSourcePath);
+  const installedLogo = fs.existsSync(stackedLogoTargetPath)
+    ? fs.readFileSync(stackedLogoTargetPath)
+    : null;
+
+  if (!installedLogo || !approvedLogo.equals(installedLogo)) {
+    fs.mkdirSync(path.dirname(stackedLogoTargetPath), { recursive: true });
+    fs.writeFileSync(stackedLogoTargetPath, approvedLogo);
+  }
 }
 
 function installModule006Route() {
@@ -35,14 +236,14 @@ function installModule006Route() {
   href: '#toyota-hyundai-pipelines',
   title: 'Toyota & Hyundai Pipelines',
   navLabel: 'MODULE 006',
-  description: 'Track the reviewed Toyota and Hyundai workbook pipeline, active and archived records, ownership, SELL references, estimates, notes, and historical update evidence.',
+  description: 'Track the reviewed Toyota and Hyundai workbook baseline plus additional customer pipeline records, active and archived work, ownership, SELL references, estimates, notes, and historical update evidence.',
   permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
 },`;
   if (!oldDefinition.test(source) || !source.includes("title: 'PSA Modules'")) throw new Error('Module 006 legacy registry block is missing.');
   source = source.replace(oldDefinition, newDefinition);
 
   const oldGuide = "'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'";
-  const newGuide = "'toyota-hyundai-pipelines': 'Toyota & Hyundai Pipelines — Module 006. Reviewed source records, bounded history, filters, and exports.',\n  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',\n  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'";
+  const newGuide = "'toyota-hyundai-pipelines': 'Toyota & Hyundai Pipelines — Module 006. Reviewed baseline plus additional customer pipeline records, bounded history, filters, and exports.',\n  'psa-modules': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.',\n  'project-register': 'Compatibility address for Module 006; redirects to Toyota & Hyundai Pipelines.'";
   if (!source.includes(oldGuide)) throw new Error('Module 006 legacy guide marker is missing.');
   source = source.replace(oldGuide, newGuide);
 
@@ -208,6 +409,8 @@ function moduleListsMatch`;
   fs.writeFileSync(modulesPortalPath, portal, 'utf8');
 }
 
+installCustomerExpansion();
+installStackedLogo();
 installModule006Route();
 installAuthoritativeModulesDirectory();
-console.log('MODULE_006_TOYOTA_HYUNDAI_PIPELINES_GENERATION=PASS route=toyota-hyundai-pipelines aliases=psa-modules,project-register modules_directory=authoritative_registry superadmin=full_catalog');
+console.log('MODULE_006_TOYOTA_HYUNDAI_PIPELINES_GENERATION=PASS route=toyota-hyundai-pipelines aliases=psa-modules,project-register customers=extensible stacked_logo=approved modules_directory=authoritative_registry superadmin=full_catalog');
