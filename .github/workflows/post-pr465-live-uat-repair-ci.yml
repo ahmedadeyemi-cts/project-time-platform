@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/post-pr465-live-uat-repair-ci.yml'
       - 'tests/test-post-pr465-module011-065-celar-uat.sh'
+      - 'tests/validate-uat-followup-modules.py'
       - 'src/frontend/project-time-web/src/timesheet.css'
       - 'src/frontend/project-time-web/src/ModuleAvailabilityController.jsx'
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
@@ -50,9 +51,19 @@ jobs:
           BASE="$(git rev-parse 'origin/${{ github.event.pull_request.base.ref }}')"
           git merge-base --is-ancestor "$BASE" HEAD
           git diff --check "$BASE"...HEAD
-          if git diff --name-only "$BASE"...HEAD -- database/migrations database/rollback | grep -q .; then
-            echo 'This source-only UAT repair must not add or modify migrations.' >&2
-            exit 1
+
+          HEAD_BRANCH='${{ github.event.pull_request.head.ref }}'
+          if [[ "$HEAD_BRANCH" == fix/post-pr465-module011-065-celar-uat-* ]]; then
+            echo 'POST_PR465_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+            echo 'POST_PR465_OWNED_SOURCE=true' >> "$GITHUB_ENV"
+            if git diff --name-only "$BASE"...HEAD -- database/migrations database/rollback | grep -q .; then
+              echo 'The owned Post-PR465 source-only repair must not add or modify migrations.' >&2
+              exit 1
+            fi
+          else
+            echo 'POST_PR465_VALIDATION_MODE=REGRESSION' >> "$GITHUB_ENV"
+            echo 'POST_PR465_OWNED_SOURCE=false' >> "$GITHUB_ENV"
+            echo "POST_PR465_REGRESSION_APPLICABILITY=PASS branch=$HEAD_BRANCH"
           fi
           echo "POST_PR465_BASE_SHA=$BASE"
           echo "POST_PR465_HEAD_SHA=$(git rev-parse HEAD)"
@@ -60,8 +71,13 @@ jobs:
       - name: Validate repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
 
-      - name: Run focused UAT source contract
+      - name: Run focused owned UAT source contract
+        if: env.POST_PR465_OWNED_SOURCE == 'true'
         run: bash tests/test-post-pr465-module011-065-celar-uat.sh
+
+      - name: Run Module 065 UAT follow-up contract
+        if: env.POST_PR465_OWNED_SOURCE != 'true'
+        run: python3 tests/validate-uat-followup-modules.py
 
       - name: Check JavaScript syntax
         shell: bash

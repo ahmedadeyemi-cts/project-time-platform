@@ -2,7 +2,7 @@ import './page-context-guide.css';
 
 const routeContext = {
   // PR467_MODULE_006_PAGE_CONTEXT
-  'toyota-hyundai-pipelines': { title: 'Toyota & Hyundai Pipelines — Module 006', description: 'Review the governed Toyota and Hyundai pipeline snapshot, bounded history, filters, and exports.' },
+  'toyota-hyundai-pipelines': { page: 'Toyota & Hyundai Pipelines — Module 006', purpose: 'Standalone Toyota and Hyundai pipeline management for project rows, tasks, status updates, notes, review dates, history, and exports.', backend: '/api/module-006/pipeline and /api/module-006/tasks', check: 'Create or open a project, save a status note, create a standalone task, and confirm no other project module is opened or modified.' },
   'production-data-readiness': {
     page: 'Production Data Readiness Center',
     purpose: 'Shows whether core production data exists for users, roles, customers, projects, tasks, time, approvals, exports, audit evidence, and notifications.',

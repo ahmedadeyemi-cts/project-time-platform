@@ -83,9 +83,16 @@ export default function ProjectAllocationInfoPanel() {
       const selectedProject = result.projects?.find((project) => project.projectId === nextProjectId) || firstProject;
       setOwnerId((current) => current || selectedProject?.eligibleOwners?.[0]?.userId || '');
       const history = await api('/api/project-expenses/uploads');
-      const lifecycle = await api('/api/project-expenses/uploads/lifecycle');
-      const lifecycleById = new Map((lifecycle.uploads || []).map((item) => [String(item.uploadId), item]));
-      setUploads((history.uploads || []).map((upload) => ({ ...upload, ...(lifecycleById.get(String(upload.uploadId)) || {}) })));
+      const baseUploads = history.uploads || [];
+      try {
+        const lifecycle = await api('/api/project-expenses/uploads/lifecycle');
+        const lifecycleById = new Map((lifecycle.uploads || []).map((item) => [String(item.uploadId), item]));
+        setUploads(baseUploads.map((upload) => ({ ...upload, ...(lifecycleById.get(String(upload.uploadId)) || {}) })));
+        setStatus(`Upload history loaded — ${baseUploads.length} version(s).`);
+      } catch (lifecycleFailure) {
+        setUploads(baseUploads);
+        setStatus(`Upload history loaded. Lifecycle controls are temporarily unavailable: ${lifecycleFailure instanceof Error ? lifecycleFailure.message : 'refresh to retry'}`);
+      }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Unable to load Project Expense Upload.');
     } finally {
@@ -211,7 +218,7 @@ export default function ProjectAllocationInfoPanel() {
   async function deleteUpload(upload) {
     const reason = window.prompt(`Why are you deleting version ${upload.versionNumber} for ${upload.expenseOwnerName}?`);
     if (!reason?.trim()) return;
-    setStatus('Deleting upload and restoring the prior version when available…');
+    setStatus('Deleting upload…');
     try {
       const result = await api(`/api/project-expenses/uploads/${upload.uploadId}`, {
         method: 'DELETE',

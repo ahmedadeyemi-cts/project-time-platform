@@ -3719,7 +3719,7 @@ async function createWorkRegisterFromReviewedIntake() {
             type="search"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search customer, project, PM, engineer, AE, SA, SAA, task..."
+            placeholder="Search customer, project, project number, PM, engineer, AE, SA, SAA, task..."
           />
         </label>
         <label>
@@ -3795,6 +3795,13 @@ async function createWorkRegisterFromReviewedIntake() {
                 <td>
                   <strong>{item.customerName || 'No customer linked'}</strong>
                   <small>{item.workName}</small>
+                  {(item.projectCode || item.project_code) ? (
+                    <div className="work-register-row-identifier" data-pr467-row-work-identifier="true">
+                      <span>{pr467IdentifierLabel(item)}</span>
+                      <strong>{item.projectCode || item.project_code}</strong>
+                      <button type="button" onClick={() => navigator.clipboard?.writeText(item.projectCode || item.project_code)}>Copy</button>
+                    </div>
+                  ) : <small className="work-register-row-identifier-missing">Immutable identifier not assigned</small>}
                   <small>{item.contractType ? `Contract: ${projectPulseCanonicalContractType(item.contractType)}` : 'Contract: not set'}</small>
 
                   <button type="button" className="work-register-row-action" onClick={() => openEditDrawer(item)}>
@@ -4991,6 +4998,13 @@ async function createWorkRegisterFromReviewedIntake() {
                 <p className="muted">
                   {selectedWorkItem.customerName || 'No customer linked'} · {labelize(selectedWorkItem.sourceTable)}
                 </p>
+                {(selectedWorkItem.projectCode || selectedWorkItem.project_code) ? (
+                  <div className="work-register-drawer-identifier" data-pr467-drawer-work-identifier="true">
+                    <span>{pr467IdentifierLabel(selectedWorkItem)}</span>
+                    <strong>{selectedWorkItem.projectCode || selectedWorkItem.project_code}</strong>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(selectedWorkItem.projectCode || selectedWorkItem.project_code)}>Copy ID</button>
+                  </div>
+                ) : null}
               </div>
               <button type="button" className="secondary-action" onClick={closeEditDrawer}>Close</button>
             </div>
