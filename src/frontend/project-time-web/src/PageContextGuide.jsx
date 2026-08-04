@@ -1,6 +1,8 @@
 import './page-context-guide.css';
 
 const routeContext = {
+  // PR467_MODULE_006_PAGE_CONTEXT
+  'toyota-hyundai-pipelines': { title: 'Toyota & Hyundai Pipelines — Module 006', description: 'Review the governed Toyota and Hyundai pipeline snapshot, bounded history, filters, and exports.' },
   'production-data-readiness': {
     page: 'Production Data Readiness Center',
     purpose: 'Shows whether core production data exists for users, roles, customers, projects, tasks, time, approvals, exports, audit evidence, and notifications.',

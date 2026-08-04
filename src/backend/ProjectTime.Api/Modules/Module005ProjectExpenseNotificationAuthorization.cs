@@ -11,6 +11,8 @@ public static partial class Module005ProjectExpenseUploadModule
         if (actor is null) return SessionRequired();
 
         var upload = await LoadUploadAsync(connection, uploadId);
+        if (upload is not null && await IsExpenseUploadDeletedAsync(connection, uploadId))
+            return Results.Json(new { status = "expense_upload_deleted", message = "Notifications cannot be retried for deleted expense evidence." }, statusCode: 409);
         if (upload is null)
             return Results.NotFound(new
             {

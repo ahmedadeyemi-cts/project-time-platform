@@ -925,3 +925,13 @@
     overflow: visible;
   }
 }
+
+
+/* PR467 compact Module 039 source health */
+.billing-readiness-source-health { margin-bottom: 1rem; border: 1px solid #c7d7e8; border-radius: .9rem; background: #f8fbfd; }
+.billing-readiness-source-health > summary { cursor: pointer; padding: .85rem 1rem; font-weight: 850; color: #123b63; }
+.financial-operations-recovery-compact { padding: 0 1rem 1rem; }
+.financial-operations-recovery-compact > header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.financial-operations-recovery-compact .financial-operations-hero,
+.financial-operations-recovery-compact .financial-operations-project-grid,
+.financial-operations-recovery-compact .financial-operations-work-items { display: none !important; }

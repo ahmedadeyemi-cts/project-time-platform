@@ -8178,7 +8178,10 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'billing-readiness' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="billing-readiness" className="panel billing-readiness-route-panel">
           {/* GROUP_5_MODULE_039_RECOVERY_PANEL */}
-          <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} />
+          <details className="billing-readiness-source-health" open>
+            <summary>Source health & recovery</summary>
+            <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />
+          </details>
           <BillingReadinessCenter />
         </section>
       ) : null}

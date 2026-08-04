@@ -28,6 +28,7 @@ const paths = {
   package: path.join(webRoot, 'package.json'),
   app: path.join(sourceRoot, 'App.jsx'),
   registry: path.join(sourceRoot, 'module-availability-registry.js'),
+  billingReadiness: path.join(sourceRoot, 'BillingReadinessCenter.jsx'),
   sourceLoader: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/FinancialOperationsSourceLoader.cs'),
   reportEngine: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/FinancialOperationsReportEngine.cs'),
   module: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/FinancialOperationsRecoveryModule.cs'),
@@ -134,7 +135,11 @@ assert(appBefore === appAfter, 'Group 5 injector must leave integrated tracked A
 assert(count(appAfter, "import FinancialOperationsRecoveryWorkspace from './FinancialOperationsRecoveryWorkspace.jsx';") === 1, 'Group 5 App import must be unique.');
 assert(count(appAfter, 'GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START') === 1, 'Group 5 route block must be unique.');
 assert(count(appAfter, '<FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />') === 1, 'Module 031 mount must be unique.');
-for (const moduleCode of ['039', '041', '042']) {
+assert(
+  count(appAfter, '<FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />') === 1,
+  'Module 039 compact recovery mount must be unique.'
+);
+for (const moduleCode of ['041', '042']) {
   assert(
     count(appAfter, `<FinancialOperationsRecoveryWorkspace moduleCode="${moduleCode}" authSession={authSession} />`) === 1,
     `Module ${moduleCode} recovery mount must be unique.`
@@ -148,3 +153,20 @@ assert(!appAfter.includes('GROUP_5_MODULE_038'), 'Group 5 must not include a Mod
 
 console.log(`GROUP_5_VALIDATION_CHECKS=${checks}`);
 console.log('GROUP_5_FINANCIAL_OPERATIONS_RECOVERY=PASS module040=guided_closeout source_isolation=preserved');
+
+
+const billingReadinessSource = read(paths.billingReadiness);
+const combinedPr467Source = `${component}
+${appAfter}
+${billingReadinessSource}`;
+for (const marker of [
+  'PR467_COMPACT_SOURCE_HEALTH',
+  'billing-readiness-source-health',
+  'PR467_BILLING_CLOSEOUT_HANDOFFS',
+  'Complete project information — Module 055C',
+  'Open Project Closeout — Module 040',
+  'Continue to Invoice & Billing — Module 042'
+]) {
+  if (!combinedPr467Source.includes(marker)) throw new Error(`PR467 Module 039 marker missing: ${marker}`);
+}
+console.log('PR467_MODULE039_CANONICAL_BILLING_READINESS=PASS');

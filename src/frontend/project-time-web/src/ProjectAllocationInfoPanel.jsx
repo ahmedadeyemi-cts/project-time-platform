@@ -64,6 +64,7 @@ export default function ProjectAllocationInfoPanel() {
   const [ownerId, setOwnerId] = useState('');
   const [method, setMethod] = useState('excel_csv');
   const [file, setFile] = useState(null);
+  const [replaceUploadId, setReplaceUploadId] = useState('');
   const [certifyReportId, setCertifyReportId] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
@@ -82,7 +83,9 @@ export default function ProjectAllocationInfoPanel() {
       const selectedProject = result.projects?.find((project) => project.projectId === nextProjectId) || firstProject;
       setOwnerId((current) => current || selectedProject?.eligibleOwners?.[0]?.userId || '');
       const history = await api('/api/project-expenses/uploads');
-      setUploads(history.uploads || []);
+      const lifecycle = await api('/api/project-expenses/uploads/lifecycle');
+      const lifecycleById = new Map((lifecycle.uploads || []).map((item) => [String(item.uploadId), item]));
+      setUploads((history.uploads || []).map((upload) => ({ ...upload, ...(lifecycleById.get(String(upload.uploadId)) || {}) })));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Unable to load Project Expense Upload.');
     } finally {
@@ -105,7 +108,9 @@ export default function ProjectAllocationInfoPanel() {
     () => uploads.filter((upload) => (!projectId || upload.projectId === projectId) && (!ownerId || upload.expenseOwnerUserId === ownerId)),
     [uploads, projectId, ownerId]
   );
-  const currentUploads = selectedUploads.filter((upload) => upload.isCurrent && !upload.deletedAt);
+  const activeUploads = selectedUploads.filter((upload) => !upload.deletedAt && upload.isDeleted !== true);
+  const deletedUploads = selectedUploads.filter((upload) => Boolean(upload.deletedAt) || upload.isDeleted === true);
+  const currentUploads = activeUploads.filter((upload) => upload.isCurrent);
   const trackedTotal = currentUploads.reduce((sum, upload) => sum + Number(upload.totalAmount || 0), 0);
   const invoiceEligible = currentUploads
     .filter((upload) => upload.billingTreatment === 'pass_through_invoice')
@@ -136,10 +141,12 @@ export default function ProjectAllocationInfoPanel() {
     form.append('projectId', projectId);
     form.append('expenseOwnerUserId', ownerId);
     form.append('file', file);
+    if (replaceUploadId) form.append('replaceUploadId', replaceUploadId);
     try {
       const result = await api('/api/project-expenses/upload', { method: 'POST', body: form });
       setStatus(`${result.message} Notification: ${result.notification?.message || result.notification?.status || 'processed'}`);
       setFile(null);
+      setReplaceUploadId('');
       await load();
     } catch (failure) {
       setStatus('Upload failed.');
@@ -172,6 +179,32 @@ export default function ProjectAllocationInfoPanel() {
     } catch (failure) {
       setStatus('Certify import failed.');
       setError(failure instanceof Error ? failure.message : 'Unable to import from Certify.');
+    }
+  }
+
+  function prepareReplacement(upload) {
+    setCustomer(upload.customerName || customer);
+    setProjectId(upload.projectId || projectId);
+    setOwnerId(upload.expenseOwnerUserId || ownerId);
+    setMethod('excel_csv');
+    setReplaceUploadId(String(upload.uploadId));
+    setStatus(`Replacement ready for version ${upload.versionNumber}. Choose a file with the same reporting period.`);
+    window.setTimeout(() => {
+      document.querySelector('.expense-selection-card input[type="file"]')?.focus();
+      document.querySelector('.expense-selection-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+
+  async function acceptUpload(upload) {
+    if (!window.confirm(`Accept version ${upload.versionNumber}? Delete and replacement will be permanently disabled for this version.`)) return;
+    setStatus('Recording assigned Project Manager acceptance…');
+    setError('');
+    try {
+      const result = await api(`/api/project-expenses/uploads/${upload.uploadId}/accept`, { method: 'POST' });
+      setStatus(result.message || 'Expense version accepted.');
+      await load();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unable to accept the expense version.');
     }
   }
 
@@ -270,7 +303,7 @@ export default function ProjectAllocationInfoPanel() {
               <input type="file" accept=".xlsx,.xlsm,.csv" onChange={(event) => setFile(event.target.files?.[0] || null)} />
               {file ? <small>Selected: {file.name}</small> : null}
             </div>
-            <button type="button" className="primary-action" disabled={!file || !projectId || !ownerId || context?.actor?.isViewAs} onClick={() => void uploadFile()}>Upload expenses</button>
+            <button type="button" className="primary-action" disabled={!file || !projectId || !ownerId || context?.actor?.isViewAs} onClick={() => void uploadFile()}>{replaceUploadId ? 'Upload replacement' : 'Upload expenses'}</button>
           </div>
         ) : (
           <div className="expense-import-panel certify">
@@ -288,6 +321,14 @@ export default function ProjectAllocationInfoPanel() {
             <button type="button" className="primary-action" disabled={context?.certify?.status !== 'connected' || !certifyReportId.trim() || !projectId || !ownerId || context?.actor?.isViewAs} onClick={() => void importCertify()}>Import approved expenses</button>
           </div>
         )}
+
+        {replaceUploadId ? (
+          <div className="expense-notice warning">
+            <strong>Replace / Re-upload selected</strong>
+            <span>The new file creates a new version. The selected version is never revived or overwritten.</span>
+            <button type="button" className="secondary-action" onClick={() => setReplaceUploadId('')}>Cancel replacement</button>
+          </div>
+        ) : null}
 
         <div className="expense-mail-note">
           <strong>Automatic notification</strong>
@@ -308,7 +349,7 @@ export default function ProjectAllocationInfoPanel() {
           <table>
             <thead><tr><th>Version</th><th>Owner / uploaded by</th><th>Period</th><th>Source</th><th>Categories</th><th>Total</th><th>Billing</th><th>Uploaded</th><th>Notification</th><th>Actions</th></tr></thead>
             <tbody>
-              {selectedUploads.map((upload) => (
+              {activeUploads.map((upload) => (
                 <tr key={upload.uploadId} className={upload.isCurrent && !upload.deletedAt ? 'current' : 'prior'}>
                   <td><strong>v{upload.versionNumber}</strong><small>{upload.isCurrent && !upload.deletedAt ? 'Current' : upload.deletedAt ? 'Deleted' : 'Superseded'}</small></td>
                   <td><strong>{upload.expenseOwnerName}</strong><small>Uploaded by {upload.uploadedByName}</small></td>
@@ -320,15 +361,33 @@ export default function ProjectAllocationInfoPanel() {
                   <td>{dateTime(upload.uploadedAt)}</td>
                   <td><strong>{formatLabel(upload.notificationStatus)}</strong><small>{upload.notificationDetail}</small></td>
                   <td><div className="expense-actions">
-                    {!upload.deletedAt && context?.actor?.canDelete ? <button type="button" onClick={() => void deleteUpload(upload)}>Delete</button> : null}
-                    {['failed', 'configuration_pending', 'queued'].includes(upload.notificationStatus) ? <button type="button" onClick={() => void retryNotification(upload)}>Retry email</button> : null}
+                    {upload.canDelete ? <button type="button" onClick={() => void deleteUpload(upload)}>Delete</button> : null}
+                    {upload.canReplace ? <button type="button" onClick={() => prepareReplacement(upload)}>Replace / Re-upload</button> : null}
+                    {upload.canAccept ? <button type="button" className="primary-action" onClick={() => void acceptUpload(upload)}>Accept as PM</button> : null}
+                    {upload.lockReason ? <small className="expense-lock-reason">{upload.lockReason}</small> : null}
+                    {!upload.isDeleted && ['failed', 'configuration_pending', 'queued'].includes(upload.notificationStatus) ? <button type="button" onClick={() => void retryNotification(upload)}>Retry email</button> : null}
                   </div></td>
                 </tr>
               ))}
-              {!selectedUploads.length ? <tr><td colSpan="10"><div className="expense-empty">No expense uploads match the selected customer, project, and owner.</div></td></tr> : null}
+              {!activeUploads.length ? <tr><td colSpan="10"><div className="expense-empty">No expense uploads match the selected customer, project, and owner.</div></td></tr> : null}
             </tbody>
           </table>
         </div>
+        {deletedUploads.length ? (
+          <details className="expense-deleted-audit-history">
+            <summary>Deleted audit history ({deletedUploads.length})</summary>
+            <p>Deleted evidence is immutable, excluded from active totals and billing, and cannot be restored automatically.</p>
+            <ul>
+              {deletedUploads.map((upload) => (
+                <li key={`deleted-${upload.uploadId}`}>
+                  <strong>v{upload.versionNumber} · {upload.originalFileName || 'Expense upload'}</strong>
+                  <span>{money(upload.totalAmount, upload.currency)} · deleted {dateTime(upload.deletedAt)}</span>
+                  <small>{upload.deletionReason || 'Deletion reason retained in immutable audit evidence.'}</small>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </section>
     </div>
   );

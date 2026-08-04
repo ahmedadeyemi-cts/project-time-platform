@@ -17,6 +17,9 @@ public static partial class Module005ProjectExpenseUploadModule
             return Results.BadRequest(new { status = "project_required", message = "Select a customer and project before uploading." });
         if (!Guid.TryParse(form["expenseOwnerUserId"], out var ownerId))
             return Results.BadRequest(new { status = "expense_owner_required", message = "Select the person whose expenses are being uploaded." });
+        Guid? replaceUploadId = Guid.TryParse(form["replaceUploadId"], out var parsedReplaceUploadId)
+            ? parsedReplaceUploadId
+            : null;
         var file = form.Files.GetFile("file");
         if (file is null || file.Length == 0) return Results.BadRequest(new { status = "file_required", message = "Select an Excel or CSV file." });
         if (file.Length > MaximumUploadBytes) return Results.BadRequest(new { status = "file_too_large", message = "Expense files are limited to 15 MB." });
@@ -41,10 +44,18 @@ public static partial class Module005ProjectExpenseUploadModule
         if (authorization is not null) return authorization;
 
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-        var uploadId = await PersistUploadAsync(
-            connection, actor, project, ownerId, "excel_csv", parsed.FormatCode,
-            parsed.SourceReportId, file.FileName, file.ContentType, bytes, hash, parsed,
-            new { originalFileName = file.FileName, fileLength = file.Length });
+        Guid uploadId;
+        try
+        {
+            uploadId = await PersistUploadAsync(
+                connection, actor, project, ownerId, "excel_csv", parsed.FormatCode,
+                parsed.SourceReportId, file.FileName, file.ContentType, bytes, hash, parsed,
+                new { originalFileName = file.FileName, fileLength = file.Length }, replaceUploadId);
+        }
+        catch (ExpenseLifecycleConflict conflict)
+        {
+            return LifecycleConflictResult(conflict);
+        }
         var notification = await DeliverExpenseNotificationAsync(connection, uploadId, actor.ActualUserId);
 
         return Results.Ok(new
@@ -76,13 +87,55 @@ public static partial class Module005ProjectExpenseUploadModule
         byte[] sourceBytes,
         string sourceSha,
         ParsedExpenseFile parsed,
-        object sourceMetadata)
+        object sourceMetadata,
+        Guid? replaceUploadId = null)
     {
         await using var transaction = await connection.BeginTransactionAsync();
         await using (var lockCommand = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtextextended(@key, 44));", connection, transaction))
         {
             lockCommand.Parameters.AddWithValue("key", $"project-expense:{project.ProjectId}:{ownerId}:{parsed.PeriodStart}:{parsed.PeriodEnd}");
             await lockCommand.ExecuteNonQueryAsync();
+        }
+
+        var currentScopeUploadIds = new List<Guid>();
+        await using (var currentScope = new NpgsqlCommand("""
+            SELECT project_expense_upload_id
+            FROM project_expense_uploads
+            WHERE project_id=@project_id AND expense_owner_user_id=@owner_id
+              AND period_start IS NOT DISTINCT FROM @period_start
+              AND period_end IS NOT DISTINCT FROM @period_end
+              AND is_current=TRUE AND deleted_at IS NULL
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            currentScope.Parameters.AddWithValue("project_id", project.ProjectId);
+            currentScope.Parameters.AddWithValue("owner_id", ownerId);
+            currentScope.Parameters.Add(new NpgsqlParameter("period_start", NpgsqlDbType.Date) { Value = parsed.PeriodStart is null ? DBNull.Value : parsed.PeriodStart.Value });
+            currentScope.Parameters.Add(new NpgsqlParameter("period_end", NpgsqlDbType.Date) { Value = parsed.PeriodEnd is null ? DBNull.Value : parsed.PeriodEnd.Value });
+            await using var reader = await currentScope.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) currentScopeUploadIds.Add(reader.GetGuid(0));
+        }
+        foreach (var currentScopeUploadId in currentScopeUploadIds)
+        {
+            if (await IsExpenseUploadAcceptedAsync(connection, transaction, currentScopeUploadId))
+                throw new ExpenseLifecycleConflict(
+                    409,
+                    "expense_upload_approved_locked",
+                    "The assigned Project Manager accepted the current expense version. Delete, replacement, and same-period re-upload are disabled.");
+        }
+
+        if (replaceUploadId is not null)
+        {
+            var replacementTarget = await LoadUploadForUpdateAsync(connection, transaction, replaceUploadId.Value)
+                ?? throw new ExpenseLifecycleConflict(404, "upload_not_found", "The expense upload selected for replacement was not found.");
+            var replacementAuthorization = await AuthorizeExistingUploadActionAsync(connection, transaction, actor, replacementTarget);
+            if (replacementAuthorization is not null)
+                throw new ExpenseLifecycleConflict(403, "access_denied", "The current user cannot replace this expense upload.");
+            if (replacementTarget.ProjectId != project.ProjectId || replacementTarget.OwnerUserId != ownerId)
+                throw new ExpenseLifecycleConflict(409, "replacement_scope_mismatch", "The replacement must use the same project and expense owner.");
+            if (replacementTarget.PeriodStart != parsed.PeriodStart || replacementTarget.PeriodEnd != parsed.PeriodEnd)
+                throw new ExpenseLifecycleConflict(409, "replacement_period_mismatch", "The replacement period must match the selected expense version.");
+            await ThrowIfExpenseUploadImmutableAsync(connection, transaction, replaceUploadId.Value);
         }
 
         var nextVersion = 1;
@@ -227,11 +280,21 @@ public static partial class Module005ProjectExpenseUploadModule
         var authorization = await AuthorizeExistingUploadActionAsync(connection, transaction, actor, upload);
         if (authorization is not null) return authorization;
 
+        try
+        {
+            await ThrowIfExpenseUploadImmutableAsync(connection, transaction, uploadId);
+        }
+        catch (ExpenseLifecycleConflict conflict)
+        {
+            await transaction.RollbackAsync();
+            return LifecycleConflictResult(conflict);
+        }
+
         await using (var delete = new NpgsqlCommand("""
             UPDATE project_expense_uploads
             SET is_current=FALSE, deleted_at=NOW(), deleted_by_user_id=@actor_id,
-                deletion_reason=@reason, notification_status='queued',
-                notification_detail='Upload deleted; prior current version evaluated.'
+                deletion_reason=@reason, notification_status='suppressed_deleted',
+                notification_detail='Upload deleted before PM acceptance; notifications suppressed.'
             WHERE project_expense_upload_id=@upload_id;
             """, connection, transaction))
         {
@@ -241,35 +304,17 @@ public static partial class Module005ProjectExpenseUploadModule
             await delete.ExecuteNonQueryAsync();
         }
 
-        Guid? restoredId = null;
-        await using (var restore = new NpgsqlCommand("""
-            UPDATE project_expense_uploads candidate
-            SET is_current=TRUE
-            WHERE candidate.project_expense_upload_id=(
-                SELECT prior.project_expense_upload_id
-                FROM project_expense_uploads prior
-                WHERE prior.project_id=@project_id AND prior.expense_owner_user_id=@owner_id
-                  AND prior.period_start IS NOT DISTINCT FROM @period_start
-                  AND prior.period_end IS NOT DISTINCT FROM @period_end
-                  AND prior.deleted_at IS NULL AND prior.project_expense_upload_id<>@upload_id
-                ORDER BY prior.version_number DESC LIMIT 1
-            ) RETURNING candidate.project_expense_upload_id;
-            """, connection, transaction))
-        {
-            restore.Parameters.AddWithValue("project_id", upload.ProjectId);
-            restore.Parameters.AddWithValue("owner_id", upload.OwnerUserId);
-            restore.Parameters.Add(new NpgsqlParameter("period_start", NpgsqlDbType.Date) { Value = upload.PeriodStart is null ? DBNull.Value : upload.PeriodStart.Value });
-            restore.Parameters.Add(new NpgsqlParameter("period_end", NpgsqlDbType.Date) { Value = upload.PeriodEnd is null ? DBNull.Value : upload.PeriodEnd.Value });
-            restore.Parameters.AddWithValue("upload_id", uploadId);
-            var restored = await restore.ExecuteScalarAsync();
-            if (restored is Guid value) restoredId = value;
-        }
-
-        await InsertExpenseEventAsync(connection, transaction, uploadId, upload.ProjectId, "UPLOAD_DELETED", actor.ActualUserId, upload.OwnerUserId, request.Reason.Trim(), new { restoredUploadId = restoredId });
-        if (restoredId is not null)
-            await InsertExpenseEventAsync(connection, transaction, restoredId, upload.ProjectId, "PRIOR_VERSION_RESTORED", actor.ActualUserId, upload.OwnerUserId, request.Reason.Trim(), new { deletedUploadId = uploadId });
+        await SuppressDeletedExpenseNotificationAsync(connection, transaction, uploadId);
+        await InsertExpenseEventAsync(connection, transaction, uploadId, upload.ProjectId, "UPLOAD_DELETED", actor.ActualUserId,
+            upload.OwnerUserId, request.Reason.Trim(), new { priorVersionRestored = false, deletedEvidenceImmutable = true });
         await transaction.CommitAsync();
-        return Results.Ok(new { status = "project_expense_upload_deleted", message = restoredId is null ? "The upload was deleted. No prior version was available." : "The upload was deleted and the prior version was restored.", uploadId, restoredUploadId = restoredId });
+        return Results.Ok(new
+        {
+            status = "project_expense_upload_deleted",
+            message = "The upload was deleted. No prior version was restored; upload or import a replacement explicitly when required.",
+            uploadId,
+            restoredUploadId = (Guid?)null
+        });
     }
 
     private static async Task<ExpenseUploadRecord?> LoadUploadForUpdateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid uploadId)

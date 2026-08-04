@@ -42,6 +42,8 @@ public static partial class Module005ProjectExpenseUploadModule
     {
         app.MapGet("/api/project-expenses/context", (Func<HttpContext, Task<IResult>>)GetContextAsync);
         app.MapGet("/api/project-expenses/uploads", (Func<HttpContext, Task<IResult>>)GetUploadsAsync);
+        app.MapGet("/api/project-expenses/uploads/lifecycle", (Func<HttpContext, Task<IResult>>)GetExpenseUploadLifecycleAsync);
+        app.MapPost("/api/project-expenses/uploads/{uploadId:guid}/accept", (Func<Guid, HttpContext, Task<IResult>>)AcceptExpenseUploadAsync);
         app.MapGet("/api/project-expenses/projects/{projectId:guid}/summary", (Func<Guid, HttpContext, Task<IResult>>)GetProjectSummaryAsync);
         app.MapPost("/api/project-expenses/upload", (Func<HttpContext, Task<IResult>>)UploadFileAsync);
         app.MapDelete("/api/project-expenses/uploads/{uploadId:guid}", (Func<Guid, ExpenseDeleteRequest, HttpContext, Task<IResult>>)DeleteUploadAsync);
