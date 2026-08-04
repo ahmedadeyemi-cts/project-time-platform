@@ -73,6 +73,16 @@ POST /api/module-006/pipeline/{recordId}/tasks/{taskId}/archive
 
 Every response identifies Module 006 as the authority and reports `linkedToModule055C = false`.
 
+## Finalized UAT follow-up source boundary
+
+The exact source finalizer completed successfully before this documentation checkpoint. It also converged the associated UAT repairs:
+
+- Module 005 lifecycle and PM-acceptance endpoints are registered in the compiled safe endpoint map, and base upload history remains visible when lifecycle enrichment fails independently.
+- Module 039 receives the `compact` source-health property through every render layer, preventing the post-refresh blank-page exception.
+- Module 055C visibly renders and copies the persisted immutable business identifier in each result row and selected-project header.
+- Module 065 uses a React-owned Open module button that navigates directly to `#entra-secret-administration` and is not removable by legacy anchor guards.
+- Temporary source-finalizer and trigger workflows were removed from the final application boundary.
+
 ## Release validation
 
 Before merge, the exact head must pass:
