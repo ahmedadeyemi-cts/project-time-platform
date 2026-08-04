@@ -1,0 +1,79 @@
+name: PR467 API Build Diagnostic
+
+on:
+  push:
+    branches:
+      - diag/pr467-api-build-20260804
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr467-api-build-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Capture exact compiler and generated-source evidence
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p artifacts/generated
+          {
+            echo "DIAGNOSTIC_HEAD=$(git rev-parse HEAD)"
+            echo "DIAGNOSTIC_PARENT=$(git rev-parse HEAD^)"
+            echo '=== tracked files containing Pr467UatRepairMutationRequest ==='
+            git grep -n 'Pr467UatRepairMutationRequest' -- '*.cs' || true
+            echo '=== compile item declarations relevant to PR467 ==='
+            grep -R -n -E 'Pr467|Module005ProjectExpense(Lifecycle|Commands|Upload)' src/backend/ProjectTime.Api/*.csproj src/backend/ProjectTime.Api/Directory.Build.* 2>/dev/null || true
+          } > artifacts/pr467-api-build-diagnostic.txt
+
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj >> artifacts/pr467-api-build-diagnostic.txt 2>&1
+          set +e
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release \
+            --no-restore \
+            -p:EmitCompilerGeneratedFiles=true \
+            -p:CompilerGeneratedFilesOutputPath="$PWD/artifacts/generated" \
+            -v:diag >> artifacts/pr467-api-build-diagnostic.txt 2>&1
+          build_status=$?
+          set -e
+
+          {
+            echo "PR467_BUILD_EXIT_CODE=$build_status"
+            echo '=== all source/generated occurrences after build ==='
+            grep -R -n --include='*.cs' 'Pr467UatRepairMutationRequest' src artifacts/generated 2>/dev/null || true
+            echo '=== generated file inventory ==='
+            find artifacts/generated src/backend/ProjectTime.Api/obj -type f -maxdepth 8 2>/dev/null | sort || true
+            echo '=== compiler errors ==='
+            grep -n -E 'error CS|error MSB|Build FAILED|[0-9]+ Error\(s\)' artifacts/pr467-api-build-diagnostic.txt || true
+          } >> artifacts/pr467-api-build-diagnostic.txt
+
+          cp src/backend/ProjectTime.Api/ProjectTime.Api.csproj artifacts/ProjectTime.Api.csproj.txt
+          cp src/backend/ProjectTime.Api/Modules/Pr467UatRepairModule.cs artifacts/Pr467UatRepairModule.cs.txt
+          cp src/backend/ProjectTime.Api/Modules/Module005ProjectExpenseLifecycle.cs artifacts/Module005ProjectExpenseLifecycle.cs.txt
+          echo 'PR467_DIAGNOSTIC_CAPTURE=COMPLETE'
+          exit 0
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr467-api-build-diagnostic-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
