@@ -576,7 +576,7 @@ installProjectPulseGlobalViewAsTopbarMount();
 import EntraSecretExpirationGlobalWarning from './EntraSecretExpirationGlobalWarning.jsx';
 import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import usSignalLogoUrl from '../brand/ussignal.png';
+import usSignalLogoUrl from '../brand/USSNavyStacked.png';
 import './timesheet.css';
 import './mobile-readiness.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';

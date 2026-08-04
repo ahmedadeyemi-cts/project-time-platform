@@ -5,6 +5,10 @@ namespace ProjectTime.Api.Modules;
 
 public static class Module006StandalonePipelineModule
 {
+    private const int CustomerNameMinLength = 2;
+    private const int CustomerNameMaxLength = 120;
+    private const string CustomerExpansionMigrationId = "069_module006_customer_pipeline_expansion";
+
     private static readonly HashSet<string> EditorRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "SUPER_ADMINISTRATOR",
@@ -18,6 +22,10 @@ public static class Module006StandalonePipelineModule
 
     private static readonly Regex ProjectCodePattern = new(
         "^P\\.[A-Z0-9_-]{1,30}$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CustomerWhitespacePattern = new(
+        "\\s+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static WebApplication MapModule006StandalonePipelineEndpoints(this WebApplication app)
@@ -90,7 +98,7 @@ public static class Module006StandalonePipelineModule
                 return Results.Json(new
                 {
                     status = "module006_migration_required",
-                    message = "Module 006 standalone editing requires migration 068 before records and updates can be loaded."
+                    message = "Module 006 customer pipeline editing requires migrations 068 and 069 before records and updates can be loaded."
                 }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
@@ -190,6 +198,8 @@ public static class Module006StandalonePipelineModule
                 contractVersion = "module006-standalone-pipeline-v1",
                 authority = "module006",
                 linkedToModule055C = false,
+                customerEntryMode = "extensible",
+                customerNameMaximumLength = CustomerNameMaxLength,
                 actor = new
                 {
                     actor.DisplayName,
@@ -297,9 +307,10 @@ public static class Module006StandalonePipelineModule
             return Results.Created($"/api/module-006/pipeline/{recordId}", new
             {
                 status = "module006_pipeline_record_created",
-                message = $"{code} was added to the standalone Toyota & Hyundai Pipelines workspace.",
+                message = $"{code} was added to the standalone customer pipelines workspace for {customer}.",
                 recordId,
                 sourceProjectCode = code,
+                customer,
                 revision = 1,
                 authority = "module006",
                 linkedToModule055C = false
@@ -312,6 +323,10 @@ public static class Module006StandalonePipelineModule
                 status = "module006_project_code_exists",
                 message = "That Module 006 Project ID already exists. Open the existing row to make changes."
             });
+        }
+        catch (PostgresException exception) when (IsCustomerConstraintViolation(exception))
+        {
+            return InvalidCustomerName();
         }
         catch (Exception exception)
         {
@@ -460,9 +475,10 @@ public static class Module006StandalonePipelineModule
             return Results.Ok(new
             {
                 status = "module006_pipeline_record_saved",
-                message = $"{code} was updated in Module 006.",
+                message = $"{code} was updated in Module 006 for {customer}.",
                 recordId,
                 sourceProjectCode = code,
+                customer,
                 revision = nextRevision,
                 authority = "module006",
                 linkedToModule055C = false
@@ -475,6 +491,10 @@ public static class Module006StandalonePipelineModule
                 status = "module006_project_code_exists",
                 message = "That Module 006 Project ID is already assigned to another row."
             });
+        }
+        catch (PostgresException exception) when (IsCustomerConstraintViolation(exception))
+        {
+            return InvalidCustomerName();
         }
         catch (Exception exception)
         {
@@ -724,8 +744,13 @@ public static class Module006StandalonePipelineModule
 
     private static IResult? ValidateCommon(string? customer, string? projectName, decimal? estimatedValue)
     {
-        if (NormalizeCustomer(customer) is not ("Toyota" or "Hyundai"))
-            return Invalid("Module 006 accepts only Toyota or Hyundai pipeline records.");
+        var normalizedCustomer = NormalizeCustomer(customer);
+        if (normalizedCustomer.Length < CustomerNameMinLength
+            || normalizedCustomer.Length > CustomerNameMaxLength
+            || normalizedCustomer.Any(char.IsControl))
+        {
+            return InvalidCustomerName();
+        }
         if (string.IsNullOrWhiteSpace(projectName))
             return Invalid("Project name is required.");
         if ((estimatedValue ?? 0m) < 0m)
@@ -735,10 +760,10 @@ public static class Module006StandalonePipelineModule
 
     private static string NormalizeCustomer(string? value)
     {
-        var normalized = Clean(value).ToLowerInvariant();
-        if (normalized == "toyota") return "Toyota";
-        if (normalized == "hyundai") return "Hyundai";
-        return Clean(value);
+        var cleaned = CustomerWhitespacePattern.Replace(Clean(value), " ");
+        if (string.Equals(cleaned, "toyota", StringComparison.OrdinalIgnoreCase)) return "Toyota";
+        if (string.Equals(cleaned, "hyundai", StringComparison.OrdinalIgnoreCase)) return "Hyundai";
+        return cleaned;
     }
 
     private static string NormalizeProjectCode(string? value) => Clean(value).ToUpperInvariant();
@@ -804,6 +829,10 @@ public static class Module006StandalonePipelineModule
                AND EXISTS (
                     SELECT 1 FROM schema_migrations
                     WHERE migration_id = '068_module006_standalone_pipeline_management'
+               )
+               AND EXISTS (
+                    SELECT 1 FROM schema_migrations
+                    WHERE migration_id = '069_module006_customer_pipeline_expansion'
                );
             """, connection);
         return Convert.ToBoolean(await command.ExecuteScalarAsync());
@@ -860,6 +889,13 @@ public static class Module006StandalonePipelineModule
     private static DateOnly? ReadDate(NpgsqlDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetFieldValue<DateOnly>(ordinal);
 
+    private static bool IsCustomerConstraintViolation(PostgresException exception) =>
+        exception.SqlState == PostgresErrorCodes.CheckViolation
+        && string.Equals(
+            exception.ConstraintName,
+            "ck_module006_pipeline_records_customer_name",
+            StringComparison.OrdinalIgnoreCase);
+
     private static string Clean(string? value) => (value ?? string.Empty).Trim();
 
     private static IResult SessionRequired() => Results.Json(new
@@ -883,8 +919,11 @@ public static class Module006StandalonePipelineModule
     private static IResult MigrationRequired() => Results.Json(new
     {
         status = "module006_migration_required",
-        message = "Migration 068 must be applied before Module 006 records can be changed."
+        message = "Migrations 068 and 069 must be applied before Module 006 customer pipeline records can be changed."
     }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static IResult InvalidCustomerName() => Invalid(
+        $"Customer names must contain between {CustomerNameMinLength} and {CustomerNameMaxLength} characters and cannot contain control characters.");
 
     private static IResult Invalid(string message) => Results.BadRequest(new
     {
