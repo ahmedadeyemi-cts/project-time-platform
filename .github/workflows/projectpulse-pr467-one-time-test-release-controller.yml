@@ -1,0 +1,384 @@
+name: ProjectPulse PR467 One-Time Test Release Controller
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-pr467-one-time-test-release-controller.yml'
+      - 'scripts/pr467-apply-migration-067-test.sh'
+      - 'scripts/pr467-run-migration-067-job.sh'
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: projectpulse-pr467-test-release-${{ github.event_name }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_RELEASE_SHA: a536e33b48c41bf1dd867d7319e88f98e8aa152c
+  RELEASE_REF: release/pr467-test-a536e33b-20260804
+  REQUIRED_COMMAND: DEPLOY PR467 TEST a536e33b48c41bf1dd867d7319e88f98e8aa152c
+  DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+  PR_NUMBER: '467'
+
+jobs:
+  validate-controller:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate exact three-file controller boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          git fetch origin \
+            "refs/heads/main:refs/remotes/origin/main" \
+            "refs/heads/$RELEASE_REF:refs/remotes/origin/$RELEASE_REF" \
+            --no-tags
+          [[ "$(git rev-parse "origin/$RELEASE_REF")" == "$EXPECTED_RELEASE_SHA" ]]
+          git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" HEAD
+
+          git diff --name-only origin/main...HEAD | sort > /tmp/actual
+          cat > /tmp/expected <<'FILES'
+          .github/workflows/projectpulse-pr467-one-time-test-release-controller.yml
+          scripts/pr467-apply-migration-067-test.sh
+          scripts/pr467-run-migration-067-job.sh
+          FILES
+          diff -u /tmp/expected /tmp/actual
+
+          bash -n scripts/pr467-apply-migration-067-test.sh
+          bash -n scripts/pr467-run-migration-067-job.sh
+          grep -Fq "$EXPECTED_RELEASE_SHA" scripts/pr467-apply-migration-067-test.sh
+          grep -Fq "$EXPECTED_RELEASE_SHA" scripts/pr467-run-migration-067-job.sh
+          grep -Fq "$REQUIRED_COMMAND" .github/workflows/projectpulse-pr467-one-time-test-release-controller.yml
+          test -s database/migrations/067_uat_expense_lifecycle_work_identifiers.sql
+          test -s database/rollback/067_uat_expense_lifecycle_work_identifiers_rollback.sql
+          git diff --check origin/main...HEAD
+          echo 'PR467_TEST_RELEASE_CONTROLLER_VALIDATION=PASSED'
+
+  release-test:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      github.event.issue.number == 467 &&
+      github.actor == 'ahmedadeyemi-cts' &&
+      github.event.comment.body == 'DEPLOY PR467 TEST a536e33b48c41bf1dd867d7319e88f98e8aa152c'
+    name: Apply Migration 067 and deploy exact PR467 release to Test
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out release controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact application release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact authorization and immutable release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ref_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${RELEASE_REF}" --jq '.object.sha')"
+          [[ "$ref_sha" == "$EXPECTED_RELEASE_SHA" ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$EXPECTED_RELEASE_SHA" ]]
+          git -C control merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" HEAD
+
+          for file in \
+            release/database/migrations/067_uat_expense_lifecycle_work_identifiers.sql \
+            release/database/rollback/067_uat_expense_lifecycle_work_identifiers_rollback.sql \
+            release/tests/validate-pr467-uat-repairs.py \
+            control/deployment/containers/pr55-migrator/Dockerfile \
+            control/scripts/build-pr55-acr-image.sh \
+            control/scripts/export-pr55-test-database-url.sh \
+            control/scripts/pr467-apply-migration-067-test.sh \
+            control/scripts/pr467-run-migration-067-job.sh; do
+            test -s "$file"
+          done
+
+          bash -n control/scripts/pr467-apply-migration-067-test.sh
+          bash -n control/scripts/pr467-run-migration-067-job.sh
+          python3 release/tests/validate-pr467-uat-repairs.py
+          git -C release diff --check
+          echo "PROJECTPULSE_PR467_RELEASE_SHA=$EXPECTED_RELEASE_SHA"
+          echo 'PROJECTPULSE_PR467_RELEASE_GUARD=PASSED'
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Revalidate exact source before Test changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build release/src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          pushd release/src/frontend/project-time-web >/dev/null
+          npm ci --no-audit --no-fund
+          node ./scripts/validate-module-005-project-expense-upload.mjs
+          node ./scripts/validate-module-006-toyota-hyundai-pipelines.mjs
+          node ./scripts/validate-group-5-financial-operations-recovery.mjs
+          node ./scripts/validate-work-register-055c-055d.mjs
+          npm run build
+          popd >/dev/null
+          git -C release diff --check
+          git -C release diff --exit-code
+          echo 'PROJECTPULSE_PR467_PREDEPLOY_VALIDATION=PASSED'
+
+      - name: Sign in to Azure Test subscription
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current Test images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          web="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ -n "$api" && -n "$web" ]]
+          echo "old_api_image=$api" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$web" >> "$GITHUB_OUTPUT"
+
+      - name: Load Test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Build immutable Migration 067 image
+        id: migration_image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          context="$RUNNER_TEMP/m067-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$context/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$context/Dockerfile"
+          install -m 0755 control/scripts/pr467-apply-migration-067-test.sh "$context/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/067_uat_expense_lifecycle_work_identifiers.sql "$context/migrations/067_uat_expense_lifecycle_work_identifiers.sql"
+          install -m 0644 release/database/rollback/067_uat_expense_lifecycle_work_identifiers_rollback.sql "$context/migrations/067_uat_expense_lifecycle_work_identifiers_rollback.sql"
+          (
+            cd "$context/migrations"
+            sha256sum \
+              067_uat_expense_lifecycle_work_identifiers.sql \
+              067_uat_expense_lifecycle_work_identifiers_rollback.sql > SHA256SUMS
+          )
+          printf '%s\n' "$EXPECTED_RELEASE_SHA" > "$context/release-commit"
+          digest="$(control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-migration067:${EXPECTED_RELEASE_SHA}-${GITHUB_RUN_ID}" \
+            "$context/Dockerfile" \
+            "$context")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-migration067@$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Apply Migration 067 in the Test private network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PROJECTPULSE_PR467_MIGRATION_IMAGE: ${{ steps.migration_image.outputs.image }}
+          PROJECTPULSE_PR467_MIGRATION_JOB_NAME: m067-${{ github.run_id }}-${{ github.run_attempt }}-a
+          PROJECTPULSE_PR467_MIGRATION_LOG_DIR: ${{ runner.temp }}/pr467-migration-logs
+          PROJECTPULSE_PR467_MIGRATION_MODE: apply
+        run: bash control/scripts/pr467-run-migration-067-job.sh
+
+      - name: Capture Migration 067 prior state
+        id: migration_state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          logs='${{ runner.temp }}/pr467-migration-logs'
+          if grep -R -Fq 'PROJECTPULSE_MIGRATION_067_PREEXISTING=NO' "$logs"; then
+            echo 'newly_applied=true' >> "$GITHUB_OUTPUT"
+          elif grep -R -Fq 'PROJECTPULSE_MIGRATION_067_PREEXISTING=YES' "$logs"; then
+            echo 'newly_applied=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'Migration 067 prior-state evidence is missing.' >&2
+            exit 1
+          fi
+
+      - name: Verify Migration 067 without writes
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PROJECTPULSE_PR467_MIGRATION_IMAGE: ${{ steps.migration_image.outputs.image }}
+          PROJECTPULSE_PR467_MIGRATION_JOB_NAME: m067-${{ github.run_id }}-${{ github.run_attempt }}-v
+          PROJECTPULSE_PR467_MIGRATION_LOG_DIR: ${{ runner.temp }}/pr467-migration-logs
+          PROJECTPULSE_PR467_MIGRATION_MODE: verify
+        run: bash control/scripts/pr467-run-migration-067-job.sh
+
+      - name: Dispatch exact Test deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          after="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_REF" -f environment=test
+          run_id=''
+          for attempt in $(seq 1 90); do
+            run_id="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$DEPLOY_WORKFLOW" \
+              --branch "$RELEASE_REF" \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,headSha,createdAt \
+              --jq "map(select(.headSha == \"$EXPECTED_RELEASE_SHA\" and .createdAt >= \"$after\")) | sort_by(.createdAt) | last | .databaseId // empty")"
+            [[ -n "$run_id" ]] && break
+            sleep 5
+          done
+          [[ -n "$run_id" ]]
+          url="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Watch deployment through completion
+        run: gh run watch '${{ steps.deployment.outputs.run_id }}' --repo "$GITHUB_REPOSITORY" --interval 10 --exit-status
+
+      - name: Verify exact Test release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          acr='${{ vars.AZURE_ACR_NAME }}'
+          rg='${{ vars.AZURE_RESOURCE_GROUP }}'
+          api_app='${{ vars.AZURE_API_APP }}'
+          web_app='${{ vars.AZURE_WEB_APP }}'
+          public='${{ vars.PUBLIC_URL }}'
+          expected_api="$acr.azurecr.io/project-health-dashboard-api:ci-$EXPECTED_RELEASE_SHA"
+          expected_web="$acr.azurecr.io/project-health-dashboard-web:ci-$EXPECTED_RELEASE_SHA"
+          actual_api="$(az containerapp show -g "$rg" -n "$api_app" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          actual_web="$(az containerapp show -g "$rg" -n "$web_app" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ "$actual_api" == "$expected_api" ]]
+          [[ "$actual_web" == "$expected_web" ]]
+
+          api_digest="$(az acr repository show --name "$acr" --image "project-health-dashboard-api:ci-$EXPECTED_RELEASE_SHA" --query digest -o tsv --only-show-errors)"
+          web_digest="$(az acr repository show --name "$acr" --image "project-health-dashboard-web:ci-$EXPECTED_RELEASE_SHA" --query digest -o tsv --only-show-errors)"
+          [[ "$api_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$web_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          api_rev="$(az containerapp show -g "$rg" -n "$api_app" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          web_rev="$(az containerapp show -g "$rg" -n "$web_app" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          [[ "$(az containerapp revision show -g "$rg" -n "$api_app" --revision "$api_rev" --query 'properties.healthState' -o tsv --only-show-errors)" == Healthy ]]
+          [[ "$(az containerapp revision show -g "$rg" -n "$web_app" --revision "$web_rev" --query 'properties.healthState' -o tsv --only-show-errors)" == Healthy ]]
+
+          api_status="$(curl -sS -o /dev/null -w '%{http_code}' "$public/api/health" || true)"
+          web_status="$(curl -sS -o /dev/null -w '%{http_code}' "$public/" || true)"
+          case "$api_status" in 200|401) ;; *) exit 1 ;; esac
+          [[ "$web_status" == 200 ]]
+
+          mkdir -p '${{ runner.temp }}/pr467-release-evidence'
+          {
+            echo "release_sha=$EXPECTED_RELEASE_SHA"
+            echo 'migration=067_uat_expense_lifecycle_work_identifiers'
+            echo "migration_digest=${{ steps.migration_image.outputs.digest }}"
+            echo "api_image=$actual_api"
+            echo "api_digest=$api_digest"
+            echo "api_revision=$api_rev"
+            echo "web_image=$actual_web"
+            echo "web_digest=$web_digest"
+            echo "web_revision=$web_rev"
+            echo "deployment=${{ steps.deployment.outputs.run_url }}"
+            echo 'production_changed=no'
+            echo 'email_sent=no'
+          } > '${{ runner.temp }}/pr467-release-evidence/release.txt'
+          echo 'PROJECTPULSE_PR467_EXACT_TEST_RELEASE=VERIFIED'
+
+      - name: Roll back Test images on failure
+        if: failure() && steps.before.outputs.old_api_image != ''
+        shell: bash
+        run: |
+          set +e
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rb467a-${GITHUB_RUN_ID}" --output none --only-show-errors
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rb467w-${GITHUB_RUN_ID}" --output none --only-show-errors
+
+      - name: Roll back newly applied Migration 067 on failure
+        if: failure() && steps.migration_state.outputs.newly_applied == 'true'
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          PROJECTPULSE_PR467_MIGRATION_IMAGE: ${{ steps.migration_image.outputs.image }}
+          PROJECTPULSE_PR467_MIGRATION_JOB_NAME: m067-${{ github.run_id }}-${{ github.run_attempt }}-r
+          PROJECTPULSE_PR467_MIGRATION_LOG_DIR: ${{ runner.temp }}/pr467-migration-logs
+          PROJECTPULSE_PR467_MIGRATION_MODE: rollback
+          PROJECTPULSE_PR467_ROLLBACK_CONFIRMATION: ROLLBACK-MIGRATION-067-A536E33B
+        run: bash control/scripts/pr467-run-migration-067-job.sh
+
+      - name: Comment successful release
+        if: success()
+        shell: bash
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Test migration and deployment completed successfully.\n\n- Exact combined release SHA: \`$EXPECTED_RELEASE_SHA\`\n- Release ref: \`$RELEASE_REF\`\n- Migration 067: applied and independently verified\n- Deployment: ${{ steps.deployment.outputs.run_url }}\n- Exact API/web images and healthy revisions: verified\n- Production changed: no\n- Email sent: no"
+
+      - name: Comment failed release
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          url='${{ steps.deployment.outputs.run_url }}'
+          [[ -n "$url" ]] || url='Deployment was not dispatched.'
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Test migration or deployment failed.\n\n- Expected release SHA: \`$EXPECTED_RELEASE_SHA\`\n- Evidence: $url\n- Prior application images were restored when available.\n- Newly applied Migration 067 was rolled back only when no immutable acceptance evidence existed.\n- Production changed: no\n- Email sent: no"
+
+      - name: Collect release evidence
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p '${{ runner.temp }}/pr467-release-evidence'
+          cp -R '${{ runner.temp }}/pr467-migration-logs' '${{ runner.temp }}/pr467-release-evidence/migration-logs' 2>/dev/null || true
+          {
+            echo "controller_sha=$GITHUB_SHA"
+            echo "release_sha=$EXPECTED_RELEASE_SHA"
+            echo "release_ref=$RELEASE_REF"
+            echo "migration_newly_applied=${{ steps.migration_state.outputs.newly_applied }}"
+            echo "deployment=${{ steps.deployment.outputs.run_url }}"
+          } > '${{ runner.temp }}/pr467-release-evidence/controller.txt'
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr467-test-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pr467-release-evidence
+          if-no-files-found: warn
+          retention-days: 14
