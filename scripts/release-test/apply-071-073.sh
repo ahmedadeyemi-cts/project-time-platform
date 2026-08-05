@@ -97,7 +97,7 @@ BEGIN
   FOREACH required_id IN ARRAY ARRAY[
     '052_pulse_ai_private_document_runtime',
     '053_pulse_ai_private_rag_orchestration',
-    '054_pulse_ai_system_intelligence',
+    '054_pulse_ai_system_intelligence_conversations',
     '061_celar_ai_capability_routing',
     '070_module_033_project_forge'
   ] LOOP
