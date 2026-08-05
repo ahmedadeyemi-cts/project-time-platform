@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ ALLOWED_CONTENT_WRITE_WORKFLOWS = {
     "publish-pulse-ai-architecture-v1-1.yml",
 }
 CRITICAL_PINNED_WORKFLOWS = {
+    "deployment-concurrency-governance-ci.yml",
     "group5-financial-operations-recovery-ci.yml",
     "group7-ai-help-system-guide-ci.yml",
     "mirror-to-us-signal-projectpulse.yml",
@@ -26,6 +28,15 @@ CRITICAL_PINNED_WORKFLOWS = {
     "pulse-ai-help-chat-usability-ci.yml",
     "security-posture-ci.yml",
 }
+PULL_REQUEST_TARGET_WORKFLOW_SHA256 = {
+    # This is the sole pull_request_target workflow. It runs read-only default-branch
+    # governance code and never executes PR code, consumes secrets, or receives a
+    # write-capable token. Any byte change requires an explicit posture review.
+    "deployment-concurrency-governance-ci.yml": (
+        "f3dabd16019e54b21c7def599ef5e74bcc98cc8417f5500caf7a8dbcda531758"
+    ),
+}
+DEPLOYMENT_CONCURRENCY_VALIDATOR_SHA256 = "4b1920a20e73b10394a9fff66ca092362e57693d2f794d9396a3ca6322cecff8"
 STALE_BRANCH_WRITERS = {
     "temp-open-pr-integration.yml",
     "temp-security285-final-integration.yml",
@@ -72,6 +83,41 @@ else:
     workflows = []
     ERRORS.append("workflow directory is missing")
 
+governance_workflow = WORKFLOW_ROOT / "deployment-concurrency-governance-ci.yml"
+if not governance_workflow.is_file() or governance_workflow.is_symlink():
+    ERRORS.append("digest-pinned deployment concurrency governance workflow is missing or non-regular")
+else:
+    actual_workflow_digest = hashlib.sha256(governance_workflow.read_bytes()).hexdigest()
+    expected_workflow_digest = PULL_REQUEST_TARGET_WORKFLOW_SHA256[
+        "deployment-concurrency-governance-ci.yml"
+    ]
+    if actual_workflow_digest != expected_workflow_digest:
+        ERRORS.append("approved pull_request_target workflow digest changed")
+
+governance_validator = ROOT / "scripts" / "validate-deployment-concurrency-governance.mjs"
+if not governance_validator.is_file():
+    ERRORS.append("deployment concurrency governance validator is missing")
+else:
+    actual_validator_digest = hashlib.sha256(governance_validator.read_bytes()).hexdigest()
+    if actual_validator_digest != DEPLOYMENT_CONCURRENCY_VALIDATOR_SHA256:
+        ERRORS.append("deployment concurrency governance validator digest changed")
+    else:
+        try:
+            subprocess.check_output(
+                [
+                    "node",
+                    str(governance_validator),
+                    "--repo-root",
+                    str(ROOT),
+                    "--verify-pull-request-target-policy",
+                ],
+                cwd=ROOT,
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            ERRORS.append(f"pull_request_target structural policy failed: {exc}")
+
 for workflow in workflows:
     body = workflow.read_text(encoding="utf-8")
     name = workflow.name
@@ -79,7 +125,16 @@ for workflow in workflows:
     if name in STALE_BRANCH_WRITERS or name.startswith("temp-"):
         ERRORS.append(f"temporary workflow remains on protected source: {name}")
 
-    if re.search(r"(?m)^\s*pull_request_target\s*:", body):
+    expected_digest = PULL_REQUEST_TARGET_WORKFLOW_SHA256.get(name)
+    if expected_digest is not None:
+        actual_digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        if actual_digest != expected_digest:
+            ERRORS.append(
+                f"{name}: approved pull_request_target workflow changed; "
+                "security review and digest update are required"
+            )
+
+    if re.search(r"(?m)^\s*pull_request_target\s*:", body) and expected_digest is None:
         ERRORS.append(f"{name}: pull_request_target is prohibited")
 
     if re.search(r"(?m)^\s*permissions\s*:\s*write-all\s*$", body):
