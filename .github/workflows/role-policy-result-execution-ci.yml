@@ -58,7 +58,7 @@ jobs:
             echo "ROLE_POLICY_RESULT_EXECUTION_REGRESSION_MODE=PASS branch=$SOURCE_BRANCH"
           fi
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 

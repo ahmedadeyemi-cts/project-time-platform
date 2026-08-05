@@ -128,7 +128,7 @@ jobs:
           grep -Eq '#0[0-9A-Fa-f]{5}|#1[0-9A-Fa-f]{5}|rgb\(' "$CSS"
           echo 'GROUP3_DISTINCT_WORKSPACES_AND_CELAR_AI_LABEL=PASS'
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
