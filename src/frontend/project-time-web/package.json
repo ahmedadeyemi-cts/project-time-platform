@@ -90,7 +90,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "6.0.4",
+    "@vitejs/plugin-react": "6.0.5",
     "postcss": "8.5.25",
     "vite": "8.2.0"
   }
