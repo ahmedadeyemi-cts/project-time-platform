@@ -48,7 +48,8 @@ jobs:
           grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'old_api_env_b64' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq "PROJECTPULSE_AI_RELEASE_PHASE='${{ steps.contract.outputs.phase }}'" .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
           import json
