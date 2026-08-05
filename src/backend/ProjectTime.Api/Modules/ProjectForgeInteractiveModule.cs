@@ -1711,7 +1711,7 @@ public static partial class ProjectForgeModule
 
     private static async Task<IResult> ArchiveTaskAsync(
         Guid taskId,
-        ProjectForgeTaskArchiveRequest request,
+        [Microsoft.AspNetCore.Mvc.FromBody] ProjectForgeTaskArchiveRequest request,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -1933,7 +1933,7 @@ public static partial class ProjectForgeModule
 
     private static async Task<IResult> DeleteTaskDependencyAsync(
         Guid dependencyId,
-        ProjectForgeTaskDependencySaveRequest request,
+        [Microsoft.AspNetCore.Mvc.FromBody] ProjectForgeTaskDependencySaveRequest request,
         HttpContext context,
         CancellationToken cancellationToken)
         => await MutateDependencyAsync(dependencyId, request, context, delete: true, cancellationToken);
