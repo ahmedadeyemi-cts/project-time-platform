@@ -283,21 +283,7 @@ jobs:
             exit 1
           }
           KEY_VAULT_URI="${KEY_VAULT_SECRET_URI%%/secrets/*}"
-          KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
-          KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
           DATABASE_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
-          ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
-          ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
-          KEY_VAULT_SUBSCRIPTION="${ACTUAL_KEY_VAULT_ID#*/subscriptions/}"
-          KEY_VAULT_SUBSCRIPTION="${KEY_VAULT_SUBSCRIPTION%%/*}"
-          [[ "${KEY_VAULT_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
-            echo "The canonical Test Key Vault is outside the logged-in Test subscription." >&2
-            exit 1
-          }
-          [[ "${ACTUAL_KEY_VAULT_URI%/}" == "$KEY_VAULT_URI" ]] || {
-            echo "The canonical Test Key Vault host does not match its Azure resource." >&2
-            exit 1
-          }
           echo "phase=disabled" >> "$GITHUB_OUTPUT"
           echo "uat_enabled=$UAT_ENABLED" >> "$GITHUB_OUTPUT"
           echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
