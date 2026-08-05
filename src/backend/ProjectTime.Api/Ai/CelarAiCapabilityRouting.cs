@@ -123,7 +123,31 @@ public static class CelarAiCapabilityCatalog
         string? projectCode,
         string? projectName)
     {
-        var row = $"{rowType} {rowLabel} {taskCode}".ToLowerInvariant();
+        var normalizedRowType = (rowType ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant()
+            .Replace('-', '_')
+            .Replace(' ', '_');
+
+        if (normalizedRowType is "nonproject" or "non_project" or "non_project_time"
+            or "category" or "categorycode" or "category_code")
+        {
+            return TimesheetNonProject;
+        }
+
+        if (normalizedRowType is "service_request" or "servicerequest"
+            or "service_request_task" or "request" or "request_task")
+        {
+            return TimesheetServiceRequest;
+        }
+
+        if (normalizedRowType is "project" or "projecttask" or "project_task"
+            or "regular_task" or "assignment")
+        {
+            return TimesheetProjectTask;
+        }
+
+        var row = $"{rowLabel} {taskCode}".ToLowerInvariant();
         if (row.Contains("service request", StringComparison.Ordinal)
             || row.Contains("service_request", StringComparison.Ordinal)
             || row.Contains("request", StringComparison.Ordinal)
@@ -133,8 +157,7 @@ public static class CelarAiCapabilityCatalog
         }
 
         if (!string.IsNullOrWhiteSpace(projectCode)
-            || !string.IsNullOrWhiteSpace(projectName)
-            || row.Contains("project", StringComparison.Ordinal))
+            || !string.IsNullOrWhiteSpace(projectName))
         {
             return TimesheetProjectTask;
         }
@@ -200,6 +223,7 @@ public sealed record CelarAiPrivateModelProfile(
     bool Enabled,
     string Endpoint,
     string Model,
+    string AuthMode,
     string BearerToken,
     IReadOnlyList<string> PrivateHostAllowlist,
     bool RequirePrivateModelForDocuments,
@@ -213,7 +237,10 @@ public sealed record CelarAiPrivateModelProfile(
     public bool EndpointConfigured => !string.IsNullOrWhiteSpace(Endpoint);
     public bool ModelConfigured => !string.IsNullOrWhiteSpace(Model);
     public bool Configured => EndpointConfigured && ModelConfigured;
-    public bool Ready => Enabled && Configured;
+    public bool AuthenticationConfigured =>
+        AuthMode.Equals("bearer", StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(BearerToken);
+    public bool Ready => Enabled && Configured && AuthenticationConfigured;
 
     public object ToPublicResponse(string endpointPolicyStatus = "not_tested") => new
     {
@@ -225,6 +252,8 @@ public sealed record CelarAiPrivateModelProfile(
         endpointHostFingerprint = EndpointHostFingerprint,
         endpointReturned = false,
         model = ModelConfigured ? Model : "Not configured",
+        authMode = AuthMode,
+        authenticationConfigured = AuthenticationConfigured,
         bearerTokenConfigured = !string.IsNullOrWhiteSpace(BearerToken),
         bearerTokenFingerprint = TokenFingerprint,
         bearerTokenReturned = false,
@@ -235,7 +264,7 @@ public sealed record CelarAiPrivateModelProfile(
         updatedBy = UpdatedBy,
         persisted = Persisted,
         endpointPolicyStatus,
-        confidentialContextEligible = Ready && endpointPolicyStatus is "private_endpoint_approved" or "not_tested",
+        confidentialContextEligible = Ready && endpointPolicyStatus is "private_endpoint_dns_verified" or "not_tested",
         rawInternalDocumentsMayUsePublicProviders = false,
         stateChanged = false
     };
@@ -257,6 +286,18 @@ public sealed record CelarAiPrivateModelSecretRequest(
     string? BearerToken,
     int? ExpectedRevision);
 
+public sealed record CelarAiPrivateProbeEvidence(
+    bool Available,
+    string DiagnosticCode,
+    string RequestId,
+    int ProfileRevision,
+    DateTimeOffset TestedAt,
+    DateTimeOffset ExpiresAt,
+    string ReplicaId)
+{
+    public bool Fresh => ExpiresAt > DateTimeOffset.UtcNow;
+}
+
 public sealed record CelarAiCapabilityExecutionContext(
     string Feature,
     bool ContainsPrivateDocuments,
@@ -266,25 +307,29 @@ public sealed record CelarAiCapabilityExecutionContext(
     bool AllowSanitizedExternalAssistance,
     IReadOnlyList<string> SensitiveTerms,
     string ConsumerModule,
-    string CorrelationId);
+    string CorrelationId,
+    IReadOnlyList<string>? IdentityTerms = null,
+    bool PurposeBuiltDeidentifiedInput = false,
+    bool DeidentifiedFactsAvailable = false);
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
 
-public sealed class CelarAiCapabilityRoutingStore
+public sealed class CelarAiCapabilityRoutingStore : IDisposable
 {
     private readonly string? _connectionString;
-    private readonly byte[]? _encryptionKey;
+    private readonly ProjectPulseAiEncryptionKeyRing _keyRing;
     private readonly ILogger<CelarAiCapabilityRoutingStore> _logger;
 
     public CelarAiCapabilityRoutingStore(ILogger<CelarAiCapabilityRoutingStore> logger)
     {
         _logger = logger;
         _connectionString = ConnectionString();
-        _encryptionKey = EncryptionKey();
+        _keyRing = ProjectPulseAiEncryptionKeyRing.Load();
     }
 
     public bool DatabaseAvailable => !string.IsNullOrWhiteSpace(_connectionString);
-    public bool SecretEncryptionAvailable => _encryptionKey is { Length: 32 };
+    public bool SecretEncryptionAvailable => _keyRing.Available;
+    public string ActiveEncryptionKeyId => _keyRing.ActiveKeyId;
     public string EnvironmentCode => Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"), 80, "unspecified");
 
     public async Task<IReadOnlyList<CelarAiCapabilityRouteSnapshot>> LoadRoutesAsync(
@@ -464,8 +509,9 @@ public sealed class CelarAiCapabilityRoutingStore
                 await EnsureSchemaAsync(connection, cancellationToken);
                 const string sql = """
                     SELECT enabled, endpoint_ciphertext, endpoint_nonce, endpoint_tag,
+                           endpoint_encryption_key_id,
                            endpoint_host_fingerprint, model_name, auth_mode,
-                           token_ciphertext, token_nonce, token_tag, token_fingerprint,
+                           token_ciphertext, token_nonce, token_tag, token_encryption_key_id, token_fingerprint,
                            private_host_allowlist::text, require_private_model_for_documents,
                            revision, updated_at, updated_by
                     FROM ai_private_model_profiles
@@ -478,24 +524,25 @@ public sealed class CelarAiCapabilityRoutingStore
                 {
                     var endpoint = reader.IsDBNull(1)
                         ? string.Empty
-                        : Decrypt("celar_ai_private_endpoint", (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]);
-                    var token = reader.IsDBNull(7)
+                        : Decrypt("celar_ai_private_endpoint", reader.GetString(4), (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]);
+                    var token = reader.IsDBNull(8)
                         ? string.Empty
-                        : Decrypt("celar_ai_private_token", (byte[])reader[7], (byte[])reader[8], (byte[])reader[9]);
-                    var allowlist = JsonSerializer.Deserialize<string[]>(reader.GetString(11)) ?? [];
+                        : Decrypt("celar_ai_private_token", reader.GetString(11), (byte[])reader[8], (byte[])reader[9], (byte[])reader[10]);
+                    var allowlist = JsonSerializer.Deserialize<string[]>(reader.GetString(13)) ?? [];
                     return new CelarAiPrivateModelProfile(
                         EnvironmentCode,
                         reader.GetBoolean(0),
                         endpoint,
-                        reader.GetString(5),
+                        reader.GetString(6),
+                        reader.GetString(7),
                         token,
                         allowlist,
-                        reader.GetBoolean(12),
-                        reader.GetInt32(13),
-                        new DateTimeOffset(reader.GetDateTime(14).ToUniversalTime()),
-                        reader.IsDBNull(15) ? null : reader.GetGuid(15),
-                        reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                        reader.IsDBNull(10) ? string.Empty : reader.GetString(10),
+                        reader.GetBoolean(14),
+                        reader.GetInt32(15),
+                        new DateTimeOffset(reader.GetDateTime(16).ToUniversalTime()),
+                        reader.IsDBNull(17) ? null : reader.GetGuid(17),
+                        reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                        reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
                         true);
                 }
             }
@@ -524,12 +571,29 @@ public sealed class CelarAiCapabilityRoutingStore
         var endpoint = Clean(request.Endpoint, 1000, current.Endpoint);
         var model = Clean(request.Model, 240, current.Model);
         var allowlist = NormalizeAllowlist(request.PrivateHostAllowlist, current.PrivateHostAllowlist);
+        if (allowlist.Any(value => !PulseAiPrivateEndpointPolicy.IsValidAllowlistEntry(value)))
+            throw new ArgumentException("Every private-host allowlist entry must be an exact DNS hostname or a leading-dot DNS suffix. URLs, ports, wildcard characters, and IP literals are not allowed.");
         var requirePrivate = request.RequirePrivateModelForDocuments ?? current.RequirePrivateModelForDocuments;
         if (enabled && (endpoint.Length == 0 || model.Length == 0))
             throw new ArgumentException("A private endpoint and model are required before enabling Celar AI private inference.");
+        if (enabled && !current.AuthenticationConfigured)
+            throw new ArgumentException("Save the write-only private bearer token before enabling Celar AI private inference.");
+        if (enabled && !requirePrivate)
+            throw new ArgumentException("Private inference must remain required for document-grounded answers when the private Celar AI target is enabled.");
         if (endpoint.Length > 0
             && !PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(endpoint, allowlist, out _, out var reason))
             throw new ArgumentException($"The private endpoint was rejected by policy ({reason}).");
+        if (enabled)
+        {
+            var resolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                endpoint,
+                allowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+            if (!resolution.Approved)
+                throw new ArgumentException($"The private endpoint failed HTTPS and private-DNS verification ({resolution.Reason}).");
+        }
 
         var next = current with
         {
@@ -592,25 +656,28 @@ public sealed class CelarAiCapabilityRoutingStore
         const string upsert = """
             INSERT INTO ai_private_model_profiles
                 (environment_code, enabled, endpoint_ciphertext, endpoint_nonce, endpoint_tag,
-                 endpoint_host_fingerprint, model_name, auth_mode, token_ciphertext, token_nonce,
-                 token_tag, token_fingerprint, private_host_allowlist,
+                 endpoint_encryption_key_id, endpoint_host_fingerprint, model_name, auth_mode,
+                 token_ciphertext, token_nonce, token_tag, token_encryption_key_id,
+                 token_fingerprint, private_host_allowlist,
                  require_private_model_for_documents, revision, updated_at, updated_by)
             VALUES
-                (@environment, @enabled, @endpoint_ciphertext, @endpoint_nonce, @endpoint_tag,
-                 @endpoint_fingerprint, @model, 'bearer', @token_ciphertext, @token_nonce,
-                 @token_tag, @token_fingerprint, @allowlist::jsonb,
+                 (@environment, @enabled, @endpoint_ciphertext, @endpoint_nonce, @endpoint_tag,
+                 @key_id, @endpoint_fingerprint, @model, @auth_mode, @token_ciphertext, @token_nonce,
+                 @token_tag, @key_id, @token_fingerprint, @allowlist::jsonb,
                  @require_private, @revision, @updated_at, @updated_by)
             ON CONFLICT (environment_code) DO UPDATE SET
                 enabled = EXCLUDED.enabled,
                 endpoint_ciphertext = EXCLUDED.endpoint_ciphertext,
                 endpoint_nonce = EXCLUDED.endpoint_nonce,
                 endpoint_tag = EXCLUDED.endpoint_tag,
+                endpoint_encryption_key_id = EXCLUDED.endpoint_encryption_key_id,
                 endpoint_host_fingerprint = EXCLUDED.endpoint_host_fingerprint,
                 model_name = EXCLUDED.model_name,
                 auth_mode = EXCLUDED.auth_mode,
                 token_ciphertext = EXCLUDED.token_ciphertext,
                 token_nonce = EXCLUDED.token_nonce,
                 token_tag = EXCLUDED.token_tag,
+                token_encryption_key_id = EXCLUDED.token_encryption_key_id,
                 token_fingerprint = EXCLUDED.token_fingerprint,
                 private_host_allowlist = EXCLUDED.private_host_allowlist,
                 require_private_model_for_documents = EXCLUDED.require_private_model_for_documents,
@@ -625,8 +692,10 @@ public sealed class CelarAiCapabilityRoutingStore
             AddBytes(command, "endpoint_ciphertext", endpoint.Ciphertext);
             AddBytes(command, "endpoint_nonce", endpoint.Nonce);
             AddBytes(command, "endpoint_tag", endpoint.Tag);
+            command.Parameters.AddWithValue("key_id", _keyRing.ActiveKeyId);
             command.Parameters.AddWithValue("endpoint_fingerprint", (object?)profile.EndpointHostFingerprint ?? DBNull.Value);
             command.Parameters.AddWithValue("model", profile.Model);
+            command.Parameters.AddWithValue("auth_mode", profile.AuthMode);
             AddBytes(command, "token_ciphertext", token.Ciphertext);
             AddBytes(command, "token_nonce", token.Nonce);
             AddBytes(command, "token_tag", token.Tag);
@@ -640,18 +709,118 @@ public sealed class CelarAiCapabilityRoutingStore
         }
         const string audit = """
             INSERT INTO ai_private_model_profile_audit
-                (environment_code, action, revision, actor_user_id)
-            VALUES (@environment, @action, @revision, @actor);
+                (environment_code, action, revision, encryption_key_id, actor_user_id)
+            VALUES (@environment, @action, @revision, @key_id, @actor);
             """;
         await using (var command = new NpgsqlCommand(audit, connection, transaction))
         {
             command.Parameters.AddWithValue("environment", profile.EnvironmentCode);
             command.Parameters.AddWithValue("action", action);
             command.Parameters.AddWithValue("revision", profile.Revision);
+            command.Parameters.AddWithValue("key_id", _keyRing.ActiveKeyId);
             command.Parameters.AddWithValue("actor", actorUserId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<CelarAiPrivateProbeEvidence?> LoadPrivateProbeEvidenceAsync(
+        int profileRevision,
+        CancellationToken cancellationToken = default)
+    {
+        if (!DatabaseAvailable) return null;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        const string sql = """
+            SELECT available, diagnostic_code, request_id, profile_revision,
+                   tested_at, expires_at, replica_id
+            FROM ai_provider_probe_evidence
+            WHERE provider_code = 'celar_ai'
+              AND environment_code = @environment
+              AND profile_revision = @revision
+              AND expires_at > NOW()
+            ORDER BY tested_at DESC
+            LIMIT 1;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("environment", EnvironmentCode);
+        command.Parameters.AddWithValue("revision", profileRevision);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        return new CelarAiPrivateProbeEvidence(
+            reader.GetBoolean(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetInt32(3),
+            reader.GetFieldValue<DateTimeOffset>(4),
+            reader.GetFieldValue<DateTimeOffset>(5),
+            reader.GetString(6));
+    }
+
+    public async Task<CelarAiPrivateProbeEvidence> SavePrivateProbeEvidenceAsync(
+        CelarAiPrivateModelProfile profile,
+        ProjectPulseAiProbeResult result,
+        TimeSpan timeToLive,
+        CancellationToken cancellationToken = default)
+    {
+        if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
+        if (!string.Equals(result.Provider, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Only private Celar AI probe evidence may be persisted by this store.");
+        var now = DateTimeOffset.UtcNow;
+        var ttl = TimeSpan.FromMinutes(Math.Clamp(timeToLive.TotalMinutes, 1, 60));
+        var expiresAt = now.Add(ttl);
+        var replicaId = Clean(
+            Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION")
+                ?? Environment.GetEnvironmentVariable("HOSTNAME"),
+            200,
+            $"api-{Environment.ProcessId}");
+        var diagnosticCode = SafeDiagnosticCode(result.Code);
+        var requestId = Clean(result.RequestId, 240, string.Empty);
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string insert = """
+            INSERT INTO ai_provider_probe_evidence
+                (provider_code, environment_code, profile_revision, available,
+                 diagnostic_code, request_id, model_fingerprint, replica_id,
+                 tested_at, expires_at)
+            VALUES
+                ('celar_ai', @environment, @revision, @available,
+                 @diagnostic_code, @request_id, @model_fingerprint, @replica_id,
+                 @tested_at, @expires_at);
+            """;
+        await using (var command = new NpgsqlCommand(insert, connection, transaction))
+        {
+            command.Parameters.AddWithValue("environment", profile.EnvironmentCode);
+            command.Parameters.AddWithValue("revision", profile.Revision);
+            command.Parameters.AddWithValue("available", result.Available);
+            command.Parameters.AddWithValue("diagnostic_code", diagnosticCode);
+            command.Parameters.AddWithValue("request_id", requestId);
+            command.Parameters.AddWithValue("model_fingerprint", Fingerprint(profile.Model));
+            command.Parameters.AddWithValue("replica_id", replicaId);
+            command.Parameters.AddWithValue("tested_at", now);
+            command.Parameters.AddWithValue("expires_at", expiresAt);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var cleanup = new NpgsqlCommand(
+            "DELETE FROM ai_provider_probe_evidence WHERE expires_at < NOW() - INTERVAL '24 hours';",
+            connection,
+            transaction))
+        {
+            await cleanup.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return new CelarAiPrivateProbeEvidence(
+            result.Available,
+            diagnosticCode,
+            requestId,
+            profile.Revision,
+            now,
+            expiresAt,
+            replicaId);
     }
 
     private async Task<StoredRoute?> ReadRouteForUpdateAsync(
@@ -683,54 +852,22 @@ public sealed class CelarAiCapabilityRoutingStore
     private async Task EnsureSchemaAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {
         const string sql = """
-            CREATE TABLE IF NOT EXISTS ai_capability_routes (
-                feature_code TEXT PRIMARY KEY,
-                route_targets JSONB NOT NULL,
-                external_context_policy TEXT NOT NULL,
-                revision INTEGER NOT NULL DEFAULT 1,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_by UUID NULL
-            );
-            CREATE TABLE IF NOT EXISTS ai_capability_route_audit (
-                audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                feature_code TEXT NOT NULL,
-                previous_targets JSONB NULL,
-                new_targets JSONB NOT NULL,
-                previous_external_context_policy TEXT NULL,
-                new_external_context_policy TEXT NOT NULL,
-                actor_user_id UUID NULL,
-                occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS ai_private_model_profiles (
-                environment_code TEXT PRIMARY KEY,
-                enabled BOOLEAN NOT NULL DEFAULT FALSE,
-                endpoint_ciphertext BYTEA NULL,
-                endpoint_nonce BYTEA NULL,
-                endpoint_tag BYTEA NULL,
-                endpoint_host_fingerprint TEXT NULL,
-                model_name TEXT NOT NULL DEFAULT '',
-                auth_mode TEXT NOT NULL DEFAULT 'bearer',
-                token_ciphertext BYTEA NULL,
-                token_nonce BYTEA NULL,
-                token_tag BYTEA NULL,
-                token_fingerprint TEXT NULL,
-                private_host_allowlist JSONB NOT NULL DEFAULT '[]'::jsonb,
-                require_private_model_for_documents BOOLEAN NOT NULL DEFAULT TRUE,
-                revision INTEGER NOT NULL DEFAULT 1,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_by UUID NULL
-            );
-            CREATE TABLE IF NOT EXISTS ai_private_model_profile_audit (
-                audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                environment_code TEXT NOT NULL,
-                action TEXT NOT NULL,
-                revision INTEGER NOT NULL,
-                actor_user_id UUID NULL,
-                occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+            SELECT
+                EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id = '071_ai_runtime_production_hardening')
+                AND to_regclass('public.ai_capability_routes') IS NOT NULL
+                AND to_regclass('public.ai_capability_route_audit') IS NOT NULL
+                AND to_regclass('public.ai_private_model_profiles') IS NOT NULL
+                AND to_regclass('public.ai_private_model_profile_audit') IS NOT NULL
+                AND to_regclass('public.ai_provider_probe_evidence') IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'ai_private_model_profiles'
+                      AND column_name = 'endpoint_encryption_key_id'
+                );
             """;
         await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (!Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false))
+            throw new InvalidOperationException("Migration 071 must be applied before Module 064 routing or private-model configuration can be read or changed.");
     }
 
     private CelarAiPrivateModelProfile EnvironmentProfile()
@@ -738,6 +875,10 @@ public sealed class CelarAiCapabilityRoutingStore
         var endpoint = Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT")?.Trim() ?? string.Empty;
         var model = Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_MODEL")?.Trim() ?? string.Empty;
         var token = Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")?.Trim() ?? string.Empty;
+        var authMode = Clean(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE"),
+            40,
+            "bearer").ToLowerInvariant();
         var allowlist = NormalizeAllowlist(
             (Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST") ?? string.Empty)
                 .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
@@ -748,6 +889,7 @@ public sealed class CelarAiCapabilityRoutingStore
             enabled,
             endpoint,
             model,
+            authMode,
             token,
             allowlist,
             true,
@@ -768,7 +910,7 @@ public sealed class CelarAiCapabilityRoutingStore
         var tag = new byte[16];
         try
         {
-            using var aes = new AesGcm(_encryptionKey!, 16);
+            using var aes = new AesGcm(_keyRing.ActiveKey(), 16);
             aes.Encrypt(nonce, plaintext, ciphertext, tag, Encoding.UTF8.GetBytes(purpose));
             return new EncryptedValue(ciphertext, nonce, tag);
         }
@@ -778,12 +920,12 @@ public sealed class CelarAiCapabilityRoutingStore
         }
     }
 
-    private string Decrypt(string purpose, byte[] ciphertext, byte[] nonce, byte[] tag)
+    private string Decrypt(string purpose, string keyId, byte[] ciphertext, byte[] nonce, byte[] tag)
     {
         var plaintext = new byte[ciphertext.Length];
         try
         {
-            using var aes = new AesGcm(_encryptionKey!, 16);
+            using var aes = new AesGcm(_keyRing.Key(keyId), 16);
             aes.Decrypt(nonce, ciphertext, tag, plaintext, Encoding.UTF8.GetBytes(purpose));
             return Encoding.UTF8.GetString(plaintext);
         }
@@ -830,6 +972,15 @@ public sealed class CelarAiCapabilityRoutingStore
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..12].ToLowerInvariant();
     }
 
+    private static string SafeDiagnosticCode(string? value)
+    {
+        var safe = new string((value ?? "provider_unavailable")
+            .Where(character => char.IsLetterOrDigit(character) || character is '_' or '-')
+            .Take(120)
+            .ToArray());
+        return safe.Length == 0 ? "provider_unavailable" : safe;
+    }
+
     private static string Clean(string? value, int maximum, string fallback)
     {
         var clean = value?.Trim() ?? string.Empty;
@@ -837,33 +988,9 @@ public sealed class CelarAiCapabilityRoutingStore
         return clean.Length <= maximum ? clean : clean[..maximum];
     }
 
-    private static string? ConnectionString() => new[]
-        {
-            "ConnectionStrings__DefaultConnection",
-            "ConnectionStrings__ProjectPulse",
-            "ConnectionStrings__ProjectTime",
-            "PROJECTPULSE_CONNECTION_STRING",
-            "PROJECTTIME_DATABASE_CONNECTION",
-            "PROJECTPULSE_DB_CONNECTION",
-            "PROJECTTIME_DB_CONNECTION"
-        }
-        .Select(Environment.GetEnvironmentVariable)
-        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    private static string? ConnectionString() => ProjectPulseAiDatabaseConnection.Resolve();
 
-    private static byte[]? EncryptionKey()
-    {
-        try
-        {
-            var value = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY");
-            if (string.IsNullOrWhiteSpace(value)) return null;
-            var key = Convert.FromBase64String(value.Trim());
-            return key.Length == 32 ? key : null;
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
-    }
+    public void Dispose() => _keyRing.Dispose();
 
     private sealed record StoredRoute(
         string Feature,
@@ -960,14 +1087,18 @@ public sealed class CelarAiPrivateGenerationTarget
             return Unavailable("celar_ai_private_model_disabled");
         if (!profile.Configured)
             return Unavailable("celar_ai_private_model_not_configured");
-        if (!PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        if (!profile.AuthenticationConfigured)
+            return Unavailable("celar_ai_private_authentication_not_configured");
+        var endpointResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 profile.Endpoint,
                 profile.PrivateHostAllowlist,
-                out var endpoint,
-                out var reason)
-            || endpoint is null)
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+        var endpoint = endpointResolution.Endpoint;
+        if (!endpointResolution.Approved || endpoint is null)
         {
-            return Unavailable($"celar_ai_private_endpoint_{reason}");
+            return Unavailable($"celar_ai_private_endpoint_{endpointResolution.Reason}");
         }
 
         var payload = new
@@ -1166,6 +1297,23 @@ public sealed class CelarAiConsumerAssuranceRegistry
         string LastCorrelationId);
 }
 
+public sealed record CelarAiExternalFallbackProbeTargetResult(
+    string Provider,
+    bool Attempted,
+    bool Available,
+    bool PrivacyValidated,
+    string Status,
+    string DiagnosticCode,
+    string RequestId);
+
+public sealed record CelarAiExternalFallbackProductionProbeResult(
+    string Status,
+    bool Ready,
+    bool SanitizedExternalExecutionEnabled,
+    bool EnterpriseSanitizedExternalFallbackEnabled,
+    IReadOnlyList<CelarAiExternalFallbackProbeTargetResult> Targets,
+    DateTimeOffset GeneratedAt);
+
 public sealed class CelarAiCapabilityRouter
 {
     private readonly CelarAiCapabilityRoutingStore _store;
@@ -1204,6 +1352,352 @@ public sealed class CelarAiCapabilityRouter
         CancellationToken cancellationToken = default) =>
         GenerateInternalAsync(request, execution, localFallback, skipPrivateTarget: false, cancellationToken);
 
+    public Task<ProjectPulseAiRouteResult> GenerateAsync(
+        ProjectPulseAiGenerationRequest request,
+        CelarAiCapabilityExecutionContext execution,
+        Func<string> localFallback,
+        bool skipPrivateTarget,
+        CancellationToken cancellationToken = default) =>
+        GenerateInternalAsync(request, execution, localFallback, skipPrivateTarget, cancellationToken);
+
+    public async Task<bool> IsFirstTargetAsync(
+        string feature,
+        string target,
+        CancellationToken cancellationToken = default)
+    {
+        var route = await _store.LoadRouteAsync(
+            CelarAiCapabilityCatalog.NormalizeFeature(feature),
+            cancellationToken);
+        return string.Equals(route.Targets.FirstOrDefault(), target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void RecordAlreadyExecutedPrivateAttempt(
+        string feature,
+        string correlationId,
+        bool succeeded,
+        string diagnosticCode)
+    {
+        var normalizedFeature = CelarAiCapabilityCatalog.NormalizeFeature(feature);
+        var normalizedCorrelationId = SafeRequestId(correlationId);
+        var safeCorrelationId = string.IsNullOrWhiteSpace(normalizedCorrelationId)
+            ? Guid.NewGuid().ToString("N")
+            : normalizedCorrelationId;
+        if (succeeded)
+        {
+            _health.RecordSuccess(
+                CelarAiCapabilityTargets.CelarAi,
+                usage: null,
+                requestId: null,
+                outcome: ProjectPulseAiOutcomes.Success);
+            _assurance.Record(
+                normalizedFeature,
+                CelarAiCapabilityTargets.CelarAi,
+                ProjectPulseAiOutcomes.Success,
+                safeCorrelationId);
+            return;
+        }
+
+        _health.RecordFailure(
+            CelarAiCapabilityTargets.CelarAi,
+            DecisionCode(diagnosticCode, "private_model_unavailable"),
+            requestId: null);
+        _assurance.Record(
+            normalizedFeature,
+            CelarAiCapabilityTargets.CelarAi,
+            ProjectPulseAiOutcomes.Unavailable,
+            safeCorrelationId);
+    }
+
+    /// <summary>
+    /// Executes a fixed, server-authored, identity-free production probe against
+    /// Claude and then OpenAI. It accepts no caller content, reads no project or
+    /// document, does not modify shared routes, and never returns model output.
+    /// Each response must pass the production external-output privacy validator.
+    /// </summary>
+    public async Task<CelarAiExternalFallbackProductionProbeResult> ProbeSanitizedExternalFallbackAsync(
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var executionEnabled = RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION");
+        var enterpriseFallbackEnabled = RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED");
+        if (!executionEnabled || !enterpriseFallbackEnabled)
+        {
+            return new CelarAiExternalFallbackProductionProbeResult(
+                Status: "sanitized_external_fallback_production_probe_policy_blocked",
+                Ready: false,
+                SanitizedExternalExecutionEnabled: executionEnabled,
+                EnterpriseSanitizedExternalFallbackEnabled: enterpriseFallbackEnabled,
+                Targets:
+                [
+                    PolicyBlockedProbeTarget(CelarAiCapabilityTargets.Claude),
+                    PolicyBlockedProbeTarget(CelarAiCapabilityTargets.OpenAi)
+                ],
+                GeneratedAt: DateTimeOffset.UtcNow);
+        }
+
+        const string fixedGenericCapsule =
+            "a generic configuration verification was completed, expected behavior was confirmed, " +
+            "and the result was documented for review. expand only these facts into two professional sentences.";
+        var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
+            Purpose: "module064_production_external_fallback_probe",
+            Content: fixedGenericCapsule,
+            Classification: "internal_generic",
+            SensitiveTerms: [],
+            AcknowledgePreviewOnly: true));
+        if (!sanitized.ExternalExecutionAuthorized)
+        {
+            return new CelarAiExternalFallbackProductionProbeResult(
+                Status: "sanitized_external_fallback_production_probe_sanitization_blocked",
+                Ready: false,
+                SanitizedExternalExecutionEnabled: executionEnabled,
+                EnterpriseSanitizedExternalFallbackEnabled: enterpriseFallbackEnabled,
+                Targets:
+                [
+                    SanitizationBlockedProbeTarget(CelarAiCapabilityTargets.Claude),
+                    SanitizationBlockedProbeTarget(CelarAiCapabilityTargets.OpenAi)
+                ],
+                GeneratedAt: DateTimeOffset.UtcNow);
+        }
+
+        var request = new ProjectPulseAiGenerationRequest(
+            Feature: CelarAiCapabilityCatalog.TimesheetNonProject,
+            SystemPrompt: """
+                you are completing a production readiness check for generic professional writing.
+                use only the supplied identity-free fact. do not add names, identifiers, dates, locations,
+                customer or project details, private documents, financial information, credentials, or
+                unsupported claims. use passive voice without naming any actor, person, role, organization,
+                account, customer, client, project, location, product, or provider. return exactly two
+                complete professional sentences in plain text.
+                """,
+            UserPrompt: sanitized.SanitizedCapsule,
+            MaxOutputTokens: 240,
+            Temperature: 0.0);
+
+        var safeCorrelationId = string.IsNullOrWhiteSpace(correlationId)
+            ? Guid.NewGuid().ToString("N")
+            : correlationId;
+        var targets = new List<CelarAiExternalFallbackProbeTargetResult>(2);
+        foreach (var target in new[]
+                 {
+                     CelarAiCapabilityTargets.Claude,
+                     CelarAiCapabilityTargets.OpenAi
+                 })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            targets.Add(await ProbeSanitizedExternalTargetAsync(
+                target,
+                request,
+                safeCorrelationId,
+                cancellationToken));
+        }
+
+        var ready = targets.Count == 2
+            && targets.All(target => target.Available && target.PrivacyValidated);
+        return new CelarAiExternalFallbackProductionProbeResult(
+            Status: ready
+                ? "sanitized_external_fallback_production_probe_succeeded"
+                : "sanitized_external_fallback_production_probe_failed",
+            Ready: ready,
+            SanitizedExternalExecutionEnabled: executionEnabled,
+            EnterpriseSanitizedExternalFallbackEnabled: enterpriseFallbackEnabled,
+            Targets: targets,
+            GeneratedAt: DateTimeOffset.UtcNow);
+    }
+
+    private async Task<CelarAiExternalFallbackProbeTargetResult> ProbeSanitizedExternalTargetAsync(
+        string target,
+        ProjectPulseAiGenerationRequest request,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        if (!_providers.TryGetValue(target, out var provider))
+            return ProbeTarget(target, false, false, false, "not_registered", "provider_not_registered", null);
+
+        var configuration = _configuration.Provider(target);
+        _health.ApplyConfiguration(configuration);
+        if (!_health.CanAttempt(target, out var healthReason))
+            return ProbeTarget(target, false, false, false, "not_available", healthReason, null);
+
+        ProjectPulseAiProviderResult result;
+        try
+        {
+            result = await provider.GenerateAsync(request, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Module 064 sanitized external production probe failed. Provider={Provider} Diagnostic={Diagnostic}",
+                target,
+                exception.GetType().Name.ToLowerInvariant());
+            _health.RecordFailure(target, "production_probe_unhandled_failure", null);
+            _health.RecordProbe(new ProjectPulseAiProbeResult(
+                target,
+                false,
+                "production_probe_unhandled_failure",
+                "The sanitized production generation probe failed.",
+                null,
+                null));
+            _assurance.Record(
+                CelarAiCapabilityCatalog.TimesheetNonProject,
+                target,
+                ProjectPulseAiOutcomes.Unavailable,
+                correlationId);
+            return ProbeTarget(
+                target,
+                true,
+                false,
+                false,
+                "failed",
+                "production_probe_unhandled_failure",
+                null);
+        }
+
+        if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
+        {
+            if (!_sanitizer.IsExternalOutputSafe(result.Content, [], out var privacyDecisionCode))
+            {
+                _health.RecordFailure(target, privacyDecisionCode, result.RequestId);
+                _health.RecordProbe(new ProjectPulseAiProbeResult(
+                    target,
+                    false,
+                    privacyDecisionCode,
+                    "The sanitized production generation output did not pass privacy validation.",
+                    result.HttpStatusCode,
+                    result.RequestId));
+                _assurance.Record(
+                    CelarAiCapabilityCatalog.TimesheetNonProject,
+                    target,
+                    ProjectPulseAiOutcomes.Unavailable,
+                    correlationId);
+                return ProbeTarget(
+                    target,
+                    true,
+                    false,
+                    false,
+                    "privacy_validation_failed",
+                    privacyDecisionCode,
+                    result.RequestId);
+            }
+
+            _health.RecordSuccess(target, result.Usage, result.RequestId, rateLimits: result.RateLimits);
+            _health.RecordProbe(new ProjectPulseAiProbeResult(
+                target,
+                true,
+                "sanitized_generation_available",
+                "The sanitized production generation and output privacy validation succeeded.",
+                result.HttpStatusCode,
+                result.RequestId));
+            _assurance.Record(
+                CelarAiCapabilityCatalog.TimesheetNonProject,
+                target,
+                ProjectPulseAiOutcomes.Success,
+                correlationId);
+            return ProbeTarget(
+                target,
+                true,
+                true,
+                true,
+                "sanitized_generation_succeeded",
+                "external_output_privacy_validated",
+                result.RequestId);
+        }
+
+        if (result.IsRefusal)
+        {
+            _health.RecordRefusal(target, result.Usage, result.RequestId, result.RateLimits);
+            _health.RecordProbe(new ProjectPulseAiProbeResult(
+                target,
+                false,
+                result.Code ?? "provider_safety_refusal",
+                "The provider refused the fixed sanitized production probe.",
+                result.HttpStatusCode,
+                result.RequestId));
+            _assurance.Record(
+                CelarAiCapabilityCatalog.TimesheetNonProject,
+                target,
+                ProjectPulseAiOutcomes.Refusal,
+                correlationId);
+            return ProbeTarget(
+                target,
+                true,
+                false,
+                false,
+                "refused",
+                result.Code ?? "provider_safety_refusal",
+                result.RequestId);
+        }
+
+        var diagnosticCode = string.IsNullOrWhiteSpace(result.Code)
+            ? "provider_unavailable"
+            : result.Code;
+        _health.RecordFailure(target, diagnosticCode, result.RequestId);
+        _health.RecordProbe(new ProjectPulseAiProbeResult(
+            target,
+            false,
+            diagnosticCode,
+            "The sanitized production generation probe did not complete.",
+            result.HttpStatusCode,
+            result.RequestId));
+        _assurance.Record(
+            CelarAiCapabilityCatalog.TimesheetNonProject,
+            target,
+            ProjectPulseAiOutcomes.Unavailable,
+            correlationId);
+        return ProbeTarget(
+            target,
+            true,
+            false,
+            false,
+            "failed",
+            diagnosticCode,
+            result.RequestId);
+    }
+
+    private static CelarAiExternalFallbackProbeTargetResult PolicyBlockedProbeTarget(string target) =>
+        ProbeTarget(target, false, false, false, "policy_blocked", "sanitized_external_policy_disabled", null);
+
+    private static CelarAiExternalFallbackProbeTargetResult SanitizationBlockedProbeTarget(string target) =>
+        ProbeTarget(target, false, false, false, "sanitization_blocked", "fixed_capsule_sanitization_failed", null);
+
+    private static CelarAiExternalFallbackProbeTargetResult ProbeTarget(
+        string provider,
+        bool attempted,
+        bool available,
+        bool privacyValidated,
+        string status,
+        string diagnosticCode,
+        string? requestId) => new(
+            Provider: provider,
+            Attempted: attempted,
+            Available: available,
+            PrivacyValidated: privacyValidated,
+            Status: SafeDiagnostic(status, "unknown"),
+            DiagnosticCode: SafeDiagnostic(diagnosticCode, "provider_unavailable"),
+            RequestId: SafeRequestId(requestId));
+
+    private static string SafeDiagnostic(string? value, string fallback)
+    {
+        var safe = new string((value ?? string.Empty)
+            .Where(character => char.IsLetterOrDigit(character) || character is '_' or '-')
+            .Take(80)
+            .ToArray());
+        return safe.Length == 0 ? fallback : safe;
+    }
+
+    private static string SafeRequestId(string? value) =>
+        new((value ?? string.Empty)
+            .Where(character => char.IsLetterOrDigit(character) || character is '_' or '-' or '.')
+            .Take(160)
+            .ToArray());
+
+    private static bool RuntimeFlag(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
+
     public Task<ProjectPulseAiRouteResult> GenerateExternalAsync(
         ProjectPulseAiGenerationRequest request,
         CelarAiCapabilityExecutionContext execution,
@@ -1224,6 +1718,7 @@ public sealed class CelarAiCapabilityRouter
         var attempted = new List<string>();
         var skipped = new List<string>();
         var failed = new List<string>();
+        var decisions = new List<ProjectPulseAiTargetDecision>();
 
         foreach (var target in route.Targets)
         {
@@ -1231,23 +1726,27 @@ public sealed class CelarAiCapabilityRouter
             if (skipPrivateTarget && target == CelarAiCapabilityTargets.CelarAi)
             {
                 skipped.Add(target);
+                decisions.Add(new(target, "skipped", "private_target_skipped_by_caller"));
                 continue;
             }
             if (target == CelarAiCapabilityTargets.Local)
             {
                 var content = localFallback();
+                _health.RecordSuccess(target, null, null, "local_fallback");
                 _assurance.Record(feature, target, ProjectPulseAiOutcomes.Success, execution.CorrelationId);
+                decisions.Add(new(target, "used", "local_fallback"));
                 return new ProjectPulseAiRouteResult(
                     content,
                     target,
                     ProjectPulseAiOutcomes.Success,
                     failed.Count > 0 || skipped.Count > 0
-                        ? "Higher-priority targets were unavailable or not eligible. The governed local template was used."
+                        ? BuildFallbackWarning(decisions)
                         : null,
                     attempted,
                     skipped,
                     null,
-                    null);
+                    null,
+                    decisions);
             }
 
             if (target == CelarAiCapabilityTargets.CelarAi)
@@ -1257,7 +1756,12 @@ public sealed class CelarAiCapabilityRouter
                 var result = await _privateTarget.GenerateAsync(request with { Feature = feature }, profile, cancellationToken);
                 if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
                 {
-                    _assurance.Record(feature, target, result.Outcome, execution.CorrelationId);
+                    RecordAlreadyExecutedPrivateAttempt(
+                        feature,
+                        execution.CorrelationId,
+                        succeeded: true,
+                        diagnosticCode: "generation_succeeded");
+                    decisions.Add(new(target, "used", "generation_succeeded"));
                     return new ProjectPulseAiRouteResult(
                         result.Content,
                         target,
@@ -1266,27 +1770,38 @@ public sealed class CelarAiCapabilityRouter
                         attempted,
                         skipped,
                         result.Usage,
-                        result.RequestId);
+                        result.RequestId,
+                        decisions);
                 }
                 failed.Add(target);
+                var privateFailureCode = DecisionCode(result.Code, "private_model_unavailable");
+                RecordAlreadyExecutedPrivateAttempt(
+                    feature,
+                    execution.CorrelationId,
+                    succeeded: false,
+                    diagnosticCode: privateFailureCode);
+                decisions.Add(new(target, "failed", privateFailureCode));
                 continue;
             }
 
             if (!_providers.TryGetValue(target, out var provider))
             {
                 skipped.Add(target);
+                decisions.Add(new(target, "skipped", "provider_not_registered"));
                 continue;
             }
-            var externalRequest = PrepareExternalRequest(request, execution);
+            var externalRequest = PrepareExternalRequest(request, execution, out var externalDecisionCode);
             if (externalRequest is null)
             {
                 skipped.Add(target);
+                decisions.Add(new(target, "skipped", externalDecisionCode));
                 continue;
             }
             _health.ApplyConfiguration(_configuration.Provider(target));
-            if (!_health.CanAttempt(target, out _))
+            if (!_health.CanAttempt(target, out var healthReason))
             {
                 skipped.Add(target);
+                decisions.Add(new(target, "skipped", DecisionCode(healthReason, "provider_unavailable")));
                 continue;
             }
 
@@ -1305,13 +1820,39 @@ public sealed class CelarAiCapabilityRouter
                 _logger.LogWarning(exception, "Module 064 target {Target} failed without exposing prompt or secret content.", target);
                 _health.RecordFailure(target, "provider_unhandled_failure", null);
                 failed.Add(target);
+                decisions.Add(new(target, "failed", "provider_unhandled_failure"));
                 continue;
             }
 
             if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {
+                var outputSensitiveTerms = NormalizeSensitiveTerms(
+                    execution.SensitiveTerms.Concat(execution.IdentityTerms ?? []),
+                    out _);
+                if (!_sanitizer.IsExternalOutputSafe(
+                        result.Content,
+                        outputSensitiveTerms,
+                        out var outputDecisionCode))
+                {
+                    _logger.LogWarning(
+                        "Module 064 rejected target {Target} output at the post-generation privacy boundary. Code={Code} RequestId={RequestId}",
+                        target,
+                        outputDecisionCode,
+                        result.RequestId);
+                    _health.RecordFailure(target, outputDecisionCode, result.RequestId);
+                    failed.Add(target);
+                    decisions.Add(new(target, "failed", outputDecisionCode));
+                    continue;
+                }
+
                 _health.RecordSuccess(target, result.Usage, result.RequestId, rateLimits: result.RateLimits);
                 _assurance.Record(feature, target, result.Outcome, execution.CorrelationId);
+                decisions.Add(new(
+                    target,
+                    "used",
+                    externalDecisionCode == "sanitized_external_request_ready_after_deidentification"
+                        ? "generation_succeeded_after_deidentification"
+                        : "generation_succeeded"));
                 return new ProjectPulseAiRouteResult(
                     result.Content,
                     target,
@@ -1322,12 +1863,14 @@ public sealed class CelarAiCapabilityRouter
                     attempted,
                     skipped,
                     result.Usage,
-                    result.RequestId);
+                    result.RequestId,
+                    decisions);
             }
             if (result.IsRefusal)
             {
                 _health.RecordRefusal(target, result.Usage, result.RequestId, result.RateLimits);
                 _assurance.Record(feature, target, result.Outcome, execution.CorrelationId);
+                decisions.Add(new(target, "refused", DecisionCode(result.Code, "provider_safety_refusal")));
                 return new ProjectPulseAiRouteResult(
                     string.Empty,
                     target,
@@ -1336,41 +1879,109 @@ public sealed class CelarAiCapabilityRouter
                     attempted,
                     skipped,
                     result.Usage,
-                    result.RequestId);
+                    result.RequestId,
+                    decisions);
             }
             _health.RecordFailure(target, result.Code ?? "provider_unavailable", result.RequestId);
             failed.Add(target);
+            decisions.Add(new(target, "failed", DecisionCode(result.Code, "provider_unavailable")));
         }
 
         var fallback = localFallback();
+        _health.RecordSuccess(CelarAiCapabilityTargets.Local, null, null, "local_fallback");
         _assurance.Record(feature, CelarAiCapabilityTargets.Local, ProjectPulseAiOutcomes.Success, execution.CorrelationId);
+        decisions.Add(new(CelarAiCapabilityTargets.Local, "used", "local_fallback"));
         return new ProjectPulseAiRouteResult(
             fallback,
             CelarAiCapabilityTargets.Local,
             ProjectPulseAiOutcomes.Success,
-            "No configured or eligible AI target was available. The governed local template was used.",
+            BuildFallbackWarning(decisions),
             attempted,
             skipped,
             null,
-            null);
+            null,
+            decisions);
     }
 
     private ProjectPulseAiGenerationRequest? PrepareExternalRequest(
         ProjectPulseAiGenerationRequest request,
-        CelarAiCapabilityExecutionContext execution)
+        CelarAiCapabilityExecutionContext execution,
+        out string decisionCode)
     {
-        var restricted = execution.ContainsPrivateDocuments
-            || execution.ContainsCustomerIdentity
-            || execution.ContainsPeopleRecords
-            || execution.ContainsFinancialValues;
-        if (restricted && !execution.AllowSanitizedExternalAssistance) return null;
+        decisionCode = "sanitized_external_request_blocked";
+        if (!execution.AllowSanitizedExternalAssistance)
+        {
+            decisionCode = "restricted_external_assistance_not_allowed";
+            return null;
+        }
+
+        // Private documents, people-record datasets, and financial/commercial
+        // values are never passed to a public provider and are not made eligible
+        // merely by running regex replacement. Consumers must instead construct a
+        // purpose-built non-document capsule inside the private boundary.
+        if (execution.ContainsPrivateDocuments)
+        {
+            decisionCode = "private_document_context_external_blocked";
+            return null;
+        }
+        if (execution.ContainsPeopleRecords)
+        {
+            decisionCode = "people_record_context_external_blocked";
+            return null;
+        }
+        if (execution.ContainsFinancialValues)
+        {
+            decisionCode = "financial_context_external_blocked";
+            return null;
+        }
+        if (!execution.PurposeBuiltDeidentifiedInput)
+        {
+            decisionCode = "sanitized_external_purpose_built_capsule_required";
+            return null;
+        }
+        if (!execution.DeidentifiedFactsAvailable)
+        {
+            decisionCode = "sanitized_external_context_empty";
+            return null;
+        }
+
+        var sensitiveTerms = NormalizeSensitiveTerms(
+            execution.SensitiveTerms.Concat(execution.IdentityTerms ?? []),
+            out var sensitiveTermInventoryValid);
+        if (!sensitiveTermInventoryValid)
+        {
+            decisionCode = "sanitized_external_sensitive_term_inventory_invalid";
+            return null;
+        }
+
+        var identityTerms = NormalizeSensitiveTerms(
+            execution.IdentityTerms ?? [],
+            out var identityInventoryValid);
+        if (!identityInventoryValid)
+        {
+            decisionCode = "sanitized_external_identity_inventory_invalid";
+            return null;
+        }
+        if (execution.ContainsCustomerIdentity && identityTerms.Count == 0)
+        {
+            decisionCode = "sanitized_external_identity_inventory_missing";
+            return null;
+        }
+
         var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
             Purpose: $"module064_{execution.Feature}",
             Content: request.UserPrompt,
-            Classification: restricted ? "restricted_generic" : "internal_generic",
-            SensitiveTerms: execution.SensitiveTerms.ToArray(),
+            Classification: "internal_generic",
+            SensitiveTerms: sensitiveTerms.ToArray(),
             AcknowledgePreviewOnly: true));
-        if (!sanitized.ExternalExecutionAuthorized) return null;
+        if (!sanitized.ExternalExecutionAuthorized)
+        {
+            decisionCode = SanitizerDecisionCode(sanitized);
+            return null;
+        }
+        decisionCode = sanitized.Redactions.Count > 0
+            ? "sanitized_external_request_ready_after_deidentification"
+            : "sanitized_external_request_ready";
         return request with
         {
             Feature = CelarAiCapabilityCatalog.NormalizeFeature(request.Feature),
@@ -1379,10 +1990,127 @@ public sealed class CelarAiCapabilityRouter
                 The request has been sanitized. Do not request or invent customer names, project identifiers,
                 employee identities, internal documents, financial values, credentials, hostnames, IP addresses,
                 or proprietary system facts. Do not claim that work was completed, approved, sent, published,
-                baselined, assigned, committed, or deployed. Return only the requested reviewable content.
+                baselined, assigned, committed, or deployed. Treat every [REDACTED_*] marker as omitted data:
+                do not repeat, reconstruct, or call attention to it. Return only the requested reviewable content.
                 """,
             UserPrompt = sanitized.SanitizedCapsule
         };
+    }
+
+    private static string BuildFallbackWarning(IReadOnlyCollection<ProjectPulseAiTargetDecision> decisions)
+    {
+        if (decisions.Any(item => item.ReasonCode == "sanitized_external_policy_disabled"))
+        {
+            return "Claude and OpenAI were not called because sanitized external AI execution is disabled by runtime policy. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode == "celar_ai_private_model_not_configured"))
+        {
+            return "The private Celar AI target is not configured, and no later eligible target completed the request. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode == "celar_ai_private_model_disabled"))
+        {
+            return "The private Celar AI target is disabled, and no later eligible target completed the request. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode == "provider_circuit_open"))
+        {
+            return "An AI provider circuit is temporarily open after recent failures. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode is
+            "private_document_context_external_blocked" or
+            "sanitized_external_private_document_marker_blocked"))
+        {
+            return "Private document context stayed inside Celar AI and was not sent to Claude or OpenAI. No eligible private target completed the request, so the governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode is "people_record_context_external_blocked" or "financial_context_external_blocked"))
+        {
+            return "People-record or financial context was not eligible for an external AI provider. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode is
+            "sanitized_external_identity_inventory_missing" or
+            "sanitized_external_identity_inventory_invalid" or
+            "sanitized_external_sensitive_term_inventory_invalid" or
+            "sanitized_external_purpose_built_capsule_required" or
+            "sanitized_external_residual_identity_blocked"))
+        {
+            return "Claude and OpenAI were not called because the backend could not prove complete customer and personal-identity removal. The governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode.StartsWith("external_output_", StringComparison.Ordinal)))
+        {
+            return "An external target returned content that did not pass the backend privacy validation. The response was discarded and the governed local template was used.";
+        }
+        if (decisions.Any(item => item.ReasonCode == "sanitized_external_context_empty"))
+        {
+            return "The backend could not derive enough identity-free factual context for Claude or OpenAI. The governed local template was used without sending the Engineer note externally.";
+        }
+        if (decisions.Any(item => item.ReasonCode == "restricted_external_assistance_not_allowed"
+            || item.ReasonCode == "sanitized_external_request_blocked"))
+        {
+            return "The request was not eligible for an external AI provider under the privacy policy. The governed local template was used.";
+        }
+        return "No configured or eligible AI target completed the request. The governed local template was used.";
+    }
+
+    private static string SanitizerDecisionCode(PulseAiSanitizationResult result)
+    {
+        if (result.BlockedReasons.Any(reason => reason.Contains("disabled by ProjectPulse runtime policy", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_policy_disabled";
+        if (result.BlockedReasons.Any(reason => reason.Contains("financial", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_financial_context_blocked";
+        if (result.BlockedReasons.Any(reason => reason.Contains("person or customer", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_identity_context_blocked";
+        if (result.BlockedReasons.Any(reason => reason.Contains("credential", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_credential_context_blocked";
+        if (result.BlockedReasons.Any(reason => reason.Contains("Private-document or commercial-source", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_private_document_marker_blocked";
+        if (result.BlockedReasons.Any(reason => reason.Contains("sensitive-term inventory", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_sensitive_term_inventory_invalid";
+        if (result.BlockedReasons.Any(reason => reason.Contains("may remain after de-identification", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_residual_identity_blocked";
+        if (result.BlockedReasons.Any(reason => reason.Contains("No useful", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_context_empty";
+        if (result.BlockedReasons.Any(reason => reason.Contains("internal-generic", StringComparison.OrdinalIgnoreCase)))
+            return "sanitized_external_classification_blocked";
+        return "sanitized_external_request_blocked";
+    }
+
+    private static IReadOnlyList<string> NormalizeSensitiveTerms(
+        IEnumerable<string?> values,
+        out bool valid)
+    {
+        valid = true;
+        var normalized = new List<string>();
+        foreach (var value in values)
+        {
+            var term = value?.Trim();
+            if (string.IsNullOrWhiteSpace(term) || term.Length < 2) continue;
+            if (term.Length > 256 || term.Any(char.IsControl))
+            {
+                valid = false;
+                continue;
+            }
+            normalized.Add(term);
+        }
+
+        if (normalized.Count > 128)
+        {
+            valid = false;
+            normalized = normalized.Take(128).ToList();
+        }
+
+        return normalized
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(term => term.Length)
+            .ToArray();
+    }
+
+    private static string DecisionCode(string? code, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return fallback;
+        var normalized = new string(code.Trim().ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) || character == '_' ? character : '_')
+            .Take(120)
+            .ToArray());
+        return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
     }
 
     private static string DisplayName(string target) => target switch

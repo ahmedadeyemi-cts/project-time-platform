@@ -63,6 +63,25 @@ assert('NO_CONSEQUENTIAL_MUTATION', contracts.includes('timesheetSaved = false')
 assert('EXTERNAL_DISABLED_DEFAULT', external.includes('PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED') && external.includes('&& enabled;'), 'sanitized external reasoning requires an explicit runtime setting');
 assert('DLP_EXECUTION_GATE', sanitizer.includes('SanitizeForExecution') && sanitizer.includes('sanitized_capsule_execution_ready') && sanitizer.includes('named_people_and_customers') && sanitizer.includes('financial_values'), 'execution requires a fail-closed DLP capsule');
 assert('NO_PRIVATE_EXTERNAL_CONTEXT', external.includes('Private document text is never eligible') && external.includes('Financial or commercial values are never eligible') && external.includes('People, assignment, workload, or employee records are never eligible'), 'private documents, people records, and financial values are prohibited');
+assert(
+  'CLOSED_SERVER_OWNED_EXTERNAL_CAPSULE',
+  contracts.includes('string PurposeCategory')
+    && !contracts.includes('string GenericProblem')
+    && !contracts.includes('IReadOnlyList<string> SensitiveTerms')
+    && external.includes('public static class CelarAiExternalReasoningPurposeCatalog')
+    && external.includes('TryBuildServerOwnedCapsule(')
+    && external.includes('Content: serverOwnedCapsule')
+    && external.includes('SensitiveTerms: []')
+    && external.includes('if (!serverOwnedCapsuleReady)')
+    && !external.includes('request.GenericProblem')
+    && !external.includes('request.SensitiveTerms')
+    && service.includes('PurposeCategory: CelarAiExternalReasoningPurposeCatalog.ForMode(mode)')
+    && !service.includes('GenericExternalProblem(')
+    && targets.includes('SensitiveTerms: [],')
+    && targets.includes('IdentityTerms: [],')
+    && targets.includes('DeidentifiedFactsAvailable: serverOwnedCapsuleReady'),
+  'arbitrary input—including lowercase or unlabeled customer/person text—cannot be represented in the Module 011 public-provider request; unknown categories fail closed'
+);
 assert('MODULE_064_ROUTER', external.includes('ProjectPulseAiRouter') && external.includes('ProjectPulseAiFeatures.ProjectFlowHivePlan') && external.includes('ProjectPulseAiFeatures.SowGsdPlanning'), 'approved generic reasoning uses Module 064 feature routing');
 assert('ENDPOINTS', moduleSource.includes('/api/celar-ai/v1/architecture') && contracts.includes('/api/celar-ai/v1/platform/readiness') && contracts.includes('/api/celar-ai/v1/compose'), 'enterprise readiness, architecture, and composer endpoints are present');
 assert('SERVICES_REGISTERED', services.includes('CelarAiPeopleAndGuidanceService') && services.includes('CelarAiExternalReasoningService') && services.includes('CelarAiEnterprisePlatformService'), 'all enterprise services are registered');

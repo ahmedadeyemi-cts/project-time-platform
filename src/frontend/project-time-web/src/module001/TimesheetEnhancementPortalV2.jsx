@@ -94,6 +94,13 @@ function assignmentTarget(task) {
 }
 
 function categoryTarget(category) {
+  const categoryId = String(
+    category?.nonProjectTimeCategoryId
+      || category?.nonProjectCategoryId
+      || category?.categoryId
+      || category?.id
+      || ''
+  );
   const code = String(
     category?.code
       || category?.categoryCode
@@ -108,6 +115,20 @@ function categoryTarget(category) {
       || 'Non-project activity'
   );
 
+  // The backend resolves the selected activity from its opaque category ID.
+  // Prefer that authoritative identity even when the API also supplies a code.
+  if (UUID_PATTERN.test(categoryId)) {
+    return {
+      targetType: 'category',
+      targetId: categoryId,
+      selectionValue: `category:${categoryId}`,
+      selectionLabel: name,
+      groupLabel: 'Non-Project Time',
+      nonProjectTimeCategoryId: categoryId,
+      categoryCode: code
+    };
+  }
+
   if (CATEGORY_CODE_PATTERN.test(code)) {
     return {
       targetType: 'categoryCode',
@@ -118,22 +139,7 @@ function categoryTarget(category) {
     };
   }
 
-  const categoryId = String(
-    category?.nonProjectTimeCategoryId
-      || category?.nonProjectCategoryId
-      || category?.categoryId
-      || category?.id
-      || ''
-  );
-  if (!UUID_PATTERN.test(categoryId)) return null;
-
-  return {
-    targetType: 'category',
-    targetId: categoryId,
-    selectionValue: `category:${categoryId}`,
-    selectionLabel: name,
-    groupLabel: 'Non-Project Time'
-  };
+  return null;
 }
 
 function deduplicateTargets(targets) {

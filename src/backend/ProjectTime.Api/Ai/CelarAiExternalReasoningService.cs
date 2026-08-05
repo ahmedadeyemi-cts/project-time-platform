@@ -1,8 +1,59 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
+/// Closed vocabulary for public-provider assistance. The category is an opaque
+/// selector only; no caller-authored text, identity inventory, or substring is
+/// copied into the outbound prompt. Every capsule is constructed from a fixed
+/// backend string below.
+/// </summary>
+public static class CelarAiExternalReasoningPurposeCatalog
+{
+    public const string SowScopeQuality = "sow_scope_quality";
+    public const string ProjectPlanQuality = "project_plan_quality";
+    public const string ProjectTimelineSequencing = "project_timeline_sequencing";
+    public const string ProjectDiagramGovernance = "project_diagram_governance";
+
+    public static string ForMode(string mode) => mode switch
+    {
+        "sow_draft" => SowScopeQuality,
+        "project_timeline" => ProjectTimelineSequencing,
+        "project_diagram" => ProjectDiagramGovernance,
+        "project_plan" => ProjectPlanQuality,
+        _ => string.Empty
+    };
+
+    public static bool TryBuildServerOwnedCapsule(
+        string? category,
+        string mode,
+        out string capsule)
+    {
+        var expectedCategory = ForMode(mode);
+        if (expectedCategory.Length == 0
+            || !string.Equals(category?.Trim(), expectedCategory, StringComparison.Ordinal))
+        {
+            capsule = string.Empty;
+            return false;
+        }
+
+        capsule = expectedCategory switch
+        {
+            SowScopeQuality =>
+                "Provide a generic professional-services scope-quality checklist covering objectives, boundaries, exclusions, deliverables, responsibilities, assumptions, dependencies, acceptance criteria, milestones, risks, change control, and review gates. Do not use or infer any source-document content.",
+            ProjectTimelineSequencing =>
+                "Provide generic sequencing guidance for a complex professional-services implementation using discovery, design validation, prerequisites, implementation, testing, acceptance, operational handoff, and closeout. Do not provide customer-specific dates.",
+            ProjectDiagramGovernance =>
+                "Provide generic systems-engineering diagram guidance for showing project inputs, governance, discovery, design, implementation, validation, acceptance, operational handoff, dependencies, risks, and review gates.",
+            ProjectPlanQuality =>
+                "Provide a generic professional-services project-planning checklist covering work-breakdown quality, dependencies, milestones, roles, assumptions, risks, acceptance, handoff, and human review.",
+            _ => string.Empty
+        };
+        return capsule.Length > 0;
+    }
+}
+
+/// <summary>
 /// Provides an optional generic-reasoning fallback through Module 064. The
-/// service accepts only a deliberately generic problem statement. It never
+/// service accepts only a closed backend-owned purpose category. It never
 /// receives private document chunks, customer/project identities, people
 /// records, financial values, or unrestricted tool output.
 /// </summary>
@@ -35,7 +86,8 @@ public sealed class CelarAiExternalReasoningService
         allowedModes = CelarAiEnterprisePlatformPolicy.ExternalFallbackEligibleModes,
         inputPolicy = new
         {
-            genericProblemOnly = true,
+            closedServerOwnedPurposeCategoryOnly = true,
+            callerFreeTextAccepted = false,
             privateDocumentTextAllowed = false,
             customerOrProjectIdentityAllowed = false,
             peopleRecordsAllowed = false,
@@ -69,17 +121,24 @@ public sealed class CelarAiExternalReasoningService
         if (!request.AcknowledgeSanitizedExternalUse)
             blockers.Add("The caller did not explicitly acknowledge the sanitized external-reasoning boundary.");
 
+        var serverOwnedCapsuleReady = CelarAiExternalReasoningPurposeCatalog.TryBuildServerOwnedCapsule(
+            request.PurposeCategory,
+            mode,
+            out var serverOwnedCapsule);
+        var serverOwnedPurposeCategory = CelarAiExternalReasoningPurposeCatalog.ForMode(mode);
+        if (!serverOwnedCapsuleReady)
+            blockers.Add("The external-reasoning purpose category is unknown, empty, or does not match the requested solution mode.");
+
         if (blockers.Count > 0)
         {
             return Blocked(mode, blockers, now);
         }
 
-        var genericProblem = Clean(request.GenericProblem, 6_000);
         var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
-            Purpose: Clean(request.Purpose, 120),
-            Content: genericProblem,
+            Purpose: $"server_owned_{serverOwnedPurposeCategory}",
+            Content: serverOwnedCapsule,
             Classification: "internal_generic",
-            SensitiveTerms: request.SensitiveTerms?.ToArray() ?? [],
+            SensitiveTerms: [],
             AcknowledgePreviewOnly: true));
 
         if (!sanitized.ExternalExecutionAuthorized)

@@ -31,14 +31,16 @@ public sealed class PulseAiPrivateEmbeddingClient
         {
             return Failure("private_embeddings_not_configured", "embedding_not_configured", completedAt);
         }
-        if (!PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var endpointResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.EmbeddingEndpoint,
                 options.PrivateHostAllowlist,
-                out var endpoint,
-                out var endpointReason)
-            || endpoint is null)
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+        var endpoint = endpointResolution.Endpoint;
+        if (!endpointResolution.Approved || endpoint is null)
         {
-            return Failure("private_embedding_endpoint_rejected", endpointReason, completedAt);
+            return Failure("private_embedding_endpoint_rejected", endpointResolution.Reason, completedAt);
         }
 
         try

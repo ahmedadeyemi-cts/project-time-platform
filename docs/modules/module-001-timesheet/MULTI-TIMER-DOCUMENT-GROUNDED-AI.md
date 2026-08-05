@@ -51,7 +51,7 @@ Migration 057 normalizes every active, engineering-visible project document as e
 
 Service requests receive the same behavior when their row contains a request number or resolves to the associated project. Request identity, project code, task details, and the engineer note are included in the retrieval question so the private service can select relevant SOW, GSD, and supporting evidence.
 
-Retrieved source text remains inside the private ProjectPulse RAG boundary. The public-provider fallback receives only the engineer note and selected row context, never the retrieved private document content. Source access is reauthorized for the effective user before prompt assembly. The returned description is a suggestion only and must be reviewed and explicitly applied by the engineer.
+Retrieved source text remains inside the private ProjectPulse RAG boundary. The public-provider fallback does not receive the Engineer note or selected row identity. The backend detects a bounded set of activity and technical-domain signals and emits only fixed, server-authored category labels plus a generic work classification. No captured token or substring is copied, so lowercase or unlabeled names remain private. If no safe factual category can be derived, the request fails closed to the governed local template. Source access is reauthorized for the effective user before prompt assembly. The returned description is a suggestion only and must be reviewed and explicitly applied by the Engineer.
 
 AI cannot change hours, dates, classification, project, task, request, allocation, timer state, save state, submission, approval, or customer commitment.
 

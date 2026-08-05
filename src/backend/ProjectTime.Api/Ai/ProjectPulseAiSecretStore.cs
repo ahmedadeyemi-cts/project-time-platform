@@ -4,24 +4,24 @@ using Npgsql;
 
 namespace ProjectTime.Api.Ai;
 
-public sealed class ProjectPulseAiSecretStore
+public sealed class ProjectPulseAiSecretStore : IDisposable
 {
     private const int MaximumSecretBytes = 8192;
     private readonly string? _connectionString;
-    private readonly byte[]? _encryptionKey;
+    private readonly ProjectPulseAiEncryptionKeyRing _keyRing;
     private readonly ILogger<ProjectPulseAiSecretStore> _logger;
 
     public ProjectPulseAiSecretStore(ILogger<ProjectPulseAiSecretStore> logger)
     {
         _logger = logger;
         _connectionString = ConnectionString();
-        _encryptionKey = ReadEncryptionKey();
+        _keyRing = ProjectPulseAiEncryptionKeyRing.Load();
     }
 
-    public bool Available => _connectionString is not null && _encryptionKey is not null;
+    public bool Available => _connectionString is not null && _keyRing.Available;
     public string UnavailableReason => _connectionString is null
         ? "Database configuration is unavailable."
-        : _encryptionKey is null
+        : !_keyRing.Available
             ? "PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key."
             : string.Empty;
 
@@ -31,7 +31,7 @@ public sealed class ProjectPulseAiSecretStore
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
-        const string sql = "SELECT provider_code, ciphertext, nonce, tag, version, rotated_at FROM ai_provider_secrets;";
+        const string sql = "SELECT provider_code, ciphertext, nonce, tag, encryption_key_id, version, rotated_at FROM ai_provider_secrets;";
         await using var command = new NpgsqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new List<StoredSecret>();
@@ -42,9 +42,9 @@ public sealed class ProjectPulseAiSecretStore
                 var providerCode = reader.GetString(0);
                 result.Add(new StoredSecret(
                     providerCode,
-                    Decrypt(providerCode, (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]),
-                    reader.GetString(4),
-                    new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime())));
+                    Decrypt(providerCode, reader.GetString(4), (byte[])reader[1], (byte[])reader[2], (byte[])reader[3]),
+                    reader.GetString(5),
+                    new DateTimeOffset(reader.GetDateTime(6).ToUniversalTime())));
             }
             catch (CryptographicException exception)
             {
@@ -74,7 +74,7 @@ public sealed class ProjectPulseAiSecretStore
         var tag = new byte[16];
         try
         {
-            using var aes = new AesGcm(_encryptionKey!, 16);
+            using var aes = new AesGcm(_keyRing.ActiveKey(), 16);
             aes.Encrypt(
                 nonce,
                 plaintext,
@@ -94,10 +94,11 @@ public sealed class ProjectPulseAiSecretStore
         await EnsureSchemaAsync(connection, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string upsert = """
-            INSERT INTO ai_provider_secrets (provider_code, ciphertext, nonce, tag, version, rotated_at, rotated_by)
-            VALUES (@provider, @ciphertext, @nonce, @tag, @version, @rotated_at, @actor)
+            INSERT INTO ai_provider_secrets (provider_code, ciphertext, nonce, tag, encryption_key_id, version, rotated_at, rotated_by)
+            VALUES (@provider, @ciphertext, @nonce, @tag, @key_id, @version, @rotated_at, @actor)
             ON CONFLICT (provider_code) DO UPDATE SET ciphertext = EXCLUDED.ciphertext, nonce = EXCLUDED.nonce,
-                tag = EXCLUDED.tag, version = EXCLUDED.version, rotated_at = EXCLUDED.rotated_at, rotated_by = EXCLUDED.rotated_by;
+                tag = EXCLUDED.tag, encryption_key_id = EXCLUDED.encryption_key_id,
+                version = EXCLUDED.version, rotated_at = EXCLUDED.rotated_at, rotated_by = EXCLUDED.rotated_by;
             """;
         await using (var command = new NpgsqlCommand(upsert, connection, transaction))
         {
@@ -105,16 +106,18 @@ public sealed class ProjectPulseAiSecretStore
             command.Parameters.AddWithValue("ciphertext", ciphertext);
             command.Parameters.AddWithValue("nonce", nonce);
             command.Parameters.AddWithValue("tag", tag);
+            command.Parameters.AddWithValue("key_id", _keyRing.ActiveKeyId);
             command.Parameters.AddWithValue("version", version);
             command.Parameters.AddWithValue("rotated_at", rotatedAt);
             command.Parameters.AddWithValue("actor", actorUserId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
-        const string audit = "INSERT INTO ai_provider_secret_audit (provider_code, action, version, actor_user_id) VALUES (@provider, 'replaced', @version, @actor);";
+        const string audit = "INSERT INTO ai_provider_secret_audit (provider_code, action, version, encryption_key_id, actor_user_id) VALUES (@provider, 'replaced', @version, @key_id, @actor);";
         await using (var command = new NpgsqlCommand(audit, connection, transaction))
         {
             command.Parameters.AddWithValue("provider", providerCode);
             command.Parameters.AddWithValue("version", version);
+            command.Parameters.AddWithValue("key_id", _keyRing.ActiveKeyId);
             command.Parameters.AddWithValue("actor", actorUserId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -234,39 +237,29 @@ public sealed class ProjectPulseAiSecretStore
         CancellationToken cancellationToken)
     {
         const string sql = """
-            CREATE TABLE IF NOT EXISTS ai_provider_secrets (
-                provider_code TEXT PRIMARY KEY CHECK (provider_code IN ('claude','openai')),
-                ciphertext BYTEA NOT NULL, nonce BYTEA NOT NULL, tag BYTEA NOT NULL,
-                version TEXT NOT NULL, rotated_at TIMESTAMPTZ NOT NULL, rotated_by UUID NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS ai_provider_secret_audit (
-                audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                provider_code TEXT NOT NULL, action TEXT NOT NULL, version TEXT NOT NULL,
-                actor_user_id UUID NOT NULL, occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS ai_provider_settings (
-                provider_code TEXT PRIMARY KEY CHECK (provider_code IN ('claude','openai')),
-                model TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_by UUID NOT NULL
-            );
-            ALTER TABLE ai_provider_settings ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
-            CREATE TABLE IF NOT EXISTS ai_provider_settings_audit (
-                audit_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                provider_code TEXT NOT NULL, action TEXT NOT NULL, model TEXT NOT NULL,
-                actor_user_id UUID NOT NULL, occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
+            SELECT
+                EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id = '071_ai_runtime_production_hardening')
+                AND to_regclass('public.ai_provider_secrets') IS NOT NULL
+                AND to_regclass('public.ai_provider_secret_audit') IS NOT NULL
+                AND to_regclass('public.ai_provider_settings') IS NOT NULL
+                AND to_regclass('public.ai_provider_settings_audit') IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'ai_provider_secrets'
+                      AND column_name = 'encryption_key_id'
+                );
             """;
         await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (!Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false))
+            throw new InvalidOperationException("Migration 071 must be applied before Module 064 provider configuration can be read or changed.");
     }
 
-    private string Decrypt(string providerCode, byte[] ciphertext, byte[] nonce, byte[] tag)
+    private string Decrypt(string providerCode, string keyId, byte[] ciphertext, byte[] nonce, byte[] tag)
     {
         var plaintext = new byte[ciphertext.Length];
         try
         {
-            using var aes = new AesGcm(_encryptionKey!, 16);
+            using var aes = new AesGcm(_keyRing.Key(keyId), 16);
             aes.Decrypt(
                 nonce,
                 ciphertext,
@@ -281,33 +274,9 @@ public sealed class ProjectPulseAiSecretStore
         }
     }
 
-    private static byte[]? ReadEncryptionKey()
-    {
-        try
-        {
-            var value = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY");
-            if (string.IsNullOrWhiteSpace(value)) return null;
-            var key = Convert.FromBase64String(value.Trim());
-            return key.Length == 32 ? key : null;
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
-    }
+    public void Dispose() => _keyRing.Dispose();
 
-    private static string? ConnectionString() => new[]
-        {
-            "ConnectionStrings__DefaultConnection",
-            "ConnectionStrings__ProjectPulse",
-            "ConnectionStrings__ProjectTime",
-            "PROJECTPULSE_CONNECTION_STRING",
-            "PROJECTTIME_DATABASE_CONNECTION",
-            "PROJECTPULSE_DB_CONNECTION",
-            "PROJECTTIME_DB_CONNECTION"
-        }
-        .Select(Environment.GetEnvironmentVariable)
-        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    private static string? ConnectionString() => ProjectPulseAiDatabaseConnection.Resolve();
 
     public sealed record StoredSecret(
         string ProviderCode,

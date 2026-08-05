@@ -29,8 +29,8 @@ Administrators can change the order of Celar AI, Claude, and OpenAI for a capabi
 
 | Capability code | Display name | Owning modules | External-context rule |
 |---|---|---|---|
-| `timesheet_non_project_description` | Timesheet — Non-project time | 001 | Only the user note, category, date, and non-project row metadata can be considered for sanitized external assistance. |
-| `timesheet_project_task_description` | Timesheet — Project tasks | 001, 019 | Project records and document evidence stay private; external stages receive a generic sanitized problem only. |
+| `timesheet_non_project_description` | Timesheet — Non-project time | 001 | The raw note, category, date, and row metadata stay private; external stages receive only fixed backend-derived activity/domain categories and a generic work classification. |
+| `timesheet_project_task_description` | Timesheet — Project tasks | 001, 019 | Project records, raw Engineer text, identity fields, and document evidence stay private; external stages receive only a purpose-built identity-free category capsule. |
 | `timesheet_service_request_description` | Timesheet — Requests / Service Requests | 001, 019 | Request records, attachments, IQS, SOW, GSD, and governed email evidence stay private. |
 | `sow_gsd_planning` | SOW / GSD planning | 011, 025 | Customer, commercial, design, contract, pricing, and document evidence stays private. |
 | `project_flowhive_plan` | Project FlowHive plan, schedule, and diagram | 011, 066 | Project evidence stays private; external stages provide generic planning patterns only. |
@@ -144,7 +144,7 @@ Authorized private evidence and governed Pulse tools
                        Detailed cited answer or draft
 ```
 
-Public providers never receive raw SOW, GSD, IQS, email, customer, project, employee, contract, rate, financial, credential, endpoint, IP-address, or unrestricted tool content. Generic external output is untrusted until Celar AI privately reapplies and verifies it.
+Public providers never receive raw SOW, GSD, IQS, email, Engineer free text, customer, project, employee, contract, rate, financial, credential, endpoint, IP-address, or unrestricted tool content. A backend capsule must contain only server-authored categories and pass bounded DLP plus residual-identity checks. Generic external output is untrusted, is checked again for identity/privacy leakage, and remains subject to private verification before use.
 
 ## Consumer assurance
 
@@ -158,7 +158,7 @@ Module 064 lists every registered AI consumer with:
 - Last exercised, successful, and failed timestamps
 - Last target, outcome, and correlation ID
 
-Build validation fails when a registered consumer creates a direct Claude or OpenAI client, reads provider keys, bypasses the central capability router, returns endpoint or token values, omits local fallback, duplicates targets, or enables raw restricted context for a public provider.
+Build validation fails when a registered consumer creates a direct Claude or OpenAI client, reads provider keys, bypasses the central capability router, returns endpoint or token values, omits local fallback, duplicates targets, enables raw restricted context, omits the purpose-built-capsule proof, or bypasses external-output privacy validation.
 
 ## Persistence
 

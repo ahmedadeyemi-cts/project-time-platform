@@ -28,14 +28,16 @@ public sealed class PulseAiPrivateOcrClient
             return Failure("private_ocr_not_configured", "ocr_not_configured", completedAt);
         }
 
-        if (!PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var endpointResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 runtimeOptions.OcrEndpoint,
                 runtimeOptions.PrivateHostAllowlist,
-                out var endpoint,
-                out var endpointReason)
-            || endpoint is null)
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+        var endpoint = endpointResolution.Endpoint;
+        if (!endpointResolution.Approved || endpoint is null)
         {
-            return Failure("private_ocr_endpoint_rejected", endpointReason, completedAt);
+            return Failure("private_ocr_endpoint_rejected", endpointResolution.Reason, completedAt);
         }
 
         if (!File.Exists(source.StoragePath))

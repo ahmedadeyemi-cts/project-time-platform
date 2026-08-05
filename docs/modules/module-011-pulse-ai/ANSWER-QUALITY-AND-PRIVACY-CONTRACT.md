@@ -324,9 +324,11 @@ Claude or OpenAI may receive an external reasoning request only when:
 
 1. the use case explicitly allows external assistance;
 2. a separate policy and human review authorize it;
-3. the private runtime has already isolated the unresolved generic problem;
-4. deterministic sanitization removes identities, identifiers, financial values,
-   commercial terms, credentials, infrastructure details, and document text;
+3. the consumer selects a reviewed purpose from the closed backend-owned
+   category catalog;
+4. the backend constructs the entire generic capsule from a fixed string for
+   that category; arbitrary caller text and sensitive-term lists cannot be
+   represented in the external request;
 5. Module 064 selects the provider and records sanitized operational evidence;
 6. the provider payload contains no raw document or unrestricted retrieved
    context;

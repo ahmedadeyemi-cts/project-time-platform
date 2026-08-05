@@ -46,7 +46,7 @@ public sealed class CelarAiEnterprisePlatformService
         guarantees = new[]
         {
             "Private project documents and live Pulse records remain inside the approved private boundary.",
-            "External providers receive only a generic sanitized problem when both runtime policy and the caller allow it.",
+            "External providers receive only a fixed backend-owned generic capsule selected from a closed purpose category when runtime policy allows it.",
             "A generated timeline or diagram is a review artifact, not a customer commitment or approved project baseline.",
             "All project-specific facts remain grounded in private Celar AI evidence and cited source versions.",
             "No mutation, arbitrary SQL, arbitrary URL, provider secret, model endpoint, or raw chunk text is returned."
@@ -85,7 +85,10 @@ public sealed class CelarAiEnterprisePlatformService
                         TaskName: request.TaskName,
                         CategoryCode: request.CategoryCode,
                         EngineerNote: request.EngineerNote,
-                        DetailLevel: request.DetailLevel ?? "standard"),
+                        DetailLevel: request.DetailLevel ?? "detailed",
+                        ProjectId: request.ProjectId,
+                        TaskId: request.TaskId,
+                        AssignmentId: request.AssignmentId),
                     cancellationToken);
             }
             else if (mode == "sow_draft")
@@ -153,9 +156,7 @@ public sealed class CelarAiEnterprisePlatformService
                 external = await _externalReasoning.TryGenerateAsync(
                     new CelarAiExternalReasoningRequest(
                         Mode: mode,
-                        Purpose: $"generic_{mode}_reasoning_support",
-                        GenericProblem: GenericExternalProblem(mode),
-                        SensitiveTerms: [projectCode, projectName, "US Signal", "Pulse"],
+                        PurposeCategory: CelarAiExternalReasoningPurposeCatalog.ForMode(mode),
                         ContainsPrivateDocumentText: false,
                         ContainsFinancialValues: false,
                         ContainsPeopleRecords: false,
@@ -464,14 +465,6 @@ public sealed class CelarAiEnterprisePlatformService
         var rows = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         return rows.Length > 0 ? rows : [fallback];
     }
-
-    private static string GenericExternalProblem(string mode) => mode switch
-    {
-        "sow_draft" => "Provide a generic professional-services SOW quality checklist covering objectives, scope, exclusions, deliverables, responsibilities, assumptions, dependencies, acceptance criteria, milestones, risks, change control, and review gates.",
-        "project_timeline" => "Provide generic sequencing guidance for a complex professional-services implementation using discovery, design validation, prerequisites, implementation, testing, acceptance, operational handoff, and closeout. Do not provide customer-specific dates.",
-        "project_diagram" => "Provide generic systems-engineering diagram guidance for showing project inputs, governance, discovery, design, implementation, validation, acceptance, operational handoff, dependencies, risks, and review gates.",
-        _ => "Provide a generic professional-services project-planning checklist covering WBS quality, dependencies, milestones, roles, assumptions, risks, acceptance, handoff, and human review."
-    };
 
     private static string NormalizeMode(string? value)
     {

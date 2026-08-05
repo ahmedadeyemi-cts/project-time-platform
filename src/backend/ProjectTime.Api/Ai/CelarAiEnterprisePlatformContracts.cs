@@ -42,6 +42,9 @@ public sealed record CelarAiComposeRequest(
     string? CategoryCode = null,
     string? EngineerNote = null,
     bool AllowSanitizedExternalFallback = false,
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null,
     string? CapabilityCode = null);
 
 public sealed record CelarAiTimelineItem(
@@ -105,9 +108,7 @@ public sealed record CelarAiSowDraft(
 
 public sealed record CelarAiExternalReasoningRequest(
     string Mode,
-    string Purpose,
-    string GenericProblem,
-    IReadOnlyList<string> SensitiveTerms,
+    string PurposeCategory,
     bool ContainsPrivateDocumentText,
     bool ContainsFinancialValues,
     bool ContainsPeopleRecords,

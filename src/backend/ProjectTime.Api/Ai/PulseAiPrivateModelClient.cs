@@ -32,14 +32,20 @@ public sealed class PulseAiPrivateModelClient
         {
             return Failure("private_model_not_configured", "private_model_not_configured", completedAt);
         }
-        if (!PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        if (string.IsNullOrWhiteSpace(options.InferenceBearerToken))
+        {
+            return Failure("private_model_authentication_not_configured", "bearer_token_required", completedAt);
+        }
+        var endpointResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.InferenceEndpoint,
                 options.PrivateHostAllowlist,
-                out var endpoint,
-                out var endpointReason)
-            || endpoint is null)
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+        var endpoint = endpointResolution.Endpoint;
+        if (!endpointResolution.Approved || endpoint is null)
         {
-            return Failure("private_model_endpoint_rejected", endpointReason, completedAt);
+            return Failure("private_model_endpoint_rejected", endpointResolution.Reason, completedAt);
         }
 
         var sources = BuildSourceContext(request.Sources, options.MaximumContextCharacters);

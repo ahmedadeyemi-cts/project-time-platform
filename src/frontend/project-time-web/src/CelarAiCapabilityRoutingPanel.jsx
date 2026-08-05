@@ -42,7 +42,7 @@ function routeDraft(route) {
 }
 
 export default function CelarAiCapabilityRoutingPanel() {
-  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, consumers: [] });
+  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, consumers: [] });
   const [drafts, setDrafts] = useState({});
   const [savingRoute, setSavingRoute] = useState('');
   const [notice, setNotice] = useState('');
@@ -85,6 +85,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         error: '',
         routes,
         profile,
+        productionReadiness: profilePayload.productionReadiness ?? null,
         consumers: consumersPayload.consumers ?? [],
       });
     } catch (error) {
@@ -223,6 +224,7 @@ export default function CelarAiCapabilityRoutingPanel() {
   }
 
   const profile = state.profile;
+  const production = state.productionReadiness;
 
   return (
     <section className="celar-ai-routing" aria-labelledby="celar-ai-routing-title">
@@ -270,6 +272,28 @@ export default function CelarAiCapabilityRoutingPanel() {
           <article><span>Endpoint</span><strong>{profile?.endpointConfigured ? 'Configured' : 'Not configured'}</strong><small>Fingerprint: {profile?.endpointHostFingerprint || 'Not recorded'}</small></article>
           <article><span>Authentication</span><strong>{profile?.bearerTokenConfigured ? 'Token configured' : 'No bearer token'}</strong><small>Token value is write-only</small></article>
           <article><span>Revision</span><strong>{profile?.revision ?? 0}</strong><small>Updated {formatDate(profile?.updatedAt)}</small></article>
+        </div>
+
+        <div className="celar-ai-routing__production-readiness" role="status" aria-live="polite">
+          <header>
+            <div>
+              <span>End-to-end private runtime</span>
+              <strong>{production?.ready ? 'Production ready' : 'Configuration required'}</strong>
+            </div>
+            <small>Endpoint, encrypted secret storage, migrations, persistent files, processing, and SOW readiness</small>
+          </header>
+          <div>
+            <article><span>Migrations 052 / 053 / 061</span><strong>{production?.migrations?.allRequiredApplied ? 'Applied' : 'Required'}</strong></article>
+            <article><span>Shared persistent storage</span><strong>{production?.storage?.sharedPersistentWritable ? 'Ready' : 'Required'}</strong></article>
+            <article><span>Private document worker</span><strong>{production?.processing?.workerEnabled ? 'Enabled' : 'Disabled'}</strong></article>
+            <article><span>Ready SOW / GSD</span><strong>{production?.documents?.readySowDocumentCount ?? 0}</strong></article>
+          </div>
+          {!production?.ready && (production?.blockers ?? []).length ? (
+            <details>
+              <summary>Review {production.blockers.length} production-readiness item{production.blockers.length === 1 ? '' : 's'}</summary>
+              <ul>{production.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+            </details>
+          ) : null}
         </div>
 
         <form className="celar-ai-routing__profile-form" onSubmit={savePrivateSettings}>

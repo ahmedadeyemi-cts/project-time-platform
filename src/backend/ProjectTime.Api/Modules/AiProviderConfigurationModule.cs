@@ -409,6 +409,8 @@ public static class AiProviderConfigurationModule
         automaticStartupHealthCheck = true,
         automaticPeriodicHealthCheck = true,
         liveConfigurationReconciledBeforeRouting = true,
+        sanitizedExternalExecutionEnabled = RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION"),
+        enterpriseSanitizedExternalFallbackEnabled = RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"),
         unavailableProvidersSkipped = true,
         safetyRefusalFailover = false,
         secretValuesReturned = false,
@@ -421,6 +423,9 @@ public static class AiProviderConfigurationModule
         databaseChanged = false,
         entraChanged = false
     };
+
+    private static bool RuntimeFlag(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
 
     private static string OverallStatus(IReadOnlyList<ProjectPulseAiProviderHealthSnapshot> health)
     {

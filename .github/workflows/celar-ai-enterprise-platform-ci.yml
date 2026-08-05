@@ -9,11 +9,16 @@ on:
       - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
       - 'database/migrations/061_celar_ai_capability_routing.sql'
       - 'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+      - 'database/migrations/071_ai_runtime_production_hardening.sql'
+      - 'database/rollback/071_ai_runtime_production_hardening_rollback.sql'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-ENTERPRISE-PLATFORM-INTERFACE.md'
       - 'docs/modules/module-064-ai-provider-configuration/CELAR-AI-CAPABILITY-ROUTING.md'
       - 'docs/modules/module-064-ai-provider-configuration/celar-ai-default-capability-routes.json'
       - 'src/backend/ProjectTime.Api/Directory.Build.targets'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionKeyRing.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs'
@@ -87,7 +92,10 @@ jobs:
           printf '%s\n' "$CHANGED"
           test -n "$CHANGED"
 
-          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+          if [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/071_ai_runtime_production_hardening\.sql|database/rollback/071_ai_runtime_production_hardening_rollback\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=PRODUCTION_HARDENING' >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback)\.sql))$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
           elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
@@ -115,6 +123,13 @@ jobs:
           fi
 
           PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
+          if [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
+            PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs' <<<"$PROHIBITED" || true)"
+            test -f .github/workflows/celar-ai-production-hardening-ci.yml
+            test -f database/migrations/071_ai_runtime_production_hardening.sql
+            test -f database/rollback/071_ai_runtime_production_hardening_rollback.sql
+            test -f src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          fi
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             PROHIBITED="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$PROHIBITED" || true)"
           fi

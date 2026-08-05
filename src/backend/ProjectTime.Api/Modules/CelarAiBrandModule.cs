@@ -141,8 +141,20 @@ public static class CelarAiBrandModule
         if (!actualAccess.IsActive
             || !actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains))
             return Forbidden("MODULE_064_ADMINISTRATOR");
-        var privateOptions = PulseAiPrivateRagOptions.FromEnvironment();
-        var privateModelReady = privateOptions.Enabled && privateOptions.InferenceConfigured;
+        var privateOptions = CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());
+        var endpointResolution = privateOptions.InferenceConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                privateOptions.InferenceEndpoint,
+                privateOptions.PrivateHostAllowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_inference_not_configured", 0);
+        var privateModelReady = privateOptions.Enabled
+            && privateOptions.InferenceConfigured
+            && !string.IsNullOrWhiteSpace(privateOptions.InferenceBearerToken)
+            && privateOptions.RequirePrivateModelForDocumentAnswers
+            && endpointResolution.Approved;
         return Results.Ok(new
         {
             module = "064",
@@ -172,8 +184,11 @@ public static class CelarAiBrandModule
                 model = privateOptions.InferenceModel.Length > 0 ? privateOptions.InferenceModel : "Not configured",
                 bearerTokenConfigured = privateOptions.InferenceBearerToken.Length > 0,
                 endpointConfigured = privateOptions.InferenceEndpoint.Length > 0,
+                endpointDnsVerified = endpointResolution.Approved,
+                endpointDiagnosticCode = endpointResolution.Reason,
                 endpointReturned = false,
                 privateHostAllowlistCount = privateOptions.PrivateHostAllowlist.Count,
+                requirePrivateModelForDocumentAnswers = privateOptions.RequirePrivateModelForDocumentAnswers,
                 confidentialContextEligible = privateModelReady,
                 rawInternalDocumentsMayUsePublicProviders = false
             },

@@ -72,6 +72,7 @@ export default function AiProviderConfigurationCenter() {
   }, [load]);
 
   const configuration = state.payload?.configuration;
+  const governance = state.payload?.governance;
   const providers = configuration?.providers ?? [];
   const healthByProvider = useMemo(
     () => new Map((state.payload?.health ?? []).map((item) => [item.provider, item])),
@@ -231,6 +232,21 @@ export default function AiProviderConfigurationCenter() {
           Configured providers are checked when the API starts, after configuration changes, and every {configuration?.execution?.healthIntervalSeconds ?? 120} seconds. The button remains available for an immediate recheck.
         </span>
       </div>
+      {governance ? (
+        <div
+          className={`ai-provider-center__execution-policy ${governance.sanitizedExternalExecutionEnabled && governance.enterpriseSanitizedExternalFallbackEnabled ? 'is-enabled' : 'is-disabled'}`}
+          role="status"
+        >
+          <strong>Routed generation policy: {governance.sanitizedExternalExecutionEnabled && governance.enterpriseSanitizedExternalFallbackEnabled ? 'Enabled' : 'Action required'}</strong>
+          <span>
+            {!governance.sanitizedExternalExecutionEnabled
+              ? 'Provider probes can succeed while generation remains blocked. Set PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true on the API runtime to allow eligible, deidentified Claude/OpenAI fallback requests.'
+              : !governance.enterpriseSanitizedExternalFallbackEnabled
+                ? 'Timesheet generic fallback is enabled, but enterprise AI consumers remain blocked. Set PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true on the API runtime.'
+                : 'Eligible, deidentified requests may reach Claude or OpenAI after the private Celar AI target. Private SOW and GSD text remains inside the private boundary.'}
+          </span>
+        </div>
+      ) : null}
 
       {notice ? <div className="ai-provider-center__notice" role="status">{notice}</div> : null}
       {state.loading ? <div className="ai-provider-center__state">Loading shared AI configuration and checking provider readiness…</div> : null}

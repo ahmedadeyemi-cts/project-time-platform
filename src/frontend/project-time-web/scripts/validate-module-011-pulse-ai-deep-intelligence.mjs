@@ -221,8 +221,9 @@ assert(
   'TIMESHEET_PRIVATE_PATH',
   includesAll(source.timesheet, [
     'ProjectPulseAiProviders.Local',
-    'Raw document text and extracted summaries were not sent to Claude or OpenAI',
-    'No SOW, GSD, architecture, contract, rate, financial, customer-document, or extracted private-document content is included'
+    'Raw document text, extracted summaries, the Engineer note, and structured customer or row identifiers were not sent to Claude or OpenAI',
+    'No restricted source material, commercial detail, architecture detail, or extracted evidence is included in this request',
+    'backend-derived fixed activity categories and a generic work classification'
   ])
     && !source.timesheet.includes('grounding.ContextSummary')
     && !source.timesheet.includes('document.ContextSummary'),
@@ -345,7 +346,10 @@ assert(
     'CurrencyValue',
     'Phone',
     'LongIdentifier',
-    'PersonOrCustomerLabel',
+    'CustomerOrOrganizationLabel',
+    'PersonRoleLabel',
+    'ReplaceUnknownProperNouns',
+    'HasResidualSensitiveData',
     'ExternalExecutionAuthorized: false'
   ]),
   'credentials, identities, records, infrastructure, and financial values'

@@ -53,6 +53,8 @@ Azure's reverse proxy without trusting client-supplied forwarding headers.
 | `PROJECTPULSE_AI_HEALTH_INTERVAL_SECONDS` | `120` | 30–3600 |
 | `PROJECTPULSE_AI_FAILURE_THRESHOLD` | `3` | 1–10 |
 | `PROJECTPULSE_AI_CIRCUIT_BREAK_SECONDS` | `180` | 30–3600 |
+| `PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION` | `false` | Explicitly authorizes eligible deidentified Claude/OpenAI requests |
+| `PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED` | `false` | Enables the separate Celar enterprise generic-reasoning fallback |
 
 Provider variables include:
 
@@ -74,12 +76,58 @@ Secret metadata may be supplied with
 
 ## Feature routes
 
-Feature route variables are comma-separated provider codes, for example:
+Current capability routes are stored in `ai_capability_routes` and managed by
+Module 064. Every route contains four unique targets and keeps the governed local
+template last:
 
-`PROJECTPULSE_AI_ROUTE_TIMESHEET_DESCRIPTION=claude,openai,local_template`
+`celar_ai,claude,openai,local_template`
 
-Allowed codes are `claude`, `openai`, and `local_template`. Values are
-case-normalized and de-duplicated. Local fallback is appended once when absent.
+Allowed codes are `celar_ai`, `claude`, `openai`, and `local_template`. The three
+Timesheet capabilities—project task, service request, and non-project—have
+independent persisted routes. Environment route variables remain compatibility
+inputs for the legacy router; they are not the authority for consumers compiled
+against `CelarAiCapabilityRouter`.
+
+Celar AI is the only target permitted to receive authorized private SOW/GSD
+context. If Claude or OpenAI is placed first, that provider receives only the
+purpose-built, server-authored activity/domain categories derived from the
+Engineer note plus a generic work classification. The raw note, customer name,
+project/task names and codes, people names, dates, locations, and retrieved
+documents are not copied into that capsule. Lowercase or unlabeled names cannot
+leak through regex matching because no captured free-text token or substring is
+sent. Provider order cannot override the private-document boundary.
+
+Every public-provider call requires both a declared purpose-built capsule and at
+least one safe derived fact. A missing/invalid customer-identity inventory,
+uncertain residual identifier, credential, commercial marker, raw document,
+people-record dataset, or financial value fails closed to the governed local
+template with a per-target decision code. Claude/OpenAI output is revalidated
+against the same identity inventory before it may be returned; failing output is
+discarded without being shown or passed to the next workflow stage.
+
+## Private Celar target and document runtime
+
+The private target is a separately managed OpenAI-compatible endpoint. It must
+be enabled and contain an approved private/allowlisted endpoint, exact
+model/deployment name, stable authentication secret or approved workload
+identity, and private-host allowlist. Saving a route that starts with `celar_ai`
+does not configure this target.
+
+SOW-grounded Timesheet responses additionally require:
+
+- migrations 052, 053, and 061;
+- `PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED=true`;
+- a shared, private, writable `PROJECTPULSE_UPLOAD_ROOT` mount rather than
+  revision-local `/tmp`;
+- document-specific malware scanning, extraction worker, OCR where required,
+  and private embeddings or an explicitly approved lexical-only completion path;
+- an engineering-visible, Timesheet-context-eligible SOW processed to ready;
+  and
+- a successful private-target test returning `private_model_available`.
+
+The AI configuration stores accept the API's `PTP_DB_*` secret references as
+well as approved direct connection-string variables. The encryption key must be
+stable across revisions.
 
 ## Failure and refusal policy
 
@@ -111,3 +159,17 @@ Source validation must include:
 Live provider connectivity is an environment smoke test, not a source-build
 requirement. It must be run only in an authorized environment with injected
 secrets and must not print secret values.
+
+For a Test smoke check, verify:
+
+1. `GET /api/ai-configuration` reports both sanitized-execution policy flags.
+2. `GET /api/ai-configuration/private-model` reports a persisted, enabled,
+   private-endpoint-approved profile.
+3. `POST /api/ai-configuration/private-model/test` returns
+   `private_model_available`.
+4. Claude and OpenAI show configured, enabled, and probe `available`.
+5. All three Timesheet routes contain the intended four-target order.
+6. A normal generation increments exactly one provider's generation counter and
+   returns per-target decision codes; probe counts alone do not prove routing.
+7. A SOW-backed project task uses only private Celar for document content, while
+   a non-project task never attempts document grounding.

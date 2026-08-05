@@ -1702,9 +1702,15 @@ function taskToRow(task) {
     state: 'Draft',
     activity: task.taskName,
     projectDescription: `${task.projectCode} • ${task.projectName}`,
+    assignmentId: task.assignmentId ?? task.projectAssignmentId ?? null,
     projectId: task.projectId,
+    projectCode: task.projectCode ?? '',
+    projectName: task.projectName ?? '',
     taskId: task.taskId,
     taskCode: task.taskCode,
+    taskName: task.taskName ?? '',
+    workTaskCategory: task.workTaskCategory ?? task.workType ?? '',
+    serviceRequestNumber: task.serviceRequestNumber ?? task.requestNumber ?? '',
     clientName: task.clientName,
     projectManagerName: task.projectManagerName
   };
@@ -1717,6 +1723,7 @@ function categoryToRow(category) {
     state: 'Draft',
     activity: category.name,
     projectDescription: 'Non-project time',
+    nonProjectTimeCategoryId: category.nonProjectTimeCategoryId ?? category.nonProjectCategoryId ?? category.categoryId ?? category.id ?? null,
     categoryCode: category.code,
     utilizationBucket: category.utilizationBucket,
     requiresApproval: category.requiresApproval
@@ -3195,8 +3202,8 @@ function getInstalledProjectPulseModuleRegistry() {
       permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows project managers their active projects, closed projects, status mix, hours, and workload risk.'
     },
-    {
-      route: 'project-workspace',
+  {
+    route: 'project-workspace',
       title: 'Project Workspace',
     navLabel: 'MODULE 019',
       group: 'Project Delivery',
@@ -4283,11 +4290,12 @@ export default function App() {
           state: 'Saved',
           activity: entry.categoryName ?? entry.categoryCode,
           projectDescription: 'Non-project time',
+          nonProjectTimeCategoryId: entry.nonProjectTimeCategoryId ?? entry.nonProjectCategoryId ?? null,
           categoryCode: entry.categoryCode
         });
       }
 
-      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) {
+      if (['projectTask', 'service_request'].includes(entry.rowType) && entry.projectId && entry.taskId) {
         const matchingTask = assignedOpenTasks.find((task) => task.projectId === entry.projectId && task.taskId === entry.taskId);
         const rowId = `project-task-${entry.projectId}-${entry.taskId}`;
         rowMap.set(rowId, matchingTask ? taskToRow(matchingTask) : {
@@ -4296,9 +4304,15 @@ export default function App() {
           state: 'Saved',
           activity: entry.taskName ?? entry.taskCode ?? 'Project task',
           projectDescription: entry.projectCode ? `${entry.projectCode} • ${entry.projectName ?? 'Project'}` : (entry.projectName ?? 'Project task'),
+          assignmentId: entry.assignmentId ?? entry.projectAssignmentId ?? null,
           projectId: entry.projectId,
+          projectCode: entry.projectCode ?? '',
+          projectName: entry.projectName ?? '',
           taskId: entry.taskId,
           taskCode: entry.taskCode ?? null,
+          taskName: entry.taskName ?? entry.taskCode ?? 'Project task',
+          workTaskCategory: entry.workTaskCategory ?? entry.workType ?? '',
+          serviceRequestNumber: entry.serviceRequestNumber ?? entry.requestNumber ?? '',
           clientName: entry.clientName ?? null,
           projectManagerName: null
         });
@@ -4326,10 +4340,11 @@ export default function App() {
     savedEntries.forEach((entry) => {
       let rowId = null;
       if (entry.rowType === 'nonProject' && entry.categoryCode) rowId = `non-project-${entry.categoryCode}`;
-      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) rowId = `project-task-${entry.projectId}-${entry.taskId}`;
+      if (['projectTask', 'service_request'].includes(entry.rowType) && entry.projectId && entry.taskId) rowId = `project-task-${entry.projectId}-${entry.taskId}`;
       if (!rowId) return;
 
       entryMap[getEntryKey(rowId, entry.workDate, entry.timeType)] = {
+        timeEntryId: entry.timeEntryId ?? entry.id ?? null,
         hours: entry.hours?.toString() ?? '',
         comment: entry.description ?? '',
         workLocationGroupId: entry.workLocationGroupId ?? '',
@@ -5704,21 +5719,55 @@ export default function App() {
       return;
     }
 
+    const roughNote = String(selectedEntry.comment ?? '');
+    const roughNoteCharacters = roughNote.replace(/\s/g, '').length;
+    const roughNoteFactualCharacters = (roughNote.match(/[\p{L}\p{N}]/gu) || []).length;
+    if (roughNote.length > 4000) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Keep the rough work note at 4,000 characters or fewer before generating a suggestion.'
+      });
+      return;
+    }
+    if (roughNoteCharacters < 12 || roughNoteFactualCharacters < 8) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Add a brief factual note about the work performed before generating a customer-facing description.'
+      });
+      return;
+    }
+
     setAiSuggestionState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
 
     try {
       const hours = Number.parseFloat(selectedEntry.hours);
+      const isProjectTask = selectedRow.type === 'projectTask';
+      const isServiceRequest = isProjectTask && (
+        Boolean(selectedRow.serviceRequestNumber)
+        || String(selectedRow.workTaskCategory || '').toLowerCase() === 'service_request_task'
+      );
 
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/ai-description-suggestions', {
         workDate: selectedCell.date,
+        timeEntryId: selectedEntry.timeEntryId ?? null,
         timeType: selectedCell.type,
-        rowType: selectedRow.type,
+        rowType: isProjectTask ? (isServiceRequest ? 'service_request' : 'project_task') : 'non_project',
         rowLabel: selectedRow.activity ?? selectedRow.label ?? selectedRow.projectDescription ?? '',
-        projectName: selectedRow.projectName ?? selectedRow.projectDescription ?? '',
-        projectCode: selectedRow.projectCode ?? '',
+        assignmentId: isProjectTask ? (selectedRow.assignmentId ?? null) : null,
+        projectId: isProjectTask ? (selectedRow.projectId ?? null) : null,
+        projectName: isProjectTask ? (selectedRow.projectName ?? '') : '',
+        projectCode: isProjectTask ? (selectedRow.projectCode ?? '') : '',
+        taskId: isProjectTask ? (selectedRow.taskId ?? null) : null,
         taskName: selectedRow.taskName ?? selectedRow.activity ?? '',
         taskCode: selectedRow.taskCode ?? '',
-        categoryCode: selectedRow.categoryCode ?? '',
+        nonProjectTimeCategoryId: isProjectTask ? null : (selectedRow.nonProjectTimeCategoryId ?? selectedRow.nonProjectCategoryId ?? null),
+        categoryCode: isProjectTask ? '' : (selectedRow.categoryCode ?? ''),
         hours: Number.isNaN(hours) ? null : hours,
         currentDescription: selectedEntry.comment ?? ''
       });
@@ -7914,6 +7963,7 @@ Analytics - Variphy / Infortel`}
                 Description / comment
                 <textarea
                   value={selectedEntry.comment}
+                  maxLength={4000}
                   placeholder="Enter the reportable comment for this time entry."
                   disabled={!selectedEntryIsEditable}
 
@@ -7960,6 +8010,7 @@ Analytics - Variphy / Infortel`}
                       <p>{aiSuggestionState.suggestion}</p>
                       <small>
                         Provider: {{
+                          celar_ai: 'Celar AI',
                           claude: 'Claude',
                           openai: 'OpenAI',
                           local_template: 'Governed local template fallback'

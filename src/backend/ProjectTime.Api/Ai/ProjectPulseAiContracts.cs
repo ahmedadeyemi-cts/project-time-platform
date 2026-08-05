@@ -81,7 +81,13 @@ public sealed record ProjectPulseAiRouteResult(
     IReadOnlyList<string> AttemptedProviders,
     IReadOnlyList<string> SkippedProviders,
     ProjectPulseAiUsage? Usage,
-    string? RequestId);
+    string? RequestId,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
+
+public sealed record ProjectPulseAiTargetDecision(
+    string Target,
+    string Outcome,
+    string ReasonCode);
 
 public sealed record ProjectPulseAiProbeResult(
     string Provider,

@@ -26,6 +26,13 @@ function timerAsTarget(timer, targets) {
     targetType: timer?.assignmentId ? 'assignment' : 'category',
     selectionValue,
     selectionLabel: timerLabel(timer),
+    assignmentId: timer?.assignmentId || authoritativeTarget.assignmentId || null,
+    projectId: timer?.projectId || authoritativeTarget.projectId || null,
+    taskId: timer?.taskId || authoritativeTarget.taskId || null,
+    nonProjectTimeCategoryId: timer?.nonProjectCategoryId
+      || authoritativeTarget.nonProjectTimeCategoryId
+      || authoritativeTarget.nonProjectCategoryId
+      || null,
     customerName: timer?.customerName || '',
     projectCode: timer?.projectCode || '',
     projectName: timer?.projectName || '',
@@ -191,6 +198,7 @@ export default function TimesheetTimerView({
                     Work description
                     <textarea
                       value={description}
+                      maxLength={4000}
                       disabled={busy || isViewAs}
                       placeholder="Describe what you reviewed, configured, tested, documented, coordinated, or troubleshot."
                       onChange={(event) => onTimerDescriptionChange(timer.timerSessionId, event.target.value)}
@@ -264,6 +272,7 @@ export default function TimesheetTimerView({
           Work description
           <textarea
             value={draftDescription}
+            maxLength={4000}
             disabled={busy || isViewAs || availableSlots === 0}
             placeholder="Type a rough note. The same starting description will be applied to every selected timer and can be edited separately before each timer is stopped."
             onChange={(event) => onDraftDescriptionChange(event.target.value)}
