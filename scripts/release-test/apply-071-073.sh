@@ -4,6 +4,8 @@ set -Eeuo pipefail
 EXPECTED_RELEASE_COMMIT="e83340b5a4215ea63901cea98ea17596444f96b7"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
+EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
+EXPECTED_FORGE_PROJECT_ID="${PROJECTPULSE_TEST_FORGE_PROJECT_ID:-}"
 MODE="${MAIN_RELEASE_MIGRATION_MODE:-verify}"
 MIGRATION_ROOT="$RELEASE_ROOT/database/migrations"
 
@@ -11,6 +13,10 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
+[[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] ||
+  fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
+[[ "$EXPECTED_FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] ||
+  fail "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be an exact UUID."
 [[ "$MODE" == apply || "$MODE" == verify ]] || fail "MAIN_RELEASE_MIGRATION_MODE must be apply or verify."
 command -v psql >/dev/null || fail "psql is required."
 command -v sha256sum >/dev/null || fail "sha256sum is required."
@@ -77,6 +83,8 @@ psql "$DATABASE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --set=release_apply="$APPLY_BOOL" \
+  --set=expected_database_name="$EXPECTED_DATABASE_NAME" \
+  --set=expected_forge_project_id="$EXPECTED_FORGE_PROJECT_ID" \
   --set=body071="$BODY_ROOT/${FILES[0]}" \
   --set=body072="$BODY_ROOT/${FILES[1]}" \
   --set=body073="$BODY_ROOT/${FILES[2]}" <<'SQL'
@@ -86,6 +94,28 @@ SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '20min';
+SELECT set_config('projectpulse.release.expected_database', :'expected_database_name', true);
+SELECT set_config('projectpulse.release.forge_project_id', :'expected_forge_project_id', true);
+
+DO $release_database_identity$
+BEGIN
+  IF current_database() <> current_setting('projectpulse.release.expected_database') THEN
+    RAISE EXCEPTION 'Connected database does not match the protected Test database identity.';
+  END IF;
+  IF to_regclass('public.projects') IS NULL THEN
+    RAISE EXCEPTION 'The protected Test database sentinel table is unavailable.';
+  END IF;
+  IF (
+    SELECT COUNT(*)
+    FROM public.projects
+    WHERE project_id = current_setting('projectpulse.release.forge_project_id')::uuid
+  ) <> 1 THEN
+    RAISE EXCEPTION 'The protected Test database sentinel project is missing or duplicated.';
+  END IF;
+END
+$release_database_identity$;
+\echo DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED
+
 SELECT pg_advisory_xact_lock(71072073);
 
 DO $release_prerequisites$
