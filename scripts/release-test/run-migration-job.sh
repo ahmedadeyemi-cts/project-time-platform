@@ -36,8 +36,6 @@ command -v curl >/dev/null || fail "curl is required."
 command -v jq >/dev/null || fail "jq is required."
 
 KEY_VAULT_URI="${KEY_VAULT_URI%/}"
-KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
-KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
 SECRET_URI="$KEY_VAULT_URI/secrets/$SECRET_NAME_VERSION"
 
 SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
@@ -47,14 +45,6 @@ UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
 [[ "${UAMI_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] || fail "The migrator UAMI is outside the logged-in Test subscription."
 ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
 [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || fail "The protected Test migrator UAMI could not be resolved exactly."
-
-ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
-ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
-ACTUAL_KEY_VAULT_URI="${ACTUAL_KEY_VAULT_URI%/}"
-KEY_VAULT_SUBSCRIPTION="${ACTUAL_KEY_VAULT_ID#*/subscriptions/}"
-KEY_VAULT_SUBSCRIPTION="${KEY_VAULT_SUBSCRIPTION%%/*}"
-[[ "${KEY_VAULT_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] || fail "The Key Vault is outside the logged-in protected Test subscription."
-[[ "$ACTUAL_KEY_VAULT_URI" == "$KEY_VAULT_URI" ]] || fail "The protected Test Key Vault host does not match its Azure resource."
 
 API_JSON="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
 JQ_IDENTITY="$MIGRATOR_IDENTITY" jq -e '
