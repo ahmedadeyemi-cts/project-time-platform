@@ -25,7 +25,7 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-OPEN-PR-RECONCILIATION-TO-TEST'
 require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-open-pr-reconciliation-test'
+require "$DEPLOY" 'group: projectpulse-deploy-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'Only the verified role-compatible open-PR reconciliation source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'

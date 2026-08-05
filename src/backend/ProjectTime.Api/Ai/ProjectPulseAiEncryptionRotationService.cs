@@ -33,6 +33,7 @@ public sealed class ProjectPulseAiEncryptionRotationService
         Guid actorUserId,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("AI encryption-key rotation");
         if (!string.Equals(request.Confirmation?.Trim(), Confirmation, StringComparison.Ordinal))
             throw new ArgumentException($"Confirmation must exactly match {Confirmation}.");
         var expectedCurrent = CleanKeyId(request.ExpectedCurrentKeyId);

@@ -102,6 +102,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         PulseAiConversationCreateRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (!await IsSchemaReadyAsync(cancellationToken)) return null;
         var conversationId = Guid.NewGuid();
         var mode = NormalizeMode(request.Mode);
@@ -269,6 +270,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string mode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (requestedConversationId is Guid requested && requested != Guid.Empty)
         {
             var existing = await GetConversationAsync(requested, effectiveUserId, cancellationToken);
@@ -299,6 +301,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         CancellationToken cancellationToken = default,
         IReadOnlyCollection<Guid>? requiredAttachmentIds = null)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return (Guid.Empty, 0);
         if (!await IsSchemaReadyAsync(cancellationToken)) return (Guid.Empty, 0);
         var messageId = Guid.NewGuid();
         try
@@ -444,6 +447,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return Guid.Empty;
         if (!await IsSchemaReadyAsync(cancellationToken)) return Guid.Empty;
         var runId = Guid.NewGuid();
         try
@@ -491,6 +495,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         bool persistResponseBody,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -549,6 +554,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string diagnosticCode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -705,28 +711,13 @@ public sealed class PulseAiSystemIntelligenceRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required.Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))).ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 12,
-            Timeout = 8,
-            CommandTimeout = 30
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

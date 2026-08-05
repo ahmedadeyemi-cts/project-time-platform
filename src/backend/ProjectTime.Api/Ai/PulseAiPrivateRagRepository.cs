@@ -555,6 +555,7 @@ public sealed class PulseAiPrivateRagRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return Guid.NewGuid();
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -606,6 +607,7 @@ public sealed class PulseAiPrivateRagRepository
         string eventStatus,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -660,6 +662,7 @@ public sealed class PulseAiPrivateRagRepository
         bool persistAnswerText,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -857,6 +860,7 @@ public sealed class PulseAiPrivateRagRepository
         PulseAiPrivateFeedbackRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         var feedbackType = Clean(request.FeedbackType, 40).ToLowerInvariant();
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -1202,30 +1206,13 @@ public sealed class PulseAiPrivateRagRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required
-            .Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
-            .ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 12,
-            Timeout = 8,
-            CommandTimeout = 30
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

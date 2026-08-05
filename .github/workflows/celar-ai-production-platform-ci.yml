@@ -77,7 +77,8 @@ jobs:
               for required in \
                 'database/migrations/071_ai_runtime_production_hardening.sql' \
                 'database/rollback/071_ai_runtime_production_hardening_rollback.sql'; do
-                grep -Fxq "$required" <<<"$CHANGED"
+                test -f "$required"
+                git cat-file -e "origin/$BASE_BRANCH:$required"
               done
               test -f .github/workflows/celar-ai-production-hardening-ci.yml
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=PRODUCTION_HARDENING'

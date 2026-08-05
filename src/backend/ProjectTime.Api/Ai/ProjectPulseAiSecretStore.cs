@@ -27,6 +27,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
 
     public async Task<IReadOnlyList<StoredSecret>> LoadAsync(CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsReleaseScoped) return [];
         if (!Available) return [];
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -63,6 +64,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("Public-provider secret mutation");
         if (!Available) throw new InvalidOperationException(UnavailableReason);
         var secretBytes = Encoding.UTF8.GetByteCount(apiKey);
         if (secretBytes is < 1 or > MaximumSecretBytes)
@@ -128,6 +130,8 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
     public async Task<IReadOnlyDictionary<string, string>> LoadModelsAsync(
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsReleaseScoped)
+            return new Dictionary<string, string>();
         if (_connectionString is null) return new Dictionary<string, string>();
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -144,6 +148,8 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
     public async Task<IReadOnlyDictionary<string, bool>> LoadEnabledAsync(
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsReleaseScoped)
+            return new Dictionary<string, bool>();
         if (_connectionString is null) return new Dictionary<string, bool>();
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -163,6 +169,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("Public-provider model mutation");
         if (_connectionString is null)
             throw new InvalidOperationException("Database configuration is unavailable.");
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -200,6 +207,7 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectReleaseConfigurationMutation("Public-provider enabled-state mutation");
         if (_connectionString is null)
             throw new InvalidOperationException("Database configuration is unavailable.");
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -293,6 +301,20 @@ public sealed class ProjectPulseAiSecretLoader(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.IsReleaseScoped)
+        {
+            // Candidate and active release revisions consume version-pinned
+            // deployment secrets and models. Shared database values must never
+            // replace the configuration covered by the release digest.
+            health.ApplyConfiguration(configuration.Claude);
+            health.ApplyConfiguration(configuration.OpenAi);
+            logger.LogInformation(
+                "Module 064 database provider loading is frozen for release phase {ReleasePhase}.",
+                release.PhaseCode);
+            return;
+        }
+
         if (!store.Available)
         {
             logger.LogWarning(
@@ -332,6 +354,15 @@ public sealed class ProjectPulseAiConfigurationSynchronizer(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.IsReleaseScoped)
+        {
+            logger.LogInformation(
+                "Module 064 database provider synchronization is frozen for release phase {ReleasePhase}.",
+                release.PhaseCode);
+            return;
+        }
+
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {

@@ -828,6 +828,7 @@ public static partial class CelarAiProductionPlatformModule
     {
         var authorization = await ManageAsync(context, system, cancellationToken);
         if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         if (!DatabaseConfigured) return Results.Json(new { status = "database_configuration_missing", stateChanged = false }, statusCode: 503);
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
@@ -847,6 +848,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateDatasetAsync(CelarAiDatasetRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken);
@@ -871,6 +873,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateTrainingAsync(CelarAiTrainingRequest request, HttpContext context, PulseAiSystemIntelligenceService system, IHttpClientFactory clients, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken);
@@ -898,6 +901,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateEvaluationAsync(CelarAiEvaluationRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var suite = Limit(request.SuiteCode, 120, "basic_competency").ToLowerInvariant(); var now = DateTimeOffset.UtcNow; var id = Guid.NewGuid();
@@ -920,6 +924,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateModelAsync(CelarAiModelRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var id = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
@@ -941,6 +946,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateDeploymentAsync(CelarAiDeploymentRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var model = await ModelAsync(request.ModelVersionId, cancellationToken) ?? throw new ArgumentException("The selected model does not exist.");
@@ -956,6 +962,7 @@ public static partial class CelarAiProductionPlatformModule
 
     private static async Task SaveQualityAsync(Guid actor, string questionSha, string intent, object trust, string correlation, CancellationToken cancellationToken)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (!await IsSchemaReadyAsync(cancellationToken)) return;
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(trust)); var root = doc.RootElement;
         await using var connection = new NpgsqlConnection(ConnectionString()); await connection.OpenAsync(cancellationToken);
@@ -1052,6 +1059,20 @@ public static partial class CelarAiProductionPlatformModule
     private static string EnvironmentState(string? value) => Limit(value,80,"development").ToLowerInvariant() switch { "test" => "test", "production" => "production", _ => "development" };
     private static string TrainingMethod(string? value) => Limit(value,100,"evaluation_only").ToLowerInvariant() switch { "supervised_fine_tuning" => "supervised_fine_tuning", "lora" => "lora", "qlora" => "qlora", "distillation_candidate" => "distillation_candidate", _ => "evaluation_only" };
     private static string ReadString(JsonElement root, params string[] names) { foreach (var name in names) if (root.TryGetProperty(name,out var value)) return value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() ?? string.Empty : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : string.Empty; return string.Empty; }
+    private static IResult? CandidateMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsCandidate) return null;
+        return Results.Json(new
+        {
+            module = "011",
+            status = "release_candidate_read_only",
+            message = "Celar AI schema, dataset, training, evaluation, model, and deployment lifecycle mutations are disabled on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
     private static IResult SessionRequired() => Results.Json(new { module = "011", status = "session_required", message = "A valid Pulse session is required." }, statusCode: 401);
     private static IResult Forbidden(string permission) => Results.Json(new { module = "011", status = "forbidden", requiredPermission = permission, message = "The current effective user is not authorized." }, statusCode: 403);
     private static IResult ViewAsAttachmentForbidden() => Results.Json(new
@@ -1062,8 +1083,17 @@ public static partial class CelarAiProductionPlatformModule
         mutationAuthorityTransferred = false
     }, statusCode: StatusCodes.Status403Forbidden);
     private static IResult Validation(string message) => Results.Json(new { module = "011", status = "validation_failed", message, stateChanged = false }, statusCode: 400);
-    private static bool DatabaseConfigured => new[] { "PTP_DB_HOST","PTP_DB_PORT","PTP_DB_NAME","PTP_DB_USER","PTP_DB_PASSWORD" }.All(name => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)));
-    private static string ConnectionString() => new NpgsqlConnectionStringBuilder { Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"), Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"),out var port) ? port : 5432, Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"), Username = Environment.GetEnvironmentVariable("PTP_DB_USER"), Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"), IncludeErrorDetail = false, Pooling = true, MaxPoolSize = 12, Timeout = 8, CommandTimeout = 45 }.ConnectionString;
+    private static bool DatabaseConfigured
+    {
+        get
+        {
+            try { return ProjectPulseAiDatabaseConnection.Resolve() is not null; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("The canonical ProjectPulse AI database connection is unavailable.");
 
     private sealed record Intent(string Code, bool IncludeApis, bool IncludeTroubleshooting, bool IncludeEnhancement, bool IncludeDocuments, int MaximumTools, bool RequiresCurrentEvidence, string Reason);
     private sealed record DatasetRow(Guid DatasetVersionId,string Name,string Purpose,string Classification,string ArtifactUri,string Sha256,int ExampleCount,string State);

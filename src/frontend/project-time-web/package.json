@@ -29,7 +29,7 @@
     "prevalidate:module011": "npm run validate:celar-ai-production-readiness",
     "validate:module011": "node ./scripts/validate-module-011-pulse-ai.mjs",
     "validate:module011-system-intelligence": "node ./scripts/validate-module-011-system-intelligence-package.mjs",
-    "validate:celar-ai-production-readiness": "node ./scripts/validate-celar-ai-production-readiness.mjs",
+    "validate:celar-ai-production-readiness": "node ./scripts/validate-celar-ai-production-readiness.mjs && node ./scripts/validate-celar-ai-release-scoped-runtime.mjs",
     "validate:dashboard-welcome-visibility": "node ./scripts/validate-dashboard-welcome-visibility.mjs",
     "validate:modules-directory": "node ./scripts/validate-modules-directory-page.mjs",
     "validate:approval-access-compatibility": "node ./scripts/validate-approval-access-navigation-compatibility.mjs",

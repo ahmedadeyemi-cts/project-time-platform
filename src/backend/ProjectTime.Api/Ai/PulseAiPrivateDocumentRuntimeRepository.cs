@@ -641,6 +641,33 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         }
     }
 
+    public async Task<bool> HasLiveSnapshotLeaseAsync(
+        Guid jobId,
+        Guid leaseToken,
+        long leaseGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString());
+        await connection.OpenAsync(cancellationToken);
+        const string sql = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pulse_ai_document_processing_jobs
+                WHERE pulse_ai_document_processing_job_id = @job_id
+                  AND lease_token = @lease_token
+                  AND lease_generation = @lease_generation
+                  AND job_status IN ('scanning','extracting','embedding','indexing','cancel_requested')
+                  AND lease_expires_at > NOW()
+            );
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("job_id", jobId);
+        command.Parameters.AddWithValue("lease_token", leaseToken);
+        command.Parameters.AddWithValue("lease_generation", leaseGeneration);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Snapshot lease state was not returned."));
+    }
+
     public async Task<PulseAiPrivateDocumentRuntimeState?> GetDocumentStateAsync(
         RuntimeAccess access,
         Guid documentId,
@@ -1722,30 +1749,13 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required
-            .Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
-            .ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 10,
-            Timeout = 8,
-            CommandTimeout = 30
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength, string fallback)
     {

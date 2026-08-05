@@ -90,6 +90,7 @@ public sealed record PulseAiPrivateRuntimeOptions(
 
     public static PulseAiPrivateRuntimeOptions FromEnvironment()
     {
+        ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         var hostAllowlist = Split(
             Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST"),
             PulseAiPrivateRuntimePolicy.PrivateHostSuffixDefaults);
@@ -190,6 +191,12 @@ public static class PulseAiPrivateEndpointPolicy
         Uri? Endpoint,
         string Reason,
         int ResolvedAddressCount);
+
+    internal sealed record HostResolutionResult(
+        bool Approved,
+        string Reason,
+        int ResolvedAddressCount,
+        IReadOnlyList<IPAddress> ApprovedAddresses);
 
     public static bool IsApprovedPrivateEndpoint(
         string? value,
@@ -301,25 +308,45 @@ public static class PulseAiPrivateEndpointPolicy
         bool allowLoopback = false,
         CancellationToken cancellationToken = default)
     {
+        var result = await ResolvePrivateHostAsync(host, allowLoopback, cancellationToken);
+        return (result.Approved, result.Reason, result.ResolvedAddressCount);
+    }
+
+    internal static async Task<HostResolutionResult> ResolvePrivateHostAsync(
+        string? host,
+        bool allowLoopback = false,
+        CancellationToken cancellationToken = default)
+    {
         var clean = host?.Trim() ?? string.Empty;
-        if (clean.Length == 0) return (false, "host_missing", 0);
+        if (clean.Length == 0)
+            return new HostResolutionResult(false, "host_missing", 0, []);
         if (IPAddress.TryParse(clean, out var literal))
         {
             if (IPAddress.IsLoopback(literal) && !allowLoopback)
-                return (false, "loopback_not_allowed", 1);
+                return new HostResolutionResult(false, "loopback_not_allowed", 1, []);
             return IsPrivateAddress(literal)
-                ? (true, "private_ip_host", 1)
-                : (false, "public_ip_host", 1);
+                ? new HostResolutionResult(true, "private_ip_host", 1, [literal])
+                : new HostResolutionResult(false, "public_ip_host", 1, []);
         }
         try
         {
             var addresses = await Dns.GetHostAddressesAsync(clean, cancellationToken);
-            if (addresses.Length == 0) return (false, "private_dns_no_addresses", 0);
+            if (addresses.Length == 0)
+                return new HostResolutionResult(false, "private_dns_no_addresses", 0, []);
             if (!allowLoopback && addresses.Any(IPAddress.IsLoopback))
-                return (false, "private_dns_resolved_loopback", addresses.Length);
-            return addresses.All(IsPrivateAddress)
-                ? (true, "private_dns_resolution_verified", addresses.Length)
-                : (false, "private_dns_resolved_public_address", addresses.Length);
+                return new HostResolutionResult(false, "private_dns_resolved_loopback", addresses.Length, []);
+            if (addresses.Any(address => !IsPrivateAddress(address)))
+                return new HostResolutionResult(false, "private_dns_resolved_public_address", addresses.Length, []);
+
+            var approved = addresses
+                .Select(address => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address)
+                .Distinct()
+                .ToArray();
+            return new HostResolutionResult(
+                true,
+                "private_dns_resolution_verified",
+                addresses.Length,
+                approved);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -327,7 +354,7 @@ public static class PulseAiPrivateEndpointPolicy
         }
         catch (SocketException)
         {
-            return (false, "private_dns_resolution_failed", 0);
+            return new HostResolutionResult(false, "private_dns_resolution_failed", 0, []);
         }
     }
 
@@ -399,6 +426,7 @@ public sealed record PulseAiPrivateMalwareScanResult(
     string Scanner,
     string SignatureVersion,
     string DiagnosticCode,
+    string SourceSha256,
     string EvidenceSha256,
     DateTimeOffset ScannedAt)
 {

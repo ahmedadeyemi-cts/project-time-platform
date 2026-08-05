@@ -5,24 +5,8 @@ on:
     branches:
       - 'security/celar-ai-production-readiness-*'
   pull_request:
-    paths:
-      - '.github/workflows/celar-ai-production-hardening-ci.yml'
-      - 'database/migrations/052_document_intelligence_runtime.sql'
-      - 'database/migrations/053_intelligence_answer_orchestration.sql'
-      - 'database/migrations/061_celar_ai_capability_routing.sql'
-      - 'database/migrations/071_ai_runtime_production_hardening.sql'
-      - 'database/rollback/071_ai_runtime_production_hardening_rollback.sql'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionKeyRing.cs'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs'
-      - 'src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs'
-      - 'tests/CelarAiProductionHardeningTests/**'
-      - 'tests/fixtures/celar-ai-production-hardening-prerequisites.sql'
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -32,7 +16,173 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      applicable: ${{ steps.scope.outputs.applicable }}
+    steps:
+      - name: Check out exact source for classification
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Classify and verify exact production-hardening source scope
+        id: scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-*)
+              SCOPE_LABEL='security production-hardening'
+              SCOPE_MARKER='EXACT_45_SOURCE_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          .github/workflows/celar-ai-production-platform-ci.yml
+          .github/workflows/pulse-ai-help-chat-usability-ci.yml
+          docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md
+          src/backend/ProjectTime.Api/Program.cs
+          src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs
+          src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          src/backend/ProjectTime.Api/PulseAiDocumentGroundingService.g.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiCandidateRequestFence.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiDatabaseConnection.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiTimesheetContextResolver.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs
+          src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs
+          src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+          src/frontend/project-time-web/package.json
+          tests/CelarAiProductionHardeningTests/CelarAiProductionHardeningTests.csproj
+          tests/CelarAiProductionHardeningTests/Program.cs
+          tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs
+          EOF
+          )"
+              ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              SCOPE_LABEL='unified-chat regression'
+              SCOPE_MARKER='EXACT_51_UNIFIED_CHAT_SOURCE_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-enterprise-platform-ci.yml
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          .github/workflows/celar-ai-production-platform-ci.yml
+          .github/workflows/pulse-ai-help-chat-usability-ci.yml
+          database/migrations/072_celar_ai_conversation_attachments.sql
+          database/rollback/072_celar_ai_conversation_attachments_rollback.sql
+          src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentContracts.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRepository.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRetentionWorker.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentService.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs
+          src/backend/ProjectTime.Api/Directory.Build.targets
+          src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs
+          src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+          src/frontend/project-time-web/package.json
+          src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs
+          src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs
+          src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          src/frontend/project-time-web/scripts/validate-module-059-global.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/PulseAiPrivateRagWorkbench.jsx
+          src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          src/frontend/project-time-web/src/celar-ai-contextual-chat.css
+          src/frontend/project-time-web/src/celar-ai-production-platform.css
+          src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js
+          tests/test-celar-ai-conversation-attachments-migration-072.sh
+          tests/test-uat-functional-completion-contract.sh
+          EOF
+          )"
+              ;;
+            *)
+              echo 'applicable=false' >> "$GITHUB_OUTPUT"
+              echo 'CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE'
+              exit 0
+              ;;
+          esac
+
+          echo 'applicable=true' >> "$GITHUB_OUTPUT"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          DIFF_RANGE="origin/$BASE_BRANCH...HEAD"
+          CHANGED="$(git diff --name-only --no-renames "$DIFF_RANGE" | LC_ALL=C sort -u)"
+          test -n "$CHANGED"
+          MISSING_SOURCE="$(comm -23 <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u) <(printf '%s\n' "$CHANGED"))"
+          UNEXPECTED="$(comm -23 <(printf '%s\n' "$CHANGED") <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u))"
+          if [[ -n "$MISSING_SOURCE" || -n "$UNEXPECTED" ]]; then
+            echo "The $SCOPE_LABEL branch must contain its exact reviewed source manifest and no out-of-scope paths." >&2
+            [[ -z "$MISSING_SOURCE" ]] || { echo 'Missing source files:' >&2; printf '%s\n' "$MISSING_SOURCE" >&2; }
+            [[ -z "$UNEXPECTED" ]] || { echo 'Unexpected files:' >&2; printf '%s\n' "$UNEXPECTED" >&2; }
+            exit 1
+          fi
+          while IFS=$'\t' read -r status file; do
+            [[ "$status" == A || "$status" == M ]] || {
+              echo "Unsafe diff status rejected: $status $file" >&2
+              exit 1
+            }
+            [[ "$(git ls-tree HEAD -- "$file" | awk '{print $1}')" == 100644 ]] || {
+              echo "Non-regular or executable file mode rejected: $file" >&2
+              exit 1
+            }
+          done < <(git diff --name-status --no-renames "$DIFF_RANGE")
+          git diff --check "$DIFF_RANGE"
+          echo "CELAR_AI_PRODUCTION_HARDENING_SCOPE=$SCOPE_MARKER"
+
   validate:
+    needs: classify
+    if: needs.classify.outputs.applicable == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -58,43 +208,27 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify narrow production-hardening scope
+      - name: Verify tracked generated sources from canonical transforms
         shell: bash
         run: |
           set -Eeuo pipefail
-          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
-          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          git fetch origin "$BASE_BRANCH" --no-tags
-          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
-          test -n "$CHANGED"
-          case "$HEAD_BRANCH" in
-            security/celar-ai-production-readiness-*)
-              echo 'CELAR_AI_PRODUCTION_HARDENING_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
-              ;;
-            feature/celar-ai-unified-chat-routing-attachments-*)
-              echo 'CELAR_AI_PRODUCTION_HARDENING_VALIDATION_MODE=UNIFIED_CHAT_REGRESSION' >> "$GITHUB_ENV"
-              ;;
-            *)
-              echo 'Celar AI production-hardening source requires an explicitly reviewed production-hardening or unified-chat branch family.' >&2
-              exit 1
-              ;;
-          esac
-          PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
-          if [[ -n "$PROHIBITED" ]]; then
-            echo 'Production-hardening validation cannot authorize deployment mutations:' >&2
-            printf '%s\n' "$PROHIBITED" >&2
-            exit 1
-          fi
-          for required in \
-            '.github/workflows/celar-ai-production-hardening-ci.yml' \
-            'database/migrations/071_ai_runtime_production_hardening.sql' \
-            'database/rollback/071_ai_runtime_production_hardening_rollback.sql' \
-            'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionKeyRing.cs' \
-            'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs' \
-            'src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs'; do
-            test -f "$required"
-          done
-          git diff --check "origin/$BASE_BRANCH"...HEAD
+          TEMP_ROOT="$(mktemp -d)"
+          awk 'BEGIN { print "#nullable enable"; inserted=0 } /^[[:space:]]*app\.Run\(\);[[:space:]]*$/ && inserted==0 { print "app.UsePlatformOperationsTelemetry();"; print "app.MapPlatformOperationsEndpoints();"; print "app.MapPlatformProductionResilienceEndpoints();"; print "app.MapProjectFinancialTruthEndpoints();"; print "app.UseProjectNotificationCloseoutCompatibility();"; print "app.MapProjectNotificationAutomationEndpoints();"; print "app.MapFinancialOperationsRecoveryEndpoints();"; print "app.MapEnterpriseReportingEndpoints();"; print "app.MapAnalyticsCenterEndpoints();"; print "app.MapAdminAuditHistoryEndpoints();"; print "app.MapUserAdministrationTeamScopeEndpoints();"; print "app.UseModuleAvailabilityEnforcement();"; print "app.UseSecurityContextAuthorityConvergence();"; print "app.MapModuleAvailabilityEndpoints();"; print "app.MapModuleAvailabilityOverrideEndpoints();"; print "app.MapClientDiagnosticEndpoints();"; print "app.MapPulseAiDeepIntelligenceEndpoints();"; print "app.MapPulseAiPrivateDocumentPipelineEndpoints();"; print "app.MapPulseAiSystemIntelligenceEndpoints();"; print "app.MapCelarAiBrandEndpoints();"; print "app.MapScopedRolePolicyEndpoints();"; print "app.UsePtcTimeStewardRoleBoundary();"; print "app.UseModule001ResultExecutionCompatibility();"; print "app.MapModule001TimeStewardV2Endpoints();"; print "app.MapModule001TimesheetEnhancementEndpoints();"; print "app.MapModule001TimerTargetEndpoints();"; print "app.MapModule001MultiTimerEndpoints();"; print "app.MapModule001PtcTimesheetManagementEndpoints();"; print "app.MapRuntimeDataCompatibilityEndpoints();"; print "app.MapCombinedModuleRuntimeEndpoints();"; print "app.MapCombinedModulePublicReadinessEndpoint();"; print "app.UseProjectExpenseBillingReadinessContinuitySafe();"; print "app.MapModule005ProjectExpenseUploadEndpointsSafe();"; print "app.MapModule005ProjectExpenseBillingAcknowledgementEndpoints();"; print "app.MapModule038CertifyConnectionEndpoints();"; print "app.MapEntraSecretExpirationGovernanceEndpoints();"; print "app.UseEntraSecretExpirationGovernance();"; print "app.MapCrmErpOAuthPersistenceEndpoints();"; print "app.MapPr467UatRepairEndpoints();"; print "app.MapModule006StandalonePipelineEndpoints();"; print "app.MapModule006StandaloneTaskEndpoints();"; print "app.UseCrmErpOAuthPersistence();"; inserted=1 } { print } END { if (inserted==0) exit 42 }' \
+            src/backend/ProjectTime.Api/Program.cs > "$TEMP_ROOT/Program.ScopedRbac.g.cs"
+          sed -i \
+            -e 's/PROJECTPULSE_ENTRA_TENANT_ID/PROJECTPULSE_SSO_TENANT_ID/g' \
+            -e 's/PROJECTPULSE_ENTRA_CLIENT_ID/PROJECTPULSE_SSO_CLIENT_ID/g' \
+            -e 's/PROJECTPULSE_ENTRA_REDIRECT_URI/PROJECTPULSE_SSO_REDIRECT_URI/g' \
+            -e 's/PROJECTPULSE_ENTRA_CLIENT_SECRET/PROJECTPULSE_SSO_CLIENT_SECRET/g' \
+            "$TEMP_ROOT/Program.ScopedRbac.g.cs"
+          cmp "$TEMP_ROOT/Program.ScopedRbac.g.cs" src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs
+
+          sed -e 's/roles: access.RoleCodes,/roles: access.RoleCodes.OrderBy(value => value).ToArray(),/' \
+            src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs \
+            > "$TEMP_ROOT/PulseAiDocumentGroundingService.g.cs"
+          cmp "$TEMP_ROOT/PulseAiDocumentGroundingService.g.cs" \
+            src/backend/ProjectTime.Api/PulseAiDocumentGroundingService.g.cs
+          echo 'CELAR_AI_TRACKED_GENERATED_SOURCE_CONVERGENCE=PASSED'
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -207,16 +341,18 @@ jobs:
       - name: Validate atomic old-and-new key-ring rotation
         env:
           PROJECTPULSE_CONNECTION_STRING: Host=127.0.0.1;Port=5432;Database=projectpulse_validation;Username=projectpulse;Password=projectpulse;Include Error Detail=false
-        run: dotnet run --project tests/CelarAiProductionHardeningTests/CelarAiProductionHardeningTests.csproj --configuration Release
+        run: dotnet run --project tests/CelarAiProductionHardeningTests/CelarAiProductionHardeningTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
 
       - name: Validate focused source contract
         working-directory: src/frontend/project-time-web
-        run: node ./scripts/validate-celar-ai-production-readiness.mjs
+        run: |
+          node ./scripts/validate-celar-ai-production-readiness.mjs
+          node ./scripts/validate-celar-ai-release-scoped-runtime.mjs
 
       - name: Build backend and enforce generated-source convergence
         shell: bash
         run: |
           set -Eeuo pipefail
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
           git diff --exit-code -- 'src/backend/ProjectTime.Api/**/*.g.cs'
           echo 'CELAR_AI_PRODUCTION_HARDENING_BUILD=PASSED'

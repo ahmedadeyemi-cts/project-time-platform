@@ -21,7 +21,7 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-VIEW-AS-DRAWER-TO-TEST'
 require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-view-as-drawer-test'
+require "$DEPLOY" 'group: projectpulse-deploy-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'Only the verified Administrator View-As drawer release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'

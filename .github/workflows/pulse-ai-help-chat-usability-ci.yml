@@ -183,7 +183,8 @@ jobs:
                 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs' \
                 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs' \
                 'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs'; do
-                grep -Fxq "$required" <<<"$CHANGED"
+                test -f "$required"
+                git cat-file -e "origin/$BASE_BRANCH:$required"
               done
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CELAR_PRODUCTION_HARDENING' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_CELAR_PRODUCTION_HARDENING=PASSED'
