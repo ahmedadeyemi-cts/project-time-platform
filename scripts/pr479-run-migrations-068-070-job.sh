@@ -82,14 +82,22 @@ EXECUTION_NAME=""
 emit_logs() {
   [[ -n "$LOG_DIR" && -n "$EXECUTION_NAME" ]] || return 0
   mkdir -p "$LOG_DIR"
-  az containerapp job logs show \
+  local target="$LOG_DIR/${JOB_NAME}-${MODE}.log"
+  local temporary="$target.tmp"
+  [[ -s "$target" ]] && return 0
+  if az containerapp job logs show \
     -g "$RESOURCE_GROUP" \
     -n "$JOB_NAME" \
     --execution "$EXECUTION_NAME" \
     --container "$JOB_NAME" \
     --tail 300 \
     --only-show-errors \
-    > "$LOG_DIR/${JOB_NAME}-${MODE}.log" 2>&1 || true
+    > "$temporary" 2>&1; then
+    mv "$temporary" "$target"
+  else
+    cat "$temporary" >&2 2>/dev/null || true
+    rm -f "$temporary"
+  fi
 }
 
 cleanup() {
