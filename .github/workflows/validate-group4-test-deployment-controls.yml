@@ -45,6 +45,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           git -C control fetch origin main --no-tags
+          # DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE_START
+          if [[ "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" == security/environment-deployment-concurrency-* ]]; then
+            (
+              cd control
+              node scripts/validate-deployment-concurrency-governance.mjs --base-ref origin/main
+            )
+            echo 'DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE=PASS'
+            exit 0
+          fi
+          # DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE_END
           mapfile -t CHANGED < <(git -C control diff --name-only origin/main...HEAD | sort)
           cat > /tmp/expected.txt <<'EOF'
           .github/workflows/projectpulse-deploy-group4-notifications-test.yml

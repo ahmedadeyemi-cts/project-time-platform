@@ -27,6 +27,7 @@ permissions:
 
 concurrency:
   group: projectpulse-deploy-${{ inputs.environment }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
