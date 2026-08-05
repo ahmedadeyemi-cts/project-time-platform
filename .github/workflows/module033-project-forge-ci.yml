@@ -132,6 +132,9 @@ jobs:
       - name: Build ProjectTime API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
+      - name: Verify API startup and endpoint materialization
+        run: bash tests/test-projectpulse-api-startup.sh
+
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci --no-audit --no-fund
