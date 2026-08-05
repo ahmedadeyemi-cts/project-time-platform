@@ -144,6 +144,28 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Pin Azure Container Apps CLI extension
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_AZURE_CLI_VERSION=2.79.0
+          REQUIRED_CONTAINERAPP_EXTENSION_VERSION=1.3.0b4
+          ACTUAL_AZURE_CLI_VERSION="$(az version --query '"azure-cli"' -o tsv)"
+          [[ "$(printf '%s\n' "$REQUIRED_AZURE_CLI_VERSION" "$ACTUAL_AZURE_CLI_VERSION" | sort -V | head -n1)" == "$REQUIRED_AZURE_CLI_VERSION" ]] || {
+            echo "Azure CLI $REQUIRED_AZURE_CLI_VERSION or newer is required." >&2
+            exit 1
+          }
+          az config set extension.use_dynamic_install=no --only-show-errors
+          if az extension show --name containerapp --output none --only-show-errors 2>/dev/null; then
+            az extension remove --name containerapp --only-show-errors
+          fi
+          az extension add \
+            --name containerapp \
+            --version "$REQUIRED_CONTAINERAPP_EXTENSION_VERSION" \
+            --yes --only-show-errors
+          [[ "$(az extension show --name containerapp --query version -o tsv --only-show-errors)" == "$REQUIRED_CONTAINERAPP_EXTENSION_VERSION" ]]
+          echo "AZURE_CONTAINERAPP_EXTENSION=PINNED"
+
       - name: Validate protected Test resource contract
         id: contract
         shell: bash
@@ -153,6 +175,7 @@ jobs:
           MIGRATOR_IDENTITY: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
           KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
           DATABASE_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
+          DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'
@@ -181,6 +204,10 @@ jobs:
             echo "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be secret-name/version." >&2
             exit 1
           }
+          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
+            echo "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier." >&2
+            exit 1
+          }
           for value in \
             '${{ vars.AZURE_RESOURCE_GROUP }}' \
             '${{ vars.AZURE_ACR_NAME }}' \
@@ -188,6 +215,43 @@ jobs:
             '${{ vars.AZURE_WEB_APP }}'; do
             [[ -n "$value" && "$value" != None && "$value" != null ]]
           done
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${AZURE_SUBSCRIPTION_ID,,}" ]] || {
+            echo "Azure login is not bound to the protected Test subscription." >&2
+            exit 1
+          }
+          UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
+          UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
+          UAMI_RESOURCE_GROUP="${MIGRATOR_IDENTITY#*/resourceGroups/}"
+          UAMI_RESOURCE_GROUP="${UAMI_RESOURCE_GROUP%%/*}"
+          [[ "${UAMI_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
+            echo "The migrator UAMI is outside the logged-in Test subscription." >&2
+            exit 1
+          }
+          [[ "${UAMI_RESOURCE_GROUP,,}" == "${AZURE_RESOURCE_GROUP,,}" ]] || {
+            echo "The migrator UAMI is outside the protected Test resource group." >&2
+            exit 1
+          }
+          ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
+          [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || {
+            echo "The protected Test migrator UAMI could not be resolved exactly." >&2
+            exit 1
+          }
+          KEY_VAULT_URI="${KEY_VAULT_URI%/}"
+          KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
+          KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
+          EXPECTED_KEY_VAULT_ID="/subscriptions/$CURRENT_SUBSCRIPTION/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
+          ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
+          ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
+          ACTUAL_KEY_VAULT_URI="${ACTUAL_KEY_VAULT_URI%/}"
+          [[ "${ACTUAL_KEY_VAULT_ID,,}" == "${EXPECTED_KEY_VAULT_ID,,}" ]] || {
+            echo "The Key Vault is outside the logged-in protected Test subscription or resource group." >&2
+            exit 1
+          }
+          [[ "$ACTUAL_KEY_VAULT_URI" == "$KEY_VAULT_URI" ]] || {
+            echo "The protected Test Key Vault host does not match its Azure resource." >&2
+            exit 1
+          }
           mapfile -t ENV_NAMES < <(az containerapp show \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_API_APP }}' \
@@ -316,6 +380,8 @@ jobs:
           AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
           AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
           PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
+          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-a
@@ -331,6 +397,8 @@ jobs:
           AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
           AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
           PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
+          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-v
