@@ -33,7 +33,11 @@ jobs:
           bash -n scripts/release-test/run-migration-job.sh
           node --check scripts/release-test/verify-runtime.mjs
           grep -Fq 'item?.feature === feature' scripts/release-test/verify-runtime.mjs
-          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION is required' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'must be configured together for automated authenticated UAT' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'PENDING_USER_SESSION_VALIDATION' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'officialUsSignalLogo' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'profilePicturePersistence' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'externalProviderReadiness' scripts/release-test/verify-runtime.mjs
           grep -Fq 'result.status === 401' scripts/release-test/verify-runtime.mjs
           grep -Fq 'redirect: "manual"' scripts/release-test/verify-runtime.mjs
           grep -Fq 'celar_ai_chat_attachments_accepted' scripts/release-test/verify-runtime.mjs
@@ -48,15 +52,20 @@ jobs:
           grep -Fq 'validate_job_ownership' scripts/release-test/run-migration-job.sh
           grep -Fq 'stop_nonterminal_executions' scripts/release-test/run-migration-job.sh
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' scripts/release-test/run-migration-job.sh
-          grep -Fq 'PROJECTPULSE_TEST_FORGE_PROJECT_ID' scripts/release-test/run-migration-job.sh
+          ! grep -Fq 'PROJECTPULSE_TEST_FORGE_PROJECT_ID' scripts/release-test/run-migration-job.sh
           grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' scripts/release-test/apply-071-073.sh
           grep -Fq "current_database() <> current_setting('projectpulse.release.expected_database')" scripts/release-test/apply-071-073.sh
           grep -Fq 'Refusing partial, duplicate, or mixed 071-073 ledger state' scripts/release-test/apply-071-073.sh
           grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING' scripts/release-test/apply-071-073.sh
           ! grep -Fq "find \"\$MIGRATION_ROOT\" -maxdepth" scripts/release-test/apply-071-073.sh
           ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'containerapp secret list' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'keyvault secret show --id "$KEY_VAULT_SECRET_URI"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.migrator_identity' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.database_secret_name' .github/workflows/projectpulse-deploy-test.yml
+          ! grep -Fq 'vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
+          ! grep -Fq 'vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
+          ! grep -Fq 'vars.PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'old_api_env_b64' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'extension.use_dynamic_install=no' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'REQUIRED_CONTAINERAPP_EXTENSION_VERSION=1.3.0b4' .github/workflows/projectpulse-deploy-test.yml
@@ -73,6 +82,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
           import json
@@ -80,7 +90,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r2"
+          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r3"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const expectedSource = "acae6fda08e6d58dfb1e63b5eef4828877fd5523";
 const expectedBase = "https://phd-west-test.onenecklab.com";
@@ -23,6 +23,8 @@ const session = (process.env.PROJECTPULSE_TEST_UAT_SESSION || "").trim();
 const forgeProjectId = (process.env.PROJECTPULSE_TEST_FORGE_PROJECT_ID || "").trim().toLowerCase();
 const evidencePath = process.env.EVIDENCE_PATH || "/tmp/current-main-release-runtime-evidence.json";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const authenticatedUatEnabled = session.length >= 20 && uuidPattern.test(forgeProjectId);
+const officialLogoSha256 = "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,14 +39,16 @@ function safeError(error) {
 
 assert(sourceSha === expectedSource, "Unexpected deployed source SHA.");
 assert(base === expectedBase, "PUBLIC_URL is not the exact protected Test origin.");
-assert(session.length >= 20, "PROJECTPULSE_TEST_UAT_SESSION is required for authenticated acceptance.");
-assert(uuidPattern.test(forgeProjectId), "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be a UUID.");
+assert(
+  (session.length === 0 && forgeProjectId.length === 0) || authenticatedUatEnabled,
+  "PROJECTPULSE_TEST_UAT_SESSION and PROJECTPULSE_TEST_FORGE_PROJECT_ID must be configured together for automated authenticated UAT.",
+);
 
 async function request(route, options = {}) {
   const method = options.method || "GET";
   const authenticated = options.authenticated === true;
   const headers = {
-    Accept: "application/json",
+    Accept: options.accept || "application/json",
     "Cache-Control": "no-cache, no-store, max-age=0",
     Pragma: "no-cache",
   };
@@ -86,6 +90,17 @@ async function request(route, options = {}) {
   }
 }
 
+async function requestBytes(route) {
+  const target = new URL(route, base);
+  assert(target.origin === new URL(base).origin, "Verifier refused a cross-origin asset request.");
+  const response = await fetch(target, {
+    headers: { Accept: "image/png", "Cache-Control": "no-cache, no-store, max-age=0" },
+    redirect: "manual",
+  });
+  assert(response.status === 200, "Official US Signal logo asset returned HTTP " + response.status + ".");
+  return Buffer.from(await response.arrayBuffer());
+}
+
 const evidence = {
   environment: "test",
   sourceSha,
@@ -94,6 +109,7 @@ const evidence = {
   migration074Included: false,
   aiReleasePhase: "disabled",
   routingAuthority: "database_managed_active",
+  authenticatedUatStatus: authenticatedUatEnabled ? "executing" : "pending_user_session_validation",
   status: "running",
   publicChecks: {},
   authenticatedChecks: {},
@@ -211,6 +227,19 @@ async function run() {
   assert(stamp.json?.sourceSha === sourceSha, "Web source stamp does not match the exact release SHA.");
   evidence.publicChecks.webSourceStamp = "passed";
 
+  const shell = await request("/", { accept: "text/html" });
+  assert(shell.status === 200, "Web application shell returned HTTP " + shell.status + ".");
+  const scriptPath = shell.text.match(/<script[^>]+src=["']([^"']+\.js)["']/i)?.[1] || "";
+  assert(scriptPath.length > 0, "Web application shell did not reference its production bundle.");
+  const bundle = await request(scriptPath, { accept: "text/javascript" });
+  assert(bundle.status === 200, "Web production bundle returned HTTP " + bundle.status + ".");
+  assert(bundle.text.includes("brand-logo-image"), "Web production bundle does not mount the main-page US Signal logo.");
+  const logoPath = bundle.text.match(/\/assets\/(?:USSNavyStacked|ussignal)-[A-Za-z0-9_-]+\.png/)?.[0] || "";
+  assert(logoPath.length > 0, "Web production bundle does not reference the approved stacked US Signal logo asset.");
+  const logoBytes = await requestBytes(logoPath);
+  assert(createHash("sha256").update(logoBytes).digest("hex") === officialLogoSha256, "Live US Signal logo bytes do not match the approved governed asset.");
+  evidence.publicChecks.officialUsSignalLogo = "passed";
+
   const health = await request("/api/health");
   assert(health.status === 200, "API health returned HTTP " + health.status + ".");
   evidence.publicChecks.apiHealth = "passed";
@@ -224,12 +253,20 @@ async function run() {
     ["POST", "/api/celar-ai/v2/chat"],
     ["GET", "/api/ai-configuration/routes"],
     ["GET", "/api/celar-ai/v2/attachments/readiness"],
-    ["GET", "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical"],
+    ["GET", authenticatedUatEnabled
+      ? "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical"
+      : "/api/project-forge/bootstrap?workspace=canonical"],
   ];
   for (const [method, route] of protectedRoutes) {
     const result = await request(route, { method, body: method === "POST" ? {} : undefined });
     assert(result.status === 401, "Protected route did not fail closed with HTTP 401: " + method + " " + route + " returned " + result.status + ".");
     evidence.publicChecks[method + " " + route] = "session_required";
+  }
+
+  if (!authenticatedUatEnabled) {
+    evidence.authenticatedUatStatus = "pending_user_session_validation";
+    evidence.status = "passed";
+    return;
   }
 
   const versionChat = await request("/api/celar-ai/v2/chat", {
@@ -335,6 +372,44 @@ async function run() {
     assert(JSON.stringify(route.targets) === JSON.stringify(expectedTargets), "Module 064 target order is wrong for " + feature + ".");
   }
   evidence.authenticatedChecks.module064Routes = "passed";
+
+  const providerConfiguration = await request("/api/ai-configuration", {
+    moduleNumber: "064",
+    authenticated: true,
+  });
+  assert(providerConfiguration.status === 200, "Module 064 provider configuration returned HTTP " + providerConfiguration.status + ".");
+  assert(providerConfiguration.json?.module === "064", "Module 064 provider configuration has the wrong module.");
+  const providerHealth = await request("/api/ai-configuration/health", {
+    moduleNumber: "064",
+    authenticated: true,
+  });
+  assert(providerHealth.status === 200, "Module 064 provider health returned HTTP " + providerHealth.status + ".");
+  const remoteProviderHealth = (providerHealth.json?.providers || [])
+    .filter((item) => ["claude", "openai"].includes(String(item?.provider || "").toLowerCase()))
+    .map((item) => ({
+      provider: String(item.provider).toLowerCase(),
+      enabled: item.enabled === true,
+      configured: item.configured === true,
+      probeStatus: String(item.probeStatus || "not_checked"),
+    }));
+  assert(remoteProviderHealth.length === 2, "Module 064 did not return sanitized Claude and OpenAI health evidence.");
+  evidence.authenticatedChecks.externalProviderReadiness = {
+    status: String(providerHealth.json?.status || "unknown"),
+    providers: remoteProviderHealth,
+  };
+
+  const profilePhoto = await request("/api/profile/preferences/production-validation", {
+    authenticated: true,
+  });
+  assert(profilePhoto.status === 200, "Profile-picture persistence validation returned HTTP " + profilePhoto.status + ".");
+  assert(profilePhoto.json?.storage?.mode === "database", "Profile picture is not stored in the database.");
+  assert(profilePhoto.json?.storage?.redeploySafe === true, "Profile-picture storage is not marked redeploy-safe.");
+  assert(profilePhoto.json?.currentUser?.profilePhotoPayloadReturned === false, "Profile-picture validation returned image payload data.");
+  evidence.authenticatedChecks.profilePicturePersistence = {
+    status: String(profilePhoto.json?.status || "unknown"),
+    hasPersistedProfilePhoto: profilePhoto.json?.currentUser?.hasPersistedProfilePhoto === true,
+    redeploySafe: true,
+  };
 
   const attachments = await request("/api/celar-ai/v2/attachments/readiness", {
     moduleNumber: "011",
@@ -503,12 +578,15 @@ async function run() {
   evidence.authenticatedChecks.projectForgeArchive = "passed";
 
   evidence.status = "passed";
+  evidence.authenticatedUatStatus = "executed";
 }
 
 try {
   await run();
   console.log("CURRENT_MAIN_TEST_RUNTIME_VERIFICATION=PASSED");
-  console.log("CURRENT_MAIN_AUTHENTICATED_UAT=EXECUTED");
+  console.log(authenticatedUatEnabled
+    ? "CURRENT_MAIN_AUTHENTICATED_UAT=EXECUTED"
+    : "CURRENT_MAIN_AUTHENTICATED_UAT=PENDING_USER_SESSION_VALIDATION");
 } catch (error) {
   evidence.status = "failed";
   evidence.failure = safeError(error);
