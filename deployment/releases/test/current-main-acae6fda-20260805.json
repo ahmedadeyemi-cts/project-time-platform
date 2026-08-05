@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releaseName": "current-main-acae6fda-20260805-r4",
+  "releaseName": "current-main-acae6fda-20260805-r5",
   "environment": "test",
   "aiReleasePhase": "disabled",
   "routingAuthority": "database_managed_active",

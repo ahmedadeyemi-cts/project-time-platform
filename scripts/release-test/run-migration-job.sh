@@ -28,7 +28,7 @@ normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;
 MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
 [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || fail "AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID must be an exact UAMI resource ID."
 [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] || fail "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI."
-[[ "$SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || fail "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be secret-name/version."
+[[ "$SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || fail "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be an exact secret name with an optional version."
 [[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
 [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_CONTROL_SHA must be an exact commit."
 command -v az >/dev/null || fail "Azure CLI is required."
