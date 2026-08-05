@@ -6,16 +6,16 @@ on:
       release_commit:
         description: Exact reviewed source commit
         required: true
-        default: 52bda3f035182ab02e7bc81b9d5eac57542048b9
+        default: acae6fda08e6d58dfb1e63b5eef4828877fd5523
         type: string
       confirmation:
-        description: Enter DEPLOY-52BDA3F0-MIGRATIONS-071-073-TO-TEST
+        description: Enter DEPLOY-ACAE6FDA-MIGRATIONS-071-073-TO-TEST
         required: true
         type: string
   push:
     branches: [main]
     paths:
-      - deployment/releases/test/current-main-52bda3f0-20260805.json
+      - deployment/releases/test/current-main-acae6fda-20260805.json
 
 permissions:
   id-token: write
@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      RELEASE_MANIFEST: deployment/releases/test/current-main-52bda3f0-20260805.json
-      EXPECTED_SOURCE_SHA: 52bda3f035182ab02e7bc81b9d5eac57542048b9
+      RELEASE_MANIFEST: deployment/releases/test/current-main-acae6fda-20260805.json
+      EXPECTED_SOURCE_SHA: acae6fda08e6d58dfb1e63b5eef4828877fd5523
 
     steps:
       - name: Check out deployment controls
@@ -49,7 +49,7 @@ jobs:
       - name: Check out exact application source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 52bda3f035182ab02e7bc81b9d5eac57542048b9
+          ref: acae6fda08e6d58dfb1e63b5eef4828877fd5523
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -85,7 +85,7 @@ jobs:
               echo "Only the exact reviewed source SHA may deploy." >&2
               exit 1
             }
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-52BDA3F0-MIGRATIONS-071-073-TO-TEST ]] || {
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-ACAE6FDA-MIGRATIONS-071-073-TO-TEST ]] || {
               echo "Deployment confirmation does not match." >&2
               exit 1
             }
@@ -102,7 +102,7 @@ jobs:
           cat > /tmp/expected-control-paths <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
-          deployment/releases/test/current-main-52bda3f0-20260805.json
+          deployment/releases/test/current-main-acae6fda-20260805.json
           scripts/release-test/apply-071-073.sh
           scripts/release-test/run-migration-job.sh
           scripts/release-test/verify-runtime.mjs
