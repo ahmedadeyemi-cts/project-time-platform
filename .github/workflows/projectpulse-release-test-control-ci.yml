@@ -32,6 +32,25 @@ jobs:
           bash -n scripts/release-test/apply-071-073.sh
           bash -n scripts/release-test/run-migration-job.sh
           node --check scripts/release-test/verify-runtime.mjs
+          grep -Fq 'item?.feature === feature' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION is required' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'result.status === 401' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'redirect: "manual"' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celar_ai_chat_attachments_accepted' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celar_ai_chat_attachment_revoked' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'canonical_task_created' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'canonical_task_archived' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'keyVaultUrl' scripts/release-test/run-migration-job.sh
+          grep -Fq 'identity: $identity' scripts/release-test/run-migration-job.sh
+          grep -Fq 'CREATE_ATTEMPTED=1' scripts/release-test/run-migration-job.sh
+          grep -Fq 'This guarded release only accepts a fresh 071-073 migration set' scripts/release-test/apply-071-073.sh
+          ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'old_api_env_b64' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -39,6 +58,8 @@ jobs:
           manifest = json.loads(Path("deployment/releases/test/current-main-e83340b5-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
           assert manifest["environment"] == "test"
+          assert manifest["aiReleasePhase"] == "disabled"
+          assert manifest["routingAuthority"] == "database_managed_active"
           assert manifest["sourceSha"] == "e83340b5a4215ea63901cea98ea17596444f96b7"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
@@ -46,6 +67,13 @@ jobs:
               "071_ai_runtime_production_hardening",
               "072_celar_ai_conversation_attachments",
               "073_module_033_project_forge_interactive",
+          ]
+          assert manifest["requiredPriorLedger"] == [
+              "052_pulse_ai_private_document_runtime",
+              "053_pulse_ai_private_rag_orchestration",
+              "054_pulse_ai_system_intelligence_conversations",
+              "061_celar_ai_capability_routing",
+              "070_module_033_project_forge",
           ]
           assert len({item["path"] for item in manifest["migrations"]}) == 3
           assert len({item["sha256"] for item in manifest["migrations"]}) == 3
