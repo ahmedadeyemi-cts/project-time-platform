@@ -9,7 +9,11 @@ on:
       - '.github/workflows/module033-project-forge-ci.yml'
       - 'database/migrations/070_module_033_project_forge.sql'
       - 'database/rollback/070_module_033_project_forge_rollback.sql'
+      - 'database/migrations/073_module_033_project_forge_interactive.sql'
+      - 'database/rollback/073_module_033_project_forge_interactive_rollback.sql'
       - 'scripts/tests/070_module_033_project_forge_migration_test.sql'
+      - 'scripts/tests/073_module_033_project_forge_interactive_migration_test.sql'
+      - 'scripts/validate-module-033-project-forge-interactive.sh'
       - 'docs/modules/module-033-project-forge/**'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
@@ -26,16 +30,19 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ModuleAvailability*.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+      - 'src/frontend/project-time-web/scripts/test-module-033-project-forge-interactions.mjs'
       - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
       - 'src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs'
       - 'src/frontend/project-time-web/src/ProjectForgeCenter.jsx'
       - 'src/frontend/project-time-web/src/project-forge-center.css'
+      - 'src/frontend/project-time-web/src/project-forge/**'
       - 'src/frontend/project-time-web/src/App.jsx'
       - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
       - 'src/frontend/project-time-web/src/SystemUserGuide.jsx'
       - 'src/frontend/project-time-web/src/module-availability-registry.js'
       - 'src/frontend/project-time-web/src/role-workspace-governance.js'
       - 'tests/test-module-033-project-forge-migration-070.sh'
+      - 'tests/test-module-033-project-forge-interactive-migration-073.sh'
 
 permissions:
   contents: read
@@ -90,16 +97,24 @@ jobs:
       - name: Validate migration 070 and rollback
         run: bash tests/test-module-033-project-forge-migration-070.sh
 
+      - name: Validate migration 073 and guarded rollback
+        run: bash tests/test-module-033-project-forge-interactive-migration-073.sh
+
       - name: Validate Module 065 notification persistence compatibility
         run: |
           bash tests/test-module-065-enterprise-notification-orchestration-migration-064.sh
           bash tests/test-enterprise-notification-runtime-completion-migration-065.sh
 
-      - name: Validate Project Forge source contract
+      - name: Validate Project Forge interactive backend contract
+        run: bash scripts/validate-module-033-project-forge-interactive.sh
+
+      - name: Validate Project Forge source and interaction contracts
         working-directory: src/frontend/project-time-web
         run: |
           node --check scripts/validate-module-033-project-forge.mjs
           node scripts/validate-module-033-project-forge.mjs
+          node --check scripts/test-module-033-project-forge-interactions.mjs
+          node scripts/test-module-033-project-forge-interactions.mjs
 
       - name: Validate Module 064, 065, and 066 integration contracts
         working-directory: src/frontend/project-time-web

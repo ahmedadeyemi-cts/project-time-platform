@@ -38,6 +38,10 @@ public static class CelarAiBrandModule
         endpoints.MapPost(
             CelarAiBrandProfile.ChatRoute,
             (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CancellationToken, Task<IResult>>)ChatAsync);
+        // The brand module is the compiled startup registration authority. Map
+        // the unified Module 011/Module 064 production surface here so the v2
+        // chat and attachment routes cannot silently fall back to legacy v1.
+        endpoints.MapCelarAiEnterprisePlatformEndpoints();
         return endpoints;
     }
 

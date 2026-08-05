@@ -7,8 +7,21 @@ public static class ProjectPulseAiServiceCollectionExtensions
 {
     public static IServiceCollection AddProjectPulseAi(this IServiceCollection services)
     {
+        // Validate revision-scoped candidate configuration before any AI
+        // background worker or configuration loader is allowed to start.
+        services.AddHostedService<ProjectPulseAiReleaseRuntimeGuard>();
         services.AddHttpContextAccessor();
-        services.AddHttpClient("ProjectPulseAi");
+        services.AddHttpClient("ProjectPulseAi")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                UseCookies = false,
+                UseProxy = false
+            });
         services.AddHttpClient("PulseAiPrivateOcr", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(5);
@@ -67,6 +80,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiPrivateDocumentRuntimeRepository>();
         services.AddSingleton<PulseAiPrivateDocumentRuntimeService>();
         services.AddHostedService<PulseAiPrivateDocumentRuntimeWorker>();
+        services.AddSingleton<CelarAiConversationAttachmentRepository>();
+        services.AddSingleton<CelarAiConversationAttachmentService>();
+        services.AddHostedService<CelarAiConversationAttachmentRetentionWorker>();
         services.AddSingleton<PulseAiPrivateRagRepository>();
         services.AddSingleton<PulseAiPrivateRetrievalAuthorizationService>();
         services.AddSingleton<PulseAiPrivateRetrievalService>();

@@ -22,7 +22,12 @@ public sealed record CelarAiProductionChatRequest(
     string? ApiSearch = null,
     bool IncludeAuthorizedProjectDocuments = true,
     bool UsePrivateModelWhenAvailable = true,
-    string? ClientTimeZone = null);
+    string? ClientTimeZone = null,
+    bool IncludeRepositoryContext = false,
+    bool IncludeAssumptions = true,
+    bool IncludeSourceCitations = true,
+    string? AnswerPreferenceSource = null,
+    IReadOnlyList<Guid>? AttachmentIds = null);
 
 public sealed record CelarAiDatasetRequest(
     string? Name,
@@ -107,7 +112,7 @@ public static partial class CelarAiProductionPlatformModule
     public static IEndpointRouteBuilder MapCelarAiProductionPlatformEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/celar-ai/v1/production/readiness",
-            (Func<HttpContext, PulseAiSystemIntelligenceService, PulseAiPrivateRagService, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)ReadinessAsync);
+            (Func<HttpContext, PulseAiSystemIntelligenceService, PulseAiPrivateRagService, CelarAiEnterprisePlatformService, CelarAiCapabilityRoutingStore, CelarAiConversationAttachmentService, CancellationToken, Task<IResult>>)ReadinessAsync);
         endpoints.MapPost("/api/celar-ai/v1/production/schema/initialize",
             (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)InitializeSchemaAsync);
         endpoints.MapGet("/api/celar-ai/v1/production/datasets",
@@ -131,7 +136,8 @@ public static partial class CelarAiProductionPlatformModule
         endpoints.MapPost("/api/celar-ai/v1/production/deployments",
             (Func<CelarAiDeploymentRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)CreateDeploymentAsync);
         endpoints.MapPost(ChatRoute,
-            (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CancellationToken, Task<IResult>>)ChatAsync);
+            (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ChatAsync);
+        endpoints.MapCelarAiConversationAttachmentEndpoints();
         endpoints.MapPost(FlowHiveRoute,
             (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
         return endpoints;
@@ -142,6 +148,8 @@ public static partial class CelarAiProductionPlatformModule
         PulseAiSystemIntelligenceService system,
         PulseAiPrivateRagService rag,
         CelarAiEnterprisePlatformService enterprise,
+        CelarAiCapabilityRoutingStore routing,
+        CelarAiConversationAttachmentService attachments,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -153,6 +161,7 @@ public static partial class CelarAiProductionPlatformModule
             : await system.LoadAccessAsync(identity.Value.Actual, cancellationToken);
         var schemaReady = await IsSchemaReadyAsync(cancellationToken);
         var counts = schemaReady ? await CountsAsync(cancellationToken) : EmptyCounts();
+        var helpRoute = await routing.LoadRouteAsync(CelarAiCapabilityCatalog.HelpAssistant, cancellationToken);
         var cases = CompetencyCases.Select(test =>
         {
             var actual = ResolveIntent(test.Question);
@@ -177,8 +186,11 @@ public static partial class CelarAiProductionPlatformModule
             privateRag = await rag.GetReadinessAsync(cancellationToken),
             enterprisePlatform = await enterprise.GetReadinessAsync(cancellationToken),
             privateTraining = TrainingReadiness(),
+            chatAttachments = await attachments.GetReadinessAsync(cancellationToken),
             capabilityRouting = new
             {
+                feature = CelarAiCapabilityCatalog.HelpAssistant,
+                effectiveRoute = helpRoute.ToPublicResponse(),
                 defaultTargets = CelarAiCapabilityTargets.DefaultOrder,
                 finalFallbackRequired = CelarAiCapabilityTargets.Local,
                 module064Authority = true,
@@ -213,6 +225,7 @@ public static partial class CelarAiProductionPlatformModule
         PulseAiSystemIntelligenceService system,
         PulseAiSystemIntelligenceRepository repository,
         CelarAiPeopleAndGuidanceService peopleAndGuidance,
+        CelarAiCapabilityRoutingStore routing,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -221,26 +234,42 @@ public static partial class CelarAiProductionPlatformModule
         if (!access.IsActive || !access.CanAsk) return Forbidden(PulseAiSystemIntelligencePolicy.AskPermission);
         var question = Limit(request.Question, system.Options().MaximumQuestionCharacters, string.Empty);
         if (question.Length == 0) return Validation("Enter a question for Celar AI.");
+        var attachmentIds = (request.AttachmentIds ?? [])
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (attachmentIds.Length > CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest)
+            return Validation($"Select at most {CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest} ready attachments for one question.");
+        if (attachmentIds.Length > 0 && request.ConversationId is null)
+            return Validation("A durable Celar AI conversation is required before selecting attachments.");
+        if (attachmentIds.Length > 0 && identity.Value.Actual != identity.Value.Effective)
+            return ViewAsAttachmentForbidden();
+        if (attachmentIds.Length > 0 && !access.CanAttachDocuments)
+            return Forbidden(PulseAiSystemIntelligencePolicy.AttachmentPermission);
+        request = request with { AttachmentIds = attachmentIds };
         var intent = ResolveIntent(question);
+        var intentPlan = ResolveIntentPlan(question, intent);
+        context.Items[PulseAiSystemIntelligencePolicy.ResolvedIntentContextItem] = intentPlan;
         PulseAiSystemQuestionResult result;
 
-        if (intent.Code == "current_date_time")
+        if (attachmentIds.Length == 0 && intent.Code == "current_date_time")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, DateTimeAnswer(request.ClientTimeZone), "celar_ai_deterministic_clock", cancellationToken);
         }
-        else if (intent.Code == "system_version")
+        else if (attachmentIds.Length == 0 && intent.Code == "system_version")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, VersionAnswer(), "celar_ai_deterministic_release", cancellationToken);
         }
-        else if (intent.Code == "capabilities")
+        else if (attachmentIds.Length == 0 && intent.Code == "capabilities")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, CapabilityAnswer(), "celar_ai_governed_capability_catalog", cancellationToken);
         }
-        else if (intent.Code == "identity")
+        else if (attachmentIds.Length == 0 && intent.Code == "identity")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, CelarAiBrandProfile.CreateDetailedAnswer(DateTimeOffset.UtcNow), "celar_ai_canonical_knowledge", cancellationToken);
         }
-        else if (intent.Code is "procedure" or "people_activity")
+        else if (attachmentIds.Length == 0
+            && (intent.Code == "procedure" || intent.Code == "people_activity"))
         {
             var specialized = await peopleAndGuidance.TryAnswerAsync(
                 identity.Value.Actual,
@@ -259,6 +288,8 @@ public static partial class CelarAiProductionPlatformModule
 
         result = EnforceAnswer(result, intent, question);
         var trust = Trust(result, intent);
+        result = ApplyAnswerPreferences(result, request);
+        var helpRoute = await routing.LoadRouteAsync(CelarAiCapabilityCatalog.HelpAssistant, cancellationToken);
         if (identity.Value.Actual == identity.Value.Effective)
         {
             try { await SaveQualityAsync(identity.Value.Actual, Sha256(question), intent.Code, trust, result.CorrelationId, cancellationToken); }
@@ -268,13 +299,30 @@ public static partial class CelarAiProductionPlatformModule
         {
             module = "011",
             brand = CelarAiBrandProfile.BrandName,
-            feature = "celar_ai_production_answer_orchestration",
+            feature = CelarAiCapabilityCatalog.HelpAssistant,
+            orchestrationContract = "celar_ai_production_answer_orchestration",
+            providerConfiguration = helpRoute.ToPublicResponse(),
             decision = intent,
             trust,
             result = result.ToPublicResponse(),
+            answerPreferences = new
+            {
+                detailLevel = DetailLevel(request.DetailLevel),
+                request.IncludeRepositoryContext,
+                request.IncludeAssumptions,
+                request.IncludeSourceCitations,
+                source = Limit(request.AnswerPreferenceSource, 80, "request_default")
+            },
+            attachments = new
+            {
+                selectedIds = attachmentIds,
+                selectedCount = attachmentIds.Length,
+                rawDocumentTextReturned = false,
+                externalProviderReceivedAttachmentContent = false
+            },
             contextPolicy = CelarAiPeopleAndGuidanceService.ContextPolicy(),
             access = AccessEvidence(identity.Value, access, false),
-            externalProviderCalledForPrivateContext = false,
+            rawPrivateContextSentToExternalProvider = false,
             stateChanged = result.Persisted
         });
     }
@@ -361,21 +409,42 @@ public static partial class CelarAiProductionPlatformModule
         });
     }
 
-    private static PulseAiSystemQuestionRequest ToSystemRequest(CelarAiProductionChatRequest request, Intent intent, string question) => new(
-        request.ConversationId,
-        question,
-        intent.Code,
-        request.DetailLevel,
-        request.ProjectCode,
-        request.ProjectName,
-        request.ModuleCode,
-        request.ApiSearch,
-        intent.IncludeApis,
-        intent.IncludeTroubleshooting,
-        intent.IncludeEnhancement,
-        intent.IncludeDocuments,
-        request.UsePrivateModelWhenAvailable,
-        intent.MaximumTools);
+    private static PulseAiSystemQuestionRequest ToSystemRequest(
+        CelarAiProductionChatRequest request,
+        Intent intent,
+        string question)
+    {
+        var attachmentIds = (request.AttachmentIds ?? [])
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .Take(CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest)
+            .ToArray();
+        // Selected conversation attachments travel through their independent
+        // owner-scoped branch. Ambient repository/project evidence is enabled
+        // only by the user's explicit repository-context preference.
+        var includeDocuments = request.IncludeAuthorizedProjectDocuments
+            && request.IncludeRepositoryContext;
+        return new PulseAiSystemQuestionRequest(
+            request.ConversationId,
+            question,
+            intent.Code,
+            request.DetailLevel,
+            request.ProjectCode,
+            request.ProjectName,
+            request.ModuleCode,
+            request.ApiSearch,
+            intent.IncludeApis,
+            intent.IncludeTroubleshooting,
+            intent.IncludeEnhancement,
+            includeDocuments,
+            request.UsePrivateModelWhenAvailable,
+            intent.MaximumTools,
+            request.IncludeRepositoryContext,
+            request.IncludeAssumptions,
+            request.IncludeSourceCitations,
+            request.AnswerPreferenceSource,
+            attachmentIds);
+    }
 
     private static Intent ResolveIntent(string question)
     {
@@ -386,24 +455,66 @@ public static partial class CelarAiProductionPlatformModule
         if (CelarAiBrandProfile.IsIdentityQuestion(question)) return new("identity", false, false, false, false, 0, false, "Canonical Celar AI identity profile.");
         if (value.StartsWith("how do i ") || value.StartsWith("how can i ") || value.StartsWith("how to ") || value.StartsWith("where do i ") || value.Contains("steps to ")) return new("procedure", false, false, false, false, 1, false, "Source-controlled Pulse procedure catalog.");
         if (CelarAiPeopleAndGuidanceService.IsPeopleActivityQuestion(question)) return new("people_activity", false, false, false, false, 6, true, "Current authorized people, assignment, workload, approval, capacity, and planning evidence.");
-        if ((value.Contains("api") || value.Contains("endpoint"))
-            && (value.Contains("running")
-                || value.Contains("registered")
-                || value.Contains("list")
-                || value.Contains("show")
-                || value.Contains("inventory")
-                || value.Contains("count")
-                || value.Contains("how many")
-                || value.Contains("do i have")))
+        return ToIntent(PulseAiSystemKnowledgeCatalog.Analyze(question));
+    }
+
+    private static Intent ToIntent(PulseAiSystemIntentPlan plan)
+    {
+        var maximumTools = plan.IntentCode switch
         {
-            return new("api_inventory", true, false, false, false, 3, true, "Current ASP.NET endpoint registry.");
-        }
-        if (value.Contains("troubleshoot") || value.Contains("error") || value.Contains("failed") || value.Contains("not working") || value.Contains("why did") || value.Contains("why is") || HttpStatus().IsMatch(value) || value.Contains("correlation id")) return new("troubleshooting", true, true, false, false, 12, true, "Current API, diagnostic, release, dependency, and observability evidence.");
-        if (FinancialQuestion().IsMatch(value)) return new("financial_and_reporting", false, false, false, false, 10, true, "Governed financial and reporting tools.");
-        if (value.Contains("flowhive") || value.Contains("project plan") || value.Contains("project schedule") || value.Contains("project timeline") || value.Contains("wbs") || value.Contains("sow draft") || value.Contains("gsd planning")) return new("projects_and_delivery", false, false, false, true, 8, true, "Private project evidence and deterministic planning.");
-        if (value.Contains("sow") || value.Contains("gsd") || value.Contains("iqs") || value.Contains("project document") || value.Contains("design document")) return new("documents_and_rag", false, false, false, true, 6, true, "Authorized private project-document evidence and citations.");
-        if (value.Contains("future enhancement") || value.Contains("new feature") || value.Contains("could we add") || value.Contains("can we add") || value.Contains("design an enhancement")) return new("future_enhancement", true, false, true, false, 8, true, "Current-state-aware enhancement blueprint.");
-        return new("general_system", false, false, false, false, 4, false, "General system answer without irrelevant broad API discovery.");
+            "api_inventory" => 3,
+            "troubleshooting" => 12,
+            "future_enhancement" => 8,
+            "financial_and_reporting" => 10,
+            "projects_and_delivery" => 8,
+            "documents_and_rag" => 6,
+            _ when plan.WantsTroubleshooting => 10,
+            _ when plan.WantsApiInventory => 6,
+            _ => 4
+        };
+        var reason = plan.RequiredEvidence.FirstOrDefault()
+            ?? "Governed system knowledge and authorized current evidence.";
+        return new(
+            plan.IntentCode,
+            plan.WantsApiInventory,
+            plan.WantsTroubleshooting,
+            plan.WantsFutureEnhancement,
+            plan.WantsProjectDocuments,
+            maximumTools,
+            plan.WantsLiveStatus || plan.WantsApiInventory || plan.WantsTroubleshooting,
+            reason);
+    }
+
+    private static PulseAiSystemIntentPlan ResolveIntentPlan(
+        string question,
+        Intent intent)
+    {
+        var analyzed = PulseAiSystemKnowledgeCatalog.Analyze(question);
+        if (string.Equals(analyzed.IntentCode, intent.Code, StringComparison.Ordinal))
+            return analyzed;
+
+        return analyzed with
+        {
+            IntentCode = intent.Code,
+            Mode = intent.Code switch
+            {
+                "api_inventory" => "api_inventory",
+                "troubleshooting" => "troubleshooting",
+                "future_enhancement" => "future_enhancement",
+                _ => "system_help"
+            },
+            Domains = new[] { intent.Code }
+                .Concat(analyzed.Domains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            RequestedCapabilities = [intent.Reason],
+            RequiredEvidence = [intent.Reason],
+            WantsApiInventory = intent.IncludeApis,
+            WantsTroubleshooting = intent.IncludeTroubleshooting,
+            WantsFutureEnhancement = intent.IncludeEnhancement,
+            WantsLiveStatus = intent.RequiresCurrentEvidence,
+            WantsProjectDocuments = intent.IncludeDocuments
+        };
     }
 
     private static PulseAiSystemQuestionResult EnforceAnswer(PulseAiSystemQuestionResult result, Intent intent, string question)
@@ -490,13 +601,38 @@ public static partial class CelarAiProductionPlatformModule
         return result with { Status = "partial", Answer = answer };
     }
 
+    private static PulseAiSystemQuestionResult ApplyAnswerPreferences(
+        PulseAiSystemQuestionResult result,
+        CelarAiProductionChatRequest request)
+    {
+        var answer = result.Answer with
+        {
+            Assumptions = request.IncludeAssumptions
+                ? result.Answer.Assumptions
+                : [],
+            // Trust and private citation identifiers remain in the structured
+            // response. This preference controls the verbose citation narrative
+            // without weakening server-side evidence validation.
+            SourceEvidence = request.IncludeSourceCitations
+                ? result.Answer.SourceEvidence
+                : []
+        };
+        return result with { Answer = answer };
+    }
+
     private static object Trust(PulseAiSystemQuestionResult result, Intent intent)
     {
-        var successful = result.ToolResults.Count(tool => tool.Succeeded)
-            + result.Sources.Count(source => source.StatusCode is >= 200 and < 300)
-            + (intent.Code == "api_inventory" && result.RelevantApis.Count > 0 ? 1 : 0);
-        var failed = result.ToolResults.Count(tool => !tool.Succeeded)
-            + result.Sources.Count(source => source.StatusCode is < 200 or >= 300);
+        // Tool results are already projected into Sources. Count each governed
+        // observation once instead of inflating trust with duplicate objects.
+        var successful = result.Sources.Count(source => source.StatusCode is >= 200 and < 300);
+        var failed = result.Sources.Count(source => source.StatusCode is < 200 or >= 300);
+        var privateCitations = result.PrivateCitations?.Count ?? 0;
+        var verifiedPrivateAnswer = privateCitations > 0
+            && string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                result.ModelProvider,
+                CelarAiCapabilityTargets.CelarAi,
+                StringComparison.OrdinalIgnoreCase);
         var citations = result.Answer.CitationIds.Count;
         var answered = !result.Answer.DirectConclusion.Contains("did not receive enough", StringComparison.OrdinalIgnoreCase)
             && !result.Answer.DirectConclusion.Contains("could not produce", StringComparison.OrdinalIgnoreCase);
@@ -506,8 +642,8 @@ public static partial class CelarAiProductionPlatformModule
             "capabilities" or "identity" => "platform_capability",
             "procedure" => "procedure",
             "future_enhancement" => "draft",
-            "projects_and_delivery" => citations > 0 ? "verified_document_draft" : "draft",
-            "documents_and_rag" => citations > 0 ? "verified_document_fact" : "insufficient_evidence",
+            "projects_and_delivery" => verifiedPrivateAnswer ? "verified_document_draft" : "draft",
+            "documents_and_rag" => verifiedPrivateAnswer ? "verified_document_fact" : "insufficient_evidence",
             _ when !answered || intent.RequiresCurrentEvidence && successful == 0 => "insufficient_evidence",
             _ when result.Answer.Confidence >= .8m => "verified_current_fact",
             _ when result.Answer.Confidence >= .55m => "verified_with_limitations",
@@ -533,9 +669,10 @@ public static partial class CelarAiProductionPlatformModule
             successfulSourceCount = successful,
             failedSourceCount = failed,
             citationCount = citations,
+            privateDocumentCitationCount = privateCitations,
             confidence = result.Answer.Confidence,
             humanReviewRequired = classification.Contains("draft") || classification == "insufficient_evidence",
-            reasons = new[] { intent.Reason, $"Successful current/source observations: {successful}.", $"Failed, unavailable, or unauthorized observations: {failed}.", $"Citation identifiers: {citations}." },
+            reasons = new[] { intent.Reason, $"Successful current/source observations: {successful}.", $"Failed, unavailable, or unauthorized observations: {failed}.", $"Private document citations: {privateCitations}; other source identifiers: {citations}." },
             dataAsOf = result.Answer.DataAsOf
         };
     }
@@ -691,6 +828,7 @@ public static partial class CelarAiProductionPlatformModule
     {
         var authorization = await ManageAsync(context, system, cancellationToken);
         if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         if (!DatabaseConfigured) return Results.Json(new { status = "database_configuration_missing", stateChanged = false }, statusCode: 503);
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
@@ -710,6 +848,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateDatasetAsync(CelarAiDatasetRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken);
@@ -734,6 +873,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateTrainingAsync(CelarAiTrainingRequest request, HttpContext context, PulseAiSystemIntelligenceService system, IHttpClientFactory clients, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken);
@@ -761,6 +901,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateEvaluationAsync(CelarAiEvaluationRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var suite = Limit(request.SuiteCode, 120, "basic_competency").ToLowerInvariant(); var now = DateTimeOffset.UtcNow; var id = Guid.NewGuid();
@@ -783,6 +924,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateModelAsync(CelarAiModelRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var id = Guid.NewGuid(); var now = DateTimeOffset.UtcNow;
@@ -804,6 +946,7 @@ public static partial class CelarAiProductionPlatformModule
     private static async Task<IResult> CreateDeploymentAsync(CelarAiDeploymentRequest request, HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
         var authorization = await ManageAsync(context, system, cancellationToken); if (authorization.Error is not null) return authorization.Error;
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         try
         {
             await RequireSchemaAsync(cancellationToken); var model = await ModelAsync(request.ModelVersionId, cancellationToken) ?? throw new ArgumentException("The selected model does not exist.");
@@ -819,6 +962,7 @@ public static partial class CelarAiProductionPlatformModule
 
     private static async Task SaveQualityAsync(Guid actor, string questionSha, string intent, object trust, string correlation, CancellationToken cancellationToken)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (!await IsSchemaReadyAsync(cancellationToken)) return;
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(trust)); var root = doc.RootElement;
         await using var connection = new NpgsqlConnection(ConnectionString()); await connection.OpenAsync(cancellationToken);
@@ -915,11 +1059,41 @@ public static partial class CelarAiProductionPlatformModule
     private static string EnvironmentState(string? value) => Limit(value,80,"development").ToLowerInvariant() switch { "test" => "test", "production" => "production", _ => "development" };
     private static string TrainingMethod(string? value) => Limit(value,100,"evaluation_only").ToLowerInvariant() switch { "supervised_fine_tuning" => "supervised_fine_tuning", "lora" => "lora", "qlora" => "qlora", "distillation_candidate" => "distillation_candidate", _ => "evaluation_only" };
     private static string ReadString(JsonElement root, params string[] names) { foreach (var name in names) if (root.TryGetProperty(name,out var value)) return value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() ?? string.Empty : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : string.Empty; return string.Empty; }
+    private static IResult? CandidateMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsCandidate) return null;
+        return Results.Json(new
+        {
+            module = "011",
+            status = "release_candidate_read_only",
+            message = "Celar AI schema, dataset, training, evaluation, model, and deployment lifecycle mutations are disabled on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
     private static IResult SessionRequired() => Results.Json(new { module = "011", status = "session_required", message = "A valid Pulse session is required." }, statusCode: 401);
     private static IResult Forbidden(string permission) => Results.Json(new { module = "011", status = "forbidden", requiredPermission = permission, message = "The current effective user is not authorized." }, statusCode: 403);
+    private static IResult ViewAsAttachmentForbidden() => Results.Json(new
+    {
+        module = "011",
+        status = "view_as_attachment_access_blocked",
+        message = "Celar AI conversation attachments are unavailable in View-As. Return to the actual session to protect private conversation documents.",
+        mutationAuthorityTransferred = false
+    }, statusCode: StatusCodes.Status403Forbidden);
     private static IResult Validation(string message) => Results.Json(new { module = "011", status = "validation_failed", message, stateChanged = false }, statusCode: 400);
-    private static bool DatabaseConfigured => new[] { "PTP_DB_HOST","PTP_DB_PORT","PTP_DB_NAME","PTP_DB_USER","PTP_DB_PASSWORD" }.All(name => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)));
-    private static string ConnectionString() => new NpgsqlConnectionStringBuilder { Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"), Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"),out var port) ? port : 5432, Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"), Username = Environment.GetEnvironmentVariable("PTP_DB_USER"), Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"), IncludeErrorDetail = false, Pooling = true, MaxPoolSize = 12, Timeout = 8, CommandTimeout = 45 }.ConnectionString;
+    private static bool DatabaseConfigured
+    {
+        get
+        {
+            try { return ProjectPulseAiDatabaseConnection.Resolve() is not null; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("The canonical ProjectPulse AI database connection is unavailable.");
 
     private sealed record Intent(string Code, bool IncludeApis, bool IncludeTroubleshooting, bool IncludeEnhancement, bool IncludeDocuments, int MaximumTools, bool RequiresCurrentEvidence, string Reason);
     private sealed record DatasetRow(Guid DatasetVersionId,string Name,string Purpose,string Classification,string ArtifactUri,string Sha256,int ExampleCount,string State);

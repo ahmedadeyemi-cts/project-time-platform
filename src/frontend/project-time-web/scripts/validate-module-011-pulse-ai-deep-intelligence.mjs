@@ -195,8 +195,8 @@ assert(
 assert(
   'PRIVATE_RUNTIME_READINESS',
   includesAll(source.grounding, [
-    'PROJECTPULSE_PRIVATE_AI_ENDPOINT',
-    'PROJECTPULSE_PRIVATE_AI_MODEL',
+    'PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT',
+    'PROJECTPULSE_PRIVATE_INFERENCE_MODEL',
     'PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT',
     'PROJECTPULSE_PRIVATE_EMBEDDING_MODEL',
     'PROJECTPULSE_PRIVATE_VECTOR_INDEX',
@@ -377,21 +377,16 @@ const legacyGlobalHelp = includesAll(source.help, [
   'retired Work Task Builder no longer owns project or task creation'
 ]);
 const currentSystemHelp = includesAll(source.help, [
-  "'/api/pulse-ai/v1/help-search/plan'",
+  "const path = '/api/celar-ai/v2/chat';",
   'function SystemAnswer',
-  'LegacyPlanAnswer',
-  'System intelligence is not active in this runtime',
-  "'/api/pulse-ai/v1/system/questions'"
-]) || includesAll(source.help, [
-  "'/api/pulse-ai/v1/help-search/plan'",
-  'function SystemAnswer',
-  'LegacyPlanAnswer',
-  "'/api/celar-ai/v1/chat'"
+  'NavigationTargets',
+  "'projectpulse:open-celar-ai-chat'",
+  'attachmentIds: selectedAttachmentIds.filter'
 ]);
 assert(
   'GLOBAL_HELP',
   legacyGlobalHelp || currentSystemHelp,
-  'global Help renders comprehensive system answers and a source-grounded compatibility fallback'
+  'global Help renders comprehensive system answers through the unified v2 chat and shared Module 011 launcher'
 );
 assert(
   'HELP_SAFE_RENDERING',

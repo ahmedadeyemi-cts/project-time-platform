@@ -253,10 +253,12 @@ assert(
 );
 
 const approvedCelarMigrations = new Set([
-  'database/migrations/061_celar_ai_capability_routing.sql'
+  'database/migrations/061_celar_ai_capability_routing.sql',
+  'database/migrations/072_celar_ai_conversation_attachments.sql'
 ]);
 const approvedCelarRollbacks = new Set([
-  'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+  'database/rollback/061_celar_ai_capability_routing_rollback.sql',
+  'database/rollback/072_celar_ai_conversation_attachments_rollback.sql'
 ]);
 const celarMigrations = walk('database/migrations').filter((relative) => /celar[-_]?ai/i.test(relative));
 const celarRollbacks = walk('database/rollback').filter((relative) => /celar[-_]?ai/i.test(relative));

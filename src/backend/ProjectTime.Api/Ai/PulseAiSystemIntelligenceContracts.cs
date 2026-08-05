@@ -22,6 +22,8 @@ public static class PulseAiSystemIntelligencePolicy
     public const string ConversationPermission = "VIEW_PULSE_AI_CONVERSATION_HISTORY";
     public const string RetestPermission = "RETEST_PULSE_AI_SAFE_API";
     public const string AuditPermission = "VIEW_PULSE_AI_SYSTEM_AUDIT";
+    public const string AttachmentPermission = "ATTACH_CELAR_AI_CHAT_DOCUMENTS";
+    public const string ResolvedIntentContextItem = "ProjectPulseCelarAiResolvedIntent";
 
     public const string RetestConfirmation = "RETEST-PULSE-AI-SAFE-API";
 
@@ -130,6 +132,7 @@ public sealed record PulseAiSystemAccess(
     public bool CanViewConversations => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.ConversationPermission);
     public bool CanRetest => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.RetestPermission);
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AuditPermission);
+    public bool CanAttachDocuments => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AttachmentPermission);
 
     public static PulseAiSystemAccess From(PulseAiPrivateRagAccess access) =>
         new(access.UserId, access.IsActive, access.RoleCodes, access.PermissionCodes);
@@ -149,7 +152,12 @@ public sealed record PulseAiSystemQuestionRequest(
     bool IncludeFutureEnhancement = true,
     bool IncludeAuthorizedProjectDocuments = true,
     bool UsePrivateModelWhenAvailable = true,
-    int? MaximumTools = null);
+    int? MaximumTools = null,
+    bool IncludeRepositoryContext = false,
+    bool IncludeAssumptions = true,
+    bool IncludeSourceCitations = true,
+    string? AnswerPreferenceSource = null,
+    IReadOnlyList<Guid>? AttachmentIds = null);
 
 public sealed record PulseAiConversationCreateRequest(
     string? Title,
@@ -317,7 +325,8 @@ public sealed record PulseAiSystemQuestionResult(
     IReadOnlyList<string>? AttemptedTargets = null,
     IReadOnlyList<string>? SkippedTargets = null,
     IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null,
-    string ExternalAssistance = "")
+    string ExternalAssistance = "",
+    IReadOnlyList<PulseAiPrivateAnswerCitation>? PrivateCitations = null)
 {
     public object ToPublicResponse() => new
     {
@@ -340,6 +349,7 @@ public sealed record PulseAiSystemQuestionResult(
         skippedTargets = SkippedTargets ?? [],
         targetDecisions = TargetDecisions ?? [],
         externalAssistance = ExternalAssistance,
+        privateCitations = PrivateCitations ?? [],
         persisted = Persisted,
         privacy = new
         {

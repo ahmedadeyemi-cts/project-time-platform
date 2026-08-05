@@ -68,6 +68,19 @@ public static class PulseAiPrivateRagModule
         if (identities is null) return SessionRequired();
         var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
         if (!access.IsActive || !access.CanHelpSearch) return Forbidden("ASK_PULSE_AI_HELP_SEARCH");
+        var hasAttachments = (request.AttachmentIds ?? []).Any(value => value != Guid.Empty);
+        if (hasAttachments && identities.Value.Actual != identities.Value.Effective)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "view_as_attachment_access_blocked",
+                message = "Celar AI conversation attachments are unavailable in View-As.",
+                mutationAuthorityTransferred = false
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        if (hasAttachments && !access.CanAttachDocuments)
+            return Forbidden(CelarAiConversationAttachmentPolicy.Permission);
         var answer = await service.AskHelpSearchAsync(
             identities.Value.Actual,
             identities.Value.Effective,
@@ -212,6 +225,18 @@ public static class PulseAiPrivateRagModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (release.IsCandidate)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "release_candidate_read_only",
+                message = "Answer feedback and training-evidence mutations are disabled on the exact-source release candidate.",
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                stateChanged = false
+            }, statusCode: StatusCodes.Status423Locked);
+        }
         var access = await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
         if (!access.IsActive || !access.CanSubmitFeedback) return Forbidden("SUBMIT_PULSE_AI_FEEDBACK");
         var saved = await service.SaveFeedbackAsync(
