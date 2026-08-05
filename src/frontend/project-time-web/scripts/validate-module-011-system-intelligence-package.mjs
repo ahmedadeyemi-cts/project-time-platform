@@ -141,6 +141,24 @@ assert('CROSS_SYSTEM_TOOLING',
   && ['"013"','"016"','"068"','"076"','"077"','"078"','"998"'].every((module) => s.knowledge.includes(module)),
   'API, operations, architecture, diagnostics, observability, release, defect, AI, and financial evidence');
 
+assert('PROJECT_FORGE_DISCOVERY',
+  all(s.knowledge, [
+    'if (ContainsAny(normalized, "project forge", "project-forge")) modules.Add("033");',
+    'if (intent == "projects_and_delivery") modules.UnionWith(["018", "019", "020", "033",',
+    '["033"] = "#project-forge"',
+    '("033", "Project Forge", ["/api/project-forge"])'
+  ]),
+  'name-only and project delivery intents, API inventory ownership, and navigation resolve Project Forge as Module 033');
+
+assert('MODULE_064_API_DISCOVERY',
+  all(s.knowledge, [
+    'if (ContainsAny(normalized, "ai provider configuration", "ai-provider-configuration", "ai configuration", "ai-configuration", "capability routing", "feature routing")) modules.Add("064");',
+    '("011", "Pulse AI", ["/api/pulse-ai", "/api/ai/"])',
+    '("064", "AI Provider Configuration", ["/api/ai-configuration", "/api/ai-provider"])'
+  ])
+  && !s.knowledge.includes('("011", "Pulse AI", ["/api/pulse-ai", "/api/ai-configuration"'),
+  'intent-independent AI configuration aliases resolve Module 064; Pulse AI retains only its own API prefixes');
+
 const routes = [
   '/api/pulse-ai/v1/system/readiness','/api/pulse-ai/v1/system/tools',
   '/api/pulse-ai/v1/system/apis','/api/pulse-ai/v1/system/apis/{apiId}',
