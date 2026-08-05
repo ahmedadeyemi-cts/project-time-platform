@@ -436,6 +436,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 "extracting",
                 "malware_scan_completed",
                 scan.ToPublicEvidence(),
+                options.LeaseSeconds,
                 cancellationToken);
             if (await _repository.CancellationRequestedAsync(job.JobId, cancellationToken))
             {
@@ -488,6 +489,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     "extracting",
                     "private_ocr_started",
                     new { endpointValidatedPrivate = true, rawDocumentTextLogged = false },
+                    options.LeaseSeconds,
                     cancellationToken);
                 var ocr = await _ocrClient.ExtractAsync(
                     source,
@@ -560,6 +562,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     extraction.SourceSha256,
                     rawDocumentTextLogged = false
                 },
+                options.LeaseSeconds,
                 cancellationToken);
             if (await _repository.CancellationRequestedAsync(job.JobId, cancellationToken))
             {
@@ -621,6 +624,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     vectorReturned = false,
                     inputTextLogged = false
                 },
+                options.LeaseSeconds,
                 cancellationToken);
             var versionId = await _repository.PersistProcessedDocumentAsync(
                 job,

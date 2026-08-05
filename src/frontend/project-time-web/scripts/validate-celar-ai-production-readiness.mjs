@@ -300,7 +300,10 @@ assert(
     && repository.includes('RenewLeaseAsync')
     && repository.includes('lease_generation = @lease_generation')
     && repository.includes('lost its fenced lease')
+    && (repository.match(/lease_expires_at = NOW\(\) \+ \(@lease_seconds \* INTERVAL '1 second'\)/g) ?? []).length >= 2
+    && !repository.includes("lease_expires_at = NOW() + INTERVAL '5 minutes'")
     && runtime.includes('MaintainLeaseAsync')
+    && (runtime.match(/options\.LeaseSeconds,\s*cancellationToken\)/g) ?? []).length >= 4
     && runtime.includes('processingStop.Cancel()'),
   'scanner, extraction, OCR, embedding, and index work run under a renewable token/generation fence and fail closed on ownership loss'
 );

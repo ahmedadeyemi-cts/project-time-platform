@@ -1128,6 +1128,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         string documentStatus,
         string eventCode,
         object evidence,
+        int leaseSeconds,
         CancellationToken cancellationToken = default)
     {
         await using var connection = new NpgsqlConnection(ConnectionString());
@@ -1137,7 +1138,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
             UPDATE pulse_ai_document_processing_jobs
             SET job_status = @job_status,
                 lease_heartbeat_at = NOW(),
-                lease_expires_at = NOW() + INTERVAL '5 minutes'
+                lease_expires_at = NOW() + (@lease_seconds * INTERVAL '1 second')
             WHERE pulse_ai_document_processing_job_id = @job_id
               AND lease_owner = @lease_owner
               AND lease_token = @lease_token
@@ -1150,6 +1151,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         command.Parameters.AddWithValue("lease_owner", job.LeaseOwner);
         command.Parameters.AddWithValue("lease_token", job.LeaseToken is null ? DBNull.Value : job.LeaseToken.Value);
         command.Parameters.AddWithValue("lease_generation", job.LeaseGeneration);
+        command.Parameters.AddWithValue("lease_seconds", Math.Clamp(leaseSeconds, 30, 3600));
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
             throw new InvalidOperationException("The private document worker lost its fenced lease before changing stage.");
         await UpdateDocumentStatusAsync(connection, transaction, job.DocumentId, documentStatus, string.Empty, cancellationToken);
