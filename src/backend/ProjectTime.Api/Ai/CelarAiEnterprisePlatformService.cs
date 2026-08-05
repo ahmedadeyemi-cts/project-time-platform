@@ -39,6 +39,7 @@ public sealed class CelarAiEnterprisePlatformService
             new { code = "timesheet_description", owner = "Module 001", state = "private_rag_available_when_configured", authority = "engineer review and apply" },
             new { code = "sow_draft", owner = "Module 025", state = "reviewable_private_draft", authority = "authorized commercial review" },
             new { code = "project_plan", owner = "Module 066", state = "reviewable_private_draft", authority = "PM and Engineering review" },
+            new { code = "project_forge_plan_estimate", owner = "Module 033", state = "document_grounded_review_draft", authority = "PM and assigned Engineer review before explicit adoption" },
             new { code = "project_timeline", owner = "Module 066", state = "deterministic_high_level_draft", authority = "FlowHive schedule engine before baseline" },
             new { code = "project_diagram", owner = "Module 011 / 066", state = "reviewable_visual_draft", authority = "source citations and human review" },
             new { code = "sanitized_external_reasoning", owner = "Module 064", state = "automatic_when_persisted_route_and_both_runtime_privacy_flags_allow", authority = "closed backend capsule, DLP, and provider policy" }
