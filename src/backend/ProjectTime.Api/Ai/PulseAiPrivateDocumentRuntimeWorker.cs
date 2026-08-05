@@ -23,6 +23,11 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
+            if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+            {
+                await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
+                continue;
+            }
             if (!options.WorkerEnabled)
             {
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
@@ -34,6 +39,13 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 using var scope = _services.CreateScope();
                 var runtime = scope.ServiceProvider.GetRequiredService<PulseAiPrivateDocumentRuntimeService>();
                 var result = await runtime.ProcessNextAsync(stoppingToken);
+                if (result.Status == "document_snapshot_cleanup_unavailable")
+                {
+                    _logger.LogWarning(
+                        "Pulse AI private snapshot cleanup was unavailable; no orphan deletion or document processing occurred. Diagnostic=document_snapshot_cleanup_unavailable");
+                    await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
+                    continue;
+                }
                 if (result.Status == "queue_empty")
                 {
                     await DelayAsync(TimeSpan.FromSeconds(options.PollSeconds), stoppingToken);

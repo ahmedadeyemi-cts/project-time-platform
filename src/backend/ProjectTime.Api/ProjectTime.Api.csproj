@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ProjectTime.Api</RootNamespace>
     <AssemblyName>ProjectTime.Api</AssemblyName>
+    <!-- Guarded candidate builds must pass the detached, reviewed 40-character
+         source SHA with -p:ProjectPulseSourceRevision=<sha>. Ordinary builds
+         remain intentionally unbound and cannot enable release-scoped mode. -->
+    <ProjectPulseSourceRevision Condition="'$(ProjectPulseSourceRevision)' == ''">unbound</ProjectPulseSourceRevision>
     <ScopedRbacGeneratedProgram>$(IntermediateOutputPath)Program.ScopedRbac.g.cs</ScopedRbacGeneratedProgram>
     <ScopedRbacGeneratedModule>$(IntermediateOutputPath)ScopedRolePolicyModule.g.cs</ScopedRbacGeneratedModule>
     <ScopedRbacGeneratedPersistence>$(IntermediateOutputPath)ScopedRolePolicyPersistence.g.cs</ScopedRbacGeneratedPersistence>
@@ -22,6 +26,10 @@
     <EnterpriseReportingGeneratedModule>$(IntermediateOutputPath)EnterpriseReportingModule.g.cs</EnterpriseReportingGeneratedModule>
     <EnterpriseReportingGeneratedRepository>$(IntermediateOutputPath)EnterpriseReportingRepository.g.cs</EnterpriseReportingGeneratedRepository>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="ProjectPulseSourceRevision" Value="$(ProjectPulseSourceRevision)" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />

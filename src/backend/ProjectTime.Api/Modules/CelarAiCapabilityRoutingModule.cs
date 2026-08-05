@@ -45,6 +45,9 @@ public static class CelarAiCapabilityRoutingModule
             "/api/ai-configuration/sanitized-external-fallback/production-test",
             (Func<HttpContext, CelarAiCapabilityRouter, CancellationToken, Task<IResult>>)TestSanitizedExternalFallbackAsync);
         endpoints.MapPost(
+            ProjectPulseAiCandidateRequestFence.VerificationPath,
+            (Func<HttpContext, CelarAiCapabilityRoutingStore, CelarAiPrivateGenerationTarget, CelarAiCapabilityRouter, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)VerifyReleaseCandidateAsync);
+        endpoints.MapPost(
             "/api/ai-configuration/encryption-key/rotate",
             (Func<ProjectPulseAiEncryptionRotationRequest, HttpContext, ProjectPulseAiEncryptionRotationService, CancellationToken, Task<IResult>>)RotateEncryptionKeyAsync);
 
@@ -61,6 +64,405 @@ public static class CelarAiCapabilityRoutingModule
         return endpoints;
     }
 
+    /// <summary>
+    /// Performs every release-candidate assertion in one request and one
+    /// process. It does not update health evidence, routes, profiles, sessions,
+    /// documents, audit rows, conversations, queues, or files.
+    /// </summary>
+    private static async Task<IResult> VerifyReleaseCandidateAsync(
+        HttpContext context,
+        CelarAiCapabilityRoutingStore store,
+        CelarAiPrivateGenerationTarget privateTarget,
+        CelarAiCapabilityRouter router,
+        PulseAiPrivateDocumentRuntimeService runtime,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (!release.IsCandidate)
+            return Results.Json(new
+            {
+                status = "release_candidate_phase_required",
+                message = "The combined verification operation exists only in the candidate phase.",
+                releasePhase = release.PhaseCode,
+                stateChanged = false
+            }, statusCode: StatusCodes.Status409Conflict);
+
+        var authorization = await AuthorizeAdministratorAsync(
+            context, requireSameOrigin: true, cancellationToken);
+        if (authorization is not null) return authorization;
+
+        var database = await InspectCandidateDatabaseAsync(cancellationToken);
+        var profile = await store.LoadPrivateModelProfileAsync(cancellationToken);
+        var endpointPolicy = await PrivateEndpointPolicyAsync(profile, cancellationToken);
+        var routes = await store.LoadRoutesAsync(cancellationToken);
+        var routesReady = routes.Count == CelarAiCapabilityCatalog.Definitions.Count
+            && routes.All(route => route.DeploymentManaged
+                && route.Targets.SequenceEqual(release.RouteOrder, StringComparer.OrdinalIgnoreCase));
+        var runtimeReadiness = await runtime.GetReadinessAsync(cancellationToken);
+        var storageReadiness = ProjectPulseUploadStorage.InspectProductionReadiness();
+
+        var privateStopwatch = Stopwatch.StartNew();
+        var privateProbe = database.ExactSowReady
+            ? await privateTarget.ProbeExactAsync(
+                profile,
+                database.SampleChunkText,
+                cancellationToken)
+            : CelarAiPrivateProbeAttestation.Failed("exact_sow_not_ready");
+        privateStopwatch.Stop();
+        var externalProbe = await router.ProbeSanitizedExternalFallbackAsync(
+            CorrelationId(context), cancellationToken, recordHealthEvidence: false);
+
+        var roleIdentityMatches = database.ConfiguredRoleFingerprint.Length > 0
+            && string.Equals(database.ConfiguredRoleFingerprint, database.ActiveRoleFingerprint, StringComparison.Ordinal);
+        var ready = database.ReadOnlyIdentity
+            && roleIdentityMatches
+            && database.ExactSowReady
+            && routesReady
+            && store.SecretEncryptionAvailable
+            && profile.Ready
+            && endpointPolicy == "private_endpoint_dns_verified"
+            && privateProbe.Ready
+            && externalProbe.Ready
+            && runtimeReadiness.Status == "private_document_runtime_ready";
+
+        var blockers = new List<string>();
+        if (!database.ReadOnlyIdentity)
+            blockers.Add("The candidate database identity has mutation or elevated privileges.");
+        if (!roleIdentityMatches)
+            blockers.Add("The active database role does not match the release credential role fingerprint.");
+        if (!store.SecretEncryptionAvailable)
+            blockers.Add("A stable base64-encoded 32-byte PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY is required.");
+        if (!database.ExactSowConfigured)
+            blockers.Add("An exact release SOW document ID and source SHA-256 are required.");
+        else if (!database.ExactSowReady)
+            blockers.Add("The exact configured SOW is not active, authorized, canonical, and ready.");
+        if (!routesReady)
+            blockers.Add("All eight capabilities must use the deployment-managed release route order.");
+        if (!profile.Ready || endpointPolicy != "private_endpoint_dns_verified")
+            blockers.Add("The deployment-managed private Celar AI profile is not ready on private DNS.");
+        if (!privateProbe.Ready)
+            blockers.Add("The exact-SOW private Celar AI response or reported model did not match the release attestation contract.");
+        if (!externalProbe.Ready)
+            blockers.Add("The immediate identity-free Claude/OpenAI fallback probe failed.");
+        blockers.AddRange(runtimeReadiness.Blockers);
+        blockers.AddRange(runtimeReadiness.MissingConfiguration);
+
+        return Results.Json(new
+        {
+            module = "064",
+            status = ready
+                ? "release_candidate_verified_read_only"
+                : "release_candidate_verification_failed",
+            ready,
+            release = new
+            {
+                phase = release.PhaseCode,
+                sourceCommit = release.SourceCommit,
+                embeddedSourceCommit = release.EmbeddedSourceCommit,
+                controlCommit = release.ControlCommit,
+                expectedConfigurationSha256 = release.ExpectedConfigurationDigest,
+                computedConfigurationSha256 = release.ComputedConfigurationDigest,
+                configurationDigestMatches = string.Equals(
+                    release.ExpectedConfigurationDigest,
+                    release.ComputedConfigurationDigest,
+                    StringComparison.Ordinal),
+                revision = release.Revision,
+                replicaId = Clean(
+                    Environment.GetEnvironmentVariable("CONTAINER_APP_REPLICA_NAME")
+                    ?? Environment.GetEnvironmentVariable("HOSTNAME"), 180, "unknown")
+            },
+            database = new
+            {
+                readOnlyIdentity = database.ReadOnlyIdentity,
+                elevatedRole = database.ElevatedRole,
+                schemaCreateAllowed = database.SchemaCreateAllowed,
+                databaseCreateAllowed = database.DatabaseCreateAllowed,
+                temporaryTableAllowed = database.TemporaryTableAllowed,
+                defaultTransactionReadOnly = database.DefaultTransactionReadOnly,
+                mutableTableCount = database.MutableTableCount,
+                mutableSequenceCount = database.MutableSequenceCount,
+                databaseFingerprint = database.DatabaseFingerprint,
+                configuredRoleFingerprint = database.ConfiguredRoleFingerprint,
+                activeRoleFingerprint = database.ActiveRoleFingerprint,
+                roleIdentityMatches,
+                exactSowConfigured = database.ExactSowConfigured,
+                exactSowReady = database.ExactSowReady,
+                exactDocumentReady = database.ExactDocumentReady,
+                exactVersionReady = database.ExactVersionReady,
+                exactProjectReady = database.ExactProjectReady,
+                exactSourceShaReady = database.ExactSourceShaReady,
+                exactIndexReady = database.ExactIndexReady,
+                exactChunkSetReady = database.ExactChunkSetReady,
+                exactChunkCount = database.ExactChunkCount,
+                documentIdentityReturned = false
+            },
+            storage = new
+            {
+                ready = runtimeReadiness.UploadStorageProductionReady,
+                verificationMode = storageReadiness.VerificationMode,
+                readOnlyCanaryVerified = storageReadiness.ReadOnlyAttestationValid,
+                writeDeleteProbeVerified = storageReadiness.WriteDeleteProbeVerified,
+                rootFingerprint = runtimeReadiness.UploadRootFingerprint,
+                pathReturned = false,
+                stateChanged = false
+            },
+            providers = new
+            {
+                privateCelarAi = new
+                {
+                    available = privateProbe.Ready,
+                    exactResponseMatched = privateProbe.ExactResponseMatched,
+                    exactModelMatched = privateProbe.ExactModelMatched,
+                    diagnosticCode = privateProbe.DiagnosticCode,
+                    requestId = privateProbe.RequestId,
+                    latencyMilliseconds = privateStopwatch.ElapsedMilliseconds,
+                    responseContentReturned = false,
+                    evidencePersisted = false
+                },
+                sanitizedExternalFallback = new
+                {
+                    ready = externalProbe.Ready,
+                    identityFreeFixedCapsule = true,
+                    responseContentReturned = false,
+                    evidencePersisted = false,
+                    targets = externalProbe.Targets.Select(target => new
+                    {
+                        provider = target.Provider,
+                        available = target.Available,
+                        privacyValidated = target.PrivacyValidated,
+                        diagnosticCode = target.DiagnosticCode,
+                        requestId = target.RequestId
+                    }).ToArray()
+                }
+            },
+            module064 = new
+            {
+                allCentralRoutesReady = routesReady,
+                privateRuntimeReady = runtimeReadiness.Status == "private_document_runtime_ready",
+                readyAuthorizedSowCount = runtimeReadiness.ReadySowDocumentCount,
+                migrations052053061071Applied = runtimeReadiness.ProductionMigrationsApplied
+            },
+            guarantees = new
+            {
+                sessionLastSeenUpdated = false,
+                databaseWrites = 0,
+                fileWrites = 0,
+                routeOrProfileWrites = 0,
+                sharedProbeEvidenceWrites = 0,
+                stateChanged = false
+            },
+            blockers = blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            generatedAt = DateTimeOffset.UtcNow
+        }, statusCode: ready
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
+    }
+
+    private static async Task<CandidateDatabaseEvidence> InspectCandidateDatabaseAsync(
+        CancellationToken cancellationToken)
+    {
+        var documentConfigured = Guid.TryParse(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_AI_RELEASE_SOW_DOCUMENT_ID"),
+            out var documentId) && documentId != Guid.Empty;
+        var versionConfigured = Guid.TryParse(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_AI_RELEASE_SOW_VERSION_ID"),
+            out var versionId) && versionId != Guid.Empty;
+        var projectConfigured = Guid.TryParse(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_AI_RELEASE_SOW_PROJECT_ID"),
+            out var projectId) && projectId != Guid.Empty;
+        var sourceSha = Environment.GetEnvironmentVariable("PROJECTPULSE_AI_RELEASE_SOW_SOURCE_SHA256")
+            ?.Trim().ToLowerInvariant() ?? string.Empty;
+        documentConfigured = documentConfigured
+            && versionConfigured
+            && projectConfigured
+            && sourceSha.Length == 64
+            && sourceSha.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+        ProjectPulseAiDatabaseConnectionEvidence resolver;
+        try { resolver = ProjectPulseAiDatabaseConnection.ResolveEvidence(); }
+        catch { return CandidateDatabaseEvidence.Unavailable(documentConfigured); }
+        var connectionString = resolver.ConnectionString;
+        if (connectionString is null)
+            return CandidateDatabaseEvidence.Unavailable(documentConfigured);
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            const string privilegeSql = """
+                SELECT
+                    current_user::text,
+                    COALESCE(role.rolsuper OR role.rolcreatedb OR role.rolcreaterole
+                        OR role.rolreplication OR role.rolbypassrls, TRUE),
+                    EXISTS (
+                        SELECT 1
+                        FROM information_schema.schemata schema_info
+                        WHERE schema_info.schema_name NOT IN ('pg_catalog', 'information_schema')
+                          AND schema_info.schema_name NOT LIKE 'pg_toast%'
+                          AND schema_info.schema_name NOT LIKE 'pg_temp_%'
+                          AND has_schema_privilege(current_user, schema_info.schema_name, 'CREATE')
+                    ),
+                    has_database_privilege(current_user, current_database(), 'CREATE'),
+                    has_database_privilege(current_user, current_database(), 'TEMPORARY'),
+                    current_setting('default_transaction_read_only') = 'on',
+                    (
+                        SELECT COUNT(*)::int
+                        FROM information_schema.tables table_info
+                        WHERE table_info.table_schema NOT IN ('pg_catalog', 'information_schema')
+                          AND table_info.table_schema NOT LIKE 'pg_toast%'
+                          AND table_info.table_schema NOT LIKE 'pg_temp_%'
+                          AND table_info.table_type = 'BASE TABLE'
+                          AND (
+                            has_table_privilege(current_user, table_info.table_schema || '.' || table_info.table_name, 'INSERT')
+                            OR has_table_privilege(current_user, table_info.table_schema || '.' || table_info.table_name, 'UPDATE')
+                            OR has_table_privilege(current_user, table_info.table_schema || '.' || table_info.table_name, 'DELETE')
+                            OR has_table_privilege(current_user, table_info.table_schema || '.' || table_info.table_name, 'TRUNCATE')
+                          )
+                    ),
+                    (
+                        SELECT COUNT(*)::int
+                        FROM information_schema.sequences sequence_info
+                        WHERE sequence_info.sequence_schema NOT IN ('pg_catalog', 'information_schema')
+                          AND sequence_info.sequence_schema NOT LIKE 'pg_toast%'
+                          AND sequence_info.sequence_schema NOT LIKE 'pg_temp_%'
+                          AND (
+                            has_sequence_privilege(current_user, sequence_info.sequence_schema || '.' || sequence_info.sequence_name, 'USAGE')
+                            OR has_sequence_privilege(current_user, sequence_info.sequence_schema || '.' || sequence_info.sequence_name, 'UPDATE')
+                          )
+                    )
+                FROM pg_roles role
+                WHERE role.rolname = current_user;
+                """;
+            await using var privilegeCommand = new NpgsqlCommand(privilegeSql, connection);
+            await using var privilegeReader = await privilegeCommand.ExecuteReaderAsync(cancellationToken);
+            if (!await privilegeReader.ReadAsync(cancellationToken))
+                return CandidateDatabaseEvidence.Unavailable(documentConfigured);
+            var activeRole = privilegeReader.GetString(0);
+            var elevated = privilegeReader.GetBoolean(1);
+            var schemaCreate = privilegeReader.GetBoolean(2);
+            var databaseCreate = privilegeReader.GetBoolean(3);
+            var temporaryTable = privilegeReader.GetBoolean(4);
+            var defaultTransactionReadOnly = privilegeReader.GetBoolean(5);
+            var mutableTableCount = privilegeReader.GetInt32(6);
+            var mutableSequenceCount = privilegeReader.GetInt32(7);
+            await privilegeReader.CloseAsync();
+
+            var exactDocumentReady = false;
+            var exactVersionReady = false;
+            var exactProjectReady = false;
+            var exactSourceShaReady = false;
+            var exactIndexReady = false;
+            var exactChunkSetReady = false;
+            var exactChunkCount = 0;
+            var sampleChunkText = string.Empty;
+            var requireEmbedding = !string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT"));
+            if (documentConfigured)
+            {
+                const string sowSql = """
+                    SELECT
+                        document.is_active
+                          AND document.engineering_visible
+                          AND document.ai_timesheet_context_enabled
+                          AND document.pulse_ai_processing_status = 'ready'
+                          AND LOWER(COALESCE(document.document_category, document.document_type, '')) IN
+                              ('sow','statement_of_work','gsd','global_solution_design'),
+                        document.pulse_ai_active_version_id = @version_id
+                          AND version.pulse_ai_document_version_id = @version_id
+                          AND version.project_intake_document_id = @document_id
+                          AND version.authority_status IN ('approved','canonical'),
+                        COALESCE(document.project_id = @project_id AND version.project_id = @project_id, FALSE),
+                        LOWER(version.source_sha256) = @source_sha256,
+                        CASE WHEN @require_embedding
+                          THEN version.index_status IN ('embedding_ready','ready')
+                          ELSE version.index_status IN ('lexical_ready','embedding_ready','ready')
+                        END,
+                        version.chunk_count,
+                        COUNT(chunk.chunk_id)::int,
+                        COALESCE((ARRAY_AGG(chunk.chunk_text ORDER BY chunk.chunk_index)
+                            FILTER (WHERE chunk.chunk_id IS NOT NULL))[1], '')
+                    FROM project_intake_documents document
+                    JOIN pulse_ai_document_versions version
+                      ON version.pulse_ai_document_version_id = document.pulse_ai_active_version_id
+                    LEFT JOIN pulse_ai_document_chunks chunk
+                      ON chunk.pulse_ai_document_version_id = version.pulse_ai_document_version_id
+                     AND chunk.project_intake_document_id = document.project_intake_document_id
+                     AND chunk.project_id = @project_id
+                     AND LOWER(chunk.source_sha256) = @source_sha256
+                     AND chunk.is_active = TRUE
+                     AND CASE WHEN @require_embedding
+                       THEN chunk.index_status IN ('embedding_ready','ready')
+                         AND chunk.embedding_status = 'ready'
+                       ELSE chunk.index_status IN ('lexical_ready','embedding_ready','ready')
+                     END
+                    WHERE document.project_intake_document_id = @document_id
+                    GROUP BY document.project_intake_document_id, version.pulse_ai_document_version_id;
+                    """;
+                await using var sowCommand = new NpgsqlCommand(sowSql, connection);
+                sowCommand.Parameters.AddWithValue("document_id", documentId);
+                sowCommand.Parameters.AddWithValue("version_id", versionId);
+                sowCommand.Parameters.AddWithValue("project_id", projectId);
+                sowCommand.Parameters.AddWithValue("source_sha256", sourceSha);
+                sowCommand.Parameters.AddWithValue("require_embedding", requireEmbedding);
+                await using var sowReader = await sowCommand.ExecuteReaderAsync(cancellationToken);
+                if (await sowReader.ReadAsync(cancellationToken))
+                {
+                    exactDocumentReady = sowReader.GetBoolean(0);
+                    exactVersionReady = sowReader.GetBoolean(1);
+                    exactProjectReady = sowReader.GetBoolean(2);
+                    exactSourceShaReady = sowReader.GetBoolean(3);
+                    exactIndexReady = sowReader.GetBoolean(4);
+                    var declaredChunkCount = sowReader.GetInt32(5);
+                    exactChunkCount = sowReader.GetInt32(6);
+                    exactChunkSetReady = declaredChunkCount > 0 && exactChunkCount == declaredChunkCount;
+                    sampleChunkText = sowReader.GetString(7);
+                }
+            }
+
+            var exactSowReady = documentConfigured
+                && exactDocumentReady
+                && exactVersionReady
+                && exactProjectReady
+                && exactSourceShaReady
+                && exactIndexReady
+                && exactChunkSetReady
+                && sampleChunkText.Length > 0;
+
+            return new CandidateDatabaseEvidence(
+                ReadOnlyIdentity: !elevated
+                    && !schemaCreate
+                    && !databaseCreate
+                    && !temporaryTable
+                    && defaultTransactionReadOnly
+                    && mutableTableCount == 0
+                    && mutableSequenceCount == 0,
+                ElevatedRole: elevated,
+                SchemaCreateAllowed: schemaCreate,
+                DatabaseCreateAllowed: databaseCreate,
+                TemporaryTableAllowed: temporaryTable,
+                DefaultTransactionReadOnly: defaultTransactionReadOnly,
+                MutableTableCount: mutableTableCount,
+                MutableSequenceCount: mutableSequenceCount,
+                ExactSowConfigured: documentConfigured,
+                ExactSowReady: exactSowReady,
+                ExactDocumentReady: exactDocumentReady,
+                ExactVersionReady: exactVersionReady,
+                ExactProjectReady: exactProjectReady,
+                ExactSourceShaReady: exactSourceShaReady,
+                ExactIndexReady: exactIndexReady,
+                ExactChunkSetReady: exactChunkSetReady,
+                ExactChunkCount: exactChunkCount,
+                SampleChunkText: sampleChunkText,
+                DatabaseFingerprint: resolver.DatabaseFingerprint,
+                ConfiguredRoleFingerprint: resolver.ConfiguredRoleFingerprint,
+                ActiveRoleFingerprint: ProjectPulseAiDatabaseConnection.FingerprintRole(activeRole));
+        }
+        catch
+        {
+            return CandidateDatabaseEvidence.Unavailable(documentConfigured);
+        }
+    }
+
     private static async Task<IResult> GetRoutesAsync(
         HttpContext context,
         CelarAiCapabilityRoutingStore store,
@@ -70,6 +472,7 @@ public static class CelarAiCapabilityRoutingModule
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var routes = await store.LoadRoutesAsync(cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         return Results.Ok(new
         {
             module = "064",
@@ -91,7 +494,13 @@ public static class CelarAiCapabilityRoutingModule
                 safetyRefusalFailover = false,
                 privacyPolicyEditable = false,
                 rawPrivateContextEligibleForPublicProviders = false,
-                viewAsMutationAllowed = false
+                viewAsMutationAllowed = false,
+                configurationAuthority = release.ConfigurationAuthority,
+                releasePhase = release.PhaseCode,
+                deploymentManaged = release.IsReleaseScoped,
+                readOnly = release.IsReleaseScoped,
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                catalogCapabilityCount = routes.Count
             },
             generatedAt = DateTimeOffset.UtcNow,
             stateChanged = false
@@ -108,6 +517,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         var actor = ActualSessionUserId(context)!.Value;
         try
         {
@@ -154,6 +564,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var route = await store.ResetRouteAsync(
@@ -241,24 +652,19 @@ public static class CelarAiCapabilityRoutingModule
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var profile = await store.LoadPrivateModelProfileAsync(cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         var policy = await PrivateEndpointPolicyAsync(profile, cancellationToken);
         var runtimeReadiness = await runtime.GetReadinessAsync(cancellationToken);
         var routes = await store.LoadRoutesAsync(cancellationToken);
-        var requiredTimesheetFeatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            CelarAiCapabilityCatalog.TimesheetNonProject,
-            CelarAiCapabilityCatalog.TimesheetProjectTask,
-            CelarAiCapabilityCatalog.TimesheetServiceRequest
-        };
-        var requiredRoutes = routes
-            .Where(route => requiredTimesheetFeatures.Contains(route.FeatureCode))
-            .ToArray();
-        var routesReady = requiredRoutes.Length == requiredTimesheetFeatures.Count
+        var requiredFeatures = CelarAiCapabilityCatalog.Definitions.Keys
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requiredRoutes = routes.Where(route => requiredFeatures.Contains(route.FeatureCode)).ToArray();
+        var routesReady = requiredRoutes.Length == requiredFeatures.Count
             && requiredRoutes.All(route =>
-                route.Persisted
+                (route.Persisted || route.DeploymentManaged)
                 && route.Targets.Count == CelarAiCapabilityTargets.DefaultOrder.Length
                 && route.Targets.SequenceEqual(
-                    CelarAiCapabilityTargets.DefaultOrder,
+                    release.IsReleaseScoped ? release.RouteOrder : CelarAiCapabilityTargets.DefaultOrder,
                     StringComparer.OrdinalIgnoreCase));
 
         // A single policy flag cannot silently create a half-enabled public
@@ -297,14 +703,15 @@ public static class CelarAiCapabilityRoutingModule
         var blockers = new List<string>();
         if (!store.DatabaseAvailable) blockers.Add("The ProjectPulse database connection is unavailable to Module 064.");
         if (!store.SecretEncryptionAvailable) blockers.Add("A stable base64-encoded 32-byte PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY is required.");
-        if (!profile.Persisted) blockers.Add("The private Celar AI profile is not persisted for this environment.");
+        if (!profile.Persisted && !profile.DeploymentManaged)
+            blockers.Add("The private Celar AI profile is neither persisted nor deployment-managed for this environment.");
         if (!profile.Enabled) blockers.Add("The private Celar AI target is disabled.");
         if (!profile.EndpointConfigured) blockers.Add("The private OpenAI-compatible endpoint is not configured.");
         if (!profile.ModelConfigured) blockers.Add("The private model or deployment name is not configured.");
         if (!profile.AuthenticationConfigured) blockers.Add("Bearer authentication is not configured for the private Celar AI target.");
         if (!profile.RequirePrivateModelForDocuments) blockers.Add("Private inference is not required for document-grounded answers.");
         if (policy != "private_endpoint_dns_verified") blockers.Add($"The private inference endpoint did not pass HTTPS, allowlist, and private-DNS verification ({policy}).");
-        if (!routesReady) blockers.Add("All three Timesheet capability routes must be persisted with Celar AI first and governed local template last.");
+        if (!routesReady) blockers.Add("All eight central AI capability routes must use the exact governed deployment order with governed local template last.");
         if (sanitizedExternalFallbackRequired && !sanitizedExternalFallbackEnabled)
             blockers.Add("Sanitized external fallback requires both PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION and PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED.");
         if (sanitizedExternalFallbackRequired && !providerConfiguration.Claude.Enabled)
@@ -336,15 +743,21 @@ public static class CelarAiCapabilityRoutingModule
         var configurationReady = blockers.Count == 0;
         var privateTargetHealth = health.Snapshots().FirstOrDefault(item =>
             string.Equals(item.Provider, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase));
-        var persistedProbe = await store.LoadPrivateProbeEvidenceAsync(profile.Revision, cancellationToken);
-        var privateTargetVerifiedAt = persistedProbe?.TestedAt;
-        var privateTargetVerificationFresh = persistedProbe is
-            {
-                Available: true,
-                Fresh: true
-            };
+        var persistedProbe = release.IsCandidate
+            ? null
+            : await store.LoadPrivateProbeEvidenceAsync(profile.Revision, cancellationToken);
+        var releaseProbeFreshAfter = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var privateTargetVerifiedAt = release.IsCandidate
+            ? privateTargetHealth?.LastProbeSuccessAt
+            : persistedProbe?.TestedAt;
+        var privateTargetVerificationFresh = release.IsCandidate
+            ? privateTargetHealth is { ProbeStatus: "available", LastProbeSuccessAt: { } probeSuccessAt }
+                && probeSuccessAt >= releaseProbeFreshAfter
+            : persistedProbe is { Available: true, Fresh: true };
         if (!privateTargetVerificationFresh)
-            blockers.Add("The private Celar AI target needs shared successful probe evidence for this exact profile revision within the last 15 minutes.");
+            blockers.Add(release.IsCandidate
+                ? "The private Celar AI target needs a successful candidate-local probe for this exact release revision within the last 15 minutes."
+                : "The private Celar AI target needs shared successful probe evidence for this exact profile revision within the last 15 minutes.");
         var productionReady = blockers.Count == 0;
         return Results.Ok(new
         {
@@ -377,10 +790,12 @@ public static class CelarAiCapabilityRoutingModule
                 {
                     verified = privateTargetVerificationFresh,
                     status = privateTargetVerificationFresh ? "available" : "not_verified",
-                    probeStatus = persistedProbe is null ? "not_checked" : persistedProbe.Available ? "available" : "degraded",
+                    probeStatus = release.IsCandidate
+                        ? privateTargetHealth?.ProbeStatus ?? "not_checked"
+                        : persistedProbe is null ? "not_checked" : persistedProbe.Available ? "available" : "degraded",
                     verifiedAt = privateTargetVerifiedAt,
                     freshnessMinutes = 15,
-                    evidenceScope = "database_shared_profile_revision",
+                    evidenceScope = release.IsCandidate ? "release_revision_local_memory" : "database_shared_profile_revision",
                     profileRevision = profile.Revision,
                     lastFailureCode = persistedProbe is { Available: false }
                         ? persistedProbe.DiagnosticCode
@@ -389,7 +804,13 @@ public static class CelarAiCapabilityRoutingModule
                             ?? string.Empty
                 },
                 privateDocumentRuntimeReady = runtimeReadiness.Status == "private_document_runtime_ready",
+                allCentralCapabilityRoutesReady = routesReady,
                 requiredTimesheetRoutesPersisted = routesReady,
+                configurationAuthority = release.ConfigurationAuthority,
+                releasePhase = release.PhaseCode,
+                deploymentManaged = release.IsReleaseScoped,
+                readOnly = release.IsReleaseScoped,
+                configurationSourceCommit = release.ConfigurationSourceCommit,
                 sanitizedExternalFallback = new
                 {
                     required = sanitizedExternalFallbackRequired,
@@ -430,6 +851,7 @@ public static class CelarAiCapabilityRoutingModule
                 {
                     workerEnabled = runtimeReadiness.WorkerEnabled,
                     automaticQueueEnabled = runtimeReadiness.AutomaticDocumentQueueEnabled,
+                    candidateExecutionBlocked = release.IsCandidate,
                     servicePrincipalConfigured = runtimeReadiness.DocumentServicePrincipalConfigured,
                     servicePrincipalActive = runtimeReadiness.DocumentServicePrincipalActive,
                     servicePrincipalQueuePermissionGranted = runtimeReadiness.DocumentServicePrincipalQueuePermissionGranted,
@@ -477,6 +899,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var profile = await store.SavePrivateModelSettingsAsync(
@@ -520,6 +943,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var profile = await store.SavePrivateModelSecretAsync(
@@ -574,11 +998,19 @@ public static class CelarAiCapabilityRoutingModule
         var stopwatch = Stopwatch.StartNew();
         var result = await target.ProbeAsync(profile, cancellationToken);
         health.RecordProbe(result);
-        var persistedProbe = await store.SavePrivateProbeEvidenceAsync(
-            profile,
-            result,
-            TimeSpan.FromMinutes(15),
-            cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        var testedAt = DateTimeOffset.UtcNow;
+        var expiresAt = testedAt.AddMinutes(15);
+        if (!release.IsCandidate)
+        {
+            var persistedProbe = await store.SavePrivateProbeEvidenceAsync(
+                profile,
+                result,
+                TimeSpan.FromMinutes(15),
+                cancellationToken);
+            testedAt = persistedProbe.TestedAt;
+            expiresAt = persistedProbe.ExpiresAt;
+        }
         stopwatch.Stop();
         return Results.Json(new
         {
@@ -591,9 +1023,11 @@ public static class CelarAiCapabilityRoutingModule
             requestId = result.RequestId,
             endpointReturned = false,
             tokenReturned = false,
-            testedAt = persistedProbe.TestedAt,
-            expiresAt = persistedProbe.ExpiresAt,
-            evidenceScope = "database_shared_profile_revision",
+            testedAt,
+            expiresAt,
+            evidenceScope = release.IsCandidate ? "release_revision_local_memory" : "database_shared_profile_revision",
+            deploymentManaged = release.IsReleaseScoped,
+            databaseEvidenceWritten = !release.IsCandidate,
             stateChanged = false
         }, statusCode: result.Available ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
     }
@@ -658,6 +1092,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var result = await rotation.RotateAsync(
@@ -1036,18 +1471,69 @@ public static class CelarAiCapabilityRoutingModule
         message = "The current effective user is not authorized for this Celar AI operation."
     }, statusCode: StatusCodes.Status403Forbidden);
 
-    private static string? ConnectionString() => new[]
+    private static IResult? ReleaseMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsReleaseScoped) return null;
+        return Results.Json(new
         {
-            "ConnectionStrings__DefaultConnection",
-            "ConnectionStrings__ProjectPulse",
-            "ConnectionStrings__ProjectTime",
-            "PROJECTPULSE_CONNECTION_STRING",
-            "PROJECTTIME_DATABASE_CONNECTION",
-            "PROJECTPULSE_DB_CONNECTION",
-            "PROJECTTIME_DB_CONNECTION"
-        }
-        .Select(Environment.GetEnvironmentVariable)
-        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            module = "064",
+            status = "deployment_managed_configuration_read_only",
+            message = "Candidate and active release revisions use immutable deployment-managed AI configuration. Change the protected release manifest and deploy a new revision instead of mutating shared configuration.",
+            configurationAuthority = "deployment_managed_release",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
+    private sealed record CandidateDatabaseEvidence(
+        bool ReadOnlyIdentity,
+        bool ElevatedRole,
+        bool SchemaCreateAllowed,
+        bool DatabaseCreateAllowed,
+        bool TemporaryTableAllowed,
+        bool DefaultTransactionReadOnly,
+        int MutableTableCount,
+        int MutableSequenceCount,
+        bool ExactSowConfigured,
+        bool ExactSowReady,
+        bool ExactDocumentReady,
+        bool ExactVersionReady,
+        bool ExactProjectReady,
+        bool ExactSourceShaReady,
+        bool ExactIndexReady,
+        bool ExactChunkSetReady,
+        int ExactChunkCount,
+        string SampleChunkText,
+        string DatabaseFingerprint,
+        string ConfiguredRoleFingerprint,
+        string ActiveRoleFingerprint)
+    {
+        public static CandidateDatabaseEvidence Unavailable(bool exactSowConfigured) => new(
+            ReadOnlyIdentity: false,
+            ElevatedRole: true,
+            SchemaCreateAllowed: true,
+            DatabaseCreateAllowed: true,
+            TemporaryTableAllowed: true,
+            DefaultTransactionReadOnly: false,
+            MutableTableCount: -1,
+            MutableSequenceCount: -1,
+            ExactSowConfigured: exactSowConfigured,
+            ExactSowReady: false,
+            ExactDocumentReady: false,
+            ExactVersionReady: false,
+            ExactProjectReady: false,
+            ExactSourceShaReady: false,
+            ExactIndexReady: false,
+            ExactChunkSetReady: false,
+            ExactChunkCount: 0,
+            SampleChunkText: string.Empty,
+            DatabaseFingerprint: string.Empty,
+            ConfiguredRoleFingerprint: string.Empty,
+            ActiveRoleFingerprint: string.Empty);
+    }
+
+    private static string? ConnectionString() => ProjectPulseAiDatabaseConnection.Resolve();
 }
 
 public sealed record CelarAiCloseoutCommunicationRequest(

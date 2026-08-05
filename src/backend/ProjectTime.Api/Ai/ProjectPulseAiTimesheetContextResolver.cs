@@ -25,8 +25,15 @@ sealed class ProjectPulseAiTimesheetContextResolver
         TimesheetSuggestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        var config = global::DatabaseConfig.FromEnvironment();
-        if (config.Missing.Count > 0)
+        string? connectionString;
+        try { connectionString = ProjectPulseAiDatabaseConnection.Resolve(); }
+        catch (InvalidOperationException)
+        {
+            return ProjectPulseAiTimesheetContextResolution.Unavailable(
+                "database_configuration_conflict",
+                "Timesheet context is temporarily unavailable.");
+        }
+        if (connectionString is null)
         {
             return ProjectPulseAiTimesheetContextResolution.Unavailable(
                 "database_configuration_missing",
@@ -42,7 +49,7 @@ sealed class ProjectPulseAiTimesheetContextResolver
 
         try
         {
-            await using var connection = new NpgsqlConnection(config.ConnectionString);
+            await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(cancellationToken);
 
             if (request.TimeEntryId is not null)

@@ -6,6 +6,7 @@ using ProjectTime.Api.Ai;
 
 var connectionString = Environment.GetEnvironmentVariable("PROJECTPULSE_CONNECTION_STRING")
     ?? throw new InvalidOperationException("PROJECTPULSE_CONNECTION_STRING is required.");
+await ReleaseRuntimeBehavior.RunAsync(connectionString);
 var previousKey = RandomNumberGenerator.GetBytes(32);
 var activeKey = RandomNumberGenerator.GetBytes(32);
 try
