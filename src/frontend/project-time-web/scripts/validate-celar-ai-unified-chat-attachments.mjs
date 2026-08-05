@@ -409,6 +409,21 @@ check(
 );
 
 check(
+  'RELEASE_CANDIDATE_READ_ONLY_ATTACHMENTS',
+  all(attachmentModule, [
+    'CandidateMutationBlocked() is { } blocked',
+    'ProjectPulseAiReleaseRuntimePolicy.Snapshot()',
+    'release_candidate_read_only',
+    'StatusCodes.Status423Locked'
+  ])
+    && (attachmentModule.match(/CandidateMutationBlocked\(\) is \{ \} blocked/g) || []).length === 2
+    && (attachmentRepository.match(/ProjectPulseAiReleaseRuntimePolicy\.RequireValid\(\)\.IsCandidate/g) || []).length >= 7
+    && (attachmentService.match(/ProjectPulseAiReleaseRuntimePolicy\.RequireValid\(\)\.IsCandidate/g) || []).length >= 3
+    && attachmentService.includes('"release_candidate_read_only"'),
+  'candidate releases block attachment upload, selection timestamps, revocation, queue-failure writes, retention claims, purge evidence, and physical cleanup'
+);
+
+check(
   'MIGRATION_AND_GUARDED_ROLLBACK',
   all(migration, [
     "'072_celar_ai_conversation_attachments'",

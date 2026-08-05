@@ -134,6 +134,7 @@ public sealed class CelarAiConversationAttachmentRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (!await IsSchemaReadyAsync(cancellationToken)) return null;
         try
         {
@@ -423,6 +424,7 @@ public sealed class CelarAiConversationAttachmentRepository
         IReadOnlyCollection<Guid> attachmentIds,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (attachmentIds.Count == 0 || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -472,6 +474,7 @@ public sealed class CelarAiConversationAttachmentRepository
         string reason,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (!await IsSchemaReadyAsync(cancellationToken)) return null;
         try
         {
@@ -575,6 +578,7 @@ public sealed class CelarAiConversationAttachmentRepository
         string diagnosticCode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (!DatabaseConfigured) return;
         try
         {
@@ -643,6 +647,7 @@ public sealed class CelarAiConversationAttachmentRepository
         int maximum,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return [];
         if (!await IsSchemaReadyAsync(cancellationToken)) return [];
         try
         {
@@ -770,6 +775,7 @@ public sealed class CelarAiConversationAttachmentRepository
         string diagnosticCode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (!DatabaseConfigured) return;
         try
         {
@@ -804,6 +810,7 @@ public sealed class CelarAiConversationAttachmentRepository
         Guid attachmentId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         if (!await IsSchemaReadyAsync(cancellationToken)) return false;
         try
         {

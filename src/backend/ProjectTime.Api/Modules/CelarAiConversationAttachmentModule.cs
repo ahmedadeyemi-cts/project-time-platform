@@ -63,6 +63,7 @@ public static class CelarAiConversationAttachmentModule
         var identity = Identity(context);
         if (identity is null) return SessionRequired();
         if (identity.Value.Actual != identity.Value.Effective) return ViewAsForbidden();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         var access = await system.LoadAccessAsync(identity.Value.Effective, cancellationToken);
         if (!CanAttach(access)) return Forbidden();
         if (!context.Request.HasFormContentType)
@@ -162,6 +163,7 @@ public static class CelarAiConversationAttachmentModule
         var identity = Identity(context);
         if (identity is null) return SessionRequired();
         if (identity.Value.Actual != identity.Value.Effective) return ViewAsForbidden();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         var access = await system.LoadAccessAsync(identity.Value.Effective, cancellationToken);
         if (!CanAttach(access)) return Forbidden();
         var revoked = await attachments.RevokeAsync(
@@ -188,6 +190,20 @@ public static class CelarAiConversationAttachmentModule
             access = Access(identity.Value),
             stateChanged = true
         });
+    }
+
+    private static IResult? CandidateMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsCandidate) return null;
+        return Results.Json(new
+        {
+            module = "011",
+            status = "release_candidate_read_only",
+            message = "Celar AI attachment upload and revocation are disabled on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
     }
 
     private static bool CanAttach(PulseAiSystemAccess access) =>

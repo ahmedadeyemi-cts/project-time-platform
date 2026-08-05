@@ -58,6 +58,13 @@ public sealed class CelarAiConversationAttachmentService
         IFormFileCollection files,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+        {
+            return new(
+                "release_candidate_read_only",
+                [],
+                ["Celar AI attachment upload is disabled on the exact-source release candidate."]);
+        }
         var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
         var runtime = PulseAiPrivateRuntimeOptions.FromEnvironment();
         var pipeline = PulseAiDocumentPipelineOptions.FromEnvironment();
@@ -282,6 +289,7 @@ public sealed class CelarAiConversationAttachmentService
         Guid attachmentId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         var storagePath = await _attachments.RevokeAsync(
             conversationId,
             attachmentId,
@@ -300,6 +308,7 @@ public sealed class CelarAiConversationAttachmentService
     public async Task<int> PurgeExpiredAsync(
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return 0;
         var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
         if (!storage.ProductionReady) return 0;
         var root = ProjectPulseUploadStorage.ResolveRoot();
