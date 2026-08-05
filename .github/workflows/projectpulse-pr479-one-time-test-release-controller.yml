@@ -53,11 +53,17 @@ jobs:
           git merge-base --is-ancestor "$EXPECTED_RELEASE_SHA" HEAD
 
           git diff --name-only origin/main...HEAD | sort > /tmp/actual
-          cat > /tmp/expected <<'FILES'
+          if [[ '${{ github.head_ref }}' == fix/pr479-test-release-controller-acr-verification-* ]]; then
+            cat > /tmp/expected <<'FILES'
+          .github/workflows/projectpulse-pr479-one-time-test-release-controller.yml
+          FILES
+          else
+            cat > /tmp/expected <<'FILES'
           .github/workflows/projectpulse-pr479-one-time-test-release-controller.yml
           scripts/pr479-apply-migrations-068-070-test.sh
           scripts/pr479-run-migrations-068-070-job.sh
           FILES
+          fi
           diff -u /tmp/expected /tmp/actual
 
           bash -n scripts/pr479-apply-migrations-068-070-test.sh
@@ -363,13 +369,12 @@ jobs:
           [[ "$actual_api" == "$expected_api" ]]
           [[ "$actual_web" == "$expected_web" ]]
 
-          api_digest="$(az acr repository show --name "$acr" --image "project-health-dashboard-api:ci-$EXPECTED_RELEASE_SHA" --query digest -o tsv --only-show-errors)"
-          web_digest="$(az acr repository show --name "$acr" --image "project-health-dashboard-web:ci-$EXPECTED_RELEASE_SHA" --query digest -o tsv --only-show-errors)"
-          [[ "$api_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$web_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-
           api_rev="$(az containerapp show -g "$rg" -n "$api_app" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
           web_rev="$(az containerapp show -g "$rg" -n "$web_app" --query 'properties.latestReadyRevisionName' -o tsv --only-show-errors)"
+          revision_api_image="$(az containerapp revision show -g "$rg" -n "$api_app" --revision "$api_rev" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          revision_web_image="$(az containerapp revision show -g "$rg" -n "$web_app" --revision "$web_rev" --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          [[ "$revision_api_image" == "$expected_api" ]]
+          [[ "$revision_web_image" == "$expected_web" ]]
           [[ "$(az containerapp revision show -g "$rg" -n "$api_app" --revision "$api_rev" --query 'properties.healthState' -o tsv --only-show-errors)" == Healthy ]]
           [[ "$(az containerapp revision show -g "$rg" -n "$web_app" --revision "$web_rev" --query 'properties.healthState' -o tsv --only-show-errors)" == Healthy ]]
 
@@ -387,10 +392,10 @@ jobs:
             echo "migration_069_new=${{ steps.migration_state.outputs.new_069 }}"
             echo "migration_070_new=${{ steps.migration_state.outputs.new_070 }}"
             echo "api_image=$actual_api"
-            echo "api_digest=$api_digest"
+            echo "api_revision_image=$revision_api_image"
             echo "api_revision=$api_rev"
             echo "web_image=$actual_web"
-            echo "web_digest=$web_digest"
+            echo "web_revision_image=$revision_web_image"
             echo "web_revision=$web_rev"
             echo "deployment=${{ steps.deployment.outputs.run_url }}"
             echo 'production_changed=no'
@@ -437,7 +442,8 @@ jobs:
           - Migrations 068, 069, and 070: registered and independently verified
           - Module 033 / Project Forge migration: \`070_module_033_project_forge\`
           - Deployment: ${{ steps.deployment.outputs.run_url }}
-          - Exact API/web images, digests, healthy revisions, and public health: verified
+          - Exact API/web SHA-tagged images on healthy revisions and public health: verified
+          - Controller run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           - Production changed: no
           - Email sent: no
           EOF
@@ -448,13 +454,14 @@ jobs:
         shell: bash
         run: |
           set +e
-          url='${{ steps.deployment.outputs.run_url }}'
-          [[ -n "$url" ]] || url='Deployment was not dispatched.'
+          deployment_url='${{ steps.deployment.outputs.run_url }}'
+          [[ -n "$deployment_url" ]] || deployment_url='Deployment was not dispatched.'
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - <<EOF
           Project Forge Test migration or deployment failed.
 
           - Expected release SHA: \`$EXPECTED_RELEASE_SHA\`
-          - Evidence: $url
+          - Controller evidence: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          - Deployment evidence: $deployment_url
           - Prior application images were restored when available.
           - Newly applied migrations were rolled back only when their operational-data guards allowed it.
           - Production changed: no
