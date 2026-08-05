@@ -210,24 +210,27 @@ assert(
   'TIMESHEET_EXISTING_PATH',
   includesAll(source.timesheet, [
     'PulseAiDocumentGroundingService',
-    'BuildTimesheetContextAsync',
+    'BuildGroundingAsync(request, cancellationToken)',
     'grounding.HasReadyPrivateContext',
-    'BuildPrivateGroundedSuggestion',
-    'BuildRemotePromptWithoutPrivateDocuments'
+    '_router.GenerateWithPrivateTargetAsync(',
+    'BuildPrivatePrompt(request)',
+    'CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription',
+    'BuildPurposeBuiltExternalFactCodes(request)'
   ]),
-  'existing Module 001 suggestion service is enriched'
+  'existing Module 001 suggestion service uses router-owned private grounding and closed external facts'
 );
 assert(
   'TIMESHEET_PRIVATE_PATH',
   includesAll(source.timesheet, [
-    'ProjectPulseAiProviders.Local',
     'Raw document text, extracted summaries, the Engineer note, and structured customer or row identifiers were not sent to Claude or OpenAI',
-    'No restricted source material, commercial detail, architecture detail, or extracted evidence is included in this request',
-    'backend-derived fixed activity categories and a generic work classification'
+    "central router's closed activity, domain, and work-classification fact codes",
+    'ExternalFactCodes: externalFactCodes',
+    'BuildPurposeBuiltExternalFactCodes('
   ])
+    && !source.timesheet.includes('BuildRemotePromptWithoutPrivateDocuments')
     && !source.timesheet.includes('grounding.ContextSummary')
     && !source.timesheet.includes('document.ContextSummary'),
-  'ready document context stays private and outside remote prompts'
+  'ready document context stays private and public providers receive only router-owned closed facts'
 );
 assert(
   'TIMESHEET_ENGINEER_CONTROL',
