@@ -37,6 +37,29 @@ jobs:
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-universal-routing-*)
+              SCOPE_LABEL='universal answer-first routing'
+              SCOPE_MARKER='EXACT_16_UNIVERSAL_ROUTING_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
+          src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs
+          src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/pulse-ai-system-chat.css
+          EOF
+          )"
+              ;;
             security/celar-ai-production-readiness-routing-store-resilience-*)
               SCOPE_LABEL='routing-store startup resilience'
               SCOPE_MARKER='EXACT_3_ROUTING_STORE_RESILIENCE_FILES'
@@ -199,6 +222,9 @@ jobs:
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
           case "$SCOPE_MARKER" in
+            EXACT_16_UNIVERSAL_ROUTING_FILES)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_16_UNIVERSAL_ROUTING_FILES'
+              ;;
             EXACT_3_ROUTING_STORE_RESILIENCE_FILES)
               echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_3_ROUTING_STORE_RESILIENCE_FILES'
               ;;
