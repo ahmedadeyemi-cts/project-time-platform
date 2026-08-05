@@ -178,7 +178,11 @@ jobs:
             }
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
-          echo "CELAR_AI_PRODUCTION_HARDENING_SCOPE=$SCOPE_MARKER"
+          if [[ "$SCOPE_MARKER" == 'EXACT_45_SOURCE_FILES' ]]; then
+            echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_45_SOURCE_FILES'
+          else
+            echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_51_UNIFIED_CHAT_SOURCE_FILES'
+          fi
 
   validate:
     needs: classify
