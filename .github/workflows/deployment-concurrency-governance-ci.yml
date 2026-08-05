@@ -1,35 +1,37 @@
 name: Validate Deployment Concurrency Governance
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/**'
-      - '.github/deployment-concurrency-governance-v1.enabled'
-      - 'scripts/validate-*-test-deployment.sh'
-      - 'scripts/validate-deployment-concurrency-governance.mjs'
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+    types: [checks_requested]
   push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/**'
-      - '.github/deployment-concurrency-governance-v1.enabled'
-      - 'scripts/validate-*-test-deployment.sh'
-      - 'scripts/validate-deployment-concurrency-governance.mjs'
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: deployment-concurrency-governance-${{ github.ref }}
+  group: deployment-concurrency-governance-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out exact source
+      - name: Check out proposed pull-request tree without credentials
+        if: github.event_name == 'pull_request_target'
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out merged or queued tree
+        if: github.event_name != 'pull_request_target'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -38,35 +40,27 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Enforce base-trusted pull-request governance
-        if: github.event_name == 'pull_request'
+      - name: Enforce immutable base validator on proposed tree
+        if: github.event_name == 'pull_request_target'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if git cat-file -e "$BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" 2>/dev/null; then
-            git show "$BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" > "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs"
-            node "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs" \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --base-ref "$BASE_SHA" \
-              --verify-pr
-          else
-            node scripts/validate-deployment-concurrency-governance.mjs \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --base-ref "$BASE_SHA" \
-              --verify-bootstrap-addition
-          fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          ENTRY="$(git ls-tree "$BASE_SHA" -- scripts/validate-deployment-concurrency-governance.mjs)"
+          [[ "$ENTRY" =~ ^100644[[:space:]]blob[[:space:]][0-9a-f]{40}[[:space:]]scripts/validate-deployment-concurrency-governance.mjs$ ]]
+          git show "$BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" > "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs"
+          node "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --base-ref "$BASE_SHA" \
+            --verify-pr
 
       - name: Enforce merged governance state
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request_target'
         run: |
           set -Eeuo pipefail
           if [[ -f .github/deployment-concurrency-governance-v1.enabled ]]; then
-            node scripts/validate-deployment-concurrency-governance.mjs \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --verify-repository
+            node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
           else
-            node scripts/validate-deployment-concurrency-governance.mjs \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --self-test
+            node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --self-test
           fi
