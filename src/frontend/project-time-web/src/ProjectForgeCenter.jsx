@@ -104,6 +104,28 @@ function title(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function aiDraftNotice(result) {
+  const status = normalize(result?.status);
+  const compositionStatus = normalize(result?.compositionStatus || result?.status);
+  const target = normalize(result?.selectedTarget);
+  const path = normalize(result?.primaryExecutionPath);
+  const grounded = ['document_grounded_review_draft_created', 'celar_ai_solution_draft_completed', 'celar_ai_solution_draft_partial'].includes(status);
+  const artifactDescription = compositionStatus === 'celar_ai_solution_draft_partial'
+    ? 'A partial private, citation-grounded review scaffold was created.'
+    : 'A private, citation-grounded review draft was created.';
+  if (!grounded) {
+    return `${title(status)}. The selected target was ${title(target)} through ${title(path)}. No canonical task or assignment has been changed.`;
+  }
+  if (target === 'celar_ai') {
+    return `${artifactDescription} Private Celar AI was the selected target. No canonical task or assignment has been changed.`;
+  }
+  if (['claude', 'openai', 'open_ai'].includes(target)) {
+    const targetName = target === 'claude' ? 'Claude' : 'OpenAI';
+    return `${artifactDescription} ${targetName} supplied only separate generic assistance through the governed route; it did not receive or replace the private project evidence. No canonical task or assignment has been changed.`;
+  }
+  return `${artifactDescription} The route ended at governed local, whose output did not replace the private project evidence or artifact. No canonical task or assignment has been changed.`;
+}
+
 function taskId(task) {
   return task.planTaskId || task.projectForgePlanTaskId || task.taskId || task.canonicalTaskId;
 }
@@ -348,7 +370,8 @@ export default function ProjectForgeCenter() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [aiOpen, setAiOpen] = useState(false);
-  const [allowExternalAi, setAllowExternalAi] = useState(false);
+  // Compatibility only. Module 064 owns target eligibility, privacy, and fallback decisions.
+  const allowExternalAi = true;
   const [aiOutcome, setAiOutcome] = useState('Create a detailed, reviewable project plan with tasks, dependencies, realistic engineering estimates, acceptance criteria, risks, handoff, and closeout based on the authorized project documents.');
   const [generatedDraft, setGeneratedDraft] = useState(null);
   const [reviewerId, setReviewerId] = useState('');
@@ -451,7 +474,7 @@ export default function ProjectForgeCenter() {
         allowSanitizedExternalFallback: allowExternalAi
       });
       setGeneratedDraft(result.draft || result);
-      setNotice('Celar AI created a private, document-grounded review draft. No canonical task or assignment has been changed.');
+      setNotice(aiDraftNotice(result));
       await load({ pm: selectedPm, project: currentProjectId });
     } catch (generationError) { setError(generationError.message); } finally { setBusy(''); }
   }
@@ -573,7 +596,7 @@ export default function ProjectForgeCenter() {
         <section className="forge-ai-studio">
           <div><span>MODULE 064 · CELAR AI</span><h3>Document-grounded plan and estimate</h3><p>Uses only project evidence the effective user is authorized to access. The result remains a review draft until a Project Manager explicitly adopts it.</p></div>
           <label>Requested outcome<textarea rows="5" value={aiOutcome} onChange={(event) => setAiOutcome(event.target.value)} /></label>
-          <label className="forge-ai-external"><input type="checkbox" checked={allowExternalAi} onChange={(event) => setAllowExternalAi(event.target.checked)} /><span>Allow Module 064 to use only a sanitized, generic reasoning prompt when private evidence is incomplete. Project names, people, costs, and document text remain private.</span></label>
+          <aside className="forge-ai-external" aria-label="Automatic AI fallback policy"><strong>Fallback is automatic and backend governed.</strong><span>Module 064 follows the stored priority among eligible targets; the Engineer does not enable fallback. When Require private inference for document-grounded answers is on, document-grounded requests force private Celar AI first. If private inference fails, Claude and OpenAI keep their stored relative order and receive only fixed, backend-owned, identity-free capsules. Governed local remains the final fallback.</span></aside>
           <div className="forge-ai-actions"><button type="button" disabled={!currentProjectId || busy === 'ai'} onClick={generateAiDraft}>{busy === 'ai' ? 'Generating…' : 'Generate review draft'}</button>{generatedDraft || currentPlan ? <><label>Engineer reviewer<select value={reviewerId} onChange={(event) => setReviewerId(event.target.value)}><option value="">Select an eligible project Engineer</option>{engineers.map((engineer) => <option key={engineer.id} value={engineer.id}>{engineer.name}</option>)}</select></label><button type="button" disabled={!reviewerId || busy === 'reviewer'} onClick={assignReviewer}>Assign review</button>{canManage ? <button type="button" className="adopt" disabled={busy === 'adopt' || (currentPlan?.sourceKind === 'ai_generated' && normalize(currentPlan?.status) !== 'reviewed')} onClick={adoptPlan}>Adopt reviewed plan</button> : null}</> : null}</div>
           {generatedDraft ? <div className="forge-ai-evidence"><b>Confidence: {Math.round(Number(generatedDraft.confidence || 0) * 100)}%</b><span>{generatedDraft.confidenceExplanation || 'Human review is required.'}</span><span>{(generatedDraft.citations || []).length} authorized citation(s)</span><span>{(generatedDraft.warnings || []).length} warning(s)</span></div> : null}
         </section>

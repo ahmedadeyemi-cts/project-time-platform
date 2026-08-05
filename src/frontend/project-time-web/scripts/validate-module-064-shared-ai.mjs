@@ -71,11 +71,13 @@ assert('MODULE_064_SECRET_VALUES_NOT_RETURNED', configuration.includes('valueRet
 assert('MODULE_064_SHARED_SERVICE_REGISTRATION', registration.includes('AddProjectPulseAi') && registration.includes('AddHostedService<ProjectPulseAiHealthMonitor>'));
 assert(
   'MODULE_064_EXISTING_AI_CONSUMER_MIGRATED',
-  consumer.includes('ProjectPulseAiRouter')
+  consumer.includes('CelarAiCapabilityRouter')
     && consumer.includes('CelarAiCapabilityCatalog.ResolveTimesheetFeature(')
-    && consumer.includes('_router.IsFirstTargetAsync(')
-    && consumer.includes('_router.GenerateAsync('),
-  'Timesheet resolves its exact capability and follows the shared persisted route'
+    && consumer.includes('_router.GenerateWithPrivateTargetAsync(')
+    && consumer.includes('_router.GenerateAsync(')
+    && !consumer.includes('_router.IsFirstTargetAsync(')
+    && !consumer.includes('skipPrivateTarget:'),
+  'Timesheet uses the central route and one router-owned private document callback'
 );
 assert('MODULE_064_CONSUMER_HAS_NO_DIRECT_CLIENT', !consumer.includes('new HttpClient') && !consumer.includes('PROJECTPULSE_CLAUDE_API_KEY'));
 assert('MODULE_064_PROGRAM_DI', program.includes('builder.Services.AddProjectPulseAi();') && program.includes('ProjectPulseAiTimeEntrySuggestionService aiService'));

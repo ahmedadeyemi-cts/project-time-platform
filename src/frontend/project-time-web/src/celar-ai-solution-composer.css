@@ -144,18 +144,14 @@
 }
 
 .celar-ai-external-checkbox {
-  grid-template-columns: auto minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 0.55rem !important;
   border: 1px solid #d7b27c;
   border-radius: 11px;
   padding: 0.65rem;
   background: #fffaf1;
-}
-
-.celar-ai-external-checkbox input {
-  width: auto;
-  margin-top: 0.16rem;
 }
 
 .celar-ai-external-checkbox span {

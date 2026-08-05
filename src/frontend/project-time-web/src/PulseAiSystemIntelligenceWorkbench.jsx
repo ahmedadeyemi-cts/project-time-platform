@@ -102,6 +102,13 @@ function AnswerView({ result }) {
       <ListSection heading="Recommended actions" values={answer.recommendedActions} open ordered />
       <Blueprint blueprint={answer.futureEnhancementBlueprint} />
       <ListSection heading="Warnings" values={result.warnings} />
+      {result.externalAssistance ? (
+        <details className="pulse-ai-system-workbench-section">
+          <summary><span>Generic response-structure guidance</span><small>{title(result.modelProvider || 'external')}</small></summary>
+          <p>This optional guidance was generated only from a fixed backend-owned, identity-free capsule. It remains separate from the authorized source-grounded answer and cannot establish case-specific facts.</p>
+          <p>{result.externalAssistance}</p>
+        </details>
+      ) : null}
     </div>
   );
 }

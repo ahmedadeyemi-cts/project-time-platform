@@ -10,8 +10,8 @@ const TARGET_LABELS = {
 
 const TARGET_DESCRIPTIONS = {
   celar_ai: 'Private orchestration, governed tools, private RAG, and private inference.',
-  claude: 'Optional sanitized external reasoning through Module 064.',
-  openai: 'Optional sanitized external reasoning through Module 064.',
+  claude: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
+  openai: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
   local_template: 'Deterministic final fallback that never calls a public provider.',
 };
 
@@ -233,8 +233,10 @@ export default function CelarAiCapabilityRoutingPanel() {
           <p>Celar AI and Module 064 control plane</p>
           <h2 id="celar-ai-routing-title">Private-first targets and capability routing</h2>
           <span>
-            Celar AI is the preferred private target. Claude and OpenAI are optional sanitized stages, and the governed
-            local template remains the deterministic final fallback. Target order is configurable; privacy policy is not.
+            The backend follows each capability&apos;s stored priority among eligible targets. When Require private inference
+            for document-grounded answers is on, document-grounded requests force private Celar AI first. After private
+            failure, Claude and OpenAI keep their stored relative order and receive only fixed, backend-owned, identity-free
+            capsules. The governed local template remains the deterministic final fallback.
           </span>
         </div>
         <button type="button" onClick={() => load()} disabled={state.loading}>
@@ -352,7 +354,7 @@ export default function CelarAiCapabilityRoutingPanel() {
       <section className="celar-ai-routing__routes" aria-labelledby="capability-route-title">
         <div className="celar-ai-routing__subheading">
           <div><p>Capability routing</p><h3 id="capability-route-title">Primary, secondary, tertiary, and final fallback</h3></div>
-          <span>Default: Celar AI → Claude → OpenAI → Governed local template</span>
+          <span>Stored priority among eligible targets. Default: Celar AI → Claude → OpenAI → Governed local template</span>
         </div>
         <div className="celar-ai-routing__route-grid">
           {state.routes.map((route) => {
@@ -420,7 +422,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         <strong>Non-editable enterprise guardrails</strong>
         <ul>
           <li>Raw SOW, GSD, IQS, email, customer, project, employee, contract, rate, and financial context never goes directly to a public provider.</li>
-          <li>Claude and OpenAI receive only a policy-approved sanitized generic capsule.</li>
+          <li>Claude and OpenAI keep their stored relative order after private failure and receive only fixed, backend-owned, identity-free capsules.</li>
           <li>A safety refusal stops routing; a later provider is not used to bypass it.</li>
           <li>No AI route automatically saves or submits time, publishes a SOW, baselines a plan, sends a closeout message, changes financial data, or deploys software.</li>
         </ul>

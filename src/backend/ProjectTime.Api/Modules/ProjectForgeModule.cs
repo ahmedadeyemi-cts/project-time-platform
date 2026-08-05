@@ -273,6 +273,65 @@ public static partial class ProjectForgeModule
             context,
             cancellationToken);
 
+        var compositionRefused = string.Equals(
+                composition.Status,
+                "celar_ai_solution_draft_refused",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                composition.PrimaryExecutionPath,
+                "safety_refusal",
+                StringComparison.OrdinalIgnoreCase);
+        if (compositionRefused)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                status = "ai_plan_generation_refused",
+                compositionStatus = composition.Status,
+                message = "The selected AI target declined the Project Forge draft request. No draft was saved.",
+                composition.Warnings,
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                composition.PrimaryExecutionPath,
+                stateChanged = false
+            });
+        }
+
+        var groundedStatus = composition.Status is
+            "celar_ai_solution_draft_completed" or
+            "celar_ai_solution_draft_partial";
+        var planCitationIds = composition.FlowHivePlan is null
+            ? Array.Empty<int>()
+            : composition.FlowHivePlan.CitationIds
+                .Concat(composition.FlowHivePlan.Tasks.SelectMany(task => task.CitationIds))
+                .Concat(composition.FlowHivePlan.Milestones.SelectMany(milestone => milestone.CitationIds))
+                .Distinct()
+                .ToArray();
+        var groundedPlan = composition.FlowHivePlan is not null
+            && composition.FlowHivePlan.Tasks.Count > 0
+            && planCitationIds.Length > 0
+            && composition.Citations.Count > 0;
+        if (!groundedStatus || !groundedPlan)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                status = "ai_plan_evidence_insufficient",
+                compositionStatus = composition.Status,
+                message = "The AI route did not return a citation-grounded private project plan. No draft was saved.",
+                composition.MissingEvidence,
+                composition.Warnings,
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                composition.PrimaryExecutionPath,
+                stateChanged = false
+            });
+        }
+
         var generatedTasks = (composition.FlowHivePlan?.Tasks ?? [])
             .Take(500)
             .Select((task, index) => new ProjectForgePlanTaskRequest(
@@ -303,10 +362,17 @@ public static partial class ProjectForgeModule
             return Results.UnprocessableEntity(new
             {
                 status = "ai_plan_evidence_insufficient",
+                compositionStatus = composition.Status,
                 message = "Celar AI did not return supported project tasks. No draft was saved.",
                 composition.MissingEvidence,
                 composition.Warnings,
-                composition.CorrelationId
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                composition.PrimaryExecutionPath,
+                stateChanged = false
             });
         }
 
@@ -330,11 +396,18 @@ public static partial class ProjectForgeModule
             return Results.UnprocessableEntity(new
             {
                 status = "ai_plan_validation_failed",
+                compositionStatus = composition.Status,
                 message = "Celar AI returned a draft that requires correction before it can enter the Project Forge review ledger. No plan was saved.",
                 validation,
                 composition.Citations,
                 composition.Warnings,
-                composition.CorrelationId
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                composition.PrimaryExecutionPath,
+                stateChanged = false
             });
         }
         var schedule = ProjectFlowHiveScheduleEngine.Calculate(flowHiveRequest);
@@ -360,6 +433,7 @@ public static partial class ProjectForgeModule
             module = "033",
             feature = ProjectForgePolicy.CapabilityCode,
             status = "document_grounded_review_draft_created",
+            compositionStatus = composition.Status,
             planId,
             plan = planRequest,
             validation,
@@ -371,6 +445,11 @@ public static partial class ProjectForgeModule
             composition.Confidence,
             composition.ConfidenceExplanation,
             composition.CorrelationId,
+            composition.SelectedTarget,
+            composition.AttemptedTargets,
+            composition.SkippedTargets,
+            composition.TargetDecisions,
+            composition.PrimaryExecutionPath,
             controls = new { humanReviewRequired = true, adopted = false, canonicalTasksCreated = false, assignmentsCreated = false },
             stateChanged = true
         });

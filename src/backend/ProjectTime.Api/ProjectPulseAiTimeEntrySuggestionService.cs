@@ -7,44 +7,45 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
     private const int MaximumEngineerNoteCharacters = 4_000;
     private static readonly TimeSpan ExternalSignalRegexTimeout = TimeSpan.FromMilliseconds(100);
 
-    // Public providers receive only these server-authored category labels. The
+    // Public providers receive only router-owned labels selected by these closed
+    // server-authored fact codes. The
     // Engineer's free text is used for private/local processing and signal
     // detection, but no captured token, name, identifier, or substring is copied
     // into the external capsule. This also protects lowercase and unlabeled names
     // that pattern-only de-identification cannot classify with certainty.
-    private static readonly (string Label, Regex Pattern)[] ExternalActivitySignals =
+    private static readonly (string Code, Regex Pattern)[] ExternalActivitySignals =
     [
-        Signal("technical review and analysis", @"\b(?:review(?:ed|ing)?|analy[sz](?:e|ed|ing)|assess(?:ed|ing)?|evaluat(?:e|ed|ing))\b"),
-        Signal("technical investigation and diagnosis", @"\b(?:investigat(?:e|ed|ing)|diagnos(?:e|ed|ing)|troubleshoot(?:ing|ed)?|troubleshot|debug(?:ged|ging)?|isolat(?:e|ed|ing)|root[ \t]+cause)\b"),
-        Signal("configuration or implementation activity", @"\b(?:configur(?:e|ed|ing|ation)|implement(?:ed|ing|ation)?|install(?:ed|ing|ation)?|provision(?:ed|ing)?|deploy(?:ed|ing|ment)?)\b"),
-        Signal("testing and validation activity", @"\b(?:test(?:ed|ing)?|validat(?:e|ed|ing|ion)|verif(?:y|ied|ying|ication)|confirm(?:ed|ing|ation))\b"),
-        Signal("documentation and knowledge transfer", @"\b(?:document(?:ed|ing|ation)?|runbook|diagram(?:med|ming)?|knowledge[ \t]+transfer|handoff)\b"),
-        Signal("coordination or support activity", @"\b(?:coordinat(?:e|ed|ing|ion)|meeting|workshop|communicat(?:e|ed|ing|ion)|support(?:ed|ing)?|assist(?:ed|ing)?)\b"),
-        Signal("monitoring and operational observation", @"\b(?:monitor(?:ed|ing)?|observ(?:e|ed|ing|ation)|alert(?:ed|ing)?|telemetry|log[ \t]+review)\b"),
-        Signal("design and planning activity", @"\b(?:design(?:ed|ing)?|architect(?:ed|ing|ure)?|plan(?:ned|ning)?|discovery|requirements?)\b"),
-        Signal("migration, upgrade, or patching activity", @"\b(?:migrat(?:e|ed|ing|ion)|upgrad(?:e|ed|ing)|patch(?:ed|ing)?)\b"),
-        Signal("remediation or repair activity", @"\b(?:remediat(?:e|ed|ing|ion)|resolv(?:e|ed|ing)|repair(?:ed|ing)?|fix(?:ed|ing)?)\b"),
-        Signal("network or connectivity domain", @"\b(?:network(?:ing)?|connectivity|routing|switching|router|switch|dns|dhcp|bgp|ospf|vlan|wan|lan)\b"),
-        Signal("security domain", @"\b(?:security|firewall|vpn|mfa|encryption|certificate|vulnerabilit(?:y|ies)|threat|incident)\b"),
-        Signal("identity and access domain", @"\b(?:identity|authentication|authorization|access[ \t]+control|directory|sso|entra)\b"),
-        Signal("cloud platform domain", @"\b(?:cloud|azure|aws|gcp|saas|iaas|paas)\b"),
-        Signal("compute or operating-system domain", @"\b(?:server|compute|windows|linux|operating[ \t]+system|virtual[ \t]+machine)\b"),
-        Signal("storage, backup, or recovery domain", @"\b(?:storage|backup|restore|recovery|replication|snapshot)\b"),
-        Signal("application, API, or database domain", @"\b(?:application|software|api|integration|database|sql|postgres|oracle|mysql)\b"),
-        Signal("collaboration or messaging domain", @"\b(?:email|exchange|teams|sharepoint|onedrive|collaboration|messaging)\b"),
-        Signal("virtualization or container domain", @"\b(?:vmware|virtualization|container|docker|kubernetes)\b"),
-        Signal("endpoint or device domain", @"\b(?:endpoint|device|desktop|laptop|workstation|firmware)\b"),
-        Signal("service event or change handling", @"\b(?:service[ \t]+request|change|incident|issue|ticket|case)\b")
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityReviewAnalysis, @"\b(?:review(?:ed|ing)?|analy[sz](?:e|ed|ing)|assess(?:ed|ing)?|evaluat(?:e|ed|ing))\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityInvestigationDiagnosis, @"\b(?:investigat(?:e|ed|ing)|diagnos(?:e|ed|ing)|troubleshoot(?:ing|ed)?|troubleshot|debug(?:ged|ging)?|isolat(?:e|ed|ing)|root[ \t]+cause)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityConfigurationImplementation, @"\b(?:configur(?:e|ed|ing|ation)|implement(?:ed|ing|ation)?|install(?:ed|ing|ation)?|provision(?:ed|ing)?|deploy(?:ed|ing|ment)?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityTestingValidation, @"\b(?:test(?:ed|ing)?|validat(?:e|ed|ing|ion)|verif(?:y|ied|ying|ication)|confirm(?:ed|ing|ation))\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityDocumentationKnowledgeTransfer, @"\b(?:document(?:ed|ing|ation)?|runbook|diagram(?:med|ming)?|knowledge[ \t]+transfer|handoff)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityCoordinationSupport, @"\b(?:coordinat(?:e|ed|ing|ion)|meeting|workshop|communicat(?:e|ed|ing|ion)|support(?:ed|ing)?|assist(?:ed|ing)?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityMonitoringObservation, @"\b(?:monitor(?:ed|ing)?|observ(?:e|ed|ing|ation)|alert(?:ed|ing)?|telemetry|log[ \t]+review)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityDesignPlanning, @"\b(?:design(?:ed|ing)?|architect(?:ed|ing|ure)?|plan(?:ned|ning)?|discovery|requirements?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityMigrationUpgradePatching, @"\b(?:migrat(?:e|ed|ing|ion)|upgrad(?:e|ed|ing)|patch(?:ed|ing)?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityRemediationRepair, @"\b(?:remediat(?:e|ed|ing|ion)|resolv(?:e|ed|ing)|repair(?:ed|ing)?|fix(?:ed|ing)?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainNetworkConnectivity, @"\b(?:network(?:ing)?|connectivity|routing|switching|router|switch|dns|dhcp|bgp|ospf|vlan|wan|lan)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainSecurity, @"\b(?:security|firewall|vpn|mfa|encryption|certificate|vulnerabilit(?:y|ies)|threat|incident)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainIdentityAccess, @"\b(?:identity|authentication|authorization|access[ \t]+control|directory|sso|entra)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainCloudPlatform, @"\b(?:cloud|azure|aws|gcp|saas|iaas|paas)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainComputeOs, @"\b(?:server|compute|windows|linux|operating[ \t]+system|virtual[ \t]+machine)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainStorageBackupRecovery, @"\b(?:storage|backup|restore|recovery|replication|snapshot)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainApplicationApiDatabase, @"\b(?:application|software|api|integration|database|sql|postgres|oracle|mysql)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainCollaborationMessaging, @"\b(?:email|exchange|teams|sharepoint|onedrive|collaboration|messaging)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainVirtualizationContainer, @"\b(?:vmware|virtualization|container|docker|kubernetes)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainEndpointDevice, @"\b(?:endpoint|device|desktop|laptop|workstation|firmware)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainServiceEventChange, @"\b(?:service[ \t]+request|change|incident|issue|ticket|case)\b")
     ];
 
-    private readonly ProjectPulseAiRouter _router;
+    private readonly CelarAiCapabilityRouter _router;
     private readonly PulseAiDocumentGroundingService _grounding;
     private readonly PulseAiPrivateRagService _privateRag;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<ProjectPulseAiTimeEntrySuggestionService> _logger;
 
     public ProjectPulseAiTimeEntrySuggestionService(
-        ProjectPulseAiRouter router,
+        CelarAiCapabilityRouter router,
         PulseAiDocumentGroundingService grounding,
         PulseAiPrivateRagService privateRag,
         IHttpContextAccessor httpContextAccessor,
@@ -67,86 +68,78 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             request.TaskCode,
             request.ProjectCode,
             request.ProjectName);
-        var privateTargetFirst = await _router.IsFirstTargetAsync(
-            capability,
-            CelarAiCapabilityTargets.CelarAi,
-            cancellationToken);
-        string? privateRagWarning = null;
-        ProjectPulseAiTargetDecision? privateRagDecision = null;
-        var privateRag = privateTargetFirst
-            ? await GeneratePrivateRagAsync(request, cancellationToken)
-            : null;
-        var privateCelarAttempted = privateTargetFirst && privateRag?.Citations.Count > 0;
-        if (privateRag is not null)
-        {
-            if (privateRag.Citations.Count > 0)
-            {
-                var usedPrivateInference = UsedPrivateInference(privateRag);
-                var privateProviderDecision = PrivateProviderDecision(privateRag);
-                _router.RecordAlreadyExecutedPrivateAttempt(
-                    capability,
-                    privateRag.CorrelationId,
-                    usedPrivateInference,
-                    privateProviderDecision);
-                if (usedPrivateInference)
-                {
-                    var privateDescription = FinalizeCustomerSuggestion(
-                        privateRag.Answer?.DirectConclusion,
-                        request);
-                    return new ProjectPulseAiTimeEntrySuggestionResult(
-                        privateDescription,
-                        CelarAiCapabilityTargets.CelarAi,
-                        BuildPrivateRagWarning(privateRag),
-                        [new ProjectPulseAiTargetDecision(
-                            CelarAiCapabilityTargets.CelarAi,
-                            "used",
-                            "private_document_grounding_succeeded")]);
-                }
-
-                // Authorized SOW/project evidence remains private. A deterministic
-                // evidence scaffold is not a provider execution, so continue through
-                // the configured Celar -> Claude -> OpenAI -> local route using only
-                // the non-document prompt below.
-                privateRagWarning = BuildPrivateRagWarning(privateRag);
-                privateRagDecision = new ProjectPulseAiTargetDecision(
-                    CelarAiCapabilityTargets.CelarAi,
-                    "failed",
-                    privateProviderDecision);
-            }
-        }
-
-        // BuildPrivateGroundedSuggestion is intentionally not an early-return
-        // path: document-derived prose requires successful private inference.
-        var grounding = privateTargetFirst && privateRagWarning is null
+        var grounding = HasProjectIdentity(request)
             ? await BuildGroundingAsync(request, cancellationToken)
             : null;
+        var hasReadyPrivateDocuments = grounding?.Authorized == true
+            && grounding.HasReadyPrivateContext;
+        var externalFactCodes = BuildPurposeBuiltExternalFactCodes(request);
+        var hasExternalActivityFacts = HasPurposeBuiltExternalActivityFacts(request.CurrentDescription);
+        var execution = new CelarAiCapabilityExecutionContext(
+            Feature: capability,
+            ContainsPrivateDocuments: hasReadyPrivateDocuments,
+            ContainsCustomerIdentity: !string.IsNullOrWhiteSpace(request.CustomerName),
+            ContainsPeopleRecords: false,
+            ContainsFinancialValues: false,
+            AllowSanitizedExternalAssistance: hasExternalActivityFacts,
+            SensitiveTerms: SensitiveTerms(request),
+            ConsumerModule: "001",
+            CorrelationId: _httpContextAccessor.HttpContext?.TraceIdentifier
+                ?? Guid.NewGuid().ToString("N"),
+            IdentityTerms: IdentityTerms(request),
+            PurposeBuiltDeidentifiedInput: true,
+            DeidentifiedFactsAvailable: hasExternalActivityFacts,
+            ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
+            PrivateTargetAllowed: true,
+            ExternalFactCodes: externalFactCodes);
+        var privateRequest = new ProjectPulseAiGenerationRequest(
+            capability,
+            "You write detailed, accurate, evidence-based, customer-facing professional services timesheet descriptions in complete sentences. Use only authorized private context and the Engineer's factual note. Never invent activity or outcomes, and never change hours, submit time, create tasks, or alter allocations.",
+            BuildPrivatePrompt(request),
+            MaxOutputTokens: 520,
+            Temperature: 0.2);
 
-        // ProjectPulseAiProviders.Local is selected only by the central router
-        // after every higher-priority eligible target has failed or been skipped.
-        var routed = await _router.GenerateAsync(
-            new ProjectPulseAiGenerationRequest(
-                capability,
-                "You write detailed, accurate, evidence-based, customer-facing professional services timesheet descriptions in complete sentences. You never invent activity or outcomes, and you never change hours, submit time, create tasks, or alter allocations.",
-                BuildRemotePromptWithoutPrivateDocuments(request),
-                MaxOutputTokens: 520,
-                Temperature: 0.2),
-            () => BuildLocalSuggestion(request),
-            skipPrivateTarget: privateCelarAttempted,
-            cancellationToken: cancellationToken);
+        PulseAiPrivateRagAnswer? privateRag = null;
+        ProjectPulseAiRouteResult routed;
+        if (hasReadyPrivateDocuments)
+        {
+            routed = await _router.GenerateWithPrivateTargetAsync(
+                privateRequest,
+                execution,
+                async privateCancellationToken =>
+                {
+                    privateRag = await GeneratePrivateRagAsync(request, privateCancellationToken);
+                    return PrivateRagTargetResult(privateRag);
+                },
+                localFallback: () => BuildLocalSuggestion(request),
+                cancellationToken);
+        }
+        else
+        {
+            // Without ready private documents, the persisted Module 064 order is
+            // used exactly. If Celar AI is selected, its private target receives
+            // the private prompt; Claude/OpenAI receive only the closed fact-code
+            // capsule constructed by the central router.
+            routed = await _router.GenerateAsync(
+                privateRequest,
+                execution,
+                () => BuildLocalSuggestion(request),
+                cancellationToken);
+        }
 
         var suggestion = routed.Outcome == ProjectPulseAiOutcomes.Refusal
             ? string.Empty
             : FinalizeCustomerSuggestion(routed.Content, request);
+        var privateContextWarning = privateRag is not null
+            ? BuildPrivateRagWarning(privateRag)
+            : hasReadyPrivateDocuments && grounding is not null
+                ? BuildPrivateGroundingWarning(grounding)
+                : BuildGroundingReadinessWarning(grounding);
         return new ProjectPulseAiTimeEntrySuggestionResult(
             suggestion,
             routed.Provider,
-            MergeWarnings(
-                routed.Warning,
-                privateRagWarning,
-                grounding?.Authorized == true && grounding.HasReadyPrivateContext
-                    ? BuildPrivateGroundingWarning(grounding)
-                    : BuildGroundingReadinessWarning(grounding)),
-            MergeTargetDecisions(privateRagDecision, routed.TargetDecisions));
+            MergeWarnings(routed.Warning, privateContextWarning),
+            routed.TargetDecisions);
     }
 
     private async Task<PulseAiPrivateRagAnswer?> GeneratePrivateRagAsync(
@@ -331,7 +324,8 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
     }
 
     private static bool UsedPrivateInference(PulseAiPrivateRagAnswer answer) =>
-        answer.Answer is not null
+        answer.Citations.Count > 0
+        && answer.Answer is not null
         && !string.IsNullOrWhiteSpace(answer.Answer.DirectConclusion)
         && !string.IsNullOrWhiteSpace(answer.ModelProvider)
         && !answer.ModelProvider.Contains("deterministic", StringComparison.OrdinalIgnoreCase);
@@ -344,6 +338,93 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         if (answer.Answer is null) return "private_model_unavailable";
         return "private_model_output_unusable";
     }
+
+    private static ProjectPulseAiProviderResult PrivateRagTargetResult(
+        PulseAiPrivateRagAnswer? answer)
+    {
+        if (answer is not null && IsPrivateSafetyRefusal(answer))
+        {
+            return new ProjectPulseAiProviderResult(
+                Provider: CelarAiCapabilityTargets.CelarAi,
+                Outcome: ProjectPulseAiOutcomes.Refusal,
+                Content: string.Empty,
+                Code: "private_model_safety_refusal",
+                Message: "The private Celar AI document-grounded Timesheet target declined the request.",
+                RequestId: answer.CorrelationId,
+                Usage: null,
+                HttpStatusCode: null);
+        }
+
+        if (answer is not null && UsedPrivateInference(answer))
+        {
+            return new ProjectPulseAiProviderResult(
+                Provider: CelarAiCapabilityTargets.CelarAi,
+                Outcome: ProjectPulseAiOutcomes.Success,
+                Content: answer.Answer!.DirectConclusion,
+                Code: null,
+                Message: null,
+                RequestId: answer.CorrelationId,
+                Usage: null,
+                HttpStatusCode: null);
+        }
+
+        var diagnosticCode = answer is null
+            ? "private_document_grounding_unavailable"
+            : string.IsNullOrWhiteSpace(answer.DiagnosticCode)
+                ? PrivateProviderDecision(answer)
+                : answer.DiagnosticCode;
+        return new ProjectPulseAiProviderResult(
+            Provider: CelarAiCapabilityTargets.CelarAi,
+            Outcome: ProjectPulseAiOutcomes.Unavailable,
+            Content: null,
+            Code: diagnosticCode,
+            Message: "The private Celar AI document-grounded Timesheet target did not complete.",
+            RequestId: answer?.CorrelationId,
+            Usage: null,
+            HttpStatusCode: null);
+    }
+
+    private static bool IsPrivateSafetyRefusal(PulseAiPrivateRagAnswer answer) =>
+        string.Equals(answer.Status, "refused", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("refus", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("content_filter", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("safety", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasProjectIdentity(ProjectPulseAiTimeEntrySuggestionRequest request) =>
+        request.ProjectId is not null
+        || request.TaskId is not null
+        || request.AssignmentId is not null;
+
+    private static IReadOnlyList<string> SensitiveTerms(
+        ProjectPulseAiTimeEntrySuggestionRequest request) =>
+        new[]
+        {
+            request.CustomerName,
+            request.ProjectCode,
+            request.ProjectName,
+            request.TaskCode,
+            request.TaskName,
+            request.RowLabel,
+            request.CategoryCode,
+            request.WorkDate == default ? null : request.WorkDate.ToString("yyyy-MM-dd"),
+            request.TimeEntryId?.ToString(),
+            request.AssignmentId?.ToString(),
+            request.ProjectId?.ToString(),
+            request.TaskId?.ToString(),
+            request.NonProjectTimeCategoryId?.ToString()
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static IReadOnlyList<string> IdentityTerms(
+        ProjectPulseAiTimeEntrySuggestionRequest request) =>
+        new[] { request.CustomerName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static string FinalizeCustomerSuggestion(
         string? value,
@@ -395,7 +476,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             ? $" Missing or incomplete evidence: {string.Join(" ", grounding.MissingInputs.Take(3))}"
             : string.Empty;
 
-        return $"Provider decision: private_context_withheld_from_external_route. {ready.Length} authorized private document source(s) were available at {grounding.GeneratedAt:O}. Sources: {sourceText}. Coverage: {grounding.CoverageLevel} ({grounding.CoverageScore:P0}). No successful approved private-model answer was produced. Raw document text, extracted summaries, the Engineer note, and structured customer or row identifiers were not sent to Claude or OpenAI. Any eligible external target received only backend-derived fixed activity categories and a generic work classification. Governed local fallback may use the Engineer note and selected Timesheet context inside ProjectPulse. The Engineer must confirm that the suggestion describes only work actually performed.{conflicts}{missing}";
+        return $"Provider decision: private_context_withheld_from_external_route. {ready.Length} authorized private document source(s) were available at {grounding.GeneratedAt:O}. Sources: {sourceText}. Coverage: {grounding.CoverageLevel} ({grounding.CoverageScore:P0}). No successful approved private-model answer was produced. Raw document text, extracted summaries, the Engineer note, and structured customer or row identifiers were not sent to Claude or OpenAI. Any eligible external target received only the central router's closed activity, domain, and work-classification fact codes. Governed local fallback may use the Engineer note and selected Timesheet context inside ProjectPulse. The Engineer must confirm that the suggestion describes only work actually performed.{conflicts}{missing}";
     }
 
     private static string BuildPrivateRagWarning(PulseAiPrivateRagAnswer privateRag)
@@ -414,12 +495,12 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
 
         if (grounding.Status == "documents_found_context_not_ready")
         {
-            return "Authorized project documents were found, but private extraction or approved AI context summaries are not ready. No raw document content, Engineer note, or structured customer or row identifier was sent to an external provider. An eligible external target receives only backend-derived fixed activity categories and a generic work classification; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
+            return "Authorized project documents were found, but private extraction or approved AI context summaries are not ready. No raw document content, Engineer note, or structured customer or row identifier was sent to an external provider. An eligible external target receives only the central router's closed activity, domain, and work-classification fact codes; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
         }
 
         if (grounding.Status == "authorized_project_no_eligible_documents")
         {
-            return "No authorized engineering-visible document was enabled for timesheet grounding. No Engineer note or structured customer or row identifier was sent to an external provider. An eligible external target receives only backend-derived fixed activity categories and a generic work classification; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
+            return "No authorized engineering-visible document was enabled for timesheet grounding. No Engineer note or structured customer or row identifier was sent to an external provider. An eligible external target receives only the central router's closed activity, domain, and work-classification fact codes; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
         }
 
         if (grounding.Status is "project_not_resolved" or "project_outside_effective_user_scope" or "task_or_assignment_not_resolved")
@@ -443,18 +524,6 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return values.Length == 0 ? null : string.Join(" ", values);
-    }
-
-    private static IReadOnlyList<ProjectPulseAiTargetDecision>? MergeTargetDecisions(
-        ProjectPulseAiTargetDecision? first,
-        IReadOnlyList<ProjectPulseAiTargetDecision>? routed)
-    {
-        if (first is null) return routed;
-        return new[] { first }
-            .Concat((routed ?? []).Where(item =>
-                !(string.Equals(item.Target, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(item.ReasonCode, "private_target_skipped_by_caller", StringComparison.Ordinal))))
-            .ToArray();
     }
 
     private static string BuildLocalSuggestion(ProjectPulseAiTimeEntrySuggestionRequest request)
@@ -481,58 +550,42 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             $"Time was recorded against {context} during {timeType}. Additional factual detail about the work performed is required before this description is ready for customer or invoice review.");
     }
 
-    private static string BuildRemotePromptWithoutPrivateDocuments(
+    private static string BuildPrivatePrompt(
         ProjectPulseAiTimeEntrySuggestionRequest request)
-    {
-        var identityFreeFacts = BuildPurposeBuiltExternalActivityFacts(request.CurrentDescription);
-        return $"""
-Write one professional, customer-facing time-entry description for a PSA timesheet.
+        => $"""
+            Write one professional, customer-facing time-entry description for a PSA timesheet.
+            Treat the Engineer note as the primary evidence of work actually performed. Use the selected
+            row context only to identify where that work was recorded; a SOW or task scope cannot prove
+            that unreported work occurred. Return only a polished paragraph of two to four complete
+            sentences, preferably 75 to 150 words when the evidence supports that detail. Do not mention
+            AI, include hours, invent tools or outcomes, or claim completion without factual evidence.
 
-Primary instruction:
-Treat the backend-derived activity categories below as the only factual evidence available to you. Write a clear professional description at the level those categories support, but never imply that you saw the Engineer's note or infer exact products, systems, commands, people, customers, locations, chronology, completion status, customer impact, or technical outcomes.
+            Work date: {(request.WorkDate == default ? "not supplied" : request.WorkDate.ToString("yyyy-MM-dd"))}
+            Time classification: {FirstNonBlank(request.TimeType, "standard")}
+            Row classification: {FirstNonBlank(request.RowType, "selected Timesheet row")}
+            Customer: {FirstNonBlank(request.CustomerName, "not supplied")}
+            Project: {FirstNonBlank(request.ProjectName, request.ProjectCode, "not supplied")}
+            Task or category: {FirstNonBlank(request.TaskName, request.TaskCode, request.RowLabel, request.CategoryCode, "not supplied")}
+            Engineer note: {BoundedEngineerNote(request.CurrentDescription)}
+            """;
 
-Privacy boundary:
-- No restricted source material, commercial detail, architecture detail, or extracted evidence is included in this request.
-- No customer name, project name, project code, task name, task code, person name, internal identifier, work date, or location is included as structured context.
-- Do not imply access to restricted source material.
-- Use only the backend-derived identity-free activity categories and generic work classification below.
-
-Rules:
-- Return only the final description as a polished paragraph of complete sentences.
-- Do not mention AI.
-- Do not include hours; no duration evidence is present in this capsule.
-- Do not invent tools, systems, incidents, outages, meetings, approvals, deliverables, or outcomes.
-- Do not state that work is complete; no completion evidence is present in this capsule.
-- Make the wording useful for customer review, invoice review, manager approval, and audit history.
-- Prefer concrete action verbs such as reviewed, configured, validated, documented, coordinated, investigated, analyzed, updated, tested, supported, or troubleshot.
-- When the available evidence supports it, write two to four sentences and approximately 75 to 150 words. Never add generic filler merely to reach the target length.
-- If the safe categories are sparse, remain concise and general. If they do not establish what work occurred, explicitly state that additional factual work detail is required. Never add specificity merely to make the response longer.
-
-Backend-derived identity-free activity categories:
-{identityFreeFacts}
-
-Generic work classification: {ExternalWorkClassification(request)}
-""";
-    }
-
-    private static (string Label, Regex Pattern) Signal(string label, string pattern) =>
-        (label, new Regex(
+    private static (string Code, Regex Pattern) Signal(string code, string pattern) =>
+        (code, new Regex(
             pattern,
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant,
             ExternalSignalRegexTimeout));
 
-    private static string BuildPurposeBuiltExternalActivityFacts(string? value)
+    private static IReadOnlyList<string> BuildPurposeBuiltExternalFactCodes(
+        ProjectPulseAiTimeEntrySuggestionRequest request)
     {
-        var note = BoundedEngineerNote(value);
-        var labels = ExternalActivitySignals
+        var note = BoundedEngineerNote(request.CurrentDescription);
+        return ExternalActivitySignals
             .Where(signal => signal.Pattern.IsMatch(note))
-            .Select(signal => signal.Label)
+            .Select(signal => signal.Code)
             .Distinct(StringComparer.Ordinal)
             .Take(10)
+            .Append(ExternalWorkClassificationCode(request))
             .ToArray();
-        return labels.Length == 0
-            ? "No identity-free factual activity category was available."
-            : string.Join("; ", labels);
     }
 
     private static bool HasPurposeBuiltExternalActivityFacts(string? value)
@@ -541,13 +594,14 @@ Generic work classification: {ExternalWorkClassification(request)}
         return ExternalActivitySignals.Any(signal => signal.Pattern.IsMatch(note));
     }
 
-    private static string ExternalWorkClassification(ProjectPulseAiTimeEntrySuggestionRequest request)
+    private static string ExternalWorkClassificationCode(ProjectPulseAiTimeEntrySuggestionRequest request)
     {
         var rowType = (request.RowType ?? string.Empty).Trim().ToLowerInvariant();
-        if (rowType is "service_request" or "servicerequest" or "service-request") return "service request activity";
+        if (rowType is "service_request" or "servicerequest" or "service-request")
+            return CelarAiExternalCapsuleCatalog.TimesheetClassificationServiceRequest;
         if (rowType is "nonproject" or "non_project" or "non-project" or "category" or "category_code")
-            return "non-project activity";
-        return "project task activity";
+            return CelarAiExternalCapsuleCatalog.TimesheetClassificationNonProject;
+        return CelarAiExternalCapsuleCatalog.TimesheetClassificationProjectTask;
     }
 
     private static string BoundedEngineerNote(string? value)
@@ -558,9 +612,4 @@ Generic work classification: {ExternalWorkClassification(request)}
             : note[..MaximumEngineerNoteCharacters];
     }
 
-    private static bool ContainsPrivateDocumentMarkers(string? value) =>
-        Regex.IsMatch(
-            value ?? string.Empty,
-            @"\b(statement\s+of\s+work|sow|global\s+solution\s+design|gsd|contract|rate\s*card|pricing|proposal|customer\s+document)\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 }

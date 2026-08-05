@@ -194,20 +194,20 @@ public static class CelarAiBrandModule
             },
             featureRoutes = new object[]
             {
-                new { feature = "celar_ai_system_chat", primary = "private_celar_model_or_deterministic_system_synthesis", external = "sanitized_generic_reasoning_only" },
-                new { feature = "celar_ai_people_activity", primary = "authorized_owning_module_tools_and_deterministic_synthesis", external = "disabled" },
+                new { feature = "celar_ai_system_chat", primary = "persisted_module064_target_order", external = "fixed_identity_free_structure_capsule_only" },
+                new { feature = "celar_ai_people_activity", primary = "private_celar_before_public_when_restricted_context_is_present", external = "fixed_identity_free_structure_capsule_only_after_private_unavailability" },
                 new { feature = "celar_ai_platform_guidance", primary = "source_controlled_operating_knowledge", external = "not_required" },
                 new { feature = "timesheet_document_grounding", primary = "private_celar_model", external = "raw_document_route_prohibited" },
                 new { feature = "system_help_search", primary = "private_celar_model_and_governed_tools", external = "sanitized_generic_reasoning_only" },
                 new { feature = "flowhive_document_planning", primary = "private_celar_model_and_deterministic_schedule_engine", external = "generic_planning_checklist_only" },
-                new { feature = "reporting_financial_insight", primary = "deterministic_pulse_tools_and_private_celar_explanation", external = "disabled_by_default" }
+                new { feature = "reporting_financial_insight", primary = "private_celar_before_public_for_financial_context", external = "fixed_identity_free_governance_structure_only" }
             },
             rules = new[]
             {
                 "Module 064 remains the only approved external-provider configuration and routing boundary.",
                 "The private Celar AI endpoint is configured through private runtime settings and secret references, not through a public provider API-key form.",
                 "Raw SOW, GSD, customer, contract, architecture, employee, rate, and financial context is not eligible for direct Claude or OpenAI routing.",
-                "People/work questions use current authorized owning-module evidence and are not routed to a public provider.",
+                "People, customer, document, tool, financial, and retrieved evidence remains private; after private-target unavailability, an eligible public provider can receive only a fixed backend-owned identity-free response-structure capsule.",
                 "A safety refusal ends the request and is never bypassed by another provider.",
                 "No secret or endpoint value is returned by this readiness response."
             },
@@ -294,7 +294,13 @@ public static class CelarAiBrandModule
                 closesOrRefreshesDoNotDeleteCompletedMessages = result.Persisted,
                 openingChatAutomaticallyLoadsLatestConversation = false
             },
-            externalProviderCalled = false,
+            selectedTarget = result.ModelProvider,
+            attemptedTargets = result.AttemptedTargets ?? [],
+            skippedTargets = result.SkippedTargets ?? [],
+            targetDecisions = result.TargetDecisions ?? [],
+            externalProviderCalled = (result.AttemptedTargets ?? []).Any(target =>
+                string.Equals(target, CelarAiCapabilityTargets.Claude, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(target, CelarAiCapabilityTargets.OpenAi, StringComparison.OrdinalIgnoreCase)),
             stateChanged = result.Persisted
         };
 

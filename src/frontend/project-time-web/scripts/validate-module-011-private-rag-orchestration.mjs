@@ -222,16 +222,16 @@ assert(
 assert(
   'TIMESHEET_PRIVATE_FIRST',
   timesheet.includes('_privateRag.GenerateTimesheetAsync')
-    && timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')
-    && timesheet.includes('privateRag.Citations.Count > 0')
-    && timesheet.includes('if (usedPrivateInference)')
-    && timesheet.includes('privateRagWarning = BuildPrivateRagWarning(privateRag)')
-    && timesheet.includes('continue through')
-    && timesheet.includes('using only')
-    && timesheet.includes('the non-document prompt below')
+    && timesheet.includes('var hasReadyPrivateDocuments = grounding?.Authorized == true')
+    && timesheet.includes('_router.GenerateWithPrivateTargetAsync(')
+    && timesheet.includes('privateRag = await GeneratePrivateRagAsync(request, privateCancellationToken)')
+    && timesheet.includes('return PrivateRagTargetResult(privateRag)')
+    && timesheet.includes('if (answer is not null && UsedPrivateInference(answer))')
+    && timesheet.includes('BuildPrivateRagWarning(privateRag)')
+    && timesheet.includes('Claude/OpenAI receive only the closed fact-code')
     && timesheet.includes('no private document text was sent to Claude or OpenAI')
     && timesheet.includes('Engineer must review and explicitly apply'),
-  'Module 001 prefers successful private inference, then continues the configured route without exposing retrieved document context'
+  'Module 001 routes ready private documents through the single Celar callback, then follows governed fallback without exposing retrieved document context'
 );
 
 assert(

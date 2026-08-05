@@ -155,12 +155,12 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
     content = replaceRequired(content, anchor, after, 'flowhive_format_percent');
   }
 
-  if (!content.includes('allowSanitizedExternalFallback, setAllowSanitizedExternalFallback')) {
+  if (content.includes("const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with dependencies, risks, and assumptions.');")) {
     content = replaceRequired(
       content,
       `  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with dependencies, risks, and assumptions.');`,
-      `  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with dependencies, risks, assumptions, milestones, acceptance, operational handoff, and closeout.');\n  const [allowSanitizedExternalFallback, setAllowSanitizedExternalFallback] = useState(false);`,
-      'flowhive_external_state');
+      `  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with dependencies, risks, assumptions, milestones, acceptance, operational handoff, and closeout.');`,
+      'flowhive_requested_outcome');
   }
 
   if (!content.includes("'/api/project-flowhive/ai/production-generate'")) {
@@ -179,7 +179,7 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
         requestedOutcome,
         detailLevel: 'comprehensive',
         diagramType: 'flowchart',
-        allowSanitizedExternalFallback
+        allowSanitizedExternalFallback: true
       });
       setAiPreview(result);
       if (result.plan) setDraftPlan(result.plan);
@@ -209,7 +209,7 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
             <ol>
               <li>Celar AI is the primary private planning target.</li>
               <li>Authorized SOW, GSD, IQS, design, architecture, project, task, and assignment evidence remains private.</li>
-              <li>Claude or OpenAI may receive only a generic sanitized reasoning problem when both policy and this request allow it.</li>
+              <li>When the stored Module 064 order and both runtime privacy flags allow fallback, Claude or OpenAI automatically receives only a fixed backend-owned, identity-free planning capsule.</li>
               <li>The governed local template remains the final fallback.</li>
               <li>Every output remains a PM and Engineering review draft; no baseline, assignment, capacity reservation, or customer date is created.</li>
             </ol>
@@ -218,7 +218,7 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
             <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} rows={5} /></label>
             <label>Optional approved GSD excerpt<textarea value={gsdExcerpt} onChange={(event) => setGsdExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt. Celar AI also searches authorized indexed project documents." /></label>
             <label>Optional approved SOW excerpt<textarea value={sowExcerpt} onChange={(event) => setSowExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt. It is not sent to a public provider." /></label>
-            <label className="flowhive-ai-external-toggle"><input type="checkbox" checked={allowSanitizedExternalFallback} onChange={(event) => setAllowSanitizedExternalFallback(event.target.checked)} /><span><strong>Allow generic sanitized reasoning assistance when private evidence remains insufficient</strong><small>No project identity, customer identity, document text, people record, financial value, credential, internal endpoint, IP address, or proprietary architecture detail may leave the private boundary.</small></span></label>
+            <div className="flowhive-ai-external-toggle"><span><strong>Automatic governed fallback</strong><small>Module 064 follows the stored eligible-target order. With required private document inference, Celar AI is attempted first; a later public target receives only a fixed backend-owned, identity-free planning capsule.</small></span></div>
             <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai' ? 'Generating detailed Celar AI draft…' : 'Generate detailed Celar AI plan'}</button>
             {aiPreview ? <section className="celar-flowhive-production-result">
               <header><div><span>Celar AI Project FlowHive result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>

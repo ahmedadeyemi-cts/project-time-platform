@@ -21,6 +21,7 @@ const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanne
 const ocr = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs');
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs');
 const model = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs');
+const refusalFixtures = JSON.parse(read('tests/fixtures/celar-ai-private-model-refusal-responses.json'));
 const retrieval = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs');
 const reauthorization = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs');
 const module064 = read('src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs');
@@ -109,6 +110,64 @@ assert(
     && routing.includes('Private inference must remain required for document-grounded answers')
     && routing.includes('AuthenticationHeaderValue("Bearer"'),
   'Celar AI requires a persisted model, write-only bearer token, enabled target, and private-document enforcement'
+);
+
+const refusalFixtureNames = new Set(refusalFixtures.map((fixture) => fixture.name));
+const refusalCodes = new Set([
+  'contentfilter',
+  'contentpolicyviolation',
+  'jailbreakdetected',
+  'moderationblocked',
+  'policyviolation',
+  'responsibleaipolicyviolation',
+  'safetyrefusal',
+  'safetyviolation'
+]);
+const compactCode = (value) => String(value ?? '').slice(0, 80).toLowerCase().replace(/[^a-z0-9]/g, '');
+const fixtureHasSafeErrorCode = (fixture) => {
+  if (![400, 403, 422].includes(fixture.status)) return false;
+  const error = fixture.body?.error ?? {};
+  const inner = error.innererror ?? {};
+  return [error.code, error.type, inner.code, inner.type]
+    .some((value) => refusalCodes.has(compactCode(value)));
+};
+const fixtureHas200Refusal = (fixture) => fixture.status === 200
+  && (fixture.body?.choices ?? []).some((choice) =>
+    choice?.finish_reason?.toLowerCase() === 'content_filter'
+    || Boolean(choice?.message?.refusal)
+    || (choice?.message?.content ?? []).some((item) =>
+      item?.type?.toLowerCase() === 'refusal' || Boolean(item?.refusal)));
+const fixtureClassification = (fixture) =>
+  fixtureHas200Refusal(fixture) || fixtureHasSafeErrorCode(fixture)
+    ? 'private_model_safety_refusal'
+    : `private_model_http_${fixture.status}`;
+assert(
+  'PRIVATE_MODEL_TERMINAL_REFUSAL_CONTRACT',
+  refusalFixtures.length === 7
+    && refusalFixtureNames.has('openai-compatible-200-message-refusal')
+    && refusalFixtureNames.has('openai-compatible-200-refusal-content-item')
+    && refusalFixtureNames.has('openai-compatible-200-content-filter-finish')
+    && refusalFixtureNames.has('azure-openai-safe-refusal-error-code')
+    && refusalFixtureNames.has('openai-camel-case-content-filter-code')
+    && refusalFixtureNames.has('private-provider-camel-case-safety-violation-code')
+    && refusalFixtureNames.has('generic-provider-unavailable')
+    && refusalFixtures.filter((fixture) => fixture.expected === 'private_model_safety_refusal').length === 6
+    && refusalFixtures.every((fixture) => fixtureClassification(fixture) === fixture.expected)
+    && refusalFixtures.find((fixture) => fixture.name === 'generic-provider-unavailable')?.expected === 'private_model_http_503'
+    && model.includes('internal static class PulseAiPrivateModelResponsePolicy')
+    && model.includes('MaximumResponseBytes = 1_000_000')
+    && model.includes('HasNonEmptyProperty(message, "refusal")')
+    && model.includes('HasRefusalContentItem(message, "content")')
+    && model.includes('StringEquals(choice, "finish_reason", "content_filter")')
+    && model.includes('responsibleaipolicyviolation')
+    && model.includes('contentfilter')
+    && model.includes('safetyviolation')
+    && model.includes('status is not (400 or 403 or 422)')
+    && model.includes('SafetyRefusalDiagnostic = "private_model_safety_refusal"')
+    && routing.includes('ProjectPulseAiOutcomes.Refusal')
+    && routing.includes('return Refusal(requestId, (int)response.StatusCode)')
+    && routing.includes('celar_ai_private_http_'),
+  'bounded private-provider parsing treats only structured safety signals as terminal refusals and preserves generic HTTP unavailability'
 );
 
 assert(

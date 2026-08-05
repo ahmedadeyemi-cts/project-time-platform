@@ -126,7 +126,10 @@ public sealed record CelarAiExternalReasoningResult(
     IReadOnlyList<PulseAiRedactionEvidence> Redactions,
     IReadOnlyList<string> RemovedCategories,
     IReadOnlyList<string> BlockedReasons,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt,
+    IReadOnlyList<string>? AttemptedTargets = null,
+    IReadOnlyList<string>? SkippedTargets = null,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
 
 public sealed record CelarAiComposeResult(
     string Status,
@@ -149,7 +152,11 @@ public sealed record CelarAiComposeResult(
     string ConfidenceExplanation,
     CelarAiExternalReasoningResult? ExternalAssistance,
     DateTimeOffset DataAsOf,
-    string CorrelationId)
+    string CorrelationId,
+    string SelectedTarget = "",
+    IReadOnlyList<string>? AttemptedTargets = null,
+    IReadOnlyList<string>? SkippedTargets = null,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null)
 {
     public object ToPublicResponse() => new
     {
@@ -175,6 +182,10 @@ public sealed record CelarAiComposeResult(
         confidence = Confidence,
         confidenceExplanation = ConfidenceExplanation,
         externalAssistance = ExternalAssistance,
+        selectedTarget = SelectedTarget,
+        attemptedTargets = AttemptedTargets ?? [],
+        skippedTargets = SkippedTargets ?? [],
+        targetDecisions = TargetDecisions ?? [],
         dataAsOf = DataAsOf,
         correlationId = CorrelationId,
         privacy = new

@@ -21,6 +21,191 @@ public static class CelarAiCapabilityTargets
     public static readonly string[] DefaultOrder = [CelarAi, Claude, OpenAi, Local];
 }
 
+public sealed record CelarAiExternalCapsuleDefinition(
+    string PurposeCode,
+    string SystemPrompt,
+    string Capsule);
+
+/// <summary>
+/// Closed backend authority for every fixed public-provider capsule. Consumers
+/// can select only a purpose code; they cannot supply an external system prompt
+/// or external text through the execution context.
+/// </summary>
+public static class CelarAiExternalCapsuleCatalog
+{
+    public const string HelpTroubleshooting = "help_troubleshooting_structure";
+    public const string HelpApiInventory = "help_api_inventory_structure";
+    public const string HelpArchitecture = "help_architecture_structure";
+    public const string HelpEnhancement = "help_enhancement_structure";
+    public const string HelpFinancial = "help_financial_governance_structure";
+    public const string HelpDocuments = "help_source_review_structure";
+    public const string HelpIdentity = "help_access_structure";
+    public const string HelpRelease = "help_release_structure";
+    public const string HelpObservability = "help_observability_structure";
+    public const string HelpSecurity = "help_security_structure";
+    public const string HelpProjectDelivery = "help_project_delivery_structure";
+    public const string HelpTimesheet = "help_timesheet_structure";
+    public const string HelpProduct = "help_product_structure";
+    public const string SowScopeQuality = "sow_scope_quality_structure";
+    public const string ProjectPlanQuality = "project_plan_quality_structure";
+    public const string ProjectTimelineQuality = "project_timeline_quality_structure";
+    public const string ProjectDiagramQuality = "project_diagram_quality_structure";
+    public const string CloseoutCommunication = "closeout_communication_structure";
+    public const string TimesheetCustomerDescription = "timesheet_customer_description";
+
+    public const string TimesheetActivityReviewAnalysis = "activity_review_analysis";
+    public const string TimesheetActivityInvestigationDiagnosis = "activity_investigation_diagnosis";
+    public const string TimesheetActivityConfigurationImplementation = "activity_configuration_implementation";
+    public const string TimesheetActivityTestingValidation = "activity_testing_validation";
+    public const string TimesheetActivityDocumentationKnowledgeTransfer = "activity_documentation_knowledge_transfer";
+    public const string TimesheetActivityCoordinationSupport = "activity_coordination_support";
+    public const string TimesheetActivityMonitoringObservation = "activity_monitoring_observation";
+    public const string TimesheetActivityDesignPlanning = "activity_design_planning";
+    public const string TimesheetActivityMigrationUpgradePatching = "activity_migration_upgrade_patching";
+    public const string TimesheetActivityRemediationRepair = "activity_remediation_repair";
+    public const string TimesheetDomainNetworkConnectivity = "domain_network_connectivity";
+    public const string TimesheetDomainSecurity = "domain_security";
+    public const string TimesheetDomainIdentityAccess = "domain_identity_access";
+    public const string TimesheetDomainCloudPlatform = "domain_cloud_platform";
+    public const string TimesheetDomainComputeOs = "domain_compute_os";
+    public const string TimesheetDomainStorageBackupRecovery = "domain_storage_backup_recovery";
+    public const string TimesheetDomainApplicationApiDatabase = "domain_application_api_database";
+    public const string TimesheetDomainCollaborationMessaging = "domain_collaboration_messaging";
+    public const string TimesheetDomainVirtualizationContainer = "domain_virtualization_container";
+    public const string TimesheetDomainEndpointDevice = "domain_endpoint_device";
+    public const string TimesheetDomainServiceEventChange = "domain_service_event_change";
+    public const string TimesheetClassificationProjectTask = "classification_project_task";
+    public const string TimesheetClassificationServiceRequest = "classification_service_request";
+    public const string TimesheetClassificationNonProject = "classification_non_project";
+
+    private static readonly IReadOnlySet<string> TimesheetClassificationCodes =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            TimesheetClassificationProjectTask,
+            TimesheetClassificationServiceRequest,
+            TimesheetClassificationNonProject
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> TimesheetFactLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [TimesheetActivityReviewAnalysis] = "Activity performed: review and analysis.",
+            [TimesheetActivityInvestigationDiagnosis] = "Activity performed: investigation and diagnosis.",
+            [TimesheetActivityConfigurationImplementation] = "Activity performed: configuration or implementation.",
+            [TimesheetActivityTestingValidation] = "Activity performed: testing or validation; no successful outcome is implied.",
+            [TimesheetActivityDocumentationKnowledgeTransfer] = "Activity performed: documentation or knowledge transfer.",
+            [TimesheetActivityCoordinationSupport] = "Activity performed: coordination or technical support.",
+            [TimesheetActivityMonitoringObservation] = "Activity performed: monitoring or observation.",
+            [TimesheetActivityDesignPlanning] = "Activity performed: design or planning.",
+            [TimesheetActivityMigrationUpgradePatching] = "Activity performed: migration, upgrade, or patching work.",
+            [TimesheetActivityRemediationRepair] = "Activity performed: remediation or repair work; no successful outcome is implied.",
+            [TimesheetDomainNetworkConnectivity] = "Technical domain: network or connectivity.",
+            [TimesheetDomainSecurity] = "Technical domain: security.",
+            [TimesheetDomainIdentityAccess] = "Technical domain: identity or access.",
+            [TimesheetDomainCloudPlatform] = "Technical domain: cloud platform.",
+            [TimesheetDomainComputeOs] = "Technical domain: compute or operating systems.",
+            [TimesheetDomainStorageBackupRecovery] = "Technical domain: storage, backup, or recovery.",
+            [TimesheetDomainApplicationApiDatabase] = "Technical domain: application, API, or database.",
+            [TimesheetDomainCollaborationMessaging] = "Technical domain: collaboration or messaging.",
+            [TimesheetDomainVirtualizationContainer] = "Technical domain: virtualization or containers.",
+            [TimesheetDomainEndpointDevice] = "Technical domain: endpoint or device.",
+            [TimesheetDomainServiceEventChange] = "Technical domain: service request, event, or change governance.",
+            [TimesheetClassificationProjectTask] = "Generic work classification: project task.",
+            [TimesheetClassificationServiceRequest] = "Generic work classification: service request.",
+            [TimesheetClassificationNonProject] = "Generic work classification: non-project work."
+        };
+
+    private const string GenericSystemPrompt = """
+        You provide optional generic response-structure guidance to a private enterprise assistant.
+        Use only the fixed identity-free purpose capsule. Never request, infer, or invent a person,
+        organization, customer, project, record, module, route, endpoint, hostname, address, date,
+        location, source content, proprietary fact, financial value, credential, or completed action.
+        Return complete professional sentences in plain text. Do not claim to answer a specific user's
+        question and do not mention omitted or redacted context.
+        """;
+
+    public static bool TryResolve(string? purposeCode, out CelarAiExternalCapsuleDefinition definition) =>
+        TryResolve(purposeCode, [], out definition);
+
+    public static bool TryResolve(
+        string? purposeCode,
+        IReadOnlyList<string>? factCodes,
+        out CelarAiExternalCapsuleDefinition definition)
+    {
+        var code = purposeCode?.Trim() ?? string.Empty;
+        if (string.Equals(code, TimesheetCustomerDescription, StringComparison.Ordinal))
+        {
+            return TryResolveTimesheetCustomerDescription(factCodes, out definition);
+        }
+        var capsule = code switch
+        {
+            HelpTroubleshooting => "Provide a generic enterprise-application troubleshooting response structure that separates symptoms, known facts, evidence gaps, safe diagnostic steps, likely cause categories, risk, escalation, and verification. Do not include or infer any organization, person, system, project, record, endpoint, host, date, or incident detail.",
+            HelpApiInventory => "Provide a generic explanation structure for presenting an authorized application programming interface inventory, including ownership, method and route categories, authorization boundaries, safe-read verification, release evidence, limitations, and next steps. Do not invent any route, module, identifier, system, organization, or runtime fact.",
+            HelpArchitecture => "Provide a generic enterprise-application architecture explanation structure covering layers, ownership, trust boundaries, dependencies, data flow, availability, security, operations, evidence gaps, risks, and review steps. Do not include or infer any proprietary system, organization, person, project, endpoint, host, or deployment detail.",
+            HelpEnhancement => "Provide a generic future-enhancement review structure covering current-state evidence, ownership, architecture, interfaces, data changes, security, operations, delivery phases, testing, rollout, rollback, risks, dependencies, and acceptance criteria. Do not infer any organization, person, project, system, record, or completed action.",
+            HelpFinancial => "Provide a generic governance structure for explaining authorized financial and reporting information, including source authority, calculation ownership, freshness, missing or unauthorized values, validation, risks, and next actions. Do not include, estimate, or infer any organization, person, project, account, currency value, rate, date, or financial result.",
+            HelpDocuments => "Provide a generic source-grounded answer review structure covering authorization, source versions, citation support, conflicts, missing evidence, confidence, limitations, privacy boundaries, and human verification. Do not include, reconstruct, or infer any source content, organization, person, project, agreement, identifier, date, or record detail.",
+            HelpIdentity => "Provide a generic access-and-permissions troubleshooting structure covering effective identity, role and permission evidence, owning-system authorization, least privilege, denial reasons, auditability, safe verification, and escalation. Do not include or infer any person, organization, account, role assignment, identifier, or access decision.",
+            HelpRelease => "Provide a generic release and deployment explanation structure covering exact-version evidence, validation gates, environment controls, health verification, rollback readiness, risks, and next actions. Do not include or infer any organization, system, repository, environment, identifier, date, or deployment state.",
+            HelpObservability => "Provide a generic application-observability response structure covering service health, signals, objectives, alerts, dependencies, freshness, evidence gaps, safe diagnostics, risk, escalation, and verification. Do not include or infer any organization, person, system, service, endpoint, host, identifier, date, incident, or measured value.",
+            HelpSecurity => "Provide a generic application-security response structure covering authorization, data boundaries, secrets, logging, audit evidence, threat categories, safe validation, risk, escalation, and remediation review. Do not include or infer any organization, person, account, system, vulnerability, credential, identifier, host, date, or incident detail.",
+            HelpProjectDelivery => "Provide a generic project-delivery explanation structure covering scope authority, status evidence, dependencies, risks, responsibilities, decisions, validation, handoff, and next actions. Do not include or infer any organization, person, customer, project, identifier, date, location, source content, or commitment.",
+            HelpTimesheet => "Provide a generic time-entry and approval help structure covering prerequisites, work classification, accurate sentence-form descriptions, review, submission, approval boundaries, corrections, audit evidence, common issues, and verification. Do not include or infer any organization, person, customer, project, task, record, identifier, work date, hours, location, or activity detail.",
+            HelpProduct => "Provide a generic enterprise-application help response structure that gives a direct explanation, prerequisites, safe navigation steps, expected results, permission boundaries, common issues, verification, limitations, and next actions. Do not include or infer any organization, person, customer, system, module, project, record, identifier, date, location, or source detail.",
+            SowScopeQuality => "Provide a generic professional-services scope-quality checklist covering objectives, boundaries, exclusions, deliverables, responsibilities, assumptions, dependencies, acceptance criteria, milestones, risks, change control, and review gates. Do not use or infer any source content.",
+            ProjectTimelineQuality => "Provide generic sequencing guidance for a complex professional-services implementation using discovery, design validation, prerequisites, implementation, testing, acceptance, operational handoff, and closeout. Do not provide customer-specific dates.",
+            ProjectDiagramQuality => "Provide generic systems-engineering diagram guidance for showing project inputs, governance, discovery, design, implementation, validation, acceptance, operational handoff, dependencies, risks, and review gates.",
+            ProjectPlanQuality => "Provide a generic professional-services project-planning checklist covering work-breakdown quality, dependencies, milestones, roles, assumptions, risks, acceptance, handoff, and human review.",
+            CloseoutCommunication => "Provide a generic project-closeout communication structure and professional tone checklist covering verified completion, evidence, handoff, outstanding items, owners, risks, next actions, review, and approval. Do not include or infer any customer, project, person, recipient, date, location, financial, source, or commitment detail.",
+            _ => string.Empty
+        };
+        if (capsule.Length == 0)
+        {
+            definition = new CelarAiExternalCapsuleDefinition(string.Empty, string.Empty, string.Empty);
+            return false;
+        }
+        definition = new CelarAiExternalCapsuleDefinition(code, GenericSystemPrompt, capsule);
+        return true;
+    }
+
+    private static bool TryResolveTimesheetCustomerDescription(
+        IReadOnlyList<string>? factCodes,
+        out CelarAiExternalCapsuleDefinition definition)
+    {
+        var supplied = factCodes?.ToArray() ?? [];
+        var classificationCount = supplied.Count(TimesheetClassificationCodes.Contains);
+        var activityOrDomainCount = supplied.Length - classificationCount;
+        if (supplied.Length == 0
+            || supplied.Length > 12
+            || classificationCount != 1
+            || activityOrDomainCount == 0
+            || supplied.Any(code => string.IsNullOrWhiteSpace(code)
+                || !string.Equals(code, code.Trim(), StringComparison.Ordinal)
+                || !TimesheetFactLabels.ContainsKey(code))
+            || supplied.Distinct(StringComparer.Ordinal).Count() != supplied.Length)
+        {
+            definition = new CelarAiExternalCapsuleDefinition(string.Empty, string.Empty, string.Empty);
+            return false;
+        }
+
+        var labels = supplied.Select(code => TimesheetFactLabels[code]).ToArray();
+        var capsule = $"""
+            Create a customer-ready time-entry description using only these approved identity-free facts:
+            {string.Join("\n", labels.Select(label => $"- {label}"))}
+            Write two to four detailed, complete, professional past-tense sentences. Do not identify or
+            infer any person, role, organization, customer, project, task, record, system, product, location,
+            date, duration, identifier, source, document, or confidential detail. Do not claim completion,
+            success, resolution, approval, delivery, customer acceptance, or a measured outcome. Do not add
+            any activity or technical domain that is not explicitly listed above.
+            """;
+        definition = new CelarAiExternalCapsuleDefinition(
+            TimesheetCustomerDescription,
+            GenericSystemPrompt,
+            capsule);
+        return true;
+    }
+}
+
 public sealed record CelarAiCapabilityDefinition(
     string FeatureCode,
     string DisplayName,
@@ -310,7 +495,10 @@ public sealed record CelarAiCapabilityExecutionContext(
     string CorrelationId,
     IReadOnlyList<string>? IdentityTerms = null,
     bool PurposeBuiltDeidentifiedInput = false,
-    bool DeidentifiedFactsAvailable = false);
+    bool DeidentifiedFactsAvailable = false,
+    string? ExternalCapsulePurpose = null,
+    bool PrivateTargetAllowed = true,
+    IReadOnlyList<string>? ExternalFactCodes = null);
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
 
@@ -1128,6 +1316,11 @@ public sealed class CelarAiPrivateGenerationTarget
                 ? values.FirstOrDefault()
                 : null;
             if (!response.IsSuccessStatusCode)
+            {
+                if (await PulseAiPrivateModelResponsePolicy.IsSafetyRefusalErrorAsync(
+                        response,
+                        cancellationToken))
+                    return Refusal(requestId, (int)response.StatusCode);
                 return new ProjectPulseAiProviderResult(
                     CelarAiCapabilityTargets.CelarAi,
                     ProjectPulseAiOutcomes.Unavailable,
@@ -1137,8 +1330,12 @@ public sealed class CelarAiPrivateGenerationTarget
                     requestId,
                     null,
                     (int)response.StatusCode);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            }
+            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
+                response.Content,
+                cancellationToken);
+            if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(json.RootElement))
+                return Refusal(requestId, (int)response.StatusCode);
             var content = ReadContent(json.RootElement).Trim();
             if (content.Length == 0)
                 return Unavailable("celar_ai_private_empty_response", requestId, (int)response.StatusCode);
@@ -1218,6 +1415,18 @@ public sealed class CelarAiPrivateGenerationTarget
             requestId,
             null,
             status);
+
+    private static ProjectPulseAiProviderResult Refusal(
+        string? requestId,
+        int? status) => new(
+            CelarAiCapabilityTargets.CelarAi,
+            ProjectPulseAiOutcomes.Refusal,
+            null,
+            PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic,
+            "The private Celar AI model declined this request under its safety controls.",
+            requestId,
+            null,
+            status);
 }
 
 public sealed record CelarAiConsumerAssuranceSnapshot(
@@ -1247,7 +1456,7 @@ public sealed class CelarAiConsumerAssuranceRegistry
         (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "011/066", "CelarAiEnterprisePlatformService"),
         (CelarAiCapabilityCatalog.ProjectForgePlanEstimate, "011/033", "CelarAiEnterprisePlatformService"),
         (CelarAiCapabilityCatalog.CloseoutCommunication, "011/040/055C", "CelarAiCapabilityRoutingModule"),
-        (CelarAiCapabilityCatalog.HelpAssistant, "011/999", "CelarAiBrandModule")
+        (CelarAiCapabilityCatalog.HelpAssistant, "011/999", "PulseAiSystemIntelligenceService via CelarAiBrandModule")
     ];
 
     public void Record(string feature, string target, string outcome, string correlationId)
@@ -1350,7 +1559,13 @@ public sealed class CelarAiCapabilityRouter
         CelarAiCapabilityExecutionContext execution,
         Func<string> localFallback,
         CancellationToken cancellationToken = default) =>
-        GenerateInternalAsync(request, execution, localFallback, skipPrivateTarget: false, cancellationToken);
+        GenerateInternalAsync(
+            request,
+            execution,
+            localFallback,
+            skipPrivateTarget: false,
+            privateTargetOverride: null,
+            cancellationToken);
 
     public Task<ProjectPulseAiRouteResult> GenerateAsync(
         ProjectPulseAiGenerationRequest request,
@@ -1358,7 +1573,36 @@ public sealed class CelarAiCapabilityRouter
         Func<string> localFallback,
         bool skipPrivateTarget,
         CancellationToken cancellationToken = default) =>
-        GenerateInternalAsync(request, execution, localFallback, skipPrivateTarget, cancellationToken);
+        GenerateInternalAsync(
+            request,
+            execution,
+            localFallback,
+            skipPrivateTarget,
+            privateTargetOverride: null,
+            cancellationToken);
+
+    /// <summary>
+    /// Runs the persisted capability order while allowing a consumer-owned,
+    /// private-boundary operation (for example document RAG) to implement the
+    /// Celar target. Claude and OpenAI still execute only through this router and
+    /// receive only the separately attested server-owned external capsule.
+    /// </summary>
+    public Task<ProjectPulseAiRouteResult> GenerateWithPrivateTargetAsync(
+        ProjectPulseAiGenerationRequest privateRequest,
+        CelarAiCapabilityExecutionContext execution,
+        Func<CancellationToken, Task<ProjectPulseAiProviderResult>> privateTarget,
+        Func<string> localFallback,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(privateTarget);
+        return GenerateInternalAsync(
+            privateRequest,
+            execution,
+            localFallback,
+            skipPrivateTarget: false,
+            privateTargetOverride: privateTarget,
+            cancellationToken);
+    }
 
     public async Task<bool> IsFirstTargetAsync(
         string feature,
@@ -1473,9 +1717,10 @@ public sealed class CelarAiCapabilityRouter
             MaxOutputTokens: 240,
             Temperature: 0.0);
 
-        var safeCorrelationId = string.IsNullOrWhiteSpace(correlationId)
-            ? Guid.NewGuid().ToString("N")
-            : correlationId;
+        // The caller correlation remains part of the public probe contract for
+        // operational tracing, but an administrator readiness probe is not a
+        // consumer inference and must not change consumer-assurance state.
+        _ = correlationId;
         var targets = new List<CelarAiExternalFallbackProbeTargetResult>(2);
         foreach (var target in new[]
                  {
@@ -1487,7 +1732,6 @@ public sealed class CelarAiCapabilityRouter
             targets.Add(await ProbeSanitizedExternalTargetAsync(
                 target,
                 request,
-                safeCorrelationId,
                 cancellationToken));
         }
 
@@ -1507,7 +1751,6 @@ public sealed class CelarAiCapabilityRouter
     private async Task<CelarAiExternalFallbackProbeTargetResult> ProbeSanitizedExternalTargetAsync(
         string target,
         ProjectPulseAiGenerationRequest request,
-        string correlationId,
         CancellationToken cancellationToken)
     {
         if (!_providers.TryGetValue(target, out var provider))
@@ -1542,11 +1785,6 @@ public sealed class CelarAiCapabilityRouter
                 "The sanitized production generation probe failed.",
                 null,
                 null));
-            _assurance.Record(
-                CelarAiCapabilityCatalog.TimesheetNonProject,
-                target,
-                ProjectPulseAiOutcomes.Unavailable,
-                correlationId);
             return ProbeTarget(
                 target,
                 true,
@@ -1569,11 +1807,6 @@ public sealed class CelarAiCapabilityRouter
                     "The sanitized production generation output did not pass privacy validation.",
                     result.HttpStatusCode,
                     result.RequestId));
-                _assurance.Record(
-                    CelarAiCapabilityCatalog.TimesheetNonProject,
-                    target,
-                    ProjectPulseAiOutcomes.Unavailable,
-                    correlationId);
                 return ProbeTarget(
                     target,
                     true,
@@ -1592,11 +1825,6 @@ public sealed class CelarAiCapabilityRouter
                 "The sanitized production generation and output privacy validation succeeded.",
                 result.HttpStatusCode,
                 result.RequestId));
-            _assurance.Record(
-                CelarAiCapabilityCatalog.TimesheetNonProject,
-                target,
-                ProjectPulseAiOutcomes.Success,
-                correlationId);
             return ProbeTarget(
                 target,
                 true,
@@ -1617,11 +1845,6 @@ public sealed class CelarAiCapabilityRouter
                 "The provider refused the fixed sanitized production probe.",
                 result.HttpStatusCode,
                 result.RequestId));
-            _assurance.Record(
-                CelarAiCapabilityCatalog.TimesheetNonProject,
-                target,
-                ProjectPulseAiOutcomes.Refusal,
-                correlationId);
             return ProbeTarget(
                 target,
                 true,
@@ -1643,11 +1866,6 @@ public sealed class CelarAiCapabilityRouter
             "The sanitized production generation probe did not complete.",
             result.HttpStatusCode,
             result.RequestId));
-        _assurance.Record(
-            CelarAiCapabilityCatalog.TimesheetNonProject,
-            target,
-            ProjectPulseAiOutcomes.Unavailable,
-            correlationId);
         return ProbeTarget(
             target,
             true,
@@ -1703,27 +1921,69 @@ public sealed class CelarAiCapabilityRouter
         CelarAiCapabilityExecutionContext execution,
         Func<string> localFallback,
         CancellationToken cancellationToken = default) =>
-        GenerateInternalAsync(request, execution, localFallback, skipPrivateTarget: true, cancellationToken);
+        GenerateInternalAsync(
+            request,
+            execution,
+            localFallback,
+            skipPrivateTarget: true,
+            privateTargetOverride: null,
+            cancellationToken);
 
     private async Task<ProjectPulseAiRouteResult> GenerateInternalAsync(
         ProjectPulseAiGenerationRequest request,
         CelarAiCapabilityExecutionContext execution,
         Func<string> localFallback,
         bool skipPrivateTarget,
+        Func<CancellationToken, Task<ProjectPulseAiProviderResult>>? privateTargetOverride,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(localFallback);
         var feature = CelarAiCapabilityCatalog.NormalizeFeature(request.Feature);
         var route = await _store.LoadRouteAsync(feature, cancellationToken);
+        var privatePolicyProfile = execution.ContainsPrivateDocuments
+            ? await _store.LoadPrivateModelProfileAsync(cancellationToken)
+            : null;
+        var requirePrivateTargetBeforeExternal = (execution.ContainsPrivateDocuments
+                && privatePolicyProfile?.RequirePrivateModelForDocuments == true)
+            || execution.ContainsPeopleRecords
+            || execution.ContainsFinancialValues;
+        var privateDocumentTargetMandatory = execution.ContainsPrivateDocuments
+            && privatePolicyProfile?.RequirePrivateModelForDocuments == true;
+        var orderedTargets = requirePrivateTargetBeforeExternal
+            && route.Targets.Contains(CelarAiCapabilityTargets.CelarAi, StringComparer.OrdinalIgnoreCase)
+            ? new[] { CelarAiCapabilityTargets.CelarAi }
+                .Concat(route.Targets.Where(target => !string.Equals(
+                    target,
+                    CelarAiCapabilityTargets.CelarAi,
+                    StringComparison.OrdinalIgnoreCase)))
+                .ToArray()
+            : route.Targets;
         var attempted = new List<string>();
         var skipped = new List<string>();
         var failed = new List<string>();
         var decisions = new List<ProjectPulseAiTargetDecision>();
+        if (requirePrivateTargetBeforeExternal)
+        {
+            foreach (var deferredTarget in route.Targets.TakeWhile(target => !string.Equals(
+                         target,
+                         CelarAiCapabilityTargets.CelarAi,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                decisions.Add(new(
+                    deferredTarget,
+                    "deferred",
+                    privateDocumentTargetMandatory
+                        ? "private_document_private_target_mandatory"
+                        : "restricted_context_private_target_mandatory"));
+            }
+        }
 
-        foreach (var target in route.Targets)
+        foreach (var target in orderedTargets)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (skipPrivateTarget && target == CelarAiCapabilityTargets.CelarAi)
+            if (skipPrivateTarget
+                && !requirePrivateTargetBeforeExternal
+                && target == CelarAiCapabilityTargets.CelarAi)
             {
                 skipped.Add(target);
                 decisions.Add(new(target, "skipped", "private_target_skipped_by_caller"));
@@ -1751,10 +2011,80 @@ public sealed class CelarAiCapabilityRouter
 
             if (target == CelarAiCapabilityTargets.CelarAi)
             {
+                var mandatoryConsumerPrivateTarget = privateTargetOverride is not null
+                    && requirePrivateTargetBeforeExternal;
+                if (!execution.PrivateTargetAllowed && !mandatoryConsumerPrivateTarget)
+                {
+                    skipped.Add(target);
+                    decisions.Add(new(target, "skipped", "private_synthesis_disabled_by_feature"));
+                    continue;
+                }
                 attempted.Add(target);
-                var profile = await _store.LoadPrivateModelProfileAsync(cancellationToken);
-                var result = await _privateTarget.GenerateAsync(request with { Feature = feature }, profile, cancellationToken);
-                if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
+                ProjectPulseAiProviderResult privateResult;
+                try
+                {
+                    if (privateTargetOverride is not null)
+                    {
+                        privateResult = await privateTargetOverride(cancellationToken);
+                    }
+                    else
+                    {
+                        var profile = privatePolicyProfile
+                            ?? await _store.LoadPrivateModelProfileAsync(cancellationToken);
+                        privateResult = await _privateTarget.GenerateAsync(
+                            request with { Feature = feature },
+                            profile,
+                            cancellationToken);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "The consumer-owned private Celar target failed without exposing prompt, source, endpoint, or secret content. Feature={Feature}",
+                        feature);
+                    privateResult = new ProjectPulseAiProviderResult(
+                        CelarAiCapabilityTargets.CelarAi,
+                        ProjectPulseAiOutcomes.Unavailable,
+                        null,
+                        "consumer_private_target_failure",
+                        "The private Celar AI target is unavailable.",
+                        null,
+                        null,
+                        null);
+                }
+                if (privateResult.IsRefusal)
+                {
+                    _health.RecordRefusal(
+                        CelarAiCapabilityTargets.CelarAi,
+                        privateResult.Usage,
+                        privateResult.RequestId,
+                        privateResult.RateLimits);
+                    _assurance.Record(
+                        feature,
+                        CelarAiCapabilityTargets.CelarAi,
+                        ProjectPulseAiOutcomes.Refusal,
+                        execution.CorrelationId);
+                    decisions.Add(new(
+                        target,
+                        "refused",
+                        DecisionCode(privateResult.Code, "provider_safety_refusal")));
+                    return new ProjectPulseAiRouteResult(
+                        string.Empty,
+                        target,
+                        ProjectPulseAiOutcomes.Refusal,
+                        "Celar AI declined this request under its safety controls. No later target was attempted.",
+                        attempted,
+                        skipped,
+                        privateResult.Usage,
+                        privateResult.RequestId,
+                        decisions);
+                }
+                if (privateResult.IsSuccess && !string.IsNullOrWhiteSpace(privateResult.Content))
                 {
                     RecordAlreadyExecutedPrivateAttempt(
                         feature,
@@ -1763,23 +2093,22 @@ public sealed class CelarAiCapabilityRouter
                         diagnosticCode: "generation_succeeded");
                     decisions.Add(new(target, "used", "generation_succeeded"));
                     return new ProjectPulseAiRouteResult(
-                        result.Content,
+                        privateResult.Content,
                         target,
-                        result.Outcome,
+                        privateResult.Outcome,
                         failed.Count > 0 || skipped.Count > 0 ? "Celar AI completed after another target was skipped." : null,
                         attempted,
                         skipped,
-                        result.Usage,
-                        result.RequestId,
+                        privateResult.Usage,
+                        privateResult.RequestId,
                         decisions);
                 }
                 failed.Add(target);
-                var privateFailureCode = DecisionCode(result.Code, "private_model_unavailable");
-                RecordAlreadyExecutedPrivateAttempt(
-                    feature,
-                    execution.CorrelationId,
-                    succeeded: false,
-                    diagnosticCode: privateFailureCode);
+                var privateFailureCode = DecisionCode(privateResult.Code, "private_model_unavailable");
+                _health.RecordFailure(
+                    CelarAiCapabilityTargets.CelarAi,
+                    privateFailureCode,
+                    privateResult.RequestId);
                 decisions.Add(new(target, "failed", privateFailureCode));
                 continue;
             }
@@ -1909,9 +2238,23 @@ public sealed class CelarAiCapabilityRouter
         out string decisionCode)
     {
         decisionCode = "sanitized_external_request_blocked";
-        if (!execution.AllowSanitizedExternalAssistance)
+        var fixedCapsuleReady = CelarAiExternalCapsuleCatalog.TryResolve(
+            execution.ExternalCapsulePurpose,
+            execution.ExternalFactCodes,
+            out var fixedCapsule);
+        if (!fixedCapsuleReady)
         {
-            decisionCode = "restricted_external_assistance_not_allowed";
+            decisionCode = "sanitized_external_closed_purpose_required";
+            return null;
+        }
+        // Resolving the closed purpose (and, where applicable, exact fact codes)
+        // is the server-side attestation. Legacy booleans cannot authorize,
+        // disable, or alter a router-owned capsule.
+        const bool isolatedServerOwnedCapsule = true;
+        if (!RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION")
+            || !RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"))
+        {
+            decisionCode = "sanitized_external_policy_disabled";
             return null;
         }
 
@@ -1919,32 +2262,21 @@ public sealed class CelarAiCapabilityRouter
         // values are never passed to a public provider and are not made eligible
         // merely by running regex replacement. Consumers must instead construct a
         // purpose-built non-document capsule inside the private boundary.
-        if (execution.ContainsPrivateDocuments)
+        if (execution.ContainsPrivateDocuments && !isolatedServerOwnedCapsule)
         {
             decisionCode = "private_document_context_external_blocked";
             return null;
         }
-        if (execution.ContainsPeopleRecords)
+        if (execution.ContainsPeopleRecords && !isolatedServerOwnedCapsule)
         {
             decisionCode = "people_record_context_external_blocked";
             return null;
         }
-        if (execution.ContainsFinancialValues)
+        if (execution.ContainsFinancialValues && !isolatedServerOwnedCapsule)
         {
             decisionCode = "financial_context_external_blocked";
             return null;
         }
-        if (!execution.PurposeBuiltDeidentifiedInput)
-        {
-            decisionCode = "sanitized_external_purpose_built_capsule_required";
-            return null;
-        }
-        if (!execution.DeidentifiedFactsAvailable)
-        {
-            decisionCode = "sanitized_external_context_empty";
-            return null;
-        }
-
         var sensitiveTerms = NormalizeSensitiveTerms(
             execution.SensitiveTerms.Concat(execution.IdentityTerms ?? []),
             out var sensitiveTermInventoryValid);
@@ -1970,7 +2302,7 @@ public sealed class CelarAiCapabilityRouter
 
         var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
             Purpose: $"module064_{execution.Feature}",
-            Content: request.UserPrompt,
+            Content: fixedCapsule.Capsule,
             Classification: "internal_generic",
             SensitiveTerms: sensitiveTerms.ToArray(),
             AcknowledgePreviewOnly: true));
@@ -1985,14 +2317,7 @@ public sealed class CelarAiCapabilityRouter
         return request with
         {
             Feature = CelarAiCapabilityCatalog.NormalizeFeature(request.Feature),
-            SystemPrompt = $"""
-                You are an optional generic reasoning target used by Celar AI through Module 064.
-                The request has been sanitized. Do not request or invent customer names, project identifiers,
-                employee identities, internal documents, financial values, credentials, hostnames, IP addresses,
-                or proprietary system facts. Do not claim that work was completed, approved, sent, published,
-                baselined, assigned, committed, or deployed. Treat every [REDACTED_*] marker as omitted data:
-                do not repeat, reconstruct, or call attention to it. Return only the requested reviewable content.
-                """,
+            SystemPrompt = fixedCapsule.SystemPrompt,
             UserPrompt = sanitized.SanitizedCapsule
         };
     }

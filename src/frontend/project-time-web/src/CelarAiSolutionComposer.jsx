@@ -226,7 +226,7 @@ function ExternalAssistance({ assistance }) {
 function escapeXml(value) { return String(value ?? '').replace(/[<>&"']/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[character])); }
 
 export default function CelarAiSolutionComposer() {
-  const [form, setForm] = useState({ mode: 'project_plan', projectCode: '', projectName: '', startDate: '', requestedOutcome: '', diagramType: 'flowchart', workDate: '', timeType: 'normal', rowType: 'project', rowLabel: '', taskCode: '', taskName: '', categoryCode: '', engineerNote: '', allowSanitizedExternalFallback: false });
+  const [form, setForm] = useState({ mode: 'project_plan', projectCode: '', projectName: '', startDate: '', requestedOutcome: '', diagramType: 'flowchart', workDate: '', timeType: 'normal', rowType: 'project', rowLabel: '', taskCode: '', taskName: '', categoryCode: '', engineerNote: '' });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -240,7 +240,9 @@ export default function CelarAiSolutionComposer() {
         ...form,
         startDate: form.startDate || null,
         workDate: form.workDate || null,
-        detailLevel: 'comprehensive'
+        detailLevel: 'comprehensive',
+        // Compatibility only. Module 064 owns target eligibility, privacy, and fallback decisions.
+        allowSanitizedExternalFallback: true
       });
       setResult(payload.result);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Celar AI could not compose this draft.'); }
@@ -269,7 +271,7 @@ export default function CelarAiSolutionComposer() {
             <>
               <div className="celar-ai-composer-field-grid"><label>Proposed start date<input type="date" value={form.startDate} onChange={(event) => set('startDate', event.target.value)} /></label><label>Diagram type<select value={form.diagramType} onChange={(event) => set('diagramType', event.target.value)}><option value="flowchart">Flowchart</option><option value="timeline">Timeline</option><option value="dependency">Dependency</option><option value="swimlane">Swimlane</option></select></label></div>
               <label>Requested outcome and PM instructions<textarea value={form.requestedOutcome} onChange={(event) => set('requestedOutcome', event.target.value)} rows={5} placeholder="Describe the outcome, planning horizon, assumptions to test, or questions the PM and Engineering team need the draft to address." /></label>
-              <label className="celar-ai-external-checkbox"><input type="checkbox" checked={form.allowSanitizedExternalFallback} onChange={(event) => set('allowSanitizedExternalFallback', event.target.checked)} /><span><strong>Allow generic sanitized fallback when private evidence is insufficient</strong><small>No document text, customer/project identity, people records, financial values, credentials, or internal architecture details may leave the private boundary. Runtime policy must also allow it.</small></span></label>
+              <aside className="celar-ai-external-checkbox" aria-label="Automatic AI fallback policy"><span><strong>Fallback is automatic and governed by Module 064</strong><small>The backend follows the stored priority among eligible targets; there is nothing for the Engineer to enable. When Require private inference for document-grounded answers is on, document-grounded requests force private Celar AI first. If private inference fails, Claude and OpenAI keep their stored relative order and receive only fixed, backend-owned, identity-free capsules. Governed local remains the final fallback.</small></span></aside>
             </>
           )}
           <div className="celar-ai-composer-submit"><div><strong>{selectedMode[1]}</strong><span>{selectedMode[2]}</span></div><button type="submit" disabled={loading || (!form.projectCode.trim() && !form.projectName.trim())}>{loading ? 'Composing privately…' : 'Generate review draft'}</button></div>

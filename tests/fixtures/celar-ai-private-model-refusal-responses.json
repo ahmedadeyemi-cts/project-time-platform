@@ -1,0 +1,96 @@
+[
+  {
+    "name": "openai-compatible-200-message-refusal",
+    "status": 200,
+    "body": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": "Refused by the provider safety policy."
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "openai-compatible-200-refusal-content-item",
+    "status": 200,
+    "body": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "refusal",
+                "refusal": "Refused by the provider safety policy."
+              }
+            ]
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "openai-compatible-200-content-filter-finish",
+    "status": 200,
+    "body": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": ""
+          },
+          "finish_reason": "content_filter"
+        }
+      ]
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "azure-openai-safe-refusal-error-code",
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "ResponsibleAIPolicyViolation"
+      }
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "openai-camel-case-content-filter-code",
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "ContentFilter"
+      }
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "private-provider-camel-case-safety-violation-code",
+    "status": 422,
+    "body": {
+      "error": {
+        "code": "SafetyViolation"
+      }
+    },
+    "expected": "private_model_safety_refusal"
+  },
+  {
+    "name": "generic-provider-unavailable",
+    "status": 503,
+    "body": {
+      "error": {
+        "code": "service_unavailable"
+      }
+    },
+    "expected": "private_model_http_503"
+  }
+]

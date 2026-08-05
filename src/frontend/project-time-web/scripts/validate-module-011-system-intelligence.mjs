@@ -289,17 +289,20 @@ assert(
 );
 
 assert(
-  'PRIVATE_MODEL_OPTIONAL_AND_DETERMINISTIC_FALLBACK',
+  'CENTRAL_ROUTE_WITH_PRIVATE_AND_DETERMINISTIC_GROUNDING',
   includesAll(source.service, [
     'BuildDeterministicAnswer',
-    '_privateModel.GenerateAsync',
-    'The approved private model did not complete',
-    'Pulse AI returned the deterministic source-grounded system answer instead'
+    '_router.GenerateWithPrivateTargetAsync',
+    '_router.GenerateAsync',
+    'TryResolveHelpCapsulePurpose',
+    'PrivateTargetAllowed: privateRagRequested',
+    'externalAssistance = Limit(',
+    "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context"
   ])
     && !/(?:api\.openai\.com|api\.anthropic\.com|ANTHROPIC_API_KEY|OPENAI_API_KEY)/i.test(
       [source.contracts, source.knowledge, source.apiCatalog, source.executor, source.repository, source.service, source.module].join('\n')
     ),
-  'private model improves synthesis while deterministic live evidence remains available and no public model endpoint is added'
+  'Module 064 ordering governs Help while document RAG remains private, deterministic live evidence remains available, and public provider endpoints are not embedded in the consumer'
 );
 
 assert(

@@ -21,8 +21,6 @@ const timesheetResolver = readBackend('Ai', 'ProjectPulseAiTimesheetContextResol
 const serviceRegistration = readBackend('Ai', 'ProjectPulseAiServiceCollectionExtensions.cs');
 const timesheetSuggestion = readBackend('ProjectPulseAiTimeEntrySuggestionService.cs');
 const capabilityRouting = readBackend('Ai', 'CelarAiCapabilityRouting.cs');
-const legacyRouter = readBackend('Ai', 'ProjectPulseAiRouter.cs');
-const providerHealth = readBackend('Ai', 'ProjectPulseAiHealthRegistry.cs');
 const providerContracts = readBackend('Ai', 'ProjectPulseAiContracts.cs');
 const privateRagContracts = readBackend('Ai', 'PulseAiPrivateRagContracts.cs');
 const privateRagService = readBackend('Ai', 'PulseAiPrivateRagService.cs');
@@ -86,10 +84,10 @@ const timesheetFeatureResolver = section(
   'public static string ResolveTimesheetFeature(',
   'public static IReadOnlyList<string> ValidateTargets('
 );
-const remotePrompt = section(
+const privatePrompt = section(
   timesheetSuggestion,
-  'private static string BuildRemotePromptWithoutPrivateDocuments(',
-  '\n}'
+  'private static string BuildPrivatePrompt(',
+  'private static (string Code, Regex Pattern) Signal('
 );
 const privateTimesheetContract = section(
   privateRagContracts,
@@ -101,15 +99,25 @@ const groundingInputContract = section(
   'public sealed record PulseAiTimesheetGroundingInput(',
   'public sealed record PulseAiFlowHiveGroundingInput('
 );
-const privateAttemptRecorder = section(
+const timesheetFactCatalog = section(
   capabilityRouting,
-  'public void RecordAlreadyExecutedPrivateAttempt(',
-  'public Task<ProjectPulseAiRouteResult> GenerateExternalAsync('
+  'private static bool TryResolveTimesheetCustomerDescription(',
+  'public sealed record CelarAiCapabilityDefinition('
 );
-const targetDecisionMerge = section(
+const centralRoute = section(
+  capabilityRouting,
+  'private async Task<ProjectPulseAiRouteResult> GenerateInternalAsync(',
+  'private ProjectPulseAiGenerationRequest? PrepareExternalRequest('
+);
+const externalPreparation = section(
+  capabilityRouting,
+  'private ProjectPulseAiGenerationRequest? PrepareExternalRequest(',
+  'private static string BuildFallbackWarning('
+);
+const privateTargetAdapter = section(
   timesheetSuggestion,
-  'private static IReadOnlyList<ProjectPulseAiTargetDecision>? MergeTargetDecisions(',
-  'private static string BuildLocalSuggestion('
+  'private static ProjectPulseAiProviderResult PrivateRagTargetResult(',
+  'private static bool HasProjectIdentity('
 );
 
 // The engineer selects a visible row; canonical identifiers travel invisibly with that row.
@@ -372,83 +380,77 @@ check(
   'MODULE001_AI_CONFIGURED_ROUTE_AUTHORITY',
   containsAll(timesheetSuggestion, [
     'var capability = CelarAiCapabilityCatalog.ResolveTimesheetFeature(',
-    'var privateTargetFirst = await _router.IsFirstTargetAsync(',
-    'var privateRag = privateTargetFirst',
-    'var grounding = privateTargetFirst',
+    'var grounding = HasProjectIdentity(request)',
+    'var hasReadyPrivateDocuments = grounding?.Authorized == true',
+    '_router.GenerateWithPrivateTargetAsync(',
     '_router.GenerateAsync('
   ])
-    && containsAll(capabilityRouting, [
-      'public async Task<bool> IsFirstTargetAsync(',
+    && containsAll(centralRoute, [
       'var route = await _store.LoadRouteAsync(',
-      'route.Targets.FirstOrDefault()'
+      'privatePolicyProfile?.RequirePrivateModelForDocuments == true',
+      'var orderedTargets = requirePrivateTargetBeforeExternal',
+      'route.Targets.Where(target => !string.Equals(',
+      'CelarAiCapabilityTargets.CelarAi,'
     ])
-    && legacyRouter.includes('public Task<bool> IsFirstTargetAsync('),
-  'private SOW inference runs first only when Celar AI is first in the persisted Module 064 route'
+    && !timesheetSuggestion.includes('_router.IsFirstTargetAsync('),
+  'the central router owns persisted order and conditionally forces private document inference'
 );
 check(
   'MODULE001_AI_PRIVATE_TARGET_NOT_RETRIED',
   containsAll(timesheetSuggestion, [
-    'var privateCelarAttempted = privateTargetFirst && privateRag?.Citations.Count > 0',
-    '_router.RecordAlreadyExecutedPrivateAttempt(',
-    'skipPrivateTarget: privateCelarAttempted',
-    'MergeTargetDecisions(privateRagDecision, routed.TargetDecisions)'
+    'async privateCancellationToken =>',
+    'privateRag = await GeneratePrivateRagAsync(request, privateCancellationToken)',
+    'return PrivateRagTargetResult(privateRag)',
+    'routed.TargetDecisions'
   ])
-    && containsAll(capabilityRouting, [
-      'bool skipPrivateTarget,',
-      'if (skipPrivateTarget && target == CelarAiCapabilityTargets.CelarAi)',
-      'private_target_skipped_by_caller'
-    ])
-    && containsAll(targetDecisionMerge, [
-      '.Where(item =>',
-      'item.Target, CelarAiCapabilityTargets.CelarAi',
-      'item.ReasonCode, "private_target_skipped_by_caller"'
-    ]),
-  'a document-backed Celar attempt is recorded once before routing continues to later targets'
+    && !timesheetSuggestion.includes('skipPrivateTarget:')
+    && !timesheetSuggestion.includes('RecordAlreadyExecutedPrivateAttempt(')
+    && !timesheetSuggestion.includes('MergeTargetDecisions('),
+  'the consumer supplies one private callback and never manually skips, retries, or merges target decisions'
 );
 check(
   'MODULE001_AI_PRIVATE_ATTEMPT_TELEMETRY_EXACTLY_ONCE',
-  (timesheetSuggestion.match(/_router\.RecordAlreadyExecutedPrivateAttempt\(/g) ?? []).length === 1
-    && containsAll(privateAttemptRecorder, [
-      '_health.RecordSuccess(',
+  (timesheetSuggestion.match(/RecordAlreadyExecutedPrivateAttempt\(/g) ?? []).length === 0
+    && containsAll(centralRoute, [
+      'RecordAlreadyExecutedPrivateAttempt(',
       '_health.RecordFailure(',
       '_assurance.Record(',
-      'ProjectPulseAiOutcomes.Success',
-      'ProjectPulseAiOutcomes.Unavailable'
-    ])
-    && containsAll(providerHealth, [
-      'TryGetRecordableState(provider, out var state)',
-      'string.Equals(provider, "celar_ai"',
-      'ProviderState.PrivateTarget'
-    ])
-    && legacyRouter.includes('public void RecordAlreadyExecutedPrivateAttempt('),
-  'document-backed private execution records one router-owned health and assurance outcome'
+      'decisions.Add(new(target, "failed", privateFailureCode))'
+    ]),
+  'the central router records the private callback outcome and decisions exactly once'
 );
 check(
   'MODULE001_AI_EXTERNAL_PROMPT_EXCLUDES_PRIVATE_DOCUMENTS',
-  timesheetSuggestion.includes('BuildRemotePromptWithoutPrivateDocuments(request)')
-    && containsAll(remotePrompt, [
-      'No restricted source material, commercial detail, architecture detail, or extracted evidence is included',
-      'No customer name, project name, project code, task name, task code, person name, internal identifier, work date, or location is included as structured context.',
-      'Use only the backend-derived identity-free activity categories and generic work classification below.',
-      'Backend-derived identity-free activity categories:',
-      'BuildPurposeBuiltExternalActivityFacts(request.CurrentDescription)'
+  containsAll(timesheetSuggestion, [
+      'ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription',
+      'ExternalFactCodes: externalFactCodes',
+      'BuildPurposeBuiltExternalFactCodes(request)'
     ])
-    && !/grounding\.|privateRag\.|ContextSummary|ScopeThemes/.test(remotePrompt)
-    && !remotePrompt.includes('BoundedEngineerNote(request.CurrentDescription)')
-    && !/request\.(?:CustomerName|ProjectCode|ProjectName|TaskCode|TaskName|RowLabel|CategoryCode|WorkDate)/.test(remotePrompt),
-  'the remote prompt contains only server-authored activity categories and generic work classification'
+    && containsAll(timesheetFactCatalog, [
+      'TimesheetFactLabels[code]',
+      'using only these approved identity-free facts',
+      'Do not identify or',
+      'customer, project, task, record, system, product, location,',
+      'date, duration, identifier, source, document, or confidential detail'
+    ])
+    && containsAll(externalPreparation, [
+      'execution.ExternalCapsulePurpose,',
+      'execution.ExternalFactCodes,',
+      'Content: fixedCapsule.Capsule',
+      'UserPrompt = sanitized.SanitizedCapsule'
+    ]),
+  'Claude/OpenAI receive only the router-owned closed fact-code capsule'
 );
 check(
   'MODULE001_AI_EXTERNAL_SANITIZER_BOUNDARY',
-  containsAll(buildTransforms, [
-    'ContainsPrivateDocuments: ContainsPrivateDocumentMarkers(request.CurrentDescription)',
+  containsAll(timesheetSuggestion, [
+    'ContainsPrivateDocuments: hasReadyPrivateDocuments',
     'ContainsCustomerIdentity: !string.IsNullOrWhiteSpace(request.CustomerName)',
-    'AllowSanitizedExternalAssistance: true',
-    'SensitiveTerms: new[] { request.CustomerName',
-    'request.TaskCode ?? string.Empty',
-    'IdentityTerms: new[] { request.CustomerName ?? string.Empty }',
+    'AllowSanitizedExternalAssistance: hasExternalActivityFacts',
+    'SensitiveTerms: SensitiveTerms(request)',
+    'IdentityTerms: IdentityTerms(request)',
     'PurposeBuiltDeidentifiedInput: true',
-    'DeidentifiedFactsAvailable: HasPurposeBuiltExternalActivityFacts(request.CurrentDescription)'
+    'DeidentifiedFactsAvailable: hasExternalActivityFacts'
   ])
     && containsAll(capabilityRouting, [
       'PrepareExternalRequest(',
@@ -459,15 +461,18 @@ check(
 );
 check(
   'MODULE001_AI_EXTERNAL_FREE_TEXT_GUARD',
-  timesheetSuggestion.includes('ContainsPrivateDocumentMarkers(string? value)')
-    && containsAll(timesheetSuggestion, [
-      'statement\\s+of\\s+work',
-      'global\\s+solution\\s+design',
-      'rate\\s*card'
+  containsAll(timesheetSuggestion, [
+      'private static readonly (string Code, Regex Pattern)[] ExternalActivitySignals',
+      '.Select(signal => signal.Code)',
+      '.Take(10)',
+      '.Append(ExternalWorkClassificationCode(request))'
     ])
+    && !timesheetSuggestion.includes('BuildRemotePromptWithoutPrivateDocuments(')
+    && !timesheetSuggestion.includes('ContainsPrivateDocumentMarkers(')
+    && !timesheetFactCatalog.includes('Engineer note')
     && timesheetResolver.includes('CustomerName = reader.GetString(O("customer_name"))')
     && timesheetResolver.includes('CustomerName = row.CustomerName'),
-  'document/commercial markers block external routing and the resolved customer name is explicitly redacted'
+  'raw notes and structured identity never become the public capsule; customer identity remains an output guard'
 );
 check(
   'MODULE001_AI_PRIVATE_DOCUMENT_POLICY',
@@ -507,43 +512,55 @@ check(
 check(
   'MODULE001_AI_PRIVATE_PROVIDER_ATTRIBUTION',
   containsAll(timesheetSuggestion, [
-    'var usedPrivateInference = UsedPrivateInference(privateRag)',
-    'if (usedPrivateInference)',
+    'answer.Citations.Count > 0',
+    'if (answer is not null && UsedPrivateInference(answer))',
     'CelarAiCapabilityTargets.CelarAi',
-    'private_document_grounding_succeeded',
     'private_context_withheld_from_external_route',
     'PrivateProviderDecision(',
     'private_model_completed',
     'deterministic_private_fallback',
     'routed.TargetDecisions'
-  ]),
-  'Celar AI is reported only for genuine private inference; deterministic scaffolds continue through the configured route'
+  ])
+    && containsAll(privateTargetAdapter, [
+      'Outcome: ProjectPulseAiOutcomes.Success',
+      'Content: answer.Answer!.DirectConclusion',
+      'Outcome: ProjectPulseAiOutcomes.Unavailable'
+    ]),
+  'Celar AI succeeds only for cited private inference; deterministic scaffolds continue through the router'
 );
 check(
   'MODULE001_AI_SAFETY_REFUSAL_PRESERVED',
   timesheetSuggestion.includes('routed.Outcome == ProjectPulseAiOutcomes.Refusal')
     && timesheetSuggestion.includes('? string.Empty')
+    && containsAll(privateTargetAdapter, [
+      'if (answer is not null && IsPrivateSafetyRefusal(answer))',
+      'Outcome: ProjectPulseAiOutcomes.Refusal',
+      'Content: string.Empty',
+      'Code: "private_model_safety_refusal"'
+    ])
+    && timesheetSuggestion.includes('private static bool IsPrivateSafetyRefusal(PulseAiPrivateRagAnswer answer)')
     && suggestionEndpoint.includes('"ai_suggestion_refused"')
     && capabilityRouting.includes('"provider_safety_refusal"')
     && capabilityRouting.includes('No later target was attempted.'),
-  'a provider safety refusal cannot be converted into local prose under the refusing provider name'
+  'a private or public provider safety refusal terminates routing and cannot be converted into local prose under the refusing provider name'
 );
 
 // Customer-visible prose is detailed when supported and mechanically sentence-safe.
 check(
   'MODULE001_AI_EVIDENCE_BASED_PROSE',
   timesheetSuggestion.includes('detailed, accurate, evidence-based, customer-facing')
-    && timesheetSuggestion.includes('backend-derived activity categories below as the only factual evidence')
-    && timesheetSuggestion.includes('never imply that you saw the Engineer\'s note')
+    && privatePrompt.includes('Treat the Engineer note as the primary evidence of work actually performed')
+    && privatePrompt.includes('a SOW or task scope cannot prove')
     && privateRagService.includes("rough note is the primary evidence of work actually performed")
     && privateRagService.includes('cannot prove unreported work occurred'),
   'the engineer note remains evidence of work; SOW scope cannot fabricate activity'
 );
 check(
   'MODULE001_AI_DETAIL_TARGET',
-  remotePrompt.includes('two to four sentences and approximately 75 to 150 words')
+  privatePrompt.includes('two to four complete')
+    && privatePrompt.includes('75 to 150 words')
     && privateRagService.includes('two to four sentences and approximately 75 to 150 words')
-    && remotePrompt.includes('Never add generic filler merely to reach the target length'),
+    && timesheetFactCatalog.includes('Write two to four detailed, complete, professional past-tense sentences'),
   'supported responses target customer-ready detail without filler'
 );
 check(
@@ -621,8 +638,15 @@ check(
 check(
   'MODULE001_AI_NO_BLIND_LOCAL_TO_CELAR_SED',
   !/ProjectPulseAiProviders\.Local\/s\/\/CelarAiCapabilityTargets\.CelarAi/.test(buildTransforms)
-    && !/sed[^\n]*ProjectPulseAiProviders\.Local[^\n]*CelarAiCapabilityTargets\.CelarAi/.test(buildTransforms),
-  'provider attribution is explicit runtime logic, not a source rewrite'
+    && !/sed[^\n]*ProjectPulseAiProviders\.Local[^\n]*CelarAiCapabilityTargets\.CelarAi/.test(buildTransforms)
+    && containsAll(buildTransforms, [
+      'GenerateWithPrivateTargetAsync',
+      'ExternalFactCodes: externalFactCodes',
+      'SourceFiles="$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs"',
+      'DestinationFiles="$(CelarAiTimesheetGenerated)"'
+    ])
+    && !buildTransforms.includes('retaining the private-RAG-first behavior'),
+  'provider attribution and central Timesheet routing compile from an exact canonical copy'
 );
 check(
   'MODULE001_AI_BUILD_GATE',

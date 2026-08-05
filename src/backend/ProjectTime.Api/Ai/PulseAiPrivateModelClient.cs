@@ -102,17 +102,31 @@ public sealed class PulseAiPrivateModelClient
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (await PulseAiPrivateModelResponsePolicy.IsSafetyRefusalErrorAsync(
+                        response,
+                        cancellationToken))
+                {
+                    return Failure(
+                        "private_model_refused",
+                        PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic,
+                        DateTimeOffset.UtcNow);
+                }
                 return Failure(
                     "private_model_failed",
                     $"private_model_http_{(int)response.StatusCode}",
                     DateTimeOffset.UtcNow);
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var json = await JsonDocument.ParseAsync(
-                stream,
-                new JsonDocumentOptions { MaxDepth = 128 },
+            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
+                response.Content,
                 cancellationToken);
+            if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(json.RootElement))
+            {
+                return Failure(
+                    "private_model_refused",
+                    PulseAiPrivateModelResponsePolicy.SafetyRefusalDiagnostic,
+                    DateTimeOffset.UtcNow);
+            }
             var content = ReadContent(json.RootElement);
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -259,4 +273,182 @@ public sealed class PulseAiPrivateModelClient
         OperationCanceledException => "private_model_cancelled",
         _ => "private_model_failure"
     };
+}
+
+// OpenAI-compatible private endpoints can express a terminal safety refusal in
+// either a successful response envelope or a structured 4xx error. Keep the
+// parser bounded and inspect only documented, non-prompt fields: no response
+// text or provider message is copied into diagnostics or logs.
+internal static class PulseAiPrivateModelResponsePolicy
+{
+    public const string SafetyRefusalDiagnostic = "private_model_safety_refusal";
+    private const int MaximumResponseBytes = 1_000_000;
+
+    private static readonly IReadOnlySet<string> SafetyErrorCodes =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "contentfilter",
+            "contentpolicyviolation",
+            "jailbreakdetected",
+            "moderationblocked",
+            "policyviolation",
+            "responsibleaipolicyviolation",
+            "safetyrefusal",
+            "safetyviolation"
+        };
+
+    public static async Task<JsonDocument> ReadBoundedJsonAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[8192];
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk.AsMemory(0, chunk.Length), cancellationToken);
+            if (read == 0) break;
+            if (buffer.Length + read > MaximumResponseBytes)
+                throw new JsonException("Private model response exceeded the bounded JSON limit.");
+            buffer.Write(chunk, 0, read);
+        }
+
+        buffer.Position = 0;
+        return await JsonDocument.ParseAsync(
+            buffer,
+            new JsonDocumentOptions { MaxDepth = 128 },
+            cancellationToken);
+    }
+
+    public static async Task<bool> IsSafetyRefusalErrorAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        var status = (int)response.StatusCode;
+        if (status is not (400 or 403 or 422)) return false;
+
+        try
+        {
+            using var json = await ReadBoundedJsonAsync(response.Content, cancellationToken);
+            return HasSafeErrorCode(json.RootElement);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // A malformed or unreadable error body is an ordinary provider
+            // failure. Do not promote it to a safety refusal or log its text.
+            return false;
+        }
+    }
+
+    public static bool IsSafetyRefusal(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return false;
+        if (HasSafeErrorCode(root)) return true;
+
+        if (root.TryGetProperty("choices", out var choices)
+            && choices.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var choice in choices.EnumerateArray())
+            {
+                if (StringEquals(choice, "finish_reason", "content_filter")) return true;
+                if (choice.TryGetProperty("message", out var message))
+                {
+                    if (HasNonEmptyProperty(message, "refusal")) return true;
+                    if (HasRefusalContentItem(message, "content")) return true;
+                }
+            }
+        }
+
+        if (HasRefusalContentItem(root, "content")) return true;
+        if (root.TryGetProperty("output", out var output)
+            && output.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in output.EnumerateArray())
+            {
+                if (HasRefusalContentItem(item, "content")) return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasSafeErrorCode(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("error", out var error)
+            || error.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (IsSafetyCode(error, "code") || IsSafetyCode(error, "type")) return true;
+        if (error.TryGetProperty("innererror", out var innerError)
+            && innerError.ValueKind == JsonValueKind.Object
+            && (IsSafetyCode(innerError, "code") || IsSafetyCode(innerError, "type")))
+            return true;
+        return false;
+    }
+
+    private static bool HasRefusalContentItem(JsonElement parent, string propertyName)
+    {
+        if (parent.ValueKind != JsonValueKind.Object
+            || !parent.TryGetProperty(propertyName, out var content)
+            || content.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var item in content.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object
+                && (StringEquals(item, "type", "refusal") || HasNonEmptyProperty(item, "refusal")))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasNonEmptyProperty(JsonElement parent, string propertyName)
+    {
+        if (parent.ValueKind != JsonValueKind.Object
+            || !parent.TryGetProperty(propertyName, out var value)) return false;
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => !string.IsNullOrWhiteSpace(value.GetString()),
+            JsonValueKind.Object => true,
+            JsonValueKind.Array => value.GetArrayLength() > 0,
+            _ => false
+        };
+    }
+
+    private static bool IsSafetyCode(JsonElement parent, string propertyName)
+    {
+        if (parent.ValueKind != JsonValueKind.Object
+            || !parent.TryGetProperty(propertyName, out var value)
+            || value.ValueKind != JsonValueKind.String)
+            return false;
+        var normalized = NormalizeCode(value.GetString());
+        return normalized.Length > 0 && SafetyErrorCodes.Contains(normalized);
+    }
+
+    private static bool StringEquals(JsonElement parent, string propertyName, string expected) =>
+        parent.ValueKind == JsonValueKind.Object
+        && parent.TryGetProperty(propertyName, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && string.Equals(value.GetString(), expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeCode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var builder = new StringBuilder(Math.Min(value.Length, 80));
+        foreach (var character in value.Take(80))
+        {
+            if (char.IsLetterOrDigit(character))
+                builder.Append(char.ToLowerInvariant(character));
+        }
+        return builder.ToString();
+    }
 }

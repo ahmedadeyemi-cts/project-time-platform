@@ -797,28 +797,46 @@ public static class CelarAiCapabilityRoutingModule
             new CelarAiCapabilityExecutionContext(
                 CelarAiCapabilityCatalog.CloseoutCommunication,
                 ContainsPrivateDocuments: true,
-                ContainsCustomerIdentity: true,
+                ContainsCustomerIdentity: projectCode.Length > 0 || projectName.Length > 0,
                 ContainsPeopleRecords: false,
                 ContainsFinancialValues: false,
-                AllowSanitizedExternalAssistance: request.AllowSanitizedExternalFallback,
+                // The fixed closeout capsule is backend-managed; the request's
+                // legacy fallback checkbox cannot authorize or disable it.
+                AllowSanitizedExternalAssistance: false,
                 SensitiveTerms: [projectCode, projectName, "US Signal", "Pulse"],
                 ConsumerModule: "040/055C",
-                CorrelationId: correlationId),
+                CorrelationId: correlationId,
+                IdentityTerms: [projectCode, projectName],
+                ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.CloseoutCommunication),
             () => BuildCloseoutFallback(request),
             cancellationToken);
+        var externalSelected = routed.Provider is CelarAiCapabilityTargets.Claude
+            or CelarAiCapabilityTargets.OpenAi;
+        var refused = routed.Outcome == ProjectPulseAiOutcomes.Refusal;
+        var externalBoundaryWarning = externalSelected
+            ? "The selected public target received only a fixed backend-owned identity-free closeout structure and tone capsule. Its generic guidance is separate from the review draft and establishes no project, customer, acceptance, completion, recipient, date, owner, or commitment fact."
+            : string.Empty;
         return Results.Ok(new
         {
             module = "040/055C",
             feature = CelarAiCapabilityCatalog.CloseoutCommunication,
-            status = routed.Outcome == ProjectPulseAiOutcomes.Refusal
+            status = refused
                 ? "closeout_draft_refused"
+                : externalSelected
+                    ? "closeout_draft_completed_with_generic_structure_assistance"
                 : "closeout_draft_completed",
-            draft = routed.Content,
+            draft = refused
+                ? string.Empty
+                : externalSelected
+                    ? BuildCloseoutFallback(request)
+                    : routed.Content,
+            externalAssistance = externalSelected && !refused ? routed.Content : string.Empty,
             selectedTarget = routed.Provider,
             attemptedTargets = routed.AttemptedProviders,
             skippedTargets = routed.SkippedProviders,
             targetDecisions = routed.TargetDecisions ?? [],
-            warning = routed.Warning,
+            warning = string.Join(" ", new[] { routed.Warning, externalBoundaryWarning }
+                .Where(value => !string.IsNullOrWhiteSpace(value))),
             correlationId,
             reviewRequired = true,
             emailSent = false,

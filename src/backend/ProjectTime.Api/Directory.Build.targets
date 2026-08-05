@@ -88,7 +88,12 @@
     <Exec Command="awk 'BEGIN { inserted=0 } /^[[:space:]]*return endpoints;[[:space:]]*$/ &amp;&amp; inserted==0 { print &quot;        endpoints.MapCelarAiEnterprisePlatformEndpoints();&quot;; inserted=1 } { print } END { if (inserted==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Modules/CelarAiBrandModule.cs&quot; &gt; &quot;$(CelarAiBrandGenerated)&quot;" />
 
     <Exec Command="sed -e 's/private static IEnumerable&lt;string&gt; TakeOrFallback/private static IReadOnlyList&lt;string&gt; TakeOrFallback/' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiEnterprisePlatformService.cs&quot; &gt; &quot;$(CelarAiEnterpriseGenerated)&quot;" />
-    <Exec Command="sed '/if (target == CelarAiCapabilityTargets.CelarAi)/,/^[[:space:]]*continue;/ s/result/privateResult/g' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiCapabilityRouting.cs&quot; &gt; &quot;$(CelarAiRoutingGenerated)&quot;" />
+    <!-- The canonical router owns private-target callbacks, forced private
+         document ordering, fixed public capsules, and terminal telemetry. -->
+    <Exec Command="grep -Fq 'GenerateWithPrivateTargetAsync' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiCapabilityRouting.cs&quot;" />
+    <Exec Command="grep -Fq 'private_document_private_target_mandatory' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiCapabilityRouting.cs&quot;" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/Ai/CelarAiCapabilityRouting.cs"
+          DestinationFiles="$(CelarAiRoutingGenerated)" />
     <!-- The canonical private-RAG service now applies the persisted Module 064
          private-model profile itself. Verify that authority marker, then compile
          an exact generated copy instead of rewriting an obsolete one-line method. -->
@@ -96,13 +101,22 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)/Ai/PulseAiPrivateRagService.cs"
           DestinationFiles="$(PulseAiPrivateRagGenerated)" />
 
-    <!-- Route every Timesheet mode through the central capability router while
-         retaining the private-RAG-first behavior and human review boundary. -->
-    <Exec Command="awk 'BEGIN { field=0; ctor=0; context=0 } { if ($0 ~ /private readonly ProjectPulseAiRouter _router;/) { sub(/ProjectPulseAiRouter/, &quot;CelarAiCapabilityRouter&quot;); field=1 } if ($0 ~ /^[[:space:]]*ProjectPulseAiRouter router,/) { sub(/ProjectPulseAiRouter/, &quot;CelarAiCapabilityRouter&quot;); ctor=1 } if ($0 ~ /^[[:space:]]*\(\) =&gt; BuildLocalSuggestion\(request\),/ &amp;&amp; context==0) { print &quot;            new CelarAiCapabilityExecutionContext(&quot;; print &quot;                capability,&quot;; print &quot;                ContainsPrivateDocuments: ContainsPrivateDocumentMarkers(request.CurrentDescription),&quot;; print &quot;                ContainsCustomerIdentity: !string.IsNullOrWhiteSpace(request.CustomerName),&quot;; print &quot;                ContainsPeopleRecords: false,&quot;; print &quot;                ContainsFinancialValues: false,&quot;; print &quot;                AllowSanitizedExternalAssistance: true,&quot;; print &quot;                SensitiveTerms: new[] { request.CustomerName ?? string.Empty, request.ProjectCode ?? string.Empty, request.ProjectName ?? string.Empty, request.TaskCode ?? string.Empty, request.TaskName ?? string.Empty, request.RowLabel ?? string.Empty }&quot;; print &quot;                    .Where(value =&gt; !string.IsNullOrWhiteSpace(value)).ToArray(),&quot;; print &quot;                ConsumerModule: \&quot;001\&quot;,&quot;; print &quot;                CorrelationId: _httpContextAccessor.HttpContext?.TraceIdentifier ?? Guid.NewGuid().ToString(\&quot;N\&quot;),&quot;; print &quot;                IdentityTerms: new[] { request.CustomerName ?? string.Empty }&quot;; print &quot;                    .Where(value =&gt; !string.IsNullOrWhiteSpace(value)).ToArray(),&quot;; print &quot;                PurposeBuiltDeidentifiedInput: true,&quot;; print &quot;                DeidentifiedFactsAvailable: HasPurposeBuiltExternalActivityFacts(request.CurrentDescription)),&quot;; context=1 } print } END { if (field==0 || ctor==0 || context==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs&quot; &gt; &quot;$(CelarAiTimesheetGenerated)&quot;" />
+    <!-- The canonical Timesheet consumer now uses the router-owned private-target
+         callback and closed public fact-code capsule directly. Compile an exact
+         copy so build-time rewrites cannot reintroduce private-first routing,
+         duplicate telemetry, or consumer-authored external prompts. -->
+    <Exec Command="grep -Fq 'GenerateWithPrivateTargetAsync' &quot;$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs&quot;" />
+    <Exec Command="grep -Fq 'ExternalFactCodes: externalFactCodes' &quot;$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs&quot;" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/ProjectPulseAiTimeEntrySuggestionService.cs"
+          DestinationFiles="$(CelarAiTimesheetGenerated)" />
 
-    <!-- Sanitized external assistance starts after the private Celar target so
-         it cannot recursively route back into Celar AI. -->
-    <Exec Command="awk 'BEGIN { field=0; ctor=0; call=0; context=0 } { if ($0 ~ /private readonly ProjectPulseAiRouter _router;/) { sub(/ProjectPulseAiRouter/, &quot;CelarAiCapabilityRouter&quot;); field=1 } if ($0 ~ /^[[:space:]]*ProjectPulseAiRouter router,/) { sub(/ProjectPulseAiRouter/, &quot;CelarAiCapabilityRouter&quot;); ctor=1 } if ($0 ~ /var route = await _router.GenerateAsync\(/ &amp;&amp; call==0) { sub(/GenerateAsync/, &quot;GenerateExternalAsync&quot;); call=1 } if ($0 ~ /^[[:space:]]*localFallback: \(\) =&gt; LocalFallback\(mode\),/ &amp;&amp; context==0) { print &quot;                new CelarAiCapabilityExecutionContext(&quot;; print &quot;                    feature,&quot;; print &quot;                    ContainsPrivateDocuments: false,&quot;; print &quot;                    ContainsCustomerIdentity: false,&quot;; print &quot;                    ContainsPeopleRecords: false,&quot;; print &quot;                    ContainsFinancialValues: false,&quot;; print &quot;                    AllowSanitizedExternalAssistance: true,&quot;; print &quot;                    SensitiveTerms: [],&quot;; print &quot;                    ConsumerModule: \&quot;011\&quot;,&quot;; print &quot;                    CorrelationId: Guid.NewGuid().ToString(\&quot;N\&quot;),&quot;; print &quot;                    IdentityTerms: [],&quot;; print &quot;                    PurposeBuiltDeidentifiedInput: true,&quot;; print &quot;                    DeidentifiedFactsAvailable: serverOwnedCapsuleReady),&quot;; context=1 } print } END { if (field==0 || ctor==0 || call==0 || context==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiExternalReasoningService.cs&quot; &gt; &quot;$(CelarAiExternalReasoningGenerated)&quot;" />
+    <!-- The legacy compatibility entry point now consumes the same closed-purpose
+         central router contract directly. Compile an exact copy so a generated
+         rewrite cannot reintroduce caller-authored prompts or obsolete fields. -->
+    <Exec Command="grep -Fq 'CelarAiCapabilityRouter _router' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiExternalReasoningService.cs&quot;" />
+    <Exec Command="grep -Fq 'ExternalCapsulePurpose: serverOwnedPurposeCategory' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiExternalReasoningService.cs&quot;" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/Ai/CelarAiExternalReasoningService.cs"
+          DestinationFiles="$(CelarAiExternalReasoningGenerated)" />
 
     <ItemGroup>
       <Compile Include="$(CelarAiPeopleGenerated)" />
