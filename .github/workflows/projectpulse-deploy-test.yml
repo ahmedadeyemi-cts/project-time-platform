@@ -6,10 +6,10 @@ on:
       release_commit:
         description: Exact reviewed source commit
         required: true
-        default: dfd31042cb971677f78fb70e37c9c8a2810db938
+        default: 99ce17d3d2981d9fd96ca3447b617b51d8dd78dc
         type: string
       confirmation:
-        description: Enter DEPLOY-DFD31042-MIGRATIONS-071-073-TO-TEST
+        description: Enter DEPLOY-99CE17D3-MIGRATIONS-071-073-TO-TEST
         required: true
         type: string
   push:
@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 180
     env:
       RELEASE_MANIFEST: deployment/releases/test/current-main-acae6fda-20260805.json
-      EXPECTED_SOURCE_SHA: dfd31042cb971677f78fb70e37c9c8a2810db938
+      EXPECTED_SOURCE_SHA: 99ce17d3d2981d9fd96ca3447b617b51d8dd78dc
 
     steps:
       - name: Check out deployment controls
@@ -49,7 +49,7 @@ jobs:
       - name: Check out exact application source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: dfd31042cb971677f78fb70e37c9c8a2810db938
+          ref: 99ce17d3d2981d9fd96ca3447b617b51d8dd78dc
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -76,6 +76,8 @@ jobs:
           [[ "$(jq -r .environment "control/$RELEASE_MANIFEST")" == test ]]
           [[ "$(jq -r .aiReleasePhase "control/$RELEASE_MANIFEST")" == disabled ]]
           [[ "$(jq -r .routingAuthority "control/$RELEASE_MANIFEST")" == database_managed_active ]]
+          [[ "$(jq -r .allowSanitizedExternalEscalation "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == false ]]
           [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == false ]]
           [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
@@ -84,7 +86,7 @@ jobs:
               echo "Only the exact reviewed source SHA may deploy." >&2
               exit 1
             }
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-DFD31042-MIGRATIONS-071-073-TO-TEST ]] || {
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-99CE17D3-MIGRATIONS-071-073-TO-TEST ]] || {
               echo "Deployment confirmation does not match." >&2
               exit 1
             }
@@ -378,7 +380,7 @@ jobs:
             exit 1
           }
 
-          TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
+          TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
           API_ENV_JSON="$(jq -c '.properties.template.containers[0].env // []' <<<"$API_JSON")"
           BASELINE_ENV="$(jq -cS --argjson names "$TOUCHED_NAMES" '
             [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
@@ -535,7 +537,7 @@ jobs:
             exit 1
           }
 
-          TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
+          TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
           LIVE_ENV="$(jq -c '.properties.template.containers[0].env // []' <<<"$LIVE_JSON")"
           LIVE_TOUCHED="$(jq -cS --argjson names "$TOUCHED_JSON" '
             [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
@@ -569,6 +571,8 @@ jobs:
               PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
               PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT='${{ steps.guard.outputs.control_sha }}' \
               PROJECTPULSE_AI_RELEASE_PHASE='${{ steps.contract.outputs.phase }}' \
+              PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true \
+              PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true \
             --revision-suffix "tapi-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             --output none --only-show-errors
           NEW_REV=""
@@ -849,7 +853,7 @@ jobs:
                 echo "API_ROLLBACK=BLOCKED_CANDIDATE_REVISION_DRIFT" >&2
                 result=1
               else
-                TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
+                TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
                 LIVE_ENV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
                 LIVE_UNTOUCHED_HASH="$(jq -cS --argjson names "$TOUCHED_JSON" '
                   [.[] | select(.name as $name | ($names | index($name) | not))]
