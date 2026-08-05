@@ -550,6 +550,7 @@ public static class PulseAiSystemKnowledgeCatalog
         var modules = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "011" };
         foreach (Match match in Regex.Matches(normalized, @"\b(?:module\s*)?(\d{3}|055[a-d])\b", RegexOptions.IgnoreCase))
             modules.Add(match.Groups[1].Value.ToUpperInvariant());
+        if (ContainsAny(normalized, "project forge", "project-forge")) modules.Add("033");
         if (intent == "api_inventory") modules.UnionWith(["013", "016", "068"]);
         if (intent == "troubleshooting") modules.UnionWith(["013", "016", "076", "078", "998"]);
         if (intent == "future_enhancement") modules.UnionWith(["012", "013", "037", "064", "068", "076", "077", "078", "998"]);
