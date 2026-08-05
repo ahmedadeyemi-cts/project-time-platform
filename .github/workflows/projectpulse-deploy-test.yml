@@ -453,12 +453,21 @@ jobs:
               else
                 BASELINE_ENV="$(printf '%s' '${{ steps.before.outputs.old_api_env_b64 }}' | base64 -d)"
                 mapfile -t RESTORE_ENV < <(jq -r '.[] | select(.value != null) | .name + "=" + .value' <<<"$BASELINE_ENV")
-                az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
-                  --image '${{ steps.before.outputs.old_api_image }}' \
-                  --remove-env-vars "${TOUCHED_NAMES[@]}" \
-                  --set-env-vars "${RESTORE_ENV[@]}" \
-                  --revision-suffix "tapi-rb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-                  --output none --only-show-errors || result=1
+                mapfile -t REMOVE_NAMES < <(jq -r '.[] | select(.value == null) | .name' <<<"$BASELINE_ENV")
+                UPDATE_ARGS=(az containerapp update
+                  -g '${{ vars.AZURE_RESOURCE_GROUP }}'
+                  -n '${{ vars.AZURE_API_APP }}'
+                  --image '${{ steps.before.outputs.old_api_image }}'
+                  --revision-suffix "tapi-rb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  --output none
+                  --only-show-errors)
+                if (( ${#REMOVE_NAMES[@]} > 0 )); then
+                  UPDATE_ARGS+=(--remove-env-vars "${REMOVE_NAMES[@]}")
+                fi
+                if (( ${#RESTORE_ENV[@]} > 0 )); then
+                  UPDATE_ARGS+=(--set-env-vars "${RESTORE_ENV[@]}")
+                fi
+                "${UPDATE_ARGS[@]}" || result=1
                 wait_for_revision '${{ vars.AZURE_API_APP }}' \
                   '${{ steps.before.outputs.old_api_revision }}' \
                   '${{ steps.before.outputs.old_api_image }}' || result=1
