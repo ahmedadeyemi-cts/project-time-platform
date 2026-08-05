@@ -1,0 +1,72 @@
+name: Validate Deployment Concurrency Governance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/deployment-concurrency-governance-v1.enabled'
+      - 'scripts/validate-*-test-deployment.sh'
+      - 'scripts/validate-deployment-concurrency-governance.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+      - '.github/deployment-concurrency-governance-v1.enabled'
+      - 'scripts/validate-*-test-deployment.sh'
+      - 'scripts/validate-deployment-concurrency-governance.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-concurrency-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Enforce base-trusted pull-request governance
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          if git cat-file -e "$BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" > "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs"
+            node "$RUNNER_TEMP/trusted-deployment-concurrency-validator.mjs" \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --base-ref "$BASE_SHA" \
+              --verify-pr
+          else
+            node scripts/validate-deployment-concurrency-governance.mjs \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --base-ref "$BASE_SHA" \
+              --verify-bootstrap-addition
+          fi
+
+      - name: Enforce merged governance state
+        if: github.event_name == 'push'
+        run: |
+          set -Eeuo pipefail
+          if [[ -f .github/deployment-concurrency-governance-v1.enabled ]]; then
+            node scripts/validate-deployment-concurrency-governance.mjs \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --verify-repository
+          else
+            node scripts/validate-deployment-concurrency-governance.mjs \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --self-test
+          fi
