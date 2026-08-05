@@ -185,7 +185,7 @@ assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles role JOIN app_role_permissi
 # Reapplication must not overwrite administrator policy choices.
 psql_exec -c "UPDATE enterprise_notification_policies SET enabled=FALSE, delivery_boundary='locked' WHERE policy_code='SECURITY_EVENT';" >/dev/null
 apply_migration
-assert_eq 'f|locked' "$(value "SELECT enabled::text || '|' || delivery_boundary FROM enterprise_notification_policies WHERE policy_code='SECURITY_EVENT';")" reapply_preserved_policy_configuration
+assert_eq 'false|locked' "$(value "SELECT enabled::text || '|' || delivery_boundary FROM enterprise_notification_policies WHERE policy_code='SECURITY_EVENT';")" reapply_preserved_policy_configuration
 
 psql_exec <<'SQL'
 INSERT INTO enterprise_notification_events (

@@ -90,6 +90,12 @@ jobs:
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             ALLOWED_DATABASE='^(database/(migrations/(061_celar_ai_capability_routing|062_super_administrator_permanent_full_control|063_project_management_billing_role_access_repair|064_module_065_enterprise_notification_orchestration)\.sql|rollback/(061_celar_ai_capability_routing_rollback|062_super_administrator_permanent_full_control_rollback|063_project_management_billing_role_access_repair_rollback|064_module_065_enterprise_notification_orchestration_rollback)\.sql))$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
+          elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
+            # Module 033 owns its review-first Project Forge persistence while
+            # consuming the governed Celar AI capability router. Permit only
+            # that module's paired migration and rollback in this mode.
+            ALLOWED_DATABASE='^(database/migrations/070_module_033_project_forge\.sql|database/rollback/070_module_033_project_forge_rollback\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_033_PROJECT_FORGE' >> "$GITHUB_ENV"
           elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
             # A UAT functional-completion package owns only the immutable project-number
             # migration. Celar AI is validated as a consumer because its private
