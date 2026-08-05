@@ -92,6 +92,8 @@ const evidence = {
   publicOrigin: base,
   flowHiveIncluded: false,
   migration074Included: false,
+  aiReleasePhase: "disabled",
+  routingAuthority: "database_managed_active",
   status: "running",
   publicChecks: {},
   authenticatedChecks: {},
@@ -230,9 +232,10 @@ async function run() {
   assert(routes.json?.status === "celar_ai_capability_routes_loaded", "Module 064 route catalog is not loaded.");
   assert(JSON.stringify(routes.json?.defaultOrder) === JSON.stringify(expectedTargets), "Module 064 default order is incorrect.");
   assert(Array.isArray(routes.json?.routes) && routes.json.routes.length === 8, "Module 064 must expose exactly eight routes.");
-  assert(routes.json?.controls?.releasePhase === "active", "Module 064 did not report active release phase.");
-  assert(routes.json?.controls?.deploymentManaged === true, "Module 064 routing is not deployment managed.");
-  assert(routes.json?.controls?.readOnly === true, "Module 064 routing is not release read-only.");
+  assert(routes.json?.controls?.releasePhase === "disabled", "Module 064 did not report the explicit source-only disabled release phase.");
+  assert(routes.json?.controls?.deploymentManaged === false, "Module 064 unexpectedly reports deployment-managed routing.");
+  assert(routes.json?.controls?.readOnly === false, "Module 064 unexpectedly reports release-scoped read-only routing.");
+  assert(routes.json?.controls?.configurationAuthority === "database_managed_active", "Module 064 routing authority is not the explicit database-managed Test mode.");
   assert(routes.json?.controls?.configurationSourceCommit === sourceSha, "Module 064 source binding is incorrect.");
   assert(routes.json?.controls?.catalogCapabilityCount === 8, "Module 064 catalog count is incorrect.");
   for (const feature of expectedFeatures) {
