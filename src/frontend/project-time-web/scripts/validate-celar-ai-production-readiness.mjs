@@ -103,6 +103,41 @@ assert(
 );
 
 assert(
+  'PRODUCTION_HARDENING_SOURCE_CONTROL',
+  hardeningCi.includes('pull_request:\n    branches:\n      - main')
+    && !hardeningCi.includes('pull_request:\n    paths:')
+    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE')
+    && hardeningCi.includes("if: needs.classify.outputs.applicable == 'true'")
+    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_40_SOURCE_FILES')
+    && hardeningCi.includes('MISSING_SOURCE=')
+    && hardeningCi.includes('UNEXPECTED=')
+    && !hardeningCi.includes('DEPENDENCIES=')
+    && hardeningCi.includes('git diff --name-status --no-renames')
+    && hardeningCi.includes('git ls-tree HEAD')
+    && hardeningCi.includes('Verify tracked generated sources from canonical transforms')
+    && hardeningCi.includes('cmp "$TEMP_ROOT/Program.ScopedRbac.g.cs"')
+    && hardeningCi.includes('cmp "$TEMP_ROOT/PulseAiDocumentGroundingService.g.cs"')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/ProjectPulseAiCandidateRequestFence.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeWorker.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs')
+    && hardeningCi.includes('src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx')
+    && hardeningCi.includes('src/frontend/project-time-web/package.json')
+    && hardeningCi.includes('docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md'),
+  'every main PR receives a lightweight classification while security-family branches require the exact 40-file, mode-safe source manifest before heavy validation'
+);
+
+assert(
   'PRIVATE_PROFILE_AUTHENTICATION',
   routing.includes('AuthMode.Equals("bearer"')
     && routing.includes('AuthenticationConfigured')
@@ -232,7 +267,9 @@ assert(
   'SHARED_PERSISTENT_UPLOAD_ROOT',
   storage.includes('PROJECTPULSE_UPLOAD_ROOT')
     && storage.includes('PROJECTPULSE_UPLOAD_ROOT_SHARED_PERSISTENT')
-    && storage.includes('ProbeWritable')
+    && storage.includes('ProbeWriteAndDelete')
+    && storage.includes('return !File.Exists(probe)')
+    && storage.includes('VerifyReadOnlyAttestation')
     && storage.includes('IsKnownEphemeral')
     && ['/tmp', '/var/tmp', '/dev/shm', '/run'].every((value) => storage.includes(`"${value}"`))
     && storage.includes('Legacy {LegacyEnvironmentVariable} is not accepted')

@@ -91,8 +91,8 @@ public sealed class PulseAiDocumentGroundingService
     {
         var generatedAt = DateTimeOffset.UtcNow;
         var missingConfiguration = MissingDatabaseConfiguration();
-        var privateInference = HasValue("PROJECTPULSE_PRIVATE_AI_ENDPOINT")
-            && HasValue("PROJECTPULSE_PRIVATE_AI_MODEL");
+        var privateInference = HasValue("PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT")
+            && HasValue("PROJECTPULSE_PRIVATE_INFERENCE_MODEL");
         var privateEmbedding = HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT")
             && HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_MODEL");
         var privateVectorIndex = HasValue("PROJECTPULSE_PRIVATE_VECTOR_INDEX");
@@ -1216,28 +1216,13 @@ public sealed class PulseAiDocumentGroundingService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required.Where(name => !HasValue(name)).ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 5,
-            Timeout = 8,
-            CommandTimeout = 12
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

@@ -42,7 +42,7 @@ function routeDraft(route) {
 }
 
 export default function CelarAiCapabilityRoutingPanel() {
-  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, consumers: [] });
+  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, consumers: [], controls: null });
   const [drafts, setDrafts] = useState({});
   const [savingRoute, setSavingRoute] = useState('');
   const [notice, setNotice] = useState('');
@@ -87,6 +87,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         profile,
         productionReadiness: profilePayload.productionReadiness ?? null,
         consumers: consumersPayload.consumers ?? [],
+        controls: routesPayload.controls ?? null,
       });
     } catch (error) {
       setState((current) => ({
@@ -225,6 +226,8 @@ export default function CelarAiCapabilityRoutingPanel() {
 
   const profile = state.profile;
   const production = state.productionReadiness;
+  const deploymentManaged = state.controls?.deploymentManaged === true || profile?.deploymentManaged === true;
+  const releasePhase = state.controls?.releasePhase || production?.releasePhase || 'disabled';
 
   return (
     <section className="celar-ai-routing" aria-labelledby="celar-ai-routing-title">
@@ -246,6 +249,13 @@ export default function CelarAiCapabilityRoutingPanel() {
 
       {notice ? <div className="celar-ai-routing__notice" role="status">{notice}</div> : null}
       {state.error ? <div className="celar-ai-routing__error" role="alert">{state.error}</div> : null}
+      {deploymentManaged ? (
+        <div className="celar-ai-routing__notice" role="status">
+          {releasePhase === 'candidate'
+            ? `Release candidate configuration is deployment-managed and read-only for source ${profile?.configurationSourceCommit || state.controls?.configurationSourceCommit}. Candidate document processing, audit persistence, and every application mutation are blocked; verification runs only through the combined candidate operation.`
+            : `Active release configuration is deployment-managed and read-only for source ${profile?.configurationSourceCommit || state.controls?.configurationSourceCommit}. Routes, endpoints, models, and credentials require a new protected release manifest, while normal authorized document processing and application writes remain active.`}
+        </div>
+      ) : null}
       {state.loading && !state.routes.length ? <div className="celar-ai-routing__loading">Loading Celar AI routing and private-model readiness…</div> : null}
 
       <div className="celar-ai-routing__architecture" aria-label="Celar AI routing architecture">
@@ -307,6 +317,7 @@ export default function CelarAiCapabilityRoutingPanel() {
               onChange={(event) => setProfileForm((current) => ({ ...current, endpoint: event.target.value }))}
               placeholder={profile?.endpointConfigured ? 'Leave blank to preserve the encrypted endpoint' : 'https://private-host/v1/chat/completions'}
               autoComplete="off"
+              disabled={deploymentManaged}
             />
             <small>The endpoint must use a private IP, loopback, or approved private DNS suffix. The saved value is never returned.</small>
           </label>
@@ -316,6 +327,7 @@ export default function CelarAiCapabilityRoutingPanel() {
               value={profileForm.model}
               onChange={(event) => setProfileForm((current) => ({ ...current, model: event.target.value }))}
               placeholder="Private model name"
+              disabled={deploymentManaged}
             />
           </label>
           <label>
@@ -324,13 +336,14 @@ export default function CelarAiCapabilityRoutingPanel() {
               value={profileForm.allowlist}
               onChange={(event) => setProfileForm((current) => ({ ...current, allowlist: event.target.value }))}
               placeholder="One hostname or private DNS suffix per line; leave blank to preserve existing/default policy"
+              disabled={deploymentManaged}
             />
           </label>
           <div className="celar-ai-routing__checks">
-            <label><input type="checkbox" checked={profileForm.enabled} onChange={(event) => setProfileForm((current) => ({ ...current, enabled: event.target.checked }))} /> Enable the private Celar AI target</label>
-            <label><input type="checkbox" checked={profileForm.requirePrivateModelForDocuments} onChange={(event) => setProfileForm((current) => ({ ...current, requirePrivateModelForDocuments: event.target.checked }))} /> Require private inference for document-grounded answers</label>
+            <label><input type="checkbox" checked={profileForm.enabled} disabled={deploymentManaged} onChange={(event) => setProfileForm((current) => ({ ...current, enabled: event.target.checked }))} /> Enable the private Celar AI target</label>
+            <label><input type="checkbox" checked={profileForm.requirePrivateModelForDocuments} disabled={deploymentManaged} onChange={(event) => setProfileForm((current) => ({ ...current, requirePrivateModelForDocuments: event.target.checked }))} /> Require private inference for document-grounded answers</label>
           </div>
-          <button type="submit" disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save private-model settings'}</button>
+          <button type="submit" disabled={savingProfile || deploymentManaged}>{deploymentManaged ? 'Deployment-managed' : savingProfile ? 'Saving…' : 'Save private-model settings'}</button>
         </form>
 
         <form className="celar-ai-routing__token-form" onSubmit={savePrivateToken}>
@@ -343,8 +356,9 @@ export default function CelarAiCapabilityRoutingPanel() {
               onChange={(event) => setProfileForm((current) => ({ ...current, bearerToken: event.target.value }))}
               placeholder={profile?.bearerTokenConfigured ? 'Replace the write-only token' : 'Paste token once when required'}
               autoComplete="new-password"
+              disabled={deploymentManaged}
             />
-            <button type="submit" disabled={savingToken || !profileForm.bearerToken.trim()}>{savingToken ? 'Saving…' : 'Save securely'}</button>
+            <button type="submit" disabled={deploymentManaged || savingToken || !profileForm.bearerToken.trim()}>{deploymentManaged ? 'Deployment-managed' : savingToken ? 'Saving…' : 'Save securely'}</button>
             <button type="button" onClick={testPrivateModel} disabled={testingProfile || !profile?.configured}>{testingProfile ? 'Testing…' : 'Test private model'}</button>
           </div>
           <small>The token is AES-GCM encrypted and cannot be viewed after saving.</small>
@@ -374,7 +388,7 @@ export default function CelarAiCapabilityRoutingPanel() {
                       <select
                         value={draft.targets[position] || ''}
                         onChange={(event) => setTarget(route.feature, position, event.target.value)}
-                        disabled={position === 3}
+                        disabled={deploymentManaged || position === 3}
                       >
                         {targetOptions.map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
                       </select>
@@ -385,11 +399,11 @@ export default function CelarAiCapabilityRoutingPanel() {
                 {!localLast ? <p className="is-error">Governed local template must remain final.</p> : null}
                 {duplicate ? <p className="is-error">Every route position must be unique.</p> : null}
                 <footer>
-                  <span>Revision {route.revision ?? 0} · {route.persisted ? 'Persisted' : 'Default policy'}</span>
+                  <span>Revision {route.revision ?? 0} · {route.deploymentManaged ? 'Deployment-managed' : route.persisted ? 'Persisted' : 'Default policy'}</span>
                   <div>
-                    <button type="button" className="is-secondary" onClick={() => resetRoute(route.feature)} disabled={savingRoute === route.feature}>Reset</button>
-                    <button type="button" onClick={() => saveRoute(route.feature)} disabled={savingRoute === route.feature || duplicate || !localLast}>
-                      {savingRoute === route.feature ? 'Saving…' : 'Save route'}
+                    <button type="button" className="is-secondary" onClick={() => resetRoute(route.feature)} disabled={deploymentManaged || savingRoute === route.feature}>Reset</button>
+                    <button type="button" onClick={() => saveRoute(route.feature)} disabled={deploymentManaged || savingRoute === route.feature || duplicate || !localLast}>
+                      {deploymentManaged ? 'Read-only' : savingRoute === route.feature ? 'Saving…' : 'Save route'}
                     </button>
                   </div>
                 </footer>

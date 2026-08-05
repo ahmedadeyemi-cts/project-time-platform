@@ -21,6 +21,10 @@ builder.Services
 
 var app = builder.Build();
 
+// This must remain the first middleware. Candidate revisions are closed before
+// authentication, View-As, module middleware, or any application endpoint can run.
+app.UseProjectPulseAiCandidateRequestFence();
+
 /* 050_CRITICAL_LAUNCH_BLOCKER_PRODUCTION_GUARD_START */
 var projectPulse050BlockedDevRouteTokens = new[]
 {
@@ -17712,11 +17716,16 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
         return new ProjectPulseSessionValidation(false, null, null, null, null, "Missing session token.");
     }
 
+    var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
     var config = DatabaseConfig.FromEnvironment();
+    var connectionString = release.IsCandidate
+        ? ProjectPulseAiDatabaseConnection.Resolve()
+            ?? throw new InvalidOperationException("Candidate session validation requires the canonical AI database connection.")
+        : config.ConnectionString;
 
     try
     {
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
         await using var command = new NpgsqlCommand("""
@@ -17761,14 +17770,20 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
 
         await reader.CloseAsync();
 
-        await using var updateCommand = new NpgsqlCommand("""
-            UPDATE auth_sessions
-            SET last_seen_at = NOW()
-            WHERE auth_session_id = @auth_session_id;
-            """, connection);
+        // Candidate verification uses a database identity that must be incapable
+        // of writes. Session validation is therefore deliberately read-only and
+        // does not update auth_sessions.last_seen_at.
+        if (!ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+        {
+            await using var updateCommand = new NpgsqlCommand("""
+                UPDATE auth_sessions
+                SET last_seen_at = NOW()
+                WHERE auth_session_id = @auth_session_id;
+                """, connection);
 
-        updateCommand.Parameters.AddWithValue("auth_session_id", sessionId);
-        await updateCommand.ExecuteNonQueryAsync();
+            updateCommand.Parameters.AddWithValue("auth_session_id", sessionId);
+            await updateCommand.ExecuteNonQueryAsync();
+        }
 
         return new ProjectPulseSessionValidation(true, userId, email, providerCode, expiresAt, null);
     }

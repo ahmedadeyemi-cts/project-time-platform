@@ -212,6 +212,18 @@ public static class PulseAiPrivateRagModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (release.IsCandidate)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "release_candidate_read_only",
+                message = "Answer feedback and training-evidence mutations are disabled on the exact-source release candidate.",
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                stateChanged = false
+            }, statusCode: StatusCodes.Status423Locked);
+        }
         var access = await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
         if (!access.IsActive || !access.CanSubmitFeedback) return Forbidden("SUBMIT_PULSE_AI_FEEDBACK");
         var saved = await service.SaveFeedbackAsync(

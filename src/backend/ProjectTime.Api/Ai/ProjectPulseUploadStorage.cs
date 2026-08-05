@@ -10,6 +10,9 @@ public sealed record ProjectPulseUploadStorageReadiness(
     bool RootWritable,
     bool KnownEphemeralLocation,
     bool SharedPersistentStorageAttested,
+    bool ReadOnlyAttestationValid,
+    bool WriteDeleteProbeVerified,
+    string VerificationMode,
     bool ProductionReady,
     string RootFingerprint,
     IReadOnlyList<string> Blockers);
@@ -19,6 +22,8 @@ public static class ProjectPulseUploadStorage
     public const string CanonicalEnvironmentVariable = "PROJECTPULSE_UPLOAD_ROOT";
     public const string LegacyEnvironmentVariable = "PROJECT_PULSE_UPLOAD_ROOT";
     public const string SharedPersistenceEnvironmentVariable = "PROJECTPULSE_UPLOAD_ROOT_SHARED_PERSISTENT";
+    public const string AttestationFileEnvironmentVariable = "PROJECTPULSE_UPLOAD_ROOT_ATTESTATION_FILE";
+    public const string AttestationShaEnvironmentVariable = "PROJECTPULSE_UPLOAD_ROOT_ATTESTATION_SHA256";
     public const string DefaultRoot = "/opt/project-time-platform/uploads";
 
     public static string ResolveRoot()
@@ -48,7 +53,13 @@ public static class ProjectPulseUploadStorage
         var exists = Directory.Exists(root);
         var ephemeral = IsKnownEphemeral(root);
         var sharedPersistent = Boolean(SharedPersistenceEnvironmentVariable);
-        var writable = exists && ProbeWritable(root);
+        var candidate = ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate;
+        var readOnlyAttestationValid = candidate && exists && VerifyReadOnlyAttestation(root);
+        var writeDeleteProbeVerified = !candidate && exists && ProbeWriteAndDelete(root);
+        var writable = writeDeleteProbeVerified;
+        var verificationMode = candidate
+            ? "candidate_read_only_platform_attested"
+            : "active_runtime_write_probe";
         var blockers = new List<string>();
 
         if (!canonicalConfigured)
@@ -57,8 +68,10 @@ public static class ProjectPulseUploadStorage
             blockers.Add($"Legacy {LegacyEnvironmentVariable} is not accepted as production persistence evidence.");
         if (!exists)
             blockers.Add("The configured upload root does not exist in this runtime.");
-        if (exists && !writable)
+        if (exists && !candidate && !writable)
             blockers.Add("The configured upload root is not writable by the API runtime identity.");
+        if (exists && candidate && !readOnlyAttestationValid)
+            blockers.Add($"Candidate storage requires an unchanged read-only canary matching {AttestationShaEnvironmentVariable}.");
         if (ephemeral)
             blockers.Add("The configured upload root is a known temporary or memory-backed location.");
         if (!sharedPersistent)
@@ -71,14 +84,54 @@ public static class ProjectPulseUploadStorage
             RootWritable: writable,
             KnownEphemeralLocation: ephemeral,
             SharedPersistentStorageAttested: sharedPersistent,
+            ReadOnlyAttestationValid: readOnlyAttestationValid,
+            WriteDeleteProbeVerified: writeDeleteProbeVerified,
+            VerificationMode: verificationMode,
             ProductionReady: blockers.Count == 0,
             RootFingerprint: Fingerprint(root),
             Blockers: blockers);
     }
 
-    private static bool ProbeWritable(string root)
+    private static bool VerifyReadOnlyAttestation(string root)
+    {
+        var name = Environment.GetEnvironmentVariable(AttestationFileEnvironmentVariable)?.Trim() ?? string.Empty;
+        var expected = Environment.GetEnvironmentVariable(AttestationShaEnvironmentVariable)?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (name.Length == 0
+            || name != Path.GetFileName(name)
+            || expected.Length != 64
+            || expected.Any(character => !(character is >= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            return false;
+        }
+
+        var path = Path.GetFullPath(Path.Combine(root, name));
+        if (!IsSameOrChild(path, root) || !File.Exists(path)) return false;
+        try
+        {
+            var before = new FileInfo(path);
+            if ((before.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            var beforeLength = before.Length;
+            var beforeWrite = before.LastWriteTimeUtc;
+            using var stream = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                bufferSize: 16 * 1024, options: FileOptions.SequentialScan);
+            var actual = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            var after = new FileInfo(path);
+            return CryptographicOperations.FixedTimeEquals(
+                    Encoding.ASCII.GetBytes(actual), Encoding.ASCII.GetBytes(expected))
+                && after.Length == beforeLength
+                && after.LastWriteTimeUtc == beforeWrite;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool ProbeWriteAndDelete(string root)
     {
         var probe = Path.Combine(root, $".celar-ai-storage-probe-{Guid.NewGuid():N}");
+        var created = false;
         try
         {
             using var stream = new FileStream(
@@ -90,7 +143,10 @@ public static class ProjectPulseUploadStorage
                 options: FileOptions.WriteThrough);
             stream.WriteByte(0);
             stream.Flush(flushToDisk: true);
-            return true;
+            created = true;
+            stream.Dispose();
+            File.Delete(probe);
+            return !File.Exists(probe);
         }
         catch
         {
@@ -98,8 +154,11 @@ public static class ProjectPulseUploadStorage
         }
         finally
         {
-            try { File.Delete(probe); }
-            catch { /* A failed cleanup does not expose the configured path or change readiness. */ }
+            if (created && File.Exists(probe))
+            {
+                try { File.Delete(probe); }
+                catch { /* Readiness already failed because deletion was not proven. */ }
+            }
         }
     }
 

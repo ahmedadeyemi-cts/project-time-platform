@@ -93,6 +93,13 @@ public sealed class ProjectPulseAiHealthMonitor : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+        {
+            _logger.LogInformation(
+                "Module 064 background provider health probes are disabled in the release-candidate phase; the combined verification request owns all candidate probes.");
+            return;
+        }
+
         // Run once when the API starts, after the registered secret loader has
         // hydrated the shared configuration, and then keep the result current.
         await RefreshSafely(stoppingToken);

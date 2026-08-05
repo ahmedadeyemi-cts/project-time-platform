@@ -23,6 +23,11 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var options = PulseAiPrivateRuntimeOptions.FromEnvironment();
+            if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+            {
+                await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
+                continue;
+            }
             if (!options.WorkerEnabled)
             {
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(30, options.PollSeconds)), stoppingToken);
