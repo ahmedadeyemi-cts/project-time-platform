@@ -49,6 +49,8 @@ for route in \
   rg -Fq "$route" "$module" || { echo "Missing Project Forge route: $route" >&2; exit 1; }
 done
 
+rg -Fq '[Microsoft.AspNetCore.Mvc.FromBody] ProjectForgeTaskArchiveRequest request' "$interactive"
+rg -Fq '[Microsoft.AspNetCore.Mvc.FromBody] ProjectForgeTaskDependencySaveRequest request' "$interactive"
 rg -Fq "@workspace='canonical'" "$module"
 rg -Fq "@workspace='review_plan' AND pt.plan_id=@plan_filter" "$module"
 rg -Fq 'projectTeam' "$module"
