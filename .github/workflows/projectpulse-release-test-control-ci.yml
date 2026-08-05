@@ -1,0 +1,60 @@
+name: Validate Current Main Test Release Control
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/projectpulse-deploy-test.yml
+      - .github/workflows/projectpulse-release-test-control-ci.yml
+      - deployment/containers/release-test/api.Dockerfile
+      - deployment/releases/test/current-main-e83340b5-20260805.json
+      - scripts/release-test/apply-071-073.sh
+      - scripts/release-test/run-migration-job.sh
+      - scripts/release-test/verify-runtime.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out proposed release controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate guarded Test release controls
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/apply-071-073.sh
+          bash -n scripts/release-test/run-migration-job.sh
+          node --check scripts/release-test/verify-runtime.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("deployment/releases/test/current-main-e83340b5-20260805.json").read_text())
+          assert manifest["schemaVersion"] == 1
+          assert manifest["environment"] == "test"
+          assert manifest["sourceSha"] == "e83340b5a4215ea63901cea98ea17596444f96b7"
+          assert manifest["flowHiveIncluded"] is False
+          assert manifest["migration074Included"] is False
+          assert [item["id"] for item in manifest["migrations"]] == [
+              "071_ai_runtime_production_hardening",
+              "072_celar_ai_conversation_attachments",
+              "073_module_033_project_forge_interactive",
+          ]
+          assert len({item["path"] for item in manifest["migrations"]}) == 3
+          assert len({item["sha256"] for item in manifest["migrations"]}) == 3
+          PY
+          printf '%s  %s\n' \
+            108f898a0f5e7f76833d42741ba1caa9a0f1ff427db17728cf5a5008a91ee6e7 database/migrations/071_ai_runtime_production_hardening.sql \
+            b1a898d72916027f02f7ea5578facd7d9149436b2db9e11dca833d74a7cecf1f database/migrations/072_celar_ai_conversation_attachments.sql \
+            e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6 database/migrations/073_module_033_project_forge_interactive.sql \
+            | sha256sum --check --strict
+          node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
+          git diff --check
+          echo "CURRENT_MAIN_TEST_RELEASE_CONTROL=PASSED"
