@@ -36,18 +36,11 @@ jobs:
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          if [[ "$HEAD_BRANCH" != security/celar-ai-production-readiness-* ]]; then
-            echo 'applicable=false' >> "$GITHUB_OUTPUT"
-            echo 'CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE'
-            exit 0
-          fi
-
-          echo 'applicable=true' >> "$GITHUB_OUTPUT"
-          git fetch origin "$BASE_BRANCH" --no-tags
-          DIFF_RANGE="origin/$BASE_BRANCH...HEAD"
-          CHANGED="$(git diff --name-only --no-renames "$DIFF_RANGE" | LC_ALL=C sort -u)"
-          test -n "$CHANGED"
-          SOURCE_MANIFEST="$(cat <<'EOF'
+          case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-*)
+              SCOPE_LABEL='security production-hardening'
+              SCOPE_MARKER='EXACT_45_SOURCE_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
           .github/workflows/celar-ai-production-hardening-ci.yml
           .github/workflows/celar-ai-production-platform-ci.yml
           .github/workflows/pulse-ai-help-chat-usability-ci.yml
@@ -95,10 +88,81 @@ jobs:
           tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs
           EOF
           )"
+              ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              SCOPE_LABEL='unified-chat regression'
+              SCOPE_MARKER='EXACT_51_UNIFIED_CHAT_SOURCE_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-enterprise-platform-ci.yml
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          .github/workflows/celar-ai-production-platform-ci.yml
+          .github/workflows/pulse-ai-help-chat-usability-ci.yml
+          database/migrations/072_celar_ai_conversation_attachments.sql
+          database/rollback/072_celar_ai_conversation_attachments_rollback.sql
+          src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentContracts.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRepository.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRetentionWorker.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentService.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs
+          src/backend/ProjectTime.Api/Directory.Build.targets
+          src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs
+          src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs
+          src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs
+          src/frontend/project-time-web/package.json
+          src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs
+          src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs
+          src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
+          src/frontend/project-time-web/scripts/inject-module-006-toyota-hyundai-pipeline.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          src/frontend/project-time-web/scripts/validate-module-059-global.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
+          src/frontend/project-time-web/src/HelpAssistant.jsx
+          src/frontend/project-time-web/src/PulseAiPrivateRagWorkbench.jsx
+          src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx
+          src/frontend/project-time-web/src/celar-ai-contextual-chat.css
+          src/frontend/project-time-web/src/celar-ai-production-platform.css
+          src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js
+          tests/test-celar-ai-conversation-attachments-migration-072.sh
+          tests/test-uat-functional-completion-contract.sh
+          EOF
+          )"
+              ;;
+            *)
+              echo 'applicable=false' >> "$GITHUB_OUTPUT"
+              echo 'CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE'
+              exit 0
+              ;;
+          esac
+
+          echo 'applicable=true' >> "$GITHUB_OUTPUT"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          DIFF_RANGE="origin/$BASE_BRANCH...HEAD"
+          CHANGED="$(git diff --name-only --no-renames "$DIFF_RANGE" | LC_ALL=C sort -u)"
+          test -n "$CHANGED"
           MISSING_SOURCE="$(comm -23 <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u) <(printf '%s\n' "$CHANGED"))"
           UNEXPECTED="$(comm -23 <(printf '%s\n' "$CHANGED") <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u))"
           if [[ -n "$MISSING_SOURCE" || -n "$UNEXPECTED" ]]; then
-            echo 'Security production-hardening branches must contain the exact reviewed 45-file source manifest and no out-of-scope paths.' >&2
+            echo "The $SCOPE_LABEL branch must contain its exact reviewed source manifest and no out-of-scope paths." >&2
             [[ -z "$MISSING_SOURCE" ]] || { echo 'Missing source files:' >&2; printf '%s\n' "$MISSING_SOURCE" >&2; }
             [[ -z "$UNEXPECTED" ]] || { echo 'Unexpected files:' >&2; printf '%s\n' "$UNEXPECTED" >&2; }
             exit 1
@@ -114,7 +178,11 @@ jobs:
             }
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
-          echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_45_SOURCE_FILES'
+          if [[ "$SCOPE_MARKER" == 'EXACT_45_SOURCE_FILES' ]]; then
+            echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_45_SOURCE_FILES'
+          else
+            echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_51_UNIFIED_CHAT_SOURCE_FILES'
+          fi
 
   validate:
     needs: classify
@@ -167,7 +235,7 @@ jobs:
           echo 'CELAR_AI_TRACKED_GENERATED_SOURCE_CONVERGENCE=PASSED'
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 

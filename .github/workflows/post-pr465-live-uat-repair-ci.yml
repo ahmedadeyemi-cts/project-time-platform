@@ -87,7 +87,7 @@ jobs:
           node --check src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 

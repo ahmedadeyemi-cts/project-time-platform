@@ -79,7 +79,7 @@ jobs:
           bash -n control/scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh
           bash control/scripts/validate-uat-sso-group3-pulse-ai-repair-test-deployment.sh
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 

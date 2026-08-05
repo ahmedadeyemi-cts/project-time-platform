@@ -165,6 +165,9 @@ public sealed class CelarAiExternalReasoningService
 
         try
         {
+            var consumerModule = string.Equals(feature, ProjectPulseAiFeatures.ProjectForgePlanEstimate, StringComparison.OrdinalIgnoreCase)
+                ? "033"
+                : "011";
             var route = await _router.GenerateExternalAsync(
                 new ProjectPulseAiGenerationRequest(
                     Feature: feature,
@@ -180,7 +183,7 @@ public sealed class CelarAiExternalReasoningService
                     ContainsFinancialValues: false,
                     AllowSanitizedExternalAssistance: false,
                     SensitiveTerms: [],
-                    ConsumerModule: "011",
+                    ConsumerModule: consumerModule,
                     CorrelationId: Guid.NewGuid().ToString("N"),
                     IdentityTerms: [],
                     ExternalCapsulePurpose: serverOwnedPurposeCategory),

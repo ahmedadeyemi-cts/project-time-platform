@@ -5,17 +5,20 @@ public sealed class PulseAiPrivateRetrievalService
     private readonly PulseAiPrivateRagRepository _repository;
     private readonly PulseAiPrivateRetrievalAuthorizationService _reauthorization;
     private readonly PulseAiPrivateEmbeddingClient _embeddingClient;
+    private readonly CelarAiConversationAttachmentRepository _attachments;
     private readonly ILogger<PulseAiPrivateRetrievalService> _logger;
 
     public PulseAiPrivateRetrievalService(
         PulseAiPrivateRagRepository repository,
         PulseAiPrivateRetrievalAuthorizationService reauthorization,
         PulseAiPrivateEmbeddingClient embeddingClient,
+        CelarAiConversationAttachmentRepository attachments,
         ILogger<PulseAiPrivateRetrievalService> logger)
     {
         _repository = repository;
         _reauthorization = reauthorization;
         _embeddingClient = embeddingClient;
+        _attachments = attachments;
         _logger = logger;
     }
 
@@ -33,6 +36,22 @@ public sealed class PulseAiPrivateRetrievalService
                 ["The current effective user could not be resolved."],
                 "effective_user_unavailable");
         }
+        if (query.AttachmentIds.Count > 0 && query.ActualUserId != query.EffectiveUserId)
+        {
+            return Empty(
+                "view_as_attachment_access_blocked",
+                query,
+                ["Celar AI conversation attachments are unavailable in View-As."],
+                "view_as_attachment_access_blocked");
+        }
+        if (query.AttachmentIds.Count > 0 && !access.CanAttachDocuments)
+        {
+            return Empty(
+                "attachment_permission_required",
+                query,
+                ["The current user is not authorized to use private Celar AI conversation attachments."],
+                "attachment_permission_required");
+        }
         if (!await _repository.IsSchemaReadyAsync(cancellationToken))
         {
             return Empty(
@@ -40,6 +59,52 @@ public sealed class PulseAiPrivateRetrievalService
                 query,
                 ["Migration 053 and the private document index must be available before live private retrieval can run."],
                 "private_rag_schema_unavailable");
+        }
+
+        IReadOnlyList<string> attachmentSelectionWarnings = [];
+        if (query.AttachmentIds.Count > 0)
+        {
+            if (query.ConversationId is null)
+            {
+                return Empty(
+                    "attachment_conversation_required",
+                    query,
+                    ["Selected Celar AI attachments require the owning durable conversation identifier."],
+                    "attachment_conversation_required");
+            }
+            var conversationAttachments = await _attachments.ListAsync(
+                query.ConversationId.Value,
+                access.UserId,
+                cancellationToken);
+            var selected = conversationAttachments
+                .Where(item => query.AttachmentIds.Contains(item.AttachmentId))
+                .ToArray();
+            var ready = selected.Where(item => item.Ready).ToArray();
+            var missingCount = query.AttachmentIds.Count - selected.Length;
+            attachmentSelectionWarnings =
+            [
+                .. selected
+                    .Where(item => !item.Ready)
+                    .Select(item => $"Attachment {item.OriginalFileName} is {item.ProcessingStatus} and was not included in private inference."),
+                .. (missingCount > 0
+                    ? [$"{missingCount} selected attachment identifier(s) were not found in the current user's active conversation scope."]
+                    : Array.Empty<string>())
+            ];
+            if (ready.Length == 0)
+            {
+                return Empty(
+                    "selected_attachments_not_ready",
+                    query,
+                    attachmentSelectionWarnings.Count > 0
+                        ? attachmentSelectionWarnings
+                        : ["None of the selected attachments is ready for private retrieval."],
+                    "selected_attachments_not_ready");
+            }
+            await _attachments.MarkSelectedAsync(
+                query.ConversationId.Value,
+                access.UserId,
+                ready.Select(item => item.AttachmentId).ToArray(),
+                cancellationToken);
         }
 
         PulseAiPrivateRagRepository.ProjectResolution? project = null;
@@ -115,10 +180,27 @@ public sealed class PulseAiPrivateRetrievalService
             var reauthorized = await _reauthorization.ReauthorizeAsync(
                 access,
                 rows.Chunks,
-                query.RequireTimesheetFlag,
+                query,
                 cancellationToken);
 
-            var missing = BuildMissingEvidence(query, reauthorized);
+            IReadOnlyList<string> missing =
+            [
+                .. BuildMissingEvidence(query, reauthorized),
+                .. attachmentSelectionWarnings
+            ];
+            if (rows.CandidateCount > 0
+                && reauthorized.Count == 0
+                && string.Equals(
+                    rows.DiagnosticCode,
+                    "private_evidence_below_minimum_score",
+                    StringComparison.Ordinal))
+            {
+                missing =
+                [
+                    .. missing,
+                    $"Authorized candidates were found, but none met the configured minimum evidence score ({ragOptions.MinimumEvidenceScore:P0})."
+                ];
+            }
             var conflicts = BuildConflicts(reauthorized);
             var coverage = Coverage(query, reauthorized);
             var status = reauthorized.Count == 0

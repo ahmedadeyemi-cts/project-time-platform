@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: bash scripts/validate-superadmin-sso-expense-module006-test-deployment.sh
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 

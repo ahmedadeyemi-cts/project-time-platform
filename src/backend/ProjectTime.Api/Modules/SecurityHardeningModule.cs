@@ -1329,11 +1329,6 @@ public static class SecurityHardeningModule
         Guid actorUserId,
         Guid requestId)
     {
-        if (access.HasOrganizationIntakeScope)
-        {
-            return true;
-        }
-
         await using var command = new NpgsqlCommand("""
             SELECT EXISTS (
                 SELECT 1
@@ -1373,8 +1368,10 @@ public static class SecurityHardeningModule
                   ON r.project_intake_request_id = d.project_intake_request_id
                 WHERE d.project_intake_document_id = @document_id
                   AND COALESCE(d.is_active, TRUE) = TRUE
+                  AND COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
                   AND (
-                        r.requested_by_user_id = @user_id
+                        @has_organization_scope = TRUE
+                     OR r.requested_by_user_id = @user_id
                      OR r.assigned_pm_user_id = @user_id
                      OR r.account_executive_user_id = @user_id
                      OR r.solution_architect_user_id = @user_id
@@ -1394,6 +1391,7 @@ public static class SecurityHardeningModule
 
         command.Parameters.AddWithValue("document_id", documentId);
         command.Parameters.AddWithValue("user_id", actorUserId);
+        command.Parameters.AddWithValue("has_organization_scope", access.HasOrganizationIntakeScope);
 
         return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
     }

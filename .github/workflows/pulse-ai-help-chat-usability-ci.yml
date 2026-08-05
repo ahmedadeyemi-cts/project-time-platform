@@ -101,6 +101,32 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_LATER_MODULE_011_INTEGRATION=PASSED'
               ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/072_celar_ai_conversation_attachments\.sql|rollback/072_celar_ai_conversation_attachments_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in the unified Celar AI Help-chat package:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              UNAUTHORIZED_DEPLOYMENT="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+              if [[ -n "$UNAUTHORIZED_DEPLOYMENT" ]]; then
+                echo 'The unified Celar AI Help-chat validation cannot include a deployment operation:' >&2
+                printf '%s\n' "$UNAUTHORIZED_DEPLOYMENT" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/072_celar_ai_conversation_attachments.sql' \
+                'database/rollback/072_celar_ai_conversation_attachments_rollback.sql' \
+                'src/frontend/project-time-web/src/HelpAssistant.jsx' \
+                'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js' \
+                'src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=UNIFIED_CHAT_ATTACHMENTS' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_UNIFIED_CHAT_ATTACHMENTS=PASSED'
+              ;;
             release/consolidated-enterprise-validation-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
@@ -181,7 +207,7 @@ jobs:
           echo 'GROUP_5_REGRESSION_APPLICABILITY_CORRECTION=PASSED'
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 

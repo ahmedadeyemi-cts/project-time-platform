@@ -91,7 +91,7 @@ jobs:
       - name: Test migration 050 apply, idempotency, invariants, and rollback
         run: bash release/tests/test-project-notification-migration-050.sh
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 

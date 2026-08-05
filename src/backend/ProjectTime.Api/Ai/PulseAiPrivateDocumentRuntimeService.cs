@@ -482,6 +482,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     "The private scanner detected malware. The document was not parsed, embedded, or indexed.",
                     scan.ToPublicEvidence(),
                     cancellationToken);
+                DeleteQuarantinedConversationAttachment(source);
                 return Result("quarantined", job, null, 0, 0, 0, "malware_detected", []);
             }
             if (!scan.Clean)
@@ -905,6 +906,44 @@ public sealed class PulseAiPrivateDocumentRuntimeService
 
     private static int EstimateTokens(int characters) =>
         characters <= 0 ? 0 : (characters + 3) / 4;
+
+    private void DeleteQuarantinedConversationAttachment(PulseAiAuthorizedDocumentSource source)
+    {
+        if (!string.Equals(
+                source.UploadSource,
+                CelarAiConversationAttachmentPolicy.UploadSource,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(Path.Combine(
+                    ProjectPulseUploadStorage.ResolveRoot(),
+                    "celar-ai",
+                    "conversations"))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var path = Path.GetFullPath(source.StoragePath);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (!path.StartsWith(root, comparison))
+                throw new InvalidOperationException("quarantine_storage_path_rejected");
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception exception)
+        {
+            // Database state already prevents parsing and retrieval. Emit only
+            // a bounded diagnostic so operators can retry physical cleanup
+            // without disclosing the document name, path, or content.
+            _logger.LogWarning(
+                "Celar AI quarantined attachment cleanup requires operator follow-up. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                source.DocumentId,
+                Diagnostic(exception));
+        }
+    }
 
     private static PulseAiPrivateWorkerResult Empty(
         string status,

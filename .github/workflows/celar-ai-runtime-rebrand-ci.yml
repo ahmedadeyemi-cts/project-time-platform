@@ -88,7 +88,7 @@ jobs:
           echo 'CELAR_AI_RUNTIME_REBRAND_SOURCE_ISOLATION=PASSED'
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 

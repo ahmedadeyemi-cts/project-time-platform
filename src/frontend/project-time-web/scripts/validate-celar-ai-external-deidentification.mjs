@@ -384,10 +384,12 @@ check(
     'IsPrivateSafetyRefusal(answer)',
     'ProjectPulseAiOutcomes.Refusal',
     'externalAssistance = Limit(',
+    'BuildExternalProblemStatement(',
+    'ExternalProblemStatement: externalProblemStatement',
     'SafetyRefusalAnswer(plan, correlationId, routed.Provider)',
     'routeOutcome == ProjectPulseAiOutcomes.Refusal',
     'No later AI target or governed local answer was used.',
-    'It did not receive the user\'s question, private documents, tool results, names, identifiers, retrieved text, or customer/project context'
+    "it did not receive the user's question, private documents, attachment text, tool results, customer/project context, people records, financial values, or identifiers"
   ])
     && !section(
       helpService,
@@ -395,13 +397,18 @@ check(
       'if (!string.IsNullOrWhiteSpace(routed.Warning))'
     ).includes('MergeModelAnswer(')
     && containsAll(helpContracts, ['externalAssistance = ExternalAssistance'])
-    && containsAll(helpUi, ['Generic response-structure guidance', 'fixed backend-owned, identity-free capsule'])
+    && containsAll(helpUi, [
+      'Supplementary external guidance (unverified)',
+      'closed server-owned topic plus a backend-owned purpose capsule',
+      'the user’s wording was not sent',
+      'No attachment text, private document content, tool results, customer or project context'
+    ])
     && containsAll(brandModule, [
       'attemptedTargets = result.AttemptedTargets ?? []',
       'targetDecisions = result.TargetDecisions ?? []',
       'externalProviderCalled = (result.AttemptedTargets ?? []).Any'
     ]),
-  'Help keeps the raw question and retrieved/tool evidence private, exposes truthful route telemetry, and displays fixed generic public guidance separately from the grounded answer'
+  'Help keeps raw enterprise evidence private, exposes truthful route telemetry, and displays only sanitized general guidance separately from the grounded answer'
 );
 check(
   'CELAR_EXTERNAL_ENTERPRISE_PRIVATE_CALLBACK_AND_SEPARATION',

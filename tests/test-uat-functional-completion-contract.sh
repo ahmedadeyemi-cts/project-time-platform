@@ -10,7 +10,8 @@ ANALYTICS_CSS="$ROOT/src/frontend/project-time-web/src/analytics-center.css"
 AUTHORITY="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs"
 CRM="$ROOT/src/backend/ProjectTime.Api/Modules/CrmErpAdministrationExperience.cs"
 ADMIN="$ROOT/src/backend/ProjectTime.Api/Modules/AdminExperienceCommon.cs"
-CELAR="$ROOT/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx"
+CELAR="$ROOT/src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx"
+CELAR_MOUNT="$ROOT/src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx"
 MAIL_TEST="$ROOT/src/backend/ProjectTime.Api/Modules/MicrosoftMailTransportTestModule.cs"
 MAIL_DELIVERY="$ROOT/src/backend/ProjectTime.Api/Modules/Module065ProjectNotificationDelivery.cs"
 MAIL_UI="$ROOT/src/frontend/project-time-web/src/MicrosoftMailTransportReadinessPanel.jsx"
@@ -25,7 +26,7 @@ ANALYTICS_ENTERPRISE_WORKFLOW="$ROOT/.github/workflows/module030-analytics-enter
 MICROSOFT_WORKFLOW="$ROOT/.github/workflows/modules010065-microsoft-runtime-ci.yml"
 ROLE_WORKFLOW="$ROOT/.github/workflows/role-access-repair-ci.yml"
 
-for file in "$CATALOG" "$ENGINE" "$SOURCES" "$ANALYTICS" "$ANALYTICS_CSS" "$AUTHORITY" "$CRM" "$ADMIN" "$CELAR" "$MAIL_TEST" "$MAIL_DELIVERY" "$MAIL_UI" "$MIGRATION" "$ROLLBACK" "$CLOSEOUT" "$ROUTE_AUTHORITY" "$APP_SOURCE" "$CELAR_WORKFLOW" "$ANALYTICS_WORKFLOW" "$ANALYTICS_ENTERPRISE_WORKFLOW" "$MICROSOFT_WORKFLOW" "$ROLE_WORKFLOW"; do
+for file in "$CATALOG" "$ENGINE" "$SOURCES" "$ANALYTICS" "$ANALYTICS_CSS" "$AUTHORITY" "$CRM" "$ADMIN" "$CELAR" "$CELAR_MOUNT" "$MAIL_TEST" "$MAIL_DELIVERY" "$MAIL_UI" "$MIGRATION" "$ROLLBACK" "$CLOSEOUT" "$ROUTE_AUTHORITY" "$APP_SOURCE" "$CELAR_WORKFLOW" "$ANALYTICS_WORKFLOW" "$ANALYTICS_ENTERPRISE_WORKFLOW" "$MICROSOFT_WORKFLOW" "$ROLE_WORKFLOW"; do
   test -s "$file"
 done
 
@@ -106,14 +107,15 @@ require "$CRM" 'Permanent actual-session Super Administrator authority is evalua
 require "$CRM" '"actual_session_super_administrator"' crm_authority_evidence
 require "$ADMIN" 'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync' admin_common_permanent_authority
 
-# Module 011 owns one selected workspace at a time, with architecture first.
-require "$CELAR" "id: 'overview'" celar_overview_default
+# Module 011 owns one selected production workspace at a time, with architecture first.
+require "$CELAR" "['overview', 'Overview', 'Architecture, readiness, trust, and solution composer']" celar_overview_default
 require "$CELAR" "useState('overview')" celar_architecture_is_initial_workspace
-require "$CELAR" "label: 'Overview & Architecture'" celar_architecture_tab
-require "$CELAR" 'const ActiveWorkspace = workspace.component;' celar_single_active_component
-require "$CELAR" '<ActiveWorkspace />' celar_selected_surface_only
-require "$CELAR" 'component: CelarAiEnterprisePlatform' celar_enterprise_workspace_registered
-require "$CELAR" 'return <PulseAiCenter />;' celar_lifecycle_validator_compatibility
+require "$CELAR" "['ask', 'Ask Celar AI'" celar_shared_ask_tab
+require "$CELAR" 'const tabContent = useMemo(() =>' celar_single_active_component
+require "$CELAR" '{tabContent}' celar_selected_surface_only
+require "$CELAR" "if (activeTab === 'overview') return <CelarAiEnterprisePlatform />;" celar_enterprise_workspace_registered
+require "$CELAR_MOUNT" 'return <CelarAiProductionPlatform />;' celar_authoritative_production_mount
+require "$CELAR_MOUNT" 'return <PulseAiCenter />;' celar_lifecycle_validator_compatibility
 
 # Module 065 readiness and real governed Test delivery remain distinct.
 require "$MAIL_TEST" '/api/microsoft-integration/mail-runtime/test-delivery' governed_delivery_endpoint

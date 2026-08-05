@@ -74,7 +74,7 @@ jobs:
 
           echo 'ROLE_POLICY_AUDIT_MODULE065_DEPLOYMENT_SCOPE=PASS'
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 

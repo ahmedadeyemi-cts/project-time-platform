@@ -109,7 +109,7 @@ jobs:
         shell: bash
         run: bash scripts/validate-open-pr-reconciliation-test-deployment.sh
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
