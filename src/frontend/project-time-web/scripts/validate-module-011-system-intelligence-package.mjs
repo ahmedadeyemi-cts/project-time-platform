@@ -143,11 +143,12 @@ assert('CROSS_SYSTEM_TOOLING',
 
 assert('PROJECT_FORGE_DISCOVERY',
   all(s.knowledge, [
+    'if (ContainsAny(normalized, "project forge", "project-forge")) modules.Add("033");',
     'if (intent == "projects_and_delivery") modules.UnionWith(["018", "019", "020", "033",',
     '["033"] = "#project-forge"',
     '("033", "Project Forge", ["/api/project-forge"])'
   ]),
-  'project delivery intent, API inventory ownership, and navigation resolve Project Forge as Module 033');
+  'name-only and project delivery intents, API inventory ownership, and navigation resolve Project Forge as Module 033');
 
 const routes = [
   '/api/pulse-ai/v1/system/readiness','/api/pulse-ai/v1/system/tools',
