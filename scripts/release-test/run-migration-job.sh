@@ -135,7 +135,7 @@ jq -n \
   }' > "$PAYLOAD"
 
 CREATE_ATTEMPTED=1
-az rest --method put --uri "$JOB_URI" --body "$$PAYLOAD" --output none --only-show-errors
+az rest --method put --uri "$JOB_URI" --body @"$PAYLOAD" --output none --only-show-errors
 
 ACTUAL_IMAGE="$(az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query properties.template.containers[0].image -o tsv --only-show-errors)"
 ACTUAL_ENVIRONMENT="$(az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query properties.environmentId -o tsv --only-show-errors)"
