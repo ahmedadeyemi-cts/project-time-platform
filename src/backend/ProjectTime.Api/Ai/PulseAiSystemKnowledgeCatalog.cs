@@ -551,6 +551,7 @@ public static class PulseAiSystemKnowledgeCatalog
         foreach (Match match in Regex.Matches(normalized, @"\b(?:module\s*)?(\d{3}|055[a-d])\b", RegexOptions.IgnoreCase))
             modules.Add(match.Groups[1].Value.ToUpperInvariant());
         if (ContainsAny(normalized, "project forge", "project-forge")) modules.Add("033");
+        if (ContainsAny(normalized, "ai provider configuration", "ai-provider-configuration", "ai configuration", "ai-configuration", "capability routing", "feature routing")) modules.Add("064");
         if (intent == "api_inventory") modules.UnionWith(["013", "016", "068"]);
         if (intent == "troubleshooting") modules.UnionWith(["013", "016", "076", "078", "998"]);
         if (intent == "future_enhancement") modules.UnionWith(["012", "013", "037", "064", "068", "076", "077", "078", "998"]);
@@ -662,7 +663,7 @@ public static class PulseAiSystemKnowledgeCatalog
         ("008", "Audit History", ["/api/admin/audit", "/api/audit/history"]),
         ("009", "User Administration", ["/api/admin/users", "/api/user-administration"]),
         ("010", "Azure / Entra Directory Users", ["/api/admin/azure"]),
-        ("011", "Pulse AI", ["/api/pulse-ai", "/api/ai-configuration", "/api/ai/"]),
+        ("011", "Pulse AI", ["/api/pulse-ai", "/api/ai/"]),
         ("012", "Role Administration", ["/api/role-policy", "/api/rbac"]),
         ("013", "System Health & API Diagnostics", ["/api/platform-operations/overview", "/api/platform-operations/apis", "/api/system/service-control", "/api/system/api-status", "/api/system/version-inventory"]),
         ("014", "Backup & Disaster Recovery", ["/api/system/backup-dr"]),
@@ -690,7 +691,7 @@ public static class PulseAiSystemKnowledgeCatalog
         ("057", "Calendar & Capacity", ["/api/calendar", "/api/capacity"]),
         ("058", "CI/CD Pipeline", ["/api/cicd"]),
         ("060", "Contracts", ["/api/contracts"]),
-        ("064", "AI Provider Configuration", ["/api/ai-provider"]),
+        ("064", "AI Provider Configuration", ["/api/ai-configuration", "/api/ai-provider"]),
         ("065", "Microsoft Integration Connection", ["/api/microsoft-integration", "/api/global-mail", "/api/auth/sso"]),
         ("066", "Project FlowHive", ["/api/project-flowhive", "/api/flowhive"]),
         ("068", "Provider-Neutral System Architecture", ["/api/platform-operations/architecture", "/api/system-architecture"]),
