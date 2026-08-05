@@ -105,6 +105,60 @@
   line-height: 1.65;
 }
 
+.celar-ai-answer-details {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 32%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-strong) 96%, var(--brand-blue) 4%);
+}
+
+.celar-ai-answer-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.72rem 0.8rem;
+  color: var(--brand-blue-strong);
+  cursor: pointer;
+  list-style: none;
+}
+
+.celar-ai-answer-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.celar-ai-answer-details > summary::before {
+  flex: 0 0 auto;
+  content: '▸';
+  color: var(--brand-blue);
+  font-size: 0.72rem;
+}
+
+.celar-ai-answer-details[open] > summary::before {
+  content: '▾';
+}
+
+.celar-ai-answer-details > summary span {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.celar-ai-answer-details > summary small {
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: 0.63rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.celar-ai-answer-details-body {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--border);
+  padding: 0.75rem;
+}
+
 .pulse-ai-system-evidence-badges {
   display: flex;
   flex-wrap: wrap;

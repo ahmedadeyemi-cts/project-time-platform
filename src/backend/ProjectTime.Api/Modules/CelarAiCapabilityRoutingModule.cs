@@ -1218,14 +1218,16 @@ public static class CelarAiCapabilityRoutingModule
             Operational handoff: {Clean(request.HandoffSummary, 6000)}
             Requested tone: {Clean(request.RequestedTone, 80, "professional and factual")}
 
-            Separate completed facts, evidence, open items, risks, ownership, and next actions. Do not invent customer
-            acceptance, billing completion, deliverable completion, dates, recipients, or commitments. Return an unsent
-            draft only. The owning closeout and notification modules retain final authority.
+            Produce a comprehensive communication with a subject, concise executive opening, verified completion,
+            acceptance evidence, deliverables and handoff, outstanding items, owners, risks, next actions, and an explicit
+            review/approval boundary. Separate completed facts from missing evidence and assumptions. Do not invent
+            customer acceptance, billing completion, deliverable completion, dates, recipients, owners, or commitments.
+            Return an unsent draft only. The owning closeout and notification modules retain final authority.
             """;
         var routed = await router.GenerateAsync(
             new ProjectPulseAiGenerationRequest(
                 CelarAiCapabilityCatalog.CloseoutCommunication,
-                "Create concise, factual, professional-services closeout communication drafts. Never send a message or claim approval without evidence.",
+                "Create comprehensive, structured, factual professional-services closeout communication drafts. Lead concisely, preserve all verified evidence and open items, and never send a message or claim approval without evidence.",
                 prompt,
                 1800,
                 0.15),
@@ -1281,13 +1283,37 @@ public static class CelarAiCapabilityRoutingModule
         });
     }
 
-    private static string BuildCloseoutFallback(CelarAiCloseoutCommunicationRequest request) => $"""
-        Subject: Project closeout review — {Clean(request.ProjectName, 300, Clean(request.ProjectCode, 120, "Project"))}
+    private static string BuildCloseoutFallback(CelarAiCloseoutCommunicationRequest request)
+    {
+        var project = Clean(request.ProjectName, 300, Clean(request.ProjectCode, 120, "Project"));
+        var completion = Clean(request.CompletionSummary, 6000, "No verified completion summary was supplied.");
+        var acceptance = Clean(request.AcceptanceEvidence, 6000, "No acceptance evidence was supplied.");
+        var outstanding = Clean(request.OutstandingItems, 6000, "No outstanding-item evidence was supplied; confirm this in the authoritative project record.");
+        var handoff = Clean(request.HandoffSummary, 6000, "No operational handoff summary was supplied.");
+        return $"""
+            Subject: Project closeout review — {project}
 
-        This draft is prepared for review only. Summarize the verified completion status, accepted deliverables, supporting
-        evidence, operational handoff, outstanding items, owners, risks, and next actions. Confirm all dates, customer
-        acceptance, billing status, recipients, and commitments in the authoritative Pulse records before sending.
-        """.Trim();
+            This review-only draft summarizes the currently supplied closeout evidence for {project}. It is not a closure,
+            acceptance, billing, delivery, recipient, or customer-commitment record.
+
+            Verified completion summary
+            {completion}
+
+            Acceptance evidence
+            {acceptance}
+
+            Operational handoff
+            {handoff}
+
+            Outstanding items, owners, and risks
+            {outstanding}
+
+            Next actions and review boundary
+            Confirm deliverable completion, acceptance, dates, owners, risks, billing status, recipients, and commitments
+            in the authoritative Pulse records. Obtain the required PM, Engineering, and closeout approvals before sending
+            this communication or changing project state.
+            """.Trim();
+    }
 
     private static async Task<string> PrivateEndpointPolicyAsync(
         CelarAiPrivateModelProfile profile,

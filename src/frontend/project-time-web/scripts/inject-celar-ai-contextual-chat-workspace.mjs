@@ -7,6 +7,12 @@ const helpPath = path.join(root, 'src', 'HelpAssistant.jsx');
 let content = fs.readFileSync(helpPath, 'utf8');
 
 function hasCompatibleOwnedExtension(label) {
+  if (label === 'fresh_welcome_and_size_contract') {
+    return content.includes('Ask me anything about Pulse or a general topic.')
+      && content.includes(`const CELAR_AI_CHAT_SIZES = Object.freeze(['compact', 'standard', 'wide', 'fullscreen'])`)
+      && content.includes(`function initialChatSize()`);
+  }
+
   if (label === 'window_state') {
     return content.includes(`const [chatSize, setChatSize] = useState(initialChatSize)`)
       && content.includes(`const [questionContext, setQuestionContext]`)

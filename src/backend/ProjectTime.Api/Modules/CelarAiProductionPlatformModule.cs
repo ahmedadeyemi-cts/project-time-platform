@@ -99,6 +99,8 @@ public static partial class CelarAiProductionPlatformModule
         ("system_version", "What is the current system version?", "system_version", "verified_current_fact"),
         ("capabilities", "What can Celar AI answer?", "capabilities", "platform_capability"),
         ("identity", "What is Celar AI?", "identity", "platform_capability"),
+        ("platform_name", "What is the system name?", "platform_identity", "platform_capability"),
+        ("general_knowledge", "What is the capital of France?", "general_knowledge", "general_knowledge"),
         ("enter_time", "How do I enter my time?", "procedure", "procedure"),
         ("submit_time", "How do I submit my Timesheet?", "procedure", "procedure"),
         ("create_project", "How do I create a project?", "procedure", "procedure"),
@@ -267,6 +269,10 @@ public static partial class CelarAiProductionPlatformModule
         else if (attachmentIds.Length == 0 && intent.Code == "identity")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, CelarAiBrandProfile.CreateDetailedAnswer(DateTimeOffset.UtcNow), "celar_ai_canonical_knowledge", cancellationToken);
+        }
+        else if (attachmentIds.Length == 0 && intent.Code == "platform_identity")
+        {
+            result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, PlatformIdentityAnswer(), "celar_ai_canonical_knowledge", cancellationToken);
         }
         else if (attachmentIds.Length == 0
             && (intent.Code == "procedure" || intent.Code == "people_activity"))
@@ -449,11 +455,21 @@ public static partial class CelarAiProductionPlatformModule
     private static Intent ResolveIntent(string question)
     {
         var value = Whitespace().Replace(question.Trim().ToLowerInvariant(), " ");
-        if (DateTimeQuestion().IsMatch(value) && !value.Contains("timesheet") && !value.Contains("timeline")) return new("current_date_time", false, false, false, false, 0, true, "Current request clock and browser time zone.");
+        var asksCurrentClock = DateTimeQuestion().IsMatch(value)
+            && (value.Contains("today")
+                || value.Contains("current date")
+                || value.Contains("current time")
+                || value.Contains("what time")
+                || value.Contains("what day")
+                || value.Contains("what date is it")
+                || value.Contains("day is it"));
+        if (asksCurrentClock && !value.Contains("timesheet") && !value.Contains("timeline")) return new("current_date_time", false, false, false, false, 0, true, "Current request clock and browser time zone.");
         if (value.Contains("system version") || value.Contains("application version") || value.Contains("release sha") || value.Contains("release commit") || value.Contains("what version") || value.Contains("what environment")) return new("system_version", false, false, false, false, 0, true, "Current assembly, environment, release, and revision metadata.");
         if (value is "what can you answer" or "what can you do" or "what can celar ai answer" or "what can celar ai do" || value.Contains("celar ai capabilities")) return new("capabilities", false, false, false, false, 0, false, "Governed Celar AI capability catalog.");
+        if (value is "what is the system name" or "what is this system called" or "what is the platform name" or "what is this platform called") return new("platform_identity", false, false, false, false, 0, false, "Canonical Pulse platform identity.");
         if (CelarAiBrandProfile.IsIdentityQuestion(question)) return new("identity", false, false, false, false, 0, false, "Canonical Celar AI identity profile.");
-        if (value.StartsWith("how do i ") || value.StartsWith("how can i ") || value.StartsWith("how to ") || value.StartsWith("where do i ") || value.Contains("steps to ")) return new("procedure", false, false, false, false, 1, false, "Source-controlled Pulse procedure catalog.");
+        if (PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion(question)
+            && (value.StartsWith("how do i ") || value.StartsWith("how can i ") || value.StartsWith("how to ") || value.StartsWith("where do i ") || value.Contains("steps to "))) return new("procedure", false, false, false, false, 1, false, "Source-controlled Pulse procedure catalog.");
         if (CelarAiPeopleAndGuidanceService.IsPeopleActivityQuestion(question)) return new("people_activity", false, false, false, false, 6, true, "Current authorized people, assignment, workload, approval, capacity, and planning evidence.");
         return ToIntent(PulseAiSystemKnowledgeCatalog.Analyze(question));
     }
@@ -465,6 +481,7 @@ public static partial class CelarAiProductionPlatformModule
             "api_inventory" => 3,
             "troubleshooting" => 12,
             "future_enhancement" => 8,
+            "general_knowledge" => 0,
             "financial_and_reporting" => 10,
             "projects_and_delivery" => 8,
             "documents_and_rag" => 6,
@@ -501,6 +518,7 @@ public static partial class CelarAiProductionPlatformModule
                 "api_inventory" => "api_inventory",
                 "troubleshooting" => "troubleshooting",
                 "future_enhancement" => "future_enhancement",
+                "general_knowledge" => "general_knowledge",
                 _ => "system_help"
             },
             Domains = new[] { intent.Code }
@@ -639,7 +657,8 @@ public static partial class CelarAiProductionPlatformModule
         var classification = intent.Code switch
         {
             "current_date_time" or "system_version" or "api_inventory" => "verified_current_fact",
-            "capabilities" or "identity" => "platform_capability",
+            "capabilities" or "identity" or "platform_identity" => "platform_capability",
+            "general_knowledge" => "general_knowledge",
             "procedure" => "procedure",
             "future_enhancement" => "draft",
             "projects_and_delivery" => verifiedPrivateAnswer ? "verified_document_draft" : "draft",
@@ -656,6 +675,7 @@ public static partial class CelarAiProductionPlatformModule
             "verified_document_draft" => "Document-grounded draft",
             "verified_with_limitations" => "Verified with limitations",
             "platform_capability" => "Platform capability",
+            "general_knowledge" => "General knowledge",
             "procedure" => "Procedure",
             "draft" => "Reviewable draft",
             _ => "Insufficient evidence"
@@ -715,7 +735,7 @@ public static partial class CelarAiProductionPlatformModule
         var zoneLabel = string.IsNullOrWhiteSpace(requestedZone) ? zone.Id : requestedZone.Trim();
         return Answer(
             $"Today is {local:dddd, MMMM d, yyyy}. The current time is {local:h:mm tt} in {zoneLabel}.",
-            "The current API request clock was converted using the caller's browser time zone. No model, RAG index, API inventory, or external provider was needed.",
+            "The current request clock was converted using the caller's browser time zone. No model or external provider was needed.",
             [$"Date: {local:dddd, MMMM d, yyyy}.", $"Time: {local:h:mm:ss tt}.", $"Time zone: {zoneLabel}.", $"UTC: {now:yyyy-MM-dd HH:mm:ss 'UTC'}."],
             warning.Length == 0 ? [] : [warning],
             .99m,
@@ -731,7 +751,7 @@ public static partial class CelarAiProductionPlatformModule
         var release = First(Environment.GetEnvironmentVariable("PROJECTPULSE_RELEASE_COMMIT"), Environment.GetEnvironmentVariable("PROJECTPULSE_RELEASE_SHA"), Environment.GetEnvironmentVariable("GITHUB_SHA"), Environment.GetEnvironmentVariable("WEBSITE_COMMIT_ID"), Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION"), "not_recorded");
         var revision = First(Environment.GetEnvironmentVariable("CONTAINER_APP_REVISION"), "not_recorded");
         return Answer(
-            $"Pulse API version {version} is running in the {environment} environment at release {release}.",
+            $"Pulse version {version} is running in the {environment} environment at release {release}.",
             "This answer uses current process and deployment metadata rather than documentation or conversation history.",
             [$"Assembly version: {version}.", $"Release SHA: {release}.", $"Environment: {environment}.", $"Container revision: {revision}."],
             release == "not_recorded" ? ["Populate release SHA metadata during deployment."] : [],
@@ -744,7 +764,7 @@ public static partial class CelarAiProductionPlatformModule
     {
         var now = DateTimeOffset.UtcNow;
         return new PulseAiSystemDetailedAnswer(
-            "Celar AI can answer platform procedures, authorized current-system questions, private project-document questions, API and troubleshooting questions, reporting and financial questions, and can produce reviewable Timesheet, SOW, FlowHive plan, schedule, timeline, diagram, and enhancement drafts.",
+            "Celar AI can answer public general-knowledge questions, platform procedures, authorized current-system questions, private project-document questions, API and troubleshooting questions when requested, reporting and financial questions, and can produce reviewable Timesheet, SOW, FlowHive plan, schedule, timeline, diagram, and enhancement drafts.",
             "Celar AI is a private, tool-augmented, RAG-enabled operational-intelligence platform. Owning Pulse modules remain authoritative and consequential actions remain human controlled.",
             ["Permission-aware current effective-user scope."],
             ["Direct product guidance", "Authorized people and work intelligence", "Private SOW/GSD/IQS retrieval", "Timesheet descriptions", "SOW drafts", "FlowHive plans and schedules", "Reports and financial explanations", "API discovery and troubleshooting", "Fine-tuning and model lifecycle governance"],
@@ -756,6 +776,19 @@ public static partial class CelarAiProductionPlatformModule
             [], ["Ask a specific question and include project, person/team, module, or date scope when useful."],
             null, ["#celar-ai", "#user-guide", "#ai-provider-configuration", "#project-flowhive"], [1], .98m,
             "Governed source-controlled capability contract.", now);
+    }
+
+    private static PulseAiSystemDetailedAnswer PlatformIdentityAnswer()
+    {
+        var now = DateTimeOffset.UtcNow;
+        return Answer(
+            "The system is Pulse. Celar AI is Pulse's governed AI assistant.",
+            "Pulse is the operational platform; Celar AI provides its permission-aware help, search, analysis, and drafting experience.",
+            ["Platform: Pulse.", "AI assistant: Celar AI."],
+            [],
+            .99m,
+            "Canonical source-controlled platform identity.",
+            now);
     }
 
     private static PulseAiSystemDetailedAnswer Answer(string conclusion, string summary, IReadOnlyList<string> state, IReadOnlyList<string> actions, decimal confidence, string explanation, DateTimeOffset dataAsOf) => new(

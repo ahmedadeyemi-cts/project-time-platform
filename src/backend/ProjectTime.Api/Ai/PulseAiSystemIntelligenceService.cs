@@ -298,7 +298,7 @@ public sealed class PulseAiSystemIntelligenceService
             var apiSearch = Clean(request.ApiSearch, 500);
             var apiModule = Clean(request.ModuleCode, 20);
             IReadOnlyList<PulseAiSystemApiDescriptor> relevantApis = [];
-            if (request.IncludeApiInventory && access.CanViewApis)
+            if (request.IncludeApiInventory && plan.WantsApiInventory && access.CanViewApis)
             {
                 relevantApis = _apiCatalog.List(
                     search: apiSearch.Length > 0 ? apiSearch : null,
@@ -306,14 +306,6 @@ public sealed class PulseAiSystemIntelligenceService
                     method: null,
                     safeRetest: null,
                     limit: apiLimit);
-                if (!plan.WantsApiInventory && apiSearch.Length == 0 && apiModule.Length == 0)
-                {
-                    relevantApis = SelectRelevantApis(
-                        relevantApis,
-                        question,
-                        plan.RelevantModuleCodes,
-                        100);
-                }
             }
             else if (request.IncludeApiInventory
                 && plan.WantsApiInventory
@@ -439,7 +431,13 @@ public sealed class PulseAiSystemIntelligenceService
                                 && options.EnablePrivateModelSynthesis),
                         PurposeBuiltDeidentifiedInput: externalProblemStatement.Length > 0,
                         DeidentifiedFactsAvailable: externalProblemStatement.Length > 0,
-                        ExternalProblemStatement: externalProblemStatement);
+                        ExternalProblemStatement: externalProblemStatement,
+                        PublicGeneralQuestion: plan.IntentCode == "general_knowledge"
+                            && !privateDocumentContextRequested
+                            && identityTerms.Length == 0,
+                        PublicQuestion: plan.IntentCode == "general_knowledge"
+                            ? question
+                            : null);
                 ProjectPulseAiRouteResult routed;
                 if (privateRagRequested)
                 {
@@ -553,19 +551,50 @@ public sealed class PulseAiSystemIntelligenceService
                     && routed.Outcome == ProjectPulseAiOutcomes.Success
                     && !string.IsNullOrWhiteSpace(routed.Content))
                 {
-                    externalAssistance = Limit(
-                        routed.Content,
-                        Math.Min(6_000, options.MaximumAnswerCharacters));
-                    var externalProblemUsed = targetDecisions.Any(decision =>
-                        decision.ReasonCode.StartsWith(
-                            "generation_succeeded_with_sanitized_generic_problem",
-                            StringComparison.Ordinal));
-                    warnings.Add(externalProblemUsed
-                        ? "The optional external guidance is supplementary and unverified. It received only a backend-owned purpose capsule and a closed server-owned topic; it did not receive the user's question, private documents, attachment text, tool results, customer/project context, people records, financial values, or identifiers, so it cannot establish any enterprise-specific fact."
-                        : "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context. The optional generic response-structure guidance is supplementary and cannot establish any case-specific fact.");
+                    if (plan.IntentCode == "general_knowledge")
+                    {
+                        finalAnswer = BuildPublicGeneralKnowledgeAnswer(
+                            routed.Content,
+                            routed.Provider,
+                            options.MaximumAnswerCharacters);
+                        sources =
+                        [
+                            new PulseAiSystemSourceEvidence(
+                                SourceId: 1,
+                                SourceType: "governed_public_ai",
+                                SourceCode: routed.Provider,
+                                SourceName: $"Module 064 governed {routed.Provider} response",
+                                ModuleCode: "064",
+                                Method: "INTERNAL",
+                                Path: "module064:public-general-knowledge",
+                                Status: "succeeded",
+                                StatusCode: 200,
+                                ObservedAt: finalAnswer.DataAsOf,
+                                Freshness: "provider_knowledge_not_live_web_verified",
+                                EvidenceScope: "Public question only; no Pulse or private context")
+                        ];
+                        warnings.Add("This general-knowledge answer used the public question only. No Pulse record, private document, attachment text, tool result, identity, customer/project context, financial record, or internal technical inventory was sent to the external provider.");
+                    }
+                    else
+                    {
+                        externalAssistance = Limit(
+                            routed.Content,
+                            Math.Min(6_000, options.MaximumAnswerCharacters));
+                        var externalProblemUsed = targetDecisions.Any(decision =>
+                            decision.ReasonCode.StartsWith(
+                                "generation_succeeded_with_sanitized_generic_problem",
+                                StringComparison.Ordinal));
+                        warnings.Add(externalProblemUsed
+                            ? "The optional external guidance is supplementary and unverified. It received only a backend-owned purpose capsule and a closed server-owned topic; it did not receive the user's question, private documents, attachment text, tool results, customer/project context, people records, financial values, or identifiers, so it cannot establish any enterprise-specific fact."
+                            : "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context. The optional generic response-structure guidance is supplementary and cannot establish any case-specific fact.");
+                    }
                 }
                 if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);
             }
+
+            finalAnswer = SuppressApiDetailUnlessRequested(
+                finalAnswer,
+                plan.WantsApiInventory || ExplicitlyAsksForApiDetail(question));
 
             var assistantStatus = routeOutcome == ProjectPulseAiOutcomes.Refusal
                 ? "blocked"
@@ -771,6 +800,33 @@ public sealed class PulseAiSystemIntelligenceService
         PulseAiPrivateRagAnswer? privateRag,
         IReadOnlyList<PulseAiSystemSourceEvidence> sources)
     {
+        if (plan.IntentCode == "general_knowledge")
+        {
+            return new PulseAiSystemDetailedAnswer(
+                DirectConclusion: "Celar AI is preparing a governed general-knowledge answer.",
+                ExecutiveSummary: "The question is outside Pulse. It will use the configured Celar AI, Claude, OpenAI, then local fallback order without sending Pulse records or private context.",
+                ScopeAndFilters: ["Public general-knowledge question; no Pulse tools, internal technical inventory, private documents, or attachments."],
+                CurrentState: [],
+                DetailedAnalysis: [],
+                ApiFindings: [],
+                TroubleshootingFindings: [],
+                RootCauseHypotheses: [],
+                DiagnosticSteps: [],
+                SourceEvidence: [],
+                KnownUnknownAndStaleValues: [],
+                Assumptions: [],
+                Conflicts: [],
+                Limitations: ["The governed local template cannot independently answer an unrestricted general-knowledge question if all configured AI targets are unavailable."],
+                RisksAndImplications: [],
+                RecommendedActions: [],
+                FutureEnhancementBlueprint: null,
+                NavigationTargets: [],
+                CitationIds: [],
+                Confidence: 0.20m,
+                ConfidenceExplanation: "Confidence remains low until a configured AI target returns a validated answer.",
+                DataAsOf: DateTimeOffset.UtcNow);
+        }
+
         var successfulTools = tools.Where(result => result.Succeeded).ToArray();
         var failedTools = tools.Where(result => !result.Succeeded).ToArray();
         var forbiddenTools = tools.Where(result => result.Forbidden).ToArray();
@@ -784,27 +840,32 @@ public sealed class PulseAiSystemIntelligenceService
             "troubleshooting" => failedTools.Length > 0
                 ? $"Pulse found {failedTools.Length} troubleshooting source(s) that did not return a successful result and {successfulTools.Length} source(s) that did. The findings below separate likely authorization, route, dependency, timeout, and runtime causes and provide a safe diagnostic sequence."
                 : $"All {successfulTools.Length} selected troubleshooting source(s) returned successfully in this request. That does not prove the absence of an intermittent problem, so Pulse also provides correlation, release, dependency, and retest steps.",
-            "future_enhancement" => "Pulse prepared a current-state-aware enhancement blueprint that preserves owning-module authority, permissions, live API registration, private AI boundaries, observability, testing, staged rollout, and rollback.",
-            "architecture" => $"Pulse analyzed the registered runtime architecture and {apis.Count} relevant API route/method combinations, then connected them to the applicable trust boundaries, dependencies, and module owners.",
+            "future_enhancement" => "Pulse prepared a current-state-aware enhancement blueprint that preserves owning-module authority, permissions, private AI boundaries, observability, testing, staged rollout, and rollback.",
+            "architecture" => plan.WantsApiInventory
+                ? $"Pulse analyzed the registered runtime architecture and {apis.Count} relevant API route/method combinations, then connected them to the applicable trust boundaries, dependencies, and module owners."
+                : "Pulse analyzed the governed runtime architecture, trust boundaries, dependencies, and module owners.",
             "financial_and_reporting" => "Pulse identified the governed financial and reporting surfaces that must supply authoritative calculations. Any unavailable or unauthorized value remains explicit rather than being estimated by the model.",
             "documents_and_rag" => privateRag?.Status == "completed"
                 ? "Pulse used the authorized private document/RAG path and current runtime evidence. Raw private chunks and vectors are not returned to the browser or a public external model."
                 : "Pulse evaluated the private document/RAG boundary and current runtime evidence. Where private evidence was unavailable, the response identifies the missing source instead of fabricating a result.",
-            _ => $"Pulse answered the question using {successfulTools.Length} successful governed live source(s), {apis.Count} relevant registered API route/method combinations, and approved operating knowledge."
+            _ => successfulTools.Length > 0
+                ? $"Pulse answered the question using {successfulTools.Length} successful governed source(s) and approved operating knowledge."
+                : "Pulse answered from approved product knowledge. Current values remain qualified unless supported by a governed live source."
         };
 
-        var currentState = new List<string>
-        {
-            $"Running release evidence: {releaseSha}.",
-            $"Registered API scope returned: {apis.Count} route/method combination(s) across {apiModules.Length} module owner(s).",
-            $"Governed tool execution: {tools.Count} selected; {successfulTools.Length} succeeded; {failedTools.Length} did not succeed; {forbiddenTools.Length} were unavailable to the current effective user.",
-            $"Private document/RAG evidence: {privateRag?.Status ?? "not requested for this question"}.",
-            $"Detail profile: {detailLevel}; intent: {plan.IntentCode}; domains: {string.Join(", ", plan.Domains)}."
-        };
+        var currentState = new List<string>();
+        if (plan.WantsApiInventory) currentState.Add($"Running release evidence: {releaseSha}.");
+        if (plan.WantsApiInventory) currentState.Add($"Registered API scope returned: {apis.Count} route/method combination(s) across {apiModules.Length} module owner(s).");
+        if (tools.Count > 0) currentState.Add($"Governed source execution: {tools.Count} selected; {successfulTools.Length} succeeded; {failedTools.Length} did not succeed; {forbiddenTools.Length} were unavailable to the current effective user.");
+        if (privateRag is not null) currentState.Add($"Private document/RAG evidence: {privateRag.Status}.");
+        currentState.Add($"Detail profile: {detailLevel}; intent: {plan.IntentCode}.");
 
         var detailedAnalysis = new List<string>();
-        detailedAnalysis.AddRange(apiModules.Take(30).Select(group =>
-            $"Module {group.Key.ModuleCode} — {group.Key.ModuleName}: {group.Count()} registered API route/method combination(s); {group.Count(api => api.SafeRetestSupported)} eligible for explicitly confirmed safe read-only retest."));
+        if (plan.WantsApiInventory)
+        {
+            detailedAnalysis.AddRange(apiModules.Take(30).Select(group =>
+                $"Module {group.Key.ModuleCode} — {group.Key.ModuleName}: {group.Count()} registered API route/method combination(s); {group.Count(api => api.SafeRetestSupported)} eligible for explicitly confirmed safe read-only retest."));
+        }
         detailedAnalysis.AddRange(tools.SelectMany(result => result.EvidenceSummary.Select(evidence =>
             $"{result.ToolName} [{result.Status}, HTTP {result.StatusCode}, {result.DurationMs} ms]: {evidence}")));
         if (privateRag?.Answer is PulseAiPrivateDetailedAnswer privateAnswer)
@@ -812,19 +873,15 @@ public sealed class PulseAiSystemIntelligenceService
             detailedAnalysis.AddRange(privateAnswer.DetailedAnalysis.Select(value => $"Private document/RAG evidence: {value}"));
         }
         if (detailedAnalysis.Count == 0)
-            detailedAnalysis.Add("No governed live tool returned detailed evidence. Pulse retained the product and architecture contract but did not invent current runtime values.");
+            detailedAnalysis.Add("The answer uses approved product knowledge. No API inventory or diagnostic detail was requested.");
 
         var apiFindings = new List<string>();
-        if (apis.Count > 0)
+        if (plan.WantsApiInventory && apis.Count > 0)
         {
             apiFindings.Add($"Method distribution: GET {apis.Count(api => HttpMethods.IsGet(api.Method))}; POST {apis.Count(api => HttpMethods.IsPost(api.Method))}; PUT {apis.Count(api => HttpMethods.IsPut(api.Method))}; PATCH {apis.Count(api => HttpMethods.IsPatch(api.Method))}; DELETE {apis.Count(api => HttpMethods.IsDelete(api.Method))}.");
             apiFindings.Add($"Parameterized routes: {apis.Count(api => api.Parameterized)}. Safe retest eligible: {apis.Count(api => api.SafeRetestSupported)}. Session protected: {apis.Count(api => api.RequiresApplicationSession)}. Anonymous/public: {apis.Count(api => api.AllowsAnonymous)}.");
             apiFindings.AddRange(apis.Take(80).Select(api =>
                 $"{api.Method} {api.RoutePattern} — Module {api.ModuleCode} {api.ModuleName}; {api.RegistrationStatus}; safe retest: {(api.SafeRetestSupported ? "yes" : "no")} ({api.SafeRetestReason})."));
-        }
-        else
-        {
-            apiFindings.Add("No API route matched the current API filters, or the current effective user did not request/receive API inventory evidence.");
         }
 
         var troubleshooting = new List<string>();
@@ -838,11 +895,13 @@ public sealed class PulseAiSystemIntelligenceService
             troubleshooting.Add("HTTP 5xx evidence points to API startup, dependency, schema, database, integration, or internal runtime failure. Use the correlation ID, Module 016 evidence, and Module 998 checks before changing infrastructure.");
         if (failedTools.Any(result => result.DiagnosticCode.Contains("timeout", StringComparison.OrdinalIgnoreCase)))
             troubleshooting.Add("A timeout can originate in the selected API, database, integration, worker queue, DNS/network path, or downstream dependency. Compare endpoint latency, source-health timestamps, and release evidence.");
-        if (troubleshooting.Count == 0)
+        if (plan.WantsTroubleshooting && troubleshooting.Count == 0)
             troubleshooting.Add("The selected live sources returned successfully. Investigate intermittent problems by reproducing with a correlation ID, comparing the exact release revision, and reviewing recent operational evidence rather than assuming the issue is resolved.");
 
-        var rootCauses = BuildRootCauseHypotheses(question, failedTools, apis);
-        var diagnosticSteps = new List<string>
+        var rootCauses = plan.WantsTroubleshooting
+            ? BuildRootCauseHypotheses(question, failedTools, apis)
+            : [];
+        var diagnosticSteps = plan.WantsTroubleshooting ? new List<string>
         {
             "Confirm the exact user, effective View-As identity, environment, route, method, timestamp, and observed error before comparing evidence.",
             $"Confirm the running release SHA ({releaseSha}) and verify that the expected route is present in the live endpoint catalog.",
@@ -853,7 +912,7 @@ public sealed class PulseAiSystemIntelligenceService
             "Use Module 078 service, SLO, signal, and alert evidence to determine whether the issue is isolated, systemic, intermittent, or outside the observed telemetry boundary.",
             "Use Module 077 release/deployment evidence to compare source SHA, image/revision, environment, gates, validation, and rollback target.",
             "When the issue is reproducible or unresolved, open Module 076 with the affected API ID, module, route, environment, role, timestamp, correlation ID, expected behavior, observed behavior, and sanitized evidence."
-        };
+        } : [];
 
         var sourceEvidence = sources.Select(source =>
             $"Source {source.SourceId}: {source.SourceName} ({source.SourceType}) — Module {source.ModuleCode}; {source.Method} {source.Path}; status={source.Status}; HTTP={source.StatusCode}; observed={source.ObservedAt:O}; freshness={source.Freshness}.").ToList();
@@ -865,7 +924,7 @@ public sealed class PulseAiSystemIntelligenceService
 
         var knownUnknown = new List<string>
         {
-            $"Known from current request: {successfulTools.Length} source(s) returned a successful response and {apis.Count} registered API route/method combination(s) were in scope.",
+            $"Known from current request: {successfulTools.Length} governed source(s) returned a successful response.",
             $"Unauthorized/unavailable evidence: {forbiddenTools.Length} source(s) returned 401/403 and were not used as proof of system health or failure.",
             "A registered endpoint proves that the current application revision has a route definition; it does not prove that every dependency, record scope, or external integration is healthy.",
             "A successful safe retest proves only current status and latency for that request. It does not validate a mutation workflow, historical reliability, or unobserved customer impact."
@@ -919,15 +978,10 @@ public sealed class PulseAiSystemIntelligenceService
 
         return new PulseAiSystemDetailedAnswer(
             DirectConclusion: directConclusion,
-            ExecutiveSummary: $"Pulse evaluated the request as {plan.IntentCode.Replace('_', ' ')} using the current effective-user scope. It combined the live endpoint registry, governed same-origin module tools, current release evidence, operational/diagnostic data where authorized, and private document/RAG evidence when applicable. The answer distinguishes registered from healthy, unauthorized from unavailable, and current evidence from assumptions.",
-            ScopeAndFilters:
-            [
-                $"Question intent: {plan.IntentCode}.",
-                $"Domains: {string.Join(", ", plan.Domains)}.",
-                $"Relevant modules: {string.Join(", ", plan.RelevantModuleCodes)}.",
-                $"Selected tools: {string.Join(", ", selectedTools.Select(tool => tool.Code))}.",
-                $"API scope: {apis.Count} route/method combination(s); detail level: {detailLevel}."
-            ],
+            ExecutiveSummary: plan.WantsApiInventory
+                ? $"Pulse evaluated the request as {plan.IntentCode.Replace('_', ' ')} using the current effective-user scope. It combined the live endpoint registry, governed module sources, current release evidence, and private evidence when applicable."
+                : $"Pulse evaluated the request as {plan.IntentCode.Replace('_', ' ')} using the current effective-user scope and only the governed sources relevant to the question.",
+            ScopeAndFilters: BuildScopeAndFilters(plan, selectedTools, apis.Count, detailLevel),
             CurrentState: currentState,
             DetailedAnalysis: detailedAnalysis.Take(200).ToArray(),
             ApiFindings: apiFindings.Take(250).ToArray(),
@@ -950,8 +1004,30 @@ public sealed class PulseAiSystemIntelligenceService
             NavigationTargets: plan.NavigationTargets,
             CitationIds: citationIds,
             Confidence: confidence,
-            ConfidenceExplanation: $"Confidence {confidence:P0} reflects {successfulTools.Length} successful governed source(s), {failedTools.Length} unsuccessful source(s), {apis.Count} registered API result(s), and private evidence status {privateRag?.Status ?? "not used"}. It is not a guarantee that unobserved dependencies or historical incidents are healthy.",
+            ConfidenceExplanation: plan.WantsApiInventory
+                ? $"Confidence {confidence:P0} reflects {successfulTools.Length} successful governed source(s), {failedTools.Length} unsuccessful source(s), {apis.Count} registered API result(s), and private evidence status {privateRag?.Status ?? "not used"}."
+                : $"Confidence {confidence:P0} reflects {successfulTools.Length} successful governed source(s), {failedTools.Length} unsuccessful source(s), and private evidence status {privateRag?.Status ?? "not used"}.",
             DataAsOf: dataAsOf);
+    }
+
+    private static IReadOnlyList<string> BuildScopeAndFilters(
+        PulseAiSystemIntentPlan plan,
+        IReadOnlyList<PulseAiSystemToolDefinition> selectedTools,
+        int apiCount,
+        string detailLevel)
+    {
+        var values = new List<string>
+        {
+            $"Question intent: {plan.IntentCode}.",
+            $"Detail level: {detailLevel}."
+        };
+        if (plan.RelevantModuleCodes.Count > 0)
+            values.Add($"Relevant modules: {string.Join(", ", plan.RelevantModuleCodes)}.");
+        if (selectedTools.Count > 0)
+            values.Add($"Selected governed sources: {string.Join(", ", selectedTools.Select(tool => tool.Code))}.");
+        if (plan.WantsApiInventory)
+            values.Add($"API scope: {apiCount} route/method combination(s).");
+        return values;
     }
 
     private static IReadOnlyList<string> BuildRootCauseHypotheses(
@@ -1055,21 +1131,21 @@ public sealed class PulseAiSystemIntelligenceService
         int maximumPerToolCharacters)
     {
         var sources = new List<PulseAiPrivateRetrievedChunk>();
-        var apiJson = JsonSerializer.Serialize(new
+        if (apis.Count > 0)
         {
-            total = apis.Count,
-            modules = apis.GroupBy(api => new { api.ModuleCode, api.ModuleName })
-                .Select(group => new
-                {
-                    group.Key.ModuleCode,
-                    group.Key.ModuleName,
-                    count = group.Count(),
-                    safeRetest = group.Count(api => api.SafeRetestSupported)
-                }),
-            apis = apis.Take(250)
-        });
-        if (apiJson.Length > 0)
-        {
+            var apiJson = JsonSerializer.Serialize(new
+            {
+                total = apis.Count,
+                modules = apis.GroupBy(api => new { api.ModuleCode, api.ModuleName })
+                    .Select(group => new
+                    {
+                        group.Key.ModuleCode,
+                        group.Key.ModuleName,
+                        count = group.Count(),
+                        safeRetest = group.Count(api => api.SafeRetestSupported)
+                    }),
+                apis = apis.Take(250)
+            });
             sources.Add(SyntheticChunk(
                 rank: sources.Count + 1,
                 sourceCode: "runtime_endpoint_catalog",
@@ -1213,6 +1289,7 @@ public sealed class PulseAiSystemIntelligenceService
             "security" => CelarAiExternalCapsuleCatalog.HelpSecurity,
             "projects_and_delivery" => CelarAiExternalCapsuleCatalog.HelpProjectDelivery,
             "timesheets_and_approvals" => CelarAiExternalCapsuleCatalog.HelpTimesheet,
+            "general_knowledge" => CelarAiExternalCapsuleCatalog.GeneralKnowledge,
             "product_help" or "general_system" => CelarAiExternalCapsuleCatalog.HelpProduct,
             _ => string.Empty
         };
@@ -1328,6 +1405,88 @@ public sealed class PulseAiSystemIntelligenceService
             ConfidenceExplanation = First(answer.ConfidenceExplanation, deterministic.ConfidenceExplanation, 3_000),
             DataAsOf = privateRag.DataAsOf
         };
+    }
+
+    private static PulseAiSystemDetailedAnswer BuildPublicGeneralKnowledgeAnswer(
+        string content,
+        string provider,
+        int maximumAnswerCharacters)
+    {
+        var clean = Limit(content, Math.Min(20_000, maximumAnswerCharacters));
+        var paragraphs = clean
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(value => value.Length > 0)
+            .ToArray();
+        var direct = paragraphs.FirstOrDefault() ?? clean;
+        var details = paragraphs.Skip(1).Take(40).ToArray();
+        if (details.Length == 0 && clean.Length > direct.Length)
+            details = [clean[direct.Length..].Trim()];
+
+        return new PulseAiSystemDetailedAnswer(
+            DirectConclusion: Limit(direct, Math.Min(4_000, maximumAnswerCharacters)),
+            ExecutiveSummary: details.FirstOrDefault() ?? string.Empty,
+            ScopeAndFilters: ["Public general-knowledge question routed by Module 064."],
+            CurrentState: [],
+            DetailedAnalysis: details,
+            ApiFindings: [],
+            TroubleshootingFindings: [],
+            RootCauseHypotheses: [],
+            DiagnosticSteps: [],
+            SourceEvidence: [$"Governed {provider} general-knowledge response; no Pulse or private context was supplied."],
+            KnownUnknownAndStaleValues: ["Time-sensitive or recently changed facts were not independently live-web verified by Pulse."],
+            Assumptions: [],
+            Conflicts: [],
+            Limitations: ["Treat time-sensitive, legal, medical, financial, or other high-stakes facts as general information and verify them with an authoritative current source."],
+            RisksAndImplications: [],
+            RecommendedActions: [],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: [],
+            CitationIds: [1],
+            Confidence: 0.72m,
+            ConfidenceExplanation: $"A configured {provider} target returned a response that passed the public-output privacy boundary; current web facts were not independently verified.",
+            DataAsOf: DateTimeOffset.UtcNow);
+    }
+
+    private static PulseAiSystemDetailedAnswer SuppressApiDetailUnlessRequested(
+        PulseAiSystemDetailedAnswer answer,
+        bool apiExplicitlyRequested)
+    {
+        if (apiExplicitlyRequested) return answer;
+
+        static bool IsApiDetail(string value) => Regex.IsMatch(
+            value,
+            @"\b(?:api|apis|endpoint|endpoints|route|routes|http|https|swagger|endpointdatasource)\b|/(?:api)(?:/|\b)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        static IReadOnlyList<string> WithoutApiDetail(IReadOnlyList<string> values) =>
+            values.Where(value => !IsApiDetail(value)).ToArray();
+
+        return answer with
+        {
+            ScopeAndFilters = WithoutApiDetail(answer.ScopeAndFilters),
+            CurrentState = WithoutApiDetail(answer.CurrentState),
+            DetailedAnalysis = WithoutApiDetail(answer.DetailedAnalysis),
+            ApiFindings = [],
+            TroubleshootingFindings = WithoutApiDetail(answer.TroubleshootingFindings),
+            RootCauseHypotheses = WithoutApiDetail(answer.RootCauseHypotheses),
+            DiagnosticSteps = WithoutApiDetail(answer.DiagnosticSteps),
+            SourceEvidence = WithoutApiDetail(answer.SourceEvidence),
+            KnownUnknownAndStaleValues = WithoutApiDetail(answer.KnownUnknownAndStaleValues),
+            Assumptions = WithoutApiDetail(answer.Assumptions),
+            Conflicts = WithoutApiDetail(answer.Conflicts),
+            Limitations = WithoutApiDetail(answer.Limitations),
+            RisksAndImplications = WithoutApiDetail(answer.RisksAndImplications),
+            RecommendedActions = WithoutApiDetail(answer.RecommendedActions)
+        };
+    }
+
+    private static bool ExplicitlyAsksForApiDetail(string question)
+    {
+        return Regex.IsMatch(
+            question,
+            @"\b(?:api|apis|endpoint|endpoints|route|routes|swagger)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private static ProjectPulseAiProviderResult PrivateHelpRagTargetResult(

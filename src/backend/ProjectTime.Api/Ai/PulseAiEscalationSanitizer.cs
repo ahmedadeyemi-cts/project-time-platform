@@ -33,6 +33,11 @@ public sealed class PulseAiEscalationSanitizer
         CommonOptions,
         RegexTimeout);
 
+    private static readonly Regex InternalHostName = new(
+        @"(?<![\p{L}\p{N}_\-])(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+(?:local|internal|corp|lan)(?![\p{L}\p{N}_\-])",
+        CommonOptions,
+        RegexTimeout);
+
     private static readonly Regex Ipv4 = new(
         @"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
@@ -248,6 +253,99 @@ public sealed class PulseAiEscalationSanitizer
         }
 
         decisionCode = "external_output_privacy_validated";
+        return true;
+    }
+
+    /// <summary>
+    /// Allows a user-authored public question to retain ordinary names, places,
+    /// dates, and subject terminology while still rejecting credentials,
+    /// internal identifiers, private-document markers, and explicit protected
+    /// terms. This path is valid only for the router's isolated general-
+    /// knowledge purpose; it is never used for Pulse or attachment questions.
+    /// </summary>
+    public bool TryPreparePublicQuestion(
+        string? question,
+        IReadOnlyList<string>? sensitiveTerms,
+        out string safeQuestion,
+        out string decisionCode)
+    {
+        safeQuestion = Clean(question, 4_000, string.Empty);
+        if (safeQuestion.Length == 0)
+        {
+            decisionCode = "public_general_question_empty";
+            return false;
+        }
+
+        var protectedTerms = (sensitiveTerms ?? [])
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .Select(term => term.Trim())
+            .Take(128)
+            .ToArray();
+        var containsProtectedTerm = protectedTerms.Any(term =>
+            term.Length >= 2 && SensitiveTermExpression(term).IsMatch(safeQuestion));
+        if (SecretAssignment.IsMatch(safeQuestion)
+            || HighEntropyToken.IsMatch(safeQuestion)
+            || Email.IsMatch(safeQuestion)
+            || InternalHostName.IsMatch(safeQuestion)
+            || Ipv4.IsMatch(safeQuestion)
+            || Ipv6.IsMatch(safeQuestion)
+            || MacAddress.IsMatch(safeQuestion)
+            || GuidValue.IsMatch(safeQuestion)
+            || SocialSecurityNumber.IsMatch(safeQuestion)
+            || CustomerOrOrganizationLabel.IsMatch(safeQuestion)
+            || PersonRoleLabel.IsMatch(safeQuestion)
+            || LocationOrFacilityLabel.IsMatch(safeQuestion)
+            || UserOrAccountIdentifier.IsMatch(safeQuestion)
+            || PrivateDocumentOrCommercialMarker.IsMatch(safeQuestion)
+            || containsProtectedTerm
+            || safeQuestion.Contains("[REDACTED_", StringComparison.OrdinalIgnoreCase))
+        {
+            safeQuestion = string.Empty;
+            decisionCode = "public_general_question_sensitive_content_blocked";
+            return false;
+        }
+
+        safeQuestion = Regex.Replace(safeQuestion, @"[ \t]+", " ").Trim();
+        safeQuestion = Regex.Replace(safeQuestion, @"(?:\r?\n){3,}", Environment.NewLine + Environment.NewLine);
+        decisionCode = "public_general_question_validated";
+        return true;
+    }
+
+    public bool IsPublicExternalOutputSafe(
+        string? content,
+        IReadOnlyList<string>? sensitiveTerms,
+        out string decisionCode)
+    {
+        var value = Clean(content, 20_000, string.Empty);
+        if (value.Length == 0)
+        {
+            decisionCode = "external_output_empty";
+            return false;
+        }
+
+        var protectedTerms = (sensitiveTerms ?? [])
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .Select(term => term.Trim())
+            .Take(128)
+            .ToArray();
+        if (SecretAssignment.IsMatch(value)
+            || HighEntropyToken.IsMatch(value)
+            || Email.IsMatch(value)
+            || InternalHostName.IsMatch(value)
+            || Ipv4.IsMatch(value)
+            || Ipv6.IsMatch(value)
+            || MacAddress.IsMatch(value)
+            || GuidValue.IsMatch(value)
+            || SocialSecurityNumber.IsMatch(value)
+            || UserOrAccountIdentifier.IsMatch(value)
+            || protectedTerms.Any(term => term.Length >= 2 && SensitiveTermExpression(term).IsMatch(value))
+            || value.Contains("[REDACTED_", StringComparison.OrdinalIgnoreCase))
+        {
+            decisionCode = "public_external_output_privacy_validation_failed";
+            return false;
+        }
+
+        decisionCode = "public_external_output_privacy_validated";
         return true;
     }
 

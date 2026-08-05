@@ -38,8 +38,11 @@ const retrievalService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetr
 const ragService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
 const ragModule = read('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs');
 const systemService = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs');
+const systemKnowledge = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs');
+const escalationSanitizer = read('src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs');
 const systemRepository = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceRepository.cs');
 const routing = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs');
+const helpCss = read('src/frontend/project-time-web/src/pulse-ai-system-chat.css');
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');
 const runtimeRepository = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs');
 const retentionWorker = read('src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRetentionWorker.cs');
@@ -77,6 +80,11 @@ const messagePersistence = section(
   'public async Task<(Guid MessageId, int SequenceNumber)> AppendMessageAsync(',
   'public async Task<Guid> CreateInquiryRunAsync('
 );
+const systemAnswerPresentation = section(
+  help,
+  'function SystemAnswer({ result, close })',
+  'function LegacyPlanAnswer('
+);
 
 check(
   'ONE_CHAT_OWNER',
@@ -111,6 +119,61 @@ check(
     && productionModule.includes('providerConfiguration = helpRoute.ToPublicResponse()')
     && productionModule.includes('module064Authority = true'),
   'Module 011 readiness and answers expose the effective persisted Help route from Module 064'
+);
+
+check(
+  'PUBLIC_GENERAL_KNOWLEDGE_ROUTING',
+  all(systemKnowledge, [
+    'var pulseScoped = IsPulseScopedQuestion(normalized);',
+    '? "general_knowledge"',
+    'public static bool IsPulseScopedQuestion(string? question)',
+    'if (intent == "general_knowledge") return [];',
+    '@"\\b(?:api|apis|endpoint|endpoints|route|routes|swagger)\\b"'
+  ])
+    && all(routing, [
+      'public const string GeneralKnowledge = "public_general_knowledge";',
+      'PublicGeneralQuestion',
+      'PublicQuestion',
+      'TryPreparePublicQuestion(',
+      'IsPublicExternalOutputSafe('
+    ])
+    && all(escalationSanitizer, [
+      'public bool TryPreparePublicQuestion(',
+      'public bool IsPublicExternalOutputSafe(',
+      'InternalHostName.IsMatch(safeQuestion)',
+      'public_general_question_sensitive_content_blocked'
+    ])
+    && all(systemService, [
+      'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+      'BuildPublicGeneralKnowledgeAnswer(',
+      'Public question only; no Pulse or private context'
+    ]),
+  'outside questions use the same Celar -> Claude -> OpenAI -> local route, run no Pulse tools, and cross a public-question privacy boundary'
+);
+
+check(
+  'ANSWER_FIRST_API_ONLY_ON_REQUEST',
+  systemAnswerPresentation.indexOf('<div className="help-answer-heading">')
+      < systemAnswerPresentation.indexOf('<TrustSummary trust={result?.trust} />')
+    && systemAnswerPresentation.indexOf('<TrustSummary trust={result?.trust} />')
+      < systemAnswerPresentation.indexOf('<details className="celar-ai-answer-details">')
+    && systemAnswerPresentation.includes("const apiRequested = result?.intentCode === 'api_inventory';")
+    && systemAnswerPresentation.includes('{apiRequested ? <AnswerList heading="API findings"')
+    && systemAnswerPresentation.includes('{apiRequested ? <ApiInventory apis={result?.relevantApis} /> : null}')
+    && !systemAnswerPresentation.includes('<details className="celar-ai-answer-details" open')
+    && help.includes('{apiRequested ? <span>APIs: {asArray(result?.relevantApis).length}</span> : null}')
+    && help.includes('showTechnicalIdentifiers={apiRequested}')
+    && all(systemService, [
+      'SuppressApiDetailUnlessRequested(',
+      'ApiFindings = [],',
+      'private static bool ExplicitlyAsksForApiDetail(string question)',
+      '@"\\b(?:api|apis|endpoint|endpoints|route|routes|swagger)\\b"'
+    ])
+    && all(helpCss, [
+      '.celar-ai-answer-details {',
+      '.celar-ai-answer-details-body {'
+    ]),
+  'the direct Celar answer is visible first, comprehensive detail is retained behind one compact disclosure, and technical API inventory appears only for an explicit API intent'
 );
 
 check(
