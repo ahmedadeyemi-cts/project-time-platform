@@ -133,6 +133,11 @@ jobs:
           done
           test ! -e release/database/migrations/074_module_066_project_flowhive_production.sql
           test ! -e release/database/rollback/074_module_066_project_flowhive_production_rollback.sql
+          OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b
+          [[ "$(sha256sum release/src/frontend/project-time-web/brand/USSNavyStacked.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
+          [[ "$(sha256sum release/src/frontend/project-time-web/brand/ussignal.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
+          grep -Fq "import usSignalLogoUrl from '../brand/USSNavyStacked.png';" release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq 'className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal"' release/src/frontend/project-time-web/src/App.jsx
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "control_sha=$CONTROL_SHA" >> "$GITHUB_OUTPUT"
           echo "CURRENT_MAIN_TEST_RELEASE_BOUNDARY=PASSED"
@@ -172,44 +177,29 @@ jobs:
         env:
           UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
           FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
-          MIGRATOR_IDENTITY: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
-          KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
-          DATABASE_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
-          DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
         run: |
           set -Eeuo pipefail
+          normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;; esac; }
           BASE='${{ vars.PUBLIC_URL }}'
           BASE="${BASE%/}"
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || {
             echo "PUBLIC_URL is not the exact protected Test origin." >&2
             exit 1
           }
-          [[ "${#UAT_SESSION}" -ge 20 ]] || {
-            echo "PROJECTPULSE_TEST_UAT_SESSION is required for authenticated acceptance." >&2
-            exit 1
-          }
-          [[ "$FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
-            echo "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be an exact UUID." >&2
-            exit 1
-          }
-          [[ "$MIGRATOR_IDENTITY" =~ ^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+$ ]] || {
-            echo "AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID must be an exact UAMI resource ID." >&2
-            exit 1
-          }
-          [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] || {
-            echo "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI." >&2
-            exit 1
-          }
-          [[ "$DATABASE_SECRET_NAME" =~ ^[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || {
-            echo "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be secret-name/version." >&2
-            exit 1
-          }
-          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
-            echo "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier." >&2
-            exit 1
-          }
+          UAT_ENABLED=false
+          if [[ -n "$UAT_SESSION" || -n "$FORGE_PROJECT_ID" ]]; then
+            [[ "${#UAT_SESSION}" -ge 20 ]] || {
+              echo "PROJECTPULSE_TEST_UAT_SESSION and PROJECTPULSE_TEST_FORGE_PROJECT_ID must be configured together for automated authenticated UAT." >&2
+              exit 1
+            }
+            [[ "$FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+              echo "PROJECTPULSE_TEST_UAT_SESSION and PROJECTPULSE_TEST_FORGE_PROJECT_ID must be configured together for automated authenticated UAT." >&2
+              exit 1
+            }
+            UAT_ENABLED=true
+          fi
           for value in \
             '${{ vars.AZURE_RESOURCE_GROUP }}' \
             '${{ vars.AZURE_ACR_NAME }}' \
@@ -222,42 +212,14 @@ jobs:
             echo "Azure login is not bound to the protected Test subscription." >&2
             exit 1
           }
-          UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
-          UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
-          UAMI_RESOURCE_GROUP="${MIGRATOR_IDENTITY#*/resourceGroups/}"
-          UAMI_RESOURCE_GROUP="${UAMI_RESOURCE_GROUP%%/*}"
-          [[ "${UAMI_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
-            echo "The migrator UAMI is outside the logged-in Test subscription." >&2
-            exit 1
-          }
-          [[ "${UAMI_RESOURCE_GROUP,,}" == "${AZURE_RESOURCE_GROUP,,}" ]] || {
-            echo "The migrator UAMI is outside the protected Test resource group." >&2
-            exit 1
-          }
-          ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
-          [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || {
-            echo "The protected Test migrator UAMI could not be resolved exactly." >&2
-            exit 1
-          }
-          KEY_VAULT_URI="${KEY_VAULT_URI%/}"
-          KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
-          KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
-          EXPECTED_KEY_VAULT_ID="/subscriptions/$CURRENT_SUBSCRIPTION/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
-          ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
-          ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
-          ACTUAL_KEY_VAULT_URI="${ACTUAL_KEY_VAULT_URI%/}"
-          [[ "${ACTUAL_KEY_VAULT_ID,,}" == "${EXPECTED_KEY_VAULT_ID,,}" ]] || {
-            echo "The Key Vault is outside the logged-in protected Test subscription or resource group." >&2
-            exit 1
-          }
-          [[ "$ACTUAL_KEY_VAULT_URI" == "$KEY_VAULT_URI" ]] || {
-            echo "The protected Test Key Vault host does not match its Azure resource." >&2
-            exit 1
-          }
-          mapfile -t ENV_NAMES < <(az containerapp show \
+          API_JSON="$(az containerapp show \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            --query 'properties.template.containers[0].env[].name' -o tsv --only-show-errors)
+            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || {
+            echo "The protected API resource is not tagged as Test." >&2
+            exit 1
+          }
+          mapfile -t ENV_NAMES < <(jq -r '.properties.template.containers[0].env[].name' <<<"$API_JSON")
           printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/main-release-api-env-names
           for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
             grep -Fxq "$name" /tmp/main-release-api-env-names || {
@@ -265,7 +227,87 @@ jobs:
               exit 1
             }
           done
+          DATABASE_NAME="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_NAME") | .value // empty' <<<"$API_JSON")"
+          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
+            echo "The protected Test API must expose PTP_DB_NAME as an exact PostgreSQL identifier." >&2
+            exit 1
+          }
+          DATABASE_SECRET_REF="$(jq -r '
+            [.properties.template.containers[0].env[] |
+              select(.name == "ConnectionStrings__ProjectPulse" or
+                     .name == "PROJECTPULSE_CONNECTION_STRING" or
+                     .name == "ConnectionStrings__DefaultConnection") |
+              .secretRef // empty] | map(select(length > 0)) | unique |
+              if length == 1 then .[0] else empty end
+          ' <<<"$API_JSON")"
+          normalize "$DATABASE_SECRET_REF" >/dev/null || {
+            echo "The protected Test API does not expose one canonical database connection secret reference." >&2
+            exit 1
+          }
+          API_SECRETS_JSON="$(az containerapp secret list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$DATABASE_SECRET_REF" '
+            [.[] | select(.name == $name) | .keyVaultUrl // empty] |
+            if length == 1 then .[0] else empty end
+          ' <<<"$API_SECRETS_JSON")"
+          MIGRATOR_IDENTITY="$(jq -r --arg name "$DATABASE_SECRET_REF" '
+            [.[] | select(.name == $name) | .identity // empty] |
+            if length == 1 then .[0] else empty end
+          ' <<<"$API_SECRETS_JSON")"
+          [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || {
+            echo "The canonical Test database secret is not backed by an approved Azure Key Vault URI." >&2
+            exit 1
+          }
+          [[ "$MIGRATOR_IDENTITY" =~ ^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+$ ]] || {
+            echo "The canonical Test database secret does not use an exact UAMI resource ID." >&2
+            exit 1
+          }
+          jq -e --arg identity "$MIGRATOR_IDENTITY" '
+            (.identity.userAssignedIdentities // {}) | keys |
+            map(ascii_downcase) | index($identity | ascii_downcase) != null
+          ' <<<"$API_JSON" >/dev/null || {
+            echo "The canonical Test database UAMI is not assigned to the protected API app." >&2
+            exit 1
+          }
+          UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
+          UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
+          [[ "${UAMI_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
+            echo "The canonical Test database UAMI is outside the logged-in Test subscription." >&2
+            exit 1
+          }
+          ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
+          [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || {
+            echo "The protected Test database UAMI could not be resolved exactly." >&2
+            exit 1
+          }
+          VERSIONED_SECRET_URI="$(az keyvault secret show --id "$KEY_VAULT_SECRET_URI" --query id -o tsv --only-show-errors)"
+          [[ "$VERSIONED_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || {
+            echo "The canonical Test database secret could not be pinned to one exact Key Vault version." >&2
+            exit 1
+          }
+          KEY_VAULT_URI="${VERSIONED_SECRET_URI%%/secrets/*}"
+          KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
+          KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
+          DATABASE_SECRET_NAME="${VERSIONED_SECRET_URI#*/secrets/}"
+          ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
+          ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
+          KEY_VAULT_SUBSCRIPTION="${ACTUAL_KEY_VAULT_ID#*/subscriptions/}"
+          KEY_VAULT_SUBSCRIPTION="${KEY_VAULT_SUBSCRIPTION%%/*}"
+          [[ "${KEY_VAULT_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
+            echo "The canonical Test Key Vault is outside the logged-in Test subscription." >&2
+            exit 1
+          }
+          [[ "${ACTUAL_KEY_VAULT_URI%/}" == "$KEY_VAULT_URI" ]] || {
+            echo "The canonical Test Key Vault host does not match its Azure resource." >&2
+            exit 1
+          }
           echo "phase=disabled" >> "$GITHUB_OUTPUT"
+          echo "uat_enabled=$UAT_ENABLED" >> "$GITHUB_OUTPUT"
+          echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "key_vault_uri=$KEY_VAULT_URI" >> "$GITHUB_OUTPUT"
+          echo "database_secret_name=$DATABASE_SECRET_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_name=$DATABASE_NAME" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
 
 
@@ -421,11 +463,10 @@ jobs:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
-          AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
-          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
-          PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
-          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
+          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
+          AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
+          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ steps.contract.outputs.database_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-a
@@ -438,11 +479,10 @@ jobs:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
-          AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
-          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
-          PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
-          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
+          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
+          AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
+          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ steps.contract.outputs.database_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-v
@@ -747,8 +787,12 @@ jobs:
           set -Eeuo pipefail
           mkdir -p control/evidence
           ROLLBACK_ATTEMPTED=false
+          AUTHENTICATED_UAT_STATUS=pending_user_session_validation
           if [[ -f /tmp/current-main-release-rollback-attempted ]]; then
             ROLLBACK_ATTEMPTED=true
+          fi
+          if [[ '${{ steps.contract.outputs.uat_enabled }}' == true ]]; then
+            AUTHENTICATED_UAT_STATUS=executed
           fi
           if [[ -f /tmp/current-main-release-runtime-evidence.json ]]; then
             install -m 0600 /tmp/current-main-release-runtime-evidence.json \
@@ -771,6 +815,7 @@ jobs:
             "webRevision": "${{ steps.deploy_web.outputs.revision }}",
             "jobStatus": "${{ job.status }}",
             "authenticatedUatRequired": true,
+            "authenticatedUatStatus": "$AUTHENTICATED_UAT_STATUS",
             "applicationRollbackAttempted": $ROLLBACK_ATTEMPTED,
             "databaseRollbackOnFailure": false
           }

@@ -12,7 +12,6 @@ MIGRATOR_IDENTITY="${AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID:-}"
 KEY_VAULT_URI="${AZURE_KEY_VAULT_URI:-}"
 SECRET_NAME_VERSION="${PROJECTPULSE_DATABASE_URL_SECRET_NAME:-}"
 EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
-EXPECTED_FORGE_PROJECT_ID="${PROJECTPULSE_TEST_FORGE_PROJECT_ID:-}"
 CONTROL_SHA="${MAIN_RELEASE_CONTROL_SHA:-}"
 RUN_SCOPE="${GITHUB_RUN_ID:-unknown}-${GITHUB_RUN_ATTEMPT:-unknown}"
 
@@ -30,7 +29,6 @@ normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;
 [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] || fail "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI."
 [[ "$SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || fail "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be secret-name/version."
 [[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
-[[ "$EXPECTED_FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || fail "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be an exact UUID."
 [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_CONTROL_SHA must be an exact commit."
 command -v az >/dev/null || fail "Azure CLI is required."
 command -v curl >/dev/null || fail "curl is required."
@@ -45,21 +43,23 @@ SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
 [[ "$SUBSCRIPTION_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "Azure subscription ID is unavailable."
 UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
 UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
-UAMI_RESOURCE_GROUP="${MIGRATOR_IDENTITY#*/resourceGroups/}"
-UAMI_RESOURCE_GROUP="${UAMI_RESOURCE_GROUP%%/*}"
 [[ "${UAMI_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] || fail "The migrator UAMI is outside the logged-in Test subscription."
-[[ "${UAMI_RESOURCE_GROUP,,}" == "${RESOURCE_GROUP,,}" ]] || fail "The migrator UAMI is outside the protected Test resource group."
 ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
 [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || fail "The protected Test migrator UAMI could not be resolved exactly."
 
-EXPECTED_KEY_VAULT_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
 ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
 ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
 ACTUAL_KEY_VAULT_URI="${ACTUAL_KEY_VAULT_URI%/}"
-[[ "${ACTUAL_KEY_VAULT_ID,,}" == "${EXPECTED_KEY_VAULT_ID,,}" ]] || fail "The Key Vault is outside the logged-in protected Test subscription or resource group."
+KEY_VAULT_SUBSCRIPTION="${ACTUAL_KEY_VAULT_ID#*/subscriptions/}"
+KEY_VAULT_SUBSCRIPTION="${KEY_VAULT_SUBSCRIPTION%%/*}"
+[[ "${KEY_VAULT_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] || fail "The Key Vault is outside the logged-in protected Test subscription."
 [[ "$ACTUAL_KEY_VAULT_URI" == "$KEY_VAULT_URI" ]] || fail "The protected Test Key Vault host does not match its Azure resource."
 
 API_JSON="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
+JQ_IDENTITY="$MIGRATOR_IDENTITY" jq -e '
+  (.identity.userAssignedIdentities // {}) | keys | map(ascii_downcase) |
+  index(env.JQ_IDENTITY | ascii_downcase) != null
+' <<<"$API_JSON" >/dev/null || fail "The migrator UAMI is not assigned to the protected Test API app."
 ENVIRONMENT_ID="$(jq -r '.properties.managedEnvironmentId // empty' <<<"$API_JSON")"
 LOCATION="$(jq -r '.location // empty' <<<"$API_JSON")"
 normalize "$ENVIRONMENT_ID" >/dev/null || fail "The Test API app has no managed Container Apps environment."
@@ -108,8 +108,7 @@ validate_job_ownership() {
     --arg release "$EXPECTED_RELEASE_COMMIT" \
     --arg control "$CONTROL_SHA" \
     --arg runScope "$RUN_SCOPE" \
-    --arg databaseName "$EXPECTED_DATABASE_NAME" \
-    --arg forgeProjectId "$EXPECTED_FORGE_PROJECT_ID" '
+    --arg databaseName "$EXPECTED_DATABASE_NAME" '
       ((.id | ascii_downcase) == ($id | ascii_downcase)) and
       (.name == $jobName) and
       ((.location | ascii_downcase) == ($location | ascii_downcase)) and
@@ -148,8 +147,7 @@ validate_job_ownership() {
       ) == ([
         {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode, secretRef: null},
         {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName, secretRef: null},
-        {name: "PROJECTPULSE_TEST_DATABASE_URL", value: null, secretRef: "main-release-db-url"},
-        {name: "PROJECTPULSE_TEST_FORGE_PROJECT_ID", value: $forgeProjectId, secretRef: null}
+        {name: "PROJECTPULSE_TEST_DATABASE_URL", value: null, secretRef: "main-release-db-url"}
       ] | sort_by(.name))
     ' "$document" >/dev/null
 }
@@ -296,7 +294,6 @@ jq -n \
   --arg control "$CONTROL_SHA" \
   --arg runScope "$RUN_SCOPE" \
   --arg databaseName "$EXPECTED_DATABASE_NAME" \
-  --arg forgeProjectId "$EXPECTED_FORGE_PROJECT_ID" \
   '{
     location: $location,
     identity: {
@@ -327,8 +324,7 @@ jq -n \
           env: [
             {name: "PROJECTPULSE_TEST_DATABASE_URL", secretRef: "main-release-db-url"},
             {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode},
-            {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName},
-            {name: "PROJECTPULSE_TEST_FORGE_PROJECT_ID", value: $forgeProjectId}
+            {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName}
           ],
           resources: {cpu: 0.5, memory: "1Gi"}
         }]
