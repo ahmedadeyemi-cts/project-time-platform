@@ -521,17 +521,35 @@ public sealed class CelarAiConfigurationConflictException(string message) : Inva
 public sealed class CelarAiCapabilityRoutingStore : IDisposable
 {
     private readonly string? _connectionString;
+    private readonly string? _connectionConfigurationFailure;
     private readonly ProjectPulseAiEncryptionKeyRing _keyRing;
     private readonly ILogger<CelarAiCapabilityRoutingStore> _logger;
 
     public CelarAiCapabilityRoutingStore(ILogger<CelarAiCapabilityRoutingStore> logger)
     {
         _logger = logger;
-        _connectionString = ConnectionString();
+        try
+        {
+            _connectionString = ConnectionString();
+            _connectionConfigurationFailure = null;
+        }
+        catch (InvalidOperationException)
+        {
+            // Capability routing must fail closed to the governed defaults when
+            // database declarations are malformed or conflicting. The hosted
+            // routing loader is constructed before the web host listens, so the
+            // rejected optional store must never terminate every API module.
+            _connectionString = null;
+            _connectionConfigurationFailure = "Database configuration was rejected.";
+            _logger.LogError(
+                "Module 064 capability-routing database configuration was rejected. Diagnostic=database_configuration_rejected");
+        }
         _keyRing = ProjectPulseAiEncryptionKeyRing.Load();
     }
 
     public bool DatabaseAvailable => !string.IsNullOrWhiteSpace(_connectionString);
+    public string DatabaseUnavailableReason => _connectionConfigurationFailure
+        ?? (DatabaseAvailable ? string.Empty : "Database configuration is unavailable.");
     public bool SecretEncryptionAvailable => _keyRing.Available;
     public string ActiveEncryptionKeyId => _keyRing.ActiveKeyId;
     public string EnvironmentCode => Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"), 80, "unspecified");
