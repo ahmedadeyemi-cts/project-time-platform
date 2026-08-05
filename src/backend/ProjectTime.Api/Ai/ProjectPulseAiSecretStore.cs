@@ -8,22 +8,38 @@ public sealed class ProjectPulseAiSecretStore : IDisposable
 {
     private const int MaximumSecretBytes = 8192;
     private readonly string? _connectionString;
+    private readonly string? _connectionConfigurationFailure;
     private readonly ProjectPulseAiEncryptionKeyRing _keyRing;
     private readonly ILogger<ProjectPulseAiSecretStore> _logger;
 
     public ProjectPulseAiSecretStore(ILogger<ProjectPulseAiSecretStore> logger)
     {
         _logger = logger;
-        _connectionString = ConnectionString();
+        try
+        {
+            _connectionString = ConnectionString();
+            _connectionConfigurationFailure = null;
+        }
+        catch (InvalidOperationException)
+        {
+            // A malformed or conflicting declaration must disable the write-only
+            // provider store, but it must not crash the complete API before the
+            // health and configuration endpoints can report the blocker.
+            _connectionString = null;
+            _connectionConfigurationFailure = "Database configuration was rejected.";
+            _logger.LogError(
+                "Module 064 database provider configuration was rejected. Diagnostic=database_configuration_rejected");
+        }
         _keyRing = ProjectPulseAiEncryptionKeyRing.Load();
     }
 
     public bool Available => _connectionString is not null && _keyRing.Available;
-    public string UnavailableReason => _connectionString is null
+    public string UnavailableReason => _connectionConfigurationFailure
+        ?? (_connectionString is null
         ? "Database configuration is unavailable."
         : !_keyRing.Available
             ? "PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key."
-            : string.Empty;
+            : string.Empty);
 
     public async Task<IReadOnlyList<StoredSecret>> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -297,9 +313,9 @@ public sealed class ProjectPulseAiSecretLoader(
     ProjectPulseAiSecretStore store,
     ProjectPulseAiConfiguration configuration,
     ProjectPulseAiHealthRegistry health,
-    ILogger<ProjectPulseAiSecretLoader> logger) : IHostedService
+    ILogger<ProjectPulseAiSecretLoader> logger) : BackgroundService
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         if (release.IsReleaseScoped)
@@ -325,24 +341,47 @@ public sealed class ProjectPulseAiSecretLoader(
             return;
         }
 
-        foreach (var secret in await store.LoadAsync(cancellationToken))
-            configuration.ApplyStoredSecret(
-                secret.ProviderCode,
-                secret.ApiKey,
-                secret.Version,
-                secret.RotatedAt);
-        foreach (var setting in await store.LoadModelsAsync(cancellationToken))
-            configuration.ApplyStoredModel(setting.Key, setting.Value);
-        foreach (var setting in await store.LoadEnabledAsync(cancellationToken))
-            configuration.ApplyStoredEnabled(setting.Key, setting.Value);
-
-        // The health registry can be constructed before hosted services start.
-        // Reconcile it only after encrypted keys and settings have been loaded.
-        health.ApplyConfiguration(configuration.Claude);
-        health.ApplyConfiguration(configuration.OpenAi);
+        using var hydrationTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        hydrationTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            foreach (var secret in await store.LoadAsync(hydrationTimeout.Token))
+                configuration.ApplyStoredSecret(
+                    secret.ProviderCode,
+                    secret.ApiKey,
+                    secret.Version,
+                    secret.RotatedAt);
+            foreach (var setting in await store.LoadModelsAsync(hydrationTimeout.Token))
+                configuration.ApplyStoredModel(setting.Key, setting.Value);
+            foreach (var setting in await store.LoadEnabledAsync(hydrationTimeout.Token))
+                configuration.ApplyStoredEnabled(setting.Key, setting.Value);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning(
+                "Module 064 database provider hydration exceeded its bounded startup window. Diagnostic=database_provider_hydration_timeout");
+        }
+        catch (Exception)
+        {
+            // Database-managed provider settings are optional runtime input. A
+            // rejected row or transient database failure must leave the safe
+            // environment/local configuration active instead of terminating the
+            // entire API and making every non-AI module unavailable.
+            logger.LogError(
+                "Module 064 database provider hydration failed safely. Diagnostic=database_provider_hydration_failed");
+        }
+        finally
+        {
+            // The registry can be constructed before the asynchronous loader.
+            // Reconcile it with whatever safe configuration is available.
+            health.ApplyConfiguration(configuration.Claude);
+            health.ApplyConfiguration(configuration.OpenAi);
+        }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed class ProjectPulseAiConfigurationSynchronizer(
