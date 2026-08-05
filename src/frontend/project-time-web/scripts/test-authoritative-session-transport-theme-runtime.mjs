@@ -344,6 +344,9 @@ async function testTransportRuntime() {
 }
 
 function buildThemeHarness() {
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+
   class FakeNode {}
   FakeNode.TEXT_NODE = 3;
 
@@ -378,6 +381,7 @@ function buildThemeHarness() {
   class FakeButton extends FakeNode {
     constructor(textContent) {
       super();
+      this.id = 'projectpulse-floating-theme-toggle';
       this.textContent = textContent;
       this.attributes = new Map();
       this.dataset = {};
@@ -398,6 +402,10 @@ function buildThemeHarness() {
 
     matches(selector) {
       return selector.includes('.theme-toggle') && this.classList.contains('theme-toggle');
+    }
+
+    closest(selector) {
+      return selector === 'button' ? this : null;
     }
   }
 
@@ -429,11 +437,8 @@ function buildThemeHarness() {
   const stray = new FakeTextNode('\\n');
   const button = new FakeButton('🌙 Dark mode');
   button.classList.add('theme-toggle');
-  const parent = new FakeContainer([stray, button]);
-  button.previousSibling = stray;
-  const body = new FakeContainer([parent]);
-  parent.parentNode = body;
-  parent.parentElement = body;
+  const body = new FakeContainer([stray, button]);
+  body.dataset = { theme: 'light' };
 
   const documentElement = { dataset: { theme: 'light' } };
   const document = {
@@ -446,13 +451,28 @@ function buildThemeHarness() {
       }
       return null;
     },
+    getElementById(id) {
+      return id === button.id ? button : null;
+    },
     querySelectorAll(selector) {
       return selector === 'button' ? [button] : [];
     },
-    addEventListener() {}
+    addEventListener(type, handler) {
+      const handlers = documentListeners.get(type) || [];
+      handlers.push(handler);
+      documentListeners.set(type, handlers);
+    }
   };
 
   const localStorage = new MemoryStorage();
+  localStorage.setItem('ptp-theme', 'light');
+  class FakeCustomEvent {
+    constructor(type, init = {}) {
+      this.type = type;
+      this.detail = init.detail;
+    }
+  }
+
   const sandbox = {
     console,
     Node: FakeNode,
@@ -460,11 +480,26 @@ function buildThemeHarness() {
     MutationObserver: FakeMutationObserver,
     document,
     localStorage,
+    CustomEvent: FakeCustomEvent,
+    location: { reload: () => { throw new Error('Theme must not reload the application.'); } },
     requestAnimationFrame(callback) {
       callback();
       return 1;
     },
-    addEventListener() {},
+    setTimeout(callback) {
+      callback();
+      return 1;
+    },
+    clearTimeout() {},
+    addEventListener(type, handler) {
+      const handlers = windowListeners.get(type) || [];
+      handlers.push(handler);
+      windowListeners.set(type, handlers);
+    },
+    dispatchEvent(event) {
+      for (const handler of windowListeners.get(event.type) || []) handler(event);
+      return true;
+    },
     __projectPulseThemeControlPolishInstalled: false
   };
   sandbox.window = sandbox;
@@ -473,20 +508,35 @@ function buildThemeHarness() {
   const source = fs.readFileSync(themePath, 'utf8');
   vm.runInNewContext(source, sandbox, { filename: themePath });
 
-  return { stray, button, parent };
+  return { stray, button, body, documentElement, localStorage, documentListeners };
 }
 
 function testThemeRuntime() {
-  const { stray, button, parent } = buildThemeHarness();
+  const { stray, button, body, documentElement, localStorage, documentListeners } = buildThemeHarness();
   const themeCss = fs.readFileSync(themeCssPath, 'utf8');
 
-  assert.equal(stray.removed, true, 'literal \\n text node should be removed');
-  assert.equal(parent.childNodes.includes(stray), false, 'stray theme text must leave the DOM');
+  assert.equal(stray.textContent, '', 'literal \\n text node should be neutralized');
+  assert.equal(body.childNodes.includes(stray), true, 'theme cleanup must preserve DOM ownership');
+  assert.equal(button.textContent, '', 'the visible theme control must be icon-only');
   assert.equal(button.dataset.projectpulseThemeControl, 'true');
   assert.equal(button.dataset.projectpulseTheme, 'light');
   assert.equal(button.classList.contains('projectpulse-theme-control'), true);
   assert.equal(button.getAttribute('aria-label'), 'Switch to dark mode');
   assert.equal(button.getAttribute('aria-pressed'), 'false');
+
+  const clickHandler = documentListeners.get('click')?.[0];
+  assert.equal(typeof clickHandler, 'function', 'theme click boundary must be installed');
+  clickHandler({
+    target: button,
+    preventDefault() {},
+    stopImmediatePropagation() {}
+  });
+  assert.equal(localStorage.getItem('ptp-theme'), 'dark');
+  assert.equal(documentElement.dataset.theme, 'dark');
+  assert.equal(body.dataset.theme, 'dark');
+  assert.equal(button.dataset.projectpulseTheme, 'dark');
+  assert.equal(button.getAttribute('aria-label'), 'Switch to light mode');
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
 
   assert.match(themeCss, /left:\s*0\s*!important/);
   assert.match(themeCss, /width:\s*44px\s*!important/);
