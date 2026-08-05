@@ -6,7 +6,7 @@ on:
       - .github/workflows/projectpulse-deploy-test.yml
       - .github/workflows/projectpulse-release-test-control-ci.yml
       - deployment/containers/release-test/api.Dockerfile
-      - deployment/releases/test/current-main-e83340b5-20260805.json
+      - deployment/releases/test/current-main-acae6fda-20260805.json
       - scripts/release-test/apply-071-073.sh
       - scripts/release-test/run-migration-job.sh
       - scripts/release-test/verify-runtime.mjs
@@ -70,12 +70,12 @@ jobs:
           import json
           from pathlib import Path
 
-          manifest = json.loads(Path("deployment/releases/test/current-main-e83340b5-20260805.json").read_text())
+          manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
-          assert manifest["sourceSha"] == "e83340b5a4215ea63901cea98ea17596444f96b7"
+          assert manifest["sourceSha"] == "acae6fda08e6d58dfb1e63b5eef4828877fd5523"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
