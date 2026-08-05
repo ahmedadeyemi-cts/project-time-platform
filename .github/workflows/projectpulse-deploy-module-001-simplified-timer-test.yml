@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-availability-result-fix-api-test
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 
 jobs:

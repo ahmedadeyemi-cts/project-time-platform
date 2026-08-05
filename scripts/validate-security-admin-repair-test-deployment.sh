@@ -23,7 +23,7 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-SECURITY-ADMIN-REPAIR-TO-TEST'
 require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-security-admin-repair-test'
+require "$DEPLOY" 'group: projectpulse-deploy-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'Only the verified HAR-confirmed role-policy repair source release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'
