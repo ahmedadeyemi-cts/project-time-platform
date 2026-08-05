@@ -11,12 +11,22 @@ MIGRATION_ROOT="$RELEASE_ROOT/database/migrations"
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
-[[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
 [[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] ||
   fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
 [[ "$MODE" == apply || "$MODE" == verify ]] || fail "MAIN_RELEASE_MIGRATION_MODE must be apply or verify."
 command -v psql >/dev/null || fail "psql is required."
 command -v sha256sum >/dev/null || fail "sha256sum is required."
+
+PSQL_TARGET=()
+if [[ -n "$DATABASE_URL" ]]; then
+  PSQL_TARGET=("$DATABASE_URL")
+else
+  [[ -n "${PGHOST:-}" ]] || fail "PGHOST is not configured."
+  [[ "${PGPORT:-}" =~ ^[0-9]{1,5}$ ]] || fail "PGPORT is not valid."
+  [[ "${PGDATABASE:-}" == "$EXPECTED_DATABASE_NAME" ]] || fail "PGDATABASE does not match the protected Test database name."
+  [[ -n "${PGUSER:-}" ]] || fail "PGUSER is not configured."
+  [[ -n "${PGPASSWORD:-}" ]] || fail "PGPASSWORD is not configured."
+fi
 
 if [[ -d "$RELEASE_ROOT/.git" ]]; then
   ACTUAL_RELEASE_COMMIT="$(git -C "$RELEASE_ROOT" rev-parse HEAD)"
@@ -68,7 +78,7 @@ BODY_ROOT="$(mktemp -d)"
 cleanup() {
   local status=$?
   rm -rf "$BODY_ROOT"
-  unset DATABASE_URL
+  unset DATABASE_URL PGPASSWORD
   exit "$status"
 }
 trap cleanup EXIT INT TERM
@@ -80,7 +90,7 @@ done
 APPLY_BOOL=false
 [[ "$MODE" == apply ]] && APPLY_BOOL=true
 
-psql "$DATABASE_URL" \
+psql "${PSQL_TARGET[@]}" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --set=release_apply="$APPLY_BOOL" \

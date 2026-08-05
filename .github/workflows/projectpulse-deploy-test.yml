@@ -227,41 +227,53 @@ jobs:
               exit 1
             }
           done
+          DATABASE_HOST="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_HOST") | .value // empty' <<<"$API_JSON")"
+          DATABASE_PORT="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_PORT") | .value // empty' <<<"$API_JSON")"
           DATABASE_NAME="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_NAME") | .value // empty' <<<"$API_JSON")"
+          DATABASE_USER="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_USER") | .value // empty' <<<"$API_JSON")"
+          [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]] || {
+            echo "The protected Test API must expose PTP_DB_HOST as an exact database host." >&2
+            exit 1
+          }
+          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 )) || {
+            echo "The protected Test API must expose PTP_DB_PORT as an exact database port." >&2
+            exit 1
+          }
           [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
             echo "The protected Test API must expose PTP_DB_NAME as an exact PostgreSQL identifier." >&2
             exit 1
           }
-          DATABASE_SECRET_REF="$(jq -r '
+          [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
+            echo "The protected Test API must expose PTP_DB_USER as an exact PostgreSQL identifier." >&2
+            exit 1
+          }
+          PASSWORD_SECRET_REF="$(jq -r '
             [.properties.template.containers[0].env[] |
-              select(.name == "ConnectionStrings__ProjectPulse" or
-                     .name == "PROJECTPULSE_CONNECTION_STRING" or
-                     .name == "ConnectionStrings__DefaultConnection") |
-              .secretRef // empty] | map(select(length > 0)) | unique |
-              if length == 1 then .[0] else empty end
+              select(.name == "PTP_DB_PASSWORD") | .secretRef // empty] |
+              map(select(length > 0)) | unique | if length == 1 then .[0] else empty end
           ' <<<"$API_JSON")"
-          normalize "$DATABASE_SECRET_REF" >/dev/null || {
-            echo "The protected Test API does not expose one canonical database connection secret reference." >&2
+          normalize "$PASSWORD_SECRET_REF" >/dev/null || {
+            echo "The protected Test API does not expose one canonical database password secret reference." >&2
             exit 1
           }
           API_SECRETS_JSON="$(az containerapp secret list \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$DATABASE_SECRET_REF" '
+          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
             [.[] | select(.name == $name) | .keyVaultUrl // empty] |
             if length == 1 then .[0] else empty end
           ' <<<"$API_SECRETS_JSON")"
-          MIGRATOR_IDENTITY="$(jq -r --arg name "$DATABASE_SECRET_REF" '
+          MIGRATOR_IDENTITY="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
             [.[] | select(.name == $name) | .identity // empty] |
             if length == 1 then .[0] else empty end
           ' <<<"$API_SECRETS_JSON")"
           [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || {
-            echo "The canonical Test database secret is not backed by an approved Azure Key Vault URI." >&2
+            echo "The canonical Test database password is not backed by an approved Azure Key Vault URI." >&2
             exit 1
           }
           MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
           [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || {
-            echo "The canonical Test database secret does not use an exact UAMI resource ID." >&2
+            echo "The canonical Test database password does not use an exact UAMI resource ID." >&2
             exit 1
           }
           jq -e --arg identity "$MIGRATOR_IDENTITY" '
@@ -283,13 +295,16 @@ jobs:
             exit 1
           }
           KEY_VAULT_URI="${KEY_VAULT_SECRET_URI%%/secrets/*}"
-          DATABASE_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
+          DATABASE_PASSWORD_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
           echo "phase=disabled" >> "$GITHUB_OUTPUT"
           echo "uat_enabled=$UAT_ENABLED" >> "$GITHUB_OUTPUT"
           echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
           echo "key_vault_uri=$KEY_VAULT_URI" >> "$GITHUB_OUTPUT"
-          echo "database_secret_name=$DATABASE_SECRET_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_password_secret_name=$DATABASE_PASSWORD_SECRET_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_host=$DATABASE_HOST" >> "$GITHUB_OUTPUT"
+          echo "database_port=$DATABASE_PORT" >> "$GITHUB_OUTPUT"
           echo "database_name=$DATABASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_user=$DATABASE_USER" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
 
 
@@ -447,8 +462,11 @@ jobs:
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
           AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
           AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
-          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ steps.contract.outputs.database_secret_name }}
+          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.contract.outputs.database_password_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.contract.outputs.database_host }}
+          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.contract.outputs.database_port }}
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
+          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-a
@@ -463,8 +481,11 @@ jobs:
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
           AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
           AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
-          PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ steps.contract.outputs.database_secret_name }}
+          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.contract.outputs.database_password_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.contract.outputs.database_host }}
+          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.contract.outputs.database_port }}
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
+          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
           MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-v
