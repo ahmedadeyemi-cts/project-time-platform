@@ -26,12 +26,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-rollback-${{ inputs.environment }}
+  group: projectpulse-deploy-${{ inputs.environment }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
   rollback:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (inputs.environment == 'test' || inputs.environment == 'production')
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     timeout-minutes: 45

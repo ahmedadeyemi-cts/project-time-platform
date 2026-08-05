@@ -14,6 +14,7 @@ permissions:
 
 concurrency:
   group: projectpulse-deploy-production
+  queue: max
   cancel-in-progress: false
 
 jobs:
