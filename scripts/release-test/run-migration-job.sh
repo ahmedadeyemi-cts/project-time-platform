@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="e83340b5a4215ea63901cea98ea17596444f96b7"
+EXPECTED_RELEASE_COMMIT="acae6fda08e6d58dfb1e63b5eef4828877fd5523"
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
@@ -11,6 +11,8 @@ MODE="${MAIN_RELEASE_MIGRATION_MODE:-verify}"
 MIGRATOR_IDENTITY="${AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID:-}"
 KEY_VAULT_URI="${AZURE_KEY_VAULT_URI:-}"
 SECRET_NAME_VERSION="${PROJECTPULSE_DATABASE_URL_SECRET_NAME:-}"
+EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
+EXPECTED_FORGE_PROJECT_ID="${PROJECTPULSE_TEST_FORGE_PROJECT_ID:-}"
 CONTROL_SHA="${MAIN_RELEASE_CONTROL_SHA:-}"
 RUN_SCOPE="${GITHUB_RUN_ID:-unknown}-${GITHUB_RUN_ATTEMPT:-unknown}"
 
@@ -27,63 +29,259 @@ normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;
 [[ "$MIGRATOR_IDENTITY" =~ ^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+$ ]] || fail "AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID must be an exact UAMI resource ID."
 [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] || fail "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI."
 [[ "$SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || fail "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be secret-name/version."
+[[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
+[[ "$EXPECTED_FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || fail "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be an exact UUID."
 [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_CONTROL_SHA must be an exact commit."
 command -v az >/dev/null || fail "Azure CLI is required."
+command -v curl >/dev/null || fail "curl is required."
 command -v jq >/dev/null || fail "jq is required."
 
 KEY_VAULT_URI="${KEY_VAULT_URI%/}"
+KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
+KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
 SECRET_URI="$KEY_VAULT_URI/secrets/$SECRET_NAME_VERSION"
-ENVIRONMENT_ID="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.managedEnvironmentId -o tsv --only-show-errors)"
-LOCATION="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query location -o tsv --only-show-errors)"
-normalize "$ENVIRONMENT_ID" >/dev/null || fail "The Test API app has no managed Container Apps environment."
-normalize "$LOCATION" >/dev/null || fail "The Test API app has no Azure location."
 
 SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
 [[ "$SUBSCRIPTION_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "Azure subscription ID is unavailable."
+UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
+UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
+UAMI_RESOURCE_GROUP="${MIGRATOR_IDENTITY#*/resourceGroups/}"
+UAMI_RESOURCE_GROUP="${UAMI_RESOURCE_GROUP%%/*}"
+[[ "${UAMI_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] || fail "The migrator UAMI is outside the logged-in Test subscription."
+[[ "${UAMI_RESOURCE_GROUP,,}" == "${RESOURCE_GROUP,,}" ]] || fail "The migrator UAMI is outside the protected Test resource group."
+ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
+[[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || fail "The protected Test migrator UAMI could not be resolved exactly."
+
+EXPECTED_KEY_VAULT_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
+ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
+ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
+ACTUAL_KEY_VAULT_URI="${ACTUAL_KEY_VAULT_URI%/}"
+[[ "${ACTUAL_KEY_VAULT_ID,,}" == "${EXPECTED_KEY_VAULT_ID,,}" ]] || fail "The Key Vault is outside the logged-in protected Test subscription or resource group."
+[[ "$ACTUAL_KEY_VAULT_URI" == "$KEY_VAULT_URI" ]] || fail "The protected Test Key Vault host does not match its Azure resource."
+
+API_JSON="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
+ENVIRONMENT_ID="$(jq -r '.properties.managedEnvironmentId // empty' <<<"$API_JSON")"
+LOCATION="$(jq -r '.location // empty' <<<"$API_JSON")"
+normalize "$ENVIRONMENT_ID" >/dev/null || fail "The Test API app has no managed Container Apps environment."
+normalize "$LOCATION" >/dev/null || fail "The Test API app has no Azure location."
+
 JOB_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/jobs/$JOB_NAME"
 JOB_URI="https://management.azure.com$JOB_ID?api-version=2024-03-01"
 
-CREATE_ATTEMPTED=0
-PREEXISTING_ABSENT=0
-EXECUTION_NAME=""
 PAYLOAD="$(mktemp)"
+JOB_RESPONSE="$(mktemp)"
+CREATE_ATTEMPTED=0
+START_ATTEMPTED=0
+PREFLIGHT_CONFIRMED_404=0
+EXECUTION_NAME=""
+
+arm_get_job() {
+  local output_file="$1"
+  local token=""
+  local http_code=""
+  local curl_status=0
+  token="$(az account get-access-token --resource-type arm --query accessToken -o tsv --only-show-errors)" || return 1
+  [[ -n "$token" ]] || return 1
+  http_code="$(curl --silent --show-error --retry 0 --connect-timeout 20 --max-time 60 \
+    --output "$output_file" --write-out '%{http_code}' \
+    --header "Authorization: Bearer $token" \
+    --header 'Accept: application/json' \
+    "$JOB_URI")" || curl_status=$?
+  unset token
+  (( curl_status == 0 )) || return "$curl_status"
+  [[ "$http_code" =~ ^[0-9]{3}$ ]] || return 1
+  printf '%s\n' "$http_code"
+}
+
+validate_job_ownership() {
+  local document="$1"
+  jq -e \
+    --arg id "$JOB_ID" \
+    --arg location "$LOCATION" \
+    --arg environmentId "$ENVIRONMENT_ID" \
+    --arg identity "$MIGRATOR_IDENTITY" \
+    --arg server "$ACR_NAME.azurecr.io" \
+    --arg image "$MIGRATION_IMAGE" \
+    --arg jobName "$JOB_NAME" \
+    --arg secretUri "$SECRET_URI" \
+    --arg mode "$MODE" \
+    --arg release "$EXPECTED_RELEASE_COMMIT" \
+    --arg control "$CONTROL_SHA" \
+    --arg runScope "$RUN_SCOPE" \
+    --arg databaseName "$EXPECTED_DATABASE_NAME" \
+    --arg forgeProjectId "$EXPECTED_FORGE_PROJECT_ID" '
+      ((.id | ascii_downcase) == ($id | ascii_downcase)) and
+      (.name == $jobName) and
+      ((.location | ascii_downcase) == ($location | ascii_downcase)) and
+      (.tags == {
+        "projectpulse-scope": "current-main-071-073-test",
+        "projectpulse-release": $release,
+        "projectpulse-control": $control,
+        "projectpulse-mode": $mode,
+        "projectpulse-run": $runScope
+      }) and
+      (.identity.type == "UserAssigned") and
+      ((.identity.userAssignedIdentities | keys | length) == 1) and
+      (((.identity.userAssignedIdentities | keys[0]) | ascii_downcase) == ($identity | ascii_downcase)) and
+      ((.properties.environmentId | ascii_downcase) == ($environmentId | ascii_downcase)) and
+      (.properties.configuration.triggerType == "Manual") and
+      (.properties.configuration.replicaTimeout == 1800) and
+      (.properties.configuration.replicaRetryLimit == 0) and
+      (.properties.configuration.manualTriggerConfig.replicaCompletionCount == 1) and
+      (.properties.configuration.manualTriggerConfig.parallelism == 1) and
+      ((.properties.configuration.registries | length) == 1) and
+      (.properties.configuration.registries[0].server == $server) and
+      ((.properties.configuration.registries[0].identity | ascii_downcase) == ($identity | ascii_downcase)) and
+      ((.properties.configuration.secrets | length) == 1) and
+      (.properties.configuration.secrets[0].name == "main-release-db-url") and
+      (.properties.configuration.secrets[0].keyVaultUrl == $secretUri) and
+      ((.properties.configuration.secrets[0].identity | ascii_downcase) == ($identity | ascii_downcase)) and
+      ((.properties.template.containers | length) == 1) and
+      (.properties.template.containers[0].name == $jobName) and
+      (.properties.template.containers[0].image == $image) and
+      (.properties.template.containers[0].resources.cpu == 0.5) and
+      (.properties.template.containers[0].resources.memory == "1Gi") and
+      (
+        [.properties.template.containers[0].env[] |
+          {name, value: (.value // null), secretRef: (.secretRef // null)}
+        ] | sort_by(.name)
+      ) == ([
+        {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode, secretRef: null},
+        {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName, secretRef: null},
+        {name: "PROJECTPULSE_TEST_DATABASE_URL", value: null, secretRef: "main-release-db-url"},
+        {name: "PROJECTPULSE_TEST_FORGE_PROJECT_ID", value: $forgeProjectId, secretRef: null}
+      ] | sort_by(.name))
+    ' "$document" >/dev/null
+}
+
+stop_nonterminal_executions() {
+  local executions=""
+  local pending_json="[]"
+  local pending=()
+  local stop_failed=0
+  for _ in $(seq 1 30); do
+    executions="$(az containerapp job execution list \
+      -g "$RESOURCE_GROUP" -n "$JOB_NAME" -o json --only-show-errors)" || return 1
+    pending_json="$(jq -ec '[
+      .[] |
+      select((.properties.status // "") as $status |
+        ($status != "Succeeded" and
+         $status != "Failed" and
+         $status != "Stopped" and
+         $status != "Canceled" and
+         $status != "Cancelled")) |
+      .name
+    ]' <<<"$executions")" || return 1
+    mapfile -t pending < <(jq -r '.[]' <<<"$pending_json")
+    if (( ${#pending[@]} == 0 )); then
+      return "$stop_failed"
+    fi
+    for execution in "${pending[@]}"; do
+      az containerapp job stop \
+        -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+        --job-execution-name "$execution" \
+        --output none --only-show-errors || stop_failed=1
+    done
+    sleep 2
+  done
+  return 1
+}
 cleanup() {
   local status=$?
+  local http_status=""
+  local can_delete=1
   trap - EXIT INT TERM
-  rm -f "$PAYLOAD"
-  if [[ -n "$EXECUTION_NAME" ]]; then
-    local execution_status
-    execution_status="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors 2>/dev/null || true)"
-    case "$execution_status" in
-      Succeeded|Failed|Stopped|Canceled) ;;
-      *) az containerapp job stop -g "$RESOURCE_GROUP" -n "$JOB_NAME" --job-execution-name "$EXECUTION_NAME" --output none --only-show-errors 2>/dev/null || status=1 ;;
-    esac
-  fi
-  if (( CREATE_ATTEMPTED == 1 && PREEXISTING_ABSENT == 1 )); then
-    az containerapp job delete -g "$RESOURCE_GROUP" -n "$JOB_NAME" --yes --output none --only-show-errors 2>/dev/null || true
-    local remaining=1
-    for _ in $(seq 1 20); do
-      if ! az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --output none --only-show-errors 2>/dev/null; then
-        remaining=0
-        break
-      fi
-      sleep 3
-    done
-    if (( remaining == 1 )); then
-      echo "ERROR: Temporary migration job still exists after cleanup." >&2
+  set +e
+
+  if (( CREATE_ATTEMPTED == 1 && PREFLIGHT_CONFIRMED_404 == 1 )); then
+    if ! http_status="$(arm_get_job "$JOB_RESPONSE")"; then
+      echo "ERROR: Could not determine temporary migration job state during cleanup." >&2
       status=1
-    else
-      echo "MAIN_RELEASE_MIGRATION_JOB_CLEANUP=COMPLETE"
+      can_delete=0
+    elif [[ "$http_status" == 404 ]]; then
+      echo "MAIN_RELEASE_MIGRATION_JOB_CLEANUP=CONFIRMED_ABSENT"
+      can_delete=0
+    elif [[ "$http_status" != 200 ]]; then
+      echo "ERROR: Unexpected ARM status while checking the temporary migration job during cleanup." >&2
+      status=1
+      can_delete=0
+    elif ! validate_job_ownership "$JOB_RESPONSE"; then
+      echo "ERROR: Refusing to stop or delete a migration job whose ownership contract is not exact." >&2
+      status=1
+      can_delete=0
+    fi
+
+    if (( can_delete == 1 && START_ATTEMPTED == 1 )); then
+      if ! stop_nonterminal_executions; then
+        echo "ERROR: Could not confirm all temporary migration executions are terminal." >&2
+        status=1
+        can_delete=0
+      fi
+    fi
+
+    if (( can_delete == 1 )); then
+      if ! http_status="$(arm_get_job "$JOB_RESPONSE")"; then
+        echo "ERROR: Could not revalidate migration job ownership before deletion." >&2
+        status=1
+        can_delete=0
+      elif [[ "$http_status" == 404 ]]; then
+        echo "MAIN_RELEASE_MIGRATION_JOB_CLEANUP=CONFIRMED_ABSENT"
+        can_delete=0
+      elif [[ "$http_status" != 200 ]] || ! validate_job_ownership "$JOB_RESPONSE"; then
+        echo "ERROR: Refusing to delete a migration job after ownership revalidation failed." >&2
+        status=1
+        can_delete=0
+      fi
+    fi
+
+    if (( can_delete == 1 )); then
+      if ! az containerapp job delete \
+        -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+        --yes --output none --only-show-errors; then
+        echo "ERROR: Temporary migration job deletion request failed." >&2
+        status=1
+      fi
+      local confirmed_absent=0
+      for _ in $(seq 1 30); do
+        if ! http_status="$(arm_get_job "$JOB_RESPONSE")"; then
+          sleep 2
+          continue
+        fi
+        if [[ "$http_status" == 404 ]]; then
+          confirmed_absent=1
+          break
+        fi
+        if [[ "$http_status" == 200 ]] && ! validate_job_ownership "$JOB_RESPONSE"; then
+          echo "ERROR: Migration job ownership changed while waiting for deletion." >&2
+          status=1
+          break
+        fi
+        sleep 2
+      done
+      if (( confirmed_absent == 0 )); then
+        echo "ERROR: Temporary migration job was not confirmed absent after cleanup." >&2
+        status=1
+      else
+        echo "MAIN_RELEASE_MIGRATION_JOB_CLEANUP=CONFIRMED_404"
+      fi
     fi
   fi
+
+  rm -f "$PAYLOAD" "$JOB_RESPONSE"
+  unset SECRET_URI ACTUAL_KEY_VAULT_URI
   exit "$status"
 }
 trap cleanup EXIT INT TERM
 
-if az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --output none --only-show-errors 2>/dev/null; then
-  fail "A Container Apps Job already exists with guarded name $JOB_NAME."
-fi
-PREEXISTING_ABSENT=1
+PREFLIGHT_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not perform the migration job ARM preflight."
+[[ "$PREFLIGHT_STATUS" == 404 ]] || {
+  if [[ "$PREFLIGHT_STATUS" == 200 ]]; then
+    fail "A Container Apps Job already exists with the guarded release name."
+  fi
+  fail "Migration job preflight did not return the required HTTP 404."
+}
+PREFLIGHT_CONFIRMED_404=1
+echo "MAIN_RELEASE_MIGRATION_JOB_PREFLIGHT=CONFIRMED_404"
 
 jq -n \
   --arg location "$LOCATION" \
@@ -97,6 +295,8 @@ jq -n \
   --arg release "$EXPECTED_RELEASE_COMMIT" \
   --arg control "$CONTROL_SHA" \
   --arg runScope "$RUN_SCOPE" \
+  --arg databaseName "$EXPECTED_DATABASE_NAME" \
+  --arg forgeProjectId "$EXPECTED_FORGE_PROJECT_ID" \
   '{
     location: $location,
     identity: {
@@ -126,7 +326,9 @@ jq -n \
           image: $image,
           env: [
             {name: "PROJECTPULSE_TEST_DATABASE_URL", secretRef: "main-release-db-url"},
-            {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode}
+            {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode},
+            {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName},
+            {name: "PROJECTPULSE_TEST_FORGE_PROJECT_ID", value: $forgeProjectId}
           ],
           resources: {cpu: 0.5, memory: "1Gi"}
         }]
@@ -137,25 +339,44 @@ jq -n \
 CREATE_ATTEMPTED=1
 az rest --method put --uri "$JOB_URI" --body @"$PAYLOAD" --output none --only-show-errors
 
-ACTUAL_IMAGE="$(az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query properties.template.containers[0].image -o tsv --only-show-errors)"
-ACTUAL_ENVIRONMENT="$(az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query properties.environmentId -o tsv --only-show-errors)"
-ACTUAL_SECRET_URI="$(az containerapp job show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query "properties.configuration.secrets[?name=='main-release-db-url'].keyVaultUrl | [0]" -o tsv --only-show-errors)"
-[[ "$ACTUAL_IMAGE" == "$MIGRATION_IMAGE" ]] || fail "Migration job image drifted."
-[[ "${ACTUAL_ENVIRONMENT,,}" == "${ENVIRONMENT_ID,,}" ]] || fail "Migration job environment drifted."
-[[ "$ACTUAL_SECRET_URI" == "$SECRET_URI" ]] || fail "Migration job did not preserve the version-pinned Key Vault reference."
+PROVISIONED=0
+for _ in $(seq 1 60); do
+  JOB_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not read the temporary migration job after creation."
+  [[ "$JOB_STATUS" == 200 ]] || fail "Temporary migration job was not readable after creation."
+  validate_job_ownership "$JOB_RESPONSE" || fail "Temporary migration job ownership or immutable configuration did not match exactly."
+  PROVISIONING_STATE="$(jq -r '.properties.provisioningState // empty' "$JOB_RESPONSE")"
+  case "$PROVISIONING_STATE" in
+    Succeeded)
+      PROVISIONED=1
+      break
+      ;;
+    Failed|Canceled|Cancelled)
+      fail "Temporary migration job provisioning did not succeed."
+      ;;
+  esac
+  sleep 2
+done
+(( PROVISIONED == 1 )) || fail "Temporary migration job provisioning did not reach Succeeded."
+echo "MAIN_RELEASE_MIGRATION_JOB_OWNERSHIP=VERIFIED"
 
-EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
+START_ATTEMPTED=1
+EXECUTION_NAME="$(az containerapp job start \
+  -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+  --query name -o tsv --only-show-errors)"
 normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the migration execution name."
-echo "MAIN_RELEASE_MIGRATION_JOB_EXECUTION=$EXECUTION_NAME mode=$MODE"
+echo "MAIN_RELEASE_MIGRATION_JOB_EXECUTION=STARTED mode=$MODE"
 
 for _ in $(seq 1 180); do
-  STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
+  STATUS="$(az containerapp job execution list \
+    -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+    --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" \
+    -o tsv --only-show-errors)"
   case "$STATUS" in
     Succeeded)
       echo "MAIN_RELEASE_MIGRATION_JOB_STATUS=SUCCEEDED mode=$MODE"
       exit 0
       ;;
-    Failed|Stopped|Canceled|Degraded)
+    Failed|Stopped|Canceled|Cancelled|Degraded)
       echo "MAIN_RELEASE_MIGRATION_JOB_STATUS=$STATUS mode=$MODE" >&2
       break
       ;;
@@ -163,5 +384,8 @@ for _ in $(seq 1 180); do
   sleep 5
 done
 
-az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
+az containerapp job logs show \
+  -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+  --execution "$EXECUTION_NAME" --container "$JOB_NAME" \
+  --tail 250 --only-show-errors >&2 || true
 fail "The private-network migration job did not succeed in $MODE mode."

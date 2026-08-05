@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="e83340b5a4215ea63901cea98ea17596444f96b7"
+EXPECTED_RELEASE_COMMIT="acae6fda08e6d58dfb1e63b5eef4828877fd5523"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
+EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
+EXPECTED_FORGE_PROJECT_ID="${PROJECTPULSE_TEST_FORGE_PROJECT_ID:-}"
 MODE="${MAIN_RELEASE_MIGRATION_MODE:-verify}"
 MIGRATION_ROOT="$RELEASE_ROOT/database/migrations"
 
@@ -11,6 +13,10 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 
 [[ -n "$RELEASE_ROOT" ]] || fail "Usage: $0 <release-root>"
 [[ -n "$DATABASE_URL" ]] || fail "PROJECTPULSE_TEST_DATABASE_URL is not configured."
+[[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] ||
+  fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
+[[ "$EXPECTED_FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] ||
+  fail "PROJECTPULSE_TEST_FORGE_PROJECT_ID must be an exact UUID."
 [[ "$MODE" == apply || "$MODE" == verify ]] || fail "MAIN_RELEASE_MIGRATION_MODE must be apply or verify."
 command -v psql >/dev/null || fail "psql is required."
 command -v sha256sum >/dev/null || fail "sha256sum is required."
@@ -36,7 +42,11 @@ HASHES=(
   e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6
 )
 [[ -f "$MIGRATION_ROOT/SHA256SUMS" ]] || fail "Migration checksum manifest is missing."
-mapfile -t ACTUAL_FILES < <(find "$MIGRATION_ROOT" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+mapfile -t ACTUAL_FILES < <(
+  for path in "$MIGRATION_ROOT"/*.sql; do
+    [[ -f "$path" ]] && basename "$path"
+  done | LC_ALL=C sort
+)
 diff -u <(printf '%s\n' "${FILES[@]}" | LC_ALL=C sort) <(printf '%s\n' "${ACTUAL_FILES[@]}") ||
   fail "Migration image must contain exactly migrations 071, 072, and 073."
 [[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == "3" ]] ||
@@ -77,6 +87,8 @@ psql "$DATABASE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --set=release_apply="$APPLY_BOOL" \
+  --set=expected_database_name="$EXPECTED_DATABASE_NAME" \
+  --set=expected_forge_project_id="$EXPECTED_FORGE_PROJECT_ID" \
   --set=body071="$BODY_ROOT/${FILES[0]}" \
   --set=body072="$BODY_ROOT/${FILES[1]}" \
   --set=body073="$BODY_ROOT/${FILES[2]}" <<'SQL'
@@ -86,6 +98,28 @@ SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '20min';
+SELECT set_config('projectpulse.release.expected_database', :'expected_database_name', true) AS value \gset release_database_
+SELECT set_config('projectpulse.release.forge_project_id', :'expected_forge_project_id', true) AS value \gset release_forge_project_
+
+DO $release_database_identity$
+BEGIN
+  IF current_database() <> current_setting('projectpulse.release.expected_database') THEN
+    RAISE EXCEPTION 'Connected database does not match the protected Test database identity.';
+  END IF;
+  IF to_regclass('public.projects') IS NULL THEN
+    RAISE EXCEPTION 'The protected Test database sentinel table is unavailable.';
+  END IF;
+  IF (
+    SELECT COUNT(*)
+    FROM public.projects
+    WHERE project_id = current_setting('projectpulse.release.forge_project_id')::uuid
+  ) <> 1 THEN
+    RAISE EXCEPTION 'The protected Test database sentinel project is missing or duplicated.';
+  END IF;
+END
+$release_database_identity$;
+\echo DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED
+
 SELECT pg_advisory_xact_lock(71072073);
 
 DO $release_prerequisites$
@@ -116,17 +150,24 @@ END
 $release_prerequisites$;
 
 \if :release_apply
-  SELECT EXISTS(
-    SELECT 1 FROM schema_migrations
-    WHERE migration_id IN (
-      '071_ai_runtime_production_hardening',
-      '072_celar_ai_conversation_attachments',
-      '073_module_033_project_forge_interactive'
-    )
-  ) AS present \gset release_target_
-  \if :release_target_present
-    \echo ERROR: This guarded release only accepts a fresh 071-073 migration set; partial or historical target ledgers require explicit operator recovery.
+  SELECT
+    COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3 AS complete,
+    COUNT(*) <> 0 AND NOT (COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3) AS inconsistent
+  FROM schema_migrations
+  WHERE migration_id IN (
+    '071_ai_runtime_production_hardening',
+    '072_celar_ai_conversation_attachments',
+    '073_module_033_project_forge_interactive'
+  )
+  \gset release_target_
+  \if :release_target_inconsistent
+    \echo ERROR: Refusing partial, duplicate, or mixed 071-073 ledger state; explicit operator recovery is required.
     \quit 3
+  \endif
+  \if :release_target_complete
+    \echo MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING
+  \else
+    \echo MAIN_RELEASE_TARGET_LEDGER=ABSENT_APPLYING
   \endif
 \endif
 

@@ -6,7 +6,7 @@ on:
       - .github/workflows/projectpulse-deploy-test.yml
       - .github/workflows/projectpulse-release-test-control-ci.yml
       - deployment/containers/release-test/api.Dockerfile
-      - deployment/releases/test/current-main-e83340b5-20260805.json
+      - deployment/releases/test/current-main-acae6fda-20260805.json
       - scripts/release-test/apply-071-073.sh
       - scripts/release-test/run-migration-job.sh
       - scripts/release-test/verify-runtime.mjs
@@ -43,11 +43,28 @@ jobs:
           grep -Fq 'keyVaultUrl' scripts/release-test/run-migration-job.sh
           grep -Fq 'identity: $identity' scripts/release-test/run-migration-job.sh
           grep -Fq 'CREATE_ATTEMPTED=1' scripts/release-test/run-migration-job.sh
-          grep -Fq 'This guarded release only accepts a fresh 071-073 migration set' scripts/release-test/apply-071-073.sh
+          grep -Fq 'START_ATTEMPTED=1' scripts/release-test/run-migration-job.sh
+          grep -Fq 'PREFLIGHT_CONFIRMED_404=1' scripts/release-test/run-migration-job.sh
+          grep -Fq 'validate_job_ownership' scripts/release-test/run-migration-job.sh
+          grep -Fq 'stop_nonterminal_executions' scripts/release-test/run-migration-job.sh
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' scripts/release-test/run-migration-job.sh
+          grep -Fq 'PROJECTPULSE_TEST_FORGE_PROJECT_ID' scripts/release-test/run-migration-job.sh
+          grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' scripts/release-test/apply-071-073.sh
+          grep -Fq "current_database() <> current_setting('projectpulse.release.expected_database')" scripts/release-test/apply-071-073.sh
+          grep -Fq 'Refusing partial, duplicate, or mixed 071-073 ledger state' scripts/release-test/apply-071-073.sh
+          grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING' scripts/release-test/apply-071-073.sh
+          ! grep -Fq "find \"\$MIGRATION_ROOT\" -maxdepth" scripts/release-test/apply-071-073.sh
           ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'old_api_env_b64' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'extension.use_dynamic_install=no' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'REQUIRED_CONTAINERAPP_EXTENSION_VERSION=1.3.0b4' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'QUIESCENT_TEST_BASELINE=VERIFIED' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'API_PREDEPLOY_CAS=PASSED' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'WEB_PREDEPLOY_CAS=PASSED' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'candidate_revision' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
@@ -55,12 +72,12 @@ jobs:
           import json
           from pathlib import Path
 
-          manifest = json.loads(Path("deployment/releases/test/current-main-e83340b5-20260805.json").read_text())
+          manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
-          assert manifest["sourceSha"] == "e83340b5a4215ea63901cea98ea17596444f96b7"
+          assert manifest["sourceSha"] == "acae6fda08e6d58dfb1e63b5eef4828877fd5523"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
