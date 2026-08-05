@@ -259,7 +259,8 @@ jobs:
             echo "The canonical Test database secret is not backed by an approved Azure Key Vault URI." >&2
             exit 1
           }
-          [[ "$MIGRATOR_IDENTITY" =~ ^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ManagedIdentity/userAssignedIdentities/[^/]+$ ]] || {
+          MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
+          [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || {
             echo "The canonical Test database secret does not use an exact UAMI resource ID." >&2
             exit 1
           }
