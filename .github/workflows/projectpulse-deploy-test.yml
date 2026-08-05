@@ -619,6 +619,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          touch /tmp/current-main-release-rollback-attempted
           result=0
           resolve_digest() {
             local image="$1"
@@ -745,6 +746,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p control/evidence
+          ROLLBACK_ATTEMPTED=false
+          if [[ -f /tmp/current-main-release-rollback-attempted ]]; then
+            ROLLBACK_ATTEMPTED=true
+          fi
           if [[ -f /tmp/current-main-release-runtime-evidence.json ]]; then
             install -m 0600 /tmp/current-main-release-runtime-evidence.json \
               control/evidence/current-main-runtime.json
@@ -766,7 +771,7 @@ jobs:
             "webRevision": "${{ steps.deploy_web.outputs.revision }}",
             "jobStatus": "${{ job.status }}",
             "authenticatedUatRequired": true,
-            "applicationRollbackAttempted": ${{ (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true')) && 'true' || 'false' }},
+            "applicationRollbackAttempted": $ROLLBACK_ATTEMPTED,
             "databaseRollbackOnFailure": false
           }
           JSON
