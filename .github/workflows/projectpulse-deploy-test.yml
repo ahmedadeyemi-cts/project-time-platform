@@ -543,6 +543,45 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Web image is outside the approved Test ACR." >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          LIVE_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          LIVE_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$LIVE_JSON")"
+          LIVE_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$LIVE_JSON")"
+          [[ "$LIVE_LATEST" == '${{ steps.before.outputs.old_web_revision }}' && "$LIVE_READY" == "$LIVE_LATEST" ]] || {
+            echo "Web baseline revision changed before deployment." >&2
+            exit 1
+          }
+          LIVE_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$LIVE_JSON")")"
+          LIVE_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --revision "$LIVE_LATEST" \
+            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
+          [[ "$LIVE_TEMPLATE_IMAGE" == '${{ steps.before.outputs.old_web_image }}' && "$LIVE_REVISION_IMAGE" == "$LIVE_TEMPLATE_IMAGE" ]] || {
+            echo "Web baseline image changed before deployment." >&2
+            exit 1
+          }
+          echo "WEB_PREDEPLOY_CAS=PASSED"
+
           echo "started=true" >> "$GITHUB_OUTPUT"
           OLD_REV='${{ steps.before.outputs.old_web_revision }}'
           az containerapp update \
