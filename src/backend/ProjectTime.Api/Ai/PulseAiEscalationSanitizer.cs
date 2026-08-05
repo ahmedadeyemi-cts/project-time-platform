@@ -281,8 +281,9 @@ public sealed class PulseAiEscalationSanitizer
             .Select(term => term.Trim())
             .Take(128)
             .ToArray();
+        var candidateQuestion = safeQuestion;
         var containsProtectedTerm = protectedTerms.Any(term =>
-            term.Length >= 2 && SensitiveTermExpression(term).IsMatch(safeQuestion));
+            term.Length >= 2 && SensitiveTermExpression(term).IsMatch(candidateQuestion));
         if (SecretAssignment.IsMatch(safeQuestion)
             || HighEntropyToken.IsMatch(safeQuestion)
             || Email.IsMatch(safeQuestion)

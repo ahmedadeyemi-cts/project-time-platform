@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using ProjectTime.Api.Ai;
 using System.Security.Cryptography;
@@ -227,6 +228,20 @@ internal static class ReleaseRuntimeBehavior
             try { _ = ProjectPulseAiDatabaseConnection.ResolveEvidence(); }
             catch (InvalidOperationException) { conflictRejected = true; }
             Require(conflictRejected, "conflicting database aliases fail closed");
+            using (var routingStore = new CelarAiCapabilityRoutingStore(
+                       NullLogger<CelarAiCapabilityRoutingStore>.Instance))
+            {
+                Require(!routingStore.DatabaseAvailable,
+                    "conflicting routing-store database declarations disable persistence without constructor failure");
+                Require(
+                    routingStore.DatabaseUnavailableReason == "Database configuration was rejected.",
+                    "routing-store conflict reports a sanitized unavailable reason");
+                var defaultRoutes = await routingStore.LoadRoutesAsync();
+                Require(
+                    defaultRoutes.Count == CelarAiCapabilityCatalog.Definitions.Count
+                    && defaultRoutes.All(route => !route.Persisted),
+                    "routing-store conflict preserves every governed default route");
+            }
 
             foreach (var alias in ProjectPulseAiDatabaseConnection.DirectAliases)
                 Environment.SetEnvironmentVariable(alias, null);

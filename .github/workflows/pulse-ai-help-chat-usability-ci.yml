@@ -80,7 +80,7 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
               ;;
-            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*|fix/post-pr465-module011-065-celar-uat-*)
+            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*|fix/post-pr465-module011-065-celar-uat-*|feature/celar-ai-universal-routing-answer-first-*)
               UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
                 | grep -Ev '^database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)$' \
                 || true)"
