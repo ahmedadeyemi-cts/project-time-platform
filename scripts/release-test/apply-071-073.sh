@@ -83,6 +83,7 @@ psql "$DATABASE_URL" \
 \set ON_ERROR_STOP on
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET LOCAL search_path = public, pg_catalog;
 SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '20min';
 SELECT pg_advisory_xact_lock(71072073);
@@ -113,6 +114,21 @@ BEGIN
   END IF;
 END
 $release_prerequisites$;
+
+\if :release_apply
+  SELECT EXISTS(
+    SELECT 1 FROM schema_migrations
+    WHERE migration_id IN (
+      '071_ai_runtime_production_hardening',
+      '072_celar_ai_conversation_attachments',
+      '073_module_033_project_forge_interactive'
+    )
+  ) AS present \gset release_target_
+  \if :release_target_present
+    \echo ERROR: This guarded release only accepts a fresh 071-073 migration set; partial or historical target ledgers require explicit operator recovery.
+    \quit 3
+  \endif
+\endif
 
 CREATE TEMP TABLE release_business_counts AS
 SELECT
@@ -174,13 +190,12 @@ DO $release_postconditions$
 DECLARE
   missing text[];
   before_counts record;
-  attachment_grants integer;
-  ask_grants integer;
 BEGIN
   IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='071_ai_runtime_production_hardening') <> 1
      OR NOT EXISTS(
        SELECT 1 FROM schema_migrations
        WHERE migration_id='071_ai_runtime_production_hardening'
+         AND applied_at IS NOT NULL
          AND description='Migration-owned Module 064 schemas, version-aware encryption key IDs, shared probe evidence, and fenced private-document worker leases'
      ) THEN
     RAISE EXCEPTION 'Migration 071 ledger evidence is incomplete.';
@@ -189,6 +204,7 @@ BEGIN
      OR NOT EXISTS(
        SELECT 1 FROM schema_migrations
        WHERE migration_id='072_celar_ai_conversation_attachments'
+         AND applied_at IS NOT NULL
          AND description='Module 011 private conversation attachments using the hardened Celar AI document runtime'
      ) THEN
     RAISE EXCEPTION 'Migration 072 ledger evidence is incomplete.';
@@ -197,6 +213,7 @@ BEGIN
      OR NOT EXISTS(
        SELECT 1 FROM schema_migrations
        WHERE migration_id='073_module_033_project_forge_interactive'
+         AND applied_at IS NOT NULL
          AND description='Add Module 033 interactive task revisions, canonical dependencies, primary assignments, review revision evidence, RBAC, and holiday-aware schedule helpers'
      ) THEN
     RAISE EXCEPTION 'Migration 073 ledger evidence is incomplete.';
@@ -261,16 +278,25 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Migration 072 permission or feature evidence is incomplete.';
   END IF;
-  SELECT COUNT(DISTINCT arp.app_role_id) INTO ask_grants
-  FROM app_role_permissions arp
-  JOIN app_permissions p ON p.app_permission_id=arp.app_permission_id
-  WHERE p.permission_code='ASK_PULSE_AI_SYSTEM_INTELLIGENCE';
-  SELECT COUNT(DISTINCT arp.app_role_id) INTO attachment_grants
-  FROM app_role_permissions arp
-  JOIN app_permissions p ON p.app_permission_id=arp.app_permission_id
-  WHERE p.permission_code='ATTACH_CELAR_AI_CHAT_DOCUMENTS';
-  IF attachment_grants <> ask_grants THEN
-    RAISE EXCEPTION 'Migration 072 attachment role inheritance is incomplete.';
+  IF EXISTS (
+    WITH ask_roles AS (
+      SELECT arp.app_role_id
+      FROM app_role_permissions arp
+      JOIN app_permissions p ON p.app_permission_id=arp.app_permission_id
+      WHERE p.permission_code='ASK_PULSE_AI_SYSTEM_INTELLIGENCE'
+    ), attachment_roles AS (
+      SELECT arp.app_role_id
+      FROM app_role_permissions arp
+      JOIN app_permissions p ON p.app_permission_id=arp.app_permission_id
+      WHERE p.permission_code='ATTACH_CELAR_AI_CHAT_DOCUMENTS'
+    ), delta AS (
+      (SELECT app_role_id FROM ask_roles EXCEPT SELECT app_role_id FROM attachment_roles)
+      UNION ALL
+      (SELECT app_role_id FROM attachment_roles EXCEPT SELECT app_role_id FROM ask_roles)
+    )
+    SELECT 1 FROM delta
+  ) THEN
+    RAISE EXCEPTION 'Migration 072 attachment role set differs from the Ask Celar AI role set.';
   END IF;
 
   IF NOT EXISTS(
