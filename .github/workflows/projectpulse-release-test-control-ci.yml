@@ -63,6 +63,9 @@ jobs:
           grep -Fq 'keyvault secret show --id "$KEY_VAULT_SECRET_URI"' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.migrator_identity' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.database_secret_name' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq '^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"' scripts/release-test/run-migration-job.sh
           ! grep -Fq 'vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'vars.PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
@@ -90,7 +93,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r3"
+          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r4"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
