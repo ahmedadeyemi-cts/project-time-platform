@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-uat-sso-group3-label-repair-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:

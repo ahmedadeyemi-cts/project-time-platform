@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-rollback-${{ inputs.environment }}
+  group: projectpulse-deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:

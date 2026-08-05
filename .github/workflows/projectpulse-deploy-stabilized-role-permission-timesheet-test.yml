@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-stabilized-role-permission-timesheet-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:

@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module-012-037-permissions-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:

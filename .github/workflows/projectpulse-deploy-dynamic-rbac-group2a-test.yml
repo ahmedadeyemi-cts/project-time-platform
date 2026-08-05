@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-dynamic-rbac-group2a-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:

@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-security-admin-repair-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:

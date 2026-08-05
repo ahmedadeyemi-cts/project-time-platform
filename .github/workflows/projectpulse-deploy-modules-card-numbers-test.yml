@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-modules-card-numbers-test
+  group: projectpulse-deploy-test
   cancel-in-progress: false
 
 jobs:
