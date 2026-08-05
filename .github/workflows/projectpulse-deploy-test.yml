@@ -176,6 +176,8 @@ jobs:
           KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
           DATABASE_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
           DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
         run: |
           set -Eeuo pipefail
           BASE='${{ vars.PUBLIC_URL }}'
