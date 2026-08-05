@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
-  "releaseName": "current-main-dfd31042-20260805-r1",
+  "releaseName": "current-main-99ce17d3-20260805-r1",
   "environment": "test",
   "aiReleasePhase": "disabled",
   "routingAuthority": "database_managed_active",
-  "sourceSha": "dfd31042cb971677f78fb70e37c9c8a2810db938",
+  "allowSanitizedExternalEscalation": true,
+  "sanitizedExternalFallbackEnabled": true,
+  "sourceSha": "99ce17d3d2981d9fd96ca3447b617b51d8dd78dc",
   "requiredPriorLedger": [
     "052_pulse_ai_private_document_runtime",
     "053_pulse_ai_private_rag_orchestration",

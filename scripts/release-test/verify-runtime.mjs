@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "dfd31042cb971677f78fb70e37c9c8a2810db938";
+const expectedSource = "99ce17d3d2981d9fd96ca3447b617b51d8dd78dc";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -35,6 +35,19 @@ function sleep(milliseconds) {
 function safeError(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/[A-Za-z0-9+/_=-]{40,}/g, "[redacted]").slice(0, 500);
+}
+
+function answerContainsApiDetail(answer) {
+  return /\b(?:api|apis|endpoint|endpoints|route|routes|http|https|swagger)\b|\/(?:api)(?:\/|\b)/i
+    .test(JSON.stringify(answer || {}));
+}
+
+function sentenceCount(value) {
+  return String(value || "")
+    .split(/[.!?](?:\s|$)/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .length;
 }
 
 assert(sourceSha === expectedSource, "Unexpected deployed source SHA.");
@@ -292,6 +305,32 @@ async function run() {
   assert(versionChat.json?.rawPrivateContextSentToExternalProvider === false, "Celar privacy flag was not strictly false.");
   evidence.authenticatedChecks.celarSystemVersion = "passed";
 
+  const systemNameChat = await request("/api/celar-ai/v2/chat", {
+    method: "POST",
+    moduleNumber: "011",
+    authenticated: true,
+    body: {
+      question: "What is the system name?",
+      mode: "system_intelligence",
+      detailLevel: "comprehensive",
+      moduleCode: "011",
+      includeAuthorizedProjectDocuments: false,
+      usePrivateModelWhenAvailable: true,
+      includeRepositoryContext: true,
+      includeAssumptions: true,
+      includeSourceCitations: true,
+      answerPreferenceSource: "guarded_test_release_uat",
+    },
+  });
+  assert(systemNameChat.status === 200, "Authenticated Celar system-name question returned HTTP " + systemNameChat.status + ".");
+  assert(systemNameChat.json?.result?.intentCode === "platform_identity", "Celar system-name intent was not verified.");
+  assert(/\bPulse\b/i.test(String(systemNameChat.json?.result?.answer?.directConclusion || "")), "Celar system-name answer did not identify Pulse.");
+  assert(Array.isArray(systemNameChat.json?.result?.relevantApis) && systemNameChat.json.result.relevantApis.length === 0, "Celar system-name answer exposed API inventory.");
+  assert(Array.isArray(systemNameChat.json?.result?.toolResults) && systemNameChat.json.result.toolResults.length === 0, "Celar system-name answer ran unrelated tools.");
+  assert(!answerContainsApiDetail(systemNameChat.json?.result?.answer), "Celar system-name answer included unrequested API, route, endpoint, or HTTP detail.");
+  assert(systemNameChat.json?.rawPrivateContextSentToExternalProvider === false, "Celar system-name privacy flag was not strictly false.");
+  evidence.authenticatedChecks.celarSystemNameAnswerFirst = "passed";
+
   const apiSearch = await request("/api/celar-ai/v2/chat", {
     method: "POST",
     moduleNumber: "011",
@@ -379,7 +418,10 @@ async function run() {
   });
   assert(providerConfiguration.status === 200, "Module 064 provider configuration returned HTTP " + providerConfiguration.status + ".");
   assert(providerConfiguration.json?.module === "064", "Module 064 provider configuration has the wrong module.");
-  const providerHealth = await request("/api/ai-configuration/health", {
+  assert(providerConfiguration.json?.governance?.sanitizedExternalExecutionEnabled === true, "Module 064 sanitized external execution is not enabled.");
+  assert(providerConfiguration.json?.governance?.enterpriseSanitizedExternalFallbackEnabled === true, "Module 064 enterprise sanitized external fallback is not enabled.");
+  const providerHealth = await request("/api/ai-configuration/health/refresh", {
+    method: "POST",
     moduleNumber: "064",
     authenticated: true,
   });
@@ -393,10 +435,115 @@ async function run() {
       probeStatus: String(item.probeStatus || "not_checked"),
     }));
   assert(remoteProviderHealth.length === 2, "Module 064 did not return sanitized Claude and OpenAI health evidence.");
+  assert(remoteProviderHealth.every((item) => item.enabled && item.configured && item.probeStatus === "available"), "Claude and OpenAI must both be configured, enabled, and available for governed failover.");
   evidence.authenticatedChecks.externalProviderReadiness = {
     status: String(providerHealth.json?.status || "unknown"),
     providers: remoteProviderHealth,
   };
+
+  const externalProductionProbe = await request("/api/ai-configuration/sanitized-external-fallback/production-test", {
+    method: "POST",
+    moduleNumber: "064",
+    authenticated: true,
+    timeoutMs: 120000,
+  });
+  assert(externalProductionProbe.status === 200, "Module 064 sanitized external production probe returned HTTP " + externalProductionProbe.status + ".");
+  assert(externalProductionProbe.json?.ready === true, "Module 064 sanitized external production probe is not ready.");
+  assert(externalProductionProbe.json?.policy?.sanitizedExternalExecutionEnabled === true, "Sanitized external execution policy is not active.");
+  assert(externalProductionProbe.json?.policy?.enterpriseSanitizedExternalFallbackEnabled === true, "Enterprise sanitized fallback policy is not active.");
+  assert(Array.isArray(externalProductionProbe.json?.targets) && externalProductionProbe.json.targets.length === 2, "The sanitized external production probe did not exercise Claude and OpenAI.");
+  evidence.authenticatedChecks.externalProviderProductionProbe = "passed";
+
+  const generalKnowledgeChat = await request("/api/celar-ai/v2/chat", {
+    method: "POST",
+    moduleNumber: "011",
+    authenticated: true,
+    timeoutMs: 120000,
+    body: {
+      question: "What is the capital of France?",
+      mode: "system_intelligence",
+      detailLevel: "comprehensive",
+      moduleCode: "011",
+      includeAuthorizedProjectDocuments: false,
+      usePrivateModelWhenAvailable: true,
+      includeRepositoryContext: true,
+      includeAssumptions: true,
+      includeSourceCitations: true,
+      answerPreferenceSource: "guarded_test_release_uat",
+    },
+  });
+  assert(generalKnowledgeChat.status === 200, "Celar general-knowledge question returned HTTP " + generalKnowledgeChat.status + ".");
+  assert(generalKnowledgeChat.json?.result?.intentCode === "general_knowledge", "Celar did not classify the outside question as general knowledge.");
+  assert(/\bParis\b/i.test(String(generalKnowledgeChat.json?.result?.answer?.directConclusion || "")), "Celar general-knowledge answer did not return Paris.");
+  assert(["celar_ai", "claude", "openai"].includes(String(generalKnowledgeChat.json?.result?.modelProvider || "").toLowerCase()), "Celar general knowledge fell through to the governed local template.");
+  assert(Array.isArray(generalKnowledgeChat.json?.result?.relevantApis) && generalKnowledgeChat.json.result.relevantApis.length === 0, "Celar general-knowledge answer exposed API inventory.");
+  assert(Array.isArray(generalKnowledgeChat.json?.result?.toolResults) && generalKnowledgeChat.json.result.toolResults.length === 0, "Celar general-knowledge answer ran Pulse tools.");
+  assert(!answerContainsApiDetail(generalKnowledgeChat.json?.result?.answer), "Celar general-knowledge answer included unrequested API, route, endpoint, or HTTP detail.");
+  assert(generalKnowledgeChat.json?.rawPrivateContextSentToExternalProvider === false, "Celar general-knowledge privacy flag was not strictly false.");
+  evidence.authenticatedChecks.celarGeneralKnowledge = "passed";
+
+  const categories = await request("/api/non-project-time-categories", {
+    moduleNumber: "001",
+    authenticated: true,
+  });
+  assert(categories.status === 200, "Timesheet non-project categories returned HTTP " + categories.status + ".");
+  const category = (categories.json?.categories || []).find((item) => uuidPattern.test(String(item?.id || "")));
+  assert(category, "No active non-project Timesheet category is available for AI suggestion UAT.");
+  const timesheetSuggestion = await request("/api/timesheets/ai-description-suggestions", {
+    method: "POST",
+    moduleNumber: "001",
+    authenticated: true,
+    timeoutMs: 120000,
+    body: {
+      workDate: new Date().toISOString().slice(0, 10),
+      timeEntryId: null,
+      assignmentId: null,
+      projectId: null,
+      taskId: null,
+      nonProjectTimeCategoryId: category.id,
+      timeType: "regular",
+      rowType: "nonProject",
+      rowLabel: category.name,
+      customerName: null,
+      projectName: null,
+      projectCode: null,
+      taskName: null,
+      taskCode: null,
+      categoryCode: category.code,
+      hours: 0.5,
+      currentDescription: "Reviewed and tested the deployment configuration, validated expected system behavior, and documented the results.",
+    },
+  });
+  assert(timesheetSuggestion.status === 200, "Timesheet AI suggestion returned HTTP " + timesheetSuggestion.status + ".");
+  assert(timesheetSuggestion.json?.status === "ai_suggestion_generated", "Timesheet AI suggestion was not generated.");
+  assert(["celar_ai", "claude", "openai"].includes(String(timesheetSuggestion.json?.provider || "").toLowerCase()), "Timesheet AI suggestion fell through to the governed local template.");
+  assert(String(timesheetSuggestion.json?.suggestion || "").trim().length >= 160, "Timesheet AI suggestion was not comprehensive enough for review.");
+  assert(sentenceCount(timesheetSuggestion.json?.suggestion) >= 2, "Timesheet AI suggestion did not contain a comprehensive multi-sentence response.");
+  evidence.authenticatedChecks.timesheetComprehensiveAiSuggestion = "passed";
+
+  const closeoutDraft = await request("/api/project-closeout/ai/communication", {
+    method: "POST",
+    moduleNumber: "040",
+    authenticated: true,
+    timeoutMs: 120000,
+    body: {
+      projectCode: null,
+      projectName: null,
+      audience: "internal",
+      completionSummary: "The planned validation was completed and the recorded checks passed.",
+      acceptanceEvidence: "The review evidence is available for PM and Engineering confirmation.",
+      outstandingItems: "Final human approval and recipient confirmation remain open.",
+      handoffSummary: "The operational notes and validation evidence are ready for review.",
+      requestedTone: "professional and factual",
+      allowSanitizedExternalFallback: false,
+    },
+  });
+  assert(closeoutDraft.status === 200, "Closeout AI communication returned HTTP " + closeoutDraft.status + ".");
+  assert(closeoutDraft.json?.status !== "closeout_draft_refused", "Closeout AI communication was refused.");
+  assert(["celar_ai", "claude", "openai"].includes(String(closeoutDraft.json?.selectedTarget || "").toLowerCase()), "Closeout AI communication fell through to the governed local template.");
+  assert(String(closeoutDraft.json?.draft || "").trim().length >= 300, "Closeout AI communication was not comprehensive enough for review.");
+  assert(closeoutDraft.json?.reviewRequired === true && closeoutDraft.json?.emailSent === false && closeoutDraft.json?.stateChanged === false, "Closeout AI communication violated the review-only boundary.");
+  evidence.authenticatedChecks.closeoutComprehensiveAiDraft = "passed";
 
   const profilePhoto = await request("/api/profile/preferences/production-validation", {
     authenticated: true,

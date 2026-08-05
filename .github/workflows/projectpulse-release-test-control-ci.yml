@@ -38,6 +38,12 @@ jobs:
           grep -Fq 'officialUsSignalLogo' scripts/release-test/verify-runtime.mjs
           grep -Fq 'profilePicturePersistence' scripts/release-test/verify-runtime.mjs
           grep -Fq 'externalProviderReadiness' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celarSystemNameAnswerFirst' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celarGeneralKnowledge' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'timesheetComprehensiveAiSuggestion' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'closeoutComprehensiveAiDraft' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'externalProviderProductionProbe' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'answerContainsApiDetail' scripts/release-test/verify-runtime.mjs
           grep -Fq 'result.status === 401' scripts/release-test/verify-runtime.mjs
           grep -Fq 'redirect: "manual"' scripts/release-test/verify-runtime.mjs
           grep -Fq 'celar_ai_chat_attachments_accepted' scripts/release-test/verify-runtime.mjs
@@ -104,6 +110,10 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DEPLOY-99CE17D3-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
@@ -112,11 +122,13 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-dfd31042-20260805-r1"
+          assert manifest["releaseName"] == "current-main-99ce17d3-20260805-r1"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
-          assert manifest["sourceSha"] == "dfd31042cb971677f78fb70e37c9c8a2810db938"
+          assert manifest["allowSanitizedExternalEscalation"] is True
+          assert manifest["sanitizedExternalFallbackEnabled"] is True
+          assert manifest["sourceSha"] == "99ce17d3d2981d9fd96ca3447b617b51d8dd78dc"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
