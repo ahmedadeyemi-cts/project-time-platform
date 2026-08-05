@@ -203,6 +203,78 @@
   gap: 0.7rem;
 }
 
+.celar-ai-routing__production-readiness {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid #b9d3e5;
+  border-radius: 1rem;
+  background: #f6fbfe;
+}
+
+.celar-ai-routing__production-readiness > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.celar-ai-routing__production-readiness > header div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.celar-ai-routing__production-readiness > header span,
+.celar-ai-routing__production-readiness article span {
+  color: #607590;
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.celar-ai-routing__production-readiness > header strong,
+.celar-ai-routing__production-readiness article strong {
+  color: #0c3158;
+}
+
+.celar-ai-routing__production-readiness > header small {
+  max-width: 42rem;
+  color: #62768f;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.celar-ai-routing__production-readiness > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.celar-ai-routing__production-readiness article {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border: 1px solid #d1e0eb;
+  border-radius: 0.75rem;
+  background: #ffffff;
+}
+
+.celar-ai-routing__production-readiness details {
+  padding-top: 0.25rem;
+  color: #694900;
+}
+
+.celar-ai-routing__production-readiness summary {
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.celar-ai-routing__production-readiness li {
+  margin-top: 0.35rem;
+  line-height: 1.45;
+}
+
 .celar-ai-routing__profile-form {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -420,7 +492,8 @@
 
 @media (max-width: 1100px) {
   .celar-ai-routing__architecture,
-  .celar-ai-routing__private-summary {
+  .celar-ai-routing__private-summary,
+  .celar-ai-routing__production-readiness > div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -447,11 +520,20 @@
 
   .celar-ai-routing__architecture,
   .celar-ai-routing__private-summary,
+  .celar-ai-routing__production-readiness > div,
   .celar-ai-routing__profile-form,
   .celar-ai-routing__route-grid,
   .celar-ai-routing__route-selects,
   .celar-ai-routing__token-form > div {
     grid-template-columns: 1fr;
+  }
+
+  .celar-ai-routing__production-readiness > header {
+    flex-direction: column;
+  }
+
+  .celar-ai-routing__production-readiness > header small {
+    text-align: left;
   }
 
   .celar-ai-routing__architecture article::after {
@@ -480,10 +562,12 @@ body[data-theme='dark'] .celar-ai-routing,
 
 body[data-theme='dark'] .celar-ai-routing article,
 body[data-theme='dark'] .celar-ai-routing__private-model,
+body[data-theme='dark'] .celar-ai-routing__production-readiness,
 body[data-theme='dark'] .celar-ai-routing__routes,
 body[data-theme='dark'] .celar-ai-routing__consumers,
 [data-theme='dark'] .celar-ai-routing article,
 [data-theme='dark'] .celar-ai-routing__private-model,
+[data-theme='dark'] .celar-ai-routing__production-readiness,
 [data-theme='dark'] .celar-ai-routing__routes,
 [data-theme='dark'] .celar-ai-routing__consumers {
   background: #172f43;

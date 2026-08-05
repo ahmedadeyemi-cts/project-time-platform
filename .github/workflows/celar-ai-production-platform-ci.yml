@@ -41,16 +41,47 @@ jobs:
         run: |
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin "$BASE_BRANCH" --no-tags
           BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD)"
           CHANGED="$(git diff --name-only "$BASE"...HEAD)"
           printf '%s\n' "$CHANGED"
           test -n "$CHANGED"
           git diff --check "$BASE"...HEAD
-          if grep -E '^(deployment/|database/migrations/|database/rollback/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
-            echo 'Celar AI production source may not alter protected deployment controls or numbered migrations.' >&2
+
+          UNAUTHORIZED_CONTROL="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+          if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
+            echo 'Celar AI production source may not alter protected deployment controls.' >&2
+            printf '%s\n' "$UNAUTHORIZED_CONTROL" >&2
             exit 1
           fi
+
+          CHANGED_MIGRATIONS="$(grep -E '^database/(migrations|rollback)/' <<<"$CHANGED" || true)"
+          case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-*)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/071_ai_runtime_production_hardening\.sql|rollback/071_ai_runtime_production_hardening_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected numbered migration in the Celar AI production-hardening source package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/071_ai_runtime_production_hardening.sql' \
+                'database/rollback/071_ai_runtime_production_hardening_rollback.sql'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              test -f .github/workflows/celar-ai-production-hardening-ci.yml
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=PRODUCTION_HARDENING'
+              ;;
+            *)
+              if [[ -n "$CHANGED_MIGRATIONS" ]]; then
+                echo 'Celar AI production source may not alter numbered migrations outside the reviewed production-hardening branch family.' >&2
+                printf '%s\n' "$CHANGED_MIGRATIONS" >&2
+                exit 1
+              fi
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=STANDARD'
+              ;;
+          esac
           echo "CELAR_AI_PRODUCTION_BASE=$BASE"
           echo "CELAR_AI_PRODUCTION_HEAD=$(git rev-parse HEAD)"
           echo 'CELAR_AI_PRODUCTION_SOURCE_BOUNDARY=PASSED'

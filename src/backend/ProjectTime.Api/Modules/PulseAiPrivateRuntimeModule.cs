@@ -20,6 +20,9 @@ public static class PulseAiPrivateRuntimeModule
             "/api/pulse-ai/v1/documents/{documentId:guid}/processing-jobs",
             (Func<Guid, PulseAiQueueDocumentRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)QueueAsync);
         endpoints.MapPost(
+            "/api/pulse-ai/v1/documents/{documentId:guid}/versions/{versionId:guid}/approve",
+            (Func<Guid, Guid, PulseAiApproveDocumentVersionRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)ApproveVersionAsync);
+        endpoints.MapPost(
             "/api/pulse-ai/v1/documents/runtime/jobs/{jobId:guid}/cancel",
             (Func<Guid, PulseAiCancelDocumentJobRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)CancelAsync);
         endpoints.MapPost(
@@ -238,6 +241,55 @@ public static class PulseAiPrivateRuntimeModule
                 status = "processing_job_not_cancellable",
                 message = "The job was not found in the authorized scope or is no longer cancellable."
             }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    private static async Task<IResult> ApproveVersionAsync(
+        Guid documentId,
+        Guid versionId,
+        PulseAiApproveDocumentVersionRequest request,
+        HttpContext context,
+        PulseAiPrivateDocumentRuntimeService runtime,
+        CancellationToken cancellationToken)
+    {
+        var identities = Identities(context);
+        if (identities is null) return SessionRequired();
+        if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                PulseAiPrivateRuntimePolicy.ApproveVersionConfirmation,
+                StringComparison.Ordinal))
+        {
+            return ConfirmationRequired(PulseAiPrivateRuntimePolicy.ApproveVersionConfirmation);
+        }
+        var access = await runtime.LoadAccessAsync(identities.Value.Actual, cancellationToken);
+        if (!access.IsActive || !access.CanApprove) return Forbidden("APPROVE_PULSE_AI_DOCUMENT_VERSION");
+        var approved = await runtime.ApproveVersionAsync(
+            identities.Value.Actual,
+            identities.Value.Effective,
+            documentId,
+            versionId,
+            request,
+            cancellationToken);
+        if (!approved)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "document_version_not_approvable",
+                message = "The version is outside the authorized scope, is not the exact active ready source hash, or is not eligible for approval."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+        return Results.Ok(new
+        {
+            module = "011",
+            status = "document_version_approved",
+            documentId,
+            versionId,
+            authorityStatus = "approved",
+            retrievalEligible = true,
+            externalProviderCalled = false,
+            stateChanged = true
+        });
     }
 
     private static async Task<IResult> RetryAsync(

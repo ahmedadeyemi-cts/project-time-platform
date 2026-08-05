@@ -9,7 +9,10 @@ public sealed record PulseAiTimesheetGroundingInput(
     string? ProjectName,
     string? TaskCode,
     string? TaskName,
-    string? CurrentDescription);
+    string? CurrentDescription,
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null);
 
 public sealed record PulseAiFlowHiveGroundingInput(
     string? ProjectCode,
@@ -90,7 +93,9 @@ public sealed record PulseAiGroundingContext(
     DateTimeOffset GeneratedAt,
     string PrivacyBoundary,
     string ExternalProviderPolicy,
-    string? DiagnosticCode = null)
+    string? DiagnosticCode = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null)
 {
     public bool HasDocuments => Documents.Count > 0;
     public bool HasReadyPrivateContext => Documents.Any(document => document.SummaryReady);
@@ -130,6 +135,8 @@ public sealed record PulseAiGroundingContext(
         },
         selectedWork = new
         {
+            taskId = TaskId,
+            assignmentId = AssignmentId,
             taskCode = TaskCode,
             taskName = TaskName,
             taskDescription = TaskDescription,

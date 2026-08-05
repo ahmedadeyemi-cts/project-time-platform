@@ -313,7 +313,11 @@ public sealed record PulseAiSystemQuestionResult(
     string ModelName,
     string CorrelationId,
     IReadOnlyList<string> Warnings,
-    bool Persisted)
+    bool Persisted,
+    IReadOnlyList<string>? AttemptedTargets = null,
+    IReadOnlyList<string>? SkippedTargets = null,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null,
+    string ExternalAssistance = "")
 {
     public object ToPublicResponse() => new
     {
@@ -332,6 +336,10 @@ public sealed record PulseAiSystemQuestionResult(
         modelName = ModelName,
         correlationId = CorrelationId,
         warnings = Warnings,
+        attemptedTargets = AttemptedTargets ?? [],
+        skippedTargets = SkippedTargets ?? [],
+        targetDecisions = TargetDecisions ?? [],
+        externalAssistance = ExternalAssistance,
         persisted = Persisted,
         privacy = new
         {

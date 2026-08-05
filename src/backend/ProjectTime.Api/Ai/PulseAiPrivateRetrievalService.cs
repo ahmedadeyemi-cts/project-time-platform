@@ -43,12 +43,18 @@ public sealed class PulseAiPrivateRetrievalService
         }
 
         PulseAiPrivateRagRepository.ProjectResolution? project = null;
-        if (query.ProjectId is null
-            && (!string.IsNullOrWhiteSpace(query.ProjectCode)
-                || !string.IsNullOrWhiteSpace(query.ProjectName)))
+        var hasProjectContext = query.ProjectId is not null
+            || query.TaskId is not null
+            || query.AssignmentId is not null
+            || !string.IsNullOrWhiteSpace(query.ProjectCode)
+            || !string.IsNullOrWhiteSpace(query.ProjectName);
+        if (hasProjectContext)
         {
             project = await _repository.ResolveProjectAsync(
                 access,
+                query.ProjectId,
+                query.TaskId,
+                query.AssignmentId,
                 query.ProjectCode,
                 query.ProjectName,
                 cancellationToken);
@@ -57,7 +63,7 @@ public sealed class PulseAiPrivateRetrievalService
                 return Empty(
                     "project_not_resolved_or_not_authorized",
                     query,
-                    ["A unique authorized project could not be resolved from the supplied project code or name."],
+                    ["A unique authorized project could not be resolved from the supplied project, task, or assignment identity."],
                     "project_not_resolved_or_not_authorized");
             }
             query = query with
@@ -67,15 +73,6 @@ public sealed class PulseAiPrivateRetrievalService
                 ProjectName = project.ProjectName
             };
         }
-        else if (query.ProjectId is not null)
-        {
-            project = new PulseAiPrivateRagRepository.ProjectResolution(
-                query.ProjectId.Value,
-                query.ProjectCode ?? string.Empty,
-                query.ProjectName ?? string.Empty,
-                string.Empty);
-        }
-
         if ((query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature
                 || query.FeatureCode == PulseAiPrivateRagPolicy.FlowHiveFeature)
             && query.ProjectId is null)

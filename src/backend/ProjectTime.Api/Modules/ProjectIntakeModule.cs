@@ -254,11 +254,7 @@ public static class ProjectIntakeModule
             });
         }
 
-        var uploadRoot = Environment.GetEnvironmentVariable("PROJECTPULSE_UPLOAD_ROOT");
-        if (string.IsNullOrWhiteSpace(uploadRoot))
-        {
-            uploadRoot = "/opt/project-time-platform/app/uploads";
-        }
+        var uploadRoot = ProjectTime.Api.Ai.ProjectPulseUploadStorage.ResolveRoot();
 
         var documentType = string.IsNullOrWhiteSpace(form["documentType"])
             ? "other"

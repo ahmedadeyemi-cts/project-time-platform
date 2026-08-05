@@ -42,6 +42,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         var counts = schema.Complete
             ? await _repository.GetCountsAsync(cancellationToken)
             : PulseAiPrivateDocumentRuntimeRepository.RuntimeCounts.Empty;
+        var servicePrincipal = await _repository.InspectDocumentServicePrincipalAsync(
+            options.DocumentServicePrincipalUserId,
+            cancellationToken);
+        var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
         var blockers = new List<string>();
         var ready = new List<string>
         {
@@ -59,30 +63,73 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             missing.Add("ProjectPulse database configuration is incomplete.");
         if (!schema.MigrationApplied)
             blockers.Add("Migration 052 has not been applied.");
+        if (!schema.RagMigrationApplied)
+            blockers.Add("Migration 053 has not been applied.");
+        if (!schema.RoutingMigrationApplied)
+            blockers.Add("Migration 061 has not been applied.");
+        if (!schema.HardeningMigrationApplied)
+            blockers.Add("Migration 071 has not been applied.");
         if (!schema.Complete)
             blockers.Add("One or more private document runtime tables are unavailable.");
+        blockers.AddRange(storage.Blockers);
         if (!options.WorkerEnabled)
             blockers.Add("The private document processing worker is disabled.");
+        if (!options.AutoQueueEligibleDocuments)
+            blockers.Add("Automatic admission of authorized AI-eligible project documents is disabled.");
+        if (options.AutoQueueEligibleDocuments && options.DocumentServicePrincipalUserId is null)
+            blockers.Add("Automatic document admission requires a dedicated Celar AI document service-principal user ID; a human identity is never substituted.");
+        if (options.AutoQueueEligibleDocuments
+            && servicePrincipal.DiagnosticCode == "service_principal_user_not_found")
+            blockers.Add("The configured Celar AI document service principal does not match an application user.");
+        if (options.AutoQueueEligibleDocuments
+            && servicePrincipal.DiagnosticCode is "database_unavailable" or "service_principal_lookup_unavailable")
+            blockers.Add("The configured Celar AI document service principal could not be revalidated against the application permission store.");
+        if (options.AutoQueueEligibleDocuments && servicePrincipal.Exists && !servicePrincipal.Active)
+            blockers.Add("The configured Celar AI document service principal is inactive.");
+        if (options.AutoQueueEligibleDocuments && servicePrincipal.Exists && servicePrincipal.Active && !servicePrincipal.QueuePermissionGranted)
+            blockers.Add("The configured Celar AI document service principal does not have QUEUE_PULSE_AI_DOCUMENT_PROCESSING through an active role assignment.");
         if (!options.ClamAvConfigured && !options.PreScanAttestationConfigured)
-            blockers.Add("A private ClamAV endpoint or approved pre-scan attestation is required.");
-        if (!options.OcrConfigured)
-            blockers.Add("The private OCR endpoint is not configured; text-native documents can still be processed.");
-        if (!options.EmbeddingConfigured && !options.AllowLexicalOnlyCompletion)
-            blockers.Add("The private embedding endpoint is not configured and lexical-only completion is disabled.");
-var ocrReason = "not_configured";
-var ocrPrivate = options.OcrConfigured
-    && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-        options.OcrEndpoint,
-        options.PrivateHostAllowlist,
-        out _,
-        out ocrReason);
-var embeddingReason = "not_configured";
-var embeddingPrivate = options.EmbeddingConfigured
-    && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
-        options.EmbeddingEndpoint,
-        options.PrivateHostAllowlist,
-        out _,
-        out embeddingReason);
+            blockers.Add("A private ClamAV endpoint or explicitly approved pre-scan attestation is required.");
+        if (!options.EmbeddingConfigured && !options.LexicalOnlyCompletionApproved)
+            blockers.Add("A private embedding endpoint is required unless lexical-only completion has an explicit approval reference.");
+
+        var scannerReason = options.ClamAvConfigured ? "private_scanner_not_checked" : "scanner_not_configured";
+        var scannerPrivate = options.PreScanAttestationConfigured;
+        if (options.ClamAvConfigured)
+        {
+            var scannerResolution = await PulseAiPrivateEndpointPolicy.VerifyPrivateHostAsync(
+                options.MalwareScannerHost,
+                allowLoopback: false,
+                cancellationToken);
+            scannerPrivate = scannerResolution.Approved;
+            scannerReason = scannerResolution.Reason;
+        }
+
+        var ocrResolution = options.OcrConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                options.OcrEndpoint,
+                options.PrivateHostAllowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "not_configured", 0);
+        var ocrPrivate = ocrResolution.Approved;
+        var ocrReason = ocrResolution.Reason;
+        var embeddingResolution = options.EmbeddingConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                options.EmbeddingEndpoint,
+                options.PrivateHostAllowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "not_configured", 0);
+        var embeddingPrivate = embeddingResolution.Approved;
+        var embeddingReason = embeddingResolution.Reason;
+
+        if (options.ClamAvConfigured && !scannerPrivate)
+            blockers.Add($"The configured malware scanner host was rejected by private DNS policy ({scannerReason}).");
+        if (counts.AwaitingOcr > 0 && !ocrPrivate)
+            blockers.Add($"{counts.AwaitingOcr} document processing job(s) require an approved private OCR endpoint ({ocrReason}).");
         if (options.OcrConfigured && !ocrPrivate)
             blockers.Add($"The configured OCR endpoint was rejected by the private endpoint policy ({ocrReason}).");
         if (options.EmbeddingConfigured && !embeddingPrivate)
@@ -90,14 +137,24 @@ var embeddingPrivate = options.EmbeddingConfigured
         if (schema.LexicalIndex) ready.Add("PostgreSQL full-text index is available");
         if (options.ClamAvConfigured) ready.Add("private ClamAV scanning is configured");
         if (options.PreScanAttestationConfigured) ready.Add("approved pre-scan attestation mode is configured");
+        if (scannerPrivate) ready.Add("malware scanning destination or attestation passed private-runtime policy");
         if (ocrPrivate) ready.Add("private OCR endpoint passed endpoint policy");
         if (embeddingPrivate) ready.Add("private embedding endpoint passed endpoint policy");
-        if (options.AllowLexicalOnlyCompletion) ready.Add("lexical-only degraded completion is explicitly enabled");
+        if (options.LexicalOnlyCompletionApproved) ready.Add("lexical-only completion has an explicit approval reference");
+        if (storage.ProductionReady) ready.Add("shared writable persistent upload storage passed production policy");
+        if (counts.ReadySowDocuments > 0) ready.Add("at least one AI-authorized SOW or GSD is processed and ready");
+        else blockers.Add("No AI-authorized SOW or GSD is currently in the ready state.");
 
         var fullyReady = schema.Complete
+            && schema.ProductionMigrationsApplied
             && options.WorkerEnabled
-            && (options.ClamAvConfigured || options.PreScanAttestationConfigured)
-            && (embeddingPrivate || options.AllowLexicalOnlyCompletion);
+            && options.AutoQueueEligibleDocuments
+            && servicePrincipal.Authorized
+            && storage.ProductionReady
+            && scannerPrivate
+            && (counts.AwaitingOcr == 0 || ocrPrivate)
+            && (embeddingPrivate || options.LexicalOnlyCompletionApproved)
+            && counts.ReadySowDocuments > 0;
 
         return new PulseAiPrivateDocumentRuntimeReadiness(
             Status: fullyReady
@@ -107,20 +164,39 @@ var embeddingPrivate = options.EmbeddingConfigured
                     : "private_document_runtime_schema_unavailable",
             ContractVersion: PulseAiPrivateRuntimePolicy.ContractVersion,
             MigrationApplied: schema.MigrationApplied,
+            RagMigrationApplied: schema.RagMigrationApplied,
+            RoutingMigrationApplied: schema.RoutingMigrationApplied,
+            HardeningMigrationApplied: schema.HardeningMigrationApplied,
+            ProductionMigrationsApplied: schema.ProductionMigrationsApplied,
             WorkerEnabled: options.WorkerEnabled,
+            AutomaticDocumentQueueEnabled: options.AutoQueueEligibleDocuments,
+            DocumentServicePrincipalConfigured: servicePrincipal.Configured,
+            DocumentServicePrincipalActive: servicePrincipal.Active,
+            DocumentServicePrincipalQueuePermissionGranted: servicePrincipal.QueuePermissionGranted,
+            DocumentServicePrincipalAuthorized: servicePrincipal.Authorized,
+            DocumentServicePrincipalDiagnosticCode: servicePrincipal.DiagnosticCode,
             ProcessingTablesAvailable: schema.Complete,
+            UploadStorageProductionReady: storage.ProductionReady,
+            UploadRootFingerprint: storage.RootFingerprint,
             ClamAvConfigured: options.ClamAvConfigured,
+            MalwareScannerEndpointPrivate: scannerPrivate,
             PreScanAttestationConfigured: options.PreScanAttestationConfigured,
             OcrConfigured: options.OcrConfigured,
             OcrEndpointPrivate: ocrPrivate,
             EmbeddingConfigured: options.EmbeddingConfigured,
             EmbeddingEndpointPrivate: embeddingPrivate,
+            LexicalOnlyCompletionApproved: options.LexicalOnlyCompletionApproved,
             LexicalIndexAvailable: schema.LexicalIndex,
             EmbeddingStorageAvailable: schema.Chunks,
             QueuedJobCount: counts.Queued,
             RunningJobCount: counts.Running,
+            AwaitingOcrJobCount: counts.AwaitingOcr,
             FailedJobCount: counts.Failed,
             ReadyDocumentCount: counts.ReadyDocuments,
+            ReadySowDocumentCount: counts.ReadySowDocuments,
+            PendingSowDocumentCount: counts.PendingSowDocuments,
+            ActiveChunkCount: counts.ActiveChunks,
+            EmbeddedChunkCount: counts.EmbeddedChunks,
             ReadyCapabilities: ready.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Blockers: blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             MissingConfiguration: missing,
@@ -179,6 +255,39 @@ var embeddingPrivate = options.EmbeddingConfigured
     {
         var access = await _repository.LoadAccessAsync(effectiveUserId, cancellationToken);
         return await _repository.GetDocumentStateAsync(access, documentId, cancellationToken);
+    }
+
+    public async Task<bool> ApproveVersionAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        Guid documentId,
+        Guid versionId,
+        PulseAiApproveDocumentVersionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (actualUserId != effectiveUserId) return false;
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                PulseAiPrivateRuntimePolicy.ApproveVersionConfirmation,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+        var expectedSourceSha256 = request.ExpectedSourceSha256?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (expectedSourceSha256.Length != 64
+            || expectedSourceSha256.Any(character => !Uri.IsHexDigit(character)))
+        {
+            return false;
+        }
+        var access = await _repository.LoadAccessAsync(actualUserId, cancellationToken);
+        return await _repository.ApproveActiveVersionAsync(
+            access,
+            documentId,
+            versionId,
+            actualUserId,
+            expectedSourceSha256,
+            request.Reason ?? "Approved for permission-scoped Celar AI retrieval.",
+            cancellationToken);
     }
 
     public async Task<bool> CancelAsync(
@@ -251,8 +360,17 @@ var embeddingPrivate = options.EmbeddingConfigured
             return Empty("runtime_schema_unavailable", "migration_052_not_ready");
         }
 
+        if (options.AutoQueueEligibleDocuments)
+            await _repository.EnqueueNextEligibleDocumentAsync(options, cancellationToken);
+
         var job = await _repository.ClaimNextAsync(options, cancellationToken);
         if (job is null) return Empty("queue_empty", string.Empty);
+
+        var callerCancellationToken = cancellationToken;
+        using var processingStop = CancellationTokenSource.CreateLinkedTokenSource(callerCancellationToken);
+        using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(callerCancellationToken);
+        cancellationToken = processingStop.Token;
+        var heartbeatTask = MaintainLeaseAsync(job, options, processingStop, heartbeatStop.Token);
 
         try
         {
@@ -318,6 +436,7 @@ var embeddingPrivate = options.EmbeddingConfigured
                 "extracting",
                 "malware_scan_completed",
                 scan.ToPublicEvidence(),
+                options.LeaseSeconds,
                 cancellationToken);
             if (await _repository.CancellationRequestedAsync(job.JobId, cancellationToken))
             {
@@ -370,6 +489,7 @@ var embeddingPrivate = options.EmbeddingConfigured
                     "extracting",
                     "private_ocr_started",
                     new { endpointValidatedPrivate = true, rawDocumentTextLogged = false },
+                    options.LeaseSeconds,
                     cancellationToken);
                 var ocr = await _ocrClient.ExtractAsync(
                     source,
@@ -442,6 +562,7 @@ var embeddingPrivate = options.EmbeddingConfigured
                     extraction.SourceSha256,
                     rawDocumentTextLogged = false
                 },
+                options.LeaseSeconds,
                 cancellationToken);
             if (await _repository.CancellationRequestedAsync(job.JobId, cancellationToken))
             {
@@ -472,7 +593,7 @@ var embeddingPrivate = options.EmbeddingConfigured
                     "embedding_not_configured",
                     DateTimeOffset.UtcNow);
             var lexicalOnly = !embeddings.Succeeded;
-            if (lexicalOnly && !options.AllowLexicalOnlyCompletion)
+            if (lexicalOnly && !options.LexicalOnlyCompletionApproved)
             {
                 return await RetryOrFailAsync(
                     job,
@@ -503,6 +624,7 @@ var embeddingPrivate = options.EmbeddingConfigured
                     vectorReturned = false,
                     inputTextLogged = false
                 },
+                options.LeaseSeconds,
                 cancellationToken);
             var versionId = await _repository.PersistProcessedDocumentAsync(
                 job,
@@ -523,9 +645,13 @@ var embeddingPrivate = options.EmbeddingConfigured
                 string.Empty,
                 extraction.Warnings);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (processingStop.IsCancellationRequested)
+        {
+            return Result("lease_lost", job, null, 0, 0, 0, "lease_fence_lost", []);
         }
         catch (Exception exception)
         {
@@ -551,6 +677,34 @@ var embeddingPrivate = options.EmbeddingConfigured
                     job.JobId);
             }
             return Result("failed", job, null, 0, 0, 0, Diagnostic(exception), []);
+        }
+        finally
+        {
+            heartbeatStop.Cancel();
+            try { await heartbeatTask; }
+            catch (OperationCanceledException) { }
+        }
+    }
+
+    private async Task MaintainLeaseAsync(
+        PulseAiPrivateProcessingJob job,
+        PulseAiPrivateRuntimeOptions options,
+        CancellationTokenSource processingStop,
+        CancellationToken cancellationToken)
+    {
+        var interval = TimeSpan.FromSeconds(Math.Max(5, options.LeaseSeconds / 3));
+        using var timer = new PeriodicTimer(interval);
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            if (!await _repository.RenewLeaseAsync(job, options.LeaseSeconds, cancellationToken))
+            {
+                _logger.LogWarning(
+                    "Pulse AI stopped renewing a stale or transferred document lease. JobId={JobId} LeaseGeneration={LeaseGeneration}",
+                    job.JobId,
+                    job.LeaseGeneration);
+                processingStop.Cancel();
+                return;
+            }
         }
     }
 

@@ -319,9 +319,16 @@ function SystemAnswer({ result, close }) {
       <ToolEvidence tools={result?.toolResults} />
       <SourceEvidence sources={result?.sources} />
       <AnswerList heading="Warnings" values={result?.warnings} />
+      {result?.externalAssistance ? (
+        <details className="pulse-ai-system-workbench-section">
+          <summary><span>Generic response-structure guidance</span><small>{titleFrom(result?.modelProvider || 'external')}</small></summary>
+          <p>This optional guidance was generated only from a fixed backend-owned, identity-free capsule. It is separate from the source-grounded answer above and does not establish customer- or project-specific facts.</p>
+          <p>{result.externalAssistance}</p>
+        </details>
+      ) : null}
       <div className="pulse-ai-system-answer-footer">
         <span>Correlation: <code>{result?.correlationId || 'Not recorded'}</code></span>
-        <span>Model: {result?.modelName || 'Deterministic private system synthesis'}</span>
+        <span>Selected route: {result?.modelName || titleFrom(result?.modelProvider || 'governed_local')}</span>
         <span>{answer.confidenceExplanation}</span>
       </div>
       <NavigationTargets targets={answer.navigationTargets} close={close} />

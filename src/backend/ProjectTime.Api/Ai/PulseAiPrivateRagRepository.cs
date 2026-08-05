@@ -97,13 +97,20 @@ public sealed class PulseAiPrivateRagRepository
 
     public async Task<ProjectResolution?> ResolveProjectAsync(
         PulseAiPrivateRagAccess access,
+        Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
         string? projectCode,
         string? projectName,
         CancellationToken cancellationToken = default)
     {
         var code = Clean(projectCode, 120);
         var name = Clean(projectName, 300);
-        if (code.Length == 0 && name.Length == 0) return null;
+        if (projectId is null
+            && taskId is null
+            && assignmentId is null
+            && code.Length == 0
+            && name.Length == 0) return null;
         try
         {
             await using var connection = new NpgsqlConnection(ConnectionString());
@@ -117,8 +124,39 @@ public sealed class PulseAiPrivateRagRepository
                 FROM projects p
                 LEFT JOIN clients c ON c.client_id = p.client_id
                 WHERE (
-                    (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
-                    OR (@project_name <> '' AND LOWER(p.project_name) = LOWER(@project_name))
+                    (
+                        (@project_id IS NOT NULL OR @task_id IS NOT NULL OR @assignment_id IS NOT NULL)
+                        AND (@project_id IS NULL OR p.project_id = @project_id)
+                        AND (
+                            @task_id IS NULL
+                            OR EXISTS (
+                                SELECT 1
+                                FROM project_tasks identity_task
+                                WHERE identity_task.task_id = @task_id
+                                  AND identity_task.project_id = p.project_id
+                                  AND identity_task.is_active = TRUE
+                            )
+                        )
+                        AND (
+                            @assignment_id IS NULL
+                            OR EXISTS (
+                                SELECT 1
+                                FROM project_assignments identity_assignment
+                                WHERE identity_assignment.project_assignment_id = @assignment_id
+                                  AND identity_assignment.project_id = p.project_id
+                                  AND (@task_id IS NULL OR identity_assignment.task_id = @task_id)
+                            )
+                        )
+                    )
+                    OR (
+                        @project_id IS NULL
+                        AND @task_id IS NULL
+                        AND @assignment_id IS NULL
+                        AND (
+                            (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
+                            OR (@project_name <> '' AND LOWER(p.project_name) = LOWER(@project_name))
+                        )
+                    )
                 )
                   AND (
                     @is_broad = TRUE
@@ -167,11 +205,23 @@ public sealed class PulseAiPrivateRagRepository
                     )
                   )
                 ORDER BY
-                    CASE WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN @project_id IS NOT NULL AND p.project_id = @project_id THEN 0
+                        WHEN @assignment_id IS NOT NULL THEN 1
+                        WHEN @task_id IS NOT NULL THEN 2
+                        WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 3
+                        ELSE 4
+                    END,
                     p.updated_at DESC
                 LIMIT 2;
                 """;
             await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.Add("project_id", NpgsqlDbType.Uuid).Value =
+                projectId is Guid canonicalProjectId ? canonicalProjectId : DBNull.Value;
+            command.Parameters.Add("task_id", NpgsqlDbType.Uuid).Value =
+                taskId is Guid canonicalTaskId ? canonicalTaskId : DBNull.Value;
+            command.Parameters.Add("assignment_id", NpgsqlDbType.Uuid).Value =
+                assignmentId is Guid canonicalAssignmentId ? canonicalAssignmentId : DBNull.Value;
             command.Parameters.AddWithValue("project_code", code);
             command.Parameters.AddWithValue("project_name", name);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
@@ -250,7 +300,7 @@ public sealed class PulseAiPrivateRagRepository
                       AND COALESCE(d.engineering_visible, FALSE) = TRUE
                       AND COALESCE(d.pulse_ai_processing_status, '') = 'ready'
                       AND d.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
-                      AND v.authority_status NOT IN ('rejected','revoked','superseded')
+                      AND v.authority_status IN ('approved','canonical')
                       AND (@project_id IS NULL OR ch.project_id = @project_id)
                       AND (@require_timesheet = FALSE OR ch.ai_timesheet_context_enabled = TRUE)
                       AND (cardinality(@categories) = 0 OR LOWER(ch.document_category) = ANY(@categories))

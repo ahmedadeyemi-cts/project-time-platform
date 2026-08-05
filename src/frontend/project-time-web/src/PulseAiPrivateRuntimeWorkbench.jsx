@@ -11,6 +11,7 @@ const TABS = Object.freeze([
 const QUEUE_CONFIRMATION = 'QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
 const RETRY_CONFIRMATION = 'RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
 const CANCEL_CONFIRMATION = 'CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
+const APPROVE_VERSION_CONFIRMATION = 'APPROVE-PULSE-AI-PRIVATE-DOCUMENT-VERSION';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -206,7 +207,7 @@ function Jobs({ payload, onAction }) {
   );
 }
 
-function DocumentState({ payload }) {
+function DocumentState({ payload, approvalReason, approvalConfirmation, onApprovalReason, onApprovalConfirmation, onApprove, busy }) {
   const document = payload?.document;
   if (!document) return null;
   return (
@@ -246,6 +247,17 @@ function DocumentState({ payload }) {
           ))}
         </div>
       </section>
+      {document.processingStatus === 'ready' && document.activeVersionId && document.activeVersionSourceSha256 ? (
+        <form className="pulse-ai-runtime-form" onSubmit={onApprove}>
+          <div>
+            <h4>Approve the active version for Celar AI retrieval</h4>
+            <p>Processing readiness does not grant source authority. An authorized reviewer must approve the active SOW/GSD version before Timesheet retrieval can use it.</p>
+          </div>
+          <label>Approval reason<textarea rows="3" value={approvalReason} onChange={(event) => onApprovalReason(event.target.value)} placeholder="Confirm why this is the authoritative version for the project." /></label>
+          <label>Exact confirmation<input required value={approvalConfirmation} onChange={(event) => onApprovalConfirmation(event.target.value)} placeholder={APPROVE_VERSION_CONFIRMATION} /><small>{APPROVE_VERSION_CONFIRMATION}</small></label>
+          <button type="submit" disabled={busy || approvalConfirmation.trim() !== APPROVE_VERSION_CONFIRMATION}>Approve exact active version</button>
+        </form>
+      ) : null}
       <FullEvidence payload={payload} />
     </div>
   );
@@ -258,6 +270,8 @@ export default function PulseAiPrivateRuntimeWorkbench() {
   const [documentState, setDocumentState] = useState(null);
   const [jobStatus, setJobStatus] = useState('');
   const [documentId, setDocumentId] = useState('');
+  const [approvalReason, setApprovalReason] = useState('');
+  const [approvalConfirmation, setApprovalConfirmation] = useState('');
   const [queueForm, setQueueForm] = useState({ documentId: '', purpose: 'private_document_indexing', priority: '50', maximumAttempts: '3', confirmation: '' });
   const [jobAction, setJobAction] = useState(null);
   const [actionReason, setActionReason] = useState('');
@@ -311,6 +325,26 @@ export default function PulseAiPrivateRuntimeWorkbench() {
     setBusy(true); setError(''); setNotice('');
     try { setDocumentState(await getJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(documentId.trim())}/runtime-state`)); }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Document runtime state could not be loaded.'); }
+    finally { setBusy(false); }
+  }
+
+  async function approveActiveVersion(event) {
+    event.preventDefault();
+    const document = documentState?.document;
+    if (!document?.documentId || !document?.activeVersionId || !document?.activeVersionSourceSha256) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const payload = await postJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(document.documentId)}/versions/${encodeURIComponent(document.activeVersionId)}/approve`, {
+        reason: approvalReason.trim(),
+        expectedSourceSha256: document.activeVersionSourceSha256,
+        confirmation: approvalConfirmation.trim()
+      });
+      setNotice(title(payload.status));
+      setApprovalReason('');
+      setApprovalConfirmation('');
+      setDocumentState(await getJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(document.documentId)}/runtime-state`));
+      await loadReadiness();
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : 'The active document version could not be approved.'); }
     finally { setBusy(false); }
   }
 
@@ -405,7 +439,15 @@ export default function PulseAiPrivateRuntimeWorkbench() {
               <label>Document ID<input required value={documentId} onChange={(event) => setDocumentId(event.target.value)} placeholder="00000000-0000-0000-0000-000000000000" /></label>
               <button type="submit" disabled={busy}>Load document state</button>
             </form>
-            <DocumentState payload={documentState} />
+            <DocumentState
+              payload={documentState}
+              approvalReason={approvalReason}
+              approvalConfirmation={approvalConfirmation}
+              onApprovalReason={setApprovalReason}
+              onApprovalConfirmation={setApprovalConfirmation}
+              onApprove={approveActiveVersion}
+              busy={busy}
+            />
           </>
         ) : null}
       </div>

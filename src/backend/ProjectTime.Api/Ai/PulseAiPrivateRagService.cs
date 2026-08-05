@@ -24,35 +24,40 @@ public sealed class PulseAiPrivateRagService
         _logger = logger;
     }
 
-    public PulseAiPrivateRagOptions Options() => PulseAiPrivateRagOptions.FromEnvironment();
+    public PulseAiPrivateRagOptions Options() =>
+        CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());
 
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
         var options = Options();
         var schemaReady = await _repository.IsSchemaReadyAsync(cancellationToken);
-        var inferenceReason = options.InferenceConfigured
-            ? "private_endpoint_not_checked"
-            : "private_inference_not_configured";
-        var inferencePrivate = options.InferenceConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var inferenceResolution = options.InferenceConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.InferenceEndpoint,
                 options.PrivateHostAllowlist,
-                out _,
-                out inferenceReason);
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_inference_not_configured", 0);
+        var inferenceReason = inferenceResolution.Reason;
+        var inferencePrivate = inferenceResolution.Approved;
         var runtimeOptions = PulseAiPrivateRuntimeOptions.FromEnvironment();
-        var embeddingReason = runtimeOptions.EmbeddingConfigured
-            ? "private_endpoint_not_checked"
-            : "private_embedding_not_configured";
-        var embeddingPrivate = runtimeOptions.EmbeddingConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var embeddingResolution = runtimeOptions.EmbeddingConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 runtimeOptions.EmbeddingEndpoint,
                 runtimeOptions.PrivateHostAllowlist,
-                out _,
-                out embeddingReason);
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_embedding_not_configured", 0);
+        var embeddingReason = embeddingResolution.Reason;
+        var embeddingPrivate = embeddingResolution.Approved;
         var blockers = new List<string>();
         if (!schemaReady) blockers.Add("Migrations 052 and 053 and their private retrieval tables are not available.");
         if (!options.Enabled) blockers.Add("Private RAG execution is disabled by configuration.");
         if (!options.InferenceConfigured) blockers.Add("A private inference endpoint and model are not configured.");
+        if (string.IsNullOrWhiteSpace(options.InferenceBearerToken)) blockers.Add("Private inference bearer authentication is not configured.");
+        if (!options.RequirePrivateModelForDocumentAnswers) blockers.Add("Document-grounded answers are not configured to require private inference.");
         if (options.InferenceConfigured && !inferencePrivate)
             blockers.Add($"The inference endpoint was rejected by private endpoint policy ({inferenceReason}).");
         if (runtimeOptions.EmbeddingConfigured && !embeddingPrivate)
@@ -60,7 +65,11 @@ public sealed class PulseAiPrivateRagService
 
         return new
         {
-            status = schemaReady && options.Enabled && inferencePrivate
+            status = schemaReady
+                && options.Enabled
+                && inferencePrivate
+                && !string.IsNullOrWhiteSpace(options.InferenceBearerToken)
+                && options.RequirePrivateModelForDocumentAnswers
                 ? "private_rag_ready"
                 : schemaReady
                     ? "private_rag_partially_ready"
@@ -122,17 +131,19 @@ public sealed class PulseAiPrivateRagService
         var directKnowledge = directPlan?.DirectKnowledgeAnswer;
         var purposeQuestion = question;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.HelpSearchFeature,
-            "help_search",
-            purposeQuestion,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.HelpSearchFeature,
+            purpose: "help_search",
+            question: purposeQuestion,
             projectId: null,
-            request.ProjectCode,
-            request.ProjectName,
+            taskId: null,
+            assignmentId: null,
+            projectCode: request.ProjectCode,
+            projectName: request.ProjectName,
             requireTimesheetFlag: false,
             categories: [],
-            options);
+            options: options);
         return await ExecuteAsync(
             access,
             query,
@@ -159,9 +170,13 @@ public sealed class PulseAiPrivateRagService
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
-        if (projectCode.Length == 0 && projectName.Length == 0)
+        if (request.ProjectId is null
+            && request.TaskId is null
+            && request.AssignmentId is null
+            && projectCode.Length == 0
+            && projectName.Length == 0)
         {
-            return Blocked(PulseAiPrivateRagPolicy.TimesheetFeature, "timesheet_suggestion", "project_context_required", "An authorized project code or name is required.");
+            return Blocked(PulseAiPrivateRagPolicy.TimesheetFeature, "timesheet_suggestion", "project_context_required", "An authorized project, task, or assignment identifier is required.");
         }
         var note = Clean(request.EngineerNote, 4_000);
         var question = $"""
@@ -176,21 +191,23 @@ public sealed class PulseAiPrivateRagService
             Engineer note: {(note.Length == 0 ? "No rough note was supplied." : note)}
             """;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.TimesheetFeature,
-            "timesheet_suggestion",
-            question,
-            projectId: null,
-            projectCode,
-            projectName,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.TimesheetFeature,
+            purpose: "timesheet_suggestion",
+            question: question,
+            projectId: request.ProjectId,
+            taskId: request.TaskId,
+            assignmentId: request.AssignmentId,
+            projectCode: projectCode,
+            projectName: projectName,
             requireTimesheetFlag: true,
             categories: [],
-            options);
+            options: options);
         return await ExecuteAsync(
             access,
             query,
-            DetailLevel(request.DetailLevel, "standard"),
+            DetailLevel(request.DetailLevel, "detailed"),
             directKnowledge: null,
             modelSchema: "PulseAiPrivateDetailedAnswer",
             systemInstruction: TimesheetSystemInstruction(),
@@ -224,17 +241,19 @@ public sealed class PulseAiPrivateRagService
             Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
             """;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.FlowHiveFeature,
-            "flowhive_plan",
-            question,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.FlowHiveFeature,
+            purpose: "flowhive_plan",
+            question: question,
             projectId: null,
-            projectCode,
-            projectName,
+            taskId: null,
+            assignmentId: null,
+            projectCode: projectCode,
+            projectName: projectName,
             requireTimesheetFlag: false,
             categories: PulseAiPrivateRagPolicy.FlowHiveCategories,
-            options);
+            options: options);
         return await ExecuteAsync(
             access,
             query,
@@ -680,7 +699,7 @@ public sealed class PulseAiPrivateRagService
 
         var first = retrieval.Chunks.First();
         var conclusion = query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature
-            ? "Reviewed the assigned project work and performed the reported activity using the approved project scope and technical documentation as context."
+            ? "Authorized project evidence was retrieved, but the approved private model was unavailable. Planned scope does not establish which activity occurred; use the Engineer-provided work detail to prepare the customer-facing description without inventing work."
             : directKnowledge?.Summary ?? $"Authorized evidence was found in {first.OriginalFileName}, but the approved private model was unavailable for a complete detailed synthesis.";
         var answer = new PulseAiPrivateDetailedAnswer(
             conclusion,
@@ -816,6 +835,8 @@ public sealed class PulseAiPrivateRagService
         string purpose,
         string question,
         Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
         string? projectCode,
         string? projectName,
         bool requireTimesheetFlag,
@@ -828,6 +849,8 @@ public sealed class PulseAiPrivateRagService
             purpose,
             Clean(question, options.MaximumQuestionCharacters),
             projectId,
+            taskId,
+            assignmentId,
             Clean(projectCode, 120),
             Clean(projectName, 300),
             requireTimesheetFlag,
@@ -984,9 +1007,12 @@ public sealed class PulseAiPrivateRagService
         You are Pulse AI generating an Engineer-reviewed Timesheet description.
         The Engineer's rough note is the primary evidence of work actually performed.
         SOW, GSD, task, request, and project documents may improve terminology and scope alignment but cannot prove unreported work occurred.
-        Produce a concise professional directConclusion suitable for a Timesheet description, usually one to three sentences.
+        Produce a detailed, customer-facing directConclusion in complete sentence structure. When the evidence supports it, use two to four sentences and approximately 75 to 150 words.
+        State the specific activity, its supported purpose or scope relationship, and any supported result or next state. Do not add generic filler merely to reach a length target.
+        Return prose only in directConclusion: no bullets, headings, markdown, citations, confidence language, or statements about AI.
         Do not change hours, date, time type, project, task, request, allocation, save state, submission, or approval.
         Do not claim installation, completion, validation, migration, testing, customer delivery, or resolution unless supported by the Engineer note and source evidence.
+        If the Engineer note and authorized evidence do not establish what work occurred, say that additional factual work detail is required instead of inventing activity.
         Include detailed evidence, missing information, limitations, citations, and confidence in the remaining JSON fields for the review panel.
         Return valid JSON matching PulseAiPrivateDetailedAnswer.
         """;
@@ -994,7 +1020,8 @@ public sealed class PulseAiPrivateRagService
     private static string TimesheetUserInstruction(string engineerNote) => $"""
         Generate the reviewable Timesheet description from the request and private evidence.
         Engineer rough note: {(engineerNote.Length == 0 ? "No rough note was supplied. Avoid claiming specific completed activity." : engineerNote)}
-        The directConclusion must be usable as the proposed description but remains subject to Engineer review and explicit application.
+        Use private SOW or project evidence to align terminology and scope only; never treat planned scope as proof that an activity occurred.
+        The directConclusion must be polished customer-facing prose, detailed enough for invoice review, and limited to facts supported by the Engineer note and authorized evidence. It remains subject to Engineer review and explicit application.
         """;
 
     private static string FlowHiveSystemInstruction() => """

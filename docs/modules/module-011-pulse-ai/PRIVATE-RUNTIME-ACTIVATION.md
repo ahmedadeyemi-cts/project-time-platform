@@ -157,10 +157,13 @@ OCR is called only when native PDF extraction identifies an image-only or
 text-sparse document. The endpoint must pass the private endpoint policy.
 Supported private endpoints are:
 
-- loopback;
-- RFC1918/private IP addresses;
-- IPv6 local/private addresses; or
-- an explicitly approved private DNS suffix/host.
+- HTTPS endpoints whose hostname matches the configured exact-host or
+  leading-dot suffix allowlist; and
+- hostnames whose current DNS answers are all private addresses.
+
+Production readiness rejects loopback, public or mixed private/public DNS,
+URL user information, redirects, and shared HTTP cookie storage. DNS is checked
+again immediately before each private OCR request.
 
 The OCR request is sent directly from the private Pulse runtime. Module 064,
 Claude, and OpenAI are not involved. The response must return page-level text
@@ -180,8 +183,9 @@ returned through the API or browser.
 
 Lexical-only completion is disabled by default. It may be explicitly enabled
 for a controlled environment when private embeddings are temporarily
-unavailable. Such versions remain marked lexical-only so retrieval and answer
-quality can treat them differently.
+unavailable, but production readiness additionally requires a non-secret
+approval reference. Such versions remain marked lexical-only so retrieval and
+answer quality can treat them differently.
 
 ## Queue and worker behavior
 
@@ -207,6 +211,17 @@ The worker does not activate itself, create infrastructure, or change an
 endpoint. Runtime configuration and migration application remain separate
 controlled operations.
 
+Automatic admission is also disabled by default. When enabled, it uses only
+the configured Celar AI document service-principal UUID, verifies that the
+principal is active and has `QUEUE_PULSE_AI_DOCUMENT_PROCESSING`, and records
+that service identity in immutable queue evidence. It never assigns an
+arbitrary Project Manager, assignee, or other human as the initiator.
+
+Expired processing leases are recovered before the next claim. An authorized
+operator may explicitly retry a failed, quarantined, cancelled, OCR-waiting, or
+retry-wait job after the underlying blocker is corrected; a job that exhausted
+its automatic attempts receives a new bounded manual-retry cycle.
+
 ## API surface
 
 ### Read-only
@@ -221,6 +236,7 @@ GET /api/pulse-ai/v1/documents/{documentId}/runtime-state
 
 ```text
 POST /api/pulse-ai/v1/documents/{documentId}/processing-jobs
+POST /api/pulse-ai/v1/documents/{documentId}/versions/{versionId}/approve
 POST /api/pulse-ai/v1/documents/runtime/jobs/{jobId}/cancel
 POST /api/pulse-ai/v1/documents/runtime/jobs/{jobId}/retry
 ```
@@ -229,6 +245,7 @@ Required confirmations:
 
 ```text
 QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING
+APPROVE-PULSE-AI-PRIVATE-DOCUMENT-VERSION
 CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING
 RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING
 ```
@@ -264,6 +281,9 @@ PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_POLL_SECONDS
 PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_LEASE_SECONDS
 PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_MAX_ATTEMPTS
 PROJECTPULSE_PULSE_AI_ALLOW_LEXICAL_ONLY_COMPLETION
+PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE
+PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS
+PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID
 ```
 
 ### Malware scanner
@@ -275,6 +295,7 @@ PROJECTPULSE_PULSE_AI_CLAMAV_PORT
 PROJECTPULSE_PULSE_AI_CLAMAV_TIMEOUT_SECONDS
 PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED
 PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION
+PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE
 ```
 
 ### Private OCR
@@ -300,6 +321,19 @@ PROJECTPULSE_PULSE_AI_PRIVATE_EMBEDDING_BATCH_SIZE
 PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST
 ```
 
+### Shared upload storage
+
+```text
+PROJECTPULSE_UPLOAD_ROOT
+PROJECTPULSE_UPLOAD_ROOT_SHARED_PERSISTENT=true
+```
+
+The canonical root must be explicit, exist, be writable by the runtime
+identity, and be mounted as shared durable storage across API and worker
+replicas. The readiness contract rejects the legacy-only variable and known
+ephemeral roots under `/tmp`, `/var/tmp`, `/dev/shm`, and `/run`. The API exposes
+only a path fingerprint, never the storage path.
+
 Secret values must use the approved runtime secret mechanism. They must not be
 committed to Git, displayed by Module 011, written to audit JSON, or placed in
 logs.
@@ -314,7 +348,8 @@ logs.
 | Native extraction blocked | Retry or fail without persistence |
 | OCR required but missing | Set `awaiting_ocr` |
 | Private OCR fails | Retry, then fail |
-| Embedding fails | Retry/fail unless lexical-only mode is explicitly enabled |
+| Embedding fails | Retry/fail unless lexical-only mode has an explicit approval reference |
+| Worker lease expires | Recover to bounded retry or terminal failure before the next claim |
 | Cancellation requested | Stop at the next controlled boundary |
 | Database transaction fails | Roll back version, section, chunk, and job completion writes |
 
@@ -351,7 +386,7 @@ Those are separate environment-specific approvals.
 
 Before runtime activation:
 
-1. Migration 052 applies, verifies, rolls back, and reapplies cleanly.
+1. Migrations 052, 053, and 061 are present in the target database.
 2. View-As mutation tests return HTTP 403.
 3. Unauthorized documents cannot be queued, listed, cancelled, retried, or read.
 4. A scanner failure never permits extraction.
@@ -364,6 +399,11 @@ Before runtime activation:
 11. Replacement versions deactivate earlier retrieval chunks.
 12. Every active chunk retains citations, checksums, classification, purpose, and
     current-source references.
+13. At least one engineering-visible, Timesheet-authorized SOW or GSD has been
+    processed, explicitly approved or marked canonical, and reports ready.
+14. Module 064 reports no production-readiness blockers and a successful
+    private generation or health probe from the running revision within the
+    configured freshness window.
 
 Phase 011D consumes this runtime to provide live private RAG for Timesheet,
 Help/Search, and FlowHive.

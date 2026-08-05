@@ -86,14 +86,8 @@ public sealed record PulseAiDocumentPipelineOptions(
 {
     public static PulseAiDocumentPipelineOptions FromEnvironment()
     {
-        var uploadRoot = Environment.GetEnvironmentVariable("PROJECTPULSE_UPLOAD_ROOT");
-        if (string.IsNullOrWhiteSpace(uploadRoot))
-        {
-            uploadRoot = "/opt/project-time-platform/app/uploads";
-        }
-
         return new PulseAiDocumentPipelineOptions(
-            UploadRoot: Path.GetFullPath(uploadRoot),
+            UploadRoot: ProjectPulseUploadStorage.ResolveRoot(),
             ExtractionPreviewEnabled: Boolean("PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED", false),
             MalwareScanAttested: Boolean("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", false),
             MalwareScannerMode: Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE"), 80, "not_configured"),
@@ -141,6 +135,10 @@ public sealed record PulseAiDocumentPipelineReadiness(
     bool DocumentSchemaAvailable,
     bool StorageRootConfigured,
     bool StorageRootExists,
+    bool StorageRootWritable,
+    bool StorageRootSharedPersistent,
+    bool StorageRootEphemeral,
+    string StorageRootFingerprint,
     bool ExtractionPreviewEnabled,
     bool MalwareScanAttested,
     string MalwareScannerMode,

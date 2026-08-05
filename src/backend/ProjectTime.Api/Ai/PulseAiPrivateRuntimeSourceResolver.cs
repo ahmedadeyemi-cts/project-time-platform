@@ -155,7 +155,8 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             SELECT
                 u.user_id,
                 COALESCE(u.is_active, FALSE),
-                COALESCE(string_agg(DISTINCT r.role_code, ',' ORDER BY r.role_code), '')
+                COALESCE(string_agg(DISTINCT r.role_code, ',' ORDER BY r.role_code), ''),
+                COALESCE(string_agg(DISTINCT permission.permission_code, ',' ORDER BY permission.permission_code), '')
             FROM app_users u
             LEFT JOIN app_user_role_assignments ura
                 ON ura.user_id = u.user_id
@@ -163,6 +164,10 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             LEFT JOIN app_roles r
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
+            LEFT JOIN app_role_permissions role_permission
+                ON role_permission.app_role_id = r.app_role_id
+            LEFT JOIN app_permissions permission
+                ON permission.app_permission_id = role_permission.app_permission_id
             WHERE u.user_id = @user_id
             GROUP BY u.user_id, u.is_active;
             """;
@@ -173,10 +178,14 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
         var roles = reader.GetString(2)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var permissions = reader.GetString(3)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return new AccessContext(
             reader.GetGuid(0),
             reader.GetBoolean(1),
-            roles);
+            roles,
+            permissions);
     }
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
@@ -218,9 +227,17 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
     private sealed record AccessContext(
         Guid UserId,
         bool IsActive,
-        IReadOnlySet<string> RoleCodes)
+        IReadOnlySet<string> RoleCodes,
+        IReadOnlySet<string> PermissionCodes)
     {
-        public bool IsBroadScope => RoleCodes.Overlaps(BroadRoles);
+        public bool IsDocumentServicePrincipal =>
+            Guid.TryParse(
+                Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID"),
+                out var servicePrincipalUserId)
+            && servicePrincipalUserId != Guid.Empty
+            && UserId == servicePrincipalUserId
+            && PermissionCodes.Contains("QUEUE_PULSE_AI_DOCUMENT_PROCESSING");
+        public bool IsBroadScope => RoleCodes.Overlaps(BroadRoles) || IsDocumentServicePrincipal;
         public string ScopeLabel => IsBroadScope
             ? "organization_document_scope"
             : RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -234,6 +251,10 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
                 ? "managed_and_assigned_project_scope"
                 : "assigned_project_scope";
         public static AccessContext Empty(Guid userId) =>
-            new(userId, false, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            new(
+                userId,
+                false,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
 }

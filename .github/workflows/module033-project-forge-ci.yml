@@ -59,12 +59,21 @@ jobs:
         run: |
           set -Eeuo pipefail
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           printf '%s\n' "$CHANGED"
-          if grep -E '^(deployment/|src/frontend/project-time-web/(package|package-lock)\.json|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED"; then
-            echo 'Project Forge must not change deployment controls, dependency manifests, or the web Dockerfile.' >&2
+          if grep -E '^(deployment/|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED"; then
+            echo 'Project Forge validation never authorizes deployment controls or the web Dockerfile.' >&2
             exit 1
+          fi
+          if [[ "$HEAD_BRANCH" == feature/module-033-project-forge-* ]] \
+            && grep -E '^src/frontend/project-time-web/(package|package-lock)\.json$' <<<"$CHANGED"; then
+            echo 'The Project Forge feature branch must not change dependency manifests.' >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" != feature/module-033-project-forge-* ]]; then
+            echo 'MODULE_033_VALIDATION_MODE=UNRELATED_CONSUMER_REGRESSION' >> "$GITHUB_ENV"
           fi
           git diff --check "origin/$BASE_BRANCH"...HEAD
 

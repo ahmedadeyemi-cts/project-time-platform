@@ -148,13 +148,27 @@ assert(
 
 assert(
   'PRIVATE_ENDPOINT_POLICY',
-  contracts.includes('IsApprovedPrivateEndpoint')
+    contracts.includes('IsApprovedPrivateEndpoint')
+    && contracts.includes('VerifyResolvedPrivateEndpointAsync')
     && contracts.includes('IsPrivateAddress')
     && contracts.includes('host_not_private_or_allowlisted')
     && contracts.includes('PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST')
-    && ocr.includes('PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint')
-    && embeddings.includes('PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint'),
-  'OCR and embedding adapters fail closed unless endpoint policy accepts a private or allowlisted destination'
+    && ocr.includes('PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync')
+    && embeddings.includes('PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync')
+    && ocr.includes('allowLoopback: false')
+    && embeddings.includes('allowLoopback: false')
+    && contracts.includes('IsConnectablePrivateAddress')
+    && services.includes('SocketsHttpHandler')
+    && services.includes('ConnectCallback = ConnectToPinnedPrivateEndpointAsync')
+    && services.includes('context.InitialRequestMessage.RequestUri?.Scheme')
+    && services.includes('Private AI transports require HTTPS.')
+    && services.includes('Dns.GetHostAddressesAsync(host, cancellationToken)')
+    && services.includes('addresses.Any(address => !PulseAiPrivateEndpointPolicy.IsConnectablePrivateAddress(address))')
+    && services.includes('UseProxy = false')
+    && services.includes('AllowAutoRedirect = false')
+    && services.includes('UseCookies = false')
+    && !services.includes('DangerousAcceptAnyServerCertificateValidator'),
+  'OCR and embedding adapters require HTTPS and allowlisting, then re-resolve and pin exclusively private sockets without weakening TLS hostname validation'
 );
 
 assert(
@@ -190,8 +204,9 @@ assert(
     && embeddings.includes('X-Pulse-AI-Privacy-Boundary')
     && embeddings.includes('embedding_count_mismatch')
     && embeddings.includes('embedding_dimension_mismatch')
-    && runtime.includes('AllowLexicalOnlyCompletion'),
-  'embedding batches are private, bounded, dimension-validated, and support an explicit lexical-only policy'
+    && runtime.includes('LexicalOnlyCompletionApproved')
+    && contracts.includes('PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE'),
+  'embedding batches are private, bounded, dimension-validated, and lexical-only mode requires an explicit approval reference'
 );
 
 assert(

@@ -71,18 +71,72 @@ for (const token of [
 ]) requireText(capability, token, 'Module 064 Project Forge capability');
 requireText(aiContracts, 'ProjectForgePlanEstimate = "project_forge_plan_estimate"', 'Module 064 executable Project Forge feature');
 requireText(enterpriseContracts, 'string? CapabilityCode = null', 'Celar AI capability propagation contract');
-requireText(enterpriseService, 'CapabilityCode: request.CapabilityCode', 'Celar AI enterprise capability propagation');
+for (const token of [
+  'var capability = ResolveCapability(mode, request);',
+  'request.CapabilityCode?.Trim()',
+  'CelarAiCapabilityCatalog.ProjectForgePlanEstimate'
+]) requireText(enterpriseService, token, 'Celar AI enterprise capability propagation');
 requireText(externalReasoning, 'ProjectPulseAiFeatures.ProjectForgePlanEstimate', 'Module 064 Project Forge execution route');
 requireText(compileTargets, 'CelarAiCapabilityRouter', 'Compiled Module 064 persisted capability router');
-requireText(compileTargets, 'GenerateExternalAsync', 'Compiled Module 064 external capability execution');
+requireText(compileTargets, "grep -Fq 'ExternalCapsulePurpose: serverOwnedPurposeCategory'", 'Compiled Module 064 external capability execution');
+requireText(compileTargets, 'DestinationFiles="$(CelarAiExternalReasoningGenerated)"', 'Compiled Module 064 external capability copy');
 
 for (const token of [
   'hasRecurrence',
   'item.isReviewerEligible',
   'allowSanitizedExternalFallback: allowExternalAi',
-  'expectedVersion: task.revisionNumber'
+  'expectedVersion: task.revisionNumber',
+  'function aiDraftNotice(result)',
+  'result?.compositionStatus || result?.status',
+  'result?.selectedTarget',
+  'result?.primaryExecutionPath',
+  'setNotice(aiDraftNotice(result))',
+  'supplied only separate generic assistance through the governed route',
+  'The route ended at governed local, whose output did not replace the private project evidence or artifact.'
 ]) {
   requireText(center, token, 'Project Forge reviewer and AI UI contract');
+}
+if (center.includes("setNotice('Celar AI created a private, document-grounded review draft.")) {
+  throw new Error('Project Forge AI notice must derive the actual status and selected target from the backend response.');
+}
+
+const refusalGate = backend.indexOf('var compositionRefused = string.Equals(');
+const evidenceGate = backend.indexOf('var groundedStatus = composition.Status is');
+const taskProjection = backend.indexOf('var generatedTasks = (composition.FlowHivePlan?.Tasks ?? [])');
+if (refusalGate < 0 || evidenceGate < 0 || taskProjection < 0 || refusalGate > taskProjection || evidenceGate > taskProjection) {
+  throw new Error('Project Forge must refuse unsafe or ungrounded composition before projecting or persisting plan tasks.');
+}
+for (const token of [
+  'status = "ai_plan_generation_refused"',
+  '"celar_ai_solution_draft_completed" or',
+  '"celar_ai_solution_draft_partial"',
+  'composition.FlowHivePlan.Tasks.Count > 0',
+  'composition.FlowHivePlan.CitationIds',
+  'composition.FlowHivePlan.Tasks.SelectMany(task => task.CitationIds)',
+  'composition.FlowHivePlan.Milestones.SelectMany(milestone => milestone.CitationIds)',
+  'planCitationIds.Length > 0',
+  'composition.Citations.Count > 0',
+  'status = "ai_plan_evidence_insufficient"',
+  'stateChanged = false'
+]) requireText(backend, token, 'Project Forge fail-closed AI persistence gate');
+if (backend.includes('composition.FlowHivePlan.CitationIds.Count > 0')) {
+  throw new Error('Project Forge must accept citations attached to tasks or milestones, not only top-level plan citations.');
+}
+if ((backend.split('compositionStatus = composition.Status').length - 1) < 5) {
+  throw new Error('Project Forge AI success/error responses must disclose the private artifact composition status.');
+}
+if (backend.includes('groundedStatus && string.Equals(composition.SelectedTarget')) {
+  throw new Error('Project Forge must preserve a citation-backed private scaffold when a separate external/local assistance target finishes the route.');
+}
+for (const token of [
+  'composition.SelectedTarget',
+  'composition.AttemptedTargets',
+  'composition.SkippedTargets',
+  'composition.TargetDecisions',
+  'composition.PrimaryExecutionPath'
+]) {
+  const occurrences = backend.split(token).length - 1;
+  if (occurrences < 4) throw new Error(`Project Forge AI success/error responses must include truthful route metadata: ${token}`);
 }
 
 for (const token of [

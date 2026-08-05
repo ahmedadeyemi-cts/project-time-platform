@@ -53,9 +53,9 @@ public sealed class PulseAiPrivateDocumentPipelineService
             "permission-aware document inventory"
         };
 
-        var storageRootExists = Directory.Exists(options.UploadRoot);
-        if (!storageRootExists)
-            blockers.Add("The configured private upload root does not exist in this runtime.");
+        var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
+        var storageRootExists = storage.RootExists;
+        blockers.AddRange(storage.Blockers);
         if (!options.ExtractionPreviewEnabled)
             blockers.Add("Private extraction preview is disabled.");
         if (!options.MalwareScanAttested)
@@ -76,6 +76,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: false,
                 StorageRootConfigured: !string.IsNullOrWhiteSpace(options.UploadRoot),
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,
@@ -119,7 +123,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
             var extractionPreviewReady =
                 schema.RequiredColumnsAvailable
                 && access.IsActive
-                && storageRootExists
+                && storage.ProductionReady
                 && options.ExtractionPreviewEnabled
                 && options.MalwareScanAttested;
 
@@ -143,6 +147,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: schema.RequiredColumnsAvailable,
                 StorageRootConfigured: true,
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,
@@ -175,6 +183,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: false,
                 StorageRootConfigured: true,
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,

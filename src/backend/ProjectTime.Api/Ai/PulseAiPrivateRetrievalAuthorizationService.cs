@@ -39,7 +39,7 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
                   AND COALESCE(d.engineering_visible, FALSE) = TRUE
                   AND COALESCE(d.pulse_ai_processing_status, '') = 'ready'
                   AND d.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
-                  AND v.authority_status NOT IN ('rejected','revoked','superseded')
+                  AND v.authority_status IN ('approved','canonical')
                   AND (@require_timesheet = FALSE OR ch.ai_timesheet_context_enabled = TRUE)
                   AND (
                     @is_broad = TRUE

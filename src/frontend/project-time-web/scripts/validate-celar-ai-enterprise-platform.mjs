@@ -12,10 +12,18 @@ function assert(name, condition, evidence) {
   console.log(`CELAR_AI_ENTERPRISE_${name}=${condition ? 'PASSED' : 'FAILED'} — ${evidence}`);
 }
 
+function section(source, start, end) {
+  const startIndex = source.indexOf(start);
+  if (startIndex < 0) return '';
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  return endIndex < 0 ? source.slice(startIndex) : source.slice(startIndex, endIndex);
+}
+
 const files = {
   contracts: 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs',
   service: 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
   external: 'src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs',
+  routing: 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs',
   sanitizer: 'src/backend/ProjectTime.Api/Ai/PulseAiEscalationSanitizer.cs',
   people: 'src/backend/ProjectTime.Api/Ai/CelarAiPeopleAndGuidanceService.cs',
   module: 'src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs',
@@ -41,6 +49,7 @@ if (checks.some((check) => !check.condition)) process.exit(1);
 const contracts = read(files.contracts);
 const service = read(files.service);
 const external = read(files.external);
+const routing = read(files.routing);
 const sanitizer = read(files.sanitizer);
 const people = read(files.people);
 const moduleSource = read(files.module);
@@ -55,22 +64,85 @@ const contextInjector = read(files.contextInjector);
 const rebrandInjector = read(files.rebrandInjector);
 const chatCss = read(files.chatCss);
 const documentation = read(files.documentation);
+const refusalResult = section(
+  service,
+  'private static CelarAiComposeResult RefusedComposeResult(',
+  'private async Task<PulseAiPrivateRagAnswer> ExecutePrivateComposeAsync('
+);
 
 assert('SOLUTION_MODES', ['timesheet_description', 'sow_draft', 'project_plan', 'project_timeline', 'project_diagram'].every((value) => contracts.includes(`"${value}"`)), 'all enterprise composition modes are registered');
 assert('PRIVATE_RAG_COMPOSITION', service.includes('GenerateTimesheetAsync') && service.includes('AskHelpSearchAsync') && service.includes('GenerateFlowHivePlanAsync'), 'Timesheet, SOW, and FlowHive use the private RAG service');
+assert(
+  'SAFETY_REFUSAL_CLEARS_ARTIFACTS',
+  service.includes('if (routed.Outcome == ProjectPulseAiOutcomes.Refusal)')
+    && service.includes('return RefusedComposeResult(mode, routed, correlationId);')
+    && refusalResult.length > 0
+    && [
+      'ProjectId: null',
+      'ProjectCode: string.Empty',
+      'ProjectName: string.Empty',
+      'DetailedAnswer: null',
+      'FlowHivePlan: null',
+      'SowDraft: null',
+      'Timeline: []',
+      'Diagram: null',
+      'Citations: []',
+      'MissingEvidence: []',
+      'Conflicts: []',
+      'ExternalAssistance: null'
+    ].every((value) => refusalResult.includes(value)),
+  'a routed safety refusal returns before composition and exposes no generated, private-source, or external-assistance artifacts'
+);
+assert(
+  'PRIVATE_ARTIFACT_STATUS_SEPARATE_FROM_ASSISTANCE_TARGET',
+  service.includes('var status = privateResult?.Status == "completed"')
+    && service.includes('privateResult?.Status == "partial"')
+    && service.includes('private_celar_rag_with_sanitized_generic_module064_assistance')
+    && service.includes('private_evidence_composer_after_governed_local_route')
+    && !service.includes('routed.Provider == CelarAiCapabilityTargets.CelarAi\n                && privateResult?.Status == "completed"'),
+  'completed/partial describes the private citation-grounded artifact while selectedTarget and primaryExecutionPath separately disclose generic external/local assistance'
+);
+assert(
+  'EXTERNAL_ASSISTANCE_ONLY_FOR_PUBLIC_PROVIDER',
+  service.includes('if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi')
+    && service.includes('external = ToExternalAssistance(routed);')
+    && service.includes('private_evidence_composer_after_governed_local_route')
+    && !service.includes('if (!string.Equals(routed.Provider, CelarAiCapabilityTargets.CelarAi'),
+  'ExternalAssistance is populated only for Claude/OpenAI; a local terminal route remains separate route metadata and cannot be represented as external model output'
+);
 assert('TIMELINE_AND_DIAGRAM', service.includes('BuildTimeline') && service.includes('BuildDiagram') && service.includes('MermaidSource'), 'project timelines and diagrams are composed deterministically from private planning output');
 assert('NO_CONSEQUENTIAL_MUTATION', contracts.includes('timesheetSaved = false') && contracts.includes('sowPublished = false') && contracts.includes('projectPlanBaselined = false') && contracts.includes('customerDateCommitted = false'), 'generated artifacts are review-only');
-assert('EXTERNAL_DISABLED_DEFAULT', external.includes('PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED') && external.includes('&& enabled;'), 'sanitized external reasoning requires an explicit runtime setting');
+assert('EXTERNAL_RUNTIME_POLICY', routing.includes('PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION') && routing.includes('PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED') && routing.includes('sanitized_external_policy_disabled'), 'automatic sanitized external reasoning requires both independent runtime privacy-policy flags');
 assert('DLP_EXECUTION_GATE', sanitizer.includes('SanitizeForExecution') && sanitizer.includes('sanitized_capsule_execution_ready') && sanitizer.includes('named_people_and_customers') && sanitizer.includes('financial_values'), 'execution requires a fail-closed DLP capsule');
 assert('NO_PRIVATE_EXTERNAL_CONTEXT', external.includes('Private document text is never eligible') && external.includes('Financial or commercial values are never eligible') && external.includes('People, assignment, workload, or employee records are never eligible'), 'private documents, people records, and financial values are prohibited');
-assert('MODULE_064_ROUTER', external.includes('ProjectPulseAiRouter') && external.includes('ProjectPulseAiFeatures.ProjectFlowHivePlan') && external.includes('ProjectPulseAiFeatures.SowGsdPlanning'), 'approved generic reasoning uses Module 064 feature routing');
+assert(
+  'CLOSED_SERVER_OWNED_EXTERNAL_CAPSULE',
+  routing.includes('public static class CelarAiExternalCapsuleCatalog')
+    && routing.includes('public const string SowScopeQuality')
+    && routing.includes('public const string ProjectPlanQuality')
+    && routing.includes('public const string ProjectTimelineQuality')
+    && routing.includes('public const string ProjectDiagramQuality')
+    && routing.includes('execution.ExternalCapsulePurpose')
+    && routing.includes('Content: fixedCapsule.Capsule')
+    && routing.includes('SystemPrompt = fixedCapsule.SystemPrompt')
+    && routing.includes('sanitized_external_closed_purpose_required')
+    && !routing.includes('PurposeBuiltExternalCapsule')
+    && !routing.includes('PurposeBuiltExternalSystemPrompt')
+    && service.includes('_router.GenerateWithPrivateTargetAsync(')
+    && service.includes('ExternalCapsulePurpose: externalCapsulePurpose')
+    && service.includes('AllowSanitizedExternalAssistance: false')
+    && !service.includes('request.AllowSanitizedExternalFallback')
+    && targets.includes('DestinationFiles="$(CelarAiRoutingGenerated)"'),
+  'arbitrary input—including lowercase or unlabeled customer/person text—cannot be represented in the Module 011 public-provider request; unknown categories fail closed'
+);
+assert('MODULE_064_ROUTER', external.includes('CelarAiCapabilityRouter') && external.includes('_router.GenerateExternalAsync(') && external.includes('ExternalCapsulePurpose: serverOwnedPurposeCategory') && external.includes('ProjectPulseAiFeatures.ProjectFlowHivePlan') && external.includes('ProjectPulseAiFeatures.SowGsdPlanning'), 'approved generic reasoning uses the canonical closed-purpose Module 064 route');
 assert('ENDPOINTS', moduleSource.includes('/api/celar-ai/v1/architecture') && contracts.includes('/api/celar-ai/v1/platform/readiness') && contracts.includes('/api/celar-ai/v1/compose'), 'enterprise readiness, architecture, and composer endpoints are present');
 assert('SERVICES_REGISTERED', services.includes('CelarAiPeopleAndGuidanceService') && services.includes('CelarAiExternalReasoningService') && services.includes('CelarAiEnterprisePlatformService'), 'all enterprise services are registered');
 assert('COMPILE_COMPATIBILITY', targets.includes('MapCelarAiEnterprisePlatformEndpoints') && targets.includes('persistence.EffectiveUserId') && targets.includes('CelarAiEnterprisePlatformService.g.cs'), 'endpoint mapping and durable-user persistence compile copies are generated');
 assert('ARCHITECTURE_US_SIGNAL', architecture.includes('usSignalLogoDataUrl') && architecture.includes('Created by Dr. Ahmed Adeyemi') && architecture.includes('Module 064') && architecture.includes('Claude / OpenAI'), 'the page contains the US Signal private-first architecture and creator attribution');
 assert('ARCHITECTURE_ACCESSIBLE', architecture.includes('role="img"') && architecture.includes('<title id="celar-ai-svg-title">') && architecture.includes('<desc id="celar-ai-svg-description">'), 'architecture diagram is accessible');
 assert('ENTERPRISE_MOUNT', panel.includes("import CelarAiEnterprisePlatform") && panel.includes('<CelarAiEnterprisePlatform />'), 'Module 011 mounts the enterprise platform before lifecycle workbenches');
-assert('COMPOSER_INTERFACE', composer.includes("'/api/celar-ai/v1/compose'") && composer.includes('Download SVG') && composer.includes('Mermaid source') && composer.includes('Allow generic sanitized fallback'), 'composer supports private artifacts, diagrams, and explicit fallback consent');
+assert('COMPOSER_INTERFACE', composer.includes("'/api/celar-ai/v1/compose'") && composer.includes('Download SVG') && composer.includes('Mermaid source') && composer.includes('Fallback is automatic and governed by Module 064') && composer.includes('allowSanitizedExternalFallback: true'), 'composer supports private artifacts and diagrams while backend-managed fallback follows stored Module 064 order without an Engineer checkbox');
 assert('CHAT_NORMAL_SIZE', chatCss.includes('width: min(560px') && chatCss.includes('height: min(720px') && chatCss.includes('resize: both'), 'chat defaults to a normal resizable working-companion window');
 assert('CHAT_SIZE_CONTROLS', ['is-size-compact', 'is-size-standard', 'is-size-wide', 'is-size-fullscreen', 'is-minimized'].every((value) => chatCss.includes(value)), 'compact, standard, wide, fullscreen, and minimized states exist');
 assert(
@@ -103,7 +175,7 @@ assert('NO_NEW_MIGRATION', !fs.readdirSync(path.join(repo, 'database', 'migratio
 console.log(`CELAR_AI_ENTERPRISE_CHECKS=${checks.length}`);
 console.log('CELAR_AI_ENTERPRISE_ARCHITECTURE=US_SIGNAL_PRIVATE_FIRST');
 console.log('CELAR_AI_ENTERPRISE_DEFAULT_CHAT_CONTEXT=FRESH');
-console.log('CELAR_AI_ENTERPRISE_EXTERNAL_FALLBACK=DISABLED_BY_DEFAULT');
+console.log('CELAR_AI_ENTERPRISE_EXTERNAL_FALLBACK=AUTOMATIC_WHEN_ROUTE_AND_RUNTIME_POLICY_ALLOW');
 console.log('CELAR_AI_ENTERPRISE_STATE_MUTATIONS=0');
 
 if (checks.some((check) => !check.condition)) {

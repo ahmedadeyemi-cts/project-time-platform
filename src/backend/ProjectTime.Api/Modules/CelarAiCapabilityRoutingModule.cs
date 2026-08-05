@@ -31,7 +31,7 @@ public static class CelarAiCapabilityRoutingModule
 
         endpoints.MapGet(
             "/api/ai-configuration/private-model",
-            (Func<HttpContext, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)GetPrivateModelAsync);
+            (Func<HttpContext, CelarAiCapabilityRoutingStore, PulseAiPrivateDocumentRuntimeService, ProjectPulseAiConfiguration, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)GetPrivateModelAsync);
         endpoints.MapPut(
             "/api/ai-configuration/private-model/settings",
             (Func<CelarAiPrivateModelSettingsRequest, HttpContext, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)SavePrivateModelSettingsAsync);
@@ -40,7 +40,13 @@ public static class CelarAiCapabilityRoutingModule
             (Func<CelarAiPrivateModelSecretRequest, HttpContext, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)SavePrivateModelSecretAsync);
         endpoints.MapPost(
             "/api/ai-configuration/private-model/test",
-            (Func<HttpContext, CelarAiCapabilityRoutingStore, CelarAiPrivateGenerationTarget, CancellationToken, Task<IResult>>)TestPrivateModelAsync);
+            (Func<HttpContext, CelarAiCapabilityRoutingStore, CelarAiPrivateGenerationTarget, ProjectPulseAiHealthRegistry, CancellationToken, Task<IResult>>)TestPrivateModelAsync);
+        endpoints.MapPost(
+            "/api/ai-configuration/sanitized-external-fallback/production-test",
+            (Func<HttpContext, CelarAiCapabilityRouter, CancellationToken, Task<IResult>>)TestSanitizedExternalFallbackAsync);
+        endpoints.MapPost(
+            "/api/ai-configuration/encryption-key/rotate",
+            (Func<ProjectPulseAiEncryptionRotationRequest, HttpContext, ProjectPulseAiEncryptionRotationService, CancellationToken, Task<IResult>>)RotateEncryptionKeyAsync);
 
         endpoints.MapPost(
             "/api/project-flowhive/ai/generate",
@@ -226,20 +232,129 @@ public static class CelarAiCapabilityRoutingModule
     private static async Task<IResult> GetPrivateModelAsync(
         HttpContext context,
         CelarAiCapabilityRoutingStore store,
+        PulseAiPrivateDocumentRuntimeService runtime,
+        ProjectPulseAiConfiguration providerConfiguration,
+        ProjectPulseAiHealthRegistry health,
         CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var profile = await store.LoadPrivateModelProfileAsync(cancellationToken);
-        var policy = PrivateEndpointPolicy(profile);
+        var policy = await PrivateEndpointPolicyAsync(profile, cancellationToken);
+        var runtimeReadiness = await runtime.GetReadinessAsync(cancellationToken);
+        var routes = await store.LoadRoutesAsync(cancellationToken);
+        var requiredTimesheetFeatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            CelarAiCapabilityCatalog.TimesheetNonProject,
+            CelarAiCapabilityCatalog.TimesheetProjectTask,
+            CelarAiCapabilityCatalog.TimesheetServiceRequest
+        };
+        var requiredRoutes = routes
+            .Where(route => requiredTimesheetFeatures.Contains(route.FeatureCode))
+            .ToArray();
+        var routesReady = requiredRoutes.Length == requiredTimesheetFeatures.Count
+            && requiredRoutes.All(route =>
+                route.Persisted
+                && route.Targets.Count == CelarAiCapabilityTargets.DefaultOrder.Length
+                && route.Targets.SequenceEqual(
+                    CelarAiCapabilityTargets.DefaultOrder,
+                    StringComparer.OrdinalIgnoreCase));
+
+        // A single policy flag cannot silently create a half-enabled public
+        // failover path. When either external-fallback control is requested,
+        // production readiness requires both controls plus live, fresh evidence
+        // for both approved sanitized providers in the configured route order.
+        var sanitizedExternalExecutionEnabled = RuntimeFlag(
+            "PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION");
+        var enterpriseSanitizedExternalFallbackEnabled = RuntimeFlag(
+            "PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED");
+        var sanitizedExternalFallbackRequired = sanitizedExternalExecutionEnabled
+            || enterpriseSanitizedExternalFallbackEnabled;
+        var sanitizedExternalFallbackEnabled = sanitizedExternalExecutionEnabled
+            && enterpriseSanitizedExternalFallbackEnabled;
+
+        health.ApplyConfiguration(providerConfiguration.Claude);
+        health.ApplyConfiguration(providerConfiguration.OpenAi);
+        var healthSnapshots = health.Snapshots();
+        var externalHealthFreshnessSeconds = Math.Max(
+            providerConfiguration.HealthIntervalSeconds * 2,
+            60);
+        var externalHealthFreshAfter = DateTimeOffset.UtcNow.AddSeconds(-externalHealthFreshnessSeconds);
+        var claudeHealth = healthSnapshots.FirstOrDefault(item =>
+            string.Equals(item.Provider, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase));
+        var openAiHealth = healthSnapshots.FirstOrDefault(item =>
+            string.Equals(item.Provider, ProjectPulseAiProviders.OpenAi, StringComparison.OrdinalIgnoreCase));
+        var claudeProductionReady = ExternalProviderProductionReady(
+            providerConfiguration.Claude,
+            claudeHealth,
+            externalHealthFreshAfter);
+        var openAiProductionReady = ExternalProviderProductionReady(
+            providerConfiguration.OpenAi,
+            openAiHealth,
+            externalHealthFreshAfter);
+
+        var blockers = new List<string>();
+        if (!store.DatabaseAvailable) blockers.Add("The ProjectPulse database connection is unavailable to Module 064.");
+        if (!store.SecretEncryptionAvailable) blockers.Add("A stable base64-encoded 32-byte PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY is required.");
+        if (!profile.Persisted) blockers.Add("The private Celar AI profile is not persisted for this environment.");
+        if (!profile.Enabled) blockers.Add("The private Celar AI target is disabled.");
+        if (!profile.EndpointConfigured) blockers.Add("The private OpenAI-compatible endpoint is not configured.");
+        if (!profile.ModelConfigured) blockers.Add("The private model or deployment name is not configured.");
+        if (!profile.AuthenticationConfigured) blockers.Add("Bearer authentication is not configured for the private Celar AI target.");
+        if (!profile.RequirePrivateModelForDocuments) blockers.Add("Private inference is not required for document-grounded answers.");
+        if (policy != "private_endpoint_dns_verified") blockers.Add($"The private inference endpoint did not pass HTTPS, allowlist, and private-DNS verification ({policy}).");
+        if (!routesReady) blockers.Add("All three Timesheet capability routes must be persisted with Celar AI first and governed local template last.");
+        if (sanitizedExternalFallbackRequired && !sanitizedExternalFallbackEnabled)
+            blockers.Add("Sanitized external fallback requires both PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION and PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED.");
+        if (sanitizedExternalFallbackRequired && !providerConfiguration.Claude.Enabled)
+            blockers.Add("Claude must be enabled when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired && !providerConfiguration.Claude.Configured)
+            blockers.Add("Claude must have a write-only API credential when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired
+            && !ProviderModelApproved(providerConfiguration.Claude))
+            blockers.Add("Claude must have an exact approved model when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired
+            && providerConfiguration.Claude.Enabled
+            && providerConfiguration.Claude.Configured
+            && !claudeProductionReady)
+            blockers.Add("Claude needs a fresh successful health probe before sanitized external fallback is production ready.");
+        if (sanitizedExternalFallbackRequired && !providerConfiguration.OpenAi.Enabled)
+            blockers.Add("OpenAI must be enabled when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired && !providerConfiguration.OpenAi.Configured)
+            blockers.Add("OpenAI must have a write-only API credential when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired
+            && !ProviderModelApproved(providerConfiguration.OpenAi))
+            blockers.Add("OpenAI must have an exact approved model when sanitized external fallback is required.");
+        if (sanitizedExternalFallbackRequired
+            && providerConfiguration.OpenAi.Enabled
+            && providerConfiguration.OpenAi.Configured
+            && !openAiProductionReady)
+            blockers.Add("OpenAI needs a fresh successful health probe before sanitized external fallback is production ready.");
+        blockers.AddRange(runtimeReadiness.Blockers);
+        blockers.AddRange(runtimeReadiness.MissingConfiguration);
+        var configurationReady = blockers.Count == 0;
+        var privateTargetHealth = health.Snapshots().FirstOrDefault(item =>
+            string.Equals(item.Provider, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase));
+        var persistedProbe = await store.LoadPrivateProbeEvidenceAsync(profile.Revision, cancellationToken);
+        var privateTargetVerifiedAt = persistedProbe?.TestedAt;
+        var privateTargetVerificationFresh = persistedProbe is
+            {
+                Available: true,
+                Fresh: true
+            };
+        if (!privateTargetVerificationFresh)
+            blockers.Add("The private Celar AI target needs shared successful probe evidence for this exact profile revision within the last 15 minutes.");
+        var productionReady = blockers.Count == 0;
         return Results.Ok(new
         {
             module = "064",
-            status = profile.Ready && policy == "private_endpoint_approved"
-                ? "celar_ai_private_model_ready"
-                : profile.Configured
-                    ? "celar_ai_private_model_partially_ready"
+            status = productionReady
+                ? "celar_ai_private_platform_production_ready"
+                : configurationReady
+                    ? "celar_ai_private_platform_requires_runtime_verification"
+                    : profile.Configured
+                    ? "celar_ai_private_platform_requires_configuration"
                     : "celar_ai_private_model_not_configured",
             profile = profile.ToPublicResponse(policy),
             secureStore = new
@@ -251,12 +366,102 @@ public static class CelarAiCapabilityRoutingModule
                 endpointReturned = false,
                 tokenReturned = false
             },
+            productionReadiness = new
+            {
+                ready = productionReady,
+                configurationReady,
+                privateModelReady = profile.Ready
+                    && policy == "private_endpoint_dns_verified"
+                    && privateTargetVerificationFresh,
+                privateTargetAvailability = new
+                {
+                    verified = privateTargetVerificationFresh,
+                    status = privateTargetVerificationFresh ? "available" : "not_verified",
+                    probeStatus = persistedProbe is null ? "not_checked" : persistedProbe.Available ? "available" : "degraded",
+                    verifiedAt = privateTargetVerifiedAt,
+                    freshnessMinutes = 15,
+                    evidenceScope = "database_shared_profile_revision",
+                    profileRevision = profile.Revision,
+                    lastFailureCode = persistedProbe is { Available: false }
+                        ? persistedProbe.DiagnosticCode
+                        : privateTargetHealth?.LastFailureCode
+                            ?? privateTargetHealth?.LastProbeFailureCode
+                            ?? string.Empty
+                },
+                privateDocumentRuntimeReady = runtimeReadiness.Status == "private_document_runtime_ready",
+                requiredTimesheetRoutesPersisted = routesReady,
+                sanitizedExternalFallback = new
+                {
+                    required = sanitizedExternalFallbackRequired,
+                    enabled = sanitizedExternalFallbackEnabled,
+                    productionReady = !sanitizedExternalFallbackRequired
+                        || sanitizedExternalFallbackEnabled && claudeProductionReady && openAiProductionReady,
+                    privacyBoundary = "purpose_built_deidentified_capsules_only",
+                    privateDocumentContentAllowed = false,
+                    customerIdentityAllowed = false,
+                    healthFreshnessSeconds = externalHealthFreshnessSeconds,
+                    providers = new object[]
+                    {
+                        ExternalProviderReadinessResponse(
+                            providerConfiguration.Claude,
+                            claudeHealth,
+                            claudeProductionReady),
+                        ExternalProviderReadinessResponse(
+                            providerConfiguration.OpenAi,
+                            openAiHealth,
+                            openAiProductionReady)
+                    }
+                },
+                migrations = new
+                {
+                    migration052Applied = runtimeReadiness.MigrationApplied,
+                    migration053Applied = runtimeReadiness.RagMigrationApplied,
+                    migration061Applied = runtimeReadiness.RoutingMigrationApplied,
+                    migration071Applied = runtimeReadiness.HardeningMigrationApplied,
+                    allRequiredApplied = runtimeReadiness.ProductionMigrationsApplied
+                },
+                storage = new
+                {
+                    sharedPersistentWritable = runtimeReadiness.UploadStorageProductionReady,
+                    rootFingerprint = runtimeReadiness.UploadRootFingerprint,
+                    pathReturned = false
+                },
+                processing = new
+                {
+                    workerEnabled = runtimeReadiness.WorkerEnabled,
+                    automaticQueueEnabled = runtimeReadiness.AutomaticDocumentQueueEnabled,
+                    servicePrincipalConfigured = runtimeReadiness.DocumentServicePrincipalConfigured,
+                    servicePrincipalActive = runtimeReadiness.DocumentServicePrincipalActive,
+                    servicePrincipalQueuePermissionGranted = runtimeReadiness.DocumentServicePrincipalQueuePermissionGranted,
+                    servicePrincipalAuthorized = runtimeReadiness.DocumentServicePrincipalAuthorized,
+                    servicePrincipalDiagnosticCode = runtimeReadiness.DocumentServicePrincipalDiagnosticCode,
+                    malwareScannerPrivate = runtimeReadiness.MalwareScannerEndpointPrivate,
+                    ocrConfigured = runtimeReadiness.OcrConfigured,
+                    ocrEndpointPrivate = runtimeReadiness.OcrEndpointPrivate,
+                    embeddingConfigured = runtimeReadiness.EmbeddingConfigured,
+                    embeddingEndpointPrivate = runtimeReadiness.EmbeddingEndpointPrivate,
+                    lexicalOnlyCompletionApproved = runtimeReadiness.LexicalOnlyCompletionApproved
+                },
+                documents = new
+                {
+                    readyDocumentCount = runtimeReadiness.ReadyDocumentCount,
+                    readySowDocumentCount = runtimeReadiness.ReadySowDocumentCount,
+                    pendingSowDocumentCount = runtimeReadiness.PendingSowDocumentCount,
+                    awaitingOcrJobCount = runtimeReadiness.AwaitingOcrJobCount,
+                    failedJobCount = runtimeReadiness.FailedJobCount,
+                    atLeastOneAuthorizedSowReady = runtimeReadiness.ReadySowDocumentCount > 0
+                },
+                blockers = blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            },
             requiredRuntime = new
             {
                 openAiCompatiblePrivateEndpoint = true,
                 privateOrAllowlistedHost = true,
                 modelNameRequired = true,
-                bearerTokenOptionalWhenEndpointUsesAnotherApprovedAuthenticationMethod = true
+                supportedAuthenticationMethod = "bearer",
+                bearerTokenRequired = true,
+                dnsMustResolveOnlyToPrivateAddresses = true,
+                httpsRequired = true
             },
             generatedAt = DateTimeOffset.UtcNow,
             stateChanged = false
@@ -282,7 +487,7 @@ public static class CelarAiCapabilityRoutingModule
             {
                 module = "064",
                 status = "celar_ai_private_model_settings_saved",
-                profile = profile.ToPublicResponse(PrivateEndpointPolicy(profile)),
+                profile = profile.ToPublicResponse(await PrivateEndpointPolicyAsync(profile, cancellationToken)),
                 message = "The private Celar AI settings were saved. Endpoint and token values are not returned.",
                 endpointReturned = false,
                 tokenReturned = false,
@@ -325,7 +530,7 @@ public static class CelarAiCapabilityRoutingModule
             {
                 module = "064",
                 status = "celar_ai_private_model_secret_saved",
-                profile = profile.ToPublicResponse(PrivateEndpointPolicy(profile)),
+                profile = profile.ToPublicResponse(await PrivateEndpointPolicyAsync(profile, cancellationToken)),
                 message = "The private Celar AI bearer token was encrypted and saved. It cannot be viewed after saving.",
                 endpointReturned = false,
                 tokenReturned = false,
@@ -353,6 +558,7 @@ public static class CelarAiCapabilityRoutingModule
         HttpContext context,
         CelarAiCapabilityRoutingStore store,
         CelarAiPrivateGenerationTarget target,
+        ProjectPulseAiHealthRegistry health,
         CancellationToken cancellationToken)
     {
         context.Response.Headers.CacheControl = "no-store";
@@ -367,6 +573,12 @@ public static class CelarAiCapabilityRoutingModule
             });
         var stopwatch = Stopwatch.StartNew();
         var result = await target.ProbeAsync(profile, cancellationToken);
+        health.RecordProbe(result);
+        var persistedProbe = await store.SavePrivateProbeEvidenceAsync(
+            profile,
+            result,
+            TimeSpan.FromMinutes(15),
+            cancellationToken);
         stopwatch.Stop();
         return Results.Json(new
         {
@@ -379,9 +591,109 @@ public static class CelarAiCapabilityRoutingModule
             requestId = result.RequestId,
             endpointReturned = false,
             tokenReturned = false,
-            testedAt = DateTimeOffset.UtcNow,
+            testedAt = persistedProbe.TestedAt,
+            expiresAt = persistedProbe.ExpiresAt,
+            evidenceScope = "database_shared_profile_revision",
             stateChanged = false
         }, statusCode: result.Available ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
+    }
+
+    private static async Task<IResult> TestSanitizedExternalFallbackAsync(
+        HttpContext context,
+        CelarAiCapabilityRouter router,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(
+            context,
+            requireSameOrigin: true,
+            cancellationToken);
+        if (authorization is not null) return authorization;
+
+        var result = await router.ProbeSanitizedExternalFallbackAsync(
+            CorrelationId(context),
+            cancellationToken);
+        return Results.Json(new
+        {
+            module = "064",
+            status = result.Status,
+            ready = result.Ready,
+            providerOrder = new[]
+            {
+                CelarAiCapabilityTargets.Claude,
+                CelarAiCapabilityTargets.OpenAi
+            },
+            policy = new
+            {
+                sanitizedExternalExecutionEnabled = result.SanitizedExternalExecutionEnabled,
+                enterpriseSanitizedExternalFallbackEnabled = result.EnterpriseSanitizedExternalFallbackEnabled,
+                fixedServerAuthoredCapsule = true,
+                callerContentAccepted = false,
+                projectOrTaskContextRead = false,
+                customerOrPeopleContextRead = false,
+                privateDocumentContextRead = false,
+                providerContentReturned = false,
+                sharedRouteChanged = false,
+                stateChanged = false
+            },
+            targets = result.Targets.Select(target => new
+            {
+                provider = target.Provider,
+                status = target.Status,
+                diagnosticCode = target.DiagnosticCode,
+                requestId = target.RequestId
+            }).ToArray(),
+            generatedAt = result.GeneratedAt
+        }, statusCode: result.Ready
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
+    }
+
+    private static async Task<IResult> RotateEncryptionKeyAsync(
+        ProjectPulseAiEncryptionRotationRequest request,
+        HttpContext context,
+        ProjectPulseAiEncryptionRotationService rotation,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
+        if (authorization is not null) return authorization;
+        try
+        {
+            var result = await rotation.RotateAsync(
+                request,
+                ActualSessionUserId(context)!.Value,
+                cancellationToken);
+            return Results.Ok(new
+            {
+                module = "064",
+                status = "ai_encryption_key_rotation_completed",
+                previousKeyId = result.PreviousKeyId,
+                activeKeyId = result.ActiveKeyId,
+                publicProviderSecretsRotated = result.PublicProviderSecretsRotated,
+                privateProfileRotated = result.PrivateProfileRotated,
+                rotatedAt = result.RotatedAt,
+                actorUserId = result.ActorUserId,
+                secretValuesReturned = false,
+                keyMaterialReturned = false,
+                stateChanged = true
+            });
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.BadRequest(new { status = "invalid_encryption_key_rotation", message = exception.Message });
+        }
+        catch (Exception exception)
+        {
+            Log(context).LogError(exception, "Module 064 encryption-key rotation failed without exposing key material.");
+            return Results.Json(
+                new
+                {
+                    status = "encryption_key_rotation_unavailable",
+                    message = "The atomic encryption-key rotation did not complete. No key material was returned."
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     private static async Task<IResult> GenerateFlowHiveAsync(
@@ -485,27 +797,46 @@ public static class CelarAiCapabilityRoutingModule
             new CelarAiCapabilityExecutionContext(
                 CelarAiCapabilityCatalog.CloseoutCommunication,
                 ContainsPrivateDocuments: true,
-                ContainsCustomerIdentity: true,
+                ContainsCustomerIdentity: projectCode.Length > 0 || projectName.Length > 0,
                 ContainsPeopleRecords: false,
                 ContainsFinancialValues: false,
-                AllowSanitizedExternalAssistance: request.AllowSanitizedExternalFallback,
+                // The fixed closeout capsule is backend-managed; the request's
+                // legacy fallback checkbox cannot authorize or disable it.
+                AllowSanitizedExternalAssistance: false,
                 SensitiveTerms: [projectCode, projectName, "US Signal", "Pulse"],
                 ConsumerModule: "040/055C",
-                CorrelationId: correlationId),
+                CorrelationId: correlationId,
+                IdentityTerms: [projectCode, projectName],
+                ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.CloseoutCommunication),
             () => BuildCloseoutFallback(request),
             cancellationToken);
+        var externalSelected = routed.Provider is CelarAiCapabilityTargets.Claude
+            or CelarAiCapabilityTargets.OpenAi;
+        var refused = routed.Outcome == ProjectPulseAiOutcomes.Refusal;
+        var externalBoundaryWarning = externalSelected
+            ? "The selected public target received only a fixed backend-owned identity-free closeout structure and tone capsule. Its generic guidance is separate from the review draft and establishes no project, customer, acceptance, completion, recipient, date, owner, or commitment fact."
+            : string.Empty;
         return Results.Ok(new
         {
             module = "040/055C",
             feature = CelarAiCapabilityCatalog.CloseoutCommunication,
-            status = routed.Outcome == ProjectPulseAiOutcomes.Refusal
+            status = refused
                 ? "closeout_draft_refused"
+                : externalSelected
+                    ? "closeout_draft_completed_with_generic_structure_assistance"
                 : "closeout_draft_completed",
-            draft = routed.Content,
+            draft = refused
+                ? string.Empty
+                : externalSelected
+                    ? BuildCloseoutFallback(request)
+                    : routed.Content,
+            externalAssistance = externalSelected && !refused ? routed.Content : string.Empty,
             selectedTarget = routed.Provider,
             attemptedTargets = routed.AttemptedProviders,
             skippedTargets = routed.SkippedProviders,
-            warning = routed.Warning,
+            targetDecisions = routed.TargetDecisions ?? [],
+            warning = string.Join(" ", new[] { routed.Warning, externalBoundaryWarning }
+                .Where(value => !string.IsNullOrWhiteSpace(value))),
             correlationId,
             reviewRequired = true,
             emailSent = false,
@@ -523,17 +854,65 @@ public static class CelarAiCapabilityRoutingModule
         acceptance, billing status, recipients, and commitments in the authoritative Pulse records before sending.
         """.Trim();
 
-    private static string PrivateEndpointPolicy(CelarAiPrivateModelProfile profile)
+    private static async Task<string> PrivateEndpointPolicyAsync(
+        CelarAiPrivateModelProfile profile,
+        CancellationToken cancellationToken)
     {
         if (!profile.EndpointConfigured) return "private_endpoint_not_configured";
-        return PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var resolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
             profile.Endpoint,
             profile.PrivateHostAllowlist,
-            out _,
-            out var reason)
-            ? "private_endpoint_approved"
-            : $"private_endpoint_rejected_{reason}";
+            requireHttps: true,
+            allowLoopback: false,
+            cancellationToken: cancellationToken);
+        return resolution.Approved
+            ? "private_endpoint_dns_verified"
+            : $"private_endpoint_rejected_{resolution.Reason}";
     }
+
+    private static bool ExternalProviderProductionReady(
+        ProjectPulseAiProviderConfiguration configuration,
+        ProjectPulseAiProviderHealthSnapshot? health,
+        DateTimeOffset freshAfter) =>
+        configuration.Enabled
+        && configuration.Configured
+        && ProviderModelApproved(configuration)
+        && health is not null
+        && health.Enabled
+        && health.Configured
+        && string.Equals(health.Status, "available", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(health.ProbeStatus, "available", StringComparison.OrdinalIgnoreCase)
+        && health.LastProbeSuccessAt is { } verifiedAt
+        && verifiedAt >= freshAfter;
+
+    private static object ExternalProviderReadinessResponse(
+        ProjectPulseAiProviderConfiguration configuration,
+        ProjectPulseAiProviderHealthSnapshot? health,
+        bool productionReady) => new
+    {
+        code = configuration.Code,
+        enabled = configuration.Enabled,
+        configured = configuration.Configured,
+        modelConfigured = !string.IsNullOrWhiteSpace(configuration.Model),
+        modelApproved = ProviderModelApproved(configuration),
+        available = productionReady,
+        status = health?.Status ?? "not_registered",
+        probeStatus = health?.ProbeStatus ?? "not_registered",
+        verifiedAt = health?.LastProbeSuccessAt,
+        diagnosticCode = health?.LastProbeFailureCode
+            ?? health?.LastFailureCode
+            ?? string.Empty,
+        credentialReturned = false
+    };
+
+    private static bool ProviderModelApproved(ProjectPulseAiProviderConfiguration configuration) =>
+        !string.IsNullOrWhiteSpace(configuration.Model)
+        && configuration.ApprovedModels.Contains(
+            configuration.Model,
+            StringComparer.OrdinalIgnoreCase);
+
+    private static bool RuntimeFlag(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
 
     private static async Task<IResult?> AuthorizeAdministratorAsync(
         HttpContext context,

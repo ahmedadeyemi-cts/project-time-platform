@@ -132,11 +132,18 @@ assert(
 
 assert(
   'PRIVATE_INFERENCE_ENDPOINT_POLICY',
-  model.includes('PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint')
+  model.includes('PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync')
+    && model.includes('requireHttps: true')
+    && model.includes('allowLoopback: false')
+    && model.includes('endpointResolution.Approved')
+    && model.includes('Headers.Authorization = new AuthenticationHeaderValue(')
+    && model.includes('"Bearer"')
     && model.includes('X-Pulse-AI-Privacy-Boundary')
     && model.includes('X-Pulse-AI-External-Escalation')
-    && services.includes('AddHttpClient("PulseAiPrivateInference"'),
-  'the private model endpoint must pass private-host policy and carries private-boundary headers'
+    && services.includes('AddHttpClient("PulseAiPrivateInference"')
+    && services.includes('AllowAutoRedirect = false')
+    && services.includes('UseCookies = false'),
+  'the private model endpoint requires bearer authentication, HTTPS, allowlisting, private DNS, and non-redirecting private-boundary requests'
 );
 
 assert(
@@ -144,7 +151,7 @@ assert(
   repository.includes('WITH authorized_candidates AS')
     && repository.indexOf('@is_broad = TRUE') < repository.indexOf('ts_rank_cd')
     && repository.includes('d.pulse_ai_active_version_id = ch.pulse_ai_document_version_id')
-    && repository.includes("v.authority_status NOT IN ('rejected','revoked','superseded')")
+    && repository.includes("v.authority_status IN ('approved','canonical')")
     && repository.includes('@require_timesheet = FALSE OR ch.ai_timesheet_context_enabled = TRUE'),
   'current user, project, source-version, and purpose filters are applied before lexical or semantic scoring'
 );
@@ -215,11 +222,16 @@ assert(
 assert(
   'TIMESHEET_PRIVATE_FIRST',
   timesheet.includes('_privateRag.GenerateTimesheetAsync')
-    && timesheet.indexOf('GeneratePrivateRagAsync(request') < timesheet.indexOf('_router.GenerateAsync')
-    && timesheet.includes('if (privateRag.Citations.Count > 0)')
+    && timesheet.includes('var hasReadyPrivateDocuments = grounding?.Authorized == true')
+    && timesheet.includes('_router.GenerateWithPrivateTargetAsync(')
+    && timesheet.includes('privateRag = await GeneratePrivateRagAsync(request, privateCancellationToken)')
+    && timesheet.includes('return PrivateRagTargetResult(privateRag)')
+    && timesheet.includes('if (answer is not null && UsedPrivateInference(answer))')
+    && timesheet.includes('BuildPrivateRagWarning(privateRag)')
+    && timesheet.includes('Claude/OpenAI receive only the closed fact-code')
     && timesheet.includes('no private document text was sent to Claude or OpenAI')
     && timesheet.includes('Engineer must review and explicitly apply'),
-  'Module 001 prefers private RAG and never sends retrieved document context into the public fallback route'
+  'Module 001 routes ready private documents through the single Celar callback, then follows governed fallback without exposing retrieved document context'
 );
 
 assert(

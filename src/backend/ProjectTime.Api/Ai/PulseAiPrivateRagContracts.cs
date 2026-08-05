@@ -226,6 +226,8 @@ public sealed record PulseAiPrivateRetrievalQuery(
     string PurposeCode,
     string Question,
     Guid? ProjectId,
+    Guid? TaskId,
+    Guid? AssignmentId,
     string? ProjectCode,
     string? ProjectName,
     bool RequireTimesheetFlag,
@@ -457,7 +459,10 @@ public sealed record PulseAiPrivateTimesheetRequest(
     string? TaskName,
     string? CategoryCode,
     string? EngineerNote,
-    string? DetailLevel = "standard");
+    string? DetailLevel = "detailed",
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null);
 
 public sealed record PulseAiPrivateFlowHiveRequest(
     string? ProjectCode,

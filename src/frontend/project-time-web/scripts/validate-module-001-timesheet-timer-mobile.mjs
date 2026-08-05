@@ -99,9 +99,15 @@ for (const contract of [
 ]) {
   requireText(assistant, contract, 'document-grounded AI assistant');
 }
-requireText(timeSuggestionService, '_privateRag.GenerateTimesheetAsync', 'private RAG first for Timesheet AI');
+requireText(timeSuggestionService, '_privateRag.GenerateTimesheetAsync', 'router-owned private RAG callback for Timesheet AI');
 requireText(timeSuggestionService, '_grounding.BuildTimesheetContextAsync', 'document grounding fallback');
-requireText(timeSuggestionService, 'BuildRemotePromptWithoutPrivateDocuments', 'private document isolation');
+requireText(
+  timeSuggestionService,
+  'ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription',
+  'central closed Timesheet capsule purpose'
+);
+requireText(timeSuggestionService, 'ExternalFactCodes: externalFactCodes', 'closed backend fact-code handoff');
+requireText(timeSuggestionService, 'BuildPurposeBuiltExternalFactCodes(request)', 'private document isolation');
 requireText(timeSuggestionService, 'no private document text was sent to Claude or OpenAI', 'private provider boundary');
 requireText(privateRagService, 'SOW, GSD, task, request, and project documents may improve terminology and scope alignment', 'private Timesheet prompt grounding');
 for (const category of [

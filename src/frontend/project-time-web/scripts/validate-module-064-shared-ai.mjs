@@ -16,6 +16,7 @@ const router = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'Projec
 const monitor = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiHealthMonitor.cs');
 const registration = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiServiceCollectionExtensions.cs');
 const secretStore = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiSecretStore.cs');
+const keyRing = readRepository('src', 'backend', 'ProjectTime.Api', 'Ai', 'ProjectPulseAiEncryptionKeyRing.cs');
 const moduleBackend = readRepository('src', 'backend', 'ProjectTime.Api', 'Modules', 'AiProviderConfigurationModule.cs');
 const consumer = readRepository('src', 'backend', 'ProjectTime.Api', 'ProjectPulseAiTimeEntrySuggestionService.cs');
 const program = readRepository('src', 'backend', 'ProjectTime.Api', 'Program.cs');
@@ -68,13 +69,22 @@ assert('MODULE_064_MODEL_ALLOWLISTS', providers.includes('IsModelApproved') && c
 assert('MODULE_064_SANITIZED_REMOTE_ERRORS', !providers.includes('Exception.Message') && !router.includes('exception.Message'));
 assert('MODULE_064_SECRET_VALUES_NOT_RETURNED', configuration.includes('valueReturned = false') && configuration.includes('apiKeysReturned = false'));
 assert('MODULE_064_SHARED_SERVICE_REGISTRATION', registration.includes('AddProjectPulseAi') && registration.includes('AddHostedService<ProjectPulseAiHealthMonitor>'));
-assert('MODULE_064_EXISTING_AI_CONSUMER_MIGRATED', consumer.includes('ProjectPulseAiRouter') && consumer.includes('ProjectPulseAiFeatures.TimesheetDescription'));
+assert(
+  'MODULE_064_EXISTING_AI_CONSUMER_MIGRATED',
+  consumer.includes('CelarAiCapabilityRouter')
+    && consumer.includes('CelarAiCapabilityCatalog.ResolveTimesheetFeature(')
+    && consumer.includes('_router.GenerateWithPrivateTargetAsync(')
+    && consumer.includes('_router.GenerateAsync(')
+    && !consumer.includes('_router.IsFirstTargetAsync(')
+    && !consumer.includes('skipPrivateTarget:'),
+  'Timesheet uses the central route and one router-owned private document callback'
+);
 assert('MODULE_064_CONSUMER_HAS_NO_DIRECT_CLIENT', !consumer.includes('new HttpClient') && !consumer.includes('PROJECTPULSE_CLAUDE_API_KEY'));
 assert('MODULE_064_PROGRAM_DI', program.includes('builder.Services.AddProjectPulseAi();') && program.includes('ProjectPulseAiTimeEntrySuggestionService aiService'));
 assert('MODULE_064_BACKEND_ENDPOINTS', moduleBackend.includes('"/api/ai-configuration"') && moduleBackend.includes('"/api/ai-configuration/health"'));
 assert('MODULE_064_ADMIN_AUTHORITY', moduleBackend.includes('ProjectPulseActualUserId') && moduleBackend.includes('AdministratorRoles'));
 assert('MODULE_064_WRITE_ONLY_SECRET_ENDPOINT', moduleBackend.includes('MapPut(') && moduleBackend.includes('/providers/{providerCode}/secret') && moduleBackend.includes('valueReturned = false'));
-assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && secretStore.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && secretStore.includes('CryptographicOperations.ZeroMemory'));
+assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && keyRing.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && keyRing.includes('key.Length == 32') && secretStore.includes('CryptographicOperations.ZeroMemory'));
 assert('MODULE_064_SANITIZED_SECRET_AUDIT', secretStore.includes('ai_provider_secret_audit') && !secretStore.includes('api_key'));
 assert('MODULE_064_SAME_ORIGIN_WRITE', moduleBackend.includes('SameOrigin(context)'));
 assert('MODULE_064_PROXY_SAFE_ORIGIN', moduleBackend.includes('Sec-Fetch-Site') && moduleBackend.includes('same-origin') && moduleBackend.includes('X-Forwarded-Host'));
@@ -92,7 +102,7 @@ assert('MODULE_064_APP_IMPORT_COUNT', count(app, "import AiProviderConfiguration
 assert('MODULE_064_APP_ROUTE_COUNT', count(app, "activeRoute === 'ai-provider-configuration'") === 1);
 assert('MODULE_064_APP_NAVIGATION', app.includes("route: 'ai-provider-configuration'") && app.includes("navLabel: 'MODULE 064'"));
 assert('MODULE_064_APP_ADMIN_ONLY', app.includes("activeRoute === 'ai-provider-configuration' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])"));
-assert('MODULE_064_TIMESHEET_PROVIDER_LABELS', app.includes("openai: 'OpenAI'") && app.includes("local_template: 'Governed local template fallback'"));
+assert('MODULE_064_TIMESHEET_PROVIDER_LABELS', app.includes("celar_ai: 'Celar AI'") && app.includes("openai: 'OpenAI'") && app.includes("local_template: 'Governed local template fallback'"));
 assert('MODULE_064_BUILD_GUARD', packageJson.includes('validate:module064') && packageJson.includes('npm run validate:module064'));
 
 assert(
@@ -169,7 +179,7 @@ assert('MODULE_064_NO_DATABASE_ARTIFACT', !fs.existsSync(path.join(repository, '
 
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log(`\nMODULE_064_VALIDATION_CHECKS=${assertions.length}`);
-console.log('MODULE_064_ROUTING=CLAUDE_OPENAI_LOCAL');
+console.log('MODULE_064_ROUTING=CELAR_CLAUDE_OPENAI_LOCAL');
 console.log('MODULE_064_AUTOMATIC_HEALTH=STARTUP_PERIODIC_REPLICA_ROUTER');
 console.log('MODULE_064_SAFETY_REFUSAL_FAILOVER=BLOCKED');
 console.log('MODULE_064_SECRET_MUTATION=ADMIN_WRITE_ONLY_ENCRYPTED');
