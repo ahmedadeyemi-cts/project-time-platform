@@ -9,9 +9,18 @@ on:
       - '.github/workflows/celar-ai-production-platform-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiEnterprisePlatformModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiConversationAttachmentRetentionWorker.cs'
+      - 'database/migrations/072_celar_ai_conversation_attachments.sql'
+      - 'database/rollback/072_celar_ai_conversation_attachments_rollback.sql'
+      - 'tests/test-celar-ai-conversation-attachments-migration-072.sh'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
       - 'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs'
       - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-production-platform.css'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-PRODUCTION-PLATFORM.md'
@@ -74,6 +83,21 @@ jobs:
               test -f .github/workflows/celar-ai-production-hardening-ci.yml
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=PRODUCTION_HARDENING'
               ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/072_celar_ai_conversation_attachments\.sql|rollback/072_celar_ai_conversation_attachments_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected numbered migration in the unified Celar AI chat package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/072_celar_ai_conversation_attachments.sql' \
+                'database/rollback/072_celar_ai_conversation_attachments_rollback.sql' \
+                'tests/test-celar-ai-conversation-attachments-migration-072.sh'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=UNIFIED_CHAT_ATTACHMENTS'
+              ;;
             *)
               if [[ -n "$CHANGED_MIGRATIONS" ]]; then
                 echo 'Celar AI production source may not alter numbered migrations outside the reviewed production-hardening branch family.' >&2
@@ -107,6 +131,7 @@ jobs:
           node --check ./scripts/inject-celar-ai-production-platform.mjs
           node --check ./scripts/inject-celar-ai-enterprise-chat-context.mjs
           node --check ./scripts/validate-celar-ai-production-platform.mjs
+          node --check ./scripts/validate-celar-ai-unified-chat-attachments.mjs
           echo 'CELAR_AI_PRODUCTION_JAVASCRIPT_SYNTAX=PASSED'
 
       - name: Build ProjectTime API
@@ -116,6 +141,14 @@ jobs:
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee celar-ai-production-api-build.log
           grep -Fq '0 Error(s)' celar-ai-production-api-build.log
           echo 'CELAR_AI_PRODUCTION_API_BUILD=PASSED'
+
+      - name: Validate Migration 072 attachment lifecycle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n tests/test-celar-ai-conversation-attachments-migration-072.sh
+          chmod +x tests/test-celar-ai-conversation-attachments-migration-072.sh
+          tests/test-celar-ai-conversation-attachments-migration-072.sh
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
@@ -204,6 +237,7 @@ jobs:
             echo "- Exact head: \`${GITHUB_SHA}\`"
             echo '- Module 011: one authoritative populated production shell'
             echo '- Chat: intent-first v2 with deterministic utility answers and visible trust classification'
+            echo '- Attachments: private multi-file processing, owner-scoped retrieval, revocation, retention, and guarded Migration 072'
             echo '- Project FlowHive: detailed Celar AI generation plus deterministic schedule validation'
             echo '- Lifecycle: dataset references, private training jobs, frozen evaluations, model registry, deployment plans, and answer-quality evidence'
             echo '- Privacy: private documents remain private; external fallback is generic and sanitized only'

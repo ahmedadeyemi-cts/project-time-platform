@@ -4,10 +4,12 @@ import process from 'node:process';
 
 const frontendRoot = process.cwd();
 const appPath = path.join(frontendRoot, 'src', 'App.jsx');
+const mainPath = path.join(frontendRoot, 'src', 'main.jsx');
 const drawerPath = path.join(frontendRoot, 'src', 'SessionIntelligenceDrawer.jsx');
 const cssPath = path.join(frontendRoot, 'src', 'session-intelligence-drawer.css');
 
 const app = fs.readFileSync(appPath, 'utf8');
+const main = fs.readFileSync(mainPath, 'utf8');
 const drawer = fs.readFileSync(drawerPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
 
@@ -18,7 +20,6 @@ const hostClassNeedle = 'module059-global-route-host';
 const scopeNeedle = 'data-route-scope="all-authenticated-pages"';
 const globalBoundaryNeedle = 'MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END';
 const helpNeedle = '<HelpAssistant />';
-const mainCloseNeedle = '</main>';
 
 const count = (text, needle) => text.split(needle).length - 1;
 const assertions = [];
@@ -61,8 +62,7 @@ assertInvariant(
 const boundaryIndex = app.indexOf(globalBoundaryNeedle);
 const markerIndex = app.indexOf(markerNeedle);
 const mountIndex = app.indexOf(mountNeedle);
-const helpIndex = app.indexOf(helpNeedle);
-const mainCloseIndex = app.indexOf(mainCloseNeedle, helpIndex);
+const helpIndex = main.indexOf(helpNeedle);
 
 assertInvariant(
   'MODULE_059_AFTER_ALL_ROUTE_CONTENT',
@@ -72,19 +72,19 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_059_BEFORE_GLOBAL_HELP',
-  markerIndex >= 0 && mountIndex > markerIndex && helpIndex > mountIndex,
+  markerIndex >= 0 && mountIndex > markerIndex && helpIndex >= 0,
   `marker=${markerIndex}, mount=${mountIndex}, help=${helpIndex}`
 );
 
 assertInvariant(
-  'MODULE_059_INSIDE_AUTHENTICATED_MAIN_SHELL',
-  mainCloseIndex > helpIndex,
-  `help=${helpIndex}, mainClose=${mainCloseIndex}`
+  'MODULE_059_SINGLE_GLOBAL_HELP_MOUNT',
+  count(app, helpNeedle) === 0 && count(main, helpNeedle) === 1,
+  `app=${count(app, helpNeedle)}, main=${count(main, helpNeedle)}`
 );
 
 const globalHostSlice =
-  markerIndex >= 0 && helpIndex > markerIndex
-    ? app.slice(markerIndex, helpIndex)
+  markerIndex >= 0
+    ? app.slice(markerIndex, markerIndex + 600)
     : '';
 
 const forbiddenHostPatterns = [

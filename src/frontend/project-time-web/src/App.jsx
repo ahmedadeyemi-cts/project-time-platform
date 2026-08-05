@@ -1,4 +1,3 @@
-import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
@@ -2076,7 +2075,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
   },
   {
     route: 'work-task-builder',
-    href: '#work-task-builder',
+    href: '#celar-ai',
     title: 'Celar AI',
     navLabel: 'MODULE 011',
     description: 'Governed AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion through Module 064.',
@@ -2349,9 +2348,32 @@ const roleWorkspaceModules = sortProjectPulseModules([
   }
 ]);
 
+const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({
+  'celar-ai': 'work-task-builder',
+  'pulse-ai': 'work-task-builder',
+  'analytics': 'reporting',
+  'analytics-center': 'reporting',
+  'reports': 'reporting',
+  'executive-reporting': 'reporting',
+  'financial-report-center': 'reporting',
+  'enterprise-reporting': 'reporting',
+  'crm': 'crm-integration',
+  'crm-erp': 'crm-integration',
+  'crm-erp-integration': 'crm-integration',
+  'crm-integration-center': 'crm-integration',
+  'microsoft-integration': 'entra-secret-administration',
+  'module-065': 'entra-secret-administration',
+  'psa-modules': 'toyota-hyundai-pipelines',
+  'project-register': 'toyota-hyundai-pipelines',
+  'project-manager-workload': 'project-workload',
+  'project-management-workload': 'project-workload',
+  'resource-assignment-handoff': 'signed-handoff',
+  'global-mail-configuration': 'entra-secret-administration'
+});
+
 function normalizeRoute(hash) {
-  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
-  return cleaned || 'dashboard';
+  const cleaned = (hash || window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].trim();
+  return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard';
 }
 
 function canonicalProjectPulseRoleCode(value) {
@@ -8512,7 +8534,6 @@ Analytics - Variphy / Infortel`}
         <SessionIntelligenceDrawer authSession={authSession} />
       </div>
 
-      <HelpAssistant />
 </main>
   );
 }

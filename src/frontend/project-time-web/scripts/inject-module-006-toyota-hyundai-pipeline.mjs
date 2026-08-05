@@ -253,7 +253,21 @@ function normalizeRoute(hash) {
   return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard';
 }`;
   if (!normalizeRoutePattern.test(source)) throw new Error('Module 006 normalizeRoute anchor is missing.');
-  source = source.replace(normalizeRoutePattern, normalizeRoute);
+  // Newer canonical App source already owns this complete alias map. Retain
+  // the legacy installation path for older generated inputs, but never add a
+  // second top-level declaration to an input that is already governed.
+  if (!source.includes('const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({')) {
+    source = source.replace(normalizeRoutePattern, normalizeRoute);
+  }
+  for (const requiredAlias of [
+    "'celar-ai': 'work-task-builder'",
+    "'psa-modules': 'toyota-hyundai-pipelines'",
+    "'project-register': 'toyota-hyundai-pipelines'"
+  ]) {
+    if (!source.includes(requiredAlias)) {
+      throw new Error(`Module 006 governed route alias is missing: ${requiredAlias}`);
+    }
+  }
 
   const oldDefinition = /\{\s*\n\s*route: 'psa-modules',[\s\S]*?\n\s*\},/;
   const newDefinition = `  {

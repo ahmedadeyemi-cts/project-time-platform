@@ -577,6 +577,14 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 LEFT JOIN projects p ON p.project_id = j.project_id
                 WHERE (@status = '' OR j.job_status = @status)
                   AND (
+                    COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
+                    OR (
+                        d.uploaded_by_user_id = @user_id
+                        AND j.actual_user_id = @user_id
+                        AND j.effective_user_id = @user_id
+                    )
+                  )
+                  AND (
                     @is_broad = TRUE
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (

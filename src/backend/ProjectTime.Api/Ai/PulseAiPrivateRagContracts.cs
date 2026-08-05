@@ -206,6 +206,8 @@ public sealed record PulseAiPrivateRagAccess(
     });
 
     public bool CanHelpSearch => IsSuperAdministrator || PermissionCodes.Contains("ASK_PULSE_AI_HELP_SEARCH");
+    public bool CanAttachDocuments => IsSuperAdministrator
+        || PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission);
     public bool CanTimesheet => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING");
     public bool CanFlowHive => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_FLOWHIVE_PLANNING");
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains("VIEW_PULSE_AI_ANSWER_AUDIT");
@@ -231,11 +233,15 @@ public sealed record PulseAiPrivateRetrievalQuery(
     string? ProjectCode,
     string? ProjectName,
     bool RequireTimesheetFlag,
+    bool IncludeProjectDocuments,
     IReadOnlyList<string> AllowedDocumentCategories,
     int MaximumChunks,
     int MaximumCandidates,
     decimal LexicalWeight,
     decimal SemanticWeight,
+    decimal MinimumEvidenceScore,
+    Guid? ConversationId,
+    IReadOnlyList<Guid> AttachmentIds,
     string CorrelationId);
 
 public sealed record PulseAiPrivateRetrievedChunk(
@@ -445,8 +451,11 @@ public sealed record PulseAiPrivateHelpSearchRequest(
     string? ProjectCode,
     string? ProjectName,
     string? DetailLevel,
-    bool IncludeAuthorizedProjectDocuments = true,
-    bool IncludeDirectProductKnowledge = true);
+    bool IncludeAuthorizedProjectDocuments = false,
+    bool IncludeDirectProductKnowledge = true,
+    bool UsePrivateModelWhenAvailable = true,
+    Guid? ConversationId = null,
+    IReadOnlyList<Guid>? AttachmentIds = null);
 
 public sealed record PulseAiPrivateTimesheetRequest(
     DateOnly? WorkDate,
