@@ -1,0 +1,105 @@
+name: Snapshot PR479 Test Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pr479-test-release-snapshot.yml'
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CONTROLLER_WORKFLOW: projectpulse-pr479-one-time-test-release-controller.yml
+      EXPECTED_CONTROLLER_SHA: 6b10dc2130960fd3e0c79b4bcb4fc441bc9fc210
+    steps:
+      - name: Capture exact failed controller run
+        id: snapshot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo="$GITHUB_REPOSITORY"
+          mkdir -p evidence
+          run_id="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/workflows/$CONTROLLER_WORKFLOW/runs?event=issue_comment&per_page=50" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"$EXPECTED_CONTROLLER_SHA\")] | sort_by(.created_at) | last | .id // empty")"
+          [[ -n "$run_id" ]] || {
+            echo 'No exact PR479 issue-comment controller run was found.' >&2
+            exit 1
+          }
+
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/runs/$run_id" > evidence/controller-run.json
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/runs/$run_id/jobs?per_page=100" > evidence/controller-jobs.json
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$repo/actions/runs/$run_id/artifacts?per_page=100" > evidence/controller-artifacts.json
+          gh run view "$run_id" --repo "$repo" --log-failed > evidence/controller-failed.log 2>&1 || true
+
+          controller_url="$(jq -r '.html_url' evidence/controller-run.json)"
+          status="$(jq -r '.status' evidence/controller-run.json)"
+          conclusion="$(jq -r '.conclusion // ""' evidence/controller-run.json)"
+          jq -r '.jobs[] | [.name, .status, (.conclusion // "")] | @tsv' \
+            evidence/controller-jobs.json > evidence/job-status.tsv
+          jq -r '.jobs[].steps[]? | select(.conclusion == "failure") | .name' \
+            evidence/controller-jobs.json > evidence/failed-steps.txt
+          grep -Ei 'error|failed|failure|mismatch|missing|unexpected|not succeed|not healthy|rollback' \
+            evidence/controller-failed.log | tail -n 120 > evidence/failure-excerpt.txt || true
+          head -c 18000 evidence/failure-excerpt.txt > evidence/failure-excerpt-trimmed.txt
+
+          {
+            echo "controller_run_id=$run_id"
+            echo "controller_status=$status"
+            echo "controller_conclusion=$conclusion"
+            echo "controller_head_sha=$(jq -r '.head_sha' evidence/controller-run.json)"
+            echo "controller_url=$controller_url"
+          } > evidence/result.txt
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          cat evidence/result.txt
+
+      - name: Comment diagnostic result
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          result='Snapshot failed before controller metadata was captured.'
+          failed_steps='Unavailable.'
+          excerpt='No sanitized failure excerpt was captured.'
+          [[ -s evidence/result.txt ]] && result="$(cat evidence/result.txt)"
+          [[ -s evidence/failed-steps.txt ]] && failed_steps="$(cat evidence/failed-steps.txt)"
+          [[ -s evidence/failure-excerpt-trimmed.txt ]] && excerpt="$(cat evidence/failure-excerpt-trimmed.txt)"
+          gh pr comment '${{ github.event.pull_request.number }}' \
+            --repo "$GITHUB_REPOSITORY" --body-file - <<EOF
+          PR #479 Test release snapshot completed.
+
+          \`\`\`text
+          $result
+          failed_steps:
+          $failed_steps
+          \`\`\`
+
+          Sanitized failed-log excerpt:
+
+          \`\`\`text
+          $excerpt
+          \`\`\`
+
+          This observer is read-only and must not be merged.
+          EOF
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr479-test-release-snapshot-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
