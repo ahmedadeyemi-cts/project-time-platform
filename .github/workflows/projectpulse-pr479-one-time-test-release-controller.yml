@@ -426,18 +426,40 @@ jobs:
 
       - name: Comment successful release
         if: success()
+        continue-on-error: true
         shell: bash
         run: |
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Project Forge Test release completed successfully.\n\n- Exact release SHA: \`$EXPECTED_RELEASE_SHA\`\n- Release ref: \`$RELEASE_REF\`\n- Migrations 068, 069, and 070: registered and independently verified\n- Module 033 / Project Forge migration: \`070_module_033_project_forge\`\n- Deployment: ${{ steps.deployment.outputs.run_url }}\n- Exact API/web images, digests, healthy revisions, and public health: verified\n- Production changed: no\n- Email sent: no"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - <<EOF
+          Project Forge Test release completed successfully.
+
+          - Exact release SHA: \`$EXPECTED_RELEASE_SHA\`
+          - Release ref: \`$RELEASE_REF\`
+          - Migrations 068, 069, and 070: registered and independently verified
+          - Module 033 / Project Forge migration: \`070_module_033_project_forge\`
+          - Deployment: ${{ steps.deployment.outputs.run_url }}
+          - Exact API/web images, digests, healthy revisions, and public health: verified
+          - Production changed: no
+          - Email sent: no
+          EOF
 
       - name: Comment failed release
         if: failure()
+        continue-on-error: true
         shell: bash
         run: |
           set +e
           url='${{ steps.deployment.outputs.run_url }}'
           [[ -n "$url" ]] || url='Deployment was not dispatched.'
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Project Forge Test migration or deployment failed.\n\n- Expected release SHA: \`$EXPECTED_RELEASE_SHA\`\n- Evidence: $url\n- Prior application images were restored when available.\n- Newly applied migrations were rolled back only when their operational-data guards allowed it.\n- Production changed: no\n- Email sent: no"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - <<EOF
+          Project Forge Test migration or deployment failed.
+
+          - Expected release SHA: \`$EXPECTED_RELEASE_SHA\`
+          - Evidence: $url
+          - Prior application images were restored when available.
+          - Newly applied migrations were rolled back only when their operational-data guards allowed it.
+          - Production changed: no
+          - Email sent: no
+          EOF
 
       - name: Collect release evidence
         if: always()
@@ -458,6 +480,7 @@ jobs:
 
       - name: Upload release evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pr479-test-release-${{ github.run_id }}-${{ github.run_attempt }}
