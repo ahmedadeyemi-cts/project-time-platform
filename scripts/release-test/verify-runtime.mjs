@@ -102,8 +102,10 @@ const evidence = {
 
 let conversationId = "";
 let attachmentId = "";
+let attachmentFileName = "";
 let attachmentRevoked = false;
 let forgeTaskId = "";
+let forgeTaskName = "";
 let forgeTaskRevision = 0;
 let forgeTaskArchived = false;
 
@@ -113,12 +115,39 @@ function writeEvidence() {
 }
 
 async function revokeAttachment() {
-  if (!conversationId || !attachmentId || attachmentRevoked) return;
+  if (!conversationId || attachmentRevoked) return;
+  if (!attachmentId && attachmentFileName) {
+    const lookup = await request(
+      "/api/celar-ai/v2/conversations/" + encodeURIComponent(conversationId) + "/attachments",
+      { authenticated: true, moduleNumber: "011" },
+    );
+    assert(lookup.status === 200, "Attachment cleanup lookup returned HTTP " + lookup.status + ".");
+    const matches = (lookup.json?.attachments || []).filter((item) => item?.originalFileName === attachmentFileName);
+    assert(matches.length <= 1, "Attachment cleanup found duplicate release fixtures.");
+    attachmentId = String(matches[0]?.attachmentId || "");
+    if (!attachmentId) {
+      attachmentRevoked = true;
+      evidence.cleanup.attachment = "not_persisted";
+      return;
+    }
+  }
+  if (!attachmentId) return;
   const result = await request(
     "/api/celar-ai/v2/conversations/" + encodeURIComponent(conversationId) +
       "/attachments/" + encodeURIComponent(attachmentId),
     { method: "DELETE", authenticated: true, moduleNumber: "011" },
   );
+  if (result.status === 404) {
+    const lookup = await request(
+      "/api/celar-ai/v2/conversations/" + encodeURIComponent(conversationId) + "/attachments",
+      { authenticated: true, moduleNumber: "011" },
+    );
+    assert(lookup.status === 200, "Attachment cleanup verification returned HTTP " + lookup.status + ".");
+    assert(!(lookup.json?.attachments || []).some((item) => item?.attachmentId === attachmentId), "Attachment remains listed after a 404 cleanup response.");
+    attachmentRevoked = true;
+    evidence.cleanup.attachment = "already_absent";
+    return;
+  }
   assert(result.status === 200, "Attachment cleanup returned HTTP " + result.status + ".");
   assert(result.json?.status === "celar_ai_chat_attachment_revoked", "Attachment cleanup did not confirm revocation.");
   assert(result.json?.retrievalEligible === false, "Revoked attachment remains retrieval eligible.");
@@ -127,7 +156,25 @@ async function revokeAttachment() {
 }
 
 async function archiveForgeTask() {
-  if (!forgeTaskId || forgeTaskArchived) return;
+  if (forgeTaskArchived) return;
+  if (!forgeTaskId && forgeTaskName) {
+    const lookup = await request(
+      "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical",
+      { authenticated: true, moduleNumber: "033" },
+    );
+    assert(lookup.status === 200, "Project Forge cleanup lookup returned HTTP " + lookup.status + ".");
+    const matches = (lookup.json?.tasks || []).filter((item) => item?.taskName === forgeTaskName);
+    assert(matches.length <= 1, "Project Forge cleanup found duplicate release fixtures.");
+    forgeTaskId = String(matches[0]?.taskId || "");
+    forgeTaskRevision = Number(matches[0]?.revision || matches[0]?.taskRevision || 0);
+    if (!forgeTaskId) {
+      forgeTaskArchived = true;
+      evidence.cleanup.projectForgeTask = "not_persisted";
+      return;
+    }
+  }
+  if (!forgeTaskId) return;
+  assert(Number.isInteger(forgeTaskRevision) && forgeTaskRevision > 0, "Project Forge cleanup has no valid revision.");
   const result = await request("/api/project-forge/tasks/" + encodeURIComponent(forgeTaskId), {
     method: "DELETE",
     authenticated: true,
@@ -140,6 +187,17 @@ async function archiveForgeTask() {
       reason: "Automated guarded Test UAT cleanup",
     },
   });
+  if (result.status === 404) {
+    const lookup = await request(
+      "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical",
+      { authenticated: true, moduleNumber: "033" },
+    );
+    assert(lookup.status === 200, "Project Forge cleanup verification returned HTTP " + lookup.status + ".");
+    assert(!(lookup.json?.tasks || []).some((item) => item?.taskId === forgeTaskId), "Project Forge task remains after a 404 cleanup response.");
+    forgeTaskArchived = true;
+    evidence.cleanup.projectForgeTask = "already_absent";
+    return;
+  }
   assert(result.status === 200, "Project Forge cleanup returned HTTP " + result.status + ".");
   assert(result.json?.status === "canonical_task_archived", "Project Forge cleanup did not archive the task.");
   forgeTaskRevision = Number(result.json?.revision || result.json?.task?.revision || forgeTaskRevision);
@@ -310,9 +368,9 @@ async function run() {
   conversationId = String(createConversation.json?.conversation?.conversationId || "");
   assert(uuidPattern.test(conversationId), "Conversation response did not include a UUID.");
   const nonce = "PP-UAT-" + randomUUID();
-  const fileName = "guarded-test-" + sourceSha.slice(0, 12) + ".txt";
+  attachmentFileName = "guarded-test-" + sourceSha.slice(0, 12) + ".txt";
   const form = new FormData();
-  form.append("files", new Blob(["Guarded Test private attachment nonce: " + nonce + "\n"], { type: "text/plain" }), fileName);
+  form.append("files", new Blob(["Guarded Test private attachment nonce: " + nonce + "\n"], { type: "text/plain" }), attachmentFileName);
   const upload = await request("/api/celar-ai/v2/conversations/" + encodeURIComponent(conversationId) + "/attachments", {
     method: "POST",
     moduleNumber: "011",
@@ -320,10 +378,10 @@ async function run() {
     formData: form,
     timeoutMs: 120000,
   });
+  attachmentId = String(upload.json?.attachments?.[0]?.attachmentId || "");
   assert(upload.status === 202, "Attachment upload returned HTTP " + upload.status + ".");
   assert(upload.json?.status === "celar_ai_chat_attachments_accepted", "Attachment upload was not accepted.");
   assert(upload.json?.privacy?.rawDocumentSentToClaudeOrOpenAi === false, "Upload privacy flag was not strictly false.");
-  attachmentId = String(upload.json?.attachments?.[0]?.attachmentId || "");
   assert(uuidPattern.test(attachmentId), "Attachment upload did not return an attachment UUID.");
 
   let readyAttachment = null;
@@ -365,7 +423,7 @@ async function run() {
   });
   assert(attachmentChat.status === 200, "Attachment-scoped Celar chat returned HTTP " + attachmentChat.status + ".");
   assert(String(attachmentChat.json?.result?.answer?.directConclusion || "").includes(nonce), "Attachment-scoped answer did not return the exact nonce.");
-  assert((attachmentChat.json?.result?.privateCitations || []).some((item) => item?.originalFileName === fileName), "Attachment-scoped answer did not cite the uploaded file.");
+  assert((attachmentChat.json?.result?.privateCitations || []).some((item) => item?.originalFileName === attachmentFileName), "Attachment-scoped answer did not cite the uploaded file.");
   assert(attachmentChat.json?.attachments?.selectedCount === 1, "Attachment-scoped answer did not bind exactly one selected attachment.");
   assert(attachmentChat.json?.attachments?.externalProviderReceivedAttachmentContent === false, "Attachment content was reported sent to an external provider.");
   assert(attachmentChat.json?.rawPrivateContextSentToExternalProvider === false, "Private attachment context was reported sent externally.");
@@ -383,7 +441,7 @@ async function run() {
   assert((forge.json?.projects || []).some((item) => item?.projectId === forgeProjectId), "Project Forge fixture project was not returned.");
   assert(forge.json?.summary?.selectedProjectId === forgeProjectId, "Project Forge selected project binding is incorrect.");
 
-  const forgeName = "Guarded Test persistence probe " + randomUUID().slice(0, 8);
+  forgeTaskName = "Guarded Test persistence probe " + randomUUID().slice(0, 8);
   const createTask = await request("/api/project-forge/projects/" + encodeURIComponent(forgeProjectId) + "/tasks", {
     method: "POST",
     moduleNumber: "033",
@@ -391,7 +449,7 @@ async function run() {
     body: {
       clientMutationId: randomUUID(),
       taskCode: null,
-      taskName: forgeName,
+      taskName: forgeTaskName,
       description: "Automated Test validation; archive after reload.",
       taskType: "variable",
       phase: "UAT",
@@ -420,10 +478,10 @@ async function run() {
       urgent: false,
     },
   });
-  assert(createTask.status === 201, "Project Forge task creation returned HTTP " + createTask.status + ".");
-  assert(createTask.json?.status === "canonical_task_created", "Project Forge did not create the canonical task.");
   forgeTaskId = String(createTask.json?.task?.taskId || "");
   forgeTaskRevision = Number(createTask.json?.revision || createTask.json?.task?.revision || 0);
+  assert(createTask.status === 201, "Project Forge task creation returned HTTP " + createTask.status + ".");
+  assert(createTask.json?.status === "canonical_task_created", "Project Forge did not create the canonical task.");
   assert(uuidPattern.test(forgeTaskId), "Project Forge create response did not include a task UUID.");
   assert(Number.isInteger(forgeTaskRevision) && forgeTaskRevision > 0, "Project Forge create response did not include a valid revision.");
 
@@ -432,7 +490,7 @@ async function run() {
     authenticated: true,
   });
   assert(forgeReload.status === 200, "Project Forge reload returned HTTP " + forgeReload.status + ".");
-  assert((forgeReload.json?.tasks || []).some((item) => item?.taskId === forgeTaskId && item?.taskName === forgeName), "Project Forge task did not persist across reload.");
+  assert((forgeReload.json?.tasks || []).some((item) => item?.taskId === forgeTaskId && item?.taskName === forgeTaskName), "Project Forge task did not persist across reload.");
   evidence.authenticatedChecks.projectForgeCreateReload = "passed";
   await archiveForgeTask();
 
