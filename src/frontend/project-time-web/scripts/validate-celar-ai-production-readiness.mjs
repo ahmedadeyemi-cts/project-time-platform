@@ -108,7 +108,7 @@ assert(
     && !hardeningCi.includes('pull_request:\n    paths:')
     && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE')
     && hardeningCi.includes("if: needs.classify.outputs.applicable == 'true'")
-    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_43_SOURCE_FILES')
+    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_44_SOURCE_FILES')
     && hardeningCi.includes('MISSING_SOURCE=')
     && hardeningCi.includes('UNEXPECTED=')
     && !hardeningCi.includes('DEPENDENCIES=')
@@ -134,7 +134,7 @@ assert(
     && hardeningCi.includes('src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx')
     && hardeningCi.includes('src/frontend/project-time-web/package.json')
     && hardeningCi.includes('docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md'),
-  'every main PR receives a lightweight classification while security-family branches require the exact 43-file, mode-safe source manifest before heavy validation'
+  'every main PR receives a lightweight classification while security-family branches require the exact 44-file, mode-safe source manifest before heavy validation'
 );
 
 assert(
@@ -341,13 +341,18 @@ assert(
 assert(
   'MALWARE_OCR_AND_EMBEDDING_GATES',
   runtime.indexOf('_malwareScanner.ScanAsync') < runtime.indexOf('_extractor.ExtractAsync')
-    && scanner.includes('VerifyPrivateHostAsync')
+    && scanner.includes('ResolvePrivateHostAsync')
+    && scanner.includes('hostReadiness.ApprovedAddresses')
+    && scanner.includes('ConnectAsync(scannerAddress, options.MalwareScannerPort, token)')
+    && !scanner.includes('ConnectAsync(options.MalwareScannerHost')
+    && contracts.includes('HostResolutionResult')
+    && contracts.includes('ApprovedAddresses')
     && contracts.includes('PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE')
     && contracts.includes('PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION')
     && runtime.includes('AwaitingOcr')
     && runtime.includes('OcrEndpointPrivate')
     && runtime.includes('EmbeddingEndpointPrivate'),
-  'clean private scanning precedes extraction and readiness exposes private OCR and embedding requirements'
+  'clean private scanning precedes extraction, ClamAV sockets pin an already validated private address, and readiness exposes private OCR and embedding requirements'
 );
 
 assert(

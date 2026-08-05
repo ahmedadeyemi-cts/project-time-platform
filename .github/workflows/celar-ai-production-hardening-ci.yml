@@ -67,6 +67,7 @@ jobs:
           src/backend/ProjectTime.Api/Ai/ProjectPulseAiTimesheetContextResolver.cs
           src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs
           src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineService.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
           src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
@@ -96,7 +97,7 @@ jobs:
           MISSING_SOURCE="$(comm -23 <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u) <(printf '%s\n' "$CHANGED"))"
           UNEXPECTED="$(comm -23 <(printf '%s\n' "$CHANGED") <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u))"
           if [[ -n "$MISSING_SOURCE" || -n "$UNEXPECTED" ]]; then
-            echo 'Security production-hardening branches must contain the exact reviewed 43-file source manifest and no out-of-scope paths.' >&2
+            echo 'Security production-hardening branches must contain the exact reviewed 44-file source manifest and no out-of-scope paths.' >&2
             [[ -z "$MISSING_SOURCE" ]] || { echo 'Missing source files:' >&2; printf '%s\n' "$MISSING_SOURCE" >&2; }
             [[ -z "$UNEXPECTED" ]] || { echo 'Unexpected files:' >&2; printf '%s\n' "$UNEXPECTED" >&2; }
             exit 1
@@ -112,7 +113,7 @@ jobs:
             }
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
-          echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_43_SOURCE_FILES'
+          echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_44_SOURCE_FILES'
 
   validate:
     needs: classify
