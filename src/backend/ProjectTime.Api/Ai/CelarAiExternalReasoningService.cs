@@ -98,7 +98,13 @@ public sealed class CelarAiExternalReasoningService
                 GeneratedAt: now);
         }
 
-        var feature = mode switch
+        var feature = string.Equals(
+                request.CapabilityCode?.Trim(),
+                ProjectPulseAiFeatures.ProjectForgePlanEstimate,
+                StringComparison.OrdinalIgnoreCase)
+            && mode is "project_plan" or "project_timeline" or "project_diagram"
+            ? ProjectPulseAiFeatures.ProjectForgePlanEstimate
+            : mode switch
         {
             "sow_draft" => ProjectPulseAiFeatures.SowGsdPlanning,
             "project_plan" or "project_timeline" or "project_diagram" => ProjectPulseAiFeatures.ProjectFlowHivePlan,

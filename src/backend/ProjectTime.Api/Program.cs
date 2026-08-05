@@ -37347,6 +37347,10 @@ app.MapAiProviderConfigurationEndpoints();
 app.MapEntraSecretAdministrationEndpoints();
 /* MODULE_065_ENTRA_SECRET_ENDPOINT_MAP_END */
 
+/* MODULE_033_PROJECT_FORGE_ENDPOINT_MAP_START */
+app.MapProjectForgeEndpoints();
+/* MODULE_033_PROJECT_FORGE_ENDPOINT_MAP_END */
+
 /* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_START */
 app.MapProjectFlowHiveEndpoints();
 /* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_END */

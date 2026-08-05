@@ -612,6 +612,7 @@ import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
+import ProjectForgeCenter from './ProjectForgeCenter.jsx';
 import ProjectFlowHiveCenter from './ProjectFlowHiveCenter.jsx';
 import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';
 import EntraSecretAdministrationCenter from './EntraSecretAdministrationCenter.jsx';
@@ -1759,6 +1760,15 @@ const roleWorkspaceModules = sortProjectPulseModules([
     description: 'View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
+  {
+    route: 'project-forge',
+    href: '#project-forge',
+    title: 'Project Forge',
+    navLabel: 'MODULE 033',
+    description: 'Build governed project plans, schedules, estimates, decision matrices, Kanban boards, and Gantt views from live ProjectPulse records.',
+    permissions: ['VIEW_PROJECT_FORGE_033', 'MANAGE_PROJECT_FORGE_033', 'USE_PROJECT_FORGE_AI_033', 'EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']
+  },
   /* MODULE_066A1_PROJECT_FLOWHIVE_NAV_START */
   {
     route: 'project-flowhive',
@@ -2489,6 +2499,7 @@ function getNavigationGroup(item) {
     case 'project-workload':
     case 'project-allocation-info':
     case 'project-workspace':
+    case 'project-forge':
     case 'project-flowhive':
       return 'Project Workspace';
     case 'user-guide':
@@ -3192,6 +3203,14 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
   },
+    {
+      route: 'project-forge',
+      title: 'Project Forge',
+      navLabel: 'MODULE 033',
+      group: 'Project Delivery',
+      permissions: ['VIEW_PROJECT_FORGE_033', 'MANAGE_PROJECT_FORGE_033', 'USE_PROJECT_FORGE_AI_033', 'EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Turns every Ultimate Project Manager workbook view into a live, role-scoped planning workspace with human-reviewed AI plans and Module 065 notifications.'
+    },
   /* MODULE_066A1_PROJECT_FLOWHIVE_INSTALLED_REGISTRY_START */
   {
     route: 'project-flowhive',
@@ -5317,6 +5336,7 @@ export default function App() {
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+  const canViewProjectForge = visibleRoleModules.some((module) => module.route === 'project-forge');
   const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
 
   useEffect(() => {
@@ -7238,6 +7258,12 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START */}
+      {(activeRoute === 'project-forge' && canViewProjectForge) ? (
+        <section id="project-forge" className="panel project-forge-route-panel">
+          <ProjectForgeCenter />
+        </section>
+      ) : null}
+
       {(activeRoute === 'project-flowhive' && canViewProjectFlowHive) ? (
         <section id="project-flowhive" className="panel project-flowhive-route-panel">
           <ProjectFlowHiveCenter />
@@ -7257,6 +7283,7 @@ Analytics - Variphy / Infortel`}
         'capacity-pipeline-forecast',
         'oncall-scheduling',
         'oneassist-routing-directory',
+        'project-forge',
         'project-flowhive',
         'sales-coverage-alignment',
         'oem-vendor-directory',

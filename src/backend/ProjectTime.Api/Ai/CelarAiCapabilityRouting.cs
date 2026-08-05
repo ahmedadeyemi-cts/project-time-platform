@@ -39,6 +39,7 @@ public static class CelarAiCapabilityCatalog
     public const string HelpAssistant = ProjectPulseAiFeatures.HelpAssistant;
     public const string CloseoutCommunication = ProjectPulseAiFeatures.CloseoutCommunication;
     public const string ProjectFlowHivePlan = ProjectPulseAiFeatures.ProjectFlowHivePlan;
+    public const string ProjectForgePlanEstimate = ProjectPulseAiFeatures.ProjectForgePlanEstimate;
 
     public static readonly IReadOnlyDictionary<string, CelarAiCapabilityDefinition> Definitions =
         new Dictionary<string, CelarAiCapabilityDefinition>(StringComparer.OrdinalIgnoreCase)
@@ -78,6 +79,13 @@ public static class CelarAiCapabilityCatalog
                 "sanitized_generic_only",
                 "restricted_project_plan",
                 "Creates a private WBS, dependencies, milestones, timeline, and diagram before deterministic scheduling and review."),
+            [ProjectForgePlanEstimate] = new(
+                ProjectForgePlanEstimate,
+                "Project Forge plan, tasks, and estimates",
+                ["011", "033"],
+                "sanitized_generic_only",
+                "restricted_project_plan",
+                "Creates a document-grounded, private project-plan and estimate draft for PM and assigned-engineer review before explicit adoption."),
             [CloseoutCommunication] = new(
                 CloseoutCommunication,
                 "Closeout communication",
@@ -1106,6 +1114,7 @@ public sealed class CelarAiConsumerAssuranceRegistry
         (CelarAiCapabilityCatalog.TimesheetServiceRequest, "001/019", "ProjectPulseAiTimeEntrySuggestionService"),
         (CelarAiCapabilityCatalog.SowGsdPlanning, "011/025", "CelarAiEnterprisePlatformService"),
         (CelarAiCapabilityCatalog.ProjectFlowHivePlan, "011/066", "CelarAiEnterprisePlatformService"),
+        (CelarAiCapabilityCatalog.ProjectForgePlanEstimate, "011/033", "CelarAiEnterprisePlatformService"),
         (CelarAiCapabilityCatalog.CloseoutCommunication, "011/040/055C", "CelarAiCapabilityRoutingModule"),
         (CelarAiCapabilityCatalog.HelpAssistant, "011/999", "CelarAiBrandModule")
     ];

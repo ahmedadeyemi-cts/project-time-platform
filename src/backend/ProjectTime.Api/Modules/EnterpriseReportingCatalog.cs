@@ -279,7 +279,7 @@ internal static class EnterpriseReportingCatalog
         Report(
             "secure_project_information", "Secure Project Information", "Project Delivery",
             "Technical-information request templates, customer submission status, field completion, access evidence, and immutable revision history without exposing secret values.",
-            ["033"], ["secure_project_information_requests"], ["secure_project_information_audit"],
+            ["019", "080"], ["secure_project_information_requests"], ["secure_project_information_audit"],
             ["delivery_scoped"], "Only project-authorized users receive metadata; secret values are never included in reporting.",
             [Customer(), Project(), ProjectManager(), WorkflowStatus(), DateFrom(), DateTo(), Search()],
             [
@@ -290,7 +290,7 @@ internal static class EnterpriseReportingCatalog
         Report(
             "pmo_project_controls", "Enterprise PMO Project Controls", "Project Delivery",
             "Charter, WBS, milestones, risks, issues, assumptions, decisions, changes, stakeholders, quality, benefits, and baseline evidence.",
-            ["034", "066"], ["pmo_projects"], ["pmo_controls", "project_flowhive_plans"],
+            ["033", "034", "066"], ["pmo_projects"], ["pmo_controls", "project_forge_plans", "project_flowhive_plans"],
             ["delivery_scoped"], "Project Managers are limited to their projects; assigned engineers see role-appropriate delivery controls.",
             [Customer(), Project(), ProjectManager(), Engineer(), WorkflowStatus(), Severity(), DateFrom(), DateTo(), Search()],
             [
@@ -651,8 +651,8 @@ internal static class EnterpriseReportingCatalog
         Report(
             "ai_sow_scope", "AI / SOW Scope Report", "AI & Governance",
             "Celar AI, private RAG, SOW/GSD, FlowHive, provider routing, evidence, confidence, and human-review scope.",
-            ["011", "025", "064", "066"],
-            ["ai_capability_routing"], ["project_flowhive_plans", "pmo_controls"],
+            ["011", "025", "033", "064", "066"],
+            ["ai_capability_routing"], ["project_forge_plans", "project_flowhive_plans", "pmo_controls"],
             ["operations_scoped", "delivery_scoped"], "AI and project evidence remains permission scoped; secret and private document values are excluded.",
             [Customer(), Project(), ProjectManager(), WorkflowStatus(), SourceStatus(), Search()],
             [

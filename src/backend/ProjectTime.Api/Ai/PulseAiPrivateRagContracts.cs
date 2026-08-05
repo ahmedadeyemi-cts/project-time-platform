@@ -198,6 +198,12 @@ public sealed record PulseAiPrivateRagAccess(
         "PROJECT_TEAM_COORDINATOR",
         "EXECUTIVE"
     });
+    public bool IsProjectManagementLead => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "PROJECT_MANAGEMENT_LEAD",
+        "PROJECT_MANAGEMENT_TEAM_LEAD",
+        "PM_TEAM_LEAD"
+    });
 
     public bool CanHelpSearch => IsSuperAdministrator || PermissionCodes.Contains("ASK_PULSE_AI_HELP_SEARCH");
     public bool CanTimesheet => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING");

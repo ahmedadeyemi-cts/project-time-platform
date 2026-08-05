@@ -139,6 +139,14 @@ CREATE TABLE project_notification_delivery_attempts (
   attempt_status TEXT NOT NULL
 );
 
+-- Existing Module 032 delivery evidence must remain untouched by Module 065 rollback.
+INSERT INTO project_notification_dispatches (
+  project_notification_dispatch_id,event_key,notification_type,delivery_status
+) VALUES (
+  '09000000-0000-0000-0000-000000000001',
+  'preexisting:module032:dispatch','project_assignment_changed','sent'
+);
+
 INSERT INTO app_users(user_id,email,display_name) VALUES
  ('10000000-0000-0000-0000-000000000001','admin@example.test','Admin Test'),
  ('10000000-0000-0000-0000-000000000002','ptc@example.test','PTC Test'),
@@ -185,7 +193,7 @@ assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles role JOIN app_role_permissi
 # Reapplication must not overwrite administrator policy choices.
 psql_exec -c "UPDATE enterprise_notification_policies SET enabled=FALSE, delivery_boundary='locked' WHERE policy_code='SECURITY_EVENT';" >/dev/null
 apply_migration
-assert_eq 'f|locked' "$(value "SELECT enabled::text || '|' || delivery_boundary FROM enterprise_notification_policies WHERE policy_code='SECURITY_EVENT';")" reapply_preserved_policy_configuration
+assert_eq 'false|locked' "$(value "SELECT enabled::text || '|' || delivery_boundary FROM enterprise_notification_policies WHERE policy_code='SECURITY_EVENT';")" reapply_preserved_policy_configuration
 
 psql_exec <<'SQL'
 INSERT INTO enterprise_notification_events (
