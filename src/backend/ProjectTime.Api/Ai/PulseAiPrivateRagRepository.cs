@@ -662,7 +662,7 @@ public sealed class PulseAiPrivateRagRepository
         bool persistAnswerText,
         CancellationToken cancellationToken = default)
     {
-        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
