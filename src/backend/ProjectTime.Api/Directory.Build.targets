@@ -89,7 +89,12 @@
 
     <Exec Command="sed -e 's/private static IEnumerable&lt;string&gt; TakeOrFallback/private static IReadOnlyList&lt;string&gt; TakeOrFallback/' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiEnterprisePlatformService.cs&quot; &gt; &quot;$(CelarAiEnterpriseGenerated)&quot;" />
     <Exec Command="sed '/if (target == CelarAiCapabilityTargets.CelarAi)/,/^[[:space:]]*continue;/ s/result/privateResult/g' &quot;$(MSBuildProjectDirectory)/Ai/CelarAiCapabilityRouting.cs&quot; &gt; &quot;$(CelarAiRoutingGenerated)&quot;" />
-    <Exec Command="awk 'BEGIN { fixed=0 } { if ($0 ~ /public PulseAiPrivateRagOptions Options\(\) =&gt; PulseAiPrivateRagOptions.FromEnvironment\(\);/) { print &quot;    public PulseAiPrivateRagOptions Options() =&gt; CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());&quot;; fixed=1 } else print } END { if (fixed==0) exit 42 }' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateRagService.cs&quot; &gt; &quot;$(PulseAiPrivateRagGenerated)&quot;" />
+    <!-- The canonical private-RAG service now applies the persisted Module 064
+         private-model profile itself. Verify that authority marker, then compile
+         an exact generated copy instead of rewriting an obsolete one-line method. -->
+    <Exec Command="grep -Fq 'CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment())' &quot;$(MSBuildProjectDirectory)/Ai/PulseAiPrivateRagService.cs&quot;" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/Ai/PulseAiPrivateRagService.cs"
+          DestinationFiles="$(PulseAiPrivateRagGenerated)" />
 
     <!-- Route every Timesheet mode through the central capability router while
          retaining the private-RAG-first behavior and human review boundary. -->

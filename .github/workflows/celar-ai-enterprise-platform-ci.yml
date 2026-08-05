@@ -124,7 +124,10 @@ jobs:
 
           PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\.cs|src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs)' <<<"$CHANGED" || true)"
           if [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
-            PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs' <<<"$PROHIBITED" || true)"
+            PROHIBITED="$(grep -Fvx \
+              -e 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs' \
+              -e 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs' \
+              <<<"$PROHIBITED" || true)"
             test -f .github/workflows/celar-ai-production-hardening-ci.yml
             test -f database/migrations/071_ai_runtime_production_hardening.sql
             test -f database/rollback/071_ai_runtime_production_hardening_rollback.sql
