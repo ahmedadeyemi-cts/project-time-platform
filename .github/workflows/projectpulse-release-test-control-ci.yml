@@ -64,6 +64,12 @@ jobs:
           grep -Fq 'API_PREDEPLOY_CAS=PASSED' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'WEB_PREDEPLOY_CAS=PASSED' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'candidate_revision' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'touch /tmp/current-main-release-rollback-attempted' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq '"applicationRollbackAttempted": $ROLLBACK_ATTEMPTED' .github/workflows/projectpulse-deploy-test.yml
+          if grep -F '"applicationRollbackAttempted":' .github/workflows/projectpulse-deploy-test.yml | grep -Fq 'failure()'; then
+            echo 'Release evidence must not call failure() from a run block.' >&2
+            exit 1
+          fi
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
@@ -74,6 +80,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
+          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r2"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
