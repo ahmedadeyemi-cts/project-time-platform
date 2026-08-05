@@ -66,7 +66,10 @@ jobs:
           grep -Fq 'candidate_revision' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'touch /tmp/current-main-release-rollback-attempted' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq '"applicationRollbackAttempted": $ROLLBACK_ATTEMPTED' .github/workflows/projectpulse-deploy-test.yml
-          ! grep -Fq '"applicationRollbackAttempted": ${{ (failure()' .github/workflows/projectpulse-deploy-test.yml
+          if grep -F '"applicationRollbackAttempted":' .github/workflows/projectpulse-deploy-test.yml | grep -Fq 'failure()'; then
+            echo 'Release evidence must not call failure() from a run block.' >&2
+            exit 1
+          fi
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_RELEASE_PHASE=' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.phase' .github/workflows/projectpulse-deploy-test.yml
