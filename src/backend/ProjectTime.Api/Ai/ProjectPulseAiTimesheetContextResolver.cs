@@ -184,7 +184,7 @@ sealed class ProjectPulseAiTimesheetContextResolver
         command.Parameters.AddWithValue("user_id", effectiveUserId);
         command.Parameters.AddWithValue("work_date", request.WorkDate);
         command.Parameters.Add("assignment_id", NpgsqlDbType.Uuid).Value =
-            request.AssignmentId is Guid assignmentId ? assignmentId : DBNull.Value;
+            request.AssignmentId is Guid requestedAssignmentId ? requestedAssignmentId : DBNull.Value;
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
