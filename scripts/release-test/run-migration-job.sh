@@ -151,6 +151,7 @@ validate_job_ownership() {
         {name: "PGHOST", value: $databaseHost, secretRef: null},
         {name: "PGPASSWORD", value: null, secretRef: "main-release-db-password"},
         {name: "PGPORT", value: $databasePort, secretRef: null},
+        {name: "PGSSLROOTCERT", value: "system", secretRef: null},
         {name: "PGSSLMODE", value: "verify-full", secretRef: null},
         {name: "PGUSER", value: $databaseUser, secretRef: null},
         {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName, secretRef: null}
@@ -337,6 +338,7 @@ jq -n \
             {name: "PGHOST", value: $databaseHost},
             {name: "PGPASSWORD", secretRef: "main-release-db-password"},
             {name: "PGPORT", value: $databasePort},
+            {name: "PGSSLROOTCERT", value: "system"},
             {name: "PGSSLMODE", value: "verify-full"},
             {name: "PGUSER", value: $databaseUser},
             {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName}
