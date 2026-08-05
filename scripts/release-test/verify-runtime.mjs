@@ -218,9 +218,38 @@ async function run() {
   assert(apiSearch.json?.result?.intentCode === "api_inventory", "Celar API inventory intent was not verified.");
   assert(String(apiSearch.json?.result?.answer?.directConclusion || "").trim().length > 0, "Celar API search returned no direct conclusion.");
   const relevantApis = apiSearch.json?.result?.relevantApis || [];
-  assert(relevantApis.some((item) => String(item?.routePattern || "").startsWith("/api/project-forge")), "Celar search did not return a Project Forge route.");
+  assert(Array.isArray(relevantApis) && relevantApis.length > 0, "Celar search returned no Project Forge routes.");
+  assert(
+    relevantApis.every((item) =>
+      item?.moduleCode === "033" &&
+      String(item?.routePattern || "").startsWith("/api/project-forge")),
+    "Celar apiSearch/moduleCode filtering returned an out-of-scope route.",
+  );
   assert((apiSearch.json?.result?.answer?.citationIds || []).length > 0 || (apiSearch.json?.result?.sources || []).length > 0, "Celar API search returned no source evidence.");
   assert(apiSearch.json?.rawPrivateContextSentToExternalProvider === false, "Celar API-search privacy flag was not strictly false.");
+
+  const noMatchSearch = "project-forge-no-such-route-" + sourceSha.slice(0, 12);
+  const noMatch = await request("/api/celar-ai/v2/chat", {
+    method: "POST",
+    moduleNumber: "011",
+    authenticated: true,
+    body: {
+      question: "Find the exact registered API route named " + noMatchSearch + ".",
+      mode: "system_intelligence",
+      detailLevel: "comprehensive",
+      moduleCode: "033",
+      apiSearch: noMatchSearch,
+      includeAuthorizedProjectDocuments: false,
+      includeRepositoryContext: true,
+      includeAssumptions: false,
+      includeSourceCitations: true,
+      answerPreferenceSource: "guarded_test_release_uat",
+    },
+  });
+  assert(noMatch.status === 200, "Celar no-match API search returned HTTP " + noMatch.status + ".");
+  assert(noMatch.json?.result?.intentCode === "api_inventory", "Celar no-match search did not use API inventory intent.");
+  assert(Array.isArray(noMatch.json?.result?.relevantApis) && noMatch.json.result.relevantApis.length === 0, "Celar apiSearch ignored an exact no-match filter.");
+  assert(noMatch.json?.rawPrivateContextSentToExternalProvider === false, "Celar no-match search privacy flag was not strictly false.");
   evidence.authenticatedChecks.celarApiSearch = "passed";
 
   const routes = await request("/api/ai-configuration/routes", {
@@ -241,6 +270,10 @@ async function run() {
   for (const feature of expectedFeatures) {
     const route = routes.json.routes.find((item) => item?.feature === feature);
     assert(route, "Module 064 route is missing: " + feature + ".");
+    assert(route.persisted === true, "Module 064 route is not persisted: " + feature + ".");
+    assert(Number.isInteger(route.revision) && route.revision > 0, "Module 064 route has no persisted revision: " + feature + ".");
+    assert(route.deploymentManaged === false && route.readOnly === false, "Module 064 database-managed route is unexpectedly deployment locked: " + feature + ".");
+    assert(route.configurationAuthority === "database_managed_active", "Module 064 route has the wrong configuration authority: " + feature + ".");
     assert(JSON.stringify(route.targets) === JSON.stringify(expectedTargets), "Module 064 target order is wrong for " + feature + ".");
   }
   evidence.authenticatedChecks.module064Routes = "passed";
