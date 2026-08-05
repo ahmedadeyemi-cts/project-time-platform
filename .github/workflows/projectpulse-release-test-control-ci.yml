@@ -60,7 +60,9 @@ jobs:
           ! grep -Fq "find \"\$MIGRATION_ROOT\" -maxdepth" scripts/release-test/apply-071-073.sh
           ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'containerapp secret list' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'keyvault secret show --id "$KEY_VAULT_SECRET_URI"' .github/workflows/projectpulse-deploy-test.yml
+          ! grep -Fq 'keyvault secret show --id "$KEY_VAULT_SECRET_URI"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DATABASE_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'must be an exact secret name with an optional version' scripts/release-test/run-migration-job.sh
           grep -Fq 'steps.contract.outputs.migrator_identity' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'steps.contract.outputs.database_secret_name' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"' .github/workflows/projectpulse-deploy-test.yml
@@ -93,7 +95,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r4"
+          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r5"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"

@@ -282,15 +282,10 @@ jobs:
             echo "The protected Test database UAMI could not be resolved exactly." >&2
             exit 1
           }
-          VERSIONED_SECRET_URI="$(az keyvault secret show --id "$KEY_VAULT_SECRET_URI" --query id -o tsv --only-show-errors)"
-          [[ "$VERSIONED_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+/[0-9A-Fa-f]{32}$ ]] || {
-            echo "The canonical Test database secret could not be pinned to one exact Key Vault version." >&2
-            exit 1
-          }
-          KEY_VAULT_URI="${VERSIONED_SECRET_URI%%/secrets/*}"
+          KEY_VAULT_URI="${KEY_VAULT_SECRET_URI%%/secrets/*}"
           KEY_VAULT_NAME="${KEY_VAULT_URI#https://}"
           KEY_VAULT_NAME="${KEY_VAULT_NAME%.vault.azure.net}"
-          DATABASE_SECRET_NAME="${VERSIONED_SECRET_URI#*/secrets/}"
+          DATABASE_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
           ACTUAL_KEY_VAULT_ID="$(az keyvault show --name "$KEY_VAULT_NAME" --query id -o tsv --only-show-errors)"
           ACTUAL_KEY_VAULT_URI="$(az keyvault show --name "$KEY_VAULT_NAME" --query properties.vaultUri -o tsv --only-show-errors)"
           KEY_VAULT_SUBSCRIPTION="${ACTUAL_KEY_VAULT_ID#*/subscriptions/}"
