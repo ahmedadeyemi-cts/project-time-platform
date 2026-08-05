@@ -212,12 +212,14 @@ assert('CENTRAL_ROUTE_WITH_PRIVATE_AND_DETERMINISTIC_GROUNDING',
     '_router.GenerateAsync','TryResolveHelpCapsulePurpose',
     'PrivateTargetAllowed: privateRagRequested',
     'externalAssistance = Limit(',
+    'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+    'BuildPublicGeneralKnowledgeAnswer(',
     "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context"
   ])
   && !/(?:api\.openai\.com|api\.anthropic\.com|ANTHROPIC_API_KEY|OPENAI_API_KEY)/i.test(
     [s.contracts,s.knowledge,s.apiCatalog,s.executor,s.repository,s.service,s.module].join('\n')
   ),
-  'the persisted Module 064 route governs Help, private document RAG stays at the Celar target, deterministic grounding remains available, and public targets receive only fixed generic structure guidance');
+  'the persisted Module 064 route governs Help, private document RAG stays at the Celar target, protected fallbacks remain fixed and deidentified, and isolated public general questions can receive a direct governed provider answer');
 
 assert('DURABLE_RESPONSES',
   all(s.repository, [
@@ -288,7 +290,7 @@ assert('PERMISSION_SCOPED_SYSTEM_EVIDENCE',
   all(s.service, [
     'IReadOnlyList<PulseAiSystemApiDescriptor> apis = access.CanViewApis',
     'summary = access.CanViewApis ? _apiCatalog.Summary(apis) : null',
-    'request.IncludeApiInventory && access.CanViewApis',
+    'request.IncludeApiInventory && plan.WantsApiInventory && access.CanViewApis',
     'lacks VIEW_PULSE_AI_API_INVENTORY',
     'var persistenceAuthorized = actualUserId == effectiveUserId',
     '&& access.CanViewConversations',

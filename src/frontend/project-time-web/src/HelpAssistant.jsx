@@ -19,7 +19,7 @@ const QUICK_QUESTIONS = Object.freeze([
 const WELCOME_MESSAGE = Object.freeze({
   id: 'welcome',
   role: 'assistant',
-  text: 'Ask any question about Pulse. This opens as a fresh chat: previous conversations remain in your History, but they are not automatically inserted into this conversation. I can explain how to use the platform, summarize authorized work and assignments, discover running APIs, troubleshoot the system, analyze projects and documents, explain reports and financials, and prepare detailed future-enhancement blueprints.'
+  text: 'Ask me anything about Pulse or a general topic. Pulse questions use authorized platform evidence; public general-knowledge questions use the governed Celar AI, Claude, OpenAI, then local fallback order without sharing Pulse or private context. Previous conversations remain in History and are not automatically inserted into this conversation.'
 });
 
 const CELAR_AI_CHAT_SIZES = Object.freeze(['compact', 'standard', 'wide', 'fullscreen']);
@@ -184,6 +184,7 @@ function AnswerList({ heading, values, open = false, ordered = false }) {
 
 function EvidenceBadges({ result }) {
   const answer = result?.answer ?? {};
+  const apiRequested = result?.intentCode === 'api_inventory';
   return (
     <div className="pulse-ai-system-evidence-badges">
       <span>Status: {titleFrom(result?.status || 'unknown')}</span>
@@ -191,9 +192,27 @@ function EvidenceBadges({ result }) {
       <span>Confidence: {formatPercent(answer.confidence)}</span>
       <span>Data as of: {formatDate(answer.dataAsOf)}</span>
       <span>Sources: {asArray(result?.sources).length}</span>
-      <span>APIs: {asArray(result?.relevantApis).length}</span>
+      {apiRequested ? <span>APIs: {asArray(result?.relevantApis).length}</span> : null}
       <span>Tools: {asArray(result?.toolResults).length}</span>
       <span>Saved: {result?.persisted ? 'Yes' : 'No'}</span>
+    </div>
+  );
+}
+
+function TrustSummary({ trust }) {
+  if (!trust) return null;
+  const reasons = asArray(trust.reasons);
+  const confidence = Number.isFinite(Number(trust.confidence))
+    ? `${Math.round(Number(trust.confidence) * 100)}%`
+    : 'Not recorded';
+  return (
+    <div className={`celar-trust-banner is-${trust.classification || 'unknown'}`} role="status">
+      <strong>{trust.label || titleFrom(trust.classification)}</strong>
+      <span>{trust.questionAnswered ? 'Question answered' : 'Answer incomplete'}</span>
+      <span>Confidence {confidence}</span>
+      <span>{trust.successfulSourceCount || 0} successful source(s)</span>
+      {trust.humanReviewRequired ? <span>Human review required</span> : null}
+      {reasons.length ? <details><summary>Why this trust status</summary><ul>{reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></details> : null}
     </div>
   );
 }
@@ -278,7 +297,7 @@ function ApiInventory({ apis }) {
   );
 }
 
-function SourceEvidence({ sources }) {
+function SourceEvidence({ sources, showTechnicalIdentifiers = false }) {
   const rows = asArray(sources);
   if (!rows.length) return null;
   return (
@@ -289,7 +308,9 @@ function SourceEvidence({ sources }) {
           <article key={source.sourceId}>
             <div><strong>Source {source.sourceId}</strong><span>{titleFrom(source.status)}</span></div>
             <h6>{source.sourceName}</h6>
-            <p>{source.moduleCode} · {source.method} {source.path}</p>
+            <p>{showTechnicalIdentifiers
+              ? `${source.moduleCode} · ${source.method} ${source.path}`
+              : `Module ${source.moduleCode}`}</p>
             <small>{source.evidenceScope}</small>
             <small>Observed {formatDate(source.observedAt)} · {titleFrom(source.freshness)}</small>
           </article>
@@ -299,7 +320,7 @@ function SourceEvidence({ sources }) {
   );
 }
 
-function ToolEvidence({ tools }) {
+function ToolEvidence({ tools, showTechnicalIdentifiers = false }) {
   const rows = asArray(tools);
   if (!rows.length) return null;
   return (
@@ -308,9 +329,11 @@ function ToolEvidence({ tools }) {
       <div className="pulse-ai-system-tool-grid">
         {rows.map((tool) => (
           <article key={tool.toolCode} className={tool.status === 'succeeded' ? 'is-success' : 'is-warning'}>
-            <div><strong>{tool.toolName}</strong><span>HTTP {tool.statusCode || '—'}</span></div>
-            <p>{tool.moduleCode} · {tool.method} {tool.path}</p>
-            <small>{titleFrom(tool.status)} · {tool.durationMs} ms · {tool.diagnosticCode || 'No diagnostic code'}</small>
+            <div><strong>{tool.toolName}</strong><span>{showTechnicalIdentifiers ? `HTTP ${tool.statusCode || '—'}` : titleFrom(tool.status)}</span></div>
+            <p>{showTechnicalIdentifiers
+              ? `${tool.moduleCode} · ${tool.method} ${tool.path}`
+              : `Module ${tool.moduleCode}`}</p>
+            <small>{titleFrom(tool.status)} · {tool.durationMs} ms{showTechnicalIdentifiers ? ` · ${tool.diagnosticCode || 'No diagnostic code'}` : ''}</small>
             <ul>{asArray(tool.evidenceSummary).map((value, index) => <li key={`${tool.toolCode}-${index}`}>{value}</li>)}</ul>
           </article>
         ))}
@@ -330,6 +353,7 @@ function SystemAnswer({ result, close }) {
     .includes(detailLevel);
   const troubleshootingProfile = result?.intentCode === 'troubleshooting';
   const enhancementProfile = result?.intentCode === 'future_enhancement';
+  const apiRequested = result?.intentCode === 'api_inventory';
   return (
     <div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>
       <div className="help-answer-heading">
@@ -337,46 +361,52 @@ function SystemAnswer({ result, close }) {
         <strong>{answer.directConclusion || 'Celar AI completed the request.'}</strong>
       </div>
       {answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}
-      <EvidenceBadges result={result} />
-      <div className="help-answer-preference-evidence" role="note">
-        <span>Answer detail: {titleFrom(detailLevel)}</span>
-        <span>Source: saved profile, per-question command, or standard intent-aware default</span>
-      </div>
-      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open={detailedProfile} />
-      <AnswerList heading="Current state" values={answer.currentState} open={troubleshootingProfile || detailedProfile} />
-      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open={detailedProfile} />
-      <AnswerList heading="API findings" values={answer.apiFindings} open={detailedProfile} />
-      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={troubleshootingProfile} />
-      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={troubleshootingProfile} />
-      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={troubleshootingProfile} ordered />
-      <AnswerList heading="Source evidence" values={answer.sourceEvidence} />
-      <AnswerList heading="Known, unknown, stale, unavailable, and unauthorized values" values={answer.knownUnknownAndStaleValues} />
-      <AnswerList heading="Assumptions" values={answer.assumptions} />
-      <AnswerList heading="Conflicts" values={answer.conflicts} />
-      <AnswerList heading="Limitations" values={answer.limitations} />
-      <AnswerList heading="Risks and implications" values={answer.risksAndImplications} />
-      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open={troubleshootingProfile || enhancementProfile || detailedProfile} ordered />
-      <EnhancementBlueprint blueprint={answer.futureEnhancementBlueprint} />
-      <ApiInventory apis={result?.relevantApis} />
-      <ToolEvidence tools={result?.toolResults} />
-      <SourceEvidence sources={result?.sources} />
-      <AnswerList heading="Warnings" values={result?.warnings} />
-      {result?.externalAssistance ? (
-        <details className="pulse-ai-system-workbench-section">
-          <summary><span>Supplementary external guidance (unverified)</span><small>{titleFrom(result?.modelProvider || 'external')}</small></summary>
-          <p>{externalUsedClosedTopic
-            ? 'The local Celar AI path could not complete this general question. This optional guidance used only a closed server-owned topic plus a backend-owned purpose capsule; the user’s wording was not sent.'
-            : 'The local Celar AI path could not complete the request. This optional guidance used only a backend-owned, identity-free purpose capsule.'}</p>
-          <p>It is kept separate from the source-grounded answer above. No attachment text, private document content, tool results, customer or project context, people records, financial values, or identifiers were shared, so this guidance cannot establish enterprise-specific facts.</p>
-          <p>{result.externalAssistance}</p>
-        </details>
-      ) : null}
-      <div className="pulse-ai-system-answer-footer">
-        <span>Correlation: <code>{result?.correlationId || 'Not recorded'}</code></span>
-        <span>Selected route: {result?.modelName || titleFrom(result?.modelProvider || 'governed_local')}</span>
-        <span>{answer.confidenceExplanation}</span>
-      </div>
-      <NavigationTargets targets={answer.navigationTargets} close={close} />
+      <TrustSummary trust={result?.trust} />
+      <details className="celar-ai-answer-details">
+        <summary><span>Detailed answer</span><small>Analysis, evidence, sources, and actions</small></summary>
+        <div className="celar-ai-answer-details-body">
+          <EvidenceBadges result={result} />
+          <div className="help-answer-preference-evidence" role="note">
+            <span>Answer detail: {titleFrom(detailLevel)}</span>
+            <span>Source: saved profile, per-question command, or standard intent-aware default</span>
+          </div>
+          <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open />
+          <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} />
+          <AnswerList heading="Current state" values={answer.currentState} open={troubleshootingProfile} />
+          {apiRequested ? <AnswerList heading="API findings" values={answer.apiFindings} /> : null}
+          <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={troubleshootingProfile} />
+          <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={troubleshootingProfile} />
+          <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={troubleshootingProfile} ordered />
+          <AnswerList heading="Source evidence" values={answer.sourceEvidence} />
+          <AnswerList heading="Known, unknown, stale, unavailable, and unauthorized values" values={answer.knownUnknownAndStaleValues} />
+          <AnswerList heading="Assumptions" values={answer.assumptions} />
+          <AnswerList heading="Conflicts" values={answer.conflicts} />
+          <AnswerList heading="Limitations" values={answer.limitations} />
+          <AnswerList heading="Risks and implications" values={answer.risksAndImplications} />
+          <AnswerList heading="Recommended actions" values={answer.recommendedActions} open={troubleshootingProfile || enhancementProfile} ordered />
+          <EnhancementBlueprint blueprint={answer.futureEnhancementBlueprint} />
+          {apiRequested ? <ApiInventory apis={result?.relevantApis} /> : null}
+          <ToolEvidence tools={result?.toolResults} showTechnicalIdentifiers={apiRequested} />
+          <SourceEvidence sources={result?.sources} showTechnicalIdentifiers={apiRequested} />
+          <AnswerList heading="Warnings" values={result?.warnings} />
+          {result?.externalAssistance ? (
+            <details className="pulse-ai-system-workbench-section">
+              <summary><span>Supplementary external guidance (unverified)</span><small>{titleFrom(result?.modelProvider || 'external')}</small></summary>
+              <p>{externalUsedClosedTopic
+                ? 'The local Celar AI path could not complete this Pulse question. This optional guidance used only a closed server-owned topic plus a backend-owned purpose capsule; the user’s wording was not sent.'
+                : 'The local Celar AI path could not complete the request. This optional guidance used only a backend-owned, identity-free purpose capsule.'}</p>
+              <p>It is kept separate from the source-grounded answer above. No attachment text, private document content, tool results, customer or project context, people records, financial values, or identifiers were shared, so this guidance cannot establish enterprise-specific facts.</p>
+              <p>{result.externalAssistance}</p>
+            </details>
+          ) : null}
+          <div className="pulse-ai-system-answer-footer">
+            <span>Correlation: <code>{result?.correlationId || 'Not recorded'}</code></span>
+            <span>Selected route: {result?.modelName || titleFrom(result?.modelProvider || 'governed_local')}</span>
+            <span>{answer.confidenceExplanation}</span>
+          </div>
+          <NavigationTargets targets={answer.navigationTargets} close={close} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -927,7 +957,7 @@ export default function HelpAssistant() {
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={onInputKeyDown}
-              placeholder="Ask about any module, API, error, report, financial, document, workflow, architecture, or future enhancement…"
+              placeholder="Ask about Pulse or any general topic…"
               rows={3}
               aria-label="Ask Celar AI"
               aria-keyshortcuts="Enter Shift+Enter Escape"

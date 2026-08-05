@@ -18,6 +18,8 @@ const helpService = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiSyst
 const helpContracts = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiSystemIntelligenceContracts.cs');
 const brandModule = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'CelarAiBrandModule.cs');
 const routingModule = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'CelarAiCapabilityRoutingModule.cs');
+const flowHiveFactory = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectFlowHiveAiRequestFactory.cs');
+const projectForge = read('src', 'backend', 'ProjectTime.Api', 'Modules', 'ProjectForgeModule.cs');
 const helpUi = read('src', 'frontend', 'project-time-web', 'src', 'HelpAssistant.jsx');
 const transforms = read('src', 'backend', 'ProjectTime.Api', 'Directory.Build.targets');
 const packageJson = fs.readFileSync(path.join(webRoot, 'package.json'), 'utf8');
@@ -443,6 +445,40 @@ check(
   'SOW/plan/diagram and closeout requests interleave private RAG with stored routing while public guidance and local terminal context remain separate from private structured output'
 );
 check(
+  'CELAR_COMPREHENSIVE_CROSS_MODULE_OUTPUTS',
+  containsAll(timesheet, [
+    'detailed, accurate, evidence-based, customer-facing professional services timesheet descriptions',
+    'two to four complete',
+    'preferably 75 to 150 words when the evidence supports that detail',
+    'The entry should be reviewed before submission'
+  ])
+    && containsAll(enterpriseContracts, [
+      'string? DetailLevel = "comprehensive"',
+      'CelarAiSowDraft('
+    ])
+    && containsAll(enterpriseService, [
+      'Create a comprehensive, reviewable Statement of Work draft',
+      'DetailLevel: request.DetailLevel ?? "comprehensive"'
+    ])
+    && containsAll(flowHiveFactory, [
+      'Produce a detailed cited draft only.',
+      'Return a comprehensive draft with source citations and unresolved conflicts preserved.'
+    ])
+    && containsAll(projectForge, [
+      'Create a comprehensive, reviewable project plan with WBS tasks, dependencies, roles, durations, and engineering estimates',
+      'DetailLevel: Clean(request.DetailLevel, 40, "comprehensive")'
+    ])
+    && containsAll(routingModule, [
+      'Produce a comprehensive communication with a subject, concise executive opening, verified completion,',
+      'Create comprehensive, structured, factual professional-services closeout communication drafts.',
+      'Verified completion summary',
+      'Outstanding items, owners, and risks',
+      'Next actions and review boundary'
+    ])
+    && helpService.includes('Be extremely detailed and comprehensive; do not return a surface summary'),
+  'Timesheet, SOW, FlowHive, Project Forge, closeout, and Ask Celar preserve comprehensive governed outputs while leading with the useful answer'
+);
+check(
   'CELAR_EXTERNAL_SANITIZED_CAPSULE_ONLY',
   containsAll(externalPreparation, [
     '_sanitizer.SanitizeForExecution(',
@@ -460,13 +496,16 @@ check(
 check(
   'CELAR_EXTERNAL_OUTPUT_REVALIDATED',
   sanitizer.includes('public bool IsExternalOutputSafe(')
+    && sanitizer.includes('public bool IsPublicExternalOutputSafe(')
+    && sanitizer.includes('public bool TryPreparePublicQuestion(')
     && containsAll(externalSuccess, [
       '_sanitizer.IsExternalOutputSafe(',
-      'out var outputDecisionCode',
+      '_sanitizer.IsPublicExternalOutputSafe(',
+      'out outputDecisionCode',
       '_health.RecordFailure(target, outputDecisionCode',
       'continue;'
     ]),
-  'untrusted Claude/OpenAI output is discarded if it reintroduces protected data'
+  'untrusted Claude/OpenAI output is discarded if it reintroduces protected data; the isolated public-question path applies its separate credential and identifier boundary'
 );
 check(
   'CELAR_EXTERNAL_DEIDENTIFICATION_DIAGNOSTICS',
