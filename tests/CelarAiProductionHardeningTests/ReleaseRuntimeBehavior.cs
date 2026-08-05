@@ -177,7 +177,10 @@ internal static class ReleaseRuntimeBehavior
                 ProjectPulseAiReleaseRuntimePolicy.ConfigurationDigestVariable,
                 ProjectPulseAiReleaseRuntimePolicy.ComputeSafeConfigurationDigest());
             Require(ProjectPulseAiReleaseRuntimePolicy.Snapshot().Errors.Any(error =>
-                    error.Contains("insecure loopback", StringComparison.OrdinalIgnoreCase)),
+                    error.Contains(
+                        "PROJECTPULSE_AI_ALLOW_INSECURE_LOOPBACK_ENDPOINTS=true",
+                        StringComparison.Ordinal)
+                    && error.Contains("prohibited", StringComparison.OrdinalIgnoreCase)),
                 "release policy rejects the insecure-loopback endpoint flag");
             Set("PROJECTPULSE_AI_ALLOW_INSECURE_LOOPBACK_ENDPOINTS", "false");
             Environment.SetEnvironmentVariable(ProjectPulseAiReleaseRuntimePolicy.ConfigurationDigestVariable, digestB);
