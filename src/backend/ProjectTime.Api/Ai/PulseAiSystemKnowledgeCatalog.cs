@@ -557,7 +557,7 @@ public static class PulseAiSystemKnowledgeCatalog
         if (intent == "observability") modules.UnionWith(["013", "016", "078", "998"]);
         if (intent == "security") modules.UnionWith(["008", "037", "079", "997", "998"]);
         if (intent == "financial_and_reporting") modules.UnionWith(["003", "005", "030", "038", "039", "042", "055B", "060"]);
-        if (intent == "projects_and_delivery") modules.UnionWith(["018", "019", "020", "055C", "055D", "066", "070"]);
+        if (intent == "projects_and_delivery") modules.UnionWith(["018", "019", "020", "033", "055C", "055D", "066", "070"]);
         if (intent == "timesheets_and_approvals") modules.UnionWith(["001", "002", "007", "023"]);
         if (intent == "identity_and_permissions") modules.UnionWith(["009", "010", "012", "037", "062", "065"]);
         if (intent == "documents_and_rag") modules.UnionWith(["001", "011", "019", "066"]);
@@ -639,7 +639,7 @@ public static class PulseAiSystemKnowledgeCatalog
             ["010"] = "#azure-admin", ["011"] = "#work-task-builder", ["012"] = "#role-admin",
             ["013"] = "#service-control", ["016"] = "#backup-retention", ["018"] = "#project-workload",
             ["019"] = "#project-workspace", ["020"] = "#project-intake", ["023"] = "#time-compliance",
-            ["030"] = "#reporting", ["037"] = "#roles-permissions-matrix", ["038"] = "#certify-integration",
+            ["030"] = "#reporting", ["033"] = "#project-forge", ["037"] = "#roles-permissions-matrix", ["038"] = "#certify-integration",
             ["039"] = "#billing-readiness", ["042"] = "#invoice-billing-center", ["055B"] = "#rate-card-administration",
             ["055C"] = "#work-register", ["055D"] = "#create-work-register", ["058"] = "#cicd-pipeline",
             ["060"] = "#contracts", ["062"] = "#profile", ["064"] = "#ai-provider-configuration",
@@ -676,6 +676,7 @@ public static class PulseAiSystemKnowledgeCatalog
         ("023", "Time Compliance", ["/api/time-compliance"]),
         ("026", "CRM / ERP Integration Center", ["/api/integrations/026"]),
         ("030", "Reporting", ["/api/report", "/api/project-financials", "/api/financial-operations"]),
+        ("033", "Project Forge", ["/api/project-forge"]),
         ("037", "Roles & Permissions Matrix", ["/api/roles-permissions"]),
         ("038", "Certify Connection & Sync", ["/api/certify"]),
         ("039", "Billing Readiness", ["/api/billing-readiness"]),
