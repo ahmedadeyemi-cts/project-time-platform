@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Guarded release controllers override both values with protected sha256 digest
+# references. Defaults remain only for local and pre-existing non-release builds.
+ARG PROJECTPULSE_DOTNET_SDK_BASE_IMAGE=mcr.microsoft.com/dotnet/sdk:10.0
+ARG PROJECTPULSE_DOTNET_ASPNET_BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0
+
+FROM ${PROJECTPULSE_DOTNET_SDK_BASE_IMAGE} AS build
 WORKDIR /src
 
 COPY src/backend/ProjectTime.Api/ProjectTime.Api.csproj src/backend/ProjectTime.Api/
@@ -13,7 +18,7 @@ RUN dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
     --output /app/publish \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM ${PROJECTPULSE_DOTNET_ASPNET_BASE_IMAGE} AS runtime
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=5080 \

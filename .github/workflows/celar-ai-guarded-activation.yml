@@ -1,0 +1,513 @@
+name: Celar AI Guarded Activation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only preflight or guarded activation
+        required: true
+        type: choice
+        options: [preflight, activate]
+      environment:
+        description: Protected GitHub environment
+        required: true
+        type: choice
+        options: [test, production]
+      expected_main_sha:
+        description: Exact 40-character current-main control commit (activation PR2)
+        required: true
+        type: string
+      expected_source_sha:
+        description: Exact merged application source commit to build and activate (source PR1)
+        required: true
+        type: string
+      change_ticket:
+        description: Approved non-secret change/rollback ticket reference
+        required: true
+        type: string
+      confirmation:
+        description: For activate, type ACTIVATE-CELAR-AI-TEST or ACTIVATE-CELAR-AI-PRODUCTION
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  # Share the deployment lock with the ordinary Test/Production release
+  # workflows so a guarded activation cannot overwrite a later deployment.
+  group: projectpulse-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    name: ${{ inputs.mode }} Celar AI in ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PROJECTPULSE_CELAR_ACTIVATION_MODE: ${{ inputs.mode }}
+      PROJECTPULSE_ENVIRONMENT: ${{ inputs.environment }}
+      PROJECTPULSE_EXPECTED_RELEASE_SHA: ${{ inputs.expected_source_sha }}
+      PROJECTPULSE_EXPECTED_CONTROL_SHA: ${{ inputs.expected_main_sha }}
+      PROJECTPULSE_CELAR_CHANGE_TICKET: ${{ inputs.change_ticket }}
+      PROJECTPULSE_CELAR_TYPED_CONFIRMATION: ${{ inputs.confirmation }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+      AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
+      AZURE_KEY_VAULT_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_KEY_VAULT_IDENTITY_RESOURCE_ID }}
+      AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
+      AZURE_CELAR_PROBE_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_PROBE_IDENTITY_RESOURCE_ID }}
+      AZURE_CELAR_APPLICATION_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_APPLICATION_IDENTITY_RESOURCE_ID }}
+      PROJECTPULSE_CELAR_API_SDK_BASE_IMAGE: ${{ vars.PROJECTPULSE_CELAR_API_SDK_BASE_IMAGE }}
+      PROJECTPULSE_CELAR_API_RUNTIME_BASE_IMAGE: ${{ vars.PROJECTPULSE_CELAR_API_RUNTIME_BASE_IMAGE }}
+      PROJECTPULSE_CELAR_PROBE_BASE_IMAGE: ${{ vars.PROJECTPULSE_CELAR_PROBE_BASE_IMAGE }}
+      PROJECTPULSE_CELAR_MIGRATOR_BASE_IMAGE: ${{ vars.PROJECTPULSE_CELAR_MIGRATOR_BASE_IMAGE }}
+      PROJECTPULSE_UPLOAD_STORAGE_ACCOUNT: ${{ vars.PROJECTPULSE_UPLOAD_STORAGE_ACCOUNT }}
+      PROJECTPULSE_UPLOAD_STORAGE_SHARE: ${{ vars.PROJECTPULSE_UPLOAD_STORAGE_SHARE }}
+      PROJECTPULSE_UPLOAD_ENVIRONMENT_STORAGE_NAME: ${{ vars.PROJECTPULSE_UPLOAD_ENVIRONMENT_STORAGE_NAME }}
+      PROJECTPULSE_UPLOAD_ROOT: /mnt/projectpulse/uploads
+      PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST: ${{ vars.PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST }}
+      PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID: ${{ vars.PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID }}
+      PROJECTPULSE_CLAMAV_HOST: ${{ vars.PROJECTPULSE_CLAMAV_HOST }}
+      PROJECTPULSE_CLAMAV_PORT: ${{ vars.PROJECTPULSE_CLAMAV_PORT }}
+      PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE: ${{ vars.PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE }}
+      PROJECTPULSE_PULSE_AI_ALLOW_LEXICAL_ONLY_COMPLETION: ${{ vars.PROJECTPULSE_PULSE_AI_ALLOW_LEXICAL_ONLY_COMPLETION }}
+      PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE: ${{ vars.PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE }}
+      PROJECTPULSE_CELAR_PRIVACY_APPROVAL_REFERENCE: ${{ vars.PROJECTPULSE_CELAR_PRIVACY_APPROVAL_REFERENCE }}
+      PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_SECRET_NAME: ${{ vars.PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_SECRET_NAME }}
+      PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID: ${{ vars.PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY_ID }}
+      PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_INFERENCE_MODEL_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_INFERENCE_MODEL_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_INFERENCE_TOKEN_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_INFERENCE_TOKEN_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_EMBEDDING_MODEL_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_EMBEDDING_MODEL_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_EMBEDDING_TOKEN_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_EMBEDDING_TOKEN_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_OCR_ENDPOINT_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_OCR_ENDPOINT_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_OCR_MODEL_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_OCR_MODEL_SECRET_NAME }}
+      PROJECTPULSE_PRIVATE_OCR_TOKEN_SECRET_NAME: ${{ vars.PROJECTPULSE_PRIVATE_OCR_TOKEN_SECRET_NAME }}
+      PROJECTPULSE_DATABASE_URL_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_URL_SECRET_NAME }}
+      PROJECTPULSE_ACTIVATION_SESSION_COOKIE_SECRET_NAME: ${{ vars.PROJECTPULSE_ACTIVATION_SESSION_COOKIE_SECRET_NAME }}
+      PROJECTPULSE_E2E_TIMESHEET_REQUEST_SECRET_NAME: ${{ vars.PROJECTPULSE_E2E_TIMESHEET_REQUEST_SECRET_NAME }}
+      PROJECTPULSE_SOW_ACTIVATION_REQUEST_SECRET_NAME: ${{ vars.PROJECTPULSE_SOW_ACTIVATION_REQUEST_SECRET_NAME }}
+
+    steps:
+      - name: Check out exact activation control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact current main and source contracts
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$PROJECTPULSE_EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PROJECTPULSE_EXPECTED_CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PROJECTPULSE_EXPECTED_RELEASE_SHA" != "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]]
+          git -c credential.helper='!f() { printf "username=x-access-token\npassword=%s\n" "$GITHUB_TOKEN"; }; f' \
+            fetch origin main:refs/remotes/origin/main --no-tags
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]] || {
+            echo 'The authorized activation-control SHA is no longer exact current main.' >&2
+            exit 1
+          }
+          git cat-file -e "$PROJECTPULSE_EXPECTED_RELEASE_SHA^{commit}"
+          git merge-base --is-ancestor "$PROJECTPULSE_EXPECTED_RELEASE_SHA" "$PROJECTPULSE_EXPECTED_CONTROL_SHA" || {
+            echo 'The authorized source commit is not an ancestor of the control commit.' >&2
+            exit 1
+          }
+
+          # PR2 is a control-only commit range. Any application source,
+          # migration, generated bundle, or unrelated deployment change after
+          # PR1 invalidates the two-SHA release authority.
+          changed="$(git diff --no-renames --name-only "$PROJECTPULSE_EXPECTED_RELEASE_SHA..$PROJECTPULSE_EXPECTED_CONTROL_SHA")"
+          [[ -n "$changed" ]] || {
+            echo 'The source and control commits have no reviewed control delta.' >&2
+            exit 1
+          }
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/celar-ai-guarded-activation.yml|\
+              scripts/celar-ai-apply-required-migrations.sh|\
+              scripts/celar-ai-private-network-probe.sh|\
+              scripts/run-celar-ai-guarded-activation.sh|\
+              scripts/run-celar-ai-containerapp-job.sh|\
+              deployment/containers/celar-ai-probe/Dockerfile|\
+              deployment/containers/celar-ai-migrator/Dockerfile|\
+              deployment/containers/api/Dockerfile|\
+              deployment/containers/web/Dockerfile|\
+              src/frontend/project-time-web/scripts/validate-celar-ai-guarded-activation.mjs|\
+              docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md) ;;
+              *)
+                printf 'Unauthorized source/control delta: %s\n' "$path" >&2
+                exit 1
+                ;;
+            esac
+          done <<<"$changed"
+          bash -n scripts/celar-ai-apply-required-migrations.sh
+          bash -n scripts/celar-ai-private-network-probe.sh
+          bash -n scripts/run-celar-ai-guarded-activation.sh
+          bash -n scripts/run-celar-ai-containerapp-job.sh
+          node src/frontend/project-time-web/scripts/validate-celar-ai-guarded-activation.mjs
+          git diff --check
+          echo 'CELAR_AI_TWO_SHA_SOURCE_CONTROL_GUARD=PASSED'
+
+      - name: Sign in to protected Azure environment
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify exact-source active web prerequisite
+        id: web
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_ACTIVATION_MODE: verify-web
+        run: |
+          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/celar-web-prerequisite.env"
+          bash scripts/run-celar-ai-guarded-activation.sh | tee "$evidence"
+          [[ "$(grep -c '^CELAR_AI_WEB_REVISION=' "$evidence")" == 1 ]]
+          [[ "$(grep -c '^CELAR_AI_WEB_IMAGE=' "$evidence")" == 1 ]]
+          [[ "$(grep -c '^CELAR_AI_WEB_SOURCE_SHA=' "$evidence")" == 1 ]]
+          revision="$(sed -n 's/^CELAR_AI_WEB_REVISION=//p' "$evidence")"
+          image="$(sed -n 's/^CELAR_AI_WEB_IMAGE=//p' "$evidence")"
+          source="$(sed -n 's/^CELAR_AI_WEB_SOURCE_SHA=//p' "$evidence")"
+          [[ -n "$revision" && -n "$image" && "$source" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]]
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+
+      - name: Read-only live preflight
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_ACTIVATION_MODE: preflight
+        run: bash scripts/run-celar-ai-guarded-activation.sh
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        if: inputs.mode == 'activate'
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: inputs.mode == 'activate'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Prepare detached exact application source
+        if: inputs.mode == 'activate'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source_root="$RUNNER_TEMP/celar-source"
+          rm -rf "$source_root"
+          git worktree add --detach "$source_root" "$PROJECTPULSE_EXPECTED_RELEASE_SHA"
+          [[ "$(git -C "$source_root" rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]]
+          echo 'CELAR_AI_DETACHED_SOURCE_CHECKOUT=PASSED'
+
+      - name: Build and validate exact source before cloud writes
+        if: inputs.mode == 'activate'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source_root="$RUNNER_TEMP/celar-source"
+          [[ "$(git -C "$source_root" rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]]
+          node src/frontend/project-time-web/scripts/validate-celar-ai-guarded-activation.mjs
+          dotnet build "$source_root/src/backend/ProjectTime.Api/ProjectTime.Api.csproj" --configuration Release
+          pushd "$source_root/src/frontend/project-time-web" >/dev/null
+          npm ci --no-audit --no-fund
+          node ./scripts/validate-celar-ai-production-readiness.mjs
+          node ./scripts/validate-celar-ai-external-deidentification.mjs
+          node ./scripts/validate-module-001-ai-task-grounding.mjs
+          node ./scripts/validate-module-011-private-runtime-activation.mjs
+          node ./scripts/validate-module-011-private-rag-orchestration.mjs
+          node ./scripts/validate-module-064-shared-ai.mjs
+          node ./scripts/validate-module-033-project-forge.mjs
+          npm run build
+          popd >/dev/null
+          git -C "$source_root" diff --check
+          git -C "$source_root" diff --exit-code
+          git diff --check
+          git diff --exit-code
+          echo 'CELAR_AI_EXACT_DETACHED_SOURCE_BUILD=PASSED'
+
+      - name: Build immutable API and activation images
+        id: images
+        if: inputs.mode == 'activate'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          token="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          source_root="$RUNNER_TEMP/celar-source"
+          [[ "$(git -C "$source_root" rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]]
+          control_short="${PROJECTPULSE_EXPECTED_CONTROL_SHA:0:12}"
+          api_tag="celar-${PROJECTPULSE_EXPECTED_RELEASE_SHA}-${control_short}-${token}"
+          probe_tag="celar-probe-${PROJECTPULSE_EXPECTED_RELEASE_SHA}-${control_short}-${token}"
+          migration_tag="celar-migrations-${PROJECTPULSE_EXPECTED_RELEASE_SHA}-${control_short}-${token}"
+
+          # The application context remains the detached PR1 source. Only the
+          # reviewed PR2 API Dockerfile is overlaid to supply digest-addressed
+          # base-image arguments; no application or migration source is copied
+          # from the control checkout.
+          install -m 0644 deployment/containers/api/Dockerfile "$source_root/deployment/containers/api/Dockerfile"
+          cmp -s deployment/containers/api/Dockerfile "$source_root/deployment/containers/api/Dockerfile"
+
+          az acr build --registry "$AZURE_ACR_NAME" --image "project-health-dashboard-api:$api_tag" \
+            --build-arg PROJECTPULSE_DOTNET_SDK_BASE_IMAGE="$PROJECTPULSE_CELAR_API_SDK_BASE_IMAGE" \
+            --build-arg PROJECTPULSE_DOTNET_ASPNET_BASE_IMAGE="$PROJECTPULSE_CELAR_API_RUNTIME_BASE_IMAGE" \
+            --file "$source_root/deployment/containers/api/Dockerfile" "$source_root" --output none --only-show-errors
+
+          probe_context="$RUNNER_TEMP/celar-probe-$token"
+          mkdir -p "$probe_context"
+          cp deployment/containers/celar-ai-probe/Dockerfile "$probe_context/Dockerfile"
+          cp scripts/celar-ai-private-network-probe.sh "$probe_context/"
+          az acr build --registry "$AZURE_ACR_NAME" --image "project-health-dashboard-celar-probe:$probe_tag" \
+            --build-arg CELAR_PROBE_BASE_IMAGE="$PROJECTPULSE_CELAR_PROBE_BASE_IMAGE" \
+            --file "$probe_context/Dockerfile" "$probe_context" --output none --only-show-errors
+
+          migration_context="$RUNNER_TEMP/celar-migrations-$token"
+          mkdir -p "$migration_context/migrations"
+          cp deployment/containers/celar-ai-migrator/Dockerfile "$migration_context/Dockerfile"
+          cp scripts/celar-ai-apply-required-migrations.sh "$migration_context/"
+          cp "$source_root"/database/migrations/{052_document_intelligence_runtime.sql,053_intelligence_answer_orchestration.sql,061_celar_ai_capability_routing.sql,070_module_033_project_forge.sql,071_ai_runtime_production_hardening.sql} "$migration_context/migrations/"
+          (cd "$migration_context/migrations" && sha256sum *.sql > SHA256SUMS)
+          printf '%s\n' "$PROJECTPULSE_EXPECTED_RELEASE_SHA" > "$migration_context/release-commit"
+          az acr build --registry "$AZURE_ACR_NAME" --image "project-health-dashboard-celar-migrations:$migration_tag" \
+            --build-arg CELAR_MIGRATOR_BASE_IMAGE="$PROJECTPULSE_CELAR_MIGRATOR_BASE_IMAGE" \
+            --file "$migration_context/Dockerfile" "$migration_context" --output none --only-show-errors
+
+          api_digest="$(az acr manifest show-metadata -r "$AZURE_ACR_NAME" -n "project-health-dashboard-api:$api_tag" --query digest -o tsv --only-show-errors)"
+          probe_digest="$(az acr manifest show-metadata -r "$AZURE_ACR_NAME" -n "project-health-dashboard-celar-probe:$probe_tag" --query digest -o tsv --only-show-errors)"
+          migration_digest="$(az acr manifest show-metadata -r "$AZURE_ACR_NAME" -n "project-health-dashboard-celar-migrations:$migration_tag" --query digest -o tsv --only-show-errors)"
+          for digest in "$api_digest" "$probe_digest" "$migration_digest"; do [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; done
+          echo "api=$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-api@$api_digest" >> "$GITHUB_OUTPUT"
+          echo "probe=$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-celar-probe@$probe_digest" >> "$GITHUB_OUTPUT"
+          echo "migration=$AZURE_ACR_NAME.azurecr.io/project-health-dashboard-celar-migrations@$migration_digest" >> "$GITHUB_OUTPUT"
+          echo 'CELAR_AI_IMMUTABLE_IMAGES=BUILT'
+
+      - name: Stage zero-traffic candidate
+        id: candidate
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_API_IMAGE: ${{ steps.images.outputs.api }}
+          PROJECTPULSE_CELAR_MIGRATION_IMAGE: ${{ steps.images.outputs.migration }}
+          PROJECTPULSE_CELAR_PROBE_IMAGE: ${{ steps.images.outputs.probe }}
+          PROJECTPULSE_CELAR_RUN_TOKEN: ga-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_ACTIVATION_MODE: activate
+        run: |
+          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/celar-candidate.env"
+          bash scripts/run-celar-ai-guarded-activation.sh | tee "$evidence"
+          candidate="$(sed -n 's/^CELAR_AI_CANDIDATE_REVISION=//p' "$evidence")"
+          fqdn="$(sed -n 's/^CELAR_AI_CANDIDATE_FQDN=//p' "$evidence")"
+          previous="$(sed -n 's/^CELAR_AI_PREVIOUS_REVISION=//p' "$evidence")"
+          [[ -n "$candidate" && -n "$fqdn" && -n "$previous" ]]
+          echo "revision=$candidate" >> "$GITHUB_OUTPUT"
+          echo "url=https://$fqdn" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+
+      - name: Apply and verify additive migrations 052, 053, 061, and 071
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_JOB_KIND: migration
+          PROJECTPULSE_CELAR_JOB_NAME: cmig-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_JOB_IMAGE: ${{ steps.images.outputs.migration }}
+          PROJECTPULSE_CELAR_MIGRATION_MODE: apply
+        run: bash scripts/run-celar-ai-containerapp-job.sh
+
+      - name: Verify private DNS, TLS, no redirect, authentication, and models
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_JOB_KIND: dependencies
+          PROJECTPULSE_CELAR_JOB_NAME: cdep-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_JOB_IMAGE: ${{ steps.images.outputs.probe }}
+        run: bash scripts/run-celar-ai-containerapp-job.sh
+
+      - name: Write persistent-storage canary from first replica
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_JOB_KIND: storage-write
+          PROJECTPULSE_CELAR_JOB_NAME: csw-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_JOB_IMAGE: ${{ steps.images.outputs.probe }}
+          PROJECTPULSE_STORAGE_CANARY: canary-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.environment }}
+        run: bash scripts/run-celar-ai-containerapp-job.sh
+
+      - name: Read persistent-storage canary from new replica
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_JOB_KIND: storage-read
+          PROJECTPULSE_CELAR_JOB_NAME: csr-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_JOB_IMAGE: ${{ steps.images.outputs.probe }}
+          PROJECTPULSE_STORAGE_CANARY: canary-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.environment }}
+        run: bash scripts/run-celar-ai-containerapp-job.sh
+
+      - name: Configure, reprocess, and prove candidate application
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          PROJECTPULSE_CELAR_JOB_KIND: application
+          PROJECTPULSE_CELAR_JOB_NAME: capp-${{ github.run_id }}-${{ github.run_attempt }}
+          PROJECTPULSE_CELAR_JOB_IMAGE: ${{ steps.images.outputs.probe }}
+          PROJECTPULSE_CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+        run: bash scripts/run-celar-ai-containerapp-job.sh
+
+      - name: Promote exact proven candidate
+        if: inputs.mode == 'activate'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_WEB_REVISION: ${{ steps.web.outputs.revision }}
+          EXPECTED_WEB_IMAGE: ${{ steps.web.outputs.image }}
+          EXPECTED_WEB_SOURCE: ${{ steps.web.outputs.source }}
+        run: |
+          set -Eeuo pipefail
+          candidate='${{ steps.candidate.outputs.revision }}'
+          previous='${{ steps.candidate.outputs.previous }}'
+
+          # Re-authorize both the source and deployment state immediately
+          # before the only traffic mutation. A later main commit, revision, or
+          # traffic change makes this run stale and therefore fails closed.
+          git -c credential.helper='!f() { printf "username=x-access-token\npassword=%s\n" "$GITHUB_TOKEN"; }; f' \
+            fetch origin main:refs/remotes/origin/main --no-tags
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$PROJECTPULSE_EXPECTED_CONTROL_SHA" ]] || {
+            echo 'Control main changed after candidate verification; promotion is forbidden.' >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$PROJECTPULSE_EXPECTED_RELEASE_SHA" "$PROJECTPULSE_EXPECTED_CONTROL_SHA" || {
+            echo 'The authorized source/control ancestry changed; promotion is forbidden.' >&2
+            exit 1
+          }
+          latest="$(az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query properties.latestRevisionName -o tsv --only-show-errors)"
+          [[ "$latest" == "$candidate" ]] || {
+            echo 'A later API revision exists; promotion is forbidden.' >&2
+            exit 1
+          }
+          candidate_metadata="$(az containerapp revision show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --revision "$candidate" -o json --only-show-errors)"
+          active="$(jq -r '.properties.active' <<<"$candidate_metadata")"
+          [[ "$active" == true ]] || {
+            echo 'The proven candidate is no longer active.' >&2
+            exit 1
+          }
+          candidate_source="$(jq -er '
+            [.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value]
+            | if length == 1 then .[0] else error("one source commit value is required") end
+          ' <<<"$candidate_metadata")" || {
+            echo 'The proven candidate no longer exposes exactly one source-commit stamp.' >&2
+            exit 1
+          }
+          [[ "$candidate_source" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]] || {
+            echo 'The candidate API source commit changed or does not match the authorized application source SHA.' >&2
+            exit 1
+          }
+          traffic="$(az containerapp ingress traffic show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            -o json --only-show-errors)"
+          jq -e --arg candidate "$candidate" --arg previous "$previous" '
+            all(.[]; .revisionName == $candidate or .revisionName == $previous)
+            and ([.[] | select(.revisionName == $previous and .weight == 100)] | length == 1)
+            and ([.[] | select(.revisionName == $candidate and .weight == 0)] | length == 1)
+          ' <<<"$traffic" >/dev/null || {
+            echo 'Traffic changed after candidate verification; promotion is forbidden.' >&2
+            exit 1
+          }
+
+          # Web is an immutable prerequisite, not a rollout target of this
+          # controller. Re-fetch its revision metadata and no-cache assets at
+          # the final mutation boundary; any intervening web release blocks API
+          # promotion.
+          web_evidence="$RUNNER_TEMP/celar-web-promotion.env"
+          PROJECTPULSE_CELAR_ACTIVATION_MODE=verify-web \
+            bash scripts/run-celar-ai-guarded-activation.sh | tee "$web_evidence"
+          web_revision="$(sed -n 's/^CELAR_AI_WEB_REVISION=//p' "$web_evidence")"
+          web_image="$(sed -n 's/^CELAR_AI_WEB_IMAGE=//p' "$web_evidence")"
+          web_source="$(sed -n 's/^CELAR_AI_WEB_SOURCE_SHA=//p' "$web_evidence")"
+          [[ "$web_revision" == "$EXPECTED_WEB_REVISION" \
+            && "$web_image" == "$EXPECTED_WEB_IMAGE" \
+            && "$web_source" == "$EXPECTED_WEB_SOURCE" \
+            && "$web_source" == "$PROJECTPULSE_EXPECTED_RELEASE_SHA" ]] || {
+            echo 'The exact-source web prerequisite changed before API promotion.' >&2
+            exit 1
+          }
+          az containerapp ingress traffic set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --revision-weight "$candidate=100" "$previous=0" \
+            --output none --only-show-errors
+          promoted_traffic="$(az containerapp ingress traffic show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            -o json --only-show-errors)"
+          jq -e --arg candidate "$candidate" --arg previous "$previous" '
+            all(.[]; .revisionName == $candidate or .revisionName == $previous)
+            and ([.[] | select(.revisionName == $candidate and .weight == 100)] | length == 1)
+            and ([.[] | select(.revisionName == $previous and .weight == 0)] | length == 1)
+          ' <<<"$promoted_traffic" >/dev/null
+          echo 'CELAR_AI_CANDIDATE_PROMOTION=PASSED'
+
+      - name: Candidate-only rollback on failure
+        if: failure() && inputs.mode == 'activate' && steps.candidate.outputs.revision != ''
+        shell: bash
+        run: |
+          set +e
+          candidate='${{ steps.candidate.outputs.revision }}'
+          previous='${{ steps.candidate.outputs.previous }}'
+          foreign="$(az containerapp ingress traffic show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --query "[?weight > \`0\` && revisionName != '$candidate' && revisionName != '$previous'].revisionName | [0]" \
+            -o tsv --only-show-errors)"
+          if [[ -z "$foreign" ]]; then
+            az containerapp ingress traffic set -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+              --revision-weight "$previous=100" "$candidate=0" --output none --only-show-errors
+          else
+            echo 'A later weighted revision exists; rollback will not alter its traffic.'
+          fi
+          active="$(az containerapp revision show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --revision "$candidate" --query properties.active -o tsv --only-show-errors)"
+          [[ "$active" != true ]] || az containerapp revision deactivate -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_API_APP" \
+            --revision "$candidate" --output none --only-show-errors
+          echo 'CELAR_AI_CANDIDATE_ROLLBACK=COMPLETE databaseRollback=false'
+
+      - name: Publish non-sensitive activation evidence
+        if: always()
+        shell: bash
+        env:
+          PROVEN_WEB_REVISION: ${{ steps.web.outputs.revision }}
+          PROVEN_WEB_IMAGE: ${{ steps.web.outputs.image }}
+          PROVEN_WEB_SOURCE: ${{ steps.web.outputs.source }}
+        run: |
+          {
+            echo '## Celar AI guarded activation'
+            echo
+            echo "- Mode: $PROJECTPULSE_CELAR_ACTIVATION_MODE"
+            echo "- Environment: $PROJECTPULSE_ENVIRONMENT"
+            echo "- Exact application source SHA: $PROJECTPULSE_EXPECTED_RELEASE_SHA"
+            echo "- Exact current-main control SHA: $PROJECTPULSE_EXPECTED_CONTROL_SHA"
+            echo "- Active exact-source web revision: ${PROVEN_WEB_REVISION:-not-proven}"
+            echo "- Active exact-source web image: ${PROVEN_WEB_IMAGE:-not-proven}"
+            echo "- Active exact-source web source SHA: ${PROVEN_WEB_SOURCE:-not-proven}"
+            echo "- Change ticket: $PROJECTPULSE_CELAR_CHANGE_TICKET"
+            echo "- Authorized by: $GITHUB_ACTOR"
+            echo '- Secret values or private endpoint values emitted: no'
+            echo '- Database rollback on candidate failure: no (additive migrations retained)'
+            echo '- Web image changed by this activation: no (standard exact-release web deployment remains authoritative)'
+            echo '- Raw SOW, customer identity, or engineer note in evidence: no'
+            if [[ '${{ job.status }}' == success ]]; then
+              echo '- Result: passed'
+            else
+              echo '- Result: failed closed'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

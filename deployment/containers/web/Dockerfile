@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine AS build
+# Production release controllers can override both values with reviewed sha256
+# digest references while existing local builds retain their familiar defaults.
+ARG PROJECTPULSE_NODE_BASE_IMAGE=node:24-alpine
+ARG PROJECTPULSE_NGINX_BASE_IMAGE=nginxinc/nginx-unprivileged:1.31.3-alpine
+
+FROM ${PROJECTPULSE_NODE_BASE_IMAGE} AS build
 
 # Install the locked frontend dependencies before copying the complete
 # non-secret repository context so Docker can retain the dependency cache.
@@ -183,7 +188,7 @@ WORKDIR /workspace/src/frontend/project-time-web
 RUN npm run build
 
 
-FROM nginxinc/nginx-unprivileged:1.31.3-alpine AS runtime
+FROM ${PROJECTPULSE_NGINX_BASE_IMAGE} AS runtime
 
 ENV API_UPSTREAM=http://127.0.0.1:5080 \
     NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
