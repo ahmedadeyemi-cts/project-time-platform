@@ -695,6 +695,124 @@ jobs:
             bash control/scripts/wait-containerapp-ready-revision.sh \
               '${{ vars.AZURE_RESOURCE_GROUP }}' "$app" "$latest" "$expected_image" 60 10
           }
+          capture_api_candidate_diagnostics() {
+            local revision="$1" replica container
+            local revision_json='{}' replicas_json='[]'
+            [[ -n "$revision" ]] || return 0
+            revision_json="$(az containerapp revision show \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_API_APP }}' \
+              --revision "$revision" -o json --only-show-errors 2>/dev/null || printf '{}')"
+            replicas_json="$(az containerapp replica list \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_API_APP }}' \
+              --revision "$revision" -o json --only-show-errors 2>/dev/null || printf '[]')"
+            replica="$(jq -r '.[0].name // empty' <<<"$replicas_json")"
+            container="$(jq -r '.properties.template.containers[0].name // empty' <<<"$revision_json")"
+
+            jq -n \
+              --arg revision "$revision" \
+              --argjson revisionState "$revision_json" \
+              --argjson replicas "$replicas_json" \
+              '{
+                revision: $revision,
+                healthState: ($revisionState.properties.healthState // "unknown"),
+                provisioningState: ($revisionState.properties.provisioningState // "unknown"),
+                runningState: ($revisionState.properties.runningState // "unknown"),
+                replicas: [$replicas[] | {
+                  name,
+                  runningState: (.properties.runningState // "unknown"),
+                  containers: [(.properties.containers // [])[] | {
+                    name,
+                    runningState,
+                    runningStateDetails,
+                    restartCount
+                  }],
+                  initContainers: [(.properties.initContainers // [])[] | {
+                    name,
+                    runningState,
+                    runningStateDetails,
+                    restartCount
+                  }]
+                }]
+              }' > /tmp/current-main-api-candidate-state.json
+
+            : > /tmp/current-main-api-system-raw.json
+            : > /tmp/current-main-api-console-raw.json
+            az containerapp logs show \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_API_APP }}' \
+              --revision "$revision" \
+              --type system --tail 200 --format json \
+              > /tmp/current-main-api-system-raw.json 2>/dev/null || true
+            if [[ -n "$replica" && -n "$container" ]]; then
+              az containerapp logs show \
+                -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+                -n '${{ vars.AZURE_API_APP }}' \
+                --revision "$revision" \
+                --replica "$replica" \
+                --container "$container" \
+                --type console --tail 200 --format json \
+                > /tmp/current-main-api-console-raw.json 2>/dev/null || true
+            fi
+
+            python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          interesting = re.compile(
+              r"exception|fail|fatal|error|warn|crash|exit|terminat|startup|host|listen|health|restart",
+              re.IGNORECASE,
+          )
+          redactions = [
+              (re.compile(r"(?i)(password|secret|token|api[-_ ]?key|authorization|cookie|session)(\s*[:=]\s*)[^\s,;]+"), r"\1\2[REDACTED]"),
+              (re.compile(r"(?i)(Host|Server|Data Source|Database|Username|User ID)\s*=\s*[^;\s]+"), r"\1=[REDACTED]"),
+              (re.compile(r"https?://[^\s\"']+"), "[REDACTED_URL]"),
+              (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
+              (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[REDACTED_IP]"),
+              (re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"), "[REDACTED_ID]"),
+              (re.compile(r"\b[A-Za-z0-9_+/=-]{80,}\b"), "[REDACTED_LONG_VALUE]"),
+          ]
+
+          def strings(value):
+              if isinstance(value, str):
+                  yield value
+              elif isinstance(value, list):
+                  for item in value:
+                      yield from strings(item)
+              elif isinstance(value, dict):
+                  for item in value.values():
+                      yield from strings(item)
+
+          output = []
+          for label, source in (
+              ("system", Path("/tmp/current-main-api-system-raw.json")),
+              ("console", Path("/tmp/current-main-api-console-raw.json")),
+          ):
+              try:
+                  raw = source.read_text(errors="replace")
+                  parsed = json.loads(raw) if raw.strip() else []
+              except (OSError, json.JSONDecodeError):
+                  parsed = []
+              for value in strings(parsed):
+                  for line in value.splitlines():
+                      if not interesting.search(line):
+                          continue
+                      sanitized = line[:2_000]
+                      for pattern, replacement in redactions:
+                          sanitized = pattern.sub(replacement, sanitized)
+                      output.append(f"{label}: {sanitized}")
+
+          Path("/tmp/current-main-api-candidate-startup.log").write_text(
+              "\n".join(output[:400]) + ("\n" if output else "no matching sanitized log lines were available\n")
+          )
+          PY
+            rm -f /tmp/current-main-api-system-raw.json /tmp/current-main-api-console-raw.json
+            echo 'API_CANDIDATE_DIAGNOSTICS=SANITIZED'
+            jq -c . /tmp/current-main-api-candidate-state.json
+            sed -n '1,400p' /tmp/current-main-api-candidate-startup.log
+          }
 
           if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
             ACTIVE_WEB_RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
@@ -725,6 +843,7 @@ jobs:
             ACTIVE_API="$(resolve_digest "$ACTIVE_API_RAW")"
             CANDIDATE_API_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
             EXPECTED_CANDIDATE_API_REV='${{ steps.deploy_api.outputs.revision }}'
+            capture_api_candidate_diagnostics "$CANDIDATE_API_REV" || true
             if [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]; then
               if [[ -n "$EXPECTED_CANDIDATE_API_REV" && "$CANDIDATE_API_REV" != "$EXPECTED_CANDIDATE_API_REV" ]]; then
                 echo "API_ROLLBACK=BLOCKED_CANDIDATE_REVISION_DRIFT" >&2
@@ -800,6 +919,14 @@ jobs:
           if [[ -f /tmp/current-main-release-runtime-evidence.json ]]; then
             install -m 0600 /tmp/current-main-release-runtime-evidence.json \
               control/evidence/current-main-runtime.json
+          fi
+          if [[ -f /tmp/current-main-api-candidate-state.json ]]; then
+            install -m 0600 /tmp/current-main-api-candidate-state.json \
+              control/evidence/current-main-api-candidate-state.json
+          fi
+          if [[ -f /tmp/current-main-api-candidate-startup.log ]]; then
+            install -m 0600 /tmp/current-main-api-candidate-startup.log \
+              control/evidence/current-main-api-candidate-startup.log
           fi
           cat > control/evidence/current-main-test-release.json <<JSON
           {
