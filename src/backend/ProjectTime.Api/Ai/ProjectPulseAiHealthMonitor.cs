@@ -100,8 +100,9 @@ public sealed class ProjectPulseAiHealthMonitor : BackgroundService
             return;
         }
 
-        // Run once when the API starts, after the registered secret loader has
-        // hydrated the shared configuration, and then keep the result current.
+        // Run once after startup and keep the result current. The independent
+        // database loader reconciles the shared registry again when its bounded
+        // asynchronous hydration completes.
         await RefreshSafely(stoppingToken);
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_configuration.HealthIntervalSeconds));
