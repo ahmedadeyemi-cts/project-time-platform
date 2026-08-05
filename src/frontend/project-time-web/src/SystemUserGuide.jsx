@@ -387,6 +387,29 @@ const detailedModuleGuides = {
     statuses: ['Intake / Planned', 'Active', 'On hold', 'Complete / Closed', 'Archived'],
     notes: ['Project access can depend on role, assignment, and document visibility rules.']
   },
+  'project-forge': {
+    category: 'Projects & Resources',
+    audience: ['Engineer reviewer', 'Project Manager', 'Project Management Lead', 'Super Administrator'],
+    purpose: 'Build and review live project plans, task estimates, schedules, budgets, calendars, decision matrices, Kanban boards, and Gantt views.',
+    functions: [
+      'Provides a dedicated application tab for every tab in the Ultimate Project Manager workbook.',
+      'Reads canonical projects, tasks, assignments, time, expenses, company holidays, identities, and project-document evidence.',
+      'Allows Super Administrators and Project Management Leads to select an authorized Project Manager from live identity data.',
+      'Restricts each Project Manager to projects they manage and each Engineer reviewer to assigned project estimates.',
+      'Creates document-grounded AI plan and estimate drafts through the Module 064 provider route.',
+      'Keeps AI output reviewable until a Project Manager explicitly adopts it into canonical project tasks and assignments.',
+      'Publishes assignment and material-update source events to the Module 065 notification pipeline.'
+    ],
+    steps: [
+      'Select Project Forge and choose a live project within your authorized scope.',
+      'Review the portfolio, schedule, cost, task, decision, Kanban, and Gantt tabs.',
+      'Optionally generate a private AI review draft from authorized SOW, GSD, design, and supporting documents.',
+      'Assign an Engineer from the current project team to review and modify the estimate.',
+      'After human review, adopt the plan to create or link canonical tasks and assignments.'
+    ],
+    statuses: ['Draft', 'Engineer review', 'PM review', 'Adopted', 'Archived'],
+    notes: ['AI output never becomes an assignment, baseline, or customer commitment without explicit human review.']
+  },
   'project-intake': {
     category: 'Projects & Resources',
     audience: ['Project Manager', 'Project Team Coordinator', 'Sales / Account Executive', 'Presales', 'Administrator'],

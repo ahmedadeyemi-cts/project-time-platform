@@ -585,6 +585,28 @@ public sealed class PulseAiDocumentGroundingService
                 WHERE p.project_id = @project_id
                   AND (
                       p.project_manager_user_id = @user_id
+                      OR (@is_pm_lead = TRUE AND (
+                          EXISTS (
+                              SELECT 1 FROM reporting_relationships rr
+                              WHERE rr.employee_user_id = p.project_manager_user_id
+                                AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                                AND rr.effective_start_date <= CURRENT_DATE
+                                AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                          )
+                          OR EXISTS (
+                              SELECT 1
+                              FROM app_users pm
+                              JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                              WHERE pm.user_id = p.project_manager_user_id
+                                AND scope.is_active = TRUE
+                                AND scope.scope_type = 'project_management_team_lead'
+                                AND (
+                                    (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                    OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                    OR scope.manager_user_id = pm.user_id
+                                )
+                          )
+                      ))
                       OR EXISTS (
                           SELECT 1
                           FROM project_assignments pa
@@ -615,6 +637,7 @@ public sealed class PulseAiDocumentGroundingService
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("project_id", projectId);
             command.Parameters.AddWithValue("user_id", access.UserId);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
         }
         catch (PostgresException exception) when (exception.SqlState == "42P01")
@@ -858,6 +881,28 @@ public sealed class PulseAiDocumentGroundingService
               AND COALESCE(d.engineering_visible, FALSE) = TRUE
               AND (
                   @is_broad = TRUE
+                  OR (@is_pm_lead = TRUE AND (
+                      EXISTS (
+                          SELECT 1 FROM reporting_relationships rr
+                          WHERE rr.employee_user_id = p.project_manager_user_id
+                            AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                            AND rr.effective_start_date <= CURRENT_DATE
+                            AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM app_users pm
+                          JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                          WHERE pm.user_id = p.project_manager_user_id
+                            AND scope.is_active = TRUE
+                            AND scope.scope_type = 'project_management_team_lead'
+                            AND (
+                                (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                OR scope.manager_user_id = pm.user_id
+                            )
+                      )
+                  ))
                   OR p.project_manager_user_id = @user_id
                   OR EXISTS (
                       SELECT 1
@@ -870,6 +915,7 @@ public sealed class PulseAiDocumentGroundingService
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("is_broad", access.IsBroadDocumentScope);
+        command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
         command.Parameters.AddWithValue("user_id", access.UserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return new DocumentCounts(0, 0, 0);
@@ -1117,6 +1163,12 @@ public sealed class PulseAiDocumentGroundingService
     {
         public bool IsBroadDocumentScope => RoleCodes.Overlaps(BroadDocumentRoles);
         public bool IsProjectManager => RoleCodes.Overlaps(ProjectManagementRoles);
+        public bool IsProjectManagementLead => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PROJECT_MANAGEMENT_LEAD",
+            "PROJECT_MANAGEMENT_TEAM_LEAD",
+            "PM_TEAM_LEAD"
+        });
         public string ScopeLabel => IsBroadDocumentScope
             ? "organization_document_scope"
             : IsProjectManager

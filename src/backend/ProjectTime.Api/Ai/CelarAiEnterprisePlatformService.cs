@@ -159,7 +159,8 @@ public sealed class CelarAiEnterprisePlatformService
                         ContainsPrivateDocumentText: false,
                         ContainsFinancialValues: false,
                         ContainsPeopleRecords: false,
-                        AcknowledgeSanitizedExternalUse: true),
+                        AcknowledgeSanitizedExternalUse: true,
+                        CapabilityCode: request.CapabilityCode),
                     cancellationToken);
                 if (!string.IsNullOrWhiteSpace(external.Content))
                 {

@@ -45,6 +45,7 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'closeout-email',
     'work-register',
     'contracts',
+    'project-forge',
     'project-flowhive',
     'qualifications-certifications',
     'user-guide'

@@ -122,6 +122,28 @@ public sealed class PulseAiPrivateRagRepository
                 )
                   AND (
                     @is_broad = TRUE
+                    OR (@is_pm_lead = TRUE AND (
+                        EXISTS (
+                            SELECT 1 FROM reporting_relationships rr
+                            WHERE rr.employee_user_id = p.project_manager_user_id
+                              AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                              AND rr.effective_start_date <= CURRENT_DATE
+                              AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM app_users pm
+                            JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                            WHERE pm.user_id = p.project_manager_user_id
+                              AND scope.is_active = TRUE
+                              AND scope.scope_type = 'project_management_team_lead'
+                              AND (
+                                  (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                  OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                  OR scope.manager_user_id = pm.user_id
+                              )
+                        )
+                    ))
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
@@ -153,6 +175,7 @@ public sealed class PulseAiPrivateRagRepository
             command.Parameters.AddWithValue("project_code", code);
             command.Parameters.AddWithValue("project_name", name);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
             var projects = new List<ProjectResolution>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -233,6 +256,28 @@ public sealed class PulseAiPrivateRagRepository
                       AND (cardinality(@categories) = 0 OR LOWER(ch.document_category) = ANY(@categories))
                       AND (
                         @is_broad = TRUE
+                        OR (@is_pm_lead = TRUE AND (
+                            EXISTS (
+                                SELECT 1 FROM reporting_relationships rr
+                                WHERE rr.employee_user_id = p.project_manager_user_id
+                                  AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                                  AND rr.effective_start_date <= CURRENT_DATE
+                                  AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM app_users pm
+                                JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                                WHERE pm.user_id = p.project_manager_user_id
+                                  AND scope.is_active = TRUE
+                                  AND scope.scope_type = 'project_management_team_lead'
+                                  AND (
+                                      (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                      OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                      OR scope.manager_user_id = pm.user_id
+                                  )
+                            )
+                        ))
                         OR p.project_manager_user_id = @user_id
                         OR EXISTS (
                             SELECT 1 FROM project_assignments pa
@@ -318,6 +363,7 @@ public sealed class PulseAiPrivateRagRepository
             command.Parameters.AddWithValue("require_timesheet", query.RequireTimesheetFlag);
             command.Parameters.AddWithValue("categories", categories);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
             command.Parameters.AddWithValue("question", Clean(query.Question, 12_000));
             command.Parameters.AddWithValue("has_embedding", hasEmbedding);
@@ -713,6 +759,28 @@ public sealed class PulseAiPrivateRagRepository
                     @is_broad = TRUE
                     OR run.actual_user_id = @user_id
                     OR run.effective_user_id = @user_id
+                    OR (@is_pm_lead = TRUE AND (
+                        EXISTS (
+                            SELECT 1 FROM reporting_relationships rr
+                            WHERE rr.employee_user_id = p.project_manager_user_id
+                              AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                              AND rr.effective_start_date <= CURRENT_DATE
+                              AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM app_users pm
+                            JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                            WHERE pm.user_id = p.project_manager_user_id
+                              AND scope.is_active = TRUE
+                              AND scope.scope_type = 'project_management_team_lead'
+                              AND (
+                                  (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                  OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                  OR scope.manager_user_id = pm.user_id
+                              )
+                        )
+                    ))
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
@@ -723,6 +791,7 @@ public sealed class PulseAiPrivateRagRepository
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("answer_run_id", answerRunId);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)) return null;

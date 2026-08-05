@@ -41,7 +41,8 @@ public sealed record CelarAiComposeRequest(
     string? TaskName = null,
     string? CategoryCode = null,
     string? EngineerNote = null,
-    bool AllowSanitizedExternalFallback = false);
+    bool AllowSanitizedExternalFallback = false,
+    string? CapabilityCode = null);
 
 public sealed record CelarAiTimelineItem(
     string Id,
@@ -110,7 +111,8 @@ public sealed record CelarAiExternalReasoningRequest(
     bool ContainsPrivateDocumentText,
     bool ContainsFinancialValues,
     bool ContainsPeopleRecords,
-    bool AcknowledgeSanitizedExternalUse);
+    bool AcknowledgeSanitizedExternalUse,
+    string? CapabilityCode = null);
 
 public sealed record CelarAiExternalReasoningResult(
     string Status,

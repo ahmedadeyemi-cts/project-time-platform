@@ -49,6 +49,7 @@ public static class ModuleAvailabilityModule
             ["028"] = Module("028", "ai-time-entry", "AI Time Entry", "Time Management"),
             ["029"] = Module("029", "uat-validation", "UAT Validation", "Platform Operations"),
             ["030"] = Module("030", "reporting", "Reporting", "Reports & Workflow"),
+            ["033"] = Module("033", "project-forge", "Project Forge", "Project Delivery"),
             ["036"] = Module("036", "sales-insights", "Sales Insights Dashboard", "Sales & Opportunities"),
             ["037"] = Module("037", "roles-permissions-matrix", "Roles & Permissions Matrix", "Administration"),
             ["038"] = Module("038", "certify-integration", "Certinia Integration", "Integrations"),

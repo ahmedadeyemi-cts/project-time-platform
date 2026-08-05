@@ -25,6 +25,7 @@ const moduleRegistry = [
   ['reporting', '030'],
   ['financial-operations-workbench', '031'],
   ['notification-delivery-monitor', '032'],
+  ['project-forge', '033'],
   ['sales-insights', '036'],
   ['certify-integration', '038'],
   ['billing-readiness', '039'],
@@ -135,6 +136,7 @@ for (const roleCode of [
     'closeout-email',
     'work-register',
     'contracts',
+    'project-forge',
     'project-flowhive',
     'qualifications-certifications',
     'user-guide'
@@ -220,7 +222,7 @@ for (const roleCode of [
 // Roles driven by ordinary permission evidence retain that evidence and do not
 // become empty workspaces merely because they lack a special business baseline.
 const ordinaryRoleCases = [
-  ['ENGINEERING', ['timesheet', 'utilization', 'holiday-admin', 'project-workspace', 'qualifications-certifications']],
+  ['ENGINEERING', ['timesheet', 'utilization', 'holiday-admin', 'project-workspace', 'project-forge', 'qualifications-certifications']],
   ['ENGINEERING_LEAD', ['timesheet', 'manager-approval', 'utilization', 'project-workspace', 'qualifications-certifications']],
   ['MANAGER', ['manager-approval', 'utilization', 'project-workload', 'reporting']],
   ['SOLUTION_ARCHITECT', ['timesheet', 'holiday-admin', 'project-intake', 'project-workspace', 'sow-generator', 'reporting']],

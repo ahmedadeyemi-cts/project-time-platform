@@ -97,6 +97,7 @@ const canonicalRouteNumbers = {
   'ai-time-entry': '028',
   'uat-validation': '029',
   reporting: '030',
+  'project-forge': '033',
   'sales-insights': '036',
   'roles-permissions-matrix': '037',
   'certify-integration': '038',

@@ -66,6 +66,7 @@ internal static class EnterpriseReportingSourceLoader
             ["secure_project_information_audit"] = new("secure_project_information_audit", "Secure project-information audit", "secure_project_information_audit"),
             ["pmo_projects"] = new("pmo_projects", "Enterprise PMO project records", "pmo_project_records"),
             ["pmo_controls"] = new("pmo_controls", "Enterprise PMO control register", "pmo_control_items"),
+            ["project_forge_plans"] = new("project_forge_plans", "Project Forge governed plans", "project_forge_plans"),
             ["project_flowhive_plans"] = new("project_flowhive_plans", "Persistent Project FlowHive plans", "project_flowhive_plans")
         };
 
@@ -299,7 +300,7 @@ internal static class EnterpriseReportingSourceLoader
         or "project_notification_dispatches" or "customer_acceptance_engagements"
         or "acceptance_evidence" or "acceptance_decisions"
         or "secure_project_information_requests" or "secure_project_information_audit"
-        or "pmo_projects" or "pmo_controls" or "project_flowhive_plans";
+        or "pmo_projects" or "pmo_controls" or "project_forge_plans" or "project_flowhive_plans";
 
     private static string? First(HashSet<string> columns, params string[] candidates) =>
         candidates.FirstOrDefault(columns.Contains);
