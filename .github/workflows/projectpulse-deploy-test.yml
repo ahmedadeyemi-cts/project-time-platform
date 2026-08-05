@@ -3,12 +3,19 @@ name: ProjectPulse Deploy Test
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: Deployment environment
+      release_commit:
+        description: Exact reviewed source commit
         required: true
-        default: test
-        type: choice
-        options: [test]
+        default: e83340b5a4215ea63901cea98ea17596444f96b7
+        type: string
+      confirmation:
+        description: Enter DEPLOY-E83340B5-MIGRATIONS-071-073-TO-TEST
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - deployment/releases/test/current-main-e83340b5-20260805.json
 
 permissions:
   id-token: write
@@ -20,77 +27,407 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  release:
+    name: Guarded current-main migrations 071-073 and application Test release
+    if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 180
+    env:
+      RELEASE_MANIFEST: deployment/releases/test/current-main-e83340b5-20260805.json
+      EXPECTED_SOURCE_SHA: e83340b5a4215ea63901cea98ea17596444f96b7
 
-      - uses: azure/login@v2
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact application source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: e83340b5a4215ea63901cea98ea17596444f96b7
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Guard exact source, manifest, and control boundary
+        id: guard
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          CONTROL_SHA="$(git -C control rev-parse HEAD)"
+          SOURCE_SHA="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_SHA" == "$GITHUB_SHA" ]]
+          [[ "$SOURCE_SHA" == "$EXPECTED_SOURCE_SHA" ]]
+          [[ "$(jq -r .sourceSha "control/$RELEASE_MANIFEST")" == "$EXPECTED_SOURCE_SHA" ]]
+          [[ "$(jq -r .environment "control/$RELEASE_MANIFEST")" == test ]]
+          [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == false ]]
+          [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == false ]]
+          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
+              echo "Only the exact reviewed source SHA may deploy." >&2
+              exit 1
+            }
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-E83340B5-MIGRATIONS-071-073-TO-TEST ]] || {
+              echo "Deployment confirmation does not match." >&2
+              exit 1
+            }
+          elif [[ "$EVENT_NAME" != push ]]; then
+            echo "Unsupported release trigger: $EVENT_NAME" >&2
+            exit 1
+          fi
+
+          git -C control merge-base --is-ancestor "$SOURCE_SHA" "$CONTROL_SHA" || {
+            echo "The reviewed source is not an ancestor of the release controls." >&2
+            exit 1
+          }
+
+          cat > /tmp/expected-control-paths <<'EOF'
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          deployment/containers/release-test/api.Dockerfile
+          deployment/releases/test/current-main-e83340b5-20260805.json
+          scripts/release-test/apply-071-073.sh
+          scripts/release-test/run-migration-job.sh
+          scripts/release-test/verify-runtime.mjs
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/expected-control-paths
+          LC_ALL=C sort -o /tmp/expected-control-paths /tmp/expected-control-paths
+          git -C control diff --name-status "$SOURCE_SHA...$CONTROL_SHA" > /tmp/control-name-status
+          awk '$1 !~ /^[AM]$/ { exit 1 }' /tmp/control-name-status || {
+            echo "Release control boundary contains a deletion, rename, copy, or type change." >&2
+            cat /tmp/control-name-status >&2
+            exit 1
+          }
+          cut -f2 /tmp/control-name-status | LC_ALL=C sort > /tmp/actual-control-paths
+          diff -u /tmp/expected-control-paths /tmp/actual-control-paths
+          git -C control diff --check "$SOURCE_SHA...$CONTROL_SHA"
+
+          [[ "$(git -C control rev-parse HEAD:scripts/build-pr55-acr-image.sh)" == db96de4c548a38761fb4dc79c8ac55babf17efca ]]
+          [[ "$(git -C control rev-parse HEAD:scripts/export-pr55-test-database-url.sh)" == 598526dd59d2fa47ea2263e28f13ea8bf49ff3cb ]]
+          [[ "$(git -C control rev-parse HEAD:scripts/wait-containerapp-ready-revision.sh)" == 7f959e2b53ba68db28202ac111994cb3a406b859 ]]
+          [[ "$(git -C control rev-parse HEAD:deployment/containers/pr55-migrator/Dockerfile)" == 90f3ba7cab22caa9f39a27746f169bf699a8fb3c ]]
+
+          mapfile -t PATHS < <(jq -r '.migrations[].path' "control/$RELEASE_MANIFEST")
+          mapfile -t BLOBS < <(jq -r '.migrations[].blobSha' "control/$RELEASE_MANIFEST")
+          mapfile -t HASHES < <(jq -r '.migrations[].sha256' "control/$RELEASE_MANIFEST")
+          for index in 0 1 2; do
+            [[ "$(git -C release rev-parse "HEAD:${PATHS[$index]}")" == "${BLOBS[$index]}" ]]
+            [[ "$(sha256sum "release/${PATHS[$index]}" | awk '{print $1}')" == "${HASHES[$index]}" ]]
+          done
+          test ! -e release/database/migrations/074_module_066_project_flowhive_production.sql
+          test ! -e release/database/rollback/074_module_066_project_flowhive_production_rollback.sql
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "control_sha=$CONTROL_SHA" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_MAIN_TEST_RELEASE_BOUNDARY=PASSED"
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Capture current release
+      - name: Validate protected Test resource contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'
+          BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || {
+            echo "PUBLIC_URL is not the exact protected Test origin." >&2
+            exit 1
+          }
+          for value in \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            '${{ vars.AZURE_WEB_APP }}'; do
+            [[ -n "$value" && "$value" != None && "$value" != null ]]
+          done
+          mapfile -t ENV_NAMES < <(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query 'properties.template.containers[0].env[].name' -o tsv --only-show-errors)
+          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/main-release-api-env-names
+          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
+            grep -Fxq "$name" /tmp/main-release-api-env-names || {
+              echo "Missing required Test API database variable: $name" >&2
+              exit 1
+            }
+          done
+          echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
+
+      - name: Load Test database connection
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+        run: bash control/scripts/export-pr55-test-database-url.sh
+
+      - name: Capture current immutable API and web release
         id: before
         shell: bash
         run: |
           set -Eeuo pipefail
-          OLD_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          OLD_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
-          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          resolve_digest() {
+            local image="$1"
+            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
+            local relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside the approved Test ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show \
+              --name '${{ vars.AZURE_ACR_NAME }}' \
+              --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]] || {
+            echo "Test API and web must both use single-revision mode." >&2
+            exit 1
+          }
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+          echo "old_api_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
+          echo "old_web_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
 
-      - name: Build API and web images
+      - name: Build immutable source-stamped API and web images
+        id: build
         shell: bash
         run: |
           set -Eeuo pipefail
-          API_TAG="ci-${GITHUB_SHA}"
-          WEB_TAG="ci-${GITHUB_SHA}"
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-api:$API_TAG" --file deployment/containers/api/Dockerfile .
-          az acr build --registry '${{ vars.AZURE_ACR_NAME }}' --image "project-health-dashboard-web:$WEB_TAG" --file deployment/containers/web/Dockerfile .
+          SOURCE_SHA='${{ steps.guard.outputs.source_sha }}'
+          CONTROL_SHA='${{ steps.guard.outputs.control_sha }}'
+          install -d release/deployment/containers/release-test
+          install -m 0644 control/deployment/containers/release-test/api.Dockerfile \
+            release/deployment/containers/release-test/api.Dockerfile
+          install -d release/src/frontend/project-time-web/public
+          cat > release/src/frontend/project-time-web/public/release.json <<JSON
+          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","flowHiveIncluded":false,"migration074Included":false}
+          JSON
+          API_REPO=project-health-dashboard-api
+          WEB_REPO=project-health-dashboard-web
+          API_TAG="main-${SOURCE_SHA:0:12}-$GITHUB_RUN_ID"
+          WEB_TAG="main-${SOURCE_SHA:0:12}-$GITHUB_RUN_ID"
+          API_DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:$API_TAG" \
+            release/deployment/containers/release-test/api.Dockerfile release)"
+          WEB_DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:$WEB_TAG" \
+            release/deployment/containers/web/Dockerfile release)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "IMMUTABLE_TEST_IMAGES=BUILT"
 
-      - name: Deploy API
+      - name: Build checksum-pinned migration image
+        id: migration
         shell: bash
         run: |
           set -Eeuo pipefail
-          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image "$API_IMAGE" --set-env-vars PROJECTPULSE_ENVIRONMENT=test --revision-suffix "ciapi-${GITHUB_RUN_ID}" --output none
-
-      - name: Validate API
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/api/health' || true)"
-            case "$STATUS" in 200|401) exit 0 ;; esac
-            sleep 10
+          CONTEXT="$RUNNER_TEMP/current-main-migrator-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/release-test/apply-071-073.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          for file in \
+            071_ai_runtime_production_hardening.sql \
+            072_celar_ai_conversation_attachments.sql \
+            073_module_033_project_forge_interactive.sql; do
+            install -m 0644 "release/database/migrations/$file" "$CONTEXT/migrations/$file"
           done
-          exit 1
+          jq -r '.migrations[] | "\(.sha256)  \(.path | split("/")[-1])"' \
+            "control/$RELEASE_MANIFEST" > "$CONTEXT/migrations/SHA256SUMS"
+          printf '%s\n' '${{ steps.guard.outputs.source_sha }}' > "$CONTEXT/release-commit"
+          DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-main-release-migrator:${{ steps.guard.outputs.source_sha }}-$GITHUB_RUN_ID" \
+            "$CONTEXT/Dockerfile" "$CONTEXT")"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-main-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy web
+      - name: Apply or verify migrations 071 through 073 in the private Test network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-a
+          MAIN_RELEASE_MIGRATION_MODE: apply
+        run: bash control/scripts/release-test/run-migration-job.sh
+
+      - name: Reverify migrations 071 through 073 without writes
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-v
+          MAIN_RELEASE_MIGRATION_MODE: verify
+        run: bash control/scripts/release-test/run-migration-job.sh
+
+      - name: Deploy exact API digest
+        id: deploy_api
         shell: bash
         run: |
           set -Eeuo pipefail
-          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web:ci-${{ github.sha }}'
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image "$WEB_IMAGE" --revision-suffix "ciweb-${GITHUB_RUN_ID}" --output none
-
-      - name: Validate web
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          echo "started=true" >> "$GITHUB_OUTPUT"
+          OLD_REV='${{ steps.before.outputs.old_api_revision }}'
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars \
+              PROJECTPULSE_ENVIRONMENT=test \
+              PROJECTPULSE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
+              PROJECTPULSE_RELEASE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
+              PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
+              PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT='${{ steps.guard.outputs.control_sha }}' \
+            --revision-suffix "tapi-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --output none --only-show-errors
+          NEW_REV=""
           for attempt in $(seq 1 30); do
-            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' '${{ vars.PUBLIC_URL }}/' || true)"
-            [[ "$STATUS" == "200" ]] && exit 0
-            sleep 10
+            NEW_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]] && break
+            sleep 2
           done
-          exit 1
+          [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]]
+          echo "revision=$NEW_REV" >> "$GITHUB_OUTPUT"
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' \
+            "$NEW_REV" '${{ steps.build.outputs.api_image }}' 60 10
 
-      - name: Roll back on failure
-        if: failure()
+      - name: Deploy exact web digest
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "started=true" >> "$GITHUB_OUTPUT"
+          OLD_REV='${{ steps.before.outputs.old_web_revision }}'
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "tweb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --output none --only-show-errors
+          NEW_REV=""
+          for attempt in $(seq 1 30); do
+            NEW_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]] && break
+            sleep 2
+          done
+          [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]]
+          echo "revision=$NEW_REV" >> "$GITHUB_OUTPUT"
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' \
+            "$NEW_REV" '${{ steps.build.outputs.web_image }}' 60 10
+
+      - name: Verify Celar AI, Module 064, attachments, and Project Forge runtime
+        shell: bash
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          SOURCE_SHA: ${{ steps.guard.outputs.source_sha }}
+          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
+          EVIDENCE_PATH: /tmp/current-main-release-runtime-evidence.json
+        run: node control/scripts/release-test/verify-runtime.mjs
+
+      - name: Roll back candidate application digests on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
         shell: bash
         run: |
           set +e
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "rbapi-${GITHUB_RUN_ID}" --output none
-          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "rbweb-${GITHUB_RUN_ID}" --output none
+          rollback_component() {
+            local app="$1" candidate="$2" previous="$3" old_revision="$4" suffix="$5"
+            [[ -n "$candidate" && -n "$previous" ]] || return 0
+            local active
+            active="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n "$app" --query properties.template.containers[0].image -o tsv --only-show-errors 2>/dev/null)"
+            if [[ "$active" != "$candidate" ]]; then
+              echo "ROLLBACK_SKIPPED app=$app reason=candidate_not_active"
+              return 0
+            fi
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n "$app" \
+              --image "$previous" --revision-suffix "$suffix-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+              --output none --only-show-errors || return 1
+            local revision=""
+            for attempt in $(seq 1 30); do
+              revision="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n "$app" --query properties.latestRevisionName -o tsv --only-show-errors 2>/dev/null)"
+              [[ -n "$revision" && "$revision" != "$old_revision" ]] && break
+              sleep 2
+            done
+            bash control/scripts/wait-containerapp-ready-revision.sh \
+              '${{ vars.AZURE_RESOURCE_GROUP }}' "$app" "$revision" "$previous" 60 10
+          }
+          result=0
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            rollback_component '${{ vars.AZURE_WEB_APP }}' \
+              '${{ steps.build.outputs.web_image }}' '${{ steps.before.outputs.old_web_image }}' \
+              '${{ steps.before.outputs.old_web_revision }}' tweb-rb || result=1
+          fi
+          if [[ '${{ steps.deploy_api.outputs.started }}' == true ]]; then
+            rollback_component '${{ vars.AZURE_API_APP }}' \
+              '${{ steps.build.outputs.api_image }}' '${{ steps.before.outputs.old_api_image }}' \
+              '${{ steps.before.outputs.old_api_revision }}' tapi-rb || result=1
+          fi
+          echo "DATABASE_ROLLBACK=NOT_EXECUTED_SCHEMA_STAYS_FORWARD"
+          exit "$result"
+
+      - name: Write sanitized Test release evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p control/evidence
+          if [[ -f /tmp/current-main-release-runtime-evidence.json ]]; then
+            install -m 0600 /tmp/current-main-release-runtime-evidence.json \
+              control/evidence/current-main-runtime.json
+          fi
+          cat > control/evidence/current-main-test-release.json <<JSON
+          {
+            "environment": "test",
+            "sourceSha": "${{ steps.guard.outputs.source_sha }}",
+            "controlSha": "${{ steps.guard.outputs.control_sha }}",
+            "runId": "${{ github.run_id }}",
+            "runAttempt": "${{ github.run_attempt }}",
+            "flowHiveIncluded": false,
+            "migration074Included": false,
+            "migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive"],
+            "migrationImage": "${{ steps.migration.outputs.image }}",
+            "apiImage": "${{ steps.build.outputs.api_image }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "apiRevision": "${{ steps.deploy_api.outputs.revision }}",
+            "webRevision": "${{ steps.deploy_web.outputs.revision }}",
+            "databaseRollbackOnFailure": false
+          }
+          JSON
+
+      - name: Upload sanitized Test release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: current-main-test-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: control/evidence
+          if-no-files-found: error
+          retention-days: 30
