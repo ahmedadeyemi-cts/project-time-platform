@@ -51,7 +51,9 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_FORGE_PROJECT_ID' scripts/release-test/run-migration-job.sh
           grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' scripts/release-test/apply-071-073.sh
           grep -Fq "current_database() <> current_setting('projectpulse.release.expected_database')" scripts/release-test/apply-071-073.sh
-          grep -Fq 'This guarded release only accepts a fresh 071-073 migration set' scripts/release-test/apply-071-073.sh
+          grep -Fq 'Refusing partial, duplicate, or mixed 071-073 ledger state' scripts/release-test/apply-071-073.sh
+          grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING' scripts/release-test/apply-071-073.sh
+          ! grep -Fq "find \"\$MIGRATION_ROOT\" -maxdepth" scripts/release-test/apply-071-073.sh
           ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_DATABASE_URL_SECRET_NAME' .github/workflows/projectpulse-deploy-test.yml
