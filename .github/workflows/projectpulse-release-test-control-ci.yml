@@ -54,6 +54,9 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' scripts/release-test/run-migration-job.sh
           ! grep -Fq 'PROJECTPULSE_TEST_FORGE_PROJECT_ID' scripts/release-test/run-migration-job.sh
           grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' scripts/release-test/apply-071-073.sh
+          grep -Fq 'PSQL_TARGET=()' scripts/release-test/apply-071-073.sh
+          grep -Fq 'psql "${PSQL_TARGET[@]}"' scripts/release-test/apply-071-073.sh
+          grep -Fq 'PGDATABASE does not match the protected Test database name' scripts/release-test/apply-071-073.sh
           grep -Fq "current_database() <> current_setting('projectpulse.release.expected_database')" scripts/release-test/apply-071-073.sh
           grep -Fq 'Refusing partial, duplicate, or mixed 071-073 ledger state' scripts/release-test/apply-071-073.sh
           grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING' scripts/release-test/apply-071-073.sh
@@ -63,10 +66,18 @@ jobs:
           ! grep -Fq 'keyvault secret show --id "$KEY_VAULT_SECRET_URI"' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'keyvault show --name' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'keyvault show --name' scripts/release-test/run-migration-job.sh
-          grep -Fq 'DATABASE_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'must be an exact secret name with an optional version' scripts/release-test/run-migration-job.sh
+          grep -Fq 'DATABASE_PASSWORD_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME must be an exact secret name with an optional version' scripts/release-test/run-migration-job.sh
+          grep -Fq 'main-release-db-password' scripts/release-test/run-migration-job.sh
+          grep -Fq '{name: "PGPASSWORD", secretRef: "main-release-db-password"}' scripts/release-test/run-migration-job.sh
+          grep -Fq '{name: "PGSSLMODE", value: "verify-full"}' scripts/release-test/run-migration-job.sh
+          ! grep -Fq 'main-release-db-url' scripts/release-test/run-migration-job.sh
+          ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' scripts/release-test/run-migration-job.sh
           grep -Fq 'steps.contract.outputs.migrator_identity' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'steps.contract.outputs.database_secret_name' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.database_password_secret_name' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.database_host' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.database_port' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'steps.contract.outputs.database_user' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq '^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"' scripts/release-test/run-migration-job.sh
@@ -97,7 +108,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r6"
+          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r7"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"

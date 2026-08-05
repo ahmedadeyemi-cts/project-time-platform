@@ -10,8 +10,11 @@ JOB_NAME="${MAIN_RELEASE_MIGRATION_JOB_NAME:-}"
 MODE="${MAIN_RELEASE_MIGRATION_MODE:-verify}"
 MIGRATOR_IDENTITY="${AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID:-}"
 KEY_VAULT_URI="${AZURE_KEY_VAULT_URI:-}"
-SECRET_NAME_VERSION="${PROJECTPULSE_DATABASE_URL_SECRET_NAME:-}"
+PASSWORD_SECRET_NAME_VERSION="${PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME:-}"
+EXPECTED_DATABASE_HOST="${PROJECTPULSE_TEST_DATABASE_HOST:-}"
+EXPECTED_DATABASE_PORT="${PROJECTPULSE_TEST_DATABASE_PORT:-}"
 EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
+EXPECTED_DATABASE_USER="${PROJECTPULSE_TEST_DATABASE_USER:-}"
 CONTROL_SHA="${MAIN_RELEASE_CONTROL_SHA:-}"
 RUN_SCOPE="${GITHUB_RUN_ID:-unknown}-${GITHUB_RUN_ATTEMPT:-unknown}"
 
@@ -28,15 +31,18 @@ normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;
 MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
 [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || fail "AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID must be an exact UAMI resource ID."
 [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] || fail "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI."
-[[ "$SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || fail "PROJECTPULSE_DATABASE_URL_SECRET_NAME must be an exact secret name with an optional version."
+[[ "$PASSWORD_SECRET_NAME_VERSION" =~ ^[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || fail "PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME must be an exact secret name with an optional version."
+[[ "$EXPECTED_DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]] || fail "PROJECTPULSE_TEST_DATABASE_HOST must be an exact database host."
+[[ "$EXPECTED_DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( EXPECTED_DATABASE_PORT >= 1 && EXPECTED_DATABASE_PORT <= 65535 )) || fail "PROJECTPULSE_TEST_DATABASE_PORT must be an exact database port."
 [[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
+[[ "$EXPECTED_DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_USER must be an exact PostgreSQL identifier."
 [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_CONTROL_SHA must be an exact commit."
 command -v az >/dev/null || fail "Azure CLI is required."
 command -v curl >/dev/null || fail "curl is required."
 command -v jq >/dev/null || fail "jq is required."
 
 KEY_VAULT_URI="${KEY_VAULT_URI%/}"
-SECRET_URI="$KEY_VAULT_URI/secrets/$SECRET_NAME_VERSION"
+PASSWORD_SECRET_URI="$KEY_VAULT_URI/secrets/$PASSWORD_SECRET_NAME_VERSION"
 
 SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
 [[ "$SUBSCRIPTION_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "Azure subscription ID is unavailable."
@@ -94,12 +100,15 @@ validate_job_ownership() {
     --arg server "$ACR_NAME.azurecr.io" \
     --arg image "$MIGRATION_IMAGE" \
     --arg jobName "$JOB_NAME" \
-    --arg secretUri "$SECRET_URI" \
+    --arg passwordSecretUri "$PASSWORD_SECRET_URI" \
     --arg mode "$MODE" \
     --arg release "$EXPECTED_RELEASE_COMMIT" \
     --arg control "$CONTROL_SHA" \
     --arg runScope "$RUN_SCOPE" \
-    --arg databaseName "$EXPECTED_DATABASE_NAME" '
+    --arg databaseHost "$EXPECTED_DATABASE_HOST" \
+    --arg databasePort "$EXPECTED_DATABASE_PORT" \
+    --arg databaseName "$EXPECTED_DATABASE_NAME" \
+    --arg databaseUser "$EXPECTED_DATABASE_USER" '
       ((.id | ascii_downcase) == ($id | ascii_downcase)) and
       (.name == $jobName) and
       ((.location | ascii_downcase) == ($location | ascii_downcase)) and
@@ -123,8 +132,8 @@ validate_job_ownership() {
       (.properties.configuration.registries[0].server == $server) and
       ((.properties.configuration.registries[0].identity | ascii_downcase) == ($identity | ascii_downcase)) and
       ((.properties.configuration.secrets | length) == 1) and
-      (.properties.configuration.secrets[0].name == "main-release-db-url") and
-      (.properties.configuration.secrets[0].keyVaultUrl == $secretUri) and
+      (.properties.configuration.secrets[0].name == "main-release-db-password") and
+      (.properties.configuration.secrets[0].keyVaultUrl == $passwordSecretUri) and
       ((.properties.configuration.secrets[0].identity | ascii_downcase) == ($identity | ascii_downcase)) and
       ((.properties.template.containers | length) == 1) and
       (.properties.template.containers[0].name == $jobName) and
@@ -137,8 +146,14 @@ validate_job_ownership() {
         ] | sort_by(.name)
       ) == ([
         {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode, secretRef: null},
-        {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName, secretRef: null},
-        {name: "PROJECTPULSE_TEST_DATABASE_URL", value: null, secretRef: "main-release-db-url"}
+        {name: "PGCONNECT_TIMEOUT", value: "15", secretRef: null},
+        {name: "PGDATABASE", value: $databaseName, secretRef: null},
+        {name: "PGHOST", value: $databaseHost, secretRef: null},
+        {name: "PGPASSWORD", value: null, secretRef: "main-release-db-password"},
+        {name: "PGPORT", value: $databasePort, secretRef: null},
+        {name: "PGSSLMODE", value: "verify-full", secretRef: null},
+        {name: "PGUSER", value: $databaseUser, secretRef: null},
+        {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName, secretRef: null}
       ] | sort_by(.name))
     ' "$document" >/dev/null
 }
@@ -257,7 +272,7 @@ cleanup() {
   fi
 
   rm -f "$PAYLOAD" "$JOB_RESPONSE"
-  unset SECRET_URI ACTUAL_KEY_VAULT_URI
+  unset PASSWORD_SECRET_URI
   exit "$status"
 }
 trap cleanup EXIT INT TERM
@@ -279,12 +294,15 @@ jq -n \
   --arg server "$ACR_NAME.azurecr.io" \
   --arg image "$MIGRATION_IMAGE" \
   --arg jobName "$JOB_NAME" \
-  --arg secretUri "$SECRET_URI" \
+  --arg passwordSecretUri "$PASSWORD_SECRET_URI" \
   --arg mode "$MODE" \
   --arg release "$EXPECTED_RELEASE_COMMIT" \
   --arg control "$CONTROL_SHA" \
   --arg runScope "$RUN_SCOPE" \
+  --arg databaseHost "$EXPECTED_DATABASE_HOST" \
+  --arg databasePort "$EXPECTED_DATABASE_PORT" \
   --arg databaseName "$EXPECTED_DATABASE_NAME" \
+  --arg databaseUser "$EXPECTED_DATABASE_USER" \
   '{
     location: $location,
     identity: {
@@ -306,15 +324,21 @@ jq -n \
         replicaRetryLimit: 0,
         manualTriggerConfig: {replicaCompletionCount: 1, parallelism: 1},
         registries: [{server: $server, identity: $identity}],
-        secrets: [{name: "main-release-db-url", keyVaultUrl: $secretUri, identity: $identity}]
+        secrets: [{name: "main-release-db-password", keyVaultUrl: $passwordSecretUri, identity: $identity}]
       },
       template: {
         containers: [{
           name: $jobName,
           image: $image,
           env: [
-            {name: "PROJECTPULSE_TEST_DATABASE_URL", secretRef: "main-release-db-url"},
             {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode},
+            {name: "PGCONNECT_TIMEOUT", value: "15"},
+            {name: "PGDATABASE", value: $databaseName},
+            {name: "PGHOST", value: $databaseHost},
+            {name: "PGPASSWORD", secretRef: "main-release-db-password"},
+            {name: "PGPORT", value: $databasePort},
+            {name: "PGSSLMODE", value: "verify-full"},
+            {name: "PGUSER", value: $databaseUser},
             {name: "PROJECTPULSE_TEST_DATABASE_NAME", value: $databaseName}
           ],
           resources: {cpu: 0.5, memory: "1Gi"}
