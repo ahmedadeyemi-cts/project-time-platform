@@ -74,6 +74,8 @@ jobs:
           [[ "$SOURCE_SHA" == "$EXPECTED_SOURCE_SHA" ]]
           [[ "$(jq -r .sourceSha "control/$RELEASE_MANIFEST")" == "$EXPECTED_SOURCE_SHA" ]]
           [[ "$(jq -r .environment "control/$RELEASE_MANIFEST")" == test ]]
+          [[ "$(jq -r .aiReleasePhase "control/$RELEASE_MANIFEST")" == disabled ]]
+          [[ "$(jq -r .routingAuthority "control/$RELEASE_MANIFEST")" == database_managed_active ]]
           [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == false ]]
           [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == false ]]
           [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
@@ -197,29 +199,7 @@ jobs:
               exit 1
             }
           done
-          API_ENV_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            --query properties.template.containers[0].env -o json --only-show-errors)"
-          env_value() {
-            local name="$1"
-            jq -er --arg name "$name" '
-              [.[] | select(.name == $name)]
-              | if length == 1 and (.[0].secretRef // "") == "" and (.[0].value // "") != ""
-                then .[0].value
-                else error("missing, duplicate, or secret-backed release variable")
-                end
-            ' <<<"$API_ENV_JSON"
-          }
-          PHASE="$(env_value PROJECTPULSE_AI_RELEASE_PHASE)"
-          ROUTE_ORDER="$(env_value PROJECTPULSE_AI_RELEASE_ROUTE_ORDER)"
-          CONFIG_DIGEST="$(env_value PROJECTPULSE_AI_RELEASE_CONFIG_SHA256)"
-          [[ "$PHASE" == active ]] || { echo "The protected Test API release phase must already be active." >&2; exit 1; }
-          [[ "$ROUTE_ORDER" == celar_ai,claude,openai,local_template ]] || { echo "The protected Test route order is not exact." >&2; exit 1; }
-          [[ "$CONFIG_DIGEST" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "The protected Test release configuration digest is invalid." >&2; exit 1; }
-          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
-          echo "route_order=$ROUTE_ORDER" >> "$GITHUB_OUTPUT"
-          echo "config_digest=${CONFIG_DIGEST,,}" >> "$GITHUB_OUTPUT"
+          echo "phase=disabled" >> "$GITHUB_OUTPUT"
           echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
 
 
@@ -251,7 +231,7 @@ jobs:
             echo "Test API and web must both use single-revision mode." >&2
             exit 1
           }
-          TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_RELEASE_ROUTE_ORDER","PROJECTPULSE_AI_RELEASE_CONFIG_SHA256"]'
+          TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
           API_ENV_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
           BASELINE_ENV="$(jq -cS --argjson names "$TOUCHED_NAMES" '
             [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
@@ -375,8 +355,6 @@ jobs:
               PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
               PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT='${{ steps.guard.outputs.control_sha }}' \
               PROJECTPULSE_AI_RELEASE_PHASE='${{ steps.contract.outputs.phase }}' \
-              PROJECTPULSE_AI_RELEASE_ROUTE_ORDER='${{ steps.contract.outputs.route_order }}' \
-              PROJECTPULSE_AI_RELEASE_CONFIG_SHA256='${{ steps.contract.outputs.config_digest }}' \
             --revision-suffix "tapi-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             --output none --only-show-errors
           NEW_REV=""
@@ -462,8 +440,8 @@ jobs:
           if [[ '${{ steps.deploy_api.outputs.started }}' == true ]]; then
             ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
             if [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]; then
-              TOUCHED_NAMES=(PROJECTPULSE_ENVIRONMENT PROJECTPULSE_SOURCE_COMMIT PROJECTPULSE_RELEASE_COMMIT PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT PROJECTPULSE_AI_RELEASE_PHASE PROJECTPULSE_AI_RELEASE_ROUTE_ORDER PROJECTPULSE_AI_RELEASE_CONFIG_SHA256)
-              TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_RELEASE_ROUTE_ORDER","PROJECTPULSE_AI_RELEASE_CONFIG_SHA256"]'
+              TOUCHED_NAMES=(PROJECTPULSE_ENVIRONMENT PROJECTPULSE_SOURCE_COMMIT PROJECTPULSE_RELEASE_COMMIT PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT PROJECTPULSE_AI_RELEASE_PHASE)
+              TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
               LIVE_ENV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
               LIVE_UNTOUCHED_HASH="$(jq -cS --argjson names "$TOUCHED_JSON" '
                 [.[] | select(.name as $name | ($names | index($name) | not))]
