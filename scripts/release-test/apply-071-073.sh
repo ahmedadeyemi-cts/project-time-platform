@@ -94,8 +94,8 @@ SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL lock_timeout = '15s';
 SET LOCAL statement_timeout = '20min';
-SELECT set_config('projectpulse.release.expected_database', :'expected_database_name', true);
-SELECT set_config('projectpulse.release.forge_project_id', :'expected_forge_project_id', true);
+SELECT set_config('projectpulse.release.expected_database', :'expected_database_name', true) AS value \gset release_database_
+SELECT set_config('projectpulse.release.forge_project_id', :'expected_forge_project_id', true) AS value \gset release_forge_project_
 
 DO $release_database_identity$
 BEGIN
