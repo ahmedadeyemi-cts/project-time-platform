@@ -542,12 +542,12 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
                 ? task
                 : $"{task} for {project}";
             return CleanSuggestion(
-                $"{AsSentence(roughNote)} This work was recorded against {target} during {timeType}.");
+                $"{AsSentence(roughNote)} This work was recorded against {target} during {timeType}. The entry should be reviewed before submission to confirm that the description accurately represents the work performed.");
         }
 
         var context = string.IsNullOrWhiteSpace(project) ? task : $"{task} for {project}";
         return CleanSuggestion(
-            $"Time was recorded against {context} during {timeType}. Additional factual detail about the work performed is required before this description is ready for customer or invoice review.");
+            $"Time was recorded against {context} during {timeType}. Additional factual detail about the work performed is required before this description is ready for customer or invoice review. No activity, tool, outcome, or completion status was inferred from the selected row.");
     }
 
     private static string BuildPrivatePrompt(

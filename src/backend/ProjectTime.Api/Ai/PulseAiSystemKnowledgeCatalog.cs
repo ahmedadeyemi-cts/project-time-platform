@@ -268,9 +268,14 @@ public static class PulseAiSystemKnowledgeCatalog
     public static PulseAiSystemIntentPlan Analyze(string question)
     {
         var normalized = Normalize(question);
-        var wantsApis = ContainsAny(normalized,
-            "api", "apis", "endpoint", "endpoints", "route", "routes",
-            "what is running", "running on the system", "swagger");
+        var pulseScoped = IsPulseScopedQuestion(normalized);
+        // Do not infer an API request from a substring such as "capabilities".
+        // Technical inventory is intentionally opt-in and appears only when the
+        // user names an API, endpoint, route, or Swagger explicitly.
+        var wantsApis = Regex.IsMatch(
+            normalized,
+            @"\b(?:api|apis|endpoint|endpoints|route|routes|swagger)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var wantsTroubleshooting = ContainsAny(normalized,
             "troubleshoot", "troubleshooting", "diagnose", "diagnostic", "debug",
             "why is", "why does", "failing", "failed", "failure", "error", "errors",
@@ -290,7 +295,9 @@ public static class PulseAiSystemKnowledgeCatalog
             "sow", "gsd", "document", "documents", "design", "architecture document",
             "project plan", "flowhive", "timesheet suggestion");
 
-        var intent = wantsEnhancement
+        var intent = !pulseScoped
+            ? "general_knowledge"
+            : wantsEnhancement
             ? "future_enhancement"
             : wantsTroubleshooting
                 ? "troubleshooting"
@@ -319,29 +326,40 @@ public static class PulseAiSystemKnowledgeCatalog
                                                             : "general_system";
 
         var domains = new List<string> { intent };
-        if (wantsApis && intent != "api_inventory") domains.Add("api_inventory");
-        if (wantsTroubleshooting && intent != "troubleshooting") domains.Add("troubleshooting");
-        if (wantsEnhancement && intent != "future_enhancement") domains.Add("future_enhancement");
-        if (wantsArchitecture && intent != "architecture") domains.Add("architecture");
-        if (wantsDocuments && intent != "documents_and_rag") domains.Add("documents_and_rag");
+        if (intent != "general_knowledge")
+        {
+            if (wantsApis && intent != "api_inventory") domains.Add("api_inventory");
+            if (wantsTroubleshooting && intent != "troubleshooting") domains.Add("troubleshooting");
+            if (wantsEnhancement && intent != "future_enhancement") domains.Add("future_enhancement");
+            if (wantsArchitecture && intent != "architecture") domains.Add("architecture");
+            if (wantsDocuments && intent != "documents_and_rag") domains.Add("documents_and_rag");
+        }
 
         var modules = ModulesFor(normalized, intent);
         var navigation = NavigationFor(intent, modules);
         var evidence = EvidenceFor(intent, wantsApis, wantsTroubleshooting, wantsEnhancement, wantsDocuments);
         var capabilities = new List<string>();
-        if (wantsApis) capabilities.Add("live runtime API discovery");
-        if (wantsTroubleshooting) capabilities.Add("read-only troubleshooting and root-cause analysis");
-        if (wantsEnhancement) capabilities.Add("future enhancement architecture and delivery blueprint");
-        if (wantsArchitecture) capabilities.Add("current architecture and dependency analysis");
-        if (wantsDocuments) capabilities.Add("authorized private document retrieval");
-        if (wantsLive) capabilities.Add("current live system evidence");
-        if (capabilities.Count == 0) capabilities.Add("comprehensive Pulse product and system guidance");
+        if (intent == "general_knowledge")
+        {
+            capabilities.Add("public general-knowledge assistance through governed Module 064 routing");
+        }
+        else
+        {
+            if (wantsApis) capabilities.Add("live runtime API discovery");
+            if (wantsTroubleshooting) capabilities.Add("read-only troubleshooting and root-cause analysis");
+            if (wantsEnhancement) capabilities.Add("future enhancement architecture and delivery blueprint");
+            if (wantsArchitecture) capabilities.Add("current architecture and dependency analysis");
+            if (wantsDocuments) capabilities.Add("authorized private document retrieval");
+            if (wantsLive) capabilities.Add("current live system evidence");
+            if (capabilities.Count == 0) capabilities.Add("comprehensive Pulse product and system guidance");
+        }
 
         var mode = intent switch
         {
             "api_inventory" => "api_inventory",
             "troubleshooting" => "troubleshooting",
             "future_enhancement" => "future_enhancement",
+            "general_knowledge" => "general_knowledge",
             _ => "system_help"
         };
 
@@ -353,12 +371,44 @@ public static class PulseAiSystemKnowledgeCatalog
             RelevantModuleCodes: modules,
             NavigationTargets: navigation,
             RequiredEvidence: evidence,
-            WantsApiInventory: wantsApis || intent is "api_inventory" or "architecture" or "future_enhancement",
-            WantsTroubleshooting: wantsTroubleshooting || intent is "troubleshooting" or "observability" or "release_and_deployment" or "security",
-            WantsFutureEnhancement: wantsEnhancement || intent == "future_enhancement",
-            WantsArchitecture: wantsArchitecture || intent is "architecture" or "future_enhancement",
-            WantsLiveStatus: wantsLive || intent is "troubleshooting" or "api_inventory" or "release_and_deployment" or "observability",
-            WantsProjectDocuments: wantsDocuments);
+            WantsApiInventory: intent != "general_knowledge" && (wantsApis || intent == "api_inventory"),
+            WantsTroubleshooting: intent != "general_knowledge" && (wantsTroubleshooting || intent is "troubleshooting" or "observability" or "release_and_deployment" or "security"),
+            WantsFutureEnhancement: intent != "general_knowledge" && (wantsEnhancement || intent == "future_enhancement"),
+            WantsArchitecture: intent != "general_knowledge" && (wantsArchitecture || intent is "architecture" or "future_enhancement"),
+            WantsLiveStatus: intent != "general_knowledge" && (wantsLive || intent is "troubleshooting" or "api_inventory" or "release_and_deployment" or "observability"),
+            WantsProjectDocuments: intent != "general_knowledge" && wantsDocuments);
+    }
+
+    /// <summary>
+    /// Determines whether a free-form question is asking about Pulse or an
+    /// authenticated Pulse workflow. Everything else is a public general-
+    /// knowledge question and must not cause system tools or API inventory to
+    /// run merely because it contains words such as "project" or "current".
+    /// </summary>
+    public static bool IsPulseScopedQuestion(string? question)
+    {
+        var normalized = Normalize(question);
+        if (normalized.Length == 0) return true;
+
+        if (ContainsAny(normalized,
+            "pulse", "celar", "module ", "module-", "project forge", "project-forge",
+            "flowhive", "work register", "view-as", "view as", "timesheet", "time entry",
+            "manager approval", "sow", "gsd", "iqs", "work task builder", "modules directory",
+            "this system", "the system", "current system", "our system", "this platform",
+            "current platform", "our platform", "this application", "current application",
+            "our application", "my pulse", "in pulse", "within pulse"))
+        {
+            return true;
+        }
+
+        if (Regex.IsMatch(normalized, @"\b(?:module\s*)?(?:\d{3}|055[a-d])\b", RegexOptions.IgnoreCase))
+            return true;
+
+        return ContainsAny(normalized,
+            "how do i create a project", "how do i enter my time", "how do i submit my time",
+            "how do i submit my timesheet", "how do i upload a sow", "what is my team working on",
+            "which apis are running", "what apis are running", "why did this request return 403",
+            "what is the system name", "what is the current system version", "what can celar ai answer");
     }
 
     public static IReadOnlyList<PulseAiSystemToolDefinition> SelectTools(
@@ -547,6 +597,7 @@ public static class PulseAiSystemKnowledgeCatalog
 
     private static IReadOnlyList<string> ModulesFor(string normalized, string intent)
     {
+        if (intent == "general_knowledge") return [];
         var modules = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "011" };
         foreach (Match match in Regex.Matches(normalized, @"\b(?:module\s*)?(\d{3}|055[a-d])\b", RegexOptions.IgnoreCase))
             modules.Add(match.Groups[1].Value.ToUpperInvariant());
@@ -568,6 +619,7 @@ public static class PulseAiSystemKnowledgeCatalog
 
     private static IReadOnlyList<string> NavigationFor(string intent, IReadOnlyList<string> modules)
     {
+        if (intent == "general_knowledge") return [];
         var targets = new List<string> { "#work-task-builder" };
         targets.AddRange(intent switch
         {
@@ -598,6 +650,14 @@ public static class PulseAiSystemKnowledgeCatalog
         bool wantsEnhancement,
         bool wantsDocuments)
     {
+        if (intent == "general_knowledge")
+        {
+            return
+            [
+                "A public general-knowledge response returned through governed Module 064 provider routing.",
+                "No Pulse record, private document, attachment, tool result, identity, customer/project context, financial value, or API inventory is sent with the public question."
+            ];
+        }
         var evidence = new List<string>
         {
             "Current actual/effective identity, roles, module permissions, and record scope.",

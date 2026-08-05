@@ -50,6 +50,8 @@ public static class PulseAiSystemIntelligencePolicy
         "identity_and_permissions",
         "documents_and_rag",
         "product_help",
+        "platform_identity",
+        "general_knowledge",
         "general_system"
     ];
 

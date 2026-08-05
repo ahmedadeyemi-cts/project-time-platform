@@ -127,8 +127,8 @@ save('WorkTaskBuilderPanel.jsx', workTaskBuilder);
   if (!content.includes('<TrustSummary trust={result?.trust} />')) {
     content = replaceRequired(
       content,
-      `<div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>\n      <div className="help-answer-heading">`,
-      `<div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>\n      <TrustSummary trust={result?.trust} />\n      <div className="help-answer-heading">`,
+      `{answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}`,
+      `{answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}\n      <TrustSummary trust={result?.trust} />`,
       'chat_trust_banner');
   }
 
