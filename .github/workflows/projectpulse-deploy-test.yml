@@ -267,7 +267,7 @@ jobs:
           echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
 
 
-      - name: Capture current immutable API and web release
+      - name: Capture quiescent immutable API and web baseline
         id: before
         shell: bash
         run: |
@@ -279,7 +279,7 @@ jobs:
             case "$image" in
               "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
               "$registry"*:*) ;;
-              *) echo "Image is outside the approved Test ACR: $image" >&2; return 1 ;;
+              *) echo "Image is outside the approved Test ACR." >&2; return 1 ;;
             esac
             relative="${image#"$registry"}"
             repository="${relative%:*}"
@@ -289,14 +289,56 @@ jobs:
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
-          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
-          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.configuration.activeRevisionsMode -o tsv --only-show-errors)"
+
+          API_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          API_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$API_JSON")"
+          WEB_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$WEB_JSON")"
           [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]] || {
             echo "Test API and web must both use single-revision mode." >&2
             exit 1
           }
+
+          API_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$API_JSON")"
+          API_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$API_JSON")"
+          WEB_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$WEB_JSON")"
+          WEB_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$WEB_JSON")"
+          [[ -n "$API_LATEST" && "$API_LATEST" == "$API_READY" ]] || {
+            echo "Test API baseline is not quiescent." >&2
+            exit 1
+          }
+          [[ -n "$WEB_LATEST" && "$WEB_LATEST" == "$WEB_READY" ]] || {
+            echo "Test web baseline is not quiescent." >&2
+            exit 1
+          }
+
+          API_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_JSON")")"
+          WEB_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_JSON")")"
+          API_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$API_LATEST" \
+            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
+          WEB_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --revision "$WEB_LATEST" \
+            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
+          [[ "$API_TEMPLATE_IMAGE" == "$API_REVISION_IMAGE" ]] || {
+            echo "Test API template and latest ready revision images differ." >&2
+            exit 1
+          }
+          [[ "$WEB_TEMPLATE_IMAGE" == "$WEB_REVISION_IMAGE" ]] || {
+            echo "Test web template and latest ready revision images differ." >&2
+            exit 1
+          }
+
           TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE"]'
-          API_ENV_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
+          API_ENV_JSON="$(jq -c '.properties.template.containers[0].env // []' <<<"$API_JSON")"
           BASELINE_ENV="$(jq -cS --argjson names "$TOUCHED_NAMES" '
             [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
             | sort_by(.name)
@@ -309,14 +351,14 @@ jobs:
             [.[] | select(.name as $name | ($names | index($name) | not))]
             | sort_by(.name)
           ' <<<"$API_ENV_JSON" | sha256sum | awk '{print $1}')"
+
           echo "old_api_env_b64=$(printf '%s' "$BASELINE_ENV" | base64 -w0)" >> "$GITHUB_OUTPUT"
           echo "old_api_untouched_env_hash=$UNTOUCHED_ENV_HASH" >> "$GITHUB_OUTPUT"
-          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
-          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
-          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
-          echo "old_api_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
-          echo "old_web_revision=$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)" >> "$GITHUB_OUTPUT"
+          echo "old_api_image=$API_TEMPLATE_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$WEB_TEMPLATE_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "old_api_revision=$API_LATEST" >> "$GITHUB_OUTPUT"
+          echo "old_web_revision=$WEB_LATEST" >> "$GITHUB_OUTPUT"
+          echo "QUIESCENT_TEST_BASELINE=VERIFIED"
 
       - name: Build immutable source-stamped API and web images
         id: build
