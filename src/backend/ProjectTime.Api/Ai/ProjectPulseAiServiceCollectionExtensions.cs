@@ -67,6 +67,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiPrivateDocumentRuntimeRepository>();
         services.AddSingleton<PulseAiPrivateDocumentRuntimeService>();
         services.AddHostedService<PulseAiPrivateDocumentRuntimeWorker>();
+        services.AddSingleton<CelarAiConversationAttachmentRepository>();
+        services.AddSingleton<CelarAiConversationAttachmentService>();
+        services.AddHostedService<CelarAiConversationAttachmentRetentionWorker>();
         services.AddSingleton<PulseAiPrivateRagRepository>();
         services.AddSingleton<PulseAiPrivateRetrievalAuthorizationService>();
         services.AddSingleton<PulseAiPrivateRetrievalService>();

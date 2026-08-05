@@ -39,7 +39,8 @@ ${marker}
  *
  * Existing components remain exported and recoverable for tests, history, and
  * rollback, but they are no longer mounted as competing full-page applications.
- * The user receives one populated production control plane.
+ * The user receives one populated production control plane. Its Ask tab opens
+ * the same single global HelpAssistant instance owned by main.jsx.
  */
 export {
   CelarAiEnterprisePlatform,

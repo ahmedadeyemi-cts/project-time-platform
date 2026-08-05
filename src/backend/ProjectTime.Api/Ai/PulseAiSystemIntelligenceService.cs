@@ -177,8 +177,45 @@ public sealed class PulseAiSystemIntelligenceService
                 correlationId);
         }
 
-        var plan = PulseAiSystemKnowledgeCatalog.Analyze(question);
-        var requestedMode = NormalizeMode(request.Mode, plan.Mode);
+        var attachmentIds = (request.AttachmentIds ?? [])
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .Take(CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest)
+            .ToArray();
+        if (attachmentIds.Length > 0 && actualUserId != effectiveUserId)
+        {
+            return Blocked(
+                request.ConversationId ?? Guid.Empty,
+                "view_as_attachment_access_blocked",
+                "Celar AI conversation attachments are unavailable in View-As. Return to the actual session to protect private conversation documents.",
+                correlationId);
+        }
+        if (attachmentIds.Length > 0 && !access.CanAttachDocuments)
+        {
+            return Blocked(
+                request.ConversationId ?? Guid.Empty,
+                "attachment_permission_required",
+                "The current user is not authorized to use private Celar AI conversation attachments.",
+                correlationId);
+        }
+        if (attachmentIds.Length > 0 && request.ConversationId is null)
+        {
+            return Blocked(
+                Guid.Empty,
+                "attachment_conversation_required",
+                "Selected Celar AI attachments require the owning durable conversation identifier.",
+                correlationId);
+        }
+        request = request with { AttachmentIds = attachmentIds };
+        var trustedPlan = context.Items.TryGetValue(
+                PulseAiSystemIntelligencePolicy.ResolvedIntentContextItem,
+                out var resolvedIntentValue)
+            ? resolvedIntentValue as PulseAiSystemIntentPlan
+            : null;
+        var plan = ApplyRequestControls(
+            trustedPlan ?? PulseAiSystemKnowledgeCatalog.Analyze(question),
+            request);
+        var requestedMode = plan.Mode;
         var persistenceAuthorized = actualUserId == effectiveUserId
             && access.CanViewConversations;
         var conversation = persistenceAuthorized
@@ -208,7 +245,12 @@ public sealed class PulseAiSystemIntelligenceService
                     request.ProjectCode,
                     request.ProjectName,
                     request.ModuleCode,
-                    request.ApiSearch
+                    request.ApiSearch,
+                    request.IncludeRepositoryContext,
+                    request.IncludeAssumptions,
+                    request.IncludeSourceCitations,
+                    request.AnswerPreferenceSource,
+                    attachmentIds
                 },
                 null,
                 null,
@@ -218,8 +260,20 @@ public sealed class PulseAiSystemIntelligenceService
                 [],
                 new { },
                 DateTimeOffset.UtcNow,
-                cancellationToken)
+                cancellationToken,
+                requiredAttachmentIds: attachmentIds)
             : (Guid.NewGuid(), 1);
+
+        if (persisted
+            && attachmentIds.Length > 0
+            && userMessage.MessageId == Guid.Empty)
+        {
+            return Blocked(
+                conversationId,
+                "private_attachment_retention_purged",
+                "The selected private attachment was revoked, expired, or purged before Celar AI could retain the request. Select an active, ready attachment and try again.",
+                correlationId);
+        }
 
         var inquiryRunId = persisted
             ? await _repository.CreateInquiryRunAsync(
@@ -297,11 +351,16 @@ public sealed class PulseAiSystemIntelligenceService
             }
 
             PulseAiPrivateRagAnswer? privateRagAnswer = null;
-            var privateRagRequested = request.IncludeAuthorizedProjectDocuments
+            PulseAiPrivateRagAnswer? acceptedPrivateRagAnswer = null;
+            var projectDocumentContextRequested = request.IncludeAuthorizedProjectDocuments
+                && request.IncludeRepositoryContext
                 && (plan.WantsProjectDocuments
                     || !string.IsNullOrWhiteSpace(request.ProjectCode)
-                    || !string.IsNullOrWhiteSpace(request.ProjectName)
-                    || plan.IntentCode == "product_help");
+                    || !string.IsNullOrWhiteSpace(request.ProjectName));
+            var privateDocumentContextRequested = attachmentIds.Length > 0
+                || projectDocumentContextRequested;
+            var privateRagRequested = privateDocumentContextRequested
+                || plan.IntentCode == "product_help";
 
             var sources = BuildSources(relevantApis, toolResults, privateRagAnswer);
             var deterministic = BuildDeterministicAnswer(
@@ -341,6 +400,13 @@ public sealed class PulseAiSystemIntelligenceService
                     .Where(value => value.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+                var externalProblemStatement = externalCapsuleReady
+                    ? BuildExternalProblemStatement(
+                        question,
+                        plan,
+                        privateDocumentContextRequested,
+                        identityTerms)
+                    : string.Empty;
                 var privatePrompt = BuildPrivateRouterPrompt(
                     question,
                     plan,
@@ -355,13 +421,10 @@ public sealed class PulseAiSystemIntelligenceService
                         Temperature: 0.05);
                 var execution = new CelarAiCapabilityExecutionContext(
                         Feature: CelarAiCapabilityCatalog.HelpAssistant,
-                        ContainsPrivateDocuments: privateRagRequested,
+                        ContainsPrivateDocuments: privateDocumentContextRequested,
                         ContainsCustomerIdentity: identityTerms.Length > 0,
                         ContainsPeopleRecords: ContainsPeopleContext(plan),
-                        ContainsFinancialValues: string.Equals(
-                            plan.IntentCode,
-                            "financial_and_reporting",
-                            StringComparison.Ordinal),
+                        ContainsFinancialValues: ContainsFinancialContext(plan),
                         // Compatibility flag is intentionally false: a closed
                         // router-owned purpose is authorized automatically by
                         // the persisted route and runtime privacy policy.
@@ -372,7 +435,11 @@ public sealed class PulseAiSystemIntelligenceService
                         IdentityTerms: identityTerms,
                         ExternalCapsulePurpose: externalCapsulePurpose,
                         PrivateTargetAllowed: privateRagRequested
-                            || options.EnablePrivateModelSynthesis);
+                            || (request.UsePrivateModelWhenAvailable
+                                && options.EnablePrivateModelSynthesis),
+                        PurposeBuiltDeidentifiedInput: externalProblemStatement.Length > 0,
+                        DeidentifiedFactsAvailable: externalProblemStatement.Length > 0,
+                        ExternalProblemStatement: externalProblemStatement);
                 ProjectPulseAiRouteResult routed;
                 if (privateRagRequested)
                 {
@@ -389,10 +456,13 @@ public sealed class PulseAiSystemIntelligenceService
                                     ProjectCode: request.ProjectCode,
                                     ProjectName: request.ProjectName,
                                     DetailLevel: detailLevel,
-                                    IncludeAuthorizedProjectDocuments: true,
-                                    IncludeDirectProductKnowledge: true),
+                                    IncludeAuthorizedProjectDocuments: projectDocumentContextRequested,
+                                    IncludeDirectProductKnowledge: true,
+                                    UsePrivateModelWhenAvailable: request.UsePrivateModelWhenAvailable,
+                                    ConversationId: request.ConversationId,
+                                    AttachmentIds: attachmentIds),
                                 privateCancellationToken);
-                            return PrivateHelpRagTargetResult(privateRagAnswer);
+                            return PrivateHelpRagTargetResult(privateRagAnswer, ragOptions);
                         },
                         localFallback: () => RenderPlainText(deterministic),
                         cancellationToken: cancellationToken);
@@ -406,9 +476,21 @@ public sealed class PulseAiSystemIntelligenceService
                         cancellationToken: cancellationToken);
                 }
 
+                var privateAnswerPassedQualityGate = privateRagAnswer is not null
+                    && string.Equals(
+                        routed.Provider,
+                        CelarAiCapabilityTargets.CelarAi,
+                        StringComparison.OrdinalIgnoreCase)
+                    && routed.Outcome == ProjectPulseAiOutcomes.Success;
+                acceptedPrivateRagAnswer = privateAnswerPassedQualityGate
+                    ? privateRagAnswer
+                    : null;
                 if (privateRagAnswer is not null)
                 {
-                    sources = BuildSources(relevantApis, toolResults, privateRagAnswer);
+                    sources = BuildSources(
+                        relevantApis,
+                        toolResults,
+                        acceptedPrivateRagAnswer);
                     deterministic = BuildDeterministicAnswer(
                         question,
                         detailLevel,
@@ -416,9 +498,18 @@ public sealed class PulseAiSystemIntelligenceService
                         relevantApis,
                         selectedTools,
                         toolResults,
-                        privateRagAnswer,
+                        acceptedPrivateRagAnswer,
                         sources);
+                    // Keep evidence-limited private output out of the visible
+                    // answer. Promotion happens only below after the Celar
+                    // target passes its completed/evidence/citation/confidence
+                    // quality gate and the router reports a successful target.
                     finalAnswer = deterministic;
+                    if (!privateAnswerPassedQualityGate)
+                    {
+                        warnings.Add(
+                            "The private Celar AI result did not pass the governed evidence, citation, and confidence gate, so none of its answer text or citations were promoted.");
+                    }
                 }
 
                 modelProvider = routed.Provider;
@@ -439,9 +530,13 @@ public sealed class PulseAiSystemIntelligenceService
                     && routed.Outcome == ProjectPulseAiOutcomes.Success
                     && !string.IsNullOrWhiteSpace(routed.Content))
                 {
-                    if (privateRagAnswer is not null)
+                    if (acceptedPrivateRagAnswer is not null)
                     {
-                        modelName = privateRagAnswer.ModelName;
+                        finalAnswer = PromotePrivateAnswer(
+                            acceptedPrivateRagAnswer,
+                            deterministic,
+                            options.MaximumAnswerCharacters);
+                        modelName = acceptedPrivateRagAnswer.ModelName;
                     }
                     else
                     {
@@ -461,7 +556,13 @@ public sealed class PulseAiSystemIntelligenceService
                     externalAssistance = Limit(
                         routed.Content,
                         Math.Min(6_000, options.MaximumAnswerCharacters));
-                    warnings.Add("The optional external guidance was generated from a fixed backend-owned generic capsule. It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context, so it cannot establish any case-specific fact.");
+                    var externalProblemUsed = targetDecisions.Any(decision =>
+                        decision.ReasonCode.StartsWith(
+                            "generation_succeeded_with_sanitized_generic_problem",
+                            StringComparison.Ordinal));
+                    warnings.Add(externalProblemUsed
+                        ? "The optional external guidance is supplementary and unverified. It received only a backend-owned purpose capsule and a closed server-owned topic; it did not receive the user's question, private documents, attachment text, tool results, customer/project context, people records, financial values, or identifiers, so it cannot establish any enterprise-specific fact."
+                        : "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context. The optional generic response-structure guidance is supplementary and cannot establish any case-specific fact.");
                 }
                 if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);
             }
@@ -487,7 +588,8 @@ public sealed class PulseAiSystemIntelligenceService
                 attemptedTargets,
                 skippedTargets,
                 targetDecisions,
-                externalAssistance
+                externalAssistance,
+                privateCitations = acceptedPrivateRagAnswer?.Citations ?? []
             };
             var assistantText = RenderPlainText(finalAnswer);
             var assistantMessage = persisted
@@ -513,8 +615,30 @@ public sealed class PulseAiSystemIntelligenceService
                         privateRagStatus = privateRagAnswer?.Status ?? "not_used"
                     },
                     finalAnswer.DataAsOf,
-                    cancellationToken)
+                    cancellationToken,
+                    requiredAttachmentIds: attachmentIds)
                 : (Guid.NewGuid(), 2);
+
+            if (persisted
+                && attachmentIds.Length > 0
+                && assistantMessage.MessageId == Guid.Empty)
+            {
+                await _repository.CompleteInquiryRunAsync(
+                    inquiryRunId,
+                    Guid.Empty,
+                    "blocked",
+                    selectedTools,
+                    toolResults,
+                    relevantApis.Count,
+                    0m,
+                    "private_attachment_retention_purged",
+                    cancellationToken);
+                return Blocked(
+                    conversationId,
+                    "private_attachment_retention_purged",
+                    "The selected private attachment was revoked, expired, or purged while Celar AI was preparing the answer. No attachment-derived answer was retained.",
+                    correlationId);
+            }
 
             if (persisted)
             {
@@ -550,7 +674,8 @@ public sealed class PulseAiSystemIntelligenceService
                 AttemptedTargets: attemptedTargets,
                 SkippedTargets: skippedTargets,
                 TargetDecisions: targetDecisions,
-                ExternalAssistance: externalAssistance);
+                ExternalAssistance: externalAssistance,
+                PrivateCitations: acceptedPrivateRagAnswer?.Citations ?? []);
         }
         catch (OperationCanceledException)
         {
@@ -580,8 +705,29 @@ public sealed class PulseAiSystemIntelligenceService
                     [],
                     new { },
                     DateTimeOffset.UtcNow,
-                    cancellationToken)
+                    cancellationToken,
+                    requiredAttachmentIds: attachmentIds)
                 : (Guid.NewGuid(), 2);
+            if (persisted
+                && attachmentIds.Length > 0
+                && assistantMessage.MessageId == Guid.Empty)
+            {
+                await _repository.CompleteInquiryRunAsync(
+                    inquiryRunId,
+                    Guid.Empty,
+                    "blocked",
+                    [],
+                    [],
+                    0,
+                    0m,
+                    "private_attachment_retention_purged",
+                    cancellationToken);
+                return Blocked(
+                    conversationId,
+                    "private_attachment_retention_purged",
+                    "The selected private attachment was revoked, expired, or purged while Celar AI was handling the failed request. No attachment-derived response was retained.",
+                    correlationId);
+            }
             if (persisted)
             {
                 await _repository.CompleteInquiryRunAsync(
@@ -611,7 +757,7 @@ public sealed class PulseAiSystemIntelligenceService
                 string.Empty,
                 correlationId,
                 ["The system-intelligence request failed without exposing restricted evidence. Use the correlation ID with Module 013, Module 016, or Module 998."],
-                persisted);
+                persisted && assistantMessage.MessageId != Guid.Empty);
         }
     }
 
@@ -1073,41 +1219,157 @@ public sealed class PulseAiSystemIntelligenceService
         return purposeCode.Length > 0;
     }
 
+    private static string BuildExternalProblemStatement(
+        string question,
+        PulseAiSystemIntentPlan plan,
+        bool containsPrivateDocumentContext,
+        IReadOnlyCollection<string> identityTerms)
+    {
+        if (containsPrivateDocumentContext
+            || identityTerms.Count > 0
+            || ContainsPeopleContext(plan)
+            || ContainsFinancialContext(plan))
+        {
+            return string.Empty;
+        }
+
+        // Never forward free-form user text to an external target. Resolve only
+        // a closed backend-owned topic whose wording cannot contain a name,
+        // customer, identifier, secret, document fact, or enterprise evidence.
+        return plan.IntentCode switch
+        {
+            "troubleshooting" when ContainsAny(question, "403", "forbidden", "access denied", "not authorized") =>
+                "Provide general troubleshooting guidance for an authorization-forbidden response in an enterprise web application. Cover session identity, effective role, permissions, record scope, and safe diagnostics without assuming a case-specific cause.",
+            "troubleshooting" when ContainsAny(question, "404", "not found", "route missing") =>
+                "Provide general troubleshooting guidance for a not-found response in an enterprise web application. Cover route registration, deployment revision, required parameters, record scope, and safe diagnostics without assuming a case-specific cause.",
+            "troubleshooting" when ContainsAny(question, "timeout", "timed out", "504", "408") =>
+                "Provide general troubleshooting guidance for an application timeout. Cover client, API, database, network, queue, and downstream dependencies without assuming a case-specific cause.",
+            "troubleshooting" =>
+                "Provide a general, safety-preserving troubleshooting framework for an unresolved enterprise application behavior. Separate evidence, hypotheses, diagnostics, remediation risks, and escalation.",
+            "architecture" =>
+                "Provide general architecture-review guidance for an enterprise application question. Cover ownership, trust boundaries, APIs, data, observability, rollout, and rollback without claiming knowledge of the current system.",
+            "future_enhancement" =>
+                "Provide general design considerations for an unspecified enterprise application enhancement. Cover ownership, APIs, data changes, authorization, privacy, operations, tests, rollout, and rollback.",
+            "product_help" or "general_system" =>
+                "Provide general product-help reasoning for an unresolved enterprise software question. Give a concise answer framework, state assumptions, and identify what authoritative local evidence would be required.",
+            _ => string.Empty
+        };
+    }
+
+    private static PulseAiSystemIntentPlan ApplyRequestControls(
+        PulseAiSystemIntentPlan resolved,
+        PulseAiSystemQuestionRequest request)
+    {
+        return resolved with
+        {
+            WantsApiInventory = resolved.WantsApiInventory
+                && request.IncludeApiInventory,
+            WantsTroubleshooting = resolved.WantsTroubleshooting
+                && request.IncludeTroubleshooting,
+            WantsFutureEnhancement = resolved.WantsFutureEnhancement
+                && request.IncludeFutureEnhancement,
+            WantsProjectDocuments = request.IncludeAuthorizedProjectDocuments
+                && request.IncludeRepositoryContext
+                && resolved.WantsProjectDocuments
+        };
+    }
+
     private static bool ContainsPeopleContext(PulseAiSystemIntentPlan plan) =>
         string.Equals(plan.IntentCode, "identity_and_permissions", StringComparison.Ordinal)
         || plan.Domains.Any(domain => domain.Contains("people", StringComparison.OrdinalIgnoreCase)
             || domain.Contains("identity", StringComparison.OrdinalIgnoreCase)
             || domain.Contains("assignment", StringComparison.OrdinalIgnoreCase));
 
+    private static bool ContainsFinancialContext(PulseAiSystemIntentPlan plan) =>
+        string.Equals(plan.IntentCode, "financial_and_reporting", StringComparison.Ordinal)
+        || plan.Domains.Any(domain =>
+            domain.Contains("financial", StringComparison.OrdinalIgnoreCase)
+            || domain.Contains("finance", StringComparison.OrdinalIgnoreCase)
+            || domain.Contains("billing", StringComparison.OrdinalIgnoreCase)
+            || domain.Contains("invoice", StringComparison.OrdinalIgnoreCase)
+            || domain.Contains("cost", StringComparison.OrdinalIgnoreCase)
+            || domain.Contains("margin", StringComparison.OrdinalIgnoreCase));
+
+    private static PulseAiSystemDetailedAnswer PromotePrivateAnswer(
+        PulseAiPrivateRagAnswer privateRag,
+        PulseAiSystemDetailedAnswer deterministic,
+        int maximumAnswerCharacters)
+    {
+        if (privateRag.Answer is not PulseAiPrivateDetailedAnswer answer)
+            return deterministic;
+
+        var citationEvidence = privateRag.Citations.Select(citation =>
+            $"Private citation {citation.CitationId}: {citation.OriginalFileName}; version={citation.DocumentVersion}; anchor={citation.CitationAnchor}; page={citation.PageNumber?.ToString() ?? "not recorded"}; relevance={citation.RelevanceScore:P0}; processed={citation.ProcessedAt:O}.").ToArray();
+        return deterministic with
+        {
+            DirectConclusion = Limit(answer.DirectConclusion, maximumAnswerCharacters),
+            ExecutiveSummary = First(answer.ExecutiveSummary, deterministic.ExecutiveSummary, 8_000),
+            ScopeAndFilters = Merge(answer.ScopeAndFilters, deterministic.ScopeAndFilters, 80, 2_000),
+            CurrentState = Merge(
+                [$"Private answer status: {privateRag.Status}; evidence coverage: {privateRag.CoverageScore:P0}; citation coverage: {privateRag.CitationCoverageScore:P0}."],
+                deterministic.CurrentState,
+                120,
+                3_000),
+            DetailedAnalysis = Merge(answer.DetailedAnalysis, deterministic.DetailedAnalysis, 250, 4_000),
+            SourceEvidence = Merge(
+                [.. answer.SourceEvidence, .. citationEvidence],
+                deterministic.SourceEvidence,
+                180,
+                3_000),
+            KnownUnknownAndStaleValues = Merge(answer.KnownUnknownAndStaleValues, deterministic.KnownUnknownAndStaleValues, 120, 3_000),
+            Assumptions = Merge(answer.Assumptions, deterministic.Assumptions, 100, 2_000),
+            Conflicts = Merge(answer.Conflicts, deterministic.Conflicts, 100, 2_000),
+            Limitations = Merge(answer.Limitations, deterministic.Limitations, 100, 2_000),
+            RisksAndImplications = Merge(answer.RisksAndImplications, deterministic.RisksAndImplications, 120, 3_000),
+            RecommendedActions = Merge(answer.RecommendedActions, deterministic.RecommendedActions, 120, 3_000),
+            NavigationTargets = Merge(answer.NavigationTargets, deterministic.NavigationTargets, 60, 500),
+            CitationIds = answer.CitationIds,
+            Confidence = Math.Clamp(answer.Confidence, 0m, 0.95m),
+            ConfidenceExplanation = First(answer.ConfidenceExplanation, deterministic.ConfidenceExplanation, 3_000),
+            DataAsOf = privateRag.DataAsOf
+        };
+    }
+
     private static ProjectPulseAiProviderResult PrivateHelpRagTargetResult(
-        PulseAiPrivateRagAnswer answer)
+        PulseAiPrivateRagAnswer answer,
+        PulseAiPrivateRagOptions options)
     {
         var safetyRefusal = IsPrivateSafetyRefusal(answer);
-        var privateModelCompleted = !string.IsNullOrWhiteSpace(answer.ModelProvider)
-            && !string.Equals(
+        var governedProductKnowledgeCompleted = string.Equals(
                 answer.ModelProvider,
                 "governed_product_knowledge",
                 StringComparison.OrdinalIgnoreCase)
-            && !answer.ModelProvider.StartsWith("deterministic_", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(answer.Status, "completed", StringComparison.OrdinalIgnoreCase)
             && answer.Answer is not null;
+        var citedPrivateAnswerCompleted = !string.IsNullOrWhiteSpace(answer.ModelProvider)
+            && !answer.ModelProvider.StartsWith("deterministic_", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(answer.Status, "completed", StringComparison.OrdinalIgnoreCase)
+            && answer.Answer is not null
+            && answer.Answer.Confidence >= options.MinimumConfidence
+            && answer.CoverageScore >= options.MinimumEvidenceScore
+            && answer.CitationCoverageScore > 0m
+            && answer.Answer.CitationIds.Count > 0
+            && answer.Citations.Count > 0;
+        var privateAnswerCompleted = governedProductKnowledgeCompleted
+            || citedPrivateAnswerCompleted;
         return new ProjectPulseAiProviderResult(
             Provider: CelarAiCapabilityTargets.CelarAi,
             Outcome: safetyRefusal
                 ? ProjectPulseAiOutcomes.Refusal
-                : privateModelCompleted
+                : privateAnswerCompleted
                 ? ProjectPulseAiOutcomes.Success
                 : ProjectPulseAiOutcomes.Unavailable,
-            Content: privateModelCompleted && !safetyRefusal ? "private_rag_synthesis_completed" : null,
+            Content: privateAnswerCompleted && !safetyRefusal ? "private_rag_synthesis_completed" : null,
             Code: safetyRefusal
                 ? "private_model_safety_refusal"
-                : privateModelCompleted
+                : privateAnswerCompleted
                 ? null
                 : string.IsNullOrWhiteSpace(answer.DiagnosticCode)
-                    ? "private_rag_model_not_used"
+                    ? "private_rag_quality_gate_not_met"
                     : answer.DiagnosticCode,
-            Message: privateModelCompleted
+            Message: privateAnswerCompleted
                 ? null
-                : "The private Celar AI document synthesis target did not complete.",
+                : "The private Celar AI answer did not pass the evidence, citation, and confidence gates.",
             RequestId: null,
             Usage: null,
             HttpStatusCode: null);

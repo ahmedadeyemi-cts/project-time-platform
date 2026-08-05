@@ -67,10 +67,18 @@ jobs:
           git fetch origin "$BASE_BRANCH" --no-tags
           CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
           test -n "$CHANGED"
-          if [[ "$HEAD_BRANCH" != security/celar-ai-production-readiness-* ]]; then
-            echo 'Celar AI production-hardening source requires the security/celar-ai-production-readiness-* branch family.' >&2
-            exit 1
-          fi
+          case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-*)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
+              ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_VALIDATION_MODE=UNIFIED_CHAT_REGRESSION' >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo 'Celar AI production-hardening source requires an explicitly reviewed production-hardening or unified-chat branch family.' >&2
+              exit 1
+              ;;
+          esac
           PROHIBITED="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
           if [[ -n "$PROHIBITED" ]]; then
             echo 'Production-hardening validation cannot authorize deployment mutations:' >&2

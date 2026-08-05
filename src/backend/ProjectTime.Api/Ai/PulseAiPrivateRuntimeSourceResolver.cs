@@ -105,31 +105,67 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             command.Parameters.AddWithValue("document_id", documentId);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
             command.Parameters.AddWithValue("user_id", effectiveUserId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken)) return null;
-            return new PulseAiAuthorizedDocumentSource(
-                DocumentId: reader.GetGuid(0),
-                ProjectId: reader.IsDBNull(1) ? null : reader.GetGuid(1),
-                ProjectCode: reader.GetString(2),
-                ProjectName: reader.GetString(3),
-                CustomerName: reader.GetString(4),
-                DocumentType: reader.GetString(5),
-                DocumentCategory: reader.GetString(6),
-                OriginalFileName: reader.GetString(7),
-                StoredFileName: reader.GetString(8),
-                StoragePath: reader.GetString(9),
-                ContentType: reader.IsDBNull(10) ? null : reader.GetString(10),
-                SizeBytes: reader.GetInt64(11),
-                EngineeringVisible: reader.GetBoolean(12),
-                AiTimesheetContextEnabled: reader.GetBoolean(13),
-                ExtractionStatus: reader.GetString(14),
-                ExistingContextSummaryReady: reader.GetBoolean(15),
-                ContextLastProcessedAt: reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16),
-                UploadedAt: reader.GetFieldValue<DateTimeOffset>(17),
-                UploadSource: reader.GetString(18),
-                AccessScope: access.ScopeLabel,
-                Classification: reader.GetString(19),
-                RoleCodes: access.RoleCodes.OrderBy(value => value).ToArray());
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                if (await reader.ReadAsync(cancellationToken))
+                    return ReadSource(reader, access.ScopeLabel, access.RoleCodes);
+            }
+
+            // Conversation attachments deliberately do not inherit broad
+            // project-document scope. Only the active conversation owner can
+            // authorize the worker to read the stored file.
+            if (!access.PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission)
+                && !PulseAiRoleAuthority.HasAdministratorRole(access.RoleCodes))
+            {
+                return null;
+            }
+            const string attachmentSql = """
+                SELECT
+                    document.project_intake_document_id,
+                    NULL::uuid,
+                    ''::text,
+                    'Celar AI conversation attachment'::text,
+                    ''::text,
+                    COALESCE(document.document_type, 'chat_attachment'),
+                    LOWER(COALESCE(document.document_category, 'chat_attachment')),
+                    document.original_file_name,
+                    document.stored_file_name,
+                    document.storage_path,
+                    document.content_type,
+                    COALESCE(document.size_bytes, 0)::bigint,
+                    FALSE,
+                    FALSE,
+                    COALESCE(document.extraction_status, 'not_started'),
+                    FALSE,
+                    document.ai_context_last_processed_at,
+                    document.uploaded_at,
+                    COALESCE(document.upload_source, 'celar_ai_chat_attachment'),
+                    COALESCE(document.pulse_ai_classification, 'restricted_conversation_attachment')
+                FROM project_intake_documents document
+                JOIN pulse_ai_conversation_attachments attachment
+                  ON attachment.project_intake_document_id = document.project_intake_document_id
+                JOIN pulse_ai_conversations conversation
+                  ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                WHERE document.project_intake_document_id = @document_id
+                  AND document.upload_source = 'celar_ai_chat_attachment'
+                  AND document.uploaded_by_user_id = @user_id
+                  AND document.is_active = TRUE
+                  AND attachment.uploaded_by_user_id = @user_id
+                  AND attachment.revoked_at IS NULL
+                  AND attachment.retention_until > NOW()
+                  AND conversation.actual_user_id = @user_id
+                  AND conversation.effective_user_id = @user_id
+                  AND conversation.status = 'active'
+                  AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                LIMIT 1;
+                """;
+            await using var attachmentCommand = new NpgsqlCommand(attachmentSql, connection);
+            attachmentCommand.Parameters.AddWithValue("document_id", documentId);
+            attachmentCommand.Parameters.AddWithValue("user_id", effectiveUserId);
+            await using var attachmentReader = await attachmentCommand.ExecuteReaderAsync(cancellationToken);
+            return await attachmentReader.ReadAsync(cancellationToken)
+                ? ReadSource(attachmentReader, "conversation_owner_only", access.RoleCodes)
+                : null;
         }
         catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
         {
@@ -145,6 +181,33 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
             return null;
         }
     }
+
+    private static PulseAiAuthorizedDocumentSource ReadSource(
+        NpgsqlDataReader reader,
+        string accessScope,
+        IReadOnlySet<string> roleCodes) => new(
+            DocumentId: reader.GetGuid(0),
+            ProjectId: reader.IsDBNull(1) ? null : reader.GetGuid(1),
+            ProjectCode: reader.GetString(2),
+            ProjectName: reader.GetString(3),
+            CustomerName: reader.GetString(4),
+            DocumentType: reader.GetString(5),
+            DocumentCategory: reader.GetString(6),
+            OriginalFileName: reader.GetString(7),
+            StoredFileName: reader.GetString(8),
+            StoragePath: reader.GetString(9),
+            ContentType: reader.IsDBNull(10) ? null : reader.GetString(10),
+            SizeBytes: reader.GetInt64(11),
+            EngineeringVisible: reader.GetBoolean(12),
+            AiTimesheetContextEnabled: reader.GetBoolean(13),
+            ExtractionStatus: reader.GetString(14),
+            ExistingContextSummaryReady: reader.GetBoolean(15),
+            ContextLastProcessedAt: reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16),
+            UploadedAt: reader.GetFieldValue<DateTimeOffset>(17),
+            UploadSource: reader.GetString(18),
+            AccessScope: accessScope,
+            Classification: reader.GetString(19),
+            RoleCodes: roleCodes.OrderBy(value => value).ToArray());
 
     private static async Task<AccessContext> LoadAccessAsync(
         NpgsqlConnection connection,

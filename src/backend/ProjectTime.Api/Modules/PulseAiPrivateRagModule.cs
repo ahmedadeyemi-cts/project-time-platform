@@ -68,6 +68,19 @@ public static class PulseAiPrivateRagModule
         if (identities is null) return SessionRequired();
         var access = await service.LoadAccessAsync(identities.Value.Effective, cancellationToken);
         if (!access.IsActive || !access.CanHelpSearch) return Forbidden("ASK_PULSE_AI_HELP_SEARCH");
+        var hasAttachments = (request.AttachmentIds ?? []).Any(value => value != Guid.Empty);
+        if (hasAttachments && identities.Value.Actual != identities.Value.Effective)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "view_as_attachment_access_blocked",
+                message = "Celar AI conversation attachments are unavailable in View-As.",
+                mutationAuthorityTransferred = false
+            }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        if (hasAttachments && !access.CanAttachDocuments)
+            return Forbidden(CelarAiConversationAttachmentPolicy.Permission);
         var answer = await service.AskHelpSearchAsync(
             identities.Value.Actual,
             identities.Value.Effective,

@@ -296,7 +296,8 @@ public sealed class PulseAiSystemIntelligenceRepository
         IReadOnlyList<string> toolCodes,
         object? sourceStates,
         DateTimeOffset? dataAsOf,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<Guid>? requiredAttachmentIds = null)
     {
         if (!await IsSchemaReadyAsync(cancellationToken)) return (Guid.Empty, 0);
         var messageId = Guid.NewGuid();
@@ -305,6 +306,61 @@ public sealed class PulseAiSystemIntelligenceRepository
             await using var connection = new NpgsqlConnection(ConnectionString());
             await connection.OpenAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            var attachmentIds = (requiredAttachmentIds ?? [])
+                .Where(value => value != Guid.Empty)
+                .Distinct()
+                .ToArray();
+            if (attachmentIds.Length > 0)
+            {
+                const string attachmentLockSql = """
+                    SELECT attachment.pulse_ai_conversation_attachment_id
+                    FROM pulse_ai_conversation_attachments attachment
+                    JOIN pulse_ai_conversations conversation
+                      ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                    JOIN project_intake_documents document
+                      ON document.project_intake_document_id = attachment.project_intake_document_id
+                    WHERE attachment.pulse_ai_conversation_attachment_id = ANY(@attachment_ids)
+                      AND attachment.pulse_ai_conversation_id = @conversation_id
+                      AND attachment.uploaded_by_user_id = @effective_user_id
+                      AND attachment.revoked_at IS NULL
+                      AND attachment.retention_until > NOW()
+                      AND conversation.actual_user_id = @effective_user_id
+                      AND conversation.effective_user_id = @effective_user_id
+                      AND conversation.status = 'active'
+                      AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                      AND document.upload_source = 'celar_ai_chat_attachment'
+                      AND document.uploaded_by_user_id = @effective_user_id
+                      AND document.is_active = TRUE
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM pulse_ai_conversation_attachment_purge_audit audit
+                          WHERE audit.pulse_ai_conversation_attachment_id = attachment.pulse_ai_conversation_attachment_id
+                      )
+                    FOR UPDATE OF attachment;
+                    """;
+                await using var attachmentLock = new NpgsqlCommand(
+                    attachmentLockSql,
+                    connection,
+                    transaction);
+                attachmentLock.Parameters.AddWithValue("attachment_ids", attachmentIds);
+                attachmentLock.Parameters.AddWithValue("conversation_id", conversationId);
+                attachmentLock.Parameters.AddWithValue("effective_user_id", effectiveUserId);
+                var lockedAttachmentIds = new HashSet<Guid>();
+                await using (var attachmentReader = await attachmentLock.ExecuteReaderAsync(cancellationToken))
+                {
+                    while (await attachmentReader.ReadAsync(cancellationToken))
+                        lockedAttachmentIds.Add(attachmentReader.GetGuid(0));
+                }
+                if (lockedAttachmentIds.Count != attachmentIds.Length)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return (Guid.Empty, 0);
+                }
+            }
+
+            // Attachment retention owns the attachment row before it updates
+            // the parent conversation. Keep the same lock order here to avoid
+            // a conversation/attachment deadlock during concurrent purge.
             const string lockSql = """
                 SELECT 1
                 FROM pulse_ai_conversations

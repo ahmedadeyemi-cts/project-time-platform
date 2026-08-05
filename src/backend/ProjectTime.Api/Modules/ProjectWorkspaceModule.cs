@@ -465,6 +465,7 @@ public static class ProjectWorkspaceModule
             LEFT JOIN projects p ON p.project_id = d.project_id
             LEFT JOIN project_intake_requests pir ON pir.project_intake_request_id = d.project_intake_request_id
             WHERE d.is_active = TRUE
+              AND COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
               AND (
                   @is_broad_scope = TRUE
                   OR (@can_view_managed_projects = TRUE AND (p.project_manager_user_id = @user_id OR pir.assigned_pm_user_id = @user_id))
@@ -767,6 +768,7 @@ public static class ProjectWorkspaceModule
             LEFT JOIN project_intake_requests pir ON pir.project_intake_request_id = d.project_intake_request_id
             WHERE d.project_intake_document_id = @document_id
               AND d.is_active = TRUE
+              AND COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
               AND (
                   @is_broad_scope = TRUE
                   OR (@can_view_managed_projects = TRUE AND (p.project_manager_user_id = @user_id OR pir.assigned_pm_user_id = @user_id))

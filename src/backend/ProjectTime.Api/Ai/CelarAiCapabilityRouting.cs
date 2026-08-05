@@ -498,7 +498,8 @@ public sealed record CelarAiCapabilityExecutionContext(
     bool DeidentifiedFactsAvailable = false,
     string? ExternalCapsulePurpose = null,
     bool PrivateTargetAllowed = true,
-    IReadOnlyList<string>? ExternalFactCodes = null);
+    IReadOnlyList<string>? ExternalFactCodes = null,
+    string? ExternalProblemStatement = null);
 
 public sealed class CelarAiConfigurationConflictException(string message) : InvalidOperationException(message);
 
@@ -2179,7 +2180,17 @@ public sealed class CelarAiCapabilityRouter
                 decisions.Add(new(
                     target,
                     "used",
-                    externalDecisionCode == "sanitized_external_request_ready_after_deidentification"
+                    externalDecisionCode.StartsWith(
+                        "sanitized_external_problem_ready",
+                        StringComparison.Ordinal)
+                        ? externalDecisionCode.EndsWith(
+                            "after_deidentification",
+                            StringComparison.Ordinal)
+                            ? "generation_succeeded_with_sanitized_generic_problem_after_deidentification"
+                            : "generation_succeeded_with_sanitized_generic_problem"
+                    : externalDecisionCode.EndsWith(
+                        "after_deidentification",
+                        StringComparison.Ordinal)
                         ? "generation_succeeded_after_deidentification"
                         : "generation_succeeded"));
                 return new ProjectPulseAiRouteResult(
@@ -2300,6 +2311,16 @@ public sealed class CelarAiCapabilityRouter
             return null;
         }
 
+        var genericProblemIncluded = string.Equals(
+                execution.Feature,
+                CelarAiCapabilityCatalog.HelpAssistant,
+                StringComparison.OrdinalIgnoreCase)
+            && execution.PurposeBuiltDeidentifiedInput
+            && !execution.ContainsPrivateDocuments
+            && !execution.ContainsCustomerIdentity
+            && !execution.ContainsPeopleRecords
+            && !execution.ContainsFinancialValues
+            && !string.IsNullOrWhiteSpace(execution.ExternalProblemStatement);
         var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
             Purpose: $"module064_{execution.Feature}",
             Content: fixedCapsule.Capsule,
@@ -2311,15 +2332,48 @@ public sealed class CelarAiCapabilityRouter
             decisionCode = SanitizerDecisionCode(sanitized);
             return null;
         }
-        decisionCode = sanitized.Redactions.Count > 0
+        var externalPrompt = sanitized.SanitizedCapsule;
+        var problemRedacted = false;
+        if (genericProblemIncluded)
+        {
+            var sanitizedProblem = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
+                Purpose: $"module064_{execution.Feature}_generic_problem",
+                Content: execution.ExternalProblemStatement,
+                Classification: "internal_generic",
+                SensitiveTerms: sensitiveTerms.ToArray(),
+                AcknowledgePreviewOnly: true));
+            if (!sanitizedProblem.ExternalExecutionAuthorized)
+            {
+                decisionCode = $"sanitized_external_problem_blocked_{SanitizerDecisionCode(sanitizedProblem)}";
+                return null;
+            }
+            problemRedacted = sanitizedProblem.Redactions.Count > 0;
+            externalPrompt = $"""
+                {sanitized.SanitizedCapsule}
+
+                Closed server-owned topic to address:
+                {sanitizedProblem.SanitizedCapsule}
+
+                Answer only as general, unverified guidance. Do not claim access to enterprise records,
+                current runtime state, private sources, or a completed action.
+                """;
+        }
+        decisionCode = genericProblemIncluded && externalPrompt.Length > sanitized.SanitizedCapsule.Length
+            ? problemRedacted
+                ? "sanitized_external_problem_ready_after_deidentification"
+                : "sanitized_external_problem_ready"
+            : sanitized.Redactions.Count > 0
             ? "sanitized_external_request_ready_after_deidentification"
             : "sanitized_external_request_ready";
-        return request with
+        var sanitizedRequest = request with
         {
             Feature = CelarAiCapabilityCatalog.NormalizeFeature(request.Feature),
             SystemPrompt = fixedCapsule.SystemPrompt,
             UserPrompt = sanitized.SanitizedCapsule
         };
+        return externalPrompt.Length == sanitized.SanitizedCapsule.Length
+            ? sanitizedRequest
+            : sanitizedRequest with { UserPrompt = externalPrompt };
     }
 
     private static string BuildFallbackWarning(IReadOnlyCollection<ProjectPulseAiTargetDecision> decisions)

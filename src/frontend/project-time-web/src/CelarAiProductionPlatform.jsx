@@ -8,6 +8,7 @@ import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './celar-ai-production-platform.css';
 
 const TABS = Object.freeze([
+  ['ask', 'Ask Celar AI', 'The same durable global chat, routing policy, private evidence, and document attachments'],
   ['overview', 'Overview', 'Architecture, readiness, trust, and solution composer'],
   ['knowledge', 'Knowledge & RAG', 'Private document processing, retrieval, citations, and revocation'],
   ['tools', 'Tools & Coverage', 'Live APIs, governed tools, troubleshooting, and system coverage'],
@@ -55,6 +56,21 @@ function DataTable({ rows, columns, empty }) {
 }
 function LifecycleHeading({ eyebrow, heading, copy, action }) {
   return <div className="celar-production-section-heading"><div><p>{eyebrow}</p><h2>{heading}</h2><span>{copy}</span></div>{action || null}</div>;
+}
+
+function AskCelarAiWorkspace() {
+  function openChat(question = '') {
+    window.dispatchEvent(new CustomEvent('projectpulse:open-celar-ai-chat', { detail: { question } }));
+  }
+  return <section className="celar-production-workspace celar-production-ask-workspace">
+    <LifecycleHeading eyebrow="One Celar AI experience" heading="Ask, validate, and keep the evidence together" copy="Module 011 and the global Ask Celar AI launcher open the same durable conversation experience. They use the same v2 intent router, Module 064 provider policy, private-first evidence rules, answer preferences, and conversation-scoped document attachments." action={<button type="button" onClick={() => openChat()}>Open Ask Celar AI</button>} />
+    <div className="celar-production-ask-grid">
+      <article><strong>Accurate local answers first</strong><p>Celar AI resolves direct intents and authorized private evidence before governed fallback is considered.</p><button type="button" onClick={() => openChat('What is the current system version?')}>Test system version</button></article>
+      <article><strong>Validate with documents</strong><p>Attach approved files inside the conversation. Only files that pass private scanning, extraction, authorization, and indexing can be selected for a question.</p><button type="button" onClick={() => openChat()}>Attach and ask</button></article>
+      <article><strong>Governed provider routing</strong><p>Module 064 remains the one provider gateway. Private context stays private, and external assistance is subject to the configured sanitization and verification policy.</p><a href="#ai-provider-configuration">Review Module 064</a></article>
+    </div>
+    <div className="celar-production-policy"><h3>Shared operating contract</h3><ul><li>One global chat instance retains conversation history without duplicating or merging unrelated threads.</li><li>Ready attachments are explicitly selected and scoped to the active conversation.</li><li>Enter sends, Shift + Enter adds a line, and Escape closes the shared chat.</li><li>Answers continue to display trust, confidence, source success and failure, and review requirements.</li></ul></div>
+  </section>;
 }
 
 function DatasetWorkspace({ data, refresh, canManage }) {
@@ -243,6 +259,7 @@ export default function CelarAiProductionPlatform() {
   const activeDefinition = TABS.find(([id]) => id === activeTab) || TABS[0];
 
   const tabContent = useMemo(() => {
+    if (activeTab === 'ask') return <AskCelarAiWorkspace />;
     if (activeTab === 'overview') return <CelarAiEnterprisePlatform />;
     if (activeTab === 'knowledge') return <div className="celar-production-stack"><PulseAiPrivateDocumentPipelineWorkbench /><PulseAiPrivateRagWorkbench /><PulseAiPrivateRuntimeWorkbench /></div>;
     if (activeTab === 'tools') return <PulseAiSystemIntelligenceWorkbench />;
