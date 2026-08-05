@@ -35,7 +35,7 @@ require "$WORKFLOW" 'WORKFLOW_SOURCE_SHA: ${{ github.sha }}'
 require "$WORKFLOW" 'Only the verified Modules 008 and 009 source release may deploy.'
 require "$WORKFLOW" 'git -C control merge-base --is-ancestor'
 require "$WORKFLOW" 'cancel-in-progress: false'
-require "$WORKFLOW" 'projectpulse-deploy-admin-experience-008-009-test'
+require "$WORKFLOW" 'projectpulse-deploy-test'
 
 require "$WORKFLOW" '048_admin_audit_and_manager_team_scope.sql'
 require "$WORKFLOW" 'projectpulse_system_audit_events'

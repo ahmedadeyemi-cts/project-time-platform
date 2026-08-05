@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-module001-module026-microsoft-runtime-test
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 
 jobs:
