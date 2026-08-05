@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "releaseName": "current-main-acae6fda-20260805-r9",
+  "releaseName": "current-main-dfd31042-20260805-r1",
   "environment": "test",
   "aiReleasePhase": "disabled",
   "routingAuthority": "database_managed_active",
-  "sourceSha": "acae6fda08e6d58dfb1e63b5eef4828877fd5523",
+  "sourceSha": "dfd31042cb971677f78fb70e37c9c8a2810db938",
   "requiredPriorLedger": [
     "052_pulse_ai_private_document_runtime",
     "053_pulse_ai_private_rag_orchestration",
