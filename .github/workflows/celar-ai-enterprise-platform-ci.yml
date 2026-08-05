@@ -109,7 +109,8 @@ jobs:
             # Module 033 owns its review-first Project Forge persistence while
             # consuming the governed Celar AI capability router. Permit only
             # that module's guarded base and interactive migration pairs.
-            ALLOWED_DATABASE='^(database/migrations/(070_module_033_project_forge|073_module_033_project_forge_interactive)\.sql|database/rollback/(070_module_033_project_forge_rollback|073_module_033_project_forge_interactive_rollback)\.sql)
+            ALLOWED_DATABASE='^(database/migrations/(070_module_033_project_forge|073_module_033_project_forge_interactive)\.sql|database/rollback/(070_module_033_project_forge_rollback|073_module_033_project_forge_interactive_rollback)\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_033_PROJECT_FORGE' >> "$GITHUB_ENV"
           elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
             # A UAT functional-completion package owns only the immutable project-number
             # migration. Celar AI is validated as a consumer because its private
