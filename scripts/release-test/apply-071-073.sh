@@ -42,7 +42,11 @@ HASHES=(
   e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6
 )
 [[ -f "$MIGRATION_ROOT/SHA256SUMS" ]] || fail "Migration checksum manifest is missing."
-mapfile -t ACTUAL_FILES < <(find "$MIGRATION_ROOT" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+mapfile -t ACTUAL_FILES < <(
+  for path in "$MIGRATION_ROOT"/*.sql; do
+    [[ -f "$path" ]] && basename "$path"
+  done | LC_ALL=C sort
+)
 diff -u <(printf '%s\n' "${FILES[@]}" | LC_ALL=C sort) <(printf '%s\n' "${ACTUAL_FILES[@]}") ||
   fail "Migration image must contain exactly migrations 071, 072, and 073."
 [[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == "3" ]] ||
@@ -146,17 +150,24 @@ END
 $release_prerequisites$;
 
 \if :release_apply
-  SELECT EXISTS(
-    SELECT 1 FROM schema_migrations
-    WHERE migration_id IN (
-      '071_ai_runtime_production_hardening',
-      '072_celar_ai_conversation_attachments',
-      '073_module_033_project_forge_interactive'
-    )
-  ) AS present \gset release_target_
-  \if :release_target_present
-    \echo ERROR: This guarded release only accepts a fresh 071-073 migration set; partial or historical target ledgers require explicit operator recovery.
+  SELECT
+    COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3 AS complete,
+    COUNT(*) <> 0 AND NOT (COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3) AS inconsistent
+  FROM schema_migrations
+  WHERE migration_id IN (
+    '071_ai_runtime_production_hardening',
+    '072_celar_ai_conversation_attachments',
+    '073_module_033_project_forge_interactive'
+  )
+  \gset release_target_
+  \if :release_target_inconsistent
+    \echo ERROR: Refusing partial, duplicate, or mixed 071-073 ledger state; explicit operator recovery is required.
     \quit 3
+  \endif
+  \if :release_target_complete
+    \echo MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING
+  \else
+    \echo MAIN_RELEASE_TARGET_LEDGER=ABSENT_APPLYING
   \endif
 \endif
 
