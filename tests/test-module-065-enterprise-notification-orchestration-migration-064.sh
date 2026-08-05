@@ -139,6 +139,14 @@ CREATE TABLE project_notification_delivery_attempts (
   attempt_status TEXT NOT NULL
 );
 
+-- Existing Module 032 delivery evidence must remain untouched by Module 065 rollback.
+INSERT INTO project_notification_dispatches (
+  project_notification_dispatch_id,event_key,notification_type,delivery_status
+) VALUES (
+  '09000000-0000-0000-0000-000000000001',
+  'preexisting:module032:dispatch','project_assignment_changed','sent'
+);
+
 INSERT INTO app_users(user_id,email,display_name) VALUES
  ('10000000-0000-0000-0000-000000000001','admin@example.test','Admin Test'),
  ('10000000-0000-0000-0000-000000000002','ptc@example.test','PTC Test'),
