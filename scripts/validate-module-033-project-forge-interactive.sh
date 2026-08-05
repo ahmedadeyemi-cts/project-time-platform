@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep validation portable across runner images. Prefer ripgrep when present;
+# otherwise map only the option forms used below to GNU grep and reject
+# unexpected invocations instead of weakening a source assertion.
+if ! command -v rg >/dev/null 2>&1; then
+  rg() {
+    local option="${1:-}"
+    shift || true
+    case "$option" in
+      -Fq) grep -Fq -- "$@" ;;
+      -Fo) grep -Fo -- "$@" ;;
+      -n) grep -En -- "$@" ;;
+      -o) grep -Eo -- "$@" ;;
+      *)
+        echo "Unsupported rg compatibility invocation: $option" >&2
+        return 2
+        ;;
+    esac
+  }
+fi
+
 root="${1:-.}"
 module="$root/src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs"
 interactive="$root/src/backend/ProjectTime.Api/Modules/ProjectForgeInteractiveModule.cs"
