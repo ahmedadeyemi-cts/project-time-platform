@@ -113,16 +113,25 @@ assert(
   'RELEASE_MALWARE_SCANNER_CONFIGURATION',
   policy.includes('IsApprovedReleaseMalwareScannerConfiguration')
     && policy.includes('clamav_tcp_configuration_incomplete')
-    && policy.includes('pre_scanned_attestation_configuration_incomplete')
+    && policy.includes('pre_scanned_attestation_not_release_approved')
     && policy.includes('malware_scanner_mode_invalid')
     && behavior.includes('missing release malware scanner mode is rejected')
     && behavior.includes('invalid legacy release malware scanner mode is rejected')
     && behavior.includes('incomplete ClamAV release scanner configuration is rejected')
+    && behavior.includes('ClamAV release scanner configuration without signature evidence is rejected')
+    && behavior.includes('complete ClamAV release scanner configuration is accepted')
     && behavior.includes('incomplete pre-scan release scanner attestation is rejected')
-    && behavior.includes('complete pre-scan release scanner attestation is accepted')
-    && behavior.includes('"pre_scanned_attestation"')
-    && !behavior.includes('Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE", "approved_pre_scan_attestation")'),
-  'release startup accepts only a complete ClamAV or explicitly attested pre-scan malware boundary',
+    && behavior.includes('complete global pre-scan attestation is rejected for release')
+    && behavior.includes('Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE", "clamav_tcp")')
+    && behavior.includes('Set("PROJECTPULSE_PULSE_AI_CLAMAV_HOST", "clamav.internal")')
+    && behavior.includes('immutable snapshot hash matches exact copied bytes')
+    && behavior.includes('replacing the original does not replace immutable snapshot bytes')
+    && behavior.includes('guardian and verified modes block snapshot writes')
+    && behavior.includes('guardian and sealed directory block snapshot deletion')
+    && behavior.includes('snapshot disposal removes private copied bytes')
+    && behavior.includes('live exact snapshot lease is preserved by cleanup')
+    && behavior.includes('definitively orphaned snapshot lease is deleted by cleanup'),
+  'release startup accepts only complete ClamAV configuration with explicit signature-version evidence',
 );
 
 assert(

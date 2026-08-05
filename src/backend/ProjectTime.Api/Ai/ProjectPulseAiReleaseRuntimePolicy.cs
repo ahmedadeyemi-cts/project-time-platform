@@ -644,19 +644,15 @@ public static class ProjectPulseAiReleaseRuntimePolicy
         {
             var valid = !string.IsNullOrWhiteSpace(clamAvHost)
                 && int.TryParse(clamAvPort, out var port) && port is >= 1 and <= 65535
-                && int.TryParse(clamAvTimeoutSeconds, out var timeout) && timeout is >= 5 and <= 300;
+                && int.TryParse(clamAvTimeoutSeconds, out var timeout) && timeout is >= 5 and <= 300
+                && !string.IsNullOrWhiteSpace(signatureVersion);
             reason = valid ? "clamav_tcp_configuration_verified" : "clamav_tcp_configuration_incomplete";
             return valid;
         }
         if (string.Equals(mode?.Trim(), "pre_scanned_attestation", StringComparison.Ordinal))
         {
-            var valid = preScanAttested
-                && !string.IsNullOrWhiteSpace(signatureVersion)
-                && !string.IsNullOrWhiteSpace(approvalReference);
-            reason = valid
-                ? "pre_scanned_attestation_configuration_verified"
-                : "pre_scanned_attestation_configuration_incomplete";
-            return valid;
+            reason = "pre_scanned_attestation_not_release_approved";
+            return false;
         }
         reason = "malware_scanner_mode_invalid";
         return false;

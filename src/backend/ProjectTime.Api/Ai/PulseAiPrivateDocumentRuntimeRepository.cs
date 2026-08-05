@@ -633,6 +633,33 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         }
     }
 
+    public async Task<bool> HasLiveSnapshotLeaseAsync(
+        Guid jobId,
+        Guid leaseToken,
+        long leaseGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString());
+        await connection.OpenAsync(cancellationToken);
+        const string sql = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pulse_ai_document_processing_jobs
+                WHERE pulse_ai_document_processing_job_id = @job_id
+                  AND lease_token = @lease_token
+                  AND lease_generation = @lease_generation
+                  AND job_status IN ('scanning','extracting','embedding','indexing','cancel_requested')
+                  AND lease_expires_at > NOW()
+            );
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("job_id", jobId);
+        command.Parameters.AddWithValue("lease_token", leaseToken);
+        command.Parameters.AddWithValue("lease_generation", leaseGeneration);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Snapshot lease state was not returned."));
+    }
+
     public async Task<PulseAiPrivateDocumentRuntimeState?> GetDocumentStateAsync(
         RuntimeAccess access,
         Guid documentId,

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProjectTime.Api.Ai;
+using System.Security.Cryptography;
 
 internal static class ReleaseRuntimeBehavior
 {
@@ -11,6 +12,7 @@ internal static class ReleaseRuntimeBehavior
 
     public static async Task RunAsync(string databaseConnectionString)
     {
+        await VerifyImmutableSnapshotBehaviorAsync();
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleasePrivateInferenceDestination(
                 "https://celar.private.example/v1/chat/completions", string.Empty, out _),
             "empty private endpoint allowlist is rejected");
@@ -47,14 +49,20 @@ internal static class ReleaseRuntimeBehavior
                 "approved_pre_scan_attestation", null, null, null, true, "ci-signature", "ci-approval", out _),
             "invalid legacy release malware scanner mode is rejected");
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
-                "clamav_tcp", string.Empty, "3310", "45", false, null, null, out _),
+                "clamav_tcp", string.Empty, "3310", "45", false, "ci-signature", null, out _),
             "incomplete ClamAV release scanner configuration is rejected");
+        Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
+                "clamav_tcp", "clamav.internal", "3310", "45", false, null, null, out _),
+            "ClamAV release scanner configuration without signature evidence is rejected");
+        Require(ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
+                "clamav_tcp", "clamav.internal", "3310", "45", false, "ci-signature", null, out _),
+            "complete ClamAV release scanner configuration is accepted");
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
                 "pre_scanned_attestation", null, null, null, false, "ci-signature", "ci-approval", out _),
             "incomplete pre-scan release scanner attestation is rejected");
-        Require(ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
+        Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseMalwareScannerConfiguration(
                 "pre_scanned_attestation", null, null, null, true, "ci-signature", "ci-approval", out _),
-            "complete pre-scan release scanner attestation is accepted");
+            "complete global pre-scan attestation is rejected for release");
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseDocumentServicePrincipal(null, out _),
             "missing release document service principal is rejected");
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleaseDocumentServicePrincipal("not-a-uuid", out _),
@@ -240,6 +248,107 @@ internal static class ReleaseRuntimeBehavior
         Console.WriteLine("CELAR_AI_RELEASE_RUNTIME_BEHAVIOR=PASSED");
     }
 
+    private static async Task VerifyImmutableSnapshotBehaviorAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"pulse-ai-snapshot-ci-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var originalPath = Path.Combine(root, "authorized.txt");
+            var originalBytes = "approved snapshot bytes"u8.ToArray();
+            await File.WriteAllBytesAsync(originalPath, originalBytes);
+            var source = new PulseAiAuthorizedDocumentSource(
+                DocumentId: Guid.NewGuid(),
+                ProjectId: Guid.NewGuid(),
+                ProjectCode: "CI",
+                ProjectName: "Snapshot behavior",
+                CustomerName: "CI",
+                DocumentType: "sow",
+                DocumentCategory: "sow",
+                OriginalFileName: "authorized.txt",
+                StoredFileName: "authorized.txt",
+                StoragePath: originalPath,
+                ContentType: "text/plain",
+                SizeBytes: originalBytes.Length,
+                EngineeringVisible: true,
+                AiTimesheetContextEnabled: true,
+                ExtractionStatus: "ready",
+                ExistingContextSummaryReady: false,
+                ContextLastProcessedAt: null,
+                UploadedAt: DateTimeOffset.UtcNow,
+                UploadSource: "ci",
+                AccessScope: "ci",
+                Classification: "private",
+                RoleCodes: ["CI"]);
+            var jobId = Guid.NewGuid();
+            var leaseToken = Guid.NewGuid();
+            var snapshot = await PulseAiImmutableDocumentSnapshot.CreateAsync(
+                source,
+                root,
+                jobId,
+                leaseToken,
+                leaseGeneration: 7,
+                maximumFileBytes: 1024 * 1024,
+                CancellationToken.None);
+            var snapshotPath = snapshot.Source.StoragePath;
+            var expectedHash = Convert.ToHexString(SHA256.HashData(originalBytes)).ToLowerInvariant();
+            Require(snapshot.SourceSha256 == expectedHash, "immutable snapshot hash matches exact copied bytes");
+
+            await File.WriteAllTextAsync(originalPath, "replacement bytes");
+            Require(
+                (await File.ReadAllBytesAsync(snapshotPath)).SequenceEqual(originalBytes),
+                "replacing the original does not replace immutable snapshot bytes");
+
+            var writeBlocked = false;
+            try
+            {
+                await using var writer = new FileStream(snapshotPath, FileMode.Open, FileAccess.Write, FileShare.Read);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                writeBlocked = true;
+            }
+            Require(writeBlocked, "guardian and verified modes block snapshot writes");
+
+            var deleteBlocked = false;
+            try { File.Delete(snapshotPath); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                deleteBlocked = true;
+            }
+            Require(deleteBlocked && File.Exists(snapshotPath), "guardian and sealed directory block snapshot deletion");
+            await snapshot.DisposeAsync();
+            Require(!File.Exists(snapshotPath), "snapshot disposal removes private copied bytes");
+
+            var processingRoot = Path.Combine(root, ".pulse-ai-processing");
+            var liveJob = Guid.NewGuid();
+            var liveToken = Guid.NewGuid();
+            var liveAttempt = Path.Combine(processingRoot, liveJob.ToString("N"), $"8-{liveToken:N}-{new string('a', 32)}");
+            Directory.CreateDirectory(liveAttempt);
+            await File.WriteAllTextAsync(Path.Combine(liveAttempt, $"{Guid.NewGuid():N}.partial"), "live");
+            var orphanJob = Guid.NewGuid();
+            var orphanToken = Guid.NewGuid();
+            var orphanAttempt = Path.Combine(processingRoot, orphanJob.ToString("N"), $"9-{orphanToken:N}-{new string('b', 32)}");
+            Directory.CreateDirectory(orphanAttempt);
+            await File.WriteAllTextAsync(Path.Combine(orphanAttempt, $"{Guid.NewGuid():N}.partial"), "orphan");
+
+            await PulseAiImmutableDocumentSnapshot.CleanupOrphansAsync(
+                root,
+                maximumDirectories: 32,
+                (candidateJob, candidateToken, generation, _) => Task.FromResult(
+                    candidateJob == liveJob && candidateToken == liveToken && generation == 8),
+                CancellationToken.None);
+            Require(Directory.Exists(liveAttempt), "live exact snapshot lease is preserved by cleanup");
+            Require(!Directory.Exists(orphanAttempt), "definitively orphaned snapshot lease is deleted by cleanup");
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
     private static void ConfigureRelease()
     {
         Set(ProjectPulseAiReleaseRuntimePolicy.PhaseVariable, "candidate");
@@ -290,10 +399,12 @@ internal static class ReleaseRuntimeBehavior
         Set("PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED", "true");
         Set("PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS", "true");
         Set("PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID", "10000000-0000-0000-0000-000000000001");
-        Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE", "pre_scanned_attestation");
-        Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", "true");
+        Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE", "clamav_tcp");
+        Set("PROJECTPULSE_PULSE_AI_CLAMAV_HOST", "clamav.internal");
+        Set("PROJECTPULSE_PULSE_AI_CLAMAV_PORT", "3310");
+        Set("PROJECTPULSE_PULSE_AI_CLAMAV_TIMEOUT_SECONDS", "45");
+        Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", "false");
         Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION", "ci-signature-2026-08-05");
-        Set("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE", "ci-approval");
         Set("PROJECTPULSE_PULSE_AI_RAG_REQUIRE_PRIVATE_MODEL", "true");
         Set("PROJECTPULSE_PULSE_AI_ALLOW_LEXICAL_ONLY_COMPLETION", "true");
         Set("PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE", "ci-lexical-approval");

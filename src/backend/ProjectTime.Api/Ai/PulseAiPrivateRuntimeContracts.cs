@@ -426,6 +426,7 @@ public sealed record PulseAiPrivateMalwareScanResult(
     string Scanner,
     string SignatureVersion,
     string DiagnosticCode,
+    string SourceSha256,
     string EvidenceSha256,
     DateTimeOffset ScannedAt)
 {

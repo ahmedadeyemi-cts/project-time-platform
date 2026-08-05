@@ -17,7 +17,9 @@ const ragContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContr
 const storage = read('src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs');
 const repository = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs');
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');
+const releasePolicy = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs');
 const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs');
+const snapshot = read('src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs');
 const ocr = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs');
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs');
 const model = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs');
@@ -108,7 +110,7 @@ assert(
     && !hardeningCi.includes('pull_request:\n    paths:')
     && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE')
     && hardeningCi.includes("if: needs.classify.outputs.applicable == 'true'")
-    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_44_SOURCE_FILES')
+    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_45_SOURCE_FILES')
     && hardeningCi.includes('MISSING_SOURCE=')
     && hardeningCi.includes('UNEXPECTED=')
     && !hardeningCi.includes('DEPENDENCIES=')
@@ -125,6 +127,7 @@ assert(
     && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs')
     && hardeningCi.includes('src/backend/ProjectTime.Api/ProjectTime.Api.csproj')
     && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs')
     && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs')
     && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs')
     && hardeningCi.includes('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRagModule.cs')
@@ -134,7 +137,7 @@ assert(
     && hardeningCi.includes('src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx')
     && hardeningCi.includes('src/frontend/project-time-web/package.json')
     && hardeningCi.includes('docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md'),
-  'every main PR receives a lightweight classification while security-family branches require the exact 44-file, mode-safe source manifest before heavy validation'
+  'every main PR receives a lightweight classification while security-family branches require the exact 45-file, mode-safe source manifest before heavy validation'
 );
 
 assert(
@@ -347,12 +350,69 @@ assert(
     && !scanner.includes('ConnectAsync(options.MalwareScannerHost')
     && contracts.includes('HostResolutionResult')
     && contracts.includes('ApprovedAddresses')
+    && contracts.includes('string SourceSha256')
+    && !contracts.slice(
+      contracts.indexOf('public object ToPublicEvidence()'),
+      contracts.indexOf('public sealed record PulseAiPrivateOcrResult')
+    ).includes('sourceSha256')
+    && scanner.includes('SourceSha256: sourceSha256')
+    && releasePolicy.includes('pre_scanned_attestation_not_release_approved')
+    && releasePolicy.includes('!string.IsNullOrWhiteSpace(signatureVersion)')
+    && snapshot.includes('FileMode.CreateNew')
+    && snapshot.includes('FileShare.None')
+    && snapshot.includes('FileShare.Read')
+    && snapshot.includes('RandomNumberGenerator.GetBytes(16)')
+    && snapshot.includes('IncrementalHash.CreateHash(HashAlgorithmName.SHA256)')
+    && snapshot.includes('copied > maximumFileBytes')
+    && snapshot.includes('File.Move(partialPath, snapshotPath)')
+    && snapshot.includes('UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute')
+    && snapshot.includes('private const UnixFileMode ReadOnlyFileMode = UnixFileMode.UserRead')
+    && snapshot.includes('File.GetUnixFileMode(path) != PrivateDirectoryMode')
+    && snapshot.includes('File.GetUnixFileMode(path) != SealedDirectoryMode')
+    && snapshot.includes('File.GetUnixFileMode(path) != ReadOnlyFileMode')
+    && snapshot.includes('FileAttributes.ReadOnly')
+    && snapshot.includes('PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains')
+    && snapshot.includes('FileAttributes.ReparsePoint')
+    && snapshot.includes('await _guardian.DisposeAsync()')
+    && snapshot.includes('Cleanup(Source.StoragePath')
+    && snapshot.includes('StoragePath = snapshotPath')
+    && snapshot.includes('CleanupOrphansAsync')
+    && snapshot.includes('maximumDirectories = Math.Clamp(maximumDirectories, 1, 128)')
+    && snapshot.includes('TryParseAttemptDirectory')
+    && snapshot.includes('leaseToken:N')
+    && snapshot.includes('DeleteVerifiedSnapshotDirectory')
+    && !snapshot.includes('recursive: true')
+    && !snapshot.includes('ToPublicEvidence')
+    && repository.includes('HasLiveSnapshotLeaseAsync')
+    && repository.includes("job_status IN ('scanning','extracting','embedding','indexing','cancel_requested')")
+    && repository.includes('lease_token = @lease_token')
+    && repository.includes('lease_generation = @lease_generation')
+    && repository.includes('lease_expires_at > NOW()')
+    && runtime.indexOf('CleanupOrphansAsync') < runtime.indexOf('ClaimNextAsync')
+    && runtime.includes('document_snapshot_cleanup_unavailable')
+    && runtime.indexOf('source = immutableSnapshot.Source') < runtime.indexOf('_malwareScanner.ScanAsync')
+    && runtime.includes('_malwareScanner.ScanAsync(source.StoragePath, options')
+    && runtime.includes('_extractor.ExtractAsync(source, pipelineOptions, cancellationToken)')
+    && runtime.includes('_ocrClient.ExtractAsync(\n                    source,')
+    && runtime.includes('IsSha256(scan.SourceSha256)')
+    && runtime.includes('immutableSnapshot.SourceSha256')
+    && runtime.includes('extraction.SourceSha256')
+    && runtime.includes('await SourceStillMatchesAsync(')
+    && runtime.includes('document_snapshot_integrity_changed')
+    && runtime.includes('immutableSnapshotIntegrityVerified = false')
+    && runtime.indexOf('extraction.SourceSha256') < runtime.indexOf('_ocrClient.ExtractAsync')
+    && runtime.indexOf('_ocrClient.ExtractAsync') < runtime.indexOf('await SourceStillMatchesAsync(')
+    && runtime.indexOf('await SourceStillMatchesAsync(') < runtime.indexOf('_extractor.CreateChunks')
+    && runtime.indexOf('await SourceStillMatchesAsync(') < runtime.indexOf('_embeddingClient.GenerateAsync')
+    && runtime.indexOf('await SourceStillMatchesAsync(') < runtime.indexOf('PersistProcessedDocumentAsync')
+    && runtime.lastIndexOf('await SourceStillMatchesAsync(') > runtime.indexOf('_embeddingClient.GenerateAsync')
+    && runtime.lastIndexOf('await SourceStillMatchesAsync(') < runtime.indexOf('PersistProcessedDocumentAsync')
     && contracts.includes('PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE')
     && contracts.includes('PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION')
     && runtime.includes('AwaitingOcr')
     && runtime.includes('OcrEndpointPrivate')
     && runtime.includes('EmbeddingEndpointPrivate'),
-  'clean private scanning precedes extraction, ClamAV sockets pin an already validated private address, and readiness exposes private OCR and embedding requirements'
+  'scan, extraction, OCR, chunking, embedding, and persistence are bound to one guarded immutable snapshot while ClamAV pins a validated private address'
 );
 
 assert(

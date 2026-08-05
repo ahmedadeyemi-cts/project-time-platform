@@ -367,6 +367,25 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             return Empty("runtime_schema_unavailable", "migration_052_not_ready");
         }
 
+        try
+        {
+            await PulseAiImmutableDocumentSnapshot.CleanupOrphansAsync(
+                _pipeline.Options().UploadRoot,
+                maximumDirectories: 32,
+                _repository.HasLiveSnapshotLeaseAsync,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (PulseAiDocumentSnapshotException)
+        {
+            return Empty(
+                "document_snapshot_cleanup_unavailable",
+                "document_snapshot_cleanup_unavailable");
+        }
+
         if (options.AutoQueueEligibleDocuments)
             await _repository.EnqueueNextEligibleDocumentAsync(options, cancellationToken);
 
@@ -412,6 +431,44 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 return Result("failed", job, null, 0, 0, 0, "authorization_revoked", []);
             }
 
+            var pipelineOptions = _pipeline.Options() with
+            {
+                ExtractionPreviewEnabled = true,
+                MalwareScanAttested = true
+            };
+            PulseAiImmutableDocumentSnapshot snapshot;
+            if (job.LeaseToken is null)
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    "document_snapshot_lease_missing",
+                    "The immutable processing snapshot could not be bound to an active lease.",
+                    new { immutableSnapshotEstablished = false, rawDocumentTextLogged = false },
+                    cancellationToken);
+            }
+            try
+            {
+                snapshot = await PulseAiImmutableDocumentSnapshot.CreateAsync(
+                    source,
+                    pipelineOptions.UploadRoot,
+                    job.JobId,
+                    job.LeaseToken.Value,
+                    job.LeaseGeneration,
+                    pipelineOptions.MaximumFileBytes,
+                    cancellationToken);
+            }
+            catch (PulseAiDocumentSnapshotException exception)
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    exception.DiagnosticCode,
+                    "A private immutable processing snapshot could not be established.",
+                    new { immutableSnapshotEstablished = false, rawDocumentTextLogged = false },
+                    cancellationToken);
+            }
+            await using var immutableSnapshot = snapshot;
+            source = immutableSnapshot.Source;
+
             var scan = await _malwareScanner.ScanAsync(source.StoragePath, options, cancellationToken);
             if (scan.Infected)
             {
@@ -434,6 +491,18 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     "malware_scan_failed",
                     "The private malware scanner did not return a clean result.",
                     scan.ToPublicEvidence(),
+                    cancellationToken);
+            }
+            if (!IsSha256(scan.SourceSha256)
+                || !scan.SourceSha256.Equals(
+                    immutableSnapshot.SourceSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    "document_snapshot_integrity_changed",
+                    "The immutable processing snapshot failed its malware-scan integrity check.",
+                    new { immutableSnapshotIntegrityVerified = false, rawDocumentTextLogged = false },
                     cancellationToken);
             }
 
@@ -460,13 +529,19 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 return Result("cancelled", job, null, 0, 0, 0, "cancellation_requested", []);
             }
 
-            var pipelineOptions = _pipeline.Options() with
-            {
-                ExtractionPreviewEnabled = true,
-                MalwareScanAttested = true,
-                MalwareScannerMode = scan.Scanner
-            };
+            pipelineOptions = pipelineOptions with { MalwareScannerMode = scan.Scanner };
             var extraction = await _extractor.ExtractAsync(source, pipelineOptions, cancellationToken);
+            if (!immutableSnapshot.SourceSha256.Equals(
+                    extraction.SourceSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    "document_snapshot_integrity_changed",
+                    "The immutable processing snapshot failed its extraction integrity check.",
+                    new { immutableSnapshotIntegrityVerified = false, rawDocumentTextLogged = false },
+                    cancellationToken);
+            }
             if (extraction.OcrRequired)
             {
                 if (!options.OcrConfigured)
@@ -536,6 +611,19 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                     Warnings: [.. extraction.Warnings, .. ocr.Warnings],
                     Blockers: [],
                     GeneratedAt: DateTimeOffset.UtcNow);
+            }
+
+            if (!await SourceStillMatchesAsync(
+                    source.StoragePath,
+                    immutableSnapshot.SourceSha256,
+                    cancellationToken))
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    "document_snapshot_integrity_changed",
+                    "The immutable processing snapshot failed its post-extraction integrity check.",
+                    new { immutableSnapshotIntegrityVerified = false, rawDocumentTextLogged = false },
+                    cancellationToken);
             }
 
             if (!extraction.ExtractionSucceeded)
@@ -633,6 +721,18 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 },
                 options.LeaseSeconds,
                 cancellationToken);
+            if (!await SourceStillMatchesAsync(
+                    source.StoragePath,
+                    immutableSnapshot.SourceSha256,
+                    cancellationToken))
+            {
+                return await RetryOrFailAsync(
+                    job,
+                    "document_snapshot_integrity_changed",
+                    "The immutable processing snapshot failed its pre-persistence integrity check.",
+                    new { immutableSnapshotIntegrityVerified = false, rawDocumentTextLogged = false },
+                    cancellationToken);
+            }
             var versionId = await _repository.PersistProcessedDocumentAsync(
                 job,
                 source,
@@ -690,6 +790,47 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             heartbeatStop.Cancel();
             try { await heartbeatTask; }
             catch (OperationCanceledException) { }
+        }
+    }
+
+    private static bool IsSha256(string value) =>
+        value.Length == 64 && value.All(Uri.IsHexDigit);
+
+    private static async Task<bool> SourceStillMatchesAsync(
+        string path,
+        string expectedSourceSha256,
+        CancellationToken cancellationToken)
+    {
+        if (!IsSha256(expectedSourceSha256)) return false;
+
+        try
+        {
+            await using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 128 * 1024,
+                options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var hash = await System.Security.Cryptography.SHA256.HashDataAsync(
+                stream,
+                cancellationToken);
+            var actualSourceSha256 = Convert.ToHexString(hash).ToLowerInvariant();
+            return expectedSourceSha256.Equals(
+                actualSourceSha256,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

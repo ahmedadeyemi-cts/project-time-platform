@@ -111,8 +111,10 @@ Module 064 reports production ready only when all of the following are true:
   while normal TLS hostname/certificate validation remains enabled;
 - a shared persistent upload root (read-only protected-canary attestation in
   candidate phase; runtime write/delete probe in active phase), worker service
-  principal, private malware scanning, OCR when needed, and private embeddings
-  or approved lexical-only operation are ready;
+  principal, complete private ClamAV configuration with explicit signature
+  version evidence, OCR when needed, and private embeddings or approved
+  lexical-only operation are ready. Global pre-scan attestation is not accepted
+  for a release because it is not bound to the exact document bytes;
 - the automatic-queue service principal currently exists, is active, and has
   `QUEUE_PULSE_AI_DOCUMENT_PROCESSING` through an active role assignment;
 - at least one authorized approved/canonical SOW or GSD is processed and ready;
@@ -127,6 +129,26 @@ Document-version approval is optimistic and content-bound: the request carries
 both the active version ID and its expected source SHA-256. The repository
 checks both values in the same update, so a concurrently reprocessed SOW cannot
 cause an operator or activation workflow to approve a different version.
+
+Each processing attempt copies the authorized source into a random,
+job/lease-token/generation-scoped `.pulse-ai-processing` directory beneath the
+approved upload root. The bounded copy is hashed while written to a `CreateNew`
+partial file, flushed, atomically renamed to its hash, changed to verified 0400
+mode inside a 0700 creation directory sealed to verified 0500, and held open by a guardian that permits
+reads but denies writes and deletes. Scanner, native extraction, private OCR,
+chunking, embedding, and publication all consume that same snapshot. Exact
+hash fences run after scanning, after OCR/extraction, and immediately before
+persistence; mismatch returns only `document_snapshot_integrity_changed`.
+
+Normal, cancellation, and error exits delete the snapshot. A bounded worker
+sweep handles SIGKILL or pod-loss orphans: it parses only the strict
+job/lease-token/generation directory format and deletes a directory only after
+the database definitively proves that exact lease is not live and unexpired.
+Database uncertainty, unexpected paths, links, or nested directories fail
+closed without deletion. Before activation, the mounted processing filesystem
+must prove CreateNew, atomic rename, guardian sharing, verified 0700/0500/0400 modes,
+and cleanup; a mount such as Azure Files that cannot enforce and read back those
+semantics is not compatible and snapshot creation remains fail-closed.
 
 The exact-head CI workflow executes Migration 071 twice, verifies the single
 ledger row and business-row preservation, proves a mid-rotation cryptographic
