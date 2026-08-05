@@ -251,6 +251,7 @@ public static partial class ProjectForgeModule
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanUseAi || !access.CanManage || access.IsViewAs) return WriteForbidden(access);
+        if (CandidateAiDraftMutationBlocked() is { } blocked) return blocked;
         if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
         var project = await LoadProjectIdentityAsync(connection, projectId, cancellationToken);
         if (project is null) return Results.NotFound(new { status = "project_not_found" });
@@ -721,6 +722,20 @@ public static partial class ProjectForgeModule
             assignmentsCreated = request.CreateAssignments,
             stateChanged = true
         });
+    }
+
+    private static IResult? CandidateAiDraftMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.Requested && !release.CandidateReadOnly) return null;
+        return Results.Json(new
+        {
+            module = ProjectForgePolicy.ModuleCode,
+            status = "release_candidate_read_only",
+            message = "Project Forge AI draft generation and persistence are disabled on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
     }
 
     private static async Task InsertPlanAsync(

@@ -102,6 +102,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         PulseAiConversationCreateRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return null;
         if (!await IsSchemaReadyAsync(cancellationToken)) return null;
         var conversationId = Guid.NewGuid();
         var mode = NormalizeMode(request.Mode);
@@ -269,6 +270,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string mode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return null;
         if (requestedConversationId is Guid requested && requested != Guid.Empty)
         {
             var existing = await GetConversationAsync(requested, effectiveUserId, cancellationToken);
@@ -298,6 +300,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         DateTimeOffset? dataAsOf,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return (Guid.Empty, 0);
         if (!await IsSchemaReadyAsync(cancellationToken)) return (Guid.Empty, 0);
         var messageId = Guid.NewGuid();
         try
@@ -388,6 +391,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return Guid.Empty;
         if (!await IsSchemaReadyAsync(cancellationToken)) return Guid.Empty;
         var runId = Guid.NewGuid();
         try
@@ -435,6 +439,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         bool persistResponseBody,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -493,6 +498,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string diagnosticCode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {

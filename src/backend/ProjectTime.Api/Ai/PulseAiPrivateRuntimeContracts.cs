@@ -90,6 +90,7 @@ public sealed record PulseAiPrivateRuntimeOptions(
 
     public static PulseAiPrivateRuntimeOptions FromEnvironment()
     {
+        ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         var hostAllowlist = Split(
             Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST"),
             PulseAiPrivateRuntimePolicy.PrivateHostSuffixDefaults);

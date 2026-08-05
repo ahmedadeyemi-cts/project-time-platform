@@ -308,6 +308,18 @@ public static class PulseAiSystemIntelligenceModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (release.Requested || release.CandidateReadOnly)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "release_candidate_read_only",
+                message = "Durable conversation creation is disabled on the exact-source release candidate. Read-only AI questions remain available without persistence.",
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                stateChanged = false
+            }, statusCode: StatusCodes.Status423Locked);
+        }
         var access = await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
         if (!access.IsActive || !access.CanViewConversations) return Forbidden(PulseAiSystemIntelligencePolicy.ConversationPermission);
         var conversation = await service.CreateConversationAsync(

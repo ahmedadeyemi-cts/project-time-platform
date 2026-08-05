@@ -31,7 +31,7 @@ rows exist.
 
 ## Shared probe evidence
 
-Private Celar readiness is not process-local. The private-model test writes one
+Normal active-revision Celar readiness is not process-local. The private-model test writes one
 database evidence row containing provider, environment, profile revision,
 success/failure, sanitized diagnostic code, request ID, model fingerprint,
 replica ID, test time, and expiry. It stores no endpoint, token, prompt,
@@ -39,6 +39,29 @@ response, customer identity, or document content. Production readiness accepts
 only a successful, unexpired row for the exact current profile revision. The
 default TTL is 15 minutes; a settings or secret revision change invalidates old
 evidence immediately.
+
+The zero-traffic release candidate is the deliberate exception. When
+`PROJECTPULSE_AI_RELEASE_SCOPED_MODE=true`, the configuration is accepted only
+when `PROJECTPULSE_AI_RELEASE_CONFIG_SOURCE_COMMIT` exactly equals the running
+40-character `PROJECTPULSE_SOURCE_COMMIT` and both equal the immutable
+`ProjectPulseSourceRevision` assembly metadata stamped by the detached source
+build with `-p:ProjectPulseSourceRevision=<exact_source_sha>`,
+`PROJECTPULSE_AI_CANDIDATE_READ_ONLY=true`, and
+`PROJECTPULSE_AI_RELEASE_ROUTE_ORDER` contains one valid four-target order. That
+order is applied immutably to all eight registered central capabilities and the
+private endpoint, model, bearer token, and hostname allowlist are read only from
+the revision environment (normally version-pinned Key Vault references). Shared
+database routes and profiles are ignored. A mismatch fails application startup;
+it never falls back to shared configuration.
+
+Candidate provider tests retain evidence only in the candidate replica's memory.
+They never write shared probe evidence. Module 064 identifies the configuration
+as `deployment_managed_release`, shows the bound source commit, and rejects route,
+profile, secret, and encryption-key changes with HTTP 423. Document queue, retry,
+cancel, approval, worker, automatic admission, feedback, answer/retrieval audit,
+System Intelligence conversation/audit persistence, and Project Forge AI draft
+creation/persistence are also disabled. A
+normally configured active revision keeps the existing database-managed behavior.
 
 ## Private worker lease fencing
 
@@ -56,7 +79,8 @@ Module 064 reports production ready only when all of the following are true:
 
 - migrations 052, 053, 061, and 071 are recorded and their runtime structures
   are available;
-- all Timesheet routes exactly equal Celar AI, Claude, OpenAI, governed local;
+- all eight central capability routes exactly equal the governed configured
+  order, with the governed local template last;
 - the encrypted private profile is persisted, enabled, and requires private
   inference for document-grounded answers;
 - the HTTPS endpoint hostname is allowlisted and resolves only to approved

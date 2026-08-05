@@ -70,6 +70,7 @@ public static class CelarAiCapabilityRoutingModule
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var routes = await store.LoadRoutesAsync(cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         return Results.Ok(new
         {
             module = "064",
@@ -91,7 +92,12 @@ public static class CelarAiCapabilityRoutingModule
                 safetyRefusalFailover = false,
                 privacyPolicyEditable = false,
                 rawPrivateContextEligibleForPublicProviders = false,
-                viewAsMutationAllowed = false
+                viewAsMutationAllowed = false,
+                configurationAuthority = release.ConfigurationAuthority,
+                deploymentManaged = release.Active,
+                readOnly = release.Active,
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                catalogCapabilityCount = routes.Count
             },
             generatedAt = DateTimeOffset.UtcNow,
             stateChanged = false
@@ -108,6 +114,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         var actor = ActualSessionUserId(context)!.Value;
         try
         {
@@ -154,6 +161,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var route = await store.ResetRouteAsync(
@@ -241,24 +249,19 @@ public static class CelarAiCapabilityRoutingModule
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
         if (authorization is not null) return authorization;
         var profile = await store.LoadPrivateModelProfileAsync(cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         var policy = await PrivateEndpointPolicyAsync(profile, cancellationToken);
         var runtimeReadiness = await runtime.GetReadinessAsync(cancellationToken);
         var routes = await store.LoadRoutesAsync(cancellationToken);
-        var requiredTimesheetFeatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            CelarAiCapabilityCatalog.TimesheetNonProject,
-            CelarAiCapabilityCatalog.TimesheetProjectTask,
-            CelarAiCapabilityCatalog.TimesheetServiceRequest
-        };
-        var requiredRoutes = routes
-            .Where(route => requiredTimesheetFeatures.Contains(route.FeatureCode))
-            .ToArray();
-        var routesReady = requiredRoutes.Length == requiredTimesheetFeatures.Count
+        var requiredFeatures = CelarAiCapabilityCatalog.Definitions.Keys
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requiredRoutes = routes.Where(route => requiredFeatures.Contains(route.FeatureCode)).ToArray();
+        var routesReady = requiredRoutes.Length == requiredFeatures.Count
             && requiredRoutes.All(route =>
-                route.Persisted
+                (route.Persisted || route.DeploymentManaged)
                 && route.Targets.Count == CelarAiCapabilityTargets.DefaultOrder.Length
                 && route.Targets.SequenceEqual(
-                    CelarAiCapabilityTargets.DefaultOrder,
+                    release.Active ? release.RouteOrder : CelarAiCapabilityTargets.DefaultOrder,
                     StringComparer.OrdinalIgnoreCase));
 
         // A single policy flag cannot silently create a half-enabled public
@@ -297,14 +300,15 @@ public static class CelarAiCapabilityRoutingModule
         var blockers = new List<string>();
         if (!store.DatabaseAvailable) blockers.Add("The ProjectPulse database connection is unavailable to Module 064.");
         if (!store.SecretEncryptionAvailable) blockers.Add("A stable base64-encoded 32-byte PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY is required.");
-        if (!profile.Persisted) blockers.Add("The private Celar AI profile is not persisted for this environment.");
+        if (!profile.Persisted && !profile.DeploymentManaged)
+            blockers.Add("The private Celar AI profile is neither persisted nor deployment-managed for this environment.");
         if (!profile.Enabled) blockers.Add("The private Celar AI target is disabled.");
         if (!profile.EndpointConfigured) blockers.Add("The private OpenAI-compatible endpoint is not configured.");
         if (!profile.ModelConfigured) blockers.Add("The private model or deployment name is not configured.");
         if (!profile.AuthenticationConfigured) blockers.Add("Bearer authentication is not configured for the private Celar AI target.");
         if (!profile.RequirePrivateModelForDocuments) blockers.Add("Private inference is not required for document-grounded answers.");
         if (policy != "private_endpoint_dns_verified") blockers.Add($"The private inference endpoint did not pass HTTPS, allowlist, and private-DNS verification ({policy}).");
-        if (!routesReady) blockers.Add("All three Timesheet capability routes must be persisted with Celar AI first and governed local template last.");
+        if (!routesReady) blockers.Add("All eight central AI capability routes must use the exact governed deployment order with governed local template last.");
         if (sanitizedExternalFallbackRequired && !sanitizedExternalFallbackEnabled)
             blockers.Add("Sanitized external fallback requires both PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION and PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED.");
         if (sanitizedExternalFallbackRequired && !providerConfiguration.Claude.Enabled)
@@ -336,15 +340,21 @@ public static class CelarAiCapabilityRoutingModule
         var configurationReady = blockers.Count == 0;
         var privateTargetHealth = health.Snapshots().FirstOrDefault(item =>
             string.Equals(item.Provider, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase));
-        var persistedProbe = await store.LoadPrivateProbeEvidenceAsync(profile.Revision, cancellationToken);
-        var privateTargetVerifiedAt = persistedProbe?.TestedAt;
-        var privateTargetVerificationFresh = persistedProbe is
-            {
-                Available: true,
-                Fresh: true
-            };
+        var persistedProbe = release.Active
+            ? null
+            : await store.LoadPrivateProbeEvidenceAsync(profile.Revision, cancellationToken);
+        var releaseProbeFreshAfter = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var privateTargetVerifiedAt = release.Active
+            ? privateTargetHealth?.LastProbeSuccessAt
+            : persistedProbe?.TestedAt;
+        var privateTargetVerificationFresh = release.Active
+            ? privateTargetHealth is { ProbeStatus: "available", LastProbeSuccessAt: { } probeSuccessAt }
+                && probeSuccessAt >= releaseProbeFreshAfter
+            : persistedProbe is { Available: true, Fresh: true };
         if (!privateTargetVerificationFresh)
-            blockers.Add("The private Celar AI target needs shared successful probe evidence for this exact profile revision within the last 15 minutes.");
+            blockers.Add(release.Active
+                ? "The private Celar AI target needs a successful candidate-local probe for this exact release revision within the last 15 minutes."
+                : "The private Celar AI target needs shared successful probe evidence for this exact profile revision within the last 15 minutes.");
         var productionReady = blockers.Count == 0;
         return Results.Ok(new
         {
@@ -377,10 +387,12 @@ public static class CelarAiCapabilityRoutingModule
                 {
                     verified = privateTargetVerificationFresh,
                     status = privateTargetVerificationFresh ? "available" : "not_verified",
-                    probeStatus = persistedProbe is null ? "not_checked" : persistedProbe.Available ? "available" : "degraded",
+                    probeStatus = release.Active
+                        ? privateTargetHealth?.ProbeStatus ?? "not_checked"
+                        : persistedProbe is null ? "not_checked" : persistedProbe.Available ? "available" : "degraded",
                     verifiedAt = privateTargetVerifiedAt,
                     freshnessMinutes = 15,
-                    evidenceScope = "database_shared_profile_revision",
+                    evidenceScope = release.Active ? "release_revision_local_memory" : "database_shared_profile_revision",
                     profileRevision = profile.Revision,
                     lastFailureCode = persistedProbe is { Available: false }
                         ? persistedProbe.DiagnosticCode
@@ -389,7 +401,12 @@ public static class CelarAiCapabilityRoutingModule
                             ?? string.Empty
                 },
                 privateDocumentRuntimeReady = runtimeReadiness.Status == "private_document_runtime_ready",
+                allCentralCapabilityRoutesReady = routesReady,
                 requiredTimesheetRoutesPersisted = routesReady,
+                configurationAuthority = release.ConfigurationAuthority,
+                deploymentManaged = release.Active,
+                readOnly = release.Active,
+                configurationSourceCommit = release.ConfigurationSourceCommit,
                 sanitizedExternalFallback = new
                 {
                     required = sanitizedExternalFallbackRequired,
@@ -430,6 +447,7 @@ public static class CelarAiCapabilityRoutingModule
                 {
                     workerEnabled = runtimeReadiness.WorkerEnabled,
                     automaticQueueEnabled = runtimeReadiness.AutomaticDocumentQueueEnabled,
+                    candidateExecutionBlocked = release.Active,
                     servicePrincipalConfigured = runtimeReadiness.DocumentServicePrincipalConfigured,
                     servicePrincipalActive = runtimeReadiness.DocumentServicePrincipalActive,
                     servicePrincipalQueuePermissionGranted = runtimeReadiness.DocumentServicePrincipalQueuePermissionGranted,
@@ -477,6 +495,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var profile = await store.SavePrivateModelSettingsAsync(
@@ -520,6 +539,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var profile = await store.SavePrivateModelSecretAsync(
@@ -574,11 +594,19 @@ public static class CelarAiCapabilityRoutingModule
         var stopwatch = Stopwatch.StartNew();
         var result = await target.ProbeAsync(profile, cancellationToken);
         health.RecordProbe(result);
-        var persistedProbe = await store.SavePrivateProbeEvidenceAsync(
-            profile,
-            result,
-            TimeSpan.FromMinutes(15),
-            cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        var testedAt = DateTimeOffset.UtcNow;
+        var expiresAt = testedAt.AddMinutes(15);
+        if (!release.Active)
+        {
+            var persistedProbe = await store.SavePrivateProbeEvidenceAsync(
+                profile,
+                result,
+                TimeSpan.FromMinutes(15),
+                cancellationToken);
+            testedAt = persistedProbe.TestedAt;
+            expiresAt = persistedProbe.ExpiresAt;
+        }
         stopwatch.Stop();
         return Results.Json(new
         {
@@ -591,9 +619,11 @@ public static class CelarAiCapabilityRoutingModule
             requestId = result.RequestId,
             endpointReturned = false,
             tokenReturned = false,
-            testedAt = persistedProbe.TestedAt,
-            expiresAt = persistedProbe.ExpiresAt,
-            evidenceScope = "database_shared_profile_revision",
+            testedAt,
+            expiresAt,
+            evidenceScope = release.Active ? "release_revision_local_memory" : "database_shared_profile_revision",
+            deploymentManaged = release.Active,
+            databaseEvidenceWritten = !release.Active,
             stateChanged = false
         }, statusCode: result.Available ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
     }
@@ -658,6 +688,7 @@ public static class CelarAiCapabilityRoutingModule
         context.Response.Headers.CacheControl = "no-store";
         var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: true, cancellationToken);
         if (authorization is not null) return authorization;
+        if (ReleaseMutationBlocked() is { } blocked) return blocked;
         try
         {
             var result = await rotation.RotateAsync(
@@ -1035,6 +1066,21 @@ public static class CelarAiCapabilityRoutingModule
         requiredPermission = permission,
         message = "The current effective user is not authorized for this Celar AI operation."
     }, statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult? ReleaseMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.Requested && !release.CandidateReadOnly) return null;
+        return Results.Json(new
+        {
+            module = "064",
+            status = "deployment_managed_configuration_read_only",
+            message = "This exact-source release candidate uses immutable deployment-managed AI configuration. Promote a normally configured active revision before changing shared configuration.",
+            configurationAuthority = "deployment_managed_release",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
 
     private static string? ConnectionString() => new[]
         {

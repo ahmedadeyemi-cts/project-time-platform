@@ -380,6 +380,9 @@ public sealed record CelarAiCapabilityRouteSnapshot(
     Guid? UpdatedBy,
     bool Persisted)
 {
+    public bool DeploymentManaged { get; init; }
+    public string ConfigurationSourceCommit { get; init; } = string.Empty;
+
     public object ToPublicResponse() => new
     {
         feature = FeatureCode,
@@ -396,6 +399,10 @@ public sealed record CelarAiCapabilityRouteSnapshot(
         updatedAt = UpdatedAt,
         updatedBy = UpdatedBy,
         persisted = Persisted,
+        deploymentManaged = DeploymentManaged,
+        readOnly = DeploymentManaged,
+        configurationAuthority = DeploymentManaged ? "deployment_managed_release" : "database_managed_active",
+        configurationSourceCommit = ConfigurationSourceCommit,
         duplicateRequests = false,
         safetyRefusalFailover = false,
         privacyPolicyEditable = false,
@@ -419,6 +426,9 @@ public sealed record CelarAiPrivateModelProfile(
     string TokenFingerprint,
     bool Persisted)
 {
+    public bool DeploymentManaged { get; init; }
+    public string ConfigurationSourceCommit { get; init; } = string.Empty;
+
     public bool EndpointConfigured => !string.IsNullOrWhiteSpace(Endpoint);
     public bool ModelConfigured => !string.IsNullOrWhiteSpace(Model);
     public bool Configured => EndpointConfigured && ModelConfigured;
@@ -448,6 +458,10 @@ public sealed record CelarAiPrivateModelProfile(
         updatedAt = UpdatedAt,
         updatedBy = UpdatedBy,
         persisted = Persisted,
+        deploymentManaged = DeploymentManaged,
+        readOnly = DeploymentManaged,
+        configurationAuthority = DeploymentManaged ? "deployment_managed_release" : "database_managed_active",
+        configurationSourceCommit = ConfigurationSourceCommit,
         endpointPolicyStatus,
         confidentialContextEligible = Ready && endpointPolicyStatus is "private_endpoint_dns_verified" or "not_tested",
         rawInternalDocumentsMayUsePublicProviders = false,
@@ -523,6 +537,30 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
     public async Task<IReadOnlyList<CelarAiCapabilityRouteSnapshot>> LoadRoutesAsync(
         CancellationToken cancellationToken = default)
     {
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.Active)
+        {
+            var loadedAt = DateTimeOffset.UtcNow;
+            return CelarAiCapabilityCatalog.Definitions.Values
+                .OrderBy(definition => definition.DisplayName)
+                .Select(definition => new CelarAiCapabilityRouteSnapshot(
+                    definition.FeatureCode,
+                    definition.DisplayName,
+                    definition.ConsumerModules,
+                    definition.ExternalContextPolicy,
+                    definition.ContextClassification,
+                    release.RouteOrder,
+                    release.Revision,
+                    loadedAt,
+                    null,
+                    false)
+                {
+                    DeploymentManaged = true,
+                    ConfigurationSourceCommit = release.ConfigurationSourceCommit
+                })
+                .ToArray();
+        }
+
         var stored = new Dictionary<string, StoredRoute>(StringComparer.OrdinalIgnoreCase);
         if (DatabaseAvailable)
         {
@@ -603,6 +641,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Capability route mutation");
         if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
         var definition = CelarAiCapabilityCatalog.Resolve(feature);
         if (!string.Equals(definition.FeatureCode, CelarAiCapabilityCatalog.NormalizeFeature(feature), StringComparison.OrdinalIgnoreCase))
@@ -688,6 +727,17 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
     public async Task<CelarAiPrivateModelProfile> LoadPrivateModelProfileAsync(
         CancellationToken cancellationToken = default)
     {
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.Active)
+        {
+            return EnvironmentProfile() with
+            {
+                Revision = release.Revision,
+                DeploymentManaged = true,
+                ConfigurationSourceCommit = release.ConfigurationSourceCommit
+            };
+        }
+
         if (DatabaseAvailable && SecretEncryptionAvailable)
         {
             try
@@ -748,6 +798,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private-model settings mutation");
         if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
         if (!SecretEncryptionAvailable)
             throw new InvalidOperationException("PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
@@ -806,6 +857,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         Guid actorUserId,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private-model secret mutation");
         if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
         if (!SecretEncryptionAvailable)
             throw new InvalidOperationException("PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
@@ -952,6 +1004,7 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
         TimeSpan timeToLive,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private provider probe-evidence persistence");
         if (!DatabaseAvailable) throw new InvalidOperationException("Database configuration is unavailable.");
         if (!string.Equals(result.Provider, CelarAiCapabilityTargets.CelarAi, StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Only private Celar AI probe evidence may be persisted by this store.");
@@ -1212,7 +1265,7 @@ public static class CelarAiPrivateModelRuntime
     public static PulseAiPrivateRagOptions Apply(PulseAiPrivateRagOptions options)
     {
         var profile = Snapshot();
-        if (profile is null || !profile.Persisted) return options;
+        if (profile is null || (!profile.Persisted && !profile.DeploymentManaged)) return options;
         return options with
         {
             Enabled = profile.Enabled,

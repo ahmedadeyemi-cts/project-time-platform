@@ -215,6 +215,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         PulseAiQueueDocumentRequest request,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private document queue mutation");
         if (actualUserId != effectiveUserId) return null;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
@@ -265,6 +266,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         PulseAiApproveDocumentVersionRequest request,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private document version approval");
         if (actualUserId != effectiveUserId) return false;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
@@ -297,6 +299,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         PulseAiCancelDocumentJobRequest request,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private document processing cancellation");
         if (actualUserId != effectiveUserId) return false;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
@@ -325,6 +328,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         PulseAiRetryDocumentJobRequest request,
         CancellationToken cancellationToken = default)
     {
+        ProjectPulseAiReleaseRuntimePolicy.RejectMutation("Private document processing retry");
         if (actualUserId != effectiveUserId) return false;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
@@ -349,6 +353,9 @@ public sealed class PulseAiPrivateDocumentRuntimeService
     public async Task<PulseAiPrivateWorkerResult> ProcessNextAsync(
         CancellationToken cancellationToken = default)
     {
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (release.Active)
+            return Empty("release_candidate_read_only", "release_candidate_read_only");
         var options = Options();
         if (!options.WorkerEnabled)
         {

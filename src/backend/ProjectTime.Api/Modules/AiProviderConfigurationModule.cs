@@ -58,6 +58,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -151,6 +152,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -229,6 +231,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -423,6 +426,20 @@ public static class AiProviderConfigurationModule
         databaseChanged = false,
         entraChanged = false
     };
+
+    private static IResult? CandidateMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.Requested && !release.CandidateReadOnly) return null;
+        return Results.Json(new
+        {
+            module = "064",
+            status = "deployment_managed_configuration_read_only",
+            message = "Public-provider secrets, models, and enabled state cannot be changed on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
 
     private static bool RuntimeFlag(string name) =>
         bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;

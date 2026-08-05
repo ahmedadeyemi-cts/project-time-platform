@@ -488,6 +488,7 @@ public sealed class PulseAiPrivateRagRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return Guid.NewGuid();
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -536,6 +537,7 @@ public sealed class PulseAiPrivateRagRepository
         string eventStatus,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -587,6 +589,7 @@ public sealed class PulseAiPrivateRagRepository
         bool persistAnswerText,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -716,6 +719,7 @@ public sealed class PulseAiPrivateRagRepository
         PulseAiPrivateFeedbackRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().Active) return false;
         var feedbackType = Clean(request.FeedbackType, 40).ToLowerInvariant();
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

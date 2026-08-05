@@ -7,6 +7,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
 {
     public static IServiceCollection AddProjectPulseAi(this IServiceCollection services)
     {
+        // Validate revision-scoped candidate configuration before any AI
+        // background worker or configuration loader is allowed to start.
+        services.AddHostedService<ProjectPulseAiReleaseRuntimeGuard>();
         services.AddHttpContextAccessor();
         services.AddHttpClient("ProjectPulseAi");
         services.AddHttpClient("PulseAiPrivateOcr", client =>
