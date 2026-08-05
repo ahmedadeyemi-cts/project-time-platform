@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "releaseName": "current-main-52bda3f0-20260805",
+  "environment": "test",
+  "aiReleasePhase": "disabled",
+  "routingAuthority": "database_managed_active",
+  "sourceSha": "52bda3f035182ab02e7bc81b9d5eac57542048b9",
+  "requiredPriorLedger": [
+    "052_pulse_ai_private_document_runtime",
+    "053_pulse_ai_private_rag_orchestration",
+    "054_pulse_ai_system_intelligence_conversations",
+    "061_celar_ai_capability_routing",
+    "070_module_033_project_forge"
+  ],
+  "migrations": [
+    {
+      "id": "071_ai_runtime_production_hardening",
+      "path": "database/migrations/071_ai_runtime_production_hardening.sql",
+      "blobSha": "3f1c074668b1bdd2e0ebf2f3c6efe7e57948e298",
+      "sha256": "108f898a0f5e7f76833d42741ba1caa9a0f1ff427db17728cf5a5008a91ee6e7"
+    },
+    {
+      "id": "072_celar_ai_conversation_attachments",
+      "path": "database/migrations/072_celar_ai_conversation_attachments.sql",
+      "blobSha": "f62003fa7cc45be8e864843fa8df549b479d78b3",
+      "sha256": "b1a898d72916027f02f7ea5578facd7d9149436b2db9e11dca833d74a7cecf1f"
+    },
+    {
+      "id": "073_module_033_project_forge_interactive",
+      "path": "database/migrations/073_module_033_project_forge_interactive.sql",
+      "blobSha": "43dcf8403ef08fd48e2feaee0147dc9431ea0090",
+      "sha256": "e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6"
+    }
+  ],
+  "flowHiveIncluded": false,
+  "migration074Included": false,
+  "databaseRollbackOnApplicationFailure": false,
+  "migrationStrategy": "fresh-or-complete-ledger-reconcile",
+  "supersedesControlSha": "b5c4ffc81b154c8737bb76243805dffe48c93efc",
+  "supersedesSourceSha": "e83340b5a4215ea63901cea98ea17596444f96b7"
+}
