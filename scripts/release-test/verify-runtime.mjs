@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "acae6fda08e6d58dfb1e63b5eef4828877fd5523";
+const expectedSource = "dfd31042cb971677f78fb70e37c9c8a2810db938";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [

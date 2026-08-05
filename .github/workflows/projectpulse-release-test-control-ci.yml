@@ -112,11 +112,11 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-acae6fda-20260805-r9"
+          assert manifest["releaseName"] == "current-main-dfd31042-20260805-r1"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
-          assert manifest["sourceSha"] == "acae6fda08e6d58dfb1e63b5eef4828877fd5523"
+          assert manifest["sourceSha"] == "dfd31042cb971677f78fb70e37c9c8a2810db938"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
