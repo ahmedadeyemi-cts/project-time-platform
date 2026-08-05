@@ -108,7 +108,7 @@ assert(
     && !hardeningCi.includes('pull_request:\n    paths:')
     && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING=NOT_APPLICABLE')
     && hardeningCi.includes("if: needs.classify.outputs.applicable == 'true'")
-    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_40_SOURCE_FILES')
+    && hardeningCi.includes('CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_42_SOURCE_FILES')
     && hardeningCi.includes('MISSING_SOURCE=')
     && hardeningCi.includes('UNEXPECTED=')
     && !hardeningCi.includes('DEPENDENCIES=')
@@ -134,7 +134,7 @@ assert(
     && hardeningCi.includes('src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx')
     && hardeningCi.includes('src/frontend/project-time-web/package.json')
     && hardeningCi.includes('docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md'),
-  'every main PR receives a lightweight classification while security-family branches require the exact 40-file, mode-safe source manifest before heavy validation'
+  'every main PR receives a lightweight classification while security-family branches require the exact 42-file, mode-safe source manifest before heavy validation'
 );
 
 assert(

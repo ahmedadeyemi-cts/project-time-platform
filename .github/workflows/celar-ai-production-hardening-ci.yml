@@ -49,6 +49,7 @@ jobs:
           test -n "$CHANGED"
           SOURCE_MANIFEST="$(cat <<'EOF'
           .github/workflows/celar-ai-production-hardening-ci.yml
+          .github/workflows/celar-ai-production-platform-ci.yml
           docs/modules/module-064-ai-provider-configuration/CELAR-AI-PRODUCTION-HARDENING.md
           src/backend/ProjectTime.Api/Program.cs
           src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs
@@ -83,6 +84,7 @@ jobs:
           src/backend/ProjectTime.Api/Modules/PulseAiSystemIntelligenceModule.cs
           src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
           src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
+          src/frontend/project-time-web/scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
           src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
           src/frontend/project-time-web/package.json
           tests/CelarAiProductionHardeningTests/CelarAiProductionHardeningTests.csproj
@@ -93,7 +95,7 @@ jobs:
           MISSING_SOURCE="$(comm -23 <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u) <(printf '%s\n' "$CHANGED"))"
           UNEXPECTED="$(comm -23 <(printf '%s\n' "$CHANGED") <(printf '%s\n' "$SOURCE_MANIFEST" | LC_ALL=C sort -u))"
           if [[ -n "$MISSING_SOURCE" || -n "$UNEXPECTED" ]]; then
-            echo 'Security production-hardening branches must contain the exact reviewed 40-file source manifest and no out-of-scope paths.' >&2
+            echo 'Security production-hardening branches must contain the exact reviewed 42-file source manifest and no out-of-scope paths.' >&2
             [[ -z "$MISSING_SOURCE" ]] || { echo 'Missing source files:' >&2; printf '%s\n' "$MISSING_SOURCE" >&2; }
             [[ -z "$UNEXPECTED" ]] || { echo 'Unexpected files:' >&2; printf '%s\n' "$UNEXPECTED" >&2; }
             exit 1
@@ -109,7 +111,7 @@ jobs:
             }
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
-          echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_40_SOURCE_FILES'
+          echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_42_SOURCE_FILES'
 
   validate:
     needs: classify
