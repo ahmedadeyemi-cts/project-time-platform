@@ -156,12 +156,13 @@ validate_job_ownership() {
 
 stop_nonterminal_executions() {
   local executions=""
+  local pending_json="[]"
   local pending=()
   local stop_failed=0
   for _ in $(seq 1 30); do
     executions="$(az containerapp job execution list \
       -g "$RESOURCE_GROUP" -n "$JOB_NAME" -o json --only-show-errors)" || return 1
-    mapfile -t pending < <(jq -r '
+    pending_json="$(jq -ec '[
       .[] |
       select((.properties.status // "") as $status |
         ($status != "Succeeded" and
@@ -170,7 +171,8 @@ stop_nonterminal_executions() {
          $status != "Canceled" and
          $status != "Cancelled")) |
       .name
-    ' <<<"$executions")
+    ]' <<<"$executions")" || return 1
+    mapfile -t pending < <(jq -r '.[]' <<<"$pending_json")
     if (( ${#pending[@]} == 0 )); then
       return "$stop_failed"
     fi
@@ -184,7 +186,6 @@ stop_nonterminal_executions() {
   done
   return 1
 }
-
 cleanup() {
   local status=$?
   local http_status=""
