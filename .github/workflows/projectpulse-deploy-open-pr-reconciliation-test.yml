@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-open-pr-reconciliation-test
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 
 jobs:

@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-group2b-group3-module064-pulse-ai-foundation-test
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 
 jobs:
