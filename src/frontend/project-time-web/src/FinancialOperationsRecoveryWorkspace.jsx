@@ -137,7 +137,58 @@ function EmptyState({ title, children }) {
   );
 }
 
-function SourceGrid({ sources = [], busySource, onRetry, canRetry = false }) {
+function SourceGrid({ sources = [], busySource, onRetry, canRetry = false, compact = false }) {
+  // PR467_COMPACT_SOURCE_HEALTH
+  if (compact) {
+    return (
+      <section className="financial-operations-recovery-compact" data-module="039">
+        <header>
+          <div><p className="eyebrow">Source health & recovery</p><h3>Independent billing data sources</h3></div>
+          <span className="badge active">Source-isolated</span>
+        </header>
+        <section className="group5-card">
+      <div className="group5-section-heading">
+        <div>
+          <p className="group5-eyebrow">Source health and recovery</p>
+          <h3>Independent data sources</h3>
+          <p>An unavailable source does not clear successful project, report, closeout, or billing content.</p>
+        </div>
+        <Status value={sources.some((item) => item.status === 'unavailable') ? 'partial' : 'healthy'} />
+      </div>
+      <div className="group5-source-grid">
+        {sources.map((source) => (
+          <article key={source.key} className={`group5-source-card ${statusTone(source.status)}`}>
+            <div className="group5-source-heading">
+              <div>
+                <span>{source.required ? 'Required source' : 'Optional source'}</span>
+                <strong>{source.name}</strong>
+              </div>
+              <Status value={source.status} />
+            </div>
+            <p>{source.message}</p>
+            <dl>
+              <div><dt>Records</dt><dd>{source.recordCount ?? 0}</dd></div>
+              <div><dt>Observed</dt><dd>{dateTime(source.observedAt)}</dd></div>
+              <div><dt>Diagnostic</dt><dd><code>{text(source.diagnosticCode, 'None')}</code></dd></div>
+            </dl>
+            {canRetry ? (
+              <button
+                type="button"
+                className="group5-secondary"
+                disabled={busySource === source.key}
+                onClick={() => onRetry(source.key)}
+              >
+                {busySource === source.key ? 'Retrying…' : `Retry ${source.name}`}
+              </button>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+      </section>
+    );
+  }
+
   return (
     <section className="group5-card">
       <div className="group5-section-heading">
@@ -520,7 +571,7 @@ function Workbench({ authSession }) {
   );
 }
 
-function ModuleRecovery({ moduleCode, authSession }) {
+function ModuleRecovery({ moduleCode, authSession, compact = false }) {
   const metadata = moduleMetadata[moduleCode] ?? moduleMetadata['039'];
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [busySource, setBusySource] = useState('');
@@ -582,12 +633,12 @@ function ModuleRecovery({ moduleCode, authSession }) {
         </div>
         {!state.loading && !projects.length ? <EmptyState title="No role-scoped project data">No projects matched the current server-enforced access scope.</EmptyState> : null}
       </section>
-      <SourceGrid sources={state.data?.sources ?? []} canRetry busySource={busySource} onRetry={retrySource} />
+      <SourceGrid sources={state.data?.sources ?? []} canRetry busySource={busySource} onRetry={retrySource} compact={compact} />
     </div>
   );
 }
 
-export default function FinancialOperationsRecoveryWorkspace({ mode = 'reporting', moduleCode = null, authSession }) {
+export default function FinancialOperationsRecoveryWorkspace({ mode = 'reporting', moduleCode = null, authSession , compact = false }) {
   const title = mode === 'workbench'
     ? 'Financial Operations Workbench'
     : moduleCode
@@ -611,7 +662,7 @@ export default function FinancialOperationsRecoveryWorkspace({ mode = 'reporting
       <aside className="group5-enterprise-note"><strong>US Signal financial operations</strong><span>Friendly page messages remain separate from sanitized diagnostic codes. One unavailable source never blanks otherwise complete work.</span></aside>
       {mode === 'reporting' && !moduleCode ? <ReportCenter authSession={authSession} /> : null}
       {mode === 'workbench' ? <Workbench authSession={authSession} /> : null}
-      {moduleCode ? <ModuleRecovery moduleCode={moduleCode} authSession={authSession} /> : null}
+      {moduleCode ? <ModuleRecovery moduleCode={moduleCode} authSession={authSession} compact={compact} /> : null}
     </section>
   );
 }

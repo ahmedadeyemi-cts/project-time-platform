@@ -1,8 +1,53 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
+/// Closed vocabulary for public-provider assistance. The category is an opaque
+/// selector only; no caller-authored text, identity inventory, or substring is
+/// copied into the outbound prompt. Every capsule is constructed from a fixed
+/// backend string below.
+/// </summary>
+public static class CelarAiExternalReasoningPurposeCatalog
+{
+    public const string SowScopeQuality = CelarAiExternalCapsuleCatalog.SowScopeQuality;
+    public const string ProjectPlanQuality = CelarAiExternalCapsuleCatalog.ProjectPlanQuality;
+    public const string ProjectTimelineSequencing = CelarAiExternalCapsuleCatalog.ProjectTimelineQuality;
+    public const string ProjectDiagramGovernance = CelarAiExternalCapsuleCatalog.ProjectDiagramQuality;
+
+    public static string ForMode(string mode) => mode switch
+    {
+        "sow_draft" => SowScopeQuality,
+        "project_timeline" => ProjectTimelineSequencing,
+        "project_diagram" => ProjectDiagramGovernance,
+        "project_plan" => ProjectPlanQuality,
+        _ => string.Empty
+    };
+
+    public static bool TryBuildServerOwnedCapsule(
+        string? category,
+        string mode,
+        out string capsule)
+    {
+        var expectedCategory = ForMode(mode);
+        if (expectedCategory.Length == 0
+            || !string.Equals(category?.Trim(), expectedCategory, StringComparison.Ordinal))
+        {
+            capsule = string.Empty;
+            return false;
+        }
+
+        if (!CelarAiExternalCapsuleCatalog.TryResolve(expectedCategory, out var definition))
+        {
+            capsule = string.Empty;
+            return false;
+        }
+        capsule = definition.Capsule;
+        return true;
+    }
+}
+
+/// <summary>
 /// Provides an optional generic-reasoning fallback through Module 064. The
-/// service accepts only a deliberately generic problem statement. It never
+/// service accepts only a closed backend-owned purpose category. It never
 /// receives private document chunks, customer/project identities, people
 /// records, financial values, or unrestricted tool output.
 /// </summary>
@@ -11,12 +56,12 @@ public sealed class CelarAiExternalReasoningService
     public const string ContractVersion = "celar-ai-sanitized-external-reasoning-v1-20260801";
 
     private readonly PulseAiEscalationSanitizer _sanitizer;
-    private readonly ProjectPulseAiRouter _router;
+    private readonly CelarAiCapabilityRouter _router;
     private readonly ILogger<CelarAiExternalReasoningService> _logger;
 
     public CelarAiExternalReasoningService(
         PulseAiEscalationSanitizer sanitizer,
-        ProjectPulseAiRouter router,
+        CelarAiCapabilityRouter router,
         ILogger<CelarAiExternalReasoningService> logger)
     {
         _sanitizer = sanitizer;
@@ -31,11 +76,14 @@ public sealed class CelarAiExternalReasoningService
             : "celar_ai_sanitized_external_fallback_disabled",
         contractVersion = ContractVersion,
         enabled = Enabled(),
+        sanitizedExternalExecutionEnabled = RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION"),
+        enterpriseSanitizedFallbackEnabled = RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"),
         module064Boundary = true,
         allowedModes = CelarAiEnterprisePlatformPolicy.ExternalFallbackEligibleModes,
         inputPolicy = new
         {
-            genericProblemOnly = true,
+            closedServerOwnedPurposeCategoryOnly = true,
+            callerFreeTextAccepted = false,
             privateDocumentTextAllowed = false,
             customerOrProjectIdentityAllowed = false,
             peopleRecordsAllowed = false,
@@ -66,20 +114,24 @@ public sealed class CelarAiExternalReasoningService
             blockers.Add("Financial or commercial values are never eligible for this external route.");
         if (request.ContainsPeopleRecords)
             blockers.Add("People, assignment, workload, or employee records are never eligible for this external route.");
-        if (!request.AcknowledgeSanitizedExternalUse)
-            blockers.Add("The caller did not explicitly acknowledge the sanitized external-reasoning boundary.");
+        var serverOwnedCapsuleReady = CelarAiExternalReasoningPurposeCatalog.TryBuildServerOwnedCapsule(
+            request.PurposeCategory,
+            mode,
+            out var serverOwnedCapsule);
+        var serverOwnedPurposeCategory = CelarAiExternalReasoningPurposeCatalog.ForMode(mode);
+        if (!serverOwnedCapsuleReady)
+            blockers.Add("The external-reasoning purpose category is unknown, empty, or does not match the requested solution mode.");
 
         if (blockers.Count > 0)
         {
             return Blocked(mode, blockers, now);
         }
 
-        var genericProblem = Clean(request.GenericProblem, 6_000);
         var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
-            Purpose: Clean(request.Purpose, 120),
-            Content: genericProblem,
+            Purpose: $"server_owned_{serverOwnedPurposeCategory}",
+            Content: serverOwnedCapsule,
             Classification: "internal_generic",
-            SensitiveTerms: request.SensitiveTerms?.ToArray() ?? [],
+            SensitiveTerms: [],
             AcknowledgePreviewOnly: true));
 
         if (!sanitized.ExternalExecutionAuthorized)
@@ -98,7 +150,13 @@ public sealed class CelarAiExternalReasoningService
                 GeneratedAt: now);
         }
 
-        var feature = mode switch
+        var feature = string.Equals(
+                request.CapabilityCode?.Trim(),
+                ProjectPulseAiFeatures.ProjectForgePlanEstimate,
+                StringComparison.OrdinalIgnoreCase)
+            && mode is "project_plan" or "project_timeline" or "project_diagram"
+            ? ProjectPulseAiFeatures.ProjectForgePlanEstimate
+            : mode switch
         {
             "sow_draft" => ProjectPulseAiFeatures.SowGsdPlanning,
             "project_plan" or "project_timeline" or "project_diagram" => ProjectPulseAiFeatures.ProjectFlowHivePlan,
@@ -107,13 +165,28 @@ public sealed class CelarAiExternalReasoningService
 
         try
         {
-            var route = await _router.GenerateAsync(
+            var consumerModule = string.Equals(feature, ProjectPulseAiFeatures.ProjectForgePlanEstimate, StringComparison.OrdinalIgnoreCase)
+                ? "033"
+                : "011";
+            var route = await _router.GenerateExternalAsync(
                 new ProjectPulseAiGenerationRequest(
                     Feature: feature,
                     SystemPrompt: SystemPrompt(mode),
                     UserPrompt: sanitized.SanitizedCapsule,
                     MaxOutputTokens: 1_800,
                     Temperature: 0.15),
+                new CelarAiCapabilityExecutionContext(
+                    Feature: feature,
+                    ContainsPrivateDocuments: false,
+                    ContainsCustomerIdentity: false,
+                    ContainsPeopleRecords: false,
+                    ContainsFinancialValues: false,
+                    AllowSanitizedExternalAssistance: false,
+                    SensitiveTerms: [],
+                    ConsumerModule: consumerModule,
+                    CorrelationId: Guid.NewGuid().ToString("N"),
+                    IdentityTerms: [],
+                    ExternalCapsulePurpose: serverOwnedPurposeCategory),
                 localFallback: () => LocalFallback(mode),
                 cancellationToken);
 
@@ -214,8 +287,9 @@ public sealed class CelarAiExternalReasoningService
     }
 
     private static bool Enabled() =>
-        bool.TryParse(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"),
-            out var enabled)
-        && enabled;
+        RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION")
+        && RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED");
+
+    private static bool RuntimeFlag(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
 }

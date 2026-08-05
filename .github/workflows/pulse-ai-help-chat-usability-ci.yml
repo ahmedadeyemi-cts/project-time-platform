@@ -66,7 +66,7 @@ jobs:
 
           case "$HEAD_BRANCH" in
             fix/module-011-help-chat-usability-*)
-              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime\.Api\.csproj)$'
+              ALLOWED='^(\.github/workflows/(pulse-ai-help-chat-usability-ci|group5-financial-operations-recovery-ci)\.yml|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/(pulse-ai-help-chat-usability\.js|pulse-ai-help-chat-usability\.css|main\.jsx|HelpAssistant\.jsx)|src/frontend/project-time-web/scripts/validate-pulse-ai-help-chat-usability\.mjs|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs|src/backend/ProjectTime\.Api/ProjectTime.Api.csproj)$'
               UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
               if [[ -n "$UNEXPECTED" ]]; then
                 echo 'Unexpected Pulse AI Help chat hotfix scope:' >&2
@@ -80,7 +80,7 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_SOURCE_ISOLATION=PASSED'
               ;;
-            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*)
+            feature/module-011-system-intelligence-troubleshooting-*|feature/module-011-celar-ai-runtime-rebrand-*|fix/post-pr465-module011-065-celar-uat-*)
               UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
                 | grep -Ev '^database/(migrations/054_pulse_ai_system_intelligence_conversations\.sql|rollback/054_pulse_ai_system_intelligence_conversations_rollback\.sql)$' \
                 || true)"
@@ -100,6 +100,32 @@ jobs:
               fi
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=LATER_MODULE_011_INTEGRATION' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_LATER_MODULE_011_INTEGRATION=PASSED'
+              ;;
+            feature/celar-ai-unified-chat-routing-attachments-*)
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/072_celar_ai_conversation_attachments\.sql|rollback/072_celar_ai_conversation_attachments_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in the unified Celar AI Help-chat package:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              UNAUTHORIZED_DEPLOYMENT="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+              if [[ -n "$UNAUTHORIZED_DEPLOYMENT" ]]; then
+                echo 'The unified Celar AI Help-chat validation cannot include a deployment operation:' >&2
+                printf '%s\n' "$UNAUTHORIZED_DEPLOYMENT" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/072_celar_ai_conversation_attachments.sql' \
+                'database/rollback/072_celar_ai_conversation_attachments_rollback.sql' \
+                'src/frontend/project-time-web/src/HelpAssistant.jsx' \
+                'src/frontend/project-time-web/src/pulse-ai-help-chat-usability.js' \
+                'src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=UNIFIED_CHAT_ATTACHMENTS' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_UNIFIED_CHAT_ATTACHMENTS=PASSED'
               ;;
             release/consolidated-enterprise-validation-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
@@ -129,6 +155,39 @@ jobs:
               fi
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_CENTRAL_SECURITY_CONVERGENCE=PASSED'
+              ;;
+            security/celar-ai-production-readiness-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The Celar AI production-hardening package changed Help-chat runtime source outside the reviewed central-router convergence boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              UNAUTHORIZED_DEPLOYMENT="$(grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED" || true)"
+              if [[ -n "$UNAUTHORIZED_DEPLOYMENT" ]]; then
+                echo 'The Help-chat production-hardening validation cannot include a deployment operation:' >&2
+                printf '%s\n' "$UNAUTHORIZED_DEPLOYMENT" >&2
+                exit 1
+              fi
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/071_ai_runtime_production_hardening\.sql|rollback/071_ai_runtime_production_hardening_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in the Celar AI Help-chat production-hardening package:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              for required in \
+                'src/frontend/project-time-web/src/HelpAssistant.jsx' \
+                'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs' \
+                'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs' \
+                'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs'; do
+                test -f "$required"
+                git cat-file -e "origin/$BASE_BRANCH:$required"
+              done
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CELAR_PRODUCTION_HARDENING' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_CELAR_PRODUCTION_HARDENING=PASSED'
               ;;
             *)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"

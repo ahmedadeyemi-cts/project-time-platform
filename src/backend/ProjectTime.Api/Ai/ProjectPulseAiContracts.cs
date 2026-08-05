@@ -16,6 +16,7 @@ public static class ProjectPulseAiFeatures
     public const string HelpAssistant = "help_assistant";
     public const string CloseoutCommunication = "closeout_communication";
     public const string ProjectFlowHivePlan = "project_flowhive_plan";
+    public const string ProjectForgePlanEstimate = "project_forge_plan_estimate";
 
     public static readonly string[] All =
     [
@@ -23,7 +24,8 @@ public static class ProjectPulseAiFeatures
         SowGsdPlanning,
         HelpAssistant,
         CloseoutCommunication,
-        ProjectFlowHivePlan
+        ProjectFlowHivePlan,
+        ProjectForgePlanEstimate
     ];
 }
 
@@ -79,7 +81,13 @@ public sealed record ProjectPulseAiRouteResult(
     IReadOnlyList<string> AttemptedProviders,
     IReadOnlyList<string> SkippedProviders,
     ProjectPulseAiUsage? Usage,
-    string? RequestId);
+    string? RequestId,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
+
+public sealed record ProjectPulseAiTargetDecision(
+    string Target,
+    string Outcome,
+    string ReasonCode);
 
 public sealed record ProjectPulseAiProbeResult(
     string Provider,

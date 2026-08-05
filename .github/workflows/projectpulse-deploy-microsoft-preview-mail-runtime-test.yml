@@ -18,7 +18,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-deploy-microsoft-preview-mail-runtime-test
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 
 jobs:

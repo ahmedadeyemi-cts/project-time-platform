@@ -26,6 +26,7 @@ on:
       - 'src/frontend/project-time-web/src/financial-operations-recovery-workspace.css'
       - 'tests/test-financial-operations-migration-051.sh'
       - 'tests/test-uat-functional-completion-contract.sh'
+      - 'tests/validate-uat-followup-modules.py'
   workflow_dispatch:
 
 permissions:
@@ -59,11 +60,17 @@ jobs:
 
           OWNED_BRANCH='false'
           CENTRAL_SECURITY_BRANCH='false'
+          PR467_UAT='false'
+          UAT_FOLLOWUP='false'
           UAT_COMPLETION='false'
           if [[ "$HEAD_BRANCH" == feature/group-5-financial-reports-closeout-billing-recovery-* ]]; then
             OWNED_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
             CENTRAL_SECURITY_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == fix/uat-modules-005-006-039-work-identifiers-* ]]; then
+            PR467_UAT='true'
+          elif [[ "$HEAD_BRANCH" == fix/uat-followup-modules-005-006-039-055c-065-* ]]; then
+            UAT_FOLLOWUP='true'
           elif [[ -s tests/test-uat-functional-completion-contract.sh ]] \
             && grep -Fq 'UAT_FUNCTIONAL_COMPLETION_CONTRACT=PASS' tests/test-uat-functional-completion-contract.sh; then
             UAT_COMPLETION='true'
@@ -74,6 +81,8 @@ jobs:
           # the historical ownership marker. Both names resolve to the same allowlist.
           GROUP5_RUNTIME_OWNED="$GROUP5_RUNTIME"
           OWNED_ALLOWED='^(\.github/workflows/group5-financial-operations-recovery-ci\.yml|database/migrations/051_financial_operations_reporting_recovery\.sql|database/rollback/051_financial_operations_reporting_recovery_rollback\.sql|docs/modules/group-5-financial-operations/README\.md|src/backend/ProjectTime.Api/Modules/(FinancialOperationsContracts|FinancialOperationsRecoveryModule|FinancialOperationsReportEngine|FinancialOperationsRepository|FinancialOperationsSourceLoader|FinancialOperationsWorkItemFactory|ProjectFinancialTruthReportingBridge)\.cs|src/backend/ProjectTime.Api/ProjectTime.Api\.csproj|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css)|tests/test-financial-operations-migration-051\.sh)$'
+          PR467_ALLOWED='^(src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/frontend/project-time-web/src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css))$'
+          UAT_FOLLOWUP_ALLOWED='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
           UAT_ALLOWED='^src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs$'
           CENTRAL_GROUP5_CONVERGENCE='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
 
@@ -96,6 +105,28 @@ jobs:
             }
             echo 'GROUP_5_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_CENTRAL_SECURITY_CONVERGENCE=PASSED'
+          elif [[ "$PR467_UAT" == 'true' ]]; then
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            UNAPPROVED="$(grep -Ev "$PR467_ALLOWED" <<<"$DIRECT_GROUP5" || true)"
+            [[ -z "$UNAPPROVED" ]] || {
+              echo 'PR #467 changed Group 5 runtime source outside its reviewed Module 039 convergence boundary:' >&2
+              printf '%s\n' "$UNAPPROVED" >&2
+              exit 1
+            }
+            echo 'GROUP_5_VALIDATION_MODE=PR467_UAT_REPAIR' >> "$GITHUB_ENV"
+            echo 'GROUP_5_PR467_UAT_REPAIR=PASSED'
+            python3 tests/validate-pr467-uat-repairs.py
+          elif [[ "$UAT_FOLLOWUP" == 'true' ]]; then
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            UNAPPROVED="$(grep -Ev "$UAT_FOLLOWUP_ALLOWED" <<<"$DIRECT_GROUP5" || true)"
+            [[ -z "$UNAPPROVED" ]] || {
+              echo 'The reviewed UAT follow-up changed Group 5 source outside the Module 039 compact-render boundary:' >&2
+              printf '%s\n' "$UNAPPROVED" >&2
+              exit 1
+            }
+            echo 'GROUP_5_VALIDATION_MODE=UAT_FOLLOWUP_MODULE039' >> "$GITHUB_ENV"
+            echo 'GROUP_5_UAT_FOLLOWUP_MODULE039=PASSED'
+            python3 tests/validate-uat-followup-modules.py
           elif [[ "$UAT_COMPLETION" == 'true' ]]; then
             DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
             UNAPPROVED="$(grep -Ev "$UAT_ALLOWED" <<<"$DIRECT_GROUP5" || true)"

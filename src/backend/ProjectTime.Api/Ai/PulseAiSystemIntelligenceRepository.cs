@@ -102,6 +102,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         PulseAiConversationCreateRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (!await IsSchemaReadyAsync(cancellationToken)) return null;
         var conversationId = Guid.NewGuid();
         var mode = NormalizeMode(request.Mode);
@@ -269,6 +270,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string mode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return null;
         if (requestedConversationId is Guid requested && requested != Guid.Empty)
         {
             var existing = await GetConversationAsync(requested, effectiveUserId, cancellationToken);
@@ -296,8 +298,10 @@ public sealed class PulseAiSystemIntelligenceRepository
         IReadOnlyList<string> toolCodes,
         object? sourceStates,
         DateTimeOffset? dataAsOf,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<Guid>? requiredAttachmentIds = null)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return (Guid.Empty, 0);
         if (!await IsSchemaReadyAsync(cancellationToken)) return (Guid.Empty, 0);
         var messageId = Guid.NewGuid();
         try
@@ -305,6 +309,61 @@ public sealed class PulseAiSystemIntelligenceRepository
             await using var connection = new NpgsqlConnection(ConnectionString());
             await connection.OpenAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            var attachmentIds = (requiredAttachmentIds ?? [])
+                .Where(value => value != Guid.Empty)
+                .Distinct()
+                .ToArray();
+            if (attachmentIds.Length > 0)
+            {
+                const string attachmentLockSql = """
+                    SELECT attachment.pulse_ai_conversation_attachment_id
+                    FROM pulse_ai_conversation_attachments attachment
+                    JOIN pulse_ai_conversations conversation
+                      ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                    JOIN project_intake_documents document
+                      ON document.project_intake_document_id = attachment.project_intake_document_id
+                    WHERE attachment.pulse_ai_conversation_attachment_id = ANY(@attachment_ids)
+                      AND attachment.pulse_ai_conversation_id = @conversation_id
+                      AND attachment.uploaded_by_user_id = @effective_user_id
+                      AND attachment.revoked_at IS NULL
+                      AND attachment.retention_until > NOW()
+                      AND conversation.actual_user_id = @effective_user_id
+                      AND conversation.effective_user_id = @effective_user_id
+                      AND conversation.status = 'active'
+                      AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                      AND document.upload_source = 'celar_ai_chat_attachment'
+                      AND document.uploaded_by_user_id = @effective_user_id
+                      AND document.is_active = TRUE
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM pulse_ai_conversation_attachment_purge_audit audit
+                          WHERE audit.pulse_ai_conversation_attachment_id = attachment.pulse_ai_conversation_attachment_id
+                      )
+                    FOR UPDATE OF attachment;
+                    """;
+                await using var attachmentLock = new NpgsqlCommand(
+                    attachmentLockSql,
+                    connection,
+                    transaction);
+                attachmentLock.Parameters.AddWithValue("attachment_ids", attachmentIds);
+                attachmentLock.Parameters.AddWithValue("conversation_id", conversationId);
+                attachmentLock.Parameters.AddWithValue("effective_user_id", effectiveUserId);
+                var lockedAttachmentIds = new HashSet<Guid>();
+                await using (var attachmentReader = await attachmentLock.ExecuteReaderAsync(cancellationToken))
+                {
+                    while (await attachmentReader.ReadAsync(cancellationToken))
+                        lockedAttachmentIds.Add(attachmentReader.GetGuid(0));
+                }
+                if (lockedAttachmentIds.Count != attachmentIds.Length)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return (Guid.Empty, 0);
+                }
+            }
+
+            // Attachment retention owns the attachment row before it updates
+            // the parent conversation. Keep the same lock order here to avoid
+            // a conversation/attachment deadlock during concurrent purge.
             const string lockSql = """
                 SELECT 1
                 FROM pulse_ai_conversations
@@ -388,6 +447,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return Guid.Empty;
         if (!await IsSchemaReadyAsync(cancellationToken)) return Guid.Empty;
         var runId = Guid.NewGuid();
         try
@@ -435,6 +495,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         bool persistResponseBody,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -493,6 +554,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         string diagnosticCode,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         if (inquiryRunId == Guid.Empty || !await IsSchemaReadyAsync(cancellationToken)) return;
         try
         {
@@ -649,28 +711,13 @@ public sealed class PulseAiSystemIntelligenceRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required.Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))).ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 12,
-            Timeout = 8,
-            CommandTimeout = 30
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

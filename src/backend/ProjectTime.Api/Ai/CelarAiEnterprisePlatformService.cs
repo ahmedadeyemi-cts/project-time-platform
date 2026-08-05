@@ -11,16 +11,16 @@ namespace ProjectTime.Api.Ai;
 public sealed class CelarAiEnterprisePlatformService
 {
     private readonly PulseAiPrivateRagService _privateRag;
-    private readonly CelarAiExternalReasoningService _externalReasoning;
+    private readonly CelarAiCapabilityRouter _router;
     private readonly ILogger<CelarAiEnterprisePlatformService> _logger;
 
     public CelarAiEnterprisePlatformService(
         PulseAiPrivateRagService privateRag,
-        CelarAiExternalReasoningService externalReasoning,
+        CelarAiCapabilityRouter router,
         ILogger<CelarAiEnterprisePlatformService> logger)
     {
         _privateRag = privateRag;
-        _externalReasoning = externalReasoning;
+        _router = router;
         _logger = logger;
     }
 
@@ -39,14 +39,15 @@ public sealed class CelarAiEnterprisePlatformService
             new { code = "timesheet_description", owner = "Module 001", state = "private_rag_available_when_configured", authority = "engineer review and apply" },
             new { code = "sow_draft", owner = "Module 025", state = "reviewable_private_draft", authority = "authorized commercial review" },
             new { code = "project_plan", owner = "Module 066", state = "reviewable_private_draft", authority = "PM and Engineering review" },
+            new { code = "project_forge_plan_estimate", owner = "Module 033", state = "document_grounded_review_draft", authority = "PM and assigned Engineer review before explicit adoption" },
             new { code = "project_timeline", owner = "Module 066", state = "deterministic_high_level_draft", authority = "FlowHive schedule engine before baseline" },
             new { code = "project_diagram", owner = "Module 011 / 066", state = "reviewable_visual_draft", authority = "source citations and human review" },
-            new { code = "sanitized_external_reasoning", owner = "Module 064", state = "disabled_by_default", authority = "DLP and provider policy" }
+            new { code = "sanitized_external_reasoning", owner = "Module 064", state = "automatic_when_persisted_route_and_both_runtime_privacy_flags_allow", authority = "closed backend capsule, DLP, and provider policy" }
         },
         guarantees = new[]
         {
             "Private project documents and live Pulse records remain inside the approved private boundary.",
-            "External providers receive only a generic sanitized problem when both runtime policy and the caller allow it.",
+            "External providers receive only a fixed backend-owned generic capsule selected from a closed purpose category when runtime policy allows it.",
             "A generated timeline or diagram is a review artifact, not a customer commitment or approved project baseline.",
             "All project-specific facts remain grounded in private Celar AI evidence and cited source versions.",
             "No mutation, arbitrary SQL, arbitrary URL, provider secret, model endpoint, or raw chunk text is returned."
@@ -68,64 +69,75 @@ public sealed class CelarAiEnterprisePlatformService
 
         try
         {
-            PulseAiPrivateRagAnswer privateResult;
-            if (mode == "timesheet_description")
+            var capability = ResolveCapability(mode, request);
+            var externalCapsulePurpose = ResolveExternalCapsulePurpose(mode);
+            var externalCapsuleReady = CelarAiExternalCapsuleCatalog.TryResolve(
+                externalCapsulePurpose,
+                out _);
+            var identityTerms = new[] { projectCode, projectName }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            PulseAiPrivateRagAnswer? privateResult = null;
+            var routed = await _router.GenerateWithPrivateTargetAsync(
+                new ProjectPulseAiGenerationRequest(
+                    Feature: capability,
+                    SystemPrompt: "Use authorized private project evidence to create the requested review artifact. Never invent facts, commitments, approval, dates, prices, people, or completed work.",
+                    UserPrompt: BuildPrivateComposePrompt(mode, request, projectCode, projectName),
+                    MaxOutputTokens: _privateRag.Options().MaximumOutputTokens,
+                    Temperature: 0.10),
+                new CelarAiCapabilityExecutionContext(
+                    Feature: capability,
+                    ContainsPrivateDocuments: mode != "timesheet_description"
+                        || request.ProjectId is not null
+                        || request.TaskId is not null
+                        || request.AssignmentId is not null
+                        || projectCode.Length > 0
+                        || projectName.Length > 0,
+                    ContainsCustomerIdentity: identityTerms.Length > 0,
+                    ContainsPeopleRecords: false,
+                    ContainsFinancialValues: mode == "sow_draft",
+                    // Compatibility flag cannot gate a closed router-owned
+                    // capsule; persisted order plus runtime policy governs it.
+                    AllowSanitizedExternalAssistance: false,
+                    SensitiveTerms: identityTerms,
+                    ConsumerModule: capability == CelarAiCapabilityCatalog.SowGsdPlanning
+                        ? "011/025"
+                        : capability == CelarAiCapabilityCatalog.ProjectForgePlanEstimate
+                            ? "011/033"
+                            : "011/066",
+                    CorrelationId: correlationId,
+                    IdentityTerms: identityTerms,
+                    ExternalCapsulePurpose: externalCapsulePurpose),
+                async privateCancellationToken =>
+                {
+                    privateResult = await ExecutePrivateComposeAsync(
+                        actualUserId,
+                        effectiveUserId,
+                        mode,
+                        request,
+                        projectCode,
+                        projectName,
+                        privateCancellationToken);
+                    return PrivateComposeTargetResult(privateResult);
+                },
+                localFallback: () => LocalEnterpriseFallback(mode),
+                cancellationToken: cancellationToken);
+
+            if (routed.Outcome == ProjectPulseAiOutcomes.Refusal)
             {
-                privateResult = await _privateRag.GenerateTimesheetAsync(
-                    actualUserId,
-                    effectiveUserId,
-                    new PulseAiPrivateTimesheetRequest(
-                        WorkDate: request.WorkDate,
-                        TimeType: request.TimeType,
-                        RowType: request.RowType,
-                        RowLabel: request.RowLabel,
-                        ProjectCode: projectCode,
-                        ProjectName: projectName,
-                        TaskCode: request.TaskCode,
-                        TaskName: request.TaskName,
-                        CategoryCode: request.CategoryCode,
-                        EngineerNote: request.EngineerNote,
-                        DetailLevel: request.DetailLevel ?? "standard"),
-                    cancellationToken);
-            }
-            else if (mode == "sow_draft")
-            {
-                var outcome = Clean(request.RequestedOutcome, 6_000);
-                var question = $"""
-                    Create a comprehensive, reviewable Statement of Work draft for the authorized project.
-                    Project code: {projectCode}
-                    Project name: {projectName}
-                    Requested outcome: {(outcome.Length == 0 ? "Use the authorized scope, deliverables, design, responsibilities, constraints, acceptance evidence, assumptions, dependencies, risks, and open questions." : outcome)}
-                    The output is a draft only. Separate cited facts from assumptions. Do not invent prices, rates, dates, quantities, responsibilities, acceptance criteria, or contractual commitments.
-                    """;
-                privateResult = await _privateRag.AskHelpSearchAsync(
-                    actualUserId,
-                    effectiveUserId,
-                    new PulseAiPrivateHelpSearchRequest(
-                        Question: question,
-                        ProjectCode: projectCode,
-                        ProjectName: projectName,
-                        DetailLevel: request.DetailLevel ?? "comprehensive",
-                        IncludeAuthorizedProjectDocuments: true,
-                        IncludeDirectProductKnowledge: false),
-                    cancellationToken);
-            }
-            else
-            {
-                privateResult = await _privateRag.GenerateFlowHivePlanAsync(
-                    actualUserId,
-                    effectiveUserId,
-                    new PulseAiPrivateFlowHiveRequest(
-                        ProjectCode: projectCode,
-                        ProjectName: projectName,
-                        RequestedOutcome: request.RequestedOutcome,
-                        DetailLevel: request.DetailLevel ?? "comprehensive"),
-                    cancellationToken);
+                // A safety refusal is terminal. Do not return any private RAG
+                // artifacts that may have been assembled before the private
+                // target refused, and do not construct external assistance.
+                return RefusedComposeResult(mode, routed, correlationId);
             }
 
-            var plan = privateResult.FlowHivePlan;
-            var detailed = privateResult.Answer ?? (plan is null ? null : BuildPlanSummary(plan, privateResult));
-            var sow = mode == "sow_draft" ? BuildSowDraft(privateResult, projectCode, projectName) : null;
+            var plan = privateResult?.FlowHivePlan;
+            var detailed = privateResult?.Answer
+                ?? (plan is null || privateResult is null ? null : BuildPlanSummary(plan, privateResult));
+            var sow = mode == "sow_draft" && privateResult is not null
+                ? BuildSowDraft(privateResult, projectCode, projectName)
+                : null;
             var timeline = plan is null
                 ? Array.Empty<CelarAiTimelineItem>()
                 : BuildTimeline(plan, request.StartDate ?? NextMonday(DateOnly.FromDateTime(DateTime.UtcNow)));
@@ -133,8 +145,8 @@ public sealed class CelarAiEnterprisePlatformService
                 ? BuildDiagram(plan, timeline, request.DiagramType, projectCode, projectName)
                 : null;
 
-            var confidence = plan?.Confidence ?? detailed?.Confidence ?? 0m;
-            var warnings = new List<string>(privateResult.Warnings);
+            var confidence = plan?.Confidence ?? detailed?.Confidence ?? 0.25m;
+            var warnings = new List<string>(privateResult?.Warnings ?? []);
             warnings.AddRange(mode switch
             {
                 "timesheet_description" => ["The Engineer must verify the factual description before applying it. Celar AI did not save or submit time."],
@@ -143,65 +155,67 @@ public sealed class CelarAiEnterprisePlatformService
             });
 
             CelarAiExternalReasoningResult? external = null;
-            var evidenceLimited = confidence < 0.65m
-                || privateResult.Status is "partial" or "failed" or "blocked"
-                || privateResult.MissingEvidence.Count > 0;
-            if (request.AllowSanitizedExternalFallback
-                && evidenceLimited
-                && CelarAiEnterprisePlatformPolicy.ExternalFallbackEligibleModes.Contains(mode, StringComparer.OrdinalIgnoreCase))
+            if (routed.Provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                && externalCapsuleReady)
             {
-                external = await _externalReasoning.TryGenerateAsync(
-                    new CelarAiExternalReasoningRequest(
-                        Mode: mode,
-                        Purpose: $"generic_{mode}_reasoning_support",
-                        GenericProblem: GenericExternalProblem(mode),
-                        SensitiveTerms: [projectCode, projectName, "US Signal", "Pulse"],
-                        ContainsPrivateDocumentText: false,
-                        ContainsFinancialValues: false,
-                        ContainsPeopleRecords: false,
-                        AcknowledgeSanitizedExternalUse: true),
-                    cancellationToken);
+                external = ToExternalAssistance(routed);
                 if (!string.IsNullOrWhiteSpace(external.Content))
                 {
                     warnings.Add("Celar AI received generic, sanitized reasoning assistance through Module 064. It did not send project, customer, people, financial, or document content. Apply the generic guidance only after private source verification.");
                 }
             }
+            if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);
 
-            var status = privateResult.Status == "completed"
+            // The structured artifact is produced only by the private callback.
+            // A later external/local target can add separate generic assistance,
+            // but it does not replace or de-ground that private artifact.
+            var status = privateResult?.Status == "completed"
                 ? "celar_ai_solution_draft_completed"
-                : privateResult.Status == "partial"
+                : privateResult?.Status == "partial"
                     ? "celar_ai_solution_draft_partial"
                     : "celar_ai_solution_draft_evidence_limited";
-            var path = external?.Authorized == true && !string.IsNullOrWhiteSpace(external.Content)
-                ? "private_celar_rag_plus_sanitized_generic_module064_assistance"
-                : "private_celar_rag_and_deterministic_composer";
+            var path = routed.Provider switch
+                {
+                    CelarAiCapabilityTargets.CelarAi => "private_celar_rag_and_deterministic_composer",
+                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+                        when privateResult?.FlowHivePlan is not null || privateResult?.Answer is not null
+                        => "private_celar_rag_with_sanitized_generic_module064_assistance",
+                    CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi => "sanitized_generic_module064_assistance",
+                    _ when privateResult?.FlowHivePlan is not null || privateResult?.Answer is not null
+                        => "private_evidence_composer_after_governed_local_route",
+                    _ => "governed_local_template"
+                };
 
             return new CelarAiComposeResult(
                 Status: status,
                 Mode: mode,
                 PrimaryExecutionPath: path,
-                ProjectId: privateResult.ProjectId,
-                ProjectCode: privateResult.ProjectCode,
-                ProjectName: privateResult.ProjectName,
+                ProjectId: privateResult?.ProjectId ?? request.ProjectId,
+                ProjectCode: !string.IsNullOrWhiteSpace(privateResult?.ProjectCode) ? privateResult!.ProjectCode : projectCode,
+                ProjectName: !string.IsNullOrWhiteSpace(privateResult?.ProjectName) ? privateResult!.ProjectName : projectName,
                 DetailedAnswer: detailed,
                 FlowHivePlan: plan,
                 SowDraft: sow,
                 Timeline: timeline,
                 Diagram: diagram,
-                Citations: privateResult.Citations,
+                Citations: privateResult?.Citations ?? [],
                 Warnings: warnings,
-                MissingEvidence: privateResult.MissingEvidence,
-                Conflicts: privateResult.Conflicts,
-                CoverageScore: privateResult.CoverageScore,
+                MissingEvidence: privateResult?.MissingEvidence ?? ["No private source-grounded composition completed."],
+                Conflicts: privateResult?.Conflicts ?? [],
+                CoverageScore: privateResult?.CoverageScore ?? 0m,
                 Confidence: confidence,
                 ConfidenceExplanation: plan?.ConfidenceExplanation
                     ?? detailed?.ConfidenceExplanation
-                    ?? "Confidence is limited because no private answer or project plan was produced.",
+                    ?? "Confidence is limited because no private source-grounded answer or project plan was produced.",
                 ExternalAssistance: external,
-                DataAsOf: privateResult.DataAsOf,
-                CorrelationId: string.IsNullOrWhiteSpace(privateResult.CorrelationId)
+                DataAsOf: privateResult?.DataAsOf ?? DateTimeOffset.UtcNow,
+                CorrelationId: string.IsNullOrWhiteSpace(privateResult?.CorrelationId)
                     ? correlationId
-                    : privateResult.CorrelationId);
+                    : privateResult.CorrelationId,
+                SelectedTarget: routed.Provider,
+                AttemptedTargets: routed.AttemptedProviders,
+                SkippedTargets: routed.SkippedProviders,
+                TargetDecisions: routed.TargetDecisions ?? []);
         }
         catch (OperationCanceledException)
         {
@@ -238,6 +252,225 @@ public sealed class CelarAiEnterprisePlatformService
                 CorrelationId: correlationId);
         }
     }
+
+    private static CelarAiComposeResult RefusedComposeResult(
+        string mode,
+        ProjectPulseAiRouteResult routed,
+        string correlationId) =>
+        new(
+            Status: "celar_ai_solution_draft_refused",
+            Mode: mode,
+            PrimaryExecutionPath: "safety_refusal",
+            ProjectId: null,
+            ProjectCode: string.Empty,
+            ProjectName: string.Empty,
+            DetailedAnswer: null,
+            FlowHivePlan: null,
+            SowDraft: null,
+            Timeline: [],
+            Diagram: null,
+            Citations: [],
+            Warnings: ["The selected AI target declined the request. No generated or private-source content was returned."],
+            MissingEvidence: [],
+            Conflicts: [],
+            CoverageScore: 0m,
+            Confidence: 0m,
+            ConfidenceExplanation: "No confidence score is available because the request was declined.",
+            ExternalAssistance: null,
+            DataAsOf: DateTimeOffset.UtcNow,
+            CorrelationId: correlationId,
+            SelectedTarget: routed.Provider,
+            AttemptedTargets: routed.AttemptedProviders,
+            SkippedTargets: routed.SkippedProviders,
+            TargetDecisions: routed.TargetDecisions ?? []);
+
+    private async Task<PulseAiPrivateRagAnswer> ExecutePrivateComposeAsync(
+        Guid actualUserId,
+        Guid effectiveUserId,
+        string mode,
+        CelarAiComposeRequest request,
+        string projectCode,
+        string projectName,
+        CancellationToken cancellationToken)
+    {
+        if (mode == "timesheet_description")
+        {
+            return await _privateRag.GenerateTimesheetAsync(
+                actualUserId,
+                effectiveUserId,
+                new PulseAiPrivateTimesheetRequest(
+                    WorkDate: request.WorkDate,
+                    TimeType: request.TimeType,
+                    RowType: request.RowType,
+                    RowLabel: request.RowLabel,
+                    ProjectCode: projectCode,
+                    ProjectName: projectName,
+                    TaskCode: request.TaskCode,
+                    TaskName: request.TaskName,
+                    CategoryCode: request.CategoryCode,
+                    EngineerNote: request.EngineerNote,
+                    DetailLevel: request.DetailLevel ?? "detailed",
+                    ProjectId: request.ProjectId,
+                    TaskId: request.TaskId,
+                    AssignmentId: request.AssignmentId),
+                cancellationToken);
+        }
+        if (mode == "sow_draft")
+        {
+            var outcome = Clean(request.RequestedOutcome, 6_000);
+            var question = $"""
+                Create a comprehensive, reviewable Statement of Work draft for the authorized project.
+                Project code: {projectCode}
+                Project name: {projectName}
+                Requested outcome: {(outcome.Length == 0 ? "Use the authorized scope, deliverables, design, responsibilities, constraints, acceptance evidence, assumptions, dependencies, risks, and open questions." : outcome)}
+                The output is a draft only. Separate cited facts from assumptions. Do not invent prices, rates, dates, quantities, responsibilities, acceptance criteria, or contractual commitments.
+                """;
+            return await _privateRag.AskHelpSearchAsync(
+                actualUserId,
+                effectiveUserId,
+                new PulseAiPrivateHelpSearchRequest(
+                    Question: question,
+                    ProjectCode: projectCode,
+                    ProjectName: projectName,
+                    DetailLevel: request.DetailLevel ?? "comprehensive",
+                    IncludeAuthorizedProjectDocuments: true,
+                    IncludeDirectProductKnowledge: false),
+                cancellationToken);
+        }
+        return await _privateRag.GenerateFlowHivePlanAsync(
+            actualUserId,
+            effectiveUserId,
+            new PulseAiPrivateFlowHiveRequest(
+                ProjectCode: projectCode,
+                ProjectName: projectName,
+                RequestedOutcome: request.RequestedOutcome,
+                DetailLevel: request.DetailLevel ?? "comprehensive"),
+            cancellationToken);
+    }
+
+    private static string ResolveCapability(string mode, CelarAiComposeRequest request)
+    {
+        if (mode == "timesheet_description")
+        {
+            return CelarAiCapabilityCatalog.ResolveTimesheetFeature(
+                request.RowType,
+                request.RowLabel,
+                request.TaskCode,
+                request.ProjectCode,
+                request.ProjectName);
+        }
+        if (mode == "sow_draft") return CelarAiCapabilityCatalog.SowGsdPlanning;
+        return string.Equals(
+            request.CapabilityCode?.Trim(),
+            CelarAiCapabilityCatalog.ProjectForgePlanEstimate,
+            StringComparison.OrdinalIgnoreCase)
+            ? CelarAiCapabilityCatalog.ProjectForgePlanEstimate
+            : CelarAiCapabilityCatalog.ProjectFlowHivePlan;
+    }
+
+    private static string ResolveExternalCapsulePurpose(string mode) => mode switch
+    {
+        "sow_draft" => CelarAiExternalCapsuleCatalog.SowScopeQuality,
+        "project_timeline" => CelarAiExternalCapsuleCatalog.ProjectTimelineQuality,
+        "project_diagram" => CelarAiExternalCapsuleCatalog.ProjectDiagramQuality,
+        "project_plan" => CelarAiExternalCapsuleCatalog.ProjectPlanQuality,
+        _ => string.Empty
+    };
+
+    private static string BuildPrivateComposePrompt(
+        string mode,
+        CelarAiComposeRequest request,
+        string projectCode,
+        string projectName) => $"""
+        Requested solution mode: {mode}
+        Project code: {projectCode}
+        Project name: {projectName}
+        Requested outcome: {Clean(request.RequestedOutcome, 6_000)}
+        Detail level: {Clean(request.DetailLevel, 80)}
+        Use only authorized private project evidence. Return a review artifact; do not publish, baseline,
+        assign, send, approve, contract, commit a date, or mutate any owning-module record.
+        """;
+
+    private static ProjectPulseAiProviderResult PrivateComposeTargetResult(PulseAiPrivateRagAnswer answer)
+    {
+        var safetyRefusal = IsPrivateSafetyRefusal(answer);
+        var privateModelCompleted = !string.IsNullOrWhiteSpace(answer.ModelProvider)
+            && !string.Equals(
+                answer.ModelProvider,
+                "governed_product_knowledge",
+                StringComparison.OrdinalIgnoreCase)
+            && !answer.ModelProvider.StartsWith("deterministic_", StringComparison.OrdinalIgnoreCase)
+            && (answer.Answer is not null || answer.FlowHivePlan is not null);
+        return new ProjectPulseAiProviderResult(
+            Provider: CelarAiCapabilityTargets.CelarAi,
+            Outcome: safetyRefusal
+                ? ProjectPulseAiOutcomes.Refusal
+                : privateModelCompleted
+                ? ProjectPulseAiOutcomes.Success
+                : ProjectPulseAiOutcomes.Unavailable,
+            Content: privateModelCompleted && !safetyRefusal ? "private_rag_composition_completed" : null,
+            Code: safetyRefusal
+                ? "private_model_safety_refusal"
+                : privateModelCompleted
+                ? null
+                : string.IsNullOrWhiteSpace(answer.DiagnosticCode)
+                    ? "private_rag_model_not_used"
+                    : answer.DiagnosticCode,
+            Message: privateModelCompleted
+                ? null
+                : "The private Celar AI document composition target did not complete.",
+            RequestId: null,
+            Usage: null,
+            HttpStatusCode: null);
+    }
+
+    private static bool IsPrivateSafetyRefusal(PulseAiPrivateRagAnswer answer) =>
+        string.Equals(answer.Status, "refused", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("refus", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("content_filter", StringComparison.OrdinalIgnoreCase)
+        || answer.DiagnosticCode.Contains("safety", StringComparison.OrdinalIgnoreCase);
+
+    private static CelarAiExternalReasoningResult ToExternalAssistance(
+        ProjectPulseAiRouteResult routed)
+    {
+        var externalAttempted = routed.AttemptedProviders.Any(target =>
+            target is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi);
+        var refused = routed.Outcome == ProjectPulseAiOutcomes.Refusal;
+        return new CelarAiExternalReasoningResult(
+            Status: refused
+                ? "external_reasoning_refused"
+                : routed.Provider == CelarAiCapabilityTargets.Local
+                    ? "governed_generic_fallback_completed"
+                    : "sanitized_external_reasoning_completed",
+            Enabled: true,
+            Authorized: true,
+            ProviderCalled: externalAttempted,
+            Provider: routed.Provider,
+            Content: refused ? string.Empty : routed.Content,
+            Warning: routed.Warning ?? (refused
+                ? "The selected target declined the request and no later target was attempted."
+                : "Generic assistance completed and must be verified against private source evidence before use."),
+            Redactions: [],
+            RemovedCategories: [],
+            BlockedReasons: (routed.TargetDecisions ?? [])
+                .Where(decision => decision.Outcome is "failed" or "skipped")
+                .Select(decision => decision.ReasonCode)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            GeneratedAt: DateTimeOffset.UtcNow,
+            AttemptedTargets: routed.AttemptedProviders,
+            SkippedTargets: routed.SkippedProviders,
+            TargetDecisions: routed.TargetDecisions ?? []);
+    }
+
+    private static string LocalEnterpriseFallback(string mode) => mode switch
+    {
+        "sow_draft" => "Use a generic review-only scope structure covering objectives, boundaries, exclusions, deliverables, responsibilities, assumptions, dependencies, acceptance criteria, milestones, risks, change control, and approval gates.",
+        "project_timeline" => "Use discovery, design validation, prerequisites, implementation, testing, acceptance, handoff, and closeout as generic sequencing checkpoints; validate every duration and dependency against private evidence.",
+        "project_diagram" => "Use a generic project flow showing inputs, governance, discovery, design, implementation, validation, acceptance, handoff, dependencies, risks, assumptions, and review gates.",
+        "timesheet_description" => "The private model did not complete. The Engineer must write a detailed sentence-form description from work personally performed and verify it before saving or submission.",
+        _ => "Use a phased review-only delivery structure with discovery, design, implementation, testing, acceptance, handoff, risks, dependencies, open questions, and human approval gates."
+    };
 
     private static CelarAiSowDraft? BuildSowDraft(
         PulseAiPrivateRagAnswer result,
@@ -463,14 +696,6 @@ public sealed class CelarAiEnterprisePlatformService
         var rows = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         return rows.Length > 0 ? rows : [fallback];
     }
-
-    private static string GenericExternalProblem(string mode) => mode switch
-    {
-        "sow_draft" => "Provide a generic professional-services SOW quality checklist covering objectives, scope, exclusions, deliverables, responsibilities, assumptions, dependencies, acceptance criteria, milestones, risks, change control, and review gates.",
-        "project_timeline" => "Provide generic sequencing guidance for a complex professional-services implementation using discovery, design validation, prerequisites, implementation, testing, acceptance, operational handoff, and closeout. Do not provide customer-specific dates.",
-        "project_diagram" => "Provide generic systems-engineering diagram guidance for showing project inputs, governance, discovery, design, implementation, validation, acceptance, operational handoff, dependencies, risks, and review gates.",
-        _ => "Provide a generic professional-services project-planning checklist covering WBS quality, dependencies, milestones, roles, assumptions, risks, acceptance, handoff, and human review."
-    };
 
     private static string NormalizeMode(string? value)
     {

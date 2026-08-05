@@ -147,6 +147,23 @@ jobs:
           path: /tmp/project-expense-migration-044.log
           retention-days: 7
 
+      - name: Test Module 006 migration 069 apply, guarded rollback, and reapply
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-module-006-customer-expansion-migration-069.sh > /tmp/module006-migration-069.log 2>&1
+          status=$?
+          cat /tmp/module006-migration-069.log
+          exit $status
+
+      - name: Upload Module 006 migration 069 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: module006-migration-069-diagnostics
+          path: /tmp/module006-migration-069.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 

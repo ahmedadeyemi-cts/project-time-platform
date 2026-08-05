@@ -254,11 +254,7 @@ public static class ProjectIntakeModule
             });
         }
 
-        var uploadRoot = Environment.GetEnvironmentVariable("PROJECTPULSE_UPLOAD_ROOT");
-        if (string.IsNullOrWhiteSpace(uploadRoot))
-        {
-            uploadRoot = "/opt/project-time-platform/app/uploads";
-        }
+        var uploadRoot = ProjectTime.Api.Ai.ProjectPulseUploadStorage.ResolveRoot();
 
         var documentType = string.IsNullOrWhiteSpace(form["documentType"])
             ? "other"
@@ -381,7 +377,8 @@ public static class ProjectIntakeModule
             SELECT original_file_name, storage_path, content_type
             FROM project_intake_documents
             WHERE project_intake_document_id = @document_id
-              AND is_active = TRUE;
+              AND is_active = TRUE
+              AND COALESCE(upload_source, '') <> 'celar_ai_chat_attachment';
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);

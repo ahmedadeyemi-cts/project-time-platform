@@ -1377,6 +1377,7 @@ internal static class EnterpriseReportingEngine
         "timesheet_service_request_description" => "Modules 001 and 055C",
         "sow_gsd_planning" => "Modules 025, 055D, and 066",
         "project_flowhive_plan" => "Module 066",
+        "project_forge_plan_estimate" => "Module 033",
         "closeout_communication" => "Modules 040 and 041",
         "help_assistant" => "Modules 011 and 999",
         _ => "Module 064 governed capability route"

@@ -1,1 +1,132 @@
 .expense-upload-shell{display:grid;gap:1.25rem;color:#17213a}.expense-hero,.expense-selection-card,.expense-history-card{background:#fff;border:1px solid #dbe5ef;border-radius:1.5rem;box-shadow:0 18px 42px rgba(22,45,75,.08)}.expense-hero{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:1.75rem}.expense-hero h1{font-size:clamp(2rem,4vw,3.2rem);margin:.15rem 0}.expense-hero p:last-child{max-width:780px;color:#60718f;font-size:1.05rem}.expense-status{padding:.8rem 1rem;border-radius:1rem;background:#eef7ff;color:#075985;font-weight:800}.expense-notice{display:flex;flex-direction:column;gap:.25rem;padding:1rem 1.2rem;border-radius:1rem}.expense-notice.error{background:#fff1f1;border:1px solid #fda4af;color:#991b1b}.expense-selection-card{padding:1.4rem;display:grid;gap:1.2rem}.expense-selection-card>.expense-step{display:inline-flex}.expense-step{align-items:center;gap:.45rem;margin-right:.5rem;padding:.55rem .75rem;border-radius:999px;background:#e8f7f3;color:#0f766e}.expense-step span{display:grid;place-items:center;width:1.55rem;height:1.55rem;border-radius:50%;background:#0f766e;color:#fff}.expense-select-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.expense-select-grid label,.expense-import-panel label{display:grid;gap:.4rem;font-weight:800}.expense-select-grid select,.expense-import-panel input,.expense-import-panel select{width:100%;border:1px solid #cbd9e8;border-radius:.9rem;padding:.8rem .9rem;background:#fff;color:#17213a;font:inherit}.billing-rule{display:flex;flex-direction:column;gap:.25rem;padding:1rem;border-radius:1rem;border-left:5px solid #2563eb;background:#eff6ff}.billing-rule.included_fixed_price{border-left-color:#d97706;background:#fff7ed}.billing-rule.internal_nonbillable{border-left-color:#64748b;background:#f8fafc}.expense-method-tabs{display:flex;gap:.6rem;padding:.35rem;border-radius:1rem;background:#f3f6fa;width:max-content}.expense-method-tabs button{border:0;background:transparent;padding:.7rem 1rem;border-radius:.75rem;font-weight:900;color:#60718f;cursor:pointer}.expense-method-tabs button.active{background:#1555d6;color:#fff;box-shadow:0 8px 18px rgba(21,85,214,.2)}.expense-import-panel{display:flex;justify-content:space-between;gap:1.25rem;align-items:flex-end;border:1px solid #dbe5ef;border-radius:1.1rem;padding:1.15rem;background:#fbfdff}.expense-import-panel>div{display:grid;gap:.7rem;max-width:780px}.expense-import-panel h2{margin:0}.expense-import-panel p{margin:0;color:#60718f}.expense-date-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}.expense-mail-note{display:flex;gap:.65rem;align-items:flex-start;padding:1rem;border-radius:1rem;background:#f0fdfa;border:1px solid #99f6e4}.expense-mail-note span{color:#38606a}.expense-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.expense-kpis>div{background:#fff;border:1px solid #dbe5ef;border-radius:1.1rem;padding:1rem;display:flex;flex-direction:column;gap:.3rem}.expense-kpis span{color:#60718f;font-weight:800}.expense-kpis strong{font-size:1.45rem}.expense-history-card{padding:1.25rem;overflow:hidden}.expense-history-card>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}.expense-history-card h2{margin:.15rem 0}.expense-table-wrap{overflow:auto;border:1px solid #dbe5ef;border-radius:1rem}.expense-table-wrap table{width:100%;min-width:1450px;border-collapse:collapse}.expense-table-wrap th{position:sticky;top:0;background:#f4f7fb;text-align:left;padding:.75rem;color:#334155;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em}.expense-table-wrap td{padding:.8rem;border-top:1px solid #e5edf5;vertical-align:top}.expense-table-wrap tr.current{background:#f8fffd}.expense-table-wrap tr.prior{opacity:.72}.expense-table-wrap td strong,.expense-table-wrap td small{display:block}.expense-table-wrap td small{color:#71809a;margin-top:.2rem;max-width:240px}.category-pills{display:flex;flex-wrap:wrap;gap:.3rem}.category-pills span,.billing-chip{display:inline-flex;padding:.3rem .5rem;border-radius:999px;background:#eaf1fb;font-size:.75rem;font-weight:800}.billing-chip.pass_through_invoice{background:#dcfce7;color:#166534}.billing-chip.included_fixed_price{background:#ffedd5;color:#9a3412}.expense-actions{display:flex;gap:.4rem}.expense-actions button{border:1px solid #cbd9e8;background:#fff;border-radius:.6rem;padding:.45rem .6rem;cursor:pointer;font-weight:800}.expense-empty{padding:2rem;text-align:center;color:#60718f}.primary-action,.secondary-action{border:0;border-radius:.85rem;padding:.75rem 1rem;font-weight:900;cursor:pointer}.primary-action{background:#0868ac;color:#fff}.primary-action:disabled{opacity:.45;cursor:not-allowed}.secondary-action{background:#edf3f8;color:#1e3a5f}.eyebrow{font-size:.78rem;font-weight:900;letter-spacing:.12em;color:#075985;margin:0;text-transform:uppercase}@media(max-width:1000px){.expense-select-grid,.expense-kpis{grid-template-columns:1fr 1fr}.expense-import-panel{align-items:stretch;flex-direction:column}}@media(max-width:650px){.expense-hero{flex-direction:column}.expense-select-grid,.expense-kpis,.expense-date-grid{grid-template-columns:1fr}.expense-method-tabs{width:100%}.expense-method-tabs button{flex:1}.expense-step{width:100%;margin:.2rem 0}.expense-import-panel .primary-action{width:100%}}
+
+/* PR467 expense lifecycle */
+.expense-notice.warning { border-color: #d9a52a; background: #fff8df; }
+.expense-lock-reason { display: block; max-width: 15rem; color: #6b7280; }
+.expense-deleted-audit-history { margin-top: 1rem; border: 1px solid #d6dde8; border-radius: .8rem; padding: .9rem; background: #f8fafc; }
+.expense-deleted-audit-history summary { cursor: pointer; font-weight: 800; color: #17365d; }
+.expense-deleted-audit-history ul { list-style: none; padding: 0; display: grid; gap: .65rem; }
+.expense-deleted-audit-history li { display: grid; gap: .15rem; padding: .7rem; border: 1px solid #e2e8f0; border-radius: .65rem; background: white; }
+
+/* MODULE_005_ENTERPRISE_UPLOAD_HISTORY_LAYOUT */
+.expense-history-card {
+  min-width: 0;
+}
+
+.expense-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-gutter: stable;
+}
+
+.expense-table-wrap table {
+  width: max(100%, 1890px);
+  min-width: 1890px;
+  table-layout: fixed;
+}
+
+.expense-table-wrap th,
+.expense-table-wrap td {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.expense-table-wrap th {
+  z-index: 2;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.expense-table-wrap th:nth-child(1),
+.expense-table-wrap td:nth-child(1) { width: 90px; }
+.expense-table-wrap th:nth-child(2),
+.expense-table-wrap td:nth-child(2) { width: 170px; }
+.expense-table-wrap th:nth-child(3),
+.expense-table-wrap td:nth-child(3) { width: 140px; }
+.expense-table-wrap th:nth-child(4),
+.expense-table-wrap td:nth-child(4) { width: 190px; }
+.expense-table-wrap th:nth-child(5),
+.expense-table-wrap td:nth-child(5) { width: 430px; }
+.expense-table-wrap th:nth-child(6),
+.expense-table-wrap td:nth-child(6) { width: 125px; }
+.expense-table-wrap th:nth-child(7),
+.expense-table-wrap td:nth-child(7) { width: 145px; }
+.expense-table-wrap th:nth-child(8),
+.expense-table-wrap td:nth-child(8) { width: 155px; }
+.expense-table-wrap th:nth-child(9),
+.expense-table-wrap td:nth-child(9) { width: 225px; }
+.expense-table-wrap th:nth-child(10),
+.expense-table-wrap td:nth-child(10) { width: 220px; }
+
+.expense-table-wrap td:nth-child(1),
+.expense-table-wrap td:nth-child(3),
+.expense-table-wrap td:nth-child(6),
+.expense-table-wrap td:nth-child(7),
+.expense-table-wrap td:nth-child(8) {
+  overflow-wrap: normal;
+}
+
+.category-pills {
+  align-content: flex-start;
+}
+
+.category-pills span {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.expense-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: .45rem;
+  min-width: 0;
+}
+
+.expense-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: .55rem .6rem;
+  color: #17365d;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+}
+
+.expense-actions .primary-action {
+  border-color: #0868ac;
+  background: #0868ac;
+  color: #fff;
+}
+
+.expense-actions .primary-action:hover,
+.expense-actions .primary-action:focus-visible {
+  border-color: #075985;
+  background: #075985;
+  color: #fff;
+}
+
+.expense-actions .expense-lock-reason {
+  grid-column: 1 / -1;
+  max-width: none;
+  margin-top: .15rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .expense-history-card {
+    padding: 1rem;
+  }
+
+  .expense-history-card > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .35rem;
+  }
+}

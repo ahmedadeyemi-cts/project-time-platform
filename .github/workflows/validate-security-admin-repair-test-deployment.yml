@@ -31,6 +31,23 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          # DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE_START
+          GOVERNANCE_BASE_SHA='${{ github.event.pull_request.base.sha }}'
+          git fetch origin "$GOVERNANCE_BASE_SHA" --no-tags
+          git cat-file -e "$GOVERNANCE_BASE_SHA^{commit}"
+          git show "$GOVERNANCE_BASE_SHA:scripts/validate-deployment-concurrency-governance.mjs" > "${RUNNER_TEMP}/trusted-deployment-concurrency-validator.mjs"
+          set +e
+          node "${RUNNER_TEMP}/trusted-deployment-concurrency-validator.mjs" --repo-root "${GITHUB_WORKSPACE}" --base-ref "$GOVERNANCE_BASE_SHA" --classify-bootstrap-scope
+          governance_status=$?
+          set -e
+          if [[ $governance_status -eq 0 ]]; then
+            echo 'DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE=PASS'
+            exit 0
+          fi
+          if [[ $governance_status -ne 2 ]]; then
+            exit "$governance_status"
+          fi
+          # DEPLOYMENT_CONCURRENCY_GOVERNANCE_SCOPE_END
           git fetch origin main --no-tags
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
           printf '%s\n' "${CHANGED[@]}"

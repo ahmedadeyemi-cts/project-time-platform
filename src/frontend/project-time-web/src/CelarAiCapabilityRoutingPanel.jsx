@@ -10,8 +10,8 @@ const TARGET_LABELS = {
 
 const TARGET_DESCRIPTIONS = {
   celar_ai: 'Private orchestration, governed tools, private RAG, and private inference.',
-  claude: 'Optional sanitized external reasoning through Module 064.',
-  openai: 'Optional sanitized external reasoning through Module 064.',
+  claude: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
+  openai: 'Eligible external reasoning target; receives only fixed, backend-owned, identity-free capsules.',
   local_template: 'Deterministic final fallback that never calls a public provider.',
 };
 
@@ -42,7 +42,7 @@ function routeDraft(route) {
 }
 
 export default function CelarAiCapabilityRoutingPanel() {
-  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, consumers: [] });
+  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, consumers: [], controls: null });
   const [drafts, setDrafts] = useState({});
   const [savingRoute, setSavingRoute] = useState('');
   const [notice, setNotice] = useState('');
@@ -85,7 +85,9 @@ export default function CelarAiCapabilityRoutingPanel() {
         error: '',
         routes,
         profile,
+        productionReadiness: profilePayload.productionReadiness ?? null,
         consumers: consumersPayload.consumers ?? [],
+        controls: routesPayload.controls ?? null,
       });
     } catch (error) {
       setState((current) => ({
@@ -223,6 +225,9 @@ export default function CelarAiCapabilityRoutingPanel() {
   }
 
   const profile = state.profile;
+  const production = state.productionReadiness;
+  const deploymentManaged = state.controls?.deploymentManaged === true || profile?.deploymentManaged === true;
+  const releasePhase = state.controls?.releasePhase || production?.releasePhase || 'disabled';
 
   return (
     <section className="celar-ai-routing" aria-labelledby="celar-ai-routing-title">
@@ -231,8 +236,10 @@ export default function CelarAiCapabilityRoutingPanel() {
           <p>Celar AI and Module 064 control plane</p>
           <h2 id="celar-ai-routing-title">Private-first targets and capability routing</h2>
           <span>
-            Celar AI is the preferred private target. Claude and OpenAI are optional sanitized stages, and the governed
-            local template remains the deterministic final fallback. Target order is configurable; privacy policy is not.
+            The backend follows each capability&apos;s stored priority among eligible targets. When Require private inference
+            for document-grounded answers is on, document-grounded requests force private Celar AI first. After private
+            failure, Claude and OpenAI keep their stored relative order and receive only fixed, backend-owned, identity-free
+            capsules. The governed local template remains the deterministic final fallback.
           </span>
         </div>
         <button type="button" onClick={() => load()} disabled={state.loading}>
@@ -242,6 +249,13 @@ export default function CelarAiCapabilityRoutingPanel() {
 
       {notice ? <div className="celar-ai-routing__notice" role="status">{notice}</div> : null}
       {state.error ? <div className="celar-ai-routing__error" role="alert">{state.error}</div> : null}
+      {deploymentManaged ? (
+        <div className="celar-ai-routing__notice" role="status">
+          {releasePhase === 'candidate'
+            ? `Release candidate configuration is deployment-managed and read-only for source ${profile?.configurationSourceCommit || state.controls?.configurationSourceCommit}. Candidate document processing, audit persistence, and every application mutation are blocked; verification runs only through the combined candidate operation.`
+            : `Active release configuration is deployment-managed and read-only for source ${profile?.configurationSourceCommit || state.controls?.configurationSourceCommit}. Routes, endpoints, models, and credentials require a new protected release manifest, while normal authorized document processing and application writes remain active.`}
+        </div>
+      ) : null}
       {state.loading && !state.routes.length ? <div className="celar-ai-routing__loading">Loading Celar AI routing and private-model readiness…</div> : null}
 
       <div className="celar-ai-routing__architecture" aria-label="Celar AI routing architecture">
@@ -272,6 +286,28 @@ export default function CelarAiCapabilityRoutingPanel() {
           <article><span>Revision</span><strong>{profile?.revision ?? 0}</strong><small>Updated {formatDate(profile?.updatedAt)}</small></article>
         </div>
 
+        <div className="celar-ai-routing__production-readiness" role="status" aria-live="polite">
+          <header>
+            <div>
+              <span>End-to-end private runtime</span>
+              <strong>{production?.ready ? 'Production ready' : 'Configuration required'}</strong>
+            </div>
+            <small>Endpoint, encrypted secret storage, migrations, persistent files, processing, and SOW readiness</small>
+          </header>
+          <div>
+            <article><span>Migrations 052 / 053 / 061</span><strong>{production?.migrations?.allRequiredApplied ? 'Applied' : 'Required'}</strong></article>
+            <article><span>Shared persistent storage</span><strong>{production?.storage?.sharedPersistentWritable ? 'Ready' : 'Required'}</strong></article>
+            <article><span>Private document worker</span><strong>{production?.processing?.workerEnabled ? 'Enabled' : 'Disabled'}</strong></article>
+            <article><span>Ready SOW / GSD</span><strong>{production?.documents?.readySowDocumentCount ?? 0}</strong></article>
+          </div>
+          {!production?.ready && (production?.blockers ?? []).length ? (
+            <details>
+              <summary>Review {production.blockers.length} production-readiness item{production.blockers.length === 1 ? '' : 's'}</summary>
+              <ul>{production.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+            </details>
+          ) : null}
+        </div>
+
         <form className="celar-ai-routing__profile-form" onSubmit={savePrivateSettings}>
           <label>
             <span>Private endpoint</span>
@@ -281,6 +317,7 @@ export default function CelarAiCapabilityRoutingPanel() {
               onChange={(event) => setProfileForm((current) => ({ ...current, endpoint: event.target.value }))}
               placeholder={profile?.endpointConfigured ? 'Leave blank to preserve the encrypted endpoint' : 'https://private-host/v1/chat/completions'}
               autoComplete="off"
+              disabled={deploymentManaged}
             />
             <small>The endpoint must use a private IP, loopback, or approved private DNS suffix. The saved value is never returned.</small>
           </label>
@@ -290,6 +327,7 @@ export default function CelarAiCapabilityRoutingPanel() {
               value={profileForm.model}
               onChange={(event) => setProfileForm((current) => ({ ...current, model: event.target.value }))}
               placeholder="Private model name"
+              disabled={deploymentManaged}
             />
           </label>
           <label>
@@ -298,13 +336,14 @@ export default function CelarAiCapabilityRoutingPanel() {
               value={profileForm.allowlist}
               onChange={(event) => setProfileForm((current) => ({ ...current, allowlist: event.target.value }))}
               placeholder="One hostname or private DNS suffix per line; leave blank to preserve existing/default policy"
+              disabled={deploymentManaged}
             />
           </label>
           <div className="celar-ai-routing__checks">
-            <label><input type="checkbox" checked={profileForm.enabled} onChange={(event) => setProfileForm((current) => ({ ...current, enabled: event.target.checked }))} /> Enable the private Celar AI target</label>
-            <label><input type="checkbox" checked={profileForm.requirePrivateModelForDocuments} onChange={(event) => setProfileForm((current) => ({ ...current, requirePrivateModelForDocuments: event.target.checked }))} /> Require private inference for document-grounded answers</label>
+            <label><input type="checkbox" checked={profileForm.enabled} disabled={deploymentManaged} onChange={(event) => setProfileForm((current) => ({ ...current, enabled: event.target.checked }))} /> Enable the private Celar AI target</label>
+            <label><input type="checkbox" checked={profileForm.requirePrivateModelForDocuments} disabled={deploymentManaged} onChange={(event) => setProfileForm((current) => ({ ...current, requirePrivateModelForDocuments: event.target.checked }))} /> Require private inference for document-grounded answers</label>
           </div>
-          <button type="submit" disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save private-model settings'}</button>
+          <button type="submit" disabled={savingProfile || deploymentManaged}>{deploymentManaged ? 'Deployment-managed' : savingProfile ? 'Saving…' : 'Save private-model settings'}</button>
         </form>
 
         <form className="celar-ai-routing__token-form" onSubmit={savePrivateToken}>
@@ -317,8 +356,9 @@ export default function CelarAiCapabilityRoutingPanel() {
               onChange={(event) => setProfileForm((current) => ({ ...current, bearerToken: event.target.value }))}
               placeholder={profile?.bearerTokenConfigured ? 'Replace the write-only token' : 'Paste token once when required'}
               autoComplete="new-password"
+              disabled={deploymentManaged}
             />
-            <button type="submit" disabled={savingToken || !profileForm.bearerToken.trim()}>{savingToken ? 'Saving…' : 'Save securely'}</button>
+            <button type="submit" disabled={deploymentManaged || savingToken || !profileForm.bearerToken.trim()}>{deploymentManaged ? 'Deployment-managed' : savingToken ? 'Saving…' : 'Save securely'}</button>
             <button type="button" onClick={testPrivateModel} disabled={testingProfile || !profile?.configured}>{testingProfile ? 'Testing…' : 'Test private model'}</button>
           </div>
           <small>The token is AES-GCM encrypted and cannot be viewed after saving.</small>
@@ -328,7 +368,7 @@ export default function CelarAiCapabilityRoutingPanel() {
       <section className="celar-ai-routing__routes" aria-labelledby="capability-route-title">
         <div className="celar-ai-routing__subheading">
           <div><p>Capability routing</p><h3 id="capability-route-title">Primary, secondary, tertiary, and final fallback</h3></div>
-          <span>Default: Celar AI → Claude → OpenAI → Governed local template</span>
+          <span>Stored priority among eligible targets. Default: Celar AI → Claude → OpenAI → Governed local template</span>
         </div>
         <div className="celar-ai-routing__route-grid">
           {state.routes.map((route) => {
@@ -348,7 +388,7 @@ export default function CelarAiCapabilityRoutingPanel() {
                       <select
                         value={draft.targets[position] || ''}
                         onChange={(event) => setTarget(route.feature, position, event.target.value)}
-                        disabled={position === 3}
+                        disabled={deploymentManaged || position === 3}
                       >
                         {targetOptions.map((target) => <option value={target} key={target}>{TARGET_LABELS[target]}</option>)}
                       </select>
@@ -359,11 +399,11 @@ export default function CelarAiCapabilityRoutingPanel() {
                 {!localLast ? <p className="is-error">Governed local template must remain final.</p> : null}
                 {duplicate ? <p className="is-error">Every route position must be unique.</p> : null}
                 <footer>
-                  <span>Revision {route.revision ?? 0} · {route.persisted ? 'Persisted' : 'Default policy'}</span>
+                  <span>Revision {route.revision ?? 0} · {route.deploymentManaged ? 'Deployment-managed' : route.persisted ? 'Persisted' : 'Default policy'}</span>
                   <div>
-                    <button type="button" className="is-secondary" onClick={() => resetRoute(route.feature)} disabled={savingRoute === route.feature}>Reset</button>
-                    <button type="button" onClick={() => saveRoute(route.feature)} disabled={savingRoute === route.feature || duplicate || !localLast}>
-                      {savingRoute === route.feature ? 'Saving…' : 'Save route'}
+                    <button type="button" className="is-secondary" onClick={() => resetRoute(route.feature)} disabled={deploymentManaged || savingRoute === route.feature}>Reset</button>
+                    <button type="button" onClick={() => saveRoute(route.feature)} disabled={deploymentManaged || savingRoute === route.feature || duplicate || !localLast}>
+                      {deploymentManaged ? 'Read-only' : savingRoute === route.feature ? 'Saving…' : 'Save route'}
                     </button>
                   </div>
                 </footer>
@@ -396,7 +436,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         <strong>Non-editable enterprise guardrails</strong>
         <ul>
           <li>Raw SOW, GSD, IQS, email, customer, project, employee, contract, rate, and financial context never goes directly to a public provider.</li>
-          <li>Claude and OpenAI receive only a policy-approved sanitized generic capsule.</li>
+          <li>Claude and OpenAI keep their stored relative order after private failure and receive only fixed, backend-owned, identity-free capsules.</li>
           <li>A safety refusal stops routing; a later provider is not used to bypass it.</li>
           <li>No AI route automatically saves or submits time, publishes a SOW, baselines a plan, sends a closeout message, changes financial data, or deploys software.</li>
         </ul>

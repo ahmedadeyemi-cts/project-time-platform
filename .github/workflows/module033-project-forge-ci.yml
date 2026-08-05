@@ -1,0 +1,141 @@
+name: Validate Module 033 Project Forge
+
+on:
+  push:
+    branches:
+      - 'feature/module-033-project-forge-*'
+  pull_request:
+    paths:
+      - '.github/workflows/module033-project-forge-ci.yml'
+      - 'database/migrations/070_module_033_project_forge.sql'
+      - 'database/rollback/070_module_033_project_forge_rollback.sql'
+      - 'database/migrations/073_module_033_project_forge_interactive.sql'
+      - 'database/rollback/073_module_033_project_forge_interactive_rollback.sql'
+      - 'scripts/tests/070_module_033_project_forge_migration_test.sql'
+      - 'scripts/tests/073_module_033_project_forge_interactive_migration_test.sql'
+      - 'scripts/validate-module-033-project-forge-interactive.sh'
+      - 'docs/modules/module-033-project-forge/**'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentGroundingService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingEngine.cs'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseReportingSourceLoader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectForge*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailability*.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+      - 'src/frontend/project-time-web/scripts/test-module-033-project-forge-interactions.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-role-workspace-access-matrix.mjs'
+      - 'src/frontend/project-time-web/src/ProjectForgeCenter.jsx'
+      - 'src/frontend/project-time-web/src/project-forge-center.css'
+      - 'src/frontend/project-time-web/src/project-forge/**'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
+      - 'src/frontend/project-time-web/src/SystemUserGuide.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/src/role-workspace-governance.js'
+      - 'tests/test-module-033-project-forge-migration-070.sh'
+      - 'tests/test-module-033-project-forge-interactive-migration-073.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module033-project-forge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact diff and protected boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git fetch origin "$BASE_BRANCH" --no-tags
+          CHANGED="$(git diff --name-only "origin/$BASE_BRANCH"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          if grep -E '^(deployment/|src/frontend/project-time-web/Dockerfile)' <<<"$CHANGED"; then
+            echo 'Project Forge validation never authorizes deployment controls or the web Dockerfile.' >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" == feature/module-033-project-forge-* ]] \
+            && grep -E '^src/frontend/project-time-web/(package|package-lock)\.json$' <<<"$CHANGED"; then
+            echo 'The Project Forge feature branch must not change dependency manifests.' >&2
+            exit 1
+          fi
+          if [[ "$HEAD_BRANCH" != feature/module-033-project-forge-* ]]; then
+            echo 'MODULE_033_VALIDATION_MODE=UNRELATED_CONSUMER_REGRESSION' >> "$GITHUB_ENV"
+          fi
+          git diff --check "origin/$BASE_BRANCH"...HEAD
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate migration 070 and rollback
+        run: bash tests/test-module-033-project-forge-migration-070.sh
+
+      - name: Validate migration 073 and guarded rollback
+        run: bash tests/test-module-033-project-forge-interactive-migration-073.sh
+
+      - name: Validate Module 065 notification persistence compatibility
+        run: |
+          bash tests/test-module-065-enterprise-notification-orchestration-migration-064.sh
+          bash tests/test-enterprise-notification-runtime-completion-migration-065.sh
+
+      - name: Validate Project Forge interactive backend contract
+        run: bash scripts/validate-module-033-project-forge-interactive.sh
+
+      - name: Validate Project Forge source and interaction contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          node --check scripts/validate-module-033-project-forge.mjs
+          node scripts/validate-module-033-project-forge.mjs
+          node --check scripts/test-module-033-project-forge-interactions.mjs
+          node scripts/test-module-033-project-forge-interactions.mjs
+
+      - name: Validate Module 064, 065, and 066 integration contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for validator in \
+            scripts/validate-module-064-shared-ai.mjs \
+            scripts/validate-group-4-project-notification-automation.mjs \
+            scripts/validate-module-066-project-flowhive.mjs \
+            scripts/validate-module-availability.mjs; do
+            if [[ -f "$validator" ]]; then node "$validator"; fi
+          done
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build

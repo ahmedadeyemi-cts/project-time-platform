@@ -195,8 +195,8 @@ assert(
 assert(
   'PRIVATE_RUNTIME_READINESS',
   includesAll(source.grounding, [
-    'PROJECTPULSE_PRIVATE_AI_ENDPOINT',
-    'PROJECTPULSE_PRIVATE_AI_MODEL',
+    'PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT',
+    'PROJECTPULSE_PRIVATE_INFERENCE_MODEL',
     'PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT',
     'PROJECTPULSE_PRIVATE_EMBEDDING_MODEL',
     'PROJECTPULSE_PRIVATE_VECTOR_INDEX',
@@ -210,23 +210,27 @@ assert(
   'TIMESHEET_EXISTING_PATH',
   includesAll(source.timesheet, [
     'PulseAiDocumentGroundingService',
-    'BuildTimesheetContextAsync',
+    'BuildGroundingAsync(request, cancellationToken)',
     'grounding.HasReadyPrivateContext',
-    'BuildPrivateGroundedSuggestion',
-    'BuildRemotePromptWithoutPrivateDocuments'
+    '_router.GenerateWithPrivateTargetAsync(',
+    'BuildPrivatePrompt(request)',
+    'CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription',
+    'BuildPurposeBuiltExternalFactCodes(request)'
   ]),
-  'existing Module 001 suggestion service is enriched'
+  'existing Module 001 suggestion service uses router-owned private grounding and closed external facts'
 );
 assert(
   'TIMESHEET_PRIVATE_PATH',
   includesAll(source.timesheet, [
-    'ProjectPulseAiProviders.Local',
-    'Raw document text and extracted summaries were not sent to Claude or OpenAI',
-    'No SOW, GSD, architecture, contract, rate, financial, customer-document, or extracted private-document content is included'
+    'Raw document text, extracted summaries, the Engineer note, and structured customer or row identifiers were not sent to Claude or OpenAI',
+    "central router's closed activity, domain, and work-classification fact codes",
+    'ExternalFactCodes: externalFactCodes',
+    'BuildPurposeBuiltExternalFactCodes('
   ])
+    && !source.timesheet.includes('BuildRemotePromptWithoutPrivateDocuments')
     && !source.timesheet.includes('grounding.ContextSummary')
     && !source.timesheet.includes('document.ContextSummary'),
-  'ready document context stays private and outside remote prompts'
+  'ready document context stays private and public providers receive only router-owned closed facts'
 );
 assert(
   'TIMESHEET_ENGINEER_CONTROL',
@@ -345,7 +349,10 @@ assert(
     'CurrencyValue',
     'Phone',
     'LongIdentifier',
-    'PersonOrCustomerLabel',
+    'CustomerOrOrganizationLabel',
+    'PersonRoleLabel',
+    'ReplaceUnknownProperNouns',
+    'HasResidualSensitiveData',
     'ExternalExecutionAuthorized: false'
   ]),
   'credentials, identities, records, infrastructure, and financial values'
@@ -370,21 +377,16 @@ const legacyGlobalHelp = includesAll(source.help, [
   'retired Work Task Builder no longer owns project or task creation'
 ]);
 const currentSystemHelp = includesAll(source.help, [
-  "'/api/pulse-ai/v1/help-search/plan'",
+  "const path = '/api/celar-ai/v2/chat';",
   'function SystemAnswer',
-  'LegacyPlanAnswer',
-  'System intelligence is not active in this runtime',
-  "'/api/pulse-ai/v1/system/questions'"
-]) || includesAll(source.help, [
-  "'/api/pulse-ai/v1/help-search/plan'",
-  'function SystemAnswer',
-  'LegacyPlanAnswer',
-  "'/api/celar-ai/v1/chat'"
+  'NavigationTargets',
+  "'projectpulse:open-celar-ai-chat'",
+  'attachmentIds: selectedAttachmentIds.filter'
 ]);
 assert(
   'GLOBAL_HELP',
   legacyGlobalHelp || currentSystemHelp,
-  'global Help renders comprehensive system answers and a source-grounded compatibility fallback'
+  'global Help renders comprehensive system answers through the unified v2 chat and shared Module 011 launcher'
 );
 assert(
   'HELP_SAFE_RENDERING',

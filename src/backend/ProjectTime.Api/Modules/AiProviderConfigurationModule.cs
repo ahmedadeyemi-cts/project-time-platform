@@ -58,6 +58,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -151,6 +152,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -229,6 +231,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(
                 new { status = "origin_rejected", message = "The request origin is not allowed." },
                 statusCode: StatusCodes.Status403Forbidden);
+        if (ReleaseConfigurationMutationBlocked() is { } blocked) return blocked;
 
         providerCode = providerCode.Trim().ToLowerInvariant();
         if (providerCode is not (ProjectPulseAiProviders.Claude or ProjectPulseAiProviders.OpenAi))
@@ -320,7 +323,8 @@ public static class AiProviderConfigurationModule
         var authorization = await AuthorizeAdministratorAsync(context);
         if (authorization is not null) return authorization;
 
-        if (store.Available)
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        if (store.Available && !release.IsReleaseScoped)
         {
             foreach (var secret in await store.LoadAsync(cancellationToken))
                 configuration.ApplyStoredSecret(
@@ -347,6 +351,13 @@ public static class AiProviderConfigurationModule
             healthCheckedAutomatically = true,
             configuration = configuration.ToSanitizedResponse(),
             health = snapshots,
+            release = new
+            {
+                phase = release.PhaseCode,
+                deploymentManaged = release.IsReleaseScoped,
+                configurationSourceCommit = release.ConfigurationSourceCommit,
+                configurationSha256 = release.ExpectedConfigurationDigest
+            },
             governance = GovernanceState()
         });
     }
@@ -409,6 +420,8 @@ public static class AiProviderConfigurationModule
         automaticStartupHealthCheck = true,
         automaticPeriodicHealthCheck = true,
         liveConfigurationReconciledBeforeRouting = true,
+        sanitizedExternalExecutionEnabled = RuntimeFlag("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION"),
+        enterpriseSanitizedExternalFallbackEnabled = RuntimeFlag("PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"),
         unavailableProvidersSkipped = true,
         safetyRefusalFailover = false,
         secretValuesReturned = false,
@@ -421,6 +434,23 @@ public static class AiProviderConfigurationModule
         databaseChanged = false,
         entraChanged = false
     };
+
+    private static IResult? ReleaseConfigurationMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsReleaseScoped) return null;
+        return Results.Json(new
+        {
+            module = "064",
+            status = "deployment_managed_configuration_read_only",
+            message = "Public-provider secrets, models, and enabled state are deployment-managed and cannot be changed in candidate or active release phases.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
+    private static bool RuntimeFlag(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
 
     private static string OverallStatus(IReadOnlyList<ProjectPulseAiProviderHealthSnapshot> health)
     {
@@ -550,21 +580,13 @@ public static class AiProviderConfigurationModule
 
     private static string? ConnectionString()
     {
-        foreach (var name in new[]
-                 {
-                     "ConnectionStrings__DefaultConnection",
-                     "ConnectionStrings__ProjectPulse",
-                     "ConnectionStrings__ProjectTime",
-                     "PROJECTPULSE_CONNECTION_STRING",
-                     "PROJECTTIME_DATABASE_CONNECTION",
-                     "PROJECTPULSE_DB_CONNECTION",
-                     "PROJECTTIME_DB_CONNECTION"
-                 })
+        try
         {
-            var value = Environment.GetEnvironmentVariable(name);
-            if (!string.IsNullOrWhiteSpace(value)) return value;
+            return ProjectPulseAiDatabaseConnection.Resolve();
         }
-
-        return null;
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 }

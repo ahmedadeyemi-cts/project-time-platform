@@ -237,6 +237,13 @@ action, financial value or system state.
 The existing Timesheet suggestion service now attempts the private RAG path
 first.
 
+The Engineer never enters a project ID, task ID, assignment ID, category ID, or
+document ID. Module 001 carries the selected row's opaque identifiers in the
+request. The backend resolves those identifiers against the effective user and
+work date, replaces all display labels with database-owned values, and rejects
+stale, conflicting, ambiguous, or unauthorized selections before retrieval or
+generation. The resolved project ID then scopes SOW/GSD retrieval automatically.
+
 ### Evidence precedence
 
 1. Engineer rough note — primary evidence of work actually performed.
@@ -266,13 +273,69 @@ The Engineer reviews and explicitly applies the proposed description.
 ### Fallback behavior
 
 - If private evidence and the private model are ready, use the private result.
-- If private evidence exists but the private model is unavailable, return an
-  evidence-preserving private fallback and do not send document context to
-  Claude or OpenAI.
-- If no private document evidence exists, the existing non-document provider
-  route may use only the Engineer note and selected row context. It receives no
-  SOW, GSD, architecture, contract, pricing, financial, extracted-document,
-  private-chunk or embedding content.
+- If private evidence exists but the private model is unavailable, preserve a
+  sanitized readiness/evidence warning and continue through the configured
+  provider route using only fixed, server-authored activity/domain categories
+  derived inside the backend and a generic work classification. Never send the
+  Engineer free text, captured tokens/substrings, row identity, document text,
+  summaries, citations, filenames, or embeddings to Claude or OpenAI. If no safe
+  category can be derived, fail closed to the governed local template.
+
+### Provider order and runtime activation
+
+Module 064's persisted capability route is authoritative. For a SOW-grounded
+Timesheet response, `celar_ai` must be the first target because raw private
+documents are eligible only for the approved private Celar endpoint. Placing
+Claude or OpenAI first intentionally produces a sanitized, non-document request;
+neither provider is allowed to receive raw SOW/GSD content.
+
+The following runtime controls are independent of provider credentials and
+route order:
+
+- `PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true` authorizes eligible,
+  sanitized Timesheet fallbacks to Claude or OpenAI.
+- `PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true` authorizes the
+  separate Celar enterprise external-reasoning fallback path.
+- `PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY` must remain a stable base64-encoded
+  32-byte key so stored provider and private-target secrets survive revisions.
+- `PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED=true` enables private Timesheet RAG.
+- The private Celar profile must be enabled and contain an approved private
+  OpenAI-compatible endpoint, the exact model/deployment name, the required
+  private-host allowlist, and an approved authentication secret or identity.
+
+Provider probes prove credentials and endpoint reachability. They do not prove
+that runtime policy has authorized normal generation. Module 064 therefore
+reports both provider health and the external-generation policy state, while
+Timesheet responses include sanitized per-target decision codes.
+
+### Production readiness
+
+Before enabling SOW grounding in an environment:
+
+1. Apply migrations 052, 053, and 061.
+2. Mount a shared, private, writable volume and point
+   `PROJECTPULSE_UPLOAD_ROOT` to that mount. Do not use revision-local `/tmp`
+   storage.
+3. Reconcile or re-upload files referenced by historical absolute storage paths.
+4. Enable the private processing worker and a real document-specific malware
+   scanning integration.
+5. Configure OCR where required and either private embeddings or the explicitly
+   approved lexical-only completion path.
+6. Mark the current SOW engineering-visible and Timesheet-context eligible,
+   then process it to a ready indexed version.
+7. Save and test the private Celar profile. The test must return
+   `private_model_available` before relying on SOW-grounded generation.
+- If no private document evidence exists, the non-document provider route may
+  use only a purpose-built category capsule produced from a fixed backend
+  vocabulary. It receives no Engineer free text, customer/project/task/person
+  identity, date, location, SOW, GSD, architecture, contract, pricing,
+  financial, extracted-document, private-chunk, or embedding content.
+
+Every customer-facing suggestion requires a factual Engineer rough note. The
+service requests two to four complete professional sentences (approximately 75
+to 150 words when supported), removes bullets/Markdown, preserves sentence
+boundaries, and refuses to invent testing, validation, completion, delivery, or
+customer impact merely to make the response longer.
 
 ## Help and Search behavior
 

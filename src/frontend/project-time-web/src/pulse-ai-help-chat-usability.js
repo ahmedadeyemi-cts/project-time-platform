@@ -91,7 +91,7 @@ function handleKeyDown(event) {
 
   if (event.key === 'Escape') {
     const panel = textarea.closest(PANEL_SELECTOR);
-    const close = panel?.querySelector('.help-header button[aria-label="Close help assistant"]');
+    const close = panel?.querySelector('.celar-ai-chat-close, .help-header button[aria-label="Close Celar AI"], .help-header button[aria-label="Close help assistant"]');
     if (close instanceof HTMLButtonElement) {
       event.preventDefault();
       close.click();

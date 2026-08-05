@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { authoritativeApi } from '../projectpulse-authoritative-api.js';
 
 const PROVIDER_LABELS = Object.freeze({
+  celar_ai: 'Celar AI',
   claude: 'Claude',
   openai: 'OpenAI',
   local: 'Private ProjectPulse grounding',
@@ -23,7 +24,17 @@ function targetLabel(target) {
 }
 
 function isNonProject(target) {
-  return target?.targetType === 'category'
+  const targetType = String(target?.targetType || '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('-', '_')
+    .replaceAll(' ', '_');
+  return targetType === 'category'
+    || targetType === 'categorycode'
+    || targetType === 'category_code'
+    || targetType === 'nonproject'
+    || targetType === 'non_project'
+    || Boolean(target?.nonProjectTimeCategoryId)
     || Boolean(target?.nonProjectCategoryId)
     || Boolean(target?.nonProjectCategoryCode);
 }
@@ -67,7 +78,10 @@ export default function TimesheetAiDescriptionAssistant({
     () => targets.map(targetLabel).filter(Boolean).join('; '),
     [targets]
   );
-  const roughNoteReady = String(value || '').trim().length >= 4;
+  const roughNote = String(value || '');
+  const roughNoteReady = roughNote.replace(/\s/g, '').length >= 12
+    && (roughNote.match(/[\p{L}\p{N}]/gu) || []).length >= 8;
+  const roughNoteWithinLimit = roughNote.length <= 4000;
   const oneTargetSelected = targets.length === 1;
   const projectAware = oneTargetSelected && !isNonProject(primaryTarget);
 
@@ -85,6 +99,17 @@ export default function TimesheetAiDescriptionAssistant({
       return;
     }
 
+    if (!roughNoteWithinLimit) {
+      setState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Keep the rough work note at 4,000 characters or fewer before generating a suggestion.'
+      });
+      return;
+    }
+
     if (!roughNoteReady) {
       setState({
         loading: false,
@@ -98,6 +123,14 @@ export default function TimesheetAiDescriptionAssistant({
 
     setState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
     try {
+      const nonProject = isNonProject(primaryTarget);
+      const targetType = String(primaryTarget.targetType || '').trim().toLowerCase();
+      const assignmentId = primaryTarget.assignmentId
+        || primaryTarget.projectAssignmentId
+        || (targetType === 'assignment' ? primaryTarget.targetId : null);
+      const nonProjectTimeCategoryId = primaryTarget.nonProjectTimeCategoryId
+        || primaryTarget.nonProjectCategoryId
+        || (targetType === 'category' ? primaryTarget.targetId : null);
       const result = await authoritativeApi('/api/timesheets/ai-description-suggestions', {
         method: 'POST',
         moduleNumber: '001',
@@ -106,11 +139,15 @@ export default function TimesheetAiDescriptionAssistant({
           timeType: classification,
           rowType: rowType(primaryTarget),
           rowLabel: combinedLabel,
-          projectName: primaryTarget.projectName || '',
-          projectCode: primaryTarget.projectCode || '',
+          assignmentId: nonProject ? null : (assignmentId || null),
+          projectId: nonProject ? null : (primaryTarget.projectId || null),
+          projectName: nonProject ? '' : (primaryTarget.projectName || ''),
+          projectCode: nonProject ? '' : (primaryTarget.projectCode || ''),
+          taskId: nonProject ? null : (primaryTarget.taskId || null),
           taskName: primaryTarget.taskName || primaryTarget.categoryName || primaryTarget.nonProjectCategoryName || '',
           taskCode: primaryTarget.taskCode || '',
-          categoryCode: primaryTarget.categoryCode || primaryTarget.nonProjectCategoryCode || '',
+          nonProjectTimeCategoryId: nonProject ? (nonProjectTimeCategoryId || null) : null,
+          categoryCode: nonProject ? (primaryTarget.categoryCode || primaryTarget.nonProjectCategoryCode || primaryTarget.targetCode || '') : '',
           hours: null,
           currentDescription: value
         })

@@ -53,9 +53,9 @@ public sealed class PulseAiPrivateDocumentPipelineService
             "permission-aware document inventory"
         };
 
-        var storageRootExists = Directory.Exists(options.UploadRoot);
-        if (!storageRootExists)
-            blockers.Add("The configured private upload root does not exist in this runtime.");
+        var storage = ProjectPulseUploadStorage.InspectProductionReadiness();
+        var storageRootExists = storage.RootExists;
+        blockers.AddRange(storage.Blockers);
         if (!options.ExtractionPreviewEnabled)
             blockers.Add("Private extraction preview is disabled.");
         if (!options.MalwareScanAttested)
@@ -76,6 +76,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: false,
                 StorageRootConfigured: !string.IsNullOrWhiteSpace(options.UploadRoot),
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,
@@ -119,7 +123,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
             var extractionPreviewReady =
                 schema.RequiredColumnsAvailable
                 && access.IsActive
-                && storageRootExists
+                && storage.ProductionReady
                 && options.ExtractionPreviewEnabled
                 && options.MalwareScanAttested;
 
@@ -143,6 +147,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: schema.RequiredColumnsAvailable,
                 StorageRootConfigured: true,
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,
@@ -175,6 +183,10 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 DocumentSchemaAvailable: false,
                 StorageRootConfigured: true,
                 StorageRootExists: storageRootExists,
+                StorageRootWritable: storage.RootWritable,
+                StorageRootSharedPersistent: storage.SharedPersistentStorageAttested,
+                StorageRootEphemeral: storage.KnownEphemeralLocation,
+                StorageRootFingerprint: storage.RootFingerprint,
                 ExtractionPreviewEnabled: options.ExtractionPreviewEnabled,
                 MalwareScanAttested: options.MalwareScanAttested,
                 MalwareScannerMode: options.MalwareScannerMode,
@@ -728,28 +740,13 @@ public sealed class PulseAiPrivateDocumentPipelineService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required.Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))).ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 5,
-            Timeout = 8,
-            CommandTimeout = 18
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

@@ -61,12 +61,15 @@ requireAll(module005, [
 requireAll(module005Experience, [
   'Module005ExperienceCompatibility',
   "const MODULE005_NAME = 'Project Expense Upload'",
+  'synchronizeModule005Identity',
+  "document.querySelectorAll('a[href=\"#project-allocation-info\"]')"
+], 'Module 005 naming compatibility');
+rejectAll(module005Experience, [
   'convertDeleteActionsToReupload',
   "button.textContent = 'Re-upload'",
   'event.stopImmediatePropagation()',
-  'Re-upload ready. Choose the replacement CSV or Excel file',
-  "document.querySelectorAll('a[href=\"#project-allocation-info\"]')"
-], 'Module 005 re-upload and naming compatibility');
+  'Re-upload ready. Choose the replacement CSV or Excel file'
+], 'retired Module 005 Delete interception');
 
 requireAll(module038, [
   'MODULE 038', 'Certify Connection &amp; Sync Center',
@@ -202,8 +205,8 @@ if (externalAvailable) {
 
   requireAll(commands, [
     'project_expense_uploads', 'project_expense_lines',
-    'UPLOAD_SUPERSEDED', 'UPLOAD_DELETED', 'PRIOR_VERSION_RESTORED',
-    'source_file_bytes', 'QueueExpenseNotificationAsync',
+    'UPLOAD_SUPERSEDED', 'UPLOAD_DELETED', 'priorVersionRestored = false',
+    'SuppressDeletedExpenseNotificationAsync', 'source_file_bytes', 'QueueExpenseNotificationAsync',
     'AuthorizeExistingUploadActionAsync(connection, transaction, actor, upload)'
   ], 'Upload version workflow');
 

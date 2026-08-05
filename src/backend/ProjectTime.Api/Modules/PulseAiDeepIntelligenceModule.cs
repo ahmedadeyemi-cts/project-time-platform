@@ -161,16 +161,22 @@ public static class PulseAiDeepIntelligenceModule
             ProjectName: Query(context, "projectName", 255),
             TaskCode: Query(context, "taskCode", 100),
             TaskName: Query(context, "taskName", 255),
-            CurrentDescription: Query(context, "currentDescription", 2000));
+            CurrentDescription: Query(context, "currentDescription", 2000),
+            ProjectId: Guid.TryParse(context.Request.Query["projectId"], out var projectId) ? projectId : null,
+            TaskId: Guid.TryParse(context.Request.Query["taskId"], out var taskId) ? taskId : null,
+            AssignmentId: Guid.TryParse(context.Request.Query["assignmentId"], out var assignmentId) ? assignmentId : null);
 
-        if (string.IsNullOrWhiteSpace(input.ProjectCode)
+        if (input.ProjectId is null
+            && input.TaskId is null
+            && input.AssignmentId is null
+            && string.IsNullOrWhiteSpace(input.ProjectCode)
             && string.IsNullOrWhiteSpace(input.ProjectName))
         {
             return Results.BadRequest(new
             {
                 module = "011",
                 status = "project_context_required",
-                message = "Project code or project name is required for a permission-aware timesheet grounding preview."
+                message = "Project, task, or assignment identity is required for a permission-aware timesheet grounding preview."
             });
         }
 

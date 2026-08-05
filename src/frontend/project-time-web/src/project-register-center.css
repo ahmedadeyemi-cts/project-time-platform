@@ -199,6 +199,12 @@
   box-shadow: 0 1px 0 rgba(8, 64, 104, 0.14);
 }
 
+.project-register-table .project-register-status-column {
+  width: 7rem;
+  min-width: 7rem;
+  white-space: nowrap;
+}
+
 .project-register-table tbody tr:hover {
   background: rgba(0, 159, 227, 0.045);
 }
@@ -227,6 +233,11 @@
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.project-register-status-column .project-register-state {
+  margin-bottom: 0;
 }
 
 .project-register-state.active {

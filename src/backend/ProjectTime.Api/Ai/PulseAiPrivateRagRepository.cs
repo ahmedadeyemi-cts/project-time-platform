@@ -97,13 +97,20 @@ public sealed class PulseAiPrivateRagRepository
 
     public async Task<ProjectResolution?> ResolveProjectAsync(
         PulseAiPrivateRagAccess access,
+        Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
         string? projectCode,
         string? projectName,
         CancellationToken cancellationToken = default)
     {
         var code = Clean(projectCode, 120);
         var name = Clean(projectName, 300);
-        if (code.Length == 0 && name.Length == 0) return null;
+        if (projectId is null
+            && taskId is null
+            && assignmentId is null
+            && code.Length == 0
+            && name.Length == 0) return null;
         try
         {
             await using var connection = new NpgsqlConnection(ConnectionString());
@@ -117,11 +124,64 @@ public sealed class PulseAiPrivateRagRepository
                 FROM projects p
                 LEFT JOIN clients c ON c.client_id = p.client_id
                 WHERE (
-                    (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
-                    OR (@project_name <> '' AND LOWER(p.project_name) = LOWER(@project_name))
+                    (
+                        (@project_id IS NOT NULL OR @task_id IS NOT NULL OR @assignment_id IS NOT NULL)
+                        AND (@project_id IS NULL OR p.project_id = @project_id)
+                        AND (
+                            @task_id IS NULL
+                            OR EXISTS (
+                                SELECT 1
+                                FROM project_tasks identity_task
+                                WHERE identity_task.task_id = @task_id
+                                  AND identity_task.project_id = p.project_id
+                                  AND identity_task.is_active = TRUE
+                            )
+                        )
+                        AND (
+                            @assignment_id IS NULL
+                            OR EXISTS (
+                                SELECT 1
+                                FROM project_assignments identity_assignment
+                                WHERE identity_assignment.project_assignment_id = @assignment_id
+                                  AND identity_assignment.project_id = p.project_id
+                                  AND (@task_id IS NULL OR identity_assignment.task_id = @task_id)
+                            )
+                        )
+                    )
+                    OR (
+                        @project_id IS NULL
+                        AND @task_id IS NULL
+                        AND @assignment_id IS NULL
+                        AND (
+                            (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
+                            OR (@project_name <> '' AND LOWER(p.project_name) = LOWER(@project_name))
+                        )
+                    )
                 )
                   AND (
                     @is_broad = TRUE
+                    OR (@is_pm_lead = TRUE AND (
+                        EXISTS (
+                            SELECT 1 FROM reporting_relationships rr
+                            WHERE rr.employee_user_id = p.project_manager_user_id
+                              AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                              AND rr.effective_start_date <= CURRENT_DATE
+                              AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM app_users pm
+                            JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                            WHERE pm.user_id = p.project_manager_user_id
+                              AND scope.is_active = TRUE
+                              AND scope.scope_type = 'project_management_team_lead'
+                              AND (
+                                  (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                  OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                  OR scope.manager_user_id = pm.user_id
+                              )
+                        )
+                    ))
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
@@ -145,14 +205,27 @@ public sealed class PulseAiPrivateRagRepository
                     )
                   )
                 ORDER BY
-                    CASE WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN @project_id IS NOT NULL AND p.project_id = @project_id THEN 0
+                        WHEN @assignment_id IS NOT NULL THEN 1
+                        WHEN @task_id IS NOT NULL THEN 2
+                        WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 3
+                        ELSE 4
+                    END,
                     p.updated_at DESC
                 LIMIT 2;
                 """;
             await using var command = new NpgsqlCommand(sql, connection);
+            command.Parameters.Add("project_id", NpgsqlDbType.Uuid).Value =
+                projectId is Guid canonicalProjectId ? canonicalProjectId : DBNull.Value;
+            command.Parameters.Add("task_id", NpgsqlDbType.Uuid).Value =
+                taskId is Guid canonicalTaskId ? canonicalTaskId : DBNull.Value;
+            command.Parameters.Add("assignment_id", NpgsqlDbType.Uuid).Value =
+                assignmentId is Guid canonicalAssignmentId ? canonicalAssignmentId : DBNull.Value;
             command.Parameters.AddWithValue("project_code", code);
             command.Parameters.AddWithValue("project_name", name);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
             var projects = new List<ProjectResolution>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -221,18 +294,41 @@ public sealed class PulseAiPrivateRagRepository
                     JOIN pulse_ai_document_versions v
                       ON v.pulse_ai_document_version_id = ch.pulse_ai_document_version_id
                     JOIN projects p ON p.project_id = ch.project_id
-                    WHERE ch.is_active = TRUE
+                    WHERE @include_project_documents = TRUE
+                      AND ch.is_active = TRUE
                       AND ch.index_status IN ('lexical_ready','embedding_ready','ready')
                       AND d.is_active = TRUE
                       AND COALESCE(d.engineering_visible, FALSE) = TRUE
                       AND COALESCE(d.pulse_ai_processing_status, '') = 'ready'
                       AND d.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
-                      AND v.authority_status NOT IN ('rejected','revoked','superseded')
+                      AND v.authority_status IN ('approved','canonical')
                       AND (@project_id IS NULL OR ch.project_id = @project_id)
                       AND (@require_timesheet = FALSE OR ch.ai_timesheet_context_enabled = TRUE)
                       AND (cardinality(@categories) = 0 OR LOWER(ch.document_category) = ANY(@categories))
                       AND (
                         @is_broad = TRUE
+                        OR (@is_pm_lead = TRUE AND (
+                            EXISTS (
+                                SELECT 1 FROM reporting_relationships rr
+                                WHERE rr.employee_user_id = p.project_manager_user_id
+                                  AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                                  AND rr.effective_start_date <= CURRENT_DATE
+                                  AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM app_users pm
+                                JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                                WHERE pm.user_id = p.project_manager_user_id
+                                  AND scope.is_active = TRUE
+                                  AND scope.scope_type = 'project_management_team_lead'
+                                  AND (
+                                      (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                      OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                      OR scope.manager_user_id = pm.user_id
+                                  )
+                            )
+                        ))
                         OR p.project_manager_user_id = @user_id
                         OR EXISTS (
                             SELECT 1 FROM project_assignments pa
@@ -255,6 +351,60 @@ public sealed class PulseAiPrivateRagRepository
                               )
                         )
                       )
+
+                    UNION ALL
+
+                    SELECT
+                        ch.chunk_id,
+                        ch.pulse_ai_document_version_id,
+                        ch.project_intake_document_id,
+                        ch.project_id,
+                        ch.project_code,
+                        ch.project_name,
+                        ch.customer_name,
+                        ch.document_category,
+                        ch.document_version,
+                        ch.classification,
+                        document.original_file_name,
+                        ch.citation_anchor,
+                        ch.page_number,
+                        ch.sheet_name,
+                        ch.section_title,
+                        ch.chunk_text,
+                        ch.source_sha256,
+                        ch.text_sha256,
+                        ch.embedding,
+                        ch.embedding_dimension,
+                        ch.search_vector,
+                        ch.processed_at
+                    FROM pulse_ai_document_chunks ch
+                    JOIN project_intake_documents document
+                      ON document.project_intake_document_id = ch.project_intake_document_id
+                    JOIN pulse_ai_document_versions version
+                      ON version.pulse_ai_document_version_id = ch.pulse_ai_document_version_id
+                    JOIN pulse_ai_conversation_attachments attachment
+                      ON attachment.project_intake_document_id = ch.project_intake_document_id
+                    JOIN pulse_ai_conversations conversation
+                      ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                    WHERE cardinality(@attachment_ids) > 0
+                      AND @conversation_id IS NOT NULL
+                      AND attachment.pulse_ai_conversation_attachment_id = ANY(@attachment_ids)
+                      AND attachment.pulse_ai_conversation_id = @conversation_id
+                      AND attachment.uploaded_by_user_id = @user_id
+                      AND attachment.revoked_at IS NULL
+                      AND attachment.retention_until > NOW()
+                      AND conversation.actual_user_id = @user_id
+                      AND conversation.effective_user_id = @user_id
+                      AND conversation.status = 'active'
+                      AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                      AND document.upload_source = 'celar_ai_chat_attachment'
+                      AND document.uploaded_by_user_id = @user_id
+                      AND document.is_active = TRUE
+                      AND COALESCE(document.pulse_ai_processing_status, '') = 'ready'
+                      AND document.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
+                      AND version.authority_status IN ('candidate','approved','canonical')
+                      AND ch.is_active = TRUE
+                      AND ch.index_status IN ('lexical_ready','embedding_ready','ready')
                 ), scored AS (
                     SELECT
                         candidate.*,
@@ -316,9 +466,19 @@ public sealed class PulseAiPrivateRagRepository
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("project_id", query.ProjectId is null ? DBNull.Value : query.ProjectId.Value);
             command.Parameters.AddWithValue("require_timesheet", query.RequireTimesheetFlag);
+            command.Parameters.AddWithValue("include_project_documents", query.IncludeProjectDocuments);
             command.Parameters.AddWithValue("categories", categories);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
+            var conversationParameter = command.Parameters.Add("conversation_id", NpgsqlDbType.Uuid);
+            conversationParameter.Value = query.ConversationId is null
+                ? DBNull.Value
+                : query.ConversationId.Value;
+            var attachmentParameter = command.Parameters.Add(
+                "attachment_ids",
+                NpgsqlDbType.Array | NpgsqlDbType.Uuid);
+            attachmentParameter.Value = query.AttachmentIds.ToArray();
             command.Parameters.AddWithValue("question", Clean(query.Question, 12_000));
             command.Parameters.AddWithValue("has_embedding", hasEmbedding);
             command.Parameters.AddWithValue("embedding_dimension", hasEmbedding ? queryEmbedding!.Length : 0);
@@ -365,11 +525,14 @@ public sealed class PulseAiPrivateRagRepository
             var selected = SelectDiverseChunks(
                 candidates,
                 query.MaximumChunks,
-                minimumScore: 0m);
+                minimumScore: query.MinimumEvidenceScore);
             return new RetrievalRows(
                 CandidateCount: candidates.Count,
                 AuthorizedCandidateCount: authorizedCount,
-                Chunks: selected);
+                Chunks: selected,
+                DiagnosticCode: candidates.Count > 0 && selected.Count == 0
+                    ? "private_evidence_below_minimum_score"
+                    : string.Empty);
         }
         catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
         {
@@ -392,6 +555,7 @@ public sealed class PulseAiPrivateRagRepository
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return Guid.NewGuid();
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -421,8 +585,11 @@ public sealed class PulseAiPrivateRagRepository
             query.ProjectCode,
             query.ProjectName,
             query.RequireTimesheetFlag,
+            query.IncludeProjectDocuments,
             query.AllowedDocumentCategories,
             query.MaximumChunks,
+            query.ConversationId,
+            query.AttachmentIds,
             rawPromptLogged = false
         }));
         command.Parameters.AddWithValue("detail_level", detailLevel);
@@ -440,6 +607,7 @@ public sealed class PulseAiPrivateRagRepository
         string eventStatus,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         const string sql = """
@@ -475,27 +643,89 @@ public sealed class PulseAiPrivateRagRepository
             query.RequireTimesheetFlag,
             query.AllowedDocumentCategories,
             retrieval.CoverageScore,
-            retrieval.MissingEvidence,
-            retrieval.Conflicts,
+            missingEvidenceCount = retrieval.MissingEvidence.Count,
+            conflictCount = retrieval.Conflicts.Count,
+            retrieval.DiagnosticCode,
             rawQuestionLogged = false,
             rawChunkTextLogged = false,
+            displayStringsLogged = false,
+            attachmentFileNamesLogged = false,
             vectorsLogged = false
         }));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task CompleteAnswerRunAsync(
+    public async Task<bool> CompleteAnswerRunAsync(
         PulseAiPrivateRagAnswer answer,
         PulseAiPrivateRetrievalQuery query,
         PulseAiPrivateModelResult model,
         bool persistAnswerText,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         try
         {
+            var attachmentIds = query.AttachmentIds
+                .Where(value => value != Guid.Empty)
+                .Distinct()
+                .ToArray();
+            if (attachmentIds.Length > 0)
+            {
+                if (query.ConversationId is null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return false;
+                }
+                const string attachmentLockSql = """
+                    SELECT attachment.pulse_ai_conversation_attachment_id
+                    FROM pulse_ai_conversation_attachments attachment
+                    JOIN pulse_ai_conversations conversation
+                      ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                    JOIN project_intake_documents document
+                      ON document.project_intake_document_id = attachment.project_intake_document_id
+                    WHERE attachment.pulse_ai_conversation_attachment_id = ANY(@attachment_ids)
+                      AND attachment.pulse_ai_conversation_id = @conversation_id
+                      AND attachment.uploaded_by_user_id = @effective_user_id
+                      AND attachment.revoked_at IS NULL
+                      AND attachment.retention_until > NOW()
+                      AND conversation.actual_user_id = @actual_user_id
+                      AND conversation.effective_user_id = @effective_user_id
+                      AND conversation.status = 'active'
+                      AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                      AND document.upload_source = 'celar_ai_chat_attachment'
+                      AND document.uploaded_by_user_id = @effective_user_id
+                      AND document.is_active = TRUE
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM pulse_ai_conversation_attachment_purge_audit audit
+                          WHERE audit.pulse_ai_conversation_attachment_id = attachment.pulse_ai_conversation_attachment_id
+                      )
+                    FOR UPDATE OF attachment;
+                    """;
+                await using var attachmentLock = new NpgsqlCommand(
+                    attachmentLockSql,
+                    connection,
+                    transaction);
+                attachmentLock.Parameters.AddWithValue("attachment_ids", attachmentIds);
+                attachmentLock.Parameters.AddWithValue("conversation_id", query.ConversationId.Value);
+                attachmentLock.Parameters.AddWithValue("actual_user_id", query.ActualUserId);
+                attachmentLock.Parameters.AddWithValue("effective_user_id", query.EffectiveUserId);
+                var lockedAttachmentIds = new HashSet<Guid>();
+                await using (var attachmentReader = await attachmentLock.ExecuteReaderAsync(cancellationToken))
+                {
+                    while (await attachmentReader.ReadAsync(cancellationToken))
+                        lockedAttachmentIds.Add(attachmentReader.GetGuid(0));
+                }
+                if (lockedAttachmentIds.Count != attachmentIds.Length)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return false;
+                }
+            }
+
             const string sql = """
                 UPDATE pulse_ai_answer_runs
                 SET answer_status = @answer_status,
@@ -563,7 +793,11 @@ public sealed class PulseAiPrivateRagRepository
             command.Parameters.AddWithValue("diagnostic_code", answer.DiagnosticCode);
             command.Parameters.AddWithValue("diagnostic_message", answer.DiagnosticCode.Length == 0 ? string.Empty : "See sanitized diagnostic code.");
             command.Parameters.AddWithValue("data_as_of", answer.DataAsOf);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
 
             var rank = 1;
             foreach (var citation in answer.Citations)
@@ -578,7 +812,12 @@ public sealed class PulseAiPrivateRagRepository
                     )
                     SELECT
                         @answer_run_id,ch.chunk_id,ch.project_intake_document_id,
-                        ch.pulse_ai_document_version_id,ch.project_id,'project_document','011',
+                        ch.pulse_ai_document_version_id,ch.project_id,
+                        CASE
+                            WHEN d.upload_source = 'celar_ai_chat_attachment' THEN 'conversation_attachment'
+                            ELSE 'project_document'
+                        END,
+                        '011',
                         ch.document_category,ch.document_version,d.original_file_name,
                         ch.citation_anchor,ch.page_number,ch.sheet_name,@rank_order,
                         @combined_score,ch.source_sha256,ch.text_sha256,ch.processed_at
@@ -605,6 +844,7 @@ public sealed class PulseAiPrivateRagRepository
             }
 
             await transaction.CommitAsync(cancellationToken);
+            return true;
         }
         catch
         {
@@ -620,6 +860,7 @@ public sealed class PulseAiPrivateRagRepository
         PulseAiPrivateFeedbackRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate) return false;
         var feedbackType = Clean(request.FeedbackType, 40).ToLowerInvariant();
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -636,32 +877,65 @@ public sealed class PulseAiPrivateRagRepository
 
         await using var connection = new NpgsqlConnection(ConnectionString());
         await connection.OpenAsync(cancellationToken);
-        const string sql = """
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            const string lockSql = """
+                SELECT diagnostic_code
+                FROM pulse_ai_answer_runs
+                WHERE pulse_ai_answer_run_id = @answer_run_id
+                  AND actual_user_id = @actual_user_id
+                  AND effective_user_id = @effective_user_id
+                FOR UPDATE;
+                """;
+            await using var answerRunLock = new NpgsqlCommand(lockSql, connection, transaction);
+            answerRunLock.Parameters.AddWithValue("answer_run_id", answerRunId);
+            answerRunLock.Parameters.AddWithValue("actual_user_id", actualUserId);
+            answerRunLock.Parameters.AddWithValue("effective_user_id", effectiveUserId);
+            var diagnosticCode = await answerRunLock.ExecuteScalarAsync(cancellationToken) as string;
+            if (diagnosticCode is null
+                || string.Equals(
+                    diagnosticCode,
+                    "private_attachment_retention_purged",
+                    StringComparison.Ordinal))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            const string sql = """
             INSERT INTO pulse_ai_answer_feedback (
                 pulse_ai_answer_run_id,actual_user_id,effective_user_id,
                 feedback_type,feedback_reason,corrected_answer_json,
                 training_candidate,training_review_status
-            )
-            SELECT
-                run.pulse_ai_answer_run_id,@actual_user_id,@effective_user_id,
+            ) VALUES (
+                @answer_run_id,@actual_user_id,@effective_user_id,
                 @feedback_type,@feedback_reason,@corrected_answer::jsonb,
                 FALSE,'not_reviewed'
-            FROM pulse_ai_answer_runs run
-            WHERE run.pulse_ai_answer_run_id = @answer_run_id
-              AND (
-                run.actual_user_id = @actual_user_id
-                OR run.effective_user_id = @effective_user_id
-              )
+            )
             RETURNING pulse_ai_answer_feedback_id;
             """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("answer_run_id", answerRunId);
-        command.Parameters.AddWithValue("actual_user_id", actualUserId);
-        command.Parameters.AddWithValue("effective_user_id", effectiveUserId);
-        command.Parameters.AddWithValue("feedback_type", feedbackType);
-        command.Parameters.AddWithValue("feedback_reason", Clean(request.FeedbackReason, 4000));
-        command.Parameters.AddWithValue("corrected_answer", request.CorrectedAnswer is null ? "{}" : JsonSerializer.Serialize(request.CorrectedAnswer));
-        return await command.ExecuteScalarAsync(cancellationToken) is Guid;
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.AddWithValue("answer_run_id", answerRunId);
+            command.Parameters.AddWithValue("actual_user_id", actualUserId);
+            command.Parameters.AddWithValue("effective_user_id", effectiveUserId);
+            command.Parameters.AddWithValue("feedback_type", feedbackType);
+            command.Parameters.AddWithValue("feedback_reason", Clean(request.FeedbackReason, 4000));
+            command.Parameters.AddWithValue("corrected_answer", request.CorrectedAnswer is null ? "{}" : JsonSerializer.Serialize(request.CorrectedAnswer));
+            var saved = await command.ExecuteScalarAsync(cancellationToken) is Guid;
+            if (!saved)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<object?> GetAnswerAuditAsync(
@@ -713,6 +987,28 @@ public sealed class PulseAiPrivateRagRepository
                     @is_broad = TRUE
                     OR run.actual_user_id = @user_id
                     OR run.effective_user_id = @user_id
+                    OR (@is_pm_lead = TRUE AND (
+                        EXISTS (
+                            SELECT 1 FROM reporting_relationships rr
+                            WHERE rr.employee_user_id = p.project_manager_user_id
+                              AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                              AND rr.effective_start_date <= CURRENT_DATE
+                              AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM app_users pm
+                            JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                            WHERE pm.user_id = p.project_manager_user_id
+                              AND scope.is_active = TRUE
+                              AND scope.scope_type = 'project_management_team_lead'
+                              AND (
+                                  (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                  OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                  OR scope.manager_user_id = pm.user_id
+                              )
+                        )
+                    ))
                     OR p.project_manager_user_id = @user_id
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
@@ -723,6 +1019,7 @@ public sealed class PulseAiPrivateRagRepository
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("answer_run_id", answerRunId);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             command.Parameters.AddWithValue("user_id", access.UserId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)) return null;
@@ -909,30 +1206,13 @@ public sealed class PulseAiPrivateRagRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required
-            .Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
-            .ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 12,
-            Timeout = 8,
-            CommandTimeout = 30
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

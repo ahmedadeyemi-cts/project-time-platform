@@ -21,7 +21,7 @@ require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-ROLE-POLICY-AUDIT-MODULE065-TO-TEST'
 require "$DEPLOY" 'refs/heads/main'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-global-session-invalidation-test'
+require "$DEPLOY" 'group: projectpulse-deploy-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" 'Only the verified PR 181, PR 182, and PR 184 combined release may deploy.'
 require "$DEPLOY" 'git -C control merge-base --is-ancestor'

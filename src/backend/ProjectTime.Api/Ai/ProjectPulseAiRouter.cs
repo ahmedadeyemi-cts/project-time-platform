@@ -19,6 +19,43 @@ public sealed class ProjectPulseAiRouter
         _logger = logger;
     }
 
+    public Task<bool> IsFirstTargetAsync(
+        string feature,
+        string target,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var first = _configuration.RouteFor(feature).FirstOrDefault();
+        return Task.FromResult(string.Equals(first, target, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Compatibility surface for the canonical Timesheet source. Production
+    // compilation substitutes CelarAiCapabilityRouter, which additionally owns
+    // consumer-assurance evidence for this already-executed private attempt.
+    public void RecordAlreadyExecutedPrivateAttempt(
+        string feature,
+        string correlationId,
+        bool succeeded,
+        string diagnosticCode)
+    {
+        _ = feature;
+        _ = correlationId;
+        if (succeeded)
+        {
+            _health.RecordSuccess(
+                CelarAiCapabilityTargets.CelarAi,
+                usage: null,
+                requestId: null,
+                outcome: ProjectPulseAiOutcomes.Success);
+            return;
+        }
+
+        _health.RecordFailure(
+            CelarAiCapabilityTargets.CelarAi,
+            string.IsNullOrWhiteSpace(diagnosticCode) ? "private_model_unavailable" : diagnosticCode,
+            requestId: null);
+    }
+
     public async Task<ProjectPulseAiRouteResult> GenerateAsync(
         ProjectPulseAiGenerationRequest request,
         Func<string> localFallback,
@@ -157,6 +194,16 @@ public sealed class ProjectPulseAiRouter
             null,
             null);
     }
+
+    // Compatibility overload used by consumers that may have already attempted
+    // the private Celar target. The legacy provider router has no Celar target,
+    // so its route remains unchanged.
+    public Task<ProjectPulseAiRouteResult> GenerateAsync(
+        ProjectPulseAiGenerationRequest request,
+        Func<string> localFallback,
+        bool skipPrivateTarget,
+        CancellationToken cancellationToken = default) =>
+        GenerateAsync(request, localFallback, cancellationToken);
 
     private static string DisplayName(string provider) =>
         string.Equals(provider, ProjectPulseAiProviders.Claude, StringComparison.OrdinalIgnoreCase)

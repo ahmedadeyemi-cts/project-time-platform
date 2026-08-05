@@ -50,32 +50,40 @@ public sealed class PulseAiDocumentGroundingService
         PulseAiTimesheetGroundingInput input,
         CancellationToken cancellationToken = default) =>
         BuildContextAsync(
-            effectiveUserId,
+            effectiveUserId: effectiveUserId,
             purpose: "timesheet_document_grounding",
-            input.ProjectCode,
-            input.ProjectName,
-            input.TaskCode,
-            input.TaskName,
-            input.RowLabel,
-            input.CurrentDescription,
+            projectId: input.ProjectId,
+            taskId: input.TaskId,
+            assignmentId: input.AssignmentId,
+            workDate: input.WorkDate,
+            projectCode: input.ProjectCode,
+            projectName: input.ProjectName,
+            taskCode: input.TaskCode,
+            taskName: input.TaskName,
+            rowLabel: input.RowLabel,
+            roughNote: input.CurrentDescription,
             requireTimesheetContextFlag: true,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
     public Task<PulseAiGroundingContext> BuildFlowHiveContextAsync(
         Guid effectiveUserId,
         PulseAiFlowHiveGroundingInput input,
         CancellationToken cancellationToken = default) =>
         BuildContextAsync(
-            effectiveUserId,
+            effectiveUserId: effectiveUserId,
             purpose: "flowhive_document_planning",
-            input.ProjectCode,
-            input.ProjectName,
+            projectId: null,
+            taskId: null,
+            assignmentId: null,
+            workDate: null,
+            projectCode: input.ProjectCode,
+            projectName: input.ProjectName,
             taskCode: null,
             taskName: null,
             rowLabel: null,
             roughNote: input.RequestedOutcome,
             requireTimesheetContextFlag: false,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
     public async Task<PulseAiPrivateRuntimeReadiness> GetReadinessAsync(
         Guid effectiveUserId,
@@ -83,8 +91,8 @@ public sealed class PulseAiDocumentGroundingService
     {
         var generatedAt = DateTimeOffset.UtcNow;
         var missingConfiguration = MissingDatabaseConfiguration();
-        var privateInference = HasValue("PROJECTPULSE_PRIVATE_AI_ENDPOINT")
-            && HasValue("PROJECTPULSE_PRIVATE_AI_MODEL");
+        var privateInference = HasValue("PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT")
+            && HasValue("PROJECTPULSE_PRIVATE_INFERENCE_MODEL");
         var privateEmbedding = HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT")
             && HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_MODEL");
         var privateVectorIndex = HasValue("PROJECTPULSE_PRIVATE_VECTOR_INDEX");
@@ -241,6 +249,10 @@ public sealed class PulseAiDocumentGroundingService
     private async Task<PulseAiGroundingContext> BuildContextAsync(
         Guid effectiveUserId,
         string purpose,
+        Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
+        DateOnly? workDate,
         string? projectCode,
         string? projectName,
         string? taskCode,
@@ -285,6 +297,9 @@ public sealed class PulseAiDocumentGroundingService
 
             var project = await ResolveProjectAsync(
                 connection,
+                projectId,
+                taskId,
+                assignmentId,
                 projectCode,
                 projectName,
                 cancellationToken);
@@ -342,10 +357,27 @@ public sealed class PulseAiDocumentGroundingService
 
             var task = await ResolveTaskAsync(
                 connection,
+                access,
                 project.ProjectId,
+                workDate,
+                taskId,
+                assignmentId,
                 taskCode,
                 taskName,
                 cancellationToken);
+            if ((taskId is not null || assignmentId is not null) && task is null)
+            {
+                return EmptyContext(
+                    "task_or_assignment_not_resolved",
+                    purpose,
+                    effectiveUserId,
+                    project.ProjectCode,
+                    project.ProjectName,
+                    ["The selected task or assignment could not be resolved inside the authorized project and effective-user scope."],
+                    roles: access.RoleCodes.OrderBy(value => value).ToArray(),
+                    accessScope: access.ScopeLabel,
+                    diagnosticCode: "task_or_assignment_not_resolved");
+            }
             var request = await ResolveRequestAsync(
                 connection,
                 project.ProjectId,
@@ -409,7 +441,9 @@ public sealed class PulseAiDocumentGroundingService
                 ExternalProviderPolicy: documents.Count > 0
                     ? "raw_document_and_summary_context_not_sent_to_claude_or_openai"
                     : "existing_non_document_provider_route_may_apply",
-                DiagnosticCode: schema.TableAvailable ? null : "document_table_unavailable");
+                DiagnosticCode: schema.TableAvailable ? null : "document_table_unavailable",
+                TaskId: task?.TaskId,
+                AssignmentId: task?.AssignmentId);
         }
         catch (Exception exception)
         {
@@ -525,13 +559,20 @@ public sealed class PulseAiDocumentGroundingService
 
     private static async Task<ProjectContext?> ResolveProjectAsync(
         NpgsqlConnection connection,
+        Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
         string? projectCode,
         string? projectName,
         CancellationToken cancellationToken)
     {
         var code = Clean(projectCode, 100);
         var name = Clean(projectName, 255);
-        if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(name)) return null;
+        if (projectId is null
+            && taskId is null
+            && assignmentId is null
+            && string.IsNullOrWhiteSpace(code)
+            && string.IsNullOrWhiteSpace(name)) return null;
 
         const string sql = """
             SELECT
@@ -543,19 +584,58 @@ public sealed class PulseAiDocumentGroundingService
                 p.project_manager_user_id
             FROM projects p
             LEFT JOIN clients c ON c.client_id = p.client_id
-            WHERE
-                (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
-                OR (
-                    @project_name <> ''
-                    AND LOWER(p.project_name) = LOWER(@project_name)
+            WHERE (
+                (
+                    (@project_id IS NOT NULL OR @task_id IS NOT NULL OR @assignment_id IS NOT NULL)
+                    AND (@project_id IS NULL OR p.project_id = @project_id)
+                    AND (
+                        @task_id IS NULL
+                        OR EXISTS (
+                            SELECT 1 FROM project_tasks identity_task
+                            WHERE identity_task.task_id = @task_id
+                              AND identity_task.project_id = p.project_id
+                              AND identity_task.is_active = TRUE
+                        )
+                    )
+                    AND (
+                        @assignment_id IS NULL
+                        OR EXISTS (
+                            SELECT 1 FROM project_assignments identity_assignment
+                            WHERE identity_assignment.project_assignment_id = @assignment_id
+                              AND identity_assignment.project_id = p.project_id
+                              AND (@task_id IS NULL OR identity_assignment.task_id = @task_id)
+                        )
+                    )
                 )
+                OR (
+                    @project_id IS NULL
+                    AND @task_id IS NULL
+                    AND @assignment_id IS NULL
+                    AND (
+                        (@project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)))
+                        OR (@project_name <> '' AND LOWER(p.project_name) = LOWER(@project_name))
+                    )
+                )
+            )
             ORDER BY
-                CASE WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 0 ELSE 1 END,
+                CASE
+                    WHEN @project_id IS NOT NULL AND p.project_id = @project_id THEN 0
+                    WHEN @assignment_id IS NOT NULL THEN 1
+                    WHEN @task_id IS NOT NULL THEN 2
+                    WHEN @project_code <> '' AND (LOWER(p.project_code) = LOWER(@project_code) OR p.project_id = projectpulse_resolve_project_id(@project_code)) THEN 3
+                    ELSE 4
+                END,
                 p.updated_at DESC
             LIMIT 1;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.Add("project_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+            projectId is Guid canonicalProjectId ? canonicalProjectId : DBNull.Value;
+        command.Parameters.Add("task_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+            taskId is Guid canonicalTaskId ? canonicalTaskId : DBNull.Value;
+        command.Parameters.Add("assignment_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+            assignmentId is Guid canonicalAssignmentId ? canonicalAssignmentId : DBNull.Value;
         command.Parameters.AddWithValue("project_code", code);
         command.Parameters.AddWithValue("project_name", name);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -585,6 +665,28 @@ public sealed class PulseAiDocumentGroundingService
                 WHERE p.project_id = @project_id
                   AND (
                       p.project_manager_user_id = @user_id
+                      OR (@is_pm_lead = TRUE AND (
+                          EXISTS (
+                              SELECT 1 FROM reporting_relationships rr
+                              WHERE rr.employee_user_id = p.project_manager_user_id
+                                AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                                AND rr.effective_start_date <= CURRENT_DATE
+                                AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                          )
+                          OR EXISTS (
+                              SELECT 1
+                              FROM app_users pm
+                              JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                              WHERE pm.user_id = p.project_manager_user_id
+                                AND scope.is_active = TRUE
+                                AND scope.scope_type = 'project_management_team_lead'
+                                AND (
+                                    (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                    OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                    OR scope.manager_user_id = pm.user_id
+                                )
+                          )
+                      ))
                       OR EXISTS (
                           SELECT 1
                           FROM project_assignments pa
@@ -615,6 +717,7 @@ public sealed class PulseAiDocumentGroundingService
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("project_id", projectId);
             command.Parameters.AddWithValue("user_id", access.UserId);
+            command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
             return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
         }
         catch (PostgresException exception) when (exception.SqlState == "42P01")
@@ -644,41 +747,87 @@ public sealed class PulseAiDocumentGroundingService
 
     private static async Task<TaskContext?> ResolveTaskAsync(
         NpgsqlConnection connection,
+        AccessContext access,
         Guid projectId,
+        DateOnly? workDate,
+        Guid? taskId,
+        Guid? assignmentId,
         string? taskCode,
         string? taskName,
         CancellationToken cancellationToken)
     {
         var code = Clean(taskCode, 100);
         var name = Clean(taskName, 255);
-        if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(name)) return null;
+        if (taskId is null
+            && assignmentId is null
+            && string.IsNullOrWhiteSpace(code)
+            && string.IsNullOrWhiteSpace(name)) return null;
 
         const string sql = """
-            SELECT task_code, task_name, task_description
-            FROM project_tasks
-            WHERE project_id = @project_id
-              AND is_active = TRUE
+            SELECT
+                task.task_id,
+                task.task_code,
+                task.task_name,
+                task.task_description,
+                assignment.project_assignment_id
+            FROM project_tasks task
+            LEFT JOIN LATERAL (
+                SELECT pa.project_assignment_id
+                FROM project_assignments pa
+                WHERE pa.project_id = task.project_id
+                  AND pa.task_id = task.task_id
+                  AND (@assignment_id IS NULL OR pa.project_assignment_id = @assignment_id)
+                  AND (@can_view_any_assignment = TRUE OR pa.user_id = @user_id)
+                  AND pa.effective_start_date <= @effective_date
+                  AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @effective_date)
+                ORDER BY pa.effective_start_date DESC, pa.project_assignment_id
+                LIMIT 1
+            ) assignment ON TRUE
+            WHERE task.project_id = @project_id
+              AND task.is_active = TRUE
               AND (
-                  (@task_code <> '' AND LOWER(task_code) = LOWER(@task_code))
-                  OR (@task_name <> '' AND LOWER(task_name) = LOWER(@task_name))
+                  (@assignment_id IS NOT NULL AND assignment.project_assignment_id IS NOT NULL)
+                  OR (@assignment_id IS NULL AND @task_id IS NOT NULL AND task.task_id = @task_id)
+                  OR (
+                      @assignment_id IS NULL
+                      AND @task_id IS NULL
+                      AND (
+                          (@task_code <> '' AND LOWER(task.task_code) = LOWER(@task_code))
+                          OR (@task_name <> '' AND LOWER(task.task_name) = LOWER(@task_name))
+                      )
+                  )
               )
             ORDER BY
-                CASE WHEN @task_code <> '' AND LOWER(task_code) = LOWER(@task_code) THEN 0 ELSE 1 END,
-                updated_at DESC
+                CASE
+                    WHEN @assignment_id IS NOT NULL THEN 0
+                    WHEN @task_id IS NOT NULL AND task.task_id = @task_id THEN 1
+                    WHEN @task_code <> '' AND LOWER(task.task_code) = LOWER(@task_code) THEN 2
+                    ELSE 3
+                END,
+                task.updated_at DESC
             LIMIT 1;
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.Add("task_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+            taskId is Guid canonicalTaskId ? canonicalTaskId : DBNull.Value;
+        command.Parameters.Add("assignment_id", NpgsqlTypes.NpgsqlDbType.Uuid).Value =
+            assignmentId is Guid canonicalAssignmentId ? canonicalAssignmentId : DBNull.Value;
+        command.Parameters.AddWithValue("can_view_any_assignment", access.IsBroadDocumentScope || access.IsProjectManager);
+        command.Parameters.AddWithValue("user_id", access.UserId);
+        command.Parameters.AddWithValue("effective_date", workDate ?? DateOnly.FromDateTime(DateTime.UtcNow));
         command.Parameters.AddWithValue("task_code", code);
         command.Parameters.AddWithValue("task_name", name);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
 
         return new TaskContext(
-            reader.GetString(0),
+            reader.GetGuid(0),
             reader.GetString(1),
-            reader.IsDBNull(2) ? null : reader.GetString(2));
+            reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetGuid(4));
     }
 
     private static async Task<RequestContext?> ResolveRequestAsync(
@@ -858,6 +1007,28 @@ public sealed class PulseAiDocumentGroundingService
               AND COALESCE(d.engineering_visible, FALSE) = TRUE
               AND (
                   @is_broad = TRUE
+                  OR (@is_pm_lead = TRUE AND (
+                      EXISTS (
+                          SELECT 1 FROM reporting_relationships rr
+                          WHERE rr.employee_user_id = p.project_manager_user_id
+                            AND (rr.manager_user_id = @user_id OR rr.team_lead_user_id = @user_id)
+                            AND rr.effective_start_date <= CURRENT_DATE
+                            AND (rr.effective_end_date IS NULL OR rr.effective_end_date >= CURRENT_DATE)
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM app_users pm
+                          JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id = @user_id
+                          WHERE pm.user_id = p.project_manager_user_id
+                            AND scope.is_active = TRUE
+                            AND scope.scope_type = 'project_management_team_lead'
+                            AND (
+                                (scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,'')) = LOWER(scope.team_name))
+                                OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,'')) = LOWER(scope.department_name))
+                                OR scope.manager_user_id = pm.user_id
+                            )
+                      )
+                  ))
                   OR p.project_manager_user_id = @user_id
                   OR EXISTS (
                       SELECT 1
@@ -870,6 +1041,7 @@ public sealed class PulseAiDocumentGroundingService
 
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("is_broad", access.IsBroadDocumentScope);
+        command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
         command.Parameters.AddWithValue("user_id", access.UserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return new DocumentCounts(0, 0, 0);
@@ -1044,28 +1216,13 @@ public sealed class PulseAiDocumentGroundingService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required.Where(name => !HasValue(name)).ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 5,
-            Timeout = 8,
-            CommandTimeout = 12
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {
@@ -1117,6 +1274,12 @@ public sealed class PulseAiDocumentGroundingService
     {
         public bool IsBroadDocumentScope => RoleCodes.Overlaps(BroadDocumentRoles);
         public bool IsProjectManager => RoleCodes.Overlaps(ProjectManagementRoles);
+        public bool IsProjectManagementLead => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PROJECT_MANAGEMENT_LEAD",
+            "PROJECT_MANAGEMENT_TEAM_LEAD",
+            "PM_TEAM_LEAD"
+        });
         public string ScopeLabel => IsBroadDocumentScope
             ? "organization_document_scope"
             : IsProjectManager
@@ -1137,9 +1300,11 @@ public sealed class PulseAiDocumentGroundingService
         Guid? ProjectManagerUserId);
 
     private sealed record TaskContext(
+        Guid TaskId,
         string TaskCode,
         string TaskName,
-        string? TaskDescription);
+        string? TaskDescription,
+        Guid? AssignmentId);
 
     private sealed record RequestContext(
         string RequestNumber,

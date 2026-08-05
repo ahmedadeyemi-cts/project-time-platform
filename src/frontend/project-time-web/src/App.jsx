@@ -1,4 +1,3 @@
-import HelpAssistant from './HelpAssistant.jsx';
 import SessionIntelligenceDrawer from './SessionIntelligenceDrawer.jsx';
 import ProfileIdentitySurface from './identity/ProfileIdentitySurface.jsx';
 import ApprovalMailbox from './ApprovalMailbox.jsx';
@@ -9,6 +8,7 @@ import {
   compareProjectPulseModules,
   sortProjectPulseModules
 } from './module-ordering.js';
+import { moduleForRoute } from './module-availability-registry.js';
 
 const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'ai-provider-configuration': '064',
@@ -576,7 +576,7 @@ installProjectPulseGlobalViewAsTopbarMount();
 import EntraSecretExpirationGlobalWarning from './EntraSecretExpirationGlobalWarning.jsx';
 import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
-import usSignalLogoUrl from '../brand/ussignal.png';
+import usSignalLogoUrl from '../brand/USSNavyStacked.png';
 import './timesheet.css';
 import './mobile-readiness.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
@@ -611,6 +611,7 @@ import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
+import ProjectForgeCenter from './ProjectForgeCenter.jsx';
 import ProjectFlowHiveCenter from './ProjectFlowHiveCenter.jsx';
 import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';
 import EntraSecretAdministrationCenter from './EntraSecretAdministrationCenter.jsx';
@@ -1700,9 +1701,15 @@ function taskToRow(task) {
     state: 'Draft',
     activity: task.taskName,
     projectDescription: `${task.projectCode} • ${task.projectName}`,
+    assignmentId: task.assignmentId ?? task.projectAssignmentId ?? null,
     projectId: task.projectId,
+    projectCode: task.projectCode ?? '',
+    projectName: task.projectName ?? '',
     taskId: task.taskId,
     taskCode: task.taskCode,
+    taskName: task.taskName ?? '',
+    workTaskCategory: task.workTaskCategory ?? task.workType ?? '',
+    serviceRequestNumber: task.serviceRequestNumber ?? task.requestNumber ?? '',
     clientName: task.clientName,
     projectManagerName: task.projectManagerName
   };
@@ -1715,6 +1722,7 @@ function categoryToRow(category) {
     state: 'Draft',
     activity: category.name,
     projectDescription: 'Non-project time',
+    nonProjectTimeCategoryId: category.nonProjectTimeCategoryId ?? category.nonProjectCategoryId ?? category.categoryId ?? category.id ?? null,
     categoryCode: category.code,
     utilizationBucket: category.utilizationBucket,
     requiresApproval: category.requiresApproval
@@ -1757,6 +1765,15 @@ const roleWorkspaceModules = sortProjectPulseModules([
     navLabel: 'MODULE 019',
     description: 'View project workspace readiness, engineering-visible documents, assignments, and timesheet-context artifacts.',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  },
+  {
+    route: 'project-forge',
+    href: '#project-forge',
+    title: 'Project Forge',
+    navLabel: 'MODULE 033',
+    description: 'Build governed project plans, schedules, estimates, decision matrices, Kanban boards, and Gantt views from live ProjectPulse records.',
+    permissions: ['VIEW_PROJECT_FORGE_033', 'MANAGE_PROJECT_FORGE_033', 'USE_PROJECT_FORGE_AI_033', 'EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']
   },
   /* MODULE_066A1_PROJECT_FLOWHIVE_NAV_START */
   {
@@ -2058,7 +2075,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
   },
   {
     route: 'work-task-builder',
-    href: '#work-task-builder',
+    href: '#celar-ai',
     title: 'Celar AI',
     navLabel: 'MODULE 011',
     description: 'Governed AI lifecycle, private knowledge grounding, evaluations, model registry, and controlled promotion through Module 064.',
@@ -2331,9 +2348,32 @@ const roleWorkspaceModules = sortProjectPulseModules([
   }
 ]);
 
+const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({
+  'celar-ai': 'work-task-builder',
+  'pulse-ai': 'work-task-builder',
+  'analytics': 'reporting',
+  'analytics-center': 'reporting',
+  'reports': 'reporting',
+  'executive-reporting': 'reporting',
+  'financial-report-center': 'reporting',
+  'enterprise-reporting': 'reporting',
+  'crm': 'crm-integration',
+  'crm-erp': 'crm-integration',
+  'crm-erp-integration': 'crm-integration',
+  'crm-integration-center': 'crm-integration',
+  'microsoft-integration': 'entra-secret-administration',
+  'module-065': 'entra-secret-administration',
+  'psa-modules': 'toyota-hyundai-pipelines',
+  'project-register': 'toyota-hyundai-pipelines',
+  'project-manager-workload': 'project-workload',
+  'project-management-workload': 'project-workload',
+  'resource-assignment-handoff': 'signed-handoff',
+  'global-mail-configuration': 'entra-secret-administration'
+});
+
 function normalizeRoute(hash) {
-  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').trim();
-  return cleaned || 'dashboard';
+  const cleaned = (hash || window.location.hash || '#dashboard').replace(/^#/, '').split('?')[0].trim();
+  return PROJECTPULSE_RUNTIME_ROUTE_ALIASES[cleaned] || cleaned || 'dashboard';
 }
 
 function canonicalProjectPulseRoleCode(value) {
@@ -2422,7 +2462,7 @@ function getRoleNavigation(user) {
 
 
 function getNavigationDisplayLabel(item) {
-  return item?.title || item?.label || 'Dashboard';
+  return moduleForRoute(item?.route)?.displayName || item?.title || item?.label || 'Dashboard';
 }
 
 function userHasRoleText(user, fragments) {
@@ -2488,6 +2528,7 @@ function getNavigationGroup(item) {
     case 'project-workload':
     case 'project-allocation-info':
     case 'project-workspace':
+    case 'project-forge':
     case 'project-flowhive':
       return 'Project Workspace';
     case 'user-guide':
@@ -3091,8 +3132,9 @@ function buildRoleNavigationModel(user, navigationItems) {
   const availableByRoute = new Map();
 
   availableItems.forEach((item) => {
-    if (!availableByRoute.has(item.route)) {
-      availableByRoute.set(item.route, item);
+    const canonicalRoute = moduleForRoute(item.route)?.route || item.route;
+    if (!availableByRoute.has(canonicalRoute)) {
+      availableByRoute.set(canonicalRoute, item);
     }
   });
 
@@ -3182,14 +3224,22 @@ function getInstalledProjectPulseModuleRegistry() {
       permissions: ['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
       description: 'Shows project managers their active projects, closed projects, status mix, hours, and workload risk.'
     },
-    {
-      route: 'project-workspace',
+  {
+    route: 'project-workspace',
       title: 'Project Workspace',
     navLabel: 'MODULE 019',
       group: 'Project Delivery',
     permissions: ['VIEW_PROJECT_WORKSPACE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Provides a role-scoped workspace for assigned projects, tasks, documents, assigned hours, used hours, and remaining hours.'
   },
+    {
+      route: 'project-forge',
+      title: 'Project Forge',
+      navLabel: 'MODULE 033',
+      group: 'Project Delivery',
+      permissions: ['VIEW_PROJECT_FORGE_033', 'MANAGE_PROJECT_FORGE_033', 'USE_PROJECT_FORGE_AI_033', 'EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Turns every Ultimate Project Manager workbook view into a live, role-scoped planning workspace with human-reviewed AI plans and Module 065 notifications.'
+    },
   /* MODULE_066A1_PROJECT_FLOWHIVE_INSTALLED_REGISTRY_START */
   {
     route: 'project-flowhive',
@@ -4262,11 +4312,12 @@ export default function App() {
           state: 'Saved',
           activity: entry.categoryName ?? entry.categoryCode,
           projectDescription: 'Non-project time',
+          nonProjectTimeCategoryId: entry.nonProjectTimeCategoryId ?? entry.nonProjectCategoryId ?? null,
           categoryCode: entry.categoryCode
         });
       }
 
-      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) {
+      if (['projectTask', 'service_request'].includes(entry.rowType) && entry.projectId && entry.taskId) {
         const matchingTask = assignedOpenTasks.find((task) => task.projectId === entry.projectId && task.taskId === entry.taskId);
         const rowId = `project-task-${entry.projectId}-${entry.taskId}`;
         rowMap.set(rowId, matchingTask ? taskToRow(matchingTask) : {
@@ -4275,9 +4326,15 @@ export default function App() {
           state: 'Saved',
           activity: entry.taskName ?? entry.taskCode ?? 'Project task',
           projectDescription: entry.projectCode ? `${entry.projectCode} • ${entry.projectName ?? 'Project'}` : (entry.projectName ?? 'Project task'),
+          assignmentId: entry.assignmentId ?? entry.projectAssignmentId ?? null,
           projectId: entry.projectId,
+          projectCode: entry.projectCode ?? '',
+          projectName: entry.projectName ?? '',
           taskId: entry.taskId,
           taskCode: entry.taskCode ?? null,
+          taskName: entry.taskName ?? entry.taskCode ?? 'Project task',
+          workTaskCategory: entry.workTaskCategory ?? entry.workType ?? '',
+          serviceRequestNumber: entry.serviceRequestNumber ?? entry.requestNumber ?? '',
           clientName: entry.clientName ?? null,
           projectManagerName: null
         });
@@ -4305,10 +4362,11 @@ export default function App() {
     savedEntries.forEach((entry) => {
       let rowId = null;
       if (entry.rowType === 'nonProject' && entry.categoryCode) rowId = `non-project-${entry.categoryCode}`;
-      if (entry.rowType === 'projectTask' && entry.projectId && entry.taskId) rowId = `project-task-${entry.projectId}-${entry.taskId}`;
+      if (['projectTask', 'service_request'].includes(entry.rowType) && entry.projectId && entry.taskId) rowId = `project-task-${entry.projectId}-${entry.taskId}`;
       if (!rowId) return;
 
       entryMap[getEntryKey(rowId, entry.workDate, entry.timeType)] = {
+        timeEntryId: entry.timeEntryId ?? entry.id ?? null,
         hours: entry.hours?.toString() ?? '',
         comment: entry.description ?? '',
         workLocationGroupId: entry.workLocationGroupId ?? '',
@@ -5315,6 +5373,7 @@ export default function App() {
 
 
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
+  const canViewProjectForge = visibleRoleModules.some((module) => module.route === 'project-forge');
   const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
 
   useEffect(() => {
@@ -5682,21 +5741,55 @@ export default function App() {
       return;
     }
 
+    const roughNote = String(selectedEntry.comment ?? '');
+    const roughNoteCharacters = roughNote.replace(/\s/g, '').length;
+    const roughNoteFactualCharacters = (roughNote.match(/[\p{L}\p{N}]/gu) || []).length;
+    if (roughNote.length > 4000) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Keep the rough work note at 4,000 characters or fewer before generating a suggestion.'
+      });
+      return;
+    }
+    if (roughNoteCharacters < 12 || roughNoteFactualCharacters < 8) {
+      setAiSuggestionState({
+        loading: false,
+        suggestion: '',
+        provider: '',
+        warning: '',
+        error: 'Add a brief factual note about the work performed before generating a customer-facing description.'
+      });
+      return;
+    }
+
     setAiSuggestionState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
 
     try {
       const hours = Number.parseFloat(selectedEntry.hours);
+      const isProjectTask = selectedRow.type === 'projectTask';
+      const isServiceRequest = isProjectTask && (
+        Boolean(selectedRow.serviceRequestNumber)
+        || String(selectedRow.workTaskCategory || '').toLowerCase() === 'service_request_task'
+      );
 
       const result = await postProjectPulse051DTimeEntryJson('/api/timesheets/ai-description-suggestions', {
         workDate: selectedCell.date,
+        timeEntryId: selectedEntry.timeEntryId ?? null,
         timeType: selectedCell.type,
-        rowType: selectedRow.type,
+        rowType: isProjectTask ? (isServiceRequest ? 'service_request' : 'project_task') : 'non_project',
         rowLabel: selectedRow.activity ?? selectedRow.label ?? selectedRow.projectDescription ?? '',
-        projectName: selectedRow.projectName ?? selectedRow.projectDescription ?? '',
-        projectCode: selectedRow.projectCode ?? '',
+        assignmentId: isProjectTask ? (selectedRow.assignmentId ?? null) : null,
+        projectId: isProjectTask ? (selectedRow.projectId ?? null) : null,
+        projectName: isProjectTask ? (selectedRow.projectName ?? '') : '',
+        projectCode: isProjectTask ? (selectedRow.projectCode ?? '') : '',
+        taskId: isProjectTask ? (selectedRow.taskId ?? null) : null,
         taskName: selectedRow.taskName ?? selectedRow.activity ?? '',
         taskCode: selectedRow.taskCode ?? '',
-        categoryCode: selectedRow.categoryCode ?? '',
+        nonProjectTimeCategoryId: isProjectTask ? null : (selectedRow.nonProjectTimeCategoryId ?? selectedRow.nonProjectCategoryId ?? null),
+        categoryCode: isProjectTask ? '' : (selectedRow.categoryCode ?? ''),
         hours: Number.isNaN(hours) ? null : hours,
         currentDescription: selectedEntry.comment ?? ''
       });
@@ -7236,6 +7329,12 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
       {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_START */}
+      {(activeRoute === 'project-forge' && canViewProjectForge) ? (
+        <section id="project-forge" className="panel project-forge-route-panel">
+          <ProjectForgeCenter />
+        </section>
+      ) : null}
+
       {(activeRoute === 'project-flowhive' && canViewProjectFlowHive) ? (
         <section id="project-flowhive" className="panel project-flowhive-route-panel">
           <ProjectFlowHiveCenter />
@@ -7255,6 +7354,7 @@ Analytics - Variphy / Infortel`}
         'capacity-pipeline-forecast',
         'oncall-scheduling',
         'oneassist-routing-directory',
+        'project-forge',
         'project-flowhive',
         'sales-coverage-alignment',
         'oem-vendor-directory',
@@ -7885,6 +7985,7 @@ Analytics - Variphy / Infortel`}
                 Description / comment
                 <textarea
                   value={selectedEntry.comment}
+                  maxLength={4000}
                   placeholder="Enter the reportable comment for this time entry."
                   disabled={!selectedEntryIsEditable}
 
@@ -7931,6 +8032,7 @@ Analytics - Variphy / Infortel`}
                       <p>{aiSuggestionState.suggestion}</p>
                       <small>
                         Provider: {{
+                          celar_ai: 'Celar AI',
                           claude: 'Claude',
                           openai: 'OpenAI',
                           local_template: 'Governed local template fallback'
@@ -8178,7 +8280,10 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'billing-readiness' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="billing-readiness" className="panel billing-readiness-route-panel">
           {/* GROUP_5_MODULE_039_RECOVERY_PANEL */}
-          <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} />
+          <details className="billing-readiness-source-health" open>
+            <summary>Source health & recovery</summary>
+            <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />
+          </details>
           <BillingReadinessCenter />
         </section>
       ) : null}
@@ -8429,7 +8534,6 @@ Analytics - Variphy / Infortel`}
         <SessionIntelligenceDrawer authSession={authSession} />
       </div>
 
-      <HelpAssistant />
 </main>
   );
 }

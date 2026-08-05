@@ -6,6 +6,11 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceRoot = path.join(root, 'src');
 const changed = [];
 
+// Open the existing PR #459 source transaction before any visible-name or
+// route rewrite. Vite restores HelpAssistant.jsx after bundling, so the built
+// application uses v2 while tracked canonical source remains clean.
+await import('./backup-celar-ai-production-sources.mjs');
+
 function file(relative) {
   return path.join(sourceRoot, relative);
 }
@@ -117,13 +122,22 @@ function rebrandCelarValue(value) {
     `  const plan = rebrandCelarValue(payload?.plan ?? {});`,
     'help_legacy_response_rebrand');
 
-  content = replaceRequired(
-    content,
-    `      const path = conversationId
+  // Converge both the legacy Pulse route and the v1 Celar compatibility
+  // route on the v2 intent-first production endpoint. The original source is
+  // restored by the PR #459 source transaction after Vite closes the bundle.
+  if (!content.includes(`const path = '/api/celar-ai/v2/chat';`)) {
+    const v1Route = `      const path = '/api/celar-ai/v1/chat';`;
+    const legacyRoute = `      const path = conversationId
         ? \`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(conversationId)}/messages\`
-        : '/api/pulse-ai/v1/system/questions';`,
-    `      const path = '/api/celar-ai/v1/chat';`,
-    'help_celar_chat_route');
+        : '/api/pulse-ai/v1/system/questions';`;
+    const v2Route = `      const path = '/api/celar-ai/v2/chat'; // compatibility: /api/celar-ai/v1/chat`;
+
+    if (content.includes(v1Route)) {
+      content = content.replace(v1Route, v2Route);
+    } else {
+      content = replaceRequired(content, legacyRoute, v2Route, 'help_celar_chat_route_v2');
+    }
+  }
 
   content = replaceRequired(
     content,

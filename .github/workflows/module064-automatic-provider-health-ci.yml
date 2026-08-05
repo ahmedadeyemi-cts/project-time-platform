@@ -10,6 +10,11 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor.cs'
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter.cs'
       - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionKeyRing.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiEncryptionRotationService.cs'
+      - 'database/migrations/071_ai_runtime_production_hardening.sql'
+      - 'database/rollback/071_ai_runtime_production_hardening_rollback.sql'
+      - '.github/workflows/celar-ai-production-hardening-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs'
       - 'src/frontend/project-time-web/package.json'
       - 'src/frontend/project-time-web/package-lock.json'
@@ -53,19 +58,38 @@ jobs:
           OWNED_BRANCH='false'
           CENTRAL_SECURITY_BRANCH='false'
           CONSOLIDATED_RELEASE_BRANCH='false'
+          PRODUCTION_HARDENING_BRANCH='false'
           if [[ "$HEAD_BRANCH" == fix/module-064-automatic-provider-health-routing-* ]]; then
             OWNED_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
             CENTRAL_SECURITY_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             CONSOLIDATED_RELEASE_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
+            PRODUCTION_HARDENING_BRANCH='true'
           fi
 
           ALLOWED='^(\.github/workflows/module064-automatic-provider-health-ci\.yml|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
           MODULE064_RUNTIME_OWNED='^(src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
           CENTRAL_MODULE064_CONVERGENCE='^src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx$'
 
-          if [[ "$OWNED_BRANCH" == 'true' ]]; then
+          if [[ "$PRODUCTION_HARDENING_BRANCH" == 'true' ]]; then
+            DISALLOWED_SCOPE="$(grep -E '^(deployment/azure/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime.Api/Modules/(Microsoft|CustomerDirectory|CrmErp)|src/frontend/project-time-web/src/(Microsoft|CrmErp|CustomerDirectory))' <<<"$CHANGED" || true)"
+            if [[ -n "$DISALLOWED_SCOPE" ]]; then
+              echo 'Production hardening overlaps an unauthorized deployment or adjacent module surface:' >&2
+              printf '%s\n' "$DISALLOWED_SCOPE" >&2
+              exit 1
+            fi
+            for required in \
+              '.github/workflows/celar-ai-production-hardening-ci.yml' \
+              'database/migrations/071_ai_runtime_production_hardening.sql' \
+              'database/rollback/071_ai_runtime_production_hardening_rollback.sql' \
+              'src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs'; do
+              test -f "$required"
+            done
+            echo 'MODULE_064_VALIDATION_MODE=CELAR_AI_PRODUCTION_HARDENING' >> "$GITHUB_ENV"
+            echo 'MODULE_064_PRODUCTION_HARDENING_SCOPE=PASSED'
+          elif [[ "$OWNED_BRANCH" == 'true' ]]; then
             UNEXPECTED="$(grep -Ev "$ALLOWED" <<<"$CHANGED" || true)"
             if [[ -n "$UNEXPECTED" ]]; then
               echo 'Unexpected Module 064 source scope:' >&2

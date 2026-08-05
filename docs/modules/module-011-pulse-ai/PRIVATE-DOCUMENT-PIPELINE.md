@@ -122,6 +122,14 @@ The pipeline rejects:
 
 Storage paths are never returned to the browser.
 
+The configured root must be a shared, private, writable persistent mount. A
+container-local path such as `/tmp` is not durable: database metadata can remain
+after a deployment while the corresponding document bytes disappear with the
+old revision. Upload handlers and the private AI pipeline use the same
+`ProjectPulseUploadStorage` resolver, with `PROJECTPULSE_UPLOAD_ROOT` as the
+canonical environment variable and `PROJECT_PULSE_UPLOAD_ROOT` retained only as
+a compatibility alias.
+
 ## Supported formats
 
 | Format | Extension | Extraction method | Citation unit |
@@ -324,7 +332,7 @@ All endpoints are authenticated, read-only, and effective-user scoped.
 
 | Variable | Purpose | Default behavior |
 |---|---|---|
-| `PROJECTPULSE_UPLOAD_ROOT` | Private document-storage root | `/opt/project-time-platform/app/uploads` |
+| `PROJECTPULSE_UPLOAD_ROOT` | Canonical private document-storage root (legacy `PROJECT_PULSE_UPLOAD_ROOT` is read only as a compatibility fallback) | `/opt/project-time-platform/uploads` |
 | `PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED` | Permit private in-memory extraction preview | `false` |
 | `PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED` | Require approved scan evidence before parsing | `false` |
 | `PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE` | Sanitized scanner-mode label | `not_configured` |

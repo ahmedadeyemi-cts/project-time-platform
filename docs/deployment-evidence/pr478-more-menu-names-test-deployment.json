@@ -1,0 +1,34 @@
+{
+  "environment": "test",
+  "productionChanged": false,
+  "apiChanged": false,
+  "databaseChanged": false,
+  "migrationApplied": false,
+  "releaseCommit": "8e0bd5ae1dbdd41d1c57b3b2aea69fd9bb4457ca",
+  "workflowCommit": "6da9cd6d21f0a3fcbebc134b99a78bcbf058f60c",
+  "previousWebImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:52269ba8797a1cbaa0279b59bb156198d33446fd101631d06c2eb0beda5584ef",
+  "previousWebRevision": "ca-phd-test-web-westus3--u477web-30957382960-1",
+  "webImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:4f761298bc880ea7ad2cb235f2da943038d23d299fc4977c04ef0fd47342eb92",
+  "webDigest": "sha256:4f761298bc880ea7ad2cb235f2da943038d23d299fc4977c04ef0fd47342eb92",
+  "activeWebRevision": "ca-phd-test-web-westus3--u478web-30960388475-1",
+  "activeWebImage": "acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:4f761298bc880ea7ad2cb235f2da943038d23d299fc4977c04ef0fd47342eb92",
+  "activeDigestVerified": true,
+  "revisionMode": "single",
+  "servedAssets": {
+    "recursivelyDiscovered": true,
+    "javascriptCount": 1,
+    "stylesheetCount": 2,
+    "combinedJavascriptSha256": "2b02717b478eca0e965baee322e601217826262dee12e29d73bff17bc0fa5084",
+    "combinedStylesheetSha256": "036849ff3454c9e7c4a4cad5bf794ae394b062489256e49e8bfc78b82f2856cb"
+  },
+  "labels": {
+    "001": "Timesheet",
+    "002": "Approval Inbox"
+  },
+  "labelSource": "module-registry",
+  "permissionScope": "dynamic-rbac-fail-closed",
+  "runId": "30960388475",
+  "runAttempt": "1",
+  "artifactId": "8912761058",
+  "artifactDigest": "sha256:b4f9e114e9a5bc3b8667280274f0975c33a7971ef78ab8946e228a9ce74d4226"
+}

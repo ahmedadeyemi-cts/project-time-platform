@@ -98,6 +98,46 @@ async function postJson(path, body) {
   }));
 }
 
+async function deleteJson(path) {
+  return readJson(await fetch(path, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: { Accept: 'application/json' }
+  }));
+}
+
+function attachmentRows(payload) {
+  return asArray(Array.isArray(payload) ? payload : payload?.attachments || payload?.items || payload?.result?.attachments);
+}
+
+function attachmentId(attachment) {
+  return attachment?.attachmentId || attachment?.id || '';
+}
+
+function attachmentName(attachment) {
+  return attachment?.fileName || attachment?.originalFileName || attachment?.name || 'Attached document';
+}
+
+function attachmentStatus(attachment) {
+  return String(attachment?.status || attachment?.processingStatus || 'pending').toLowerCase();
+}
+
+function attachmentIsReady(attachment) {
+  return ['ready', 'completed', 'indexed', 'available'].includes(attachmentStatus(attachment));
+}
+
+function attachmentIsProcessing(attachment) {
+  return ['pending', 'uploaded', 'queued', 'scanning', 'extracting', 'processing', 'indexing'].includes(attachmentStatus(attachment));
+}
+
+function formatFileSize(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 async function loadLegacyPlan(question) {
   const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
   url.searchParams.set('question', question);
@@ -281,43 +321,59 @@ function ToolEvidence({ tools }) {
 
 function SystemAnswer({ result, close }) {
   const answer = result?.answer ?? {};
+  const externalUsedClosedTopic = asArray(result?.targetDecisions).some((decision) =>
+    String(decision?.reasonCode || '').startsWith('generation_succeeded_with_sanitized_generic_problem'));
   /* GROUP_7_HELP_ANSWER_DETAIL_START */
-  const detailLevel = result?.detailLevel ?? 'comprehensive';
+  const detailLevel = result?.detailLevel ?? 'standard';
   /* GROUP_7_HELP_ANSWER_DETAIL_END */
+  const detailedProfile = ['detailed', 'highly_detailed', 'technical', 'comprehensive', 'executive_and_detailed']
+    .includes(detailLevel);
+  const troubleshootingProfile = result?.intentCode === 'troubleshooting';
+  const enhancementProfile = result?.intentCode === 'future_enhancement';
   return (
     <div className="help-detailed-answer pulse-ai-system-answer" data-answer-detail={detailLevel}>
       <div className="help-answer-heading">
-        <span>Celar AI comprehensive system answer</span>
+        <span>Celar AI answer</span>
         <strong>{answer.directConclusion || 'Celar AI completed the request.'}</strong>
       </div>
       {answer.executiveSummary ? <p className="help-answer-summary">{answer.executiveSummary}</p> : null}
       <EvidenceBadges result={result} />
       <div className="help-answer-preference-evidence" role="note">
         <span>Answer detail: {titleFrom(detailLevel)}</span>
-        <span>Source: saved profile, per-question command, or comprehensive system default</span>
+        <span>Source: saved profile, per-question command, or standard intent-aware default</span>
       </div>
-      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open />
-      <AnswerList heading="Current state" values={answer.currentState} open />
-      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open />
-      <AnswerList heading="API findings" values={answer.apiFindings} open={result?.intentCode === 'api_inventory'} />
-      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={result?.intentCode === 'troubleshooting'} />
-      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={result?.intentCode === 'troubleshooting'} />
-      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={result?.intentCode === 'troubleshooting'} ordered />
+      <AnswerList heading="Scope and filters" values={answer.scopeAndFilters} open={detailedProfile} />
+      <AnswerList heading="Current state" values={answer.currentState} open={troubleshootingProfile || detailedProfile} />
+      <AnswerList heading="Detailed analysis" values={answer.detailedAnalysis} open={detailedProfile} />
+      <AnswerList heading="API findings" values={answer.apiFindings} open={detailedProfile} />
+      <AnswerList heading="Troubleshooting findings" values={answer.troubleshootingFindings} open={troubleshootingProfile} />
+      <AnswerList heading="Root-cause hypotheses" values={answer.rootCauseHypotheses} open={troubleshootingProfile} />
+      <AnswerList heading="Diagnostic steps" values={answer.diagnosticSteps} open={troubleshootingProfile} ordered />
       <AnswerList heading="Source evidence" values={answer.sourceEvidence} />
       <AnswerList heading="Known, unknown, stale, unavailable, and unauthorized values" values={answer.knownUnknownAndStaleValues} />
       <AnswerList heading="Assumptions" values={answer.assumptions} />
       <AnswerList heading="Conflicts" values={answer.conflicts} />
       <AnswerList heading="Limitations" values={answer.limitations} />
       <AnswerList heading="Risks and implications" values={answer.risksAndImplications} />
-      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open ordered />
+      <AnswerList heading="Recommended actions" values={answer.recommendedActions} open={troubleshootingProfile || enhancementProfile || detailedProfile} ordered />
       <EnhancementBlueprint blueprint={answer.futureEnhancementBlueprint} />
       <ApiInventory apis={result?.relevantApis} />
       <ToolEvidence tools={result?.toolResults} />
       <SourceEvidence sources={result?.sources} />
       <AnswerList heading="Warnings" values={result?.warnings} />
+      {result?.externalAssistance ? (
+        <details className="pulse-ai-system-workbench-section">
+          <summary><span>Supplementary external guidance (unverified)</span><small>{titleFrom(result?.modelProvider || 'external')}</small></summary>
+          <p>{externalUsedClosedTopic
+            ? 'The local Celar AI path could not complete this general question. This optional guidance used only a closed server-owned topic plus a backend-owned purpose capsule; the user’s wording was not sent.'
+            : 'The local Celar AI path could not complete the request. This optional guidance used only a backend-owned, identity-free purpose capsule.'}</p>
+          <p>It is kept separate from the source-grounded answer above. No attachment text, private document content, tool results, customer or project context, people records, financial values, or identifiers were shared, so this guidance cannot establish enterprise-specific facts.</p>
+          <p>{result.externalAssistance}</p>
+        </details>
+      ) : null}
       <div className="pulse-ai-system-answer-footer">
         <span>Correlation: <code>{result?.correlationId || 'Not recorded'}</code></span>
-        <span>Model: {result?.modelName || 'Deterministic private system synthesis'}</span>
+        <span>Selected route: {result?.modelName || titleFrom(result?.modelProvider || 'governed_local')}</span>
         <span>{answer.confidenceExplanation}</span>
       </div>
       <NavigationTargets targets={answer.navigationTargets} close={close} />
@@ -353,7 +409,7 @@ function LegacyPlanAnswer({ payload, close }) {
 
 function AssistantMessage({ message, close }) {
   if (message.loading) {
-    return <div className="help-message assistant help-message-loading">Retrieving authorized evidence and building a comprehensive answer…</div>;
+    return <div className="help-message assistant help-message-loading">Retrieving authorized evidence and preparing a direct answer…</div>;
   }
   if (message.payload?.answer) {
     return <div className="help-message assistant is-detailed"><SystemAnswer result={message.payload} close={close} /></div>;
@@ -406,7 +462,13 @@ export default function HelpAssistant() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [questionContext, setQuestionContext] = useState({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+  const [attachments, setAttachments] = useState([]);
+  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [draggingFiles, setDraggingFiles] = useState(false);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const messagesRef = useRef(null);
   const followLatestRef = useRef(true);
   const sendingRef = useRef(false);
@@ -415,6 +477,24 @@ export default function HelpAssistant() {
     () => conversations.find((item) => item.conversationId === activeConversationId) ?? null,
     [activeConversationId, conversations]
   );
+
+  async function refreshAttachments(conversationId = activeConversationId, autoSelectReady = true) {
+    if (!conversationId) {
+      setAttachments([]);
+      setSelectedAttachmentIds([]);
+      return [];
+    }
+    const payload = await getJson(`/api/celar-ai/v2/conversations/${encodeURIComponent(conversationId)}/attachments`);
+    const rows = attachmentRows(payload);
+    const previousReady = new Set((autoSelectReady ? attachments : rows).filter(attachmentIsReady).map(attachmentId));
+    setAttachments(rows);
+    setSelectedAttachmentIds((current) => {
+      const ready = new Set(rows.filter(attachmentIsReady).map(attachmentId));
+      const newlyReady = rows.filter((item) => attachmentIsReady(item) && !previousReady.has(attachmentId(item))).map(attachmentId);
+      return [...new Set([...current.filter((id) => ready.has(id)), ...newlyReady])];
+    });
+    return rows;
+  }
 
   async function refreshConversationList(selectId = '') {
     const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
@@ -432,11 +512,15 @@ export default function HelpAssistant() {
       return;
     }
     setHistoryLoading(true);
+    setAttachments([]);
+    setSelectedAttachmentIds([]);
+    setAttachmentError('');
     try {
       const payload = await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}`);
       const rows = asArray(payload?.conversation?.messages).map(serverMessageToUi);
       setMessages(rows.length ? rows : [WELCOME_MESSAGE]);
       setActiveConversationId(conversationId);
+      await refreshAttachments(conversationId, false).catch(() => []);
       followLatestRef.current = true;
     } finally {
       setHistoryLoading(false);
@@ -479,6 +563,9 @@ export default function HelpAssistant() {
     setMessages([WELCOME_MESSAGE]);
     setQuestion('');
     setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+    setAttachments([]);
+    setSelectedAttachmentIds([]);
+    setAttachmentError('');
     setHistoryOpen(false);
     setContextOpen(false);
     followLatestRef.current = true;
@@ -492,6 +579,26 @@ export default function HelpAssistant() {
   }, [isOpen]);
 
   useEffect(() => {
+    const openChat = (event) => {
+      setIsOpen(true);
+      setIsMinimized(false);
+      const suggestedQuestion = String(event?.detail?.question || '').trim();
+      if (suggestedQuestion) setQuestion(suggestedQuestion);
+      window.setTimeout(() => inputRef.current?.focus(), 40);
+    };
+    window.addEventListener('projectpulse:open-celar-ai-chat', openChat);
+    return () => window.removeEventListener('projectpulse:open-celar-ai-chat', openChat);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !activeConversationId || !attachments.some(attachmentIsProcessing)) return undefined;
+    const timer = window.setInterval(() => {
+      void refreshAttachments(activeConversationId).catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [activeConversationId, attachments, isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !followLatestRef.current) return;
     const viewport = messagesRef.current;
     if (!viewport) return;
@@ -503,6 +610,55 @@ export default function HelpAssistant() {
   function onConversationScroll(event) {
     const element = event.currentTarget;
     followLatestRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  }
+
+  async function uploadAttachments(files) {
+    const selectedFiles = [...(files || [])];
+    if (!selectedFiles.length || attachmentBusy) return;
+    setAttachmentBusy(true);
+    setAttachmentError('');
+    try {
+      let conversationId = activeConversationId;
+      if (!conversationId) conversationId = await createConversation('system_help', false);
+      const body = new FormData();
+      selectedFiles.forEach((file) => body.append('files', file, file.name));
+      await readJson(await fetch(`/api/celar-ai/v2/conversations/${encodeURIComponent(conversationId)}/attachments`, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        body
+      }));
+      await refreshAttachments(conversationId);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'The documents could not be attached.');
+    } finally {
+      setAttachmentBusy(false);
+      setDraggingFiles(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function removeAttachment(item) {
+    const id = attachmentId(item);
+    if (!activeConversationId || !id || attachmentBusy) return;
+    setAttachmentBusy(true);
+    setAttachmentError('');
+    try {
+      await deleteJson(`/api/celar-ai/v2/conversations/${encodeURIComponent(activeConversationId)}/attachments/${encodeURIComponent(id)}`);
+      await refreshAttachments(activeConversationId);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'The attachment could not be removed.');
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  function toggleAttachment(item) {
+    const id = attachmentId(item);
+    if (!id || !attachmentIsReady(item)) return;
+    setSelectedAttachmentIds((current) => current.includes(id)
+      ? current.filter((candidate) => candidate !== id)
+      : [...current, id]);
   }
 
   async function submitQuestion(event) {
@@ -531,7 +687,7 @@ export default function HelpAssistant() {
           conversationId = '';
         }
       }
-      const path = '/api/celar-ai/v1/chat';
+      const path = '/api/celar-ai/v2/chat';
       const explicitContext = [
         questionContext.projectCode ? `Project code: ${questionContext.projectCode}` : '',
         questionContext.projectName ? `Project name: ${questionContext.projectName}` : '',
@@ -542,20 +698,30 @@ export default function HelpAssistant() {
       const questionWithContext = explicitContext.length
         ? `${clean}\n\nExplicit current-question context:\n- ${explicitContext.join('\n- ')}`
         : clean;
+      const preferenceUrl = new URL(path, window.location.origin);
+      const answerPreferences = applyHelpAnswerPreferences(preferenceUrl, clean);
+      const readyAttachmentIds = new Set(attachments.filter(attachmentIsReady).map(attachmentId));
       const payload = await postJson(path, {
         conversationId: conversationId || null,
         question: questionWithContext,
         projectCode: questionContext.projectCode || null,
         projectName: questionContext.projectName || null,
         mode: 'system_help',
-        detailLevel: 'comprehensive',
+        detailLevel: answerPreferences.detailLevel,
+        includeRepositoryContext: answerPreferences.includeRepositoryContext,
+        includeAssumptions: answerPreferences.includeAssumptions,
+        includeSourceCitations: answerPreferences.includeSourceCitations,
+        answerPreferenceSource: answerPreferences.preferenceSource,
         includeApiInventory: true,
         includeTroubleshooting: true,
         includeFutureEnhancement: true,
-        includeAuthorizedProjectDocuments: true,
-        usePrivateModelWhenAvailable: true
+        includeAuthorizedProjectDocuments: answerPreferences.includeRepositoryContext,
+        usePrivateModelWhenAvailable: true,
+        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        attachmentIds: selectedAttachmentIds.filter((id) => readyAttachmentIds.has(id))
       });
       const result = rebrandCelarValue(payload.result);
+      if (result && payload.trust) result.trust = rebrandCelarValue(payload.trust);
       setMessages((current) => current.map((message) =>
         message.id === loadingId
           ? { id: result?.assistantMessageId || loadingId, role: 'assistant', payload: result, text: result?.answer?.directConclusion || '' }
@@ -569,20 +735,11 @@ export default function HelpAssistant() {
         // The completed answer remains in memory even if the history refresh is temporarily unavailable.
       }
     } catch (error) {
-      try {
-        const legacyPayload = await loadLegacyPlan(clean);
-        setMessages((current) => current.map((message) =>
-          message.id === loadingId
-            ? { id: loadingId, role: 'assistant', legacyPayload }
-            : message
-        ));
-      } catch {
-        setMessages((current) => current.map((message) =>
-          message.id === loadingId
-            ? { id: loadingId, role: 'assistant', error: error instanceof Error ? error.message : 'Celar AI could not complete this question.' }
-            : message
-        ));
-      }
+      setMessages((current) => current.map((message) =>
+        message.id === loadingId
+          ? { id: loadingId, role: 'assistant', error: error instanceof Error ? error.message : 'Celar AI could not complete this question.' }
+          : message
+      ));
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -633,7 +790,7 @@ export default function HelpAssistant() {
 
   return (
     <>
-      <button type="button" className="help-launcher" onClick={() => {
+      <button type="button" className="help-launcher" aria-expanded={isOpen} aria-controls="celar-ai-global-chat" onClick={() => {
         setIsOpen((current) => !current);
         setIsMinimized(false);
       }}>
@@ -641,6 +798,7 @@ export default function HelpAssistant() {
       </button>
       {isOpen ? (
         <aside
+          id="celar-ai-global-chat"
           className={`help-panel pulse-ai-help-panel pulse-ai-system-chat celar-ai-contextual-chat is-size-${chatSize}${isMinimized ? ' is-minimized' : ''}`}
           aria-label="Celar AI system intelligence assistant"
           data-context-policy="current-conversation-only"
@@ -738,6 +896,30 @@ export default function HelpAssistant() {
               </button>
             ))}
           </div>
+
+          <section className="celar-ai-chat-attachments" aria-labelledby="celar-ai-chat-attachments-heading">
+            <div className="celar-ai-chat-attachments-heading">
+              <div><strong id="celar-ai-chat-attachments-heading">Documents for this conversation</strong><span>Files are privately scanned, extracted, and authorized before Celar AI can use them. Raw file contents are never stored in this browser.</span></div>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentBusy}>{attachmentBusy ? 'Processing…' : 'Attach documents'}</button>
+            </div>
+            <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
+            <div
+              className={`celar-ai-chat-dropzone${draggingFiles ? ' is-dragging' : ''}`}
+              onDragEnter={(event) => { event.preventDefault(); setDraggingFiles(true); }}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
+              onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
+              onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
+            >Drop approved documents here or use Attach documents.</div>
+            {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
+            {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
+              const id = attachmentId(item);
+              const ready = attachmentIsReady(item);
+              return <li key={id || attachmentName(item)}>
+                <label><input type="checkbox" checked={ready && selectedAttachmentIds.includes(id)} disabled={!ready || attachmentBusy} onChange={() => toggleAttachment(item)} /><span><strong>{attachmentName(item)}</strong><small>{[ready ? (selectedAttachmentIds.includes(id) ? 'Ready and selected for the next question' : 'Ready — not selected') : titleFrom(attachmentStatus(item)), formatFileSize(item.sizeBytes), item.diagnosticCode && item.diagnosticCode !== 'none' ? item.diagnosticCode : ''].filter(Boolean).join(' · ')}</small></span></label>
+                <button type="button" onClick={() => void removeAttachment(item)} disabled={attachmentBusy} aria-label={`Remove ${attachmentName(item)}`}>Remove</button>
+              </li>;
+            })}</ul> : null}
+          </section>
 
           <form className="help-input-row" onSubmit={submitQuestion}>
             <textarea

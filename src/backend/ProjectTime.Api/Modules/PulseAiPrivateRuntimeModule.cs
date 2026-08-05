@@ -20,6 +20,9 @@ public static class PulseAiPrivateRuntimeModule
             "/api/pulse-ai/v1/documents/{documentId:guid}/processing-jobs",
             (Func<Guid, PulseAiQueueDocumentRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)QueueAsync);
         endpoints.MapPost(
+            "/api/pulse-ai/v1/documents/{documentId:guid}/versions/{versionId:guid}/approve",
+            (Func<Guid, Guid, PulseAiApproveDocumentVersionRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)ApproveVersionAsync);
+        endpoints.MapPost(
             "/api/pulse-ai/v1/documents/runtime/jobs/{jobId:guid}/cancel",
             (Func<Guid, PulseAiCancelDocumentJobRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)CancelAsync);
         endpoints.MapPost(
@@ -39,6 +42,7 @@ public static class PulseAiPrivateRuntimeModule
         var access = await runtime.LoadAccessAsync(effectiveUserId.Value, cancellationToken);
         if (!access.IsActive || !access.CanViewRuntime) return Forbidden("VIEW_PULSE_AI_DOCUMENT_RUNTIME");
         var readiness = await runtime.GetReadinessAsync(cancellationToken);
+        var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
         return Results.Ok(new
         {
             module = "011",
@@ -47,6 +51,14 @@ public static class PulseAiPrivateRuntimeModule
             contractVersion = PulseAiPrivateRuntimePolicy.ContractVersion,
             access = AccessEvidence(context, effectiveUserId.Value, access),
             readiness,
+            releaseCandidate = new
+            {
+                phase = release.PhaseCode,
+                readOnly = release.IsCandidate,
+                workerExecutionBlocked = release.IsCandidate,
+                automaticQueueExecutionBlocked = release.IsCandidate,
+                configurationSourceCommit = release.ConfigurationSourceCommit
+            },
             lifecycle = new[]
             {
                 "Queue an authorized document with explicit confirmation.",
@@ -158,6 +170,7 @@ public static class PulseAiPrivateRuntimeModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
                 PulseAiPrivateRuntimePolicy.QueueConfirmation,
@@ -207,6 +220,7 @@ public static class PulseAiPrivateRuntimeModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
                 PulseAiPrivateRuntimePolicy.CancelConfirmation,
@@ -240,6 +254,56 @@ public static class PulseAiPrivateRuntimeModule
             }, statusCode: StatusCodes.Status409Conflict);
     }
 
+    private static async Task<IResult> ApproveVersionAsync(
+        Guid documentId,
+        Guid versionId,
+        PulseAiApproveDocumentVersionRequest request,
+        HttpContext context,
+        PulseAiPrivateDocumentRuntimeService runtime,
+        CancellationToken cancellationToken)
+    {
+        var identities = Identities(context);
+        if (identities is null) return SessionRequired();
+        if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                PulseAiPrivateRuntimePolicy.ApproveVersionConfirmation,
+                StringComparison.Ordinal))
+        {
+            return ConfirmationRequired(PulseAiPrivateRuntimePolicy.ApproveVersionConfirmation);
+        }
+        var access = await runtime.LoadAccessAsync(identities.Value.Actual, cancellationToken);
+        if (!access.IsActive || !access.CanApprove) return Forbidden("APPROVE_PULSE_AI_DOCUMENT_VERSION");
+        var approved = await runtime.ApproveVersionAsync(
+            identities.Value.Actual,
+            identities.Value.Effective,
+            documentId,
+            versionId,
+            request,
+            cancellationToken);
+        if (!approved)
+        {
+            return Results.Json(new
+            {
+                module = "011",
+                status = "document_version_not_approvable",
+                message = "The version is outside the authorized scope, is not the exact active ready source hash, or is not eligible for approval."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+        return Results.Ok(new
+        {
+            module = "011",
+            status = "document_version_approved",
+            documentId,
+            versionId,
+            authorityStatus = "approved",
+            retrievalEligible = true,
+            externalProviderCalled = false,
+            stateChanged = true
+        });
+    }
+
     private static async Task<IResult> RetryAsync(
         Guid jobId,
         PulseAiRetryDocumentJobRequest request,
@@ -250,6 +314,7 @@ public static class PulseAiPrivateRuntimeModule
         var identities = Identities(context);
         if (identities is null) return SessionRequired();
         if (identities.Value.Actual != identities.Value.Effective) return ViewAsMutationBlocked();
+        if (CandidateMutationBlocked() is { } blocked) return blocked;
         if (!string.Equals(
                 request.Confirmation?.Trim(),
                 PulseAiPrivateRuntimePolicy.RetryConfirmation,
@@ -379,6 +444,20 @@ public static class PulseAiPrivateRuntimeModule
             status = "view_as_mutation_blocked",
             message = "Administrator View-As is read-only and cannot queue, retry, cancel, approve, or otherwise mutate Pulse AI processing."
         }, statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult? CandidateMutationBlocked()
+    {
+        var release = ProjectPulseAiReleaseRuntimePolicy.Snapshot();
+        if (!release.IsCandidate) return null;
+        return Results.Json(new
+        {
+            module = "011",
+            status = "release_candidate_read_only",
+            message = "Document queue, cancellation, retry, and approval mutations are disabled on the exact-source release candidate.",
+            configurationSourceCommit = release.ConfigurationSourceCommit,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status423Locked);
+    }
 
     private static IResult ConfirmationRequired(string requiredConfirmation) =>
         Results.BadRequest(new

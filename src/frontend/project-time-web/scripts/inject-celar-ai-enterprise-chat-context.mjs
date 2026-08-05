@@ -8,6 +8,13 @@ let content = fs.readFileSync(helpPath, 'utf8');
 
 function replaceRequired(before, after, label) {
   if (content.includes(after)) return;
+  if (label === 'context_state'
+      && content.includes(`const [contextOpen, setContextOpen]`)
+      && content.includes(`const [questionContext, setQuestionContext]`)) return;
+  if (label === 'fresh_context_reset'
+      && content.includes(`function beginFreshConversation()`)
+      && content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`)
+      && content.includes(`setContextOpen(false)`)) return;
   if (!content.includes(before)) throw new Error(`CELAR_AI_ENTERPRISE_CHAT_MISSING_ANCHOR=${label}`);
   content = content.replace(before, after);
 }
@@ -22,9 +29,6 @@ replaceRequired(
   `  function beginFreshConversation() {\n    setActiveConversationId('');\n    setMessages([WELCOME_MESSAGE]);\n    setQuestion('');\n    setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });\n    setHistoryOpen(false);\n    setContextOpen(false);`,
   'fresh_context_reset');
 
-// questionWithContext is the durable idempotency marker. Do not require the
-// original path/explicitContext adjacency on later passes because other owned
-// injectors may add compatible content around the same request construction.
 if (!content.includes(`const questionWithContext = explicitContext.length`)) {
   replaceRequired(
     `      const path = '/api/celar-ai/v1/chat';\n      const payload = await postJson(path, {\n        conversationId: conversationId || null,\n        question: clean,`,
@@ -48,3 +52,5 @@ console.log('CELAR_AI_ENTERPRISE_CHAT_CONTEXT_DATE_RANGE=SUPPORTED');
 
 await import('./inject-celar-ai-capability-routing.mjs');
 await import('./inject-live-ui-route-authority.mjs');
+await import('./backup-celar-ai-production-sources.mjs');
+await import('./inject-celar-ai-production-platform.mjs');

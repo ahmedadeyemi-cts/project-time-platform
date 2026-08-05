@@ -24,7 +24,7 @@ require "$DEPLOY" "default: $EXPECTED_RELEASE"
 require "$DEPLOY" "EXPECTED_RELEASE_COMMIT: $EXPECTED_RELEASE"
 require "$DEPLOY" 'DEPLOY-MODULE001-MODULE026-MICROSOFT-RUNTIME-TO-TEST'
 require "$DEPLOY" 'environment: test'
-require "$DEPLOY" 'group: projectpulse-deploy-module001-module026-microsoft-runtime-test'
+require "$DEPLOY" 'group: projectpulse-deploy-test'
 require "$DEPLOY" 'cancel-in-progress: false'
 require "$DEPLOY" "[[ \"\$WORKFLOW_SOURCE_REF\" == 'refs/heads/main' ]]"
 require "$DEPLOY" 'release_commit must be a complete 40-character SHA.'

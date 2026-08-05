@@ -140,9 +140,12 @@ assert(
     && help.includes('<strong>Celar AI Help & Search</strong>')
     && !help.includes('<strong>Pulse AI Help & Search</strong>')
     && help.includes('Celar AI Workbench')
-    && help.includes("const path = '/api/celar-ai/v1/chat';")
+    && (
+      help.includes("const path = '/api/celar-ai/v2/chat';")
+      || help.includes("const path = '/api/celar-ai/v1/chat';")
+    )
     && help.includes("openRoute('celar-ai')"),
-  'the global chat preserves the Group 7 Help & Search title under the Celar AI brand and submits through the user-facing endpoint'
+  'the global chat preserves the Group 7 Help & Search title under the Celar AI brand and submits through the v2 production or v1 compatibility endpoint'
 );
 
 assert(
@@ -250,10 +253,12 @@ assert(
 );
 
 const approvedCelarMigrations = new Set([
-  'database/migrations/061_celar_ai_capability_routing.sql'
+  'database/migrations/061_celar_ai_capability_routing.sql',
+  'database/migrations/072_celar_ai_conversation_attachments.sql'
 ]);
 const approvedCelarRollbacks = new Set([
-  'database/rollback/061_celar_ai_capability_routing_rollback.sql'
+  'database/rollback/061_celar_ai_capability_routing_rollback.sql',
+  'database/rollback/072_celar_ai_conversation_attachments_rollback.sql'
 ]);
 const celarMigrations = walk('database/migrations').filter((relative) => /celar[-_]?ai/i.test(relative));
 const celarRollbacks = walk('database/rollback').filter((relative) => /celar[-_]?ai/i.test(relative));

@@ -103,8 +103,11 @@ assert('ALLOWLISTED_SAME_ORIGIN_TOOLS',
     'pre-registered, same-origin, read-only Pulse tools',
     'never accepts an arbitrary URL',
     'ValidRelativeApiPath',
-    'Uri.TryCreate(path, UriKind.Absolute',
-    'cleanPath.StartsWith("/api/"',
+    'candidate.StartsWith("/", StringComparison.Ordinal)',
+    'candidate.StartsWith("//", StringComparison.Ordinal)',
+    'candidate.Contains("://", StringComparison.Ordinal)',
+    'Uri.UnescapeDataString(cleanPath)',
+    'decodedPath.StartsWith("/api/"',
     'TryBuildTrustedTarget',
     'PROJECTPULSE_PULSE_AI_SYSTEM_TOOL_BASE_URI',
     'AllowedSameOriginHosts',
@@ -185,16 +188,18 @@ assert('FUTURE_ENHANCEMENT_ADVISOR',
   && s.workbench.includes('Future enhancement blueprint'),
   'current-state architecture, APIs, migration, security, operations, phases, test, rollout, rollback, risk, and acceptance');
 
-assert('PRIVATE_MODEL_WITH_DETERMINISTIC_FALLBACK',
+assert('CENTRAL_ROUTE_WITH_PRIVATE_AND_DETERMINISTIC_GROUNDING',
   all(s.service, [
-    'BuildDeterministicAnswer','_privateModel.GenerateAsync',
-    'The approved private model did not complete',
-    'deterministic source-grounded system answer instead'
+    'BuildDeterministicAnswer','_router.GenerateWithPrivateTargetAsync',
+    '_router.GenerateAsync','TryResolveHelpCapsulePurpose',
+    'PrivateTargetAllowed: privateRagRequested',
+    'externalAssistance = Limit(',
+    "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context"
   ])
   && !/(?:api\.openai\.com|api\.anthropic\.com|ANTHROPIC_API_KEY|OPENAI_API_KEY)/i.test(
     [s.contracts,s.knowledge,s.apiCatalog,s.executor,s.repository,s.service,s.module].join('\n')
   ),
-  'private synthesis is optional and public-provider system routing is absent');
+  'the persisted Module 064 route governs Help, private document RAG stays at the Celar target, deterministic grounding remains available, and public targets receive only fixed generic structure guidance');
 
 assert('DURABLE_RESPONSES',
   all(s.repository, [

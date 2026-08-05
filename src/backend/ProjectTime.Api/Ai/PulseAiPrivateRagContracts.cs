@@ -145,13 +145,52 @@ public sealed record PulseAiPrivateRagOptions(
     }
 }
 
+public static class PulseAiRoleAuthority
+{
+    private static readonly HashSet<string> AdministratorRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SUPER_ADMINISTRATOR",
+        "SUPERADMINISTRATOR",
+        "GLOBAL_ADMINISTRATOR",
+        "GLOBALADMINISTRATOR",
+        "SYSTEM_ADMINISTRATOR",
+        "SYSTEMADMINISTRATOR",
+        "ADMINISTRATOR"
+    };
+
+    public static bool HasAdministratorRole(IEnumerable<string> roleCodes) =>
+        roleCodes.Any(roleCode => AdministratorRoles.Contains(Canonical(roleCode)));
+
+    private static string Canonical(string? value)
+    {
+        var source = value?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (source.Length == 0) return string.Empty;
+        var builder = new System.Text.StringBuilder(source.Length);
+        var separator = false;
+        foreach (var character in source)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (separator && builder.Length > 0) builder.Append('_');
+                builder.Append(character);
+                separator = false;
+            }
+            else
+            {
+                separator = true;
+            }
+        }
+        return builder.ToString().Trim('_');
+    }
+}
+
 public sealed record PulseAiPrivateRagAccess(
     Guid UserId,
     bool IsActive,
     IReadOnlySet<string> RoleCodes,
     IReadOnlySet<string> PermissionCodes)
 {
-    public bool IsSuperAdministrator => RoleCodes.Contains("SUPER_ADMINISTRATOR");
+    public bool IsSuperAdministrator => PulseAiRoleAuthority.HasAdministratorRole(RoleCodes);
     public bool IsBroadScope => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SUPER_ADMINISTRATOR",
@@ -159,8 +198,16 @@ public sealed record PulseAiPrivateRagAccess(
         "PROJECT_TEAM_COORDINATOR",
         "EXECUTIVE"
     });
+    public bool IsProjectManagementLead => RoleCodes.Overlaps(new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "PROJECT_MANAGEMENT_LEAD",
+        "PROJECT_MANAGEMENT_TEAM_LEAD",
+        "PM_TEAM_LEAD"
+    });
 
     public bool CanHelpSearch => IsSuperAdministrator || PermissionCodes.Contains("ASK_PULSE_AI_HELP_SEARCH");
+    public bool CanAttachDocuments => IsSuperAdministrator
+        || PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission);
     public bool CanTimesheet => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING");
     public bool CanFlowHive => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_FLOWHIVE_PLANNING");
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains("VIEW_PULSE_AI_ANSWER_AUDIT");
@@ -181,14 +228,20 @@ public sealed record PulseAiPrivateRetrievalQuery(
     string PurposeCode,
     string Question,
     Guid? ProjectId,
+    Guid? TaskId,
+    Guid? AssignmentId,
     string? ProjectCode,
     string? ProjectName,
     bool RequireTimesheetFlag,
+    bool IncludeProjectDocuments,
     IReadOnlyList<string> AllowedDocumentCategories,
     int MaximumChunks,
     int MaximumCandidates,
     decimal LexicalWeight,
     decimal SemanticWeight,
+    decimal MinimumEvidenceScore,
+    Guid? ConversationId,
+    IReadOnlyList<Guid> AttachmentIds,
     string CorrelationId);
 
 public sealed record PulseAiPrivateRetrievedChunk(
@@ -398,8 +451,11 @@ public sealed record PulseAiPrivateHelpSearchRequest(
     string? ProjectCode,
     string? ProjectName,
     string? DetailLevel,
-    bool IncludeAuthorizedProjectDocuments = true,
-    bool IncludeDirectProductKnowledge = true);
+    bool IncludeAuthorizedProjectDocuments = false,
+    bool IncludeDirectProductKnowledge = true,
+    bool UsePrivateModelWhenAvailable = true,
+    Guid? ConversationId = null,
+    IReadOnlyList<Guid>? AttachmentIds = null);
 
 public sealed record PulseAiPrivateTimesheetRequest(
     DateOnly? WorkDate,
@@ -412,7 +468,10 @@ public sealed record PulseAiPrivateTimesheetRequest(
     string? TaskName,
     string? CategoryCode,
     string? EngineerNote,
-    string? DetailLevel = "standard");
+    string? DetailLevel = "detailed",
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null);
 
 public sealed record PulseAiPrivateFlowHiveRequest(
     string? ProjectCode,

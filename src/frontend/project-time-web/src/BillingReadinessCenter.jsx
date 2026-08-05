@@ -451,6 +451,17 @@ function summarizeMonthEndPackages(rows) {
   return [...grouped.values()].sort((a, b) => b.packageTotal - a.packageTotal);
 }
 
+
+function pr467FriendlyPrerequisite(value) {
+  const labels = {
+    contracted_value: 'Contracted value',
+    expense_budget: 'Expense budget',
+    planned_hours: 'Planned hours',
+    sell_association: 'SELL association'
+  };
+  return labels[String(value || '').trim()] || String(value || '').replaceAll('_', ' ');
+}
+
 export default function BillingReadinessCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
   const [billingMode, setBillingMode] = useState('project');
@@ -858,6 +869,19 @@ export default function BillingReadinessCenter() {
 
   return (
     <section className="billing-readiness-center">
+      {/* PR467_BILLING_CLOSEOUT_HANDOFFS */}
+      <section className="billing-readiness-handoff-panel">
+        <div>
+          <strong>Billing readiness does not close the project.</strong>
+          <span>Complete missing commercial and planning data in Module 055C, use Module 040 for project closeout, and continue to Module 042 only after billing readiness is complete.</span>
+        </div>
+        <nav aria-label="Billing and closeout handoffs">
+          <a href="#work-register">Complete project information — Module 055C</a>
+          <a href="#project-closeout">Open Project Closeout — Module 040</a>
+          <a href="#invoice-billing-center">Continue to Invoice & Billing — Module 042</a>
+        </nav>
+      </section>
+
       <div className="billing-readiness-header">
         <div>
           <p className="eyebrow">Module 039</p>

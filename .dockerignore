@@ -4,6 +4,9 @@
 !.github/ISSUE_TEMPLATE
 .github/ISSUE_TEMPLATE/*
 !.github/ISSUE_TEMPLATE/projectpulse-defect.yml
+!.github/workflows
+.github/workflows/*
+!.github/workflows/celar-ai-production-hardening-ci.yml
 
 **/bin
 **/obj

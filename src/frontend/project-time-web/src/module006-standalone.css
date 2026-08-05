@@ -1,0 +1,285 @@
+.module006-standalone {
+  --module006-navy: #063b63;
+  --module006-teal: #087f86;
+  --module006-soft: #eef8f8;
+}
+
+.module006-independence-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  margin: 1rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid rgba(8, 127, 134, .28);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(232, 250, 250, .96), rgba(239, 246, 255, .96));
+}
+
+.module006-independence-banner strong {
+  flex: 0 0 auto;
+  color: var(--module006-navy);
+}
+
+.module006-independence-banner span {
+  color: #36556f;
+  line-height: 1.45;
+}
+
+.project-register-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+}
+
+.project-register-banner.warning {
+  border-color: rgba(217, 119, 6, .35);
+  background: rgba(254, 243, 199, .72);
+  color: #78350f;
+}
+
+.module006-drawer {
+  width: min(980px, calc(100vw - 2rem));
+  max-width: 980px;
+}
+
+.module006-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.module006-tabs button {
+  min-height: 38px;
+  padding: .55rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--module006-navy);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.module006-tabs button.active {
+  border-color: var(--module006-teal);
+  color: #fff;
+  background: var(--module006-teal);
+}
+
+.module006-editor-section {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem 0 1.5rem;
+}
+
+.module006-editor-section h4,
+.module006-editor-section p {
+  margin: 0;
+}
+
+.module006-form-grid,
+.module006-task-create {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.module006-form-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.module006-form-grid label,
+.module006-task-create label {
+  display: grid;
+  gap: .35rem;
+  color: #314b66;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.module006-form-grid label.wide,
+.module006-task-create label.wide,
+.module006-task-create > button {
+  grid-column: 1 / -1;
+}
+
+.module006-form-grid input,
+.module006-form-grid select,
+.module006-form-grid textarea,
+.module006-task-create input,
+.module006-task-create select,
+.module006-task-create textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cbd8e5;
+  border-radius: 10px;
+  padding: .65rem .7rem;
+  color: #0f2742;
+  background: #fff;
+  font: inherit;
+}
+
+.module006-form-grid textarea,
+.module006-task-create textarea {
+  resize: vertical;
+}
+
+.module006-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+}
+
+.module006-task-create {
+  padding: 1rem;
+  border: 1px solid rgba(8, 127, 134, .22);
+  border-radius: 14px;
+  background: var(--module006-soft);
+}
+
+.module006-task-list {
+  display: grid;
+  gap: .85rem;
+}
+
+.module006-task-card {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+  border: 1px solid #d5e0ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.module006-task-card.archived {
+  opacity: .72;
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.module006-task-heading,
+.module006-task-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .65rem;
+}
+
+.module006-task-heading span {
+  padding: .24rem .55rem;
+  border-radius: 999px;
+  color: #075985;
+  background: #e0f2fe;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.module006-task-card footer small {
+  margin-left: auto;
+  color: #64748b;
+}
+
+.module006-history {
+  max-height: 58vh;
+  overflow: auto;
+  padding-right: .3rem;
+}
+
+.module006-history article {
+  background: #f8fbff;
+}
+
+.module006-modal-backdrop {
+  position: fixed;
+  z-index: 10070;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(7, 25, 45, .6);
+  backdrop-filter: blur(5px);
+}
+
+.module006-modal {
+  width: min(880px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.2rem;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(4, 26, 48, .35);
+}
+
+.module006-modal > header,
+.module006-modal > footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .8rem;
+}
+
+.module006-modal > header {
+  margin-bottom: 1rem;
+}
+
+.module006-modal > footer {
+  margin-top: 1rem;
+  justify-content: flex-end;
+}
+
+.module006-modal h3,
+.module006-modal p {
+  margin: 0;
+}
+
+.module006-standalone .project-register-table tbody tr {
+  cursor: default;
+}
+
+.module006-standalone .project-register-row-action {
+  white-space: nowrap;
+}
+
+.module006-standalone .project-register-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .module006-standalone .project-register-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .module006-form-grid,
+  .module006-form-grid.compact,
+  .module006-task-create,
+  .module006-standalone .project-register-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .module006-form-grid label.wide,
+  .module006-task-create label.wide,
+  .module006-task-create > button {
+    grid-column: auto;
+  }
+
+  .module006-independence-banner {
+    flex-direction: column;
+  }
+}
+
+@media print {
+  .module006-modal-backdrop,
+  .project-register-drawer-backdrop,
+  .module006-tabs,
+  .module006-form-actions,
+  .module006-task-create,
+  .project-register-hero-actions,
+  .project-register-row-action {
+    display: none !important;
+  }
+}

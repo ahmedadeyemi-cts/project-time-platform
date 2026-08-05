@@ -123,7 +123,12 @@ PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true
 PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true
 ```
 
-Even when enabled, the route accepts only a deliberately generic problem statement. It blocks:
+Even when enabled, the route accepts only a closed backend-owned purpose category.
+The backend maps that category to a fixed generic capsule; there is no request
+field capable of carrying caller-authored problem text, customer names, project
+names, person names, sensitive-term inventories, or substrings into the provider
+payload. Unknown, empty, and mode-mismatched categories fail closed. The route
+also blocks:
 
 - private document text;
 - customer and project identities;

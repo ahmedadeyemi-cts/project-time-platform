@@ -41,7 +41,11 @@ public sealed record CelarAiComposeRequest(
     string? TaskName = null,
     string? CategoryCode = null,
     string? EngineerNote = null,
-    bool AllowSanitizedExternalFallback = false);
+    bool AllowSanitizedExternalFallback = false,
+    Guid? ProjectId = null,
+    Guid? TaskId = null,
+    Guid? AssignmentId = null,
+    string? CapabilityCode = null);
 
 public sealed record CelarAiTimelineItem(
     string Id,
@@ -104,13 +108,12 @@ public sealed record CelarAiSowDraft(
 
 public sealed record CelarAiExternalReasoningRequest(
     string Mode,
-    string Purpose,
-    string GenericProblem,
-    IReadOnlyList<string> SensitiveTerms,
+    string PurposeCategory,
     bool ContainsPrivateDocumentText,
     bool ContainsFinancialValues,
     bool ContainsPeopleRecords,
-    bool AcknowledgeSanitizedExternalUse);
+    bool AcknowledgeSanitizedExternalUse,
+    string? CapabilityCode = null);
 
 public sealed record CelarAiExternalReasoningResult(
     string Status,
@@ -123,7 +126,10 @@ public sealed record CelarAiExternalReasoningResult(
     IReadOnlyList<PulseAiRedactionEvidence> Redactions,
     IReadOnlyList<string> RemovedCategories,
     IReadOnlyList<string> BlockedReasons,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt,
+    IReadOnlyList<string>? AttemptedTargets = null,
+    IReadOnlyList<string>? SkippedTargets = null,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
 
 public sealed record CelarAiComposeResult(
     string Status,
@@ -146,7 +152,11 @@ public sealed record CelarAiComposeResult(
     string ConfidenceExplanation,
     CelarAiExternalReasoningResult? ExternalAssistance,
     DateTimeOffset DataAsOf,
-    string CorrelationId)
+    string CorrelationId,
+    string SelectedTarget = "",
+    IReadOnlyList<string>? AttemptedTargets = null,
+    IReadOnlyList<string>? SkippedTargets = null,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null)
 {
     public object ToPublicResponse() => new
     {
@@ -172,6 +182,10 @@ public sealed record CelarAiComposeResult(
         confidence = Confidence,
         confidenceExplanation = ConfidenceExplanation,
         externalAssistance = ExternalAssistance,
+        selectedTarget = SelectedTarget,
+        attemptedTargets = AttemptedTargets ?? [],
+        skippedTargets = SkippedTargets ?? [],
+        targetDecisions = TargetDecisions ?? [],
         dataAsOf = DataAsOf,
         correlationId = CorrelationId,
         privacy = new

@@ -17,6 +17,11 @@ on:
       - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/frontend/project-time-web/src/PageContextGuide.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
+      - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'
+      - 'src/backend/ProjectTime.Api/Modules/SecurityContextAuthorityConvergence.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
       - 'tests/test-live-authenticated-route-authority.sh'
 
 permissions:
@@ -64,6 +69,19 @@ jobs:
       - name: Validate repository security posture
         shell: bash
         run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release | tee live-ui-authority-api-build.log
+          grep -Fq '0 Error(s)' live-ui-authority-api-build.log
+          echo 'LIVE_UI_AUTHORITY_API_BUILD=PASSED'
 
       - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

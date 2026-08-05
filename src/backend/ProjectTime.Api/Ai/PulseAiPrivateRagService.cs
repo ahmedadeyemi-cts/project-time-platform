@@ -24,35 +24,40 @@ public sealed class PulseAiPrivateRagService
         _logger = logger;
     }
 
-    public PulseAiPrivateRagOptions Options() => PulseAiPrivateRagOptions.FromEnvironment();
+    public PulseAiPrivateRagOptions Options() =>
+        CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());
 
     public async Task<object> GetReadinessAsync(CancellationToken cancellationToken = default)
     {
         var options = Options();
         var schemaReady = await _repository.IsSchemaReadyAsync(cancellationToken);
-        var inferenceReason = options.InferenceConfigured
-            ? "private_endpoint_not_checked"
-            : "private_inference_not_configured";
-        var inferencePrivate = options.InferenceConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var inferenceResolution = options.InferenceConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.InferenceEndpoint,
                 options.PrivateHostAllowlist,
-                out _,
-                out inferenceReason);
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_inference_not_configured", 0);
+        var inferenceReason = inferenceResolution.Reason;
+        var inferencePrivate = inferenceResolution.Approved;
         var runtimeOptions = PulseAiPrivateRuntimeOptions.FromEnvironment();
-        var embeddingReason = runtimeOptions.EmbeddingConfigured
-            ? "private_endpoint_not_checked"
-            : "private_embedding_not_configured";
-        var embeddingPrivate = runtimeOptions.EmbeddingConfigured
-            && PulseAiPrivateEndpointPolicy.IsApprovedPrivateEndpoint(
+        var embeddingResolution = runtimeOptions.EmbeddingConfigured
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 runtimeOptions.EmbeddingEndpoint,
                 runtimeOptions.PrivateHostAllowlist,
-                out _,
-                out embeddingReason);
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_embedding_not_configured", 0);
+        var embeddingReason = embeddingResolution.Reason;
+        var embeddingPrivate = embeddingResolution.Approved;
         var blockers = new List<string>();
         if (!schemaReady) blockers.Add("Migrations 052 and 053 and their private retrieval tables are not available.");
         if (!options.Enabled) blockers.Add("Private RAG execution is disabled by configuration.");
         if (!options.InferenceConfigured) blockers.Add("A private inference endpoint and model are not configured.");
+        if (string.IsNullOrWhiteSpace(options.InferenceBearerToken)) blockers.Add("Private inference bearer authentication is not configured.");
+        if (!options.RequirePrivateModelForDocumentAnswers) blockers.Add("Document-grounded answers are not configured to require private inference.");
         if (options.InferenceConfigured && !inferencePrivate)
             blockers.Add($"The inference endpoint was rejected by private endpoint policy ({inferenceReason}).");
         if (runtimeOptions.EmbeddingConfigured && !embeddingPrivate)
@@ -60,7 +65,11 @@ public sealed class PulseAiPrivateRagService
 
         return new
         {
-            status = schemaReady && options.Enabled && inferencePrivate
+            status = schemaReady
+                && options.Enabled
+                && inferencePrivate
+                && !string.IsNullOrWhiteSpace(options.InferenceBearerToken)
+                && options.RequirePrivateModelForDocumentAnswers
                 ? "private_rag_ready"
                 : schemaReady
                     ? "private_rag_partially_ready"
@@ -110,6 +119,36 @@ public sealed class PulseAiPrivateRagService
         {
             return Blocked(PulseAiPrivateRagPolicy.HelpSearchFeature, "help_search", "forbidden", "The current effective user cannot use Pulse AI Help/Search.");
         }
+        var attachmentIds = (request.AttachmentIds ?? [])
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .Take(CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest)
+            .ToArray();
+        if (attachmentIds.Length > 0 && actualUserId != effectiveUserId)
+        {
+            return Blocked(
+                PulseAiPrivateRagPolicy.HelpSearchFeature,
+                "help_search",
+                "view_as_attachment_access_blocked",
+                "Celar AI conversation attachments are unavailable in View-As.");
+        }
+        if (attachmentIds.Length > 0 && !access.CanAttachDocuments)
+        {
+            return Blocked(
+                PulseAiPrivateRagPolicy.HelpSearchFeature,
+                "help_search",
+                "attachment_permission_required",
+                "The current user is not authorized to use private Celar AI conversation attachments.");
+        }
+        if (attachmentIds.Length > 0 && request.ConversationId is null)
+        {
+            return Blocked(
+                PulseAiPrivateRagPolicy.HelpSearchFeature,
+                "help_search",
+                "attachment_conversation_required",
+                "Selected Celar AI attachments require the owning durable conversation identifier.");
+        }
+        request = request with { AttachmentIds = attachmentIds };
         var question = Clean(request.Question, options.MaximumQuestionCharacters);
         if (question.Length == 0)
         {
@@ -122,17 +161,22 @@ public sealed class PulseAiPrivateRagService
         var directKnowledge = directPlan?.DirectKnowledgeAnswer;
         var purposeQuestion = question;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.HelpSearchFeature,
-            "help_search",
-            purposeQuestion,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.HelpSearchFeature,
+            purpose: "help_search",
+            question: purposeQuestion,
             projectId: null,
-            request.ProjectCode,
-            request.ProjectName,
+            taskId: null,
+            assignmentId: null,
+            projectCode: request.ProjectCode,
+            projectName: request.ProjectName,
             requireTimesheetFlag: false,
+            includeProjectDocuments: request.IncludeAuthorizedProjectDocuments,
             categories: [],
-            options);
+            options: options,
+            conversationId: request.ConversationId,
+            attachmentIds: request.AttachmentIds);
         return await ExecuteAsync(
             access,
             query,
@@ -142,6 +186,9 @@ public sealed class PulseAiPrivateRagService
             systemInstruction: HelpSystemInstruction(),
             userInstruction: HelpUserInstruction(question, directKnowledge),
             flowHive: false,
+            retrieveAuthorizedDocuments: request.IncludeAuthorizedProjectDocuments
+                || attachmentIds.Length > 0,
+            usePrivateModelWhenAvailable: request.UsePrivateModelWhenAvailable,
             cancellationToken);
     }
 
@@ -159,9 +206,13 @@ public sealed class PulseAiPrivateRagService
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
-        if (projectCode.Length == 0 && projectName.Length == 0)
+        if (request.ProjectId is null
+            && request.TaskId is null
+            && request.AssignmentId is null
+            && projectCode.Length == 0
+            && projectName.Length == 0)
         {
-            return Blocked(PulseAiPrivateRagPolicy.TimesheetFeature, "timesheet_suggestion", "project_context_required", "An authorized project code or name is required.");
+            return Blocked(PulseAiPrivateRagPolicy.TimesheetFeature, "timesheet_suggestion", "project_context_required", "An authorized project, task, or assignment identifier is required.");
         }
         var note = Clean(request.EngineerNote, 4_000);
         var question = $"""
@@ -176,26 +227,31 @@ public sealed class PulseAiPrivateRagService
             Engineer note: {(note.Length == 0 ? "No rough note was supplied." : note)}
             """;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.TimesheetFeature,
-            "timesheet_suggestion",
-            question,
-            projectId: null,
-            projectCode,
-            projectName,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.TimesheetFeature,
+            purpose: "timesheet_suggestion",
+            question: question,
+            projectId: request.ProjectId,
+            taskId: request.TaskId,
+            assignmentId: request.AssignmentId,
+            projectCode: projectCode,
+            projectName: projectName,
             requireTimesheetFlag: true,
+            includeProjectDocuments: true,
             categories: [],
-            options);
+            options: options);
         return await ExecuteAsync(
             access,
             query,
-            DetailLevel(request.DetailLevel, "standard"),
+            DetailLevel(request.DetailLevel, "detailed"),
             directKnowledge: null,
             modelSchema: "PulseAiPrivateDetailedAnswer",
             systemInstruction: TimesheetSystemInstruction(),
             userInstruction: TimesheetUserInstruction(note),
             flowHive: false,
+            retrieveAuthorizedDocuments: true,
+            usePrivateModelWhenAvailable: true,
             cancellationToken);
     }
 
@@ -224,17 +280,20 @@ public sealed class PulseAiPrivateRagService
             Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
             """;
         var query = BuildQuery(
-            actualUserId,
-            effectiveUserId,
-            PulseAiPrivateRagPolicy.FlowHiveFeature,
-            "flowhive_plan",
-            question,
+            actualUserId: actualUserId,
+            effectiveUserId: effectiveUserId,
+            feature: PulseAiPrivateRagPolicy.FlowHiveFeature,
+            purpose: "flowhive_plan",
+            question: question,
             projectId: null,
-            projectCode,
-            projectName,
+            taskId: null,
+            assignmentId: null,
+            projectCode: projectCode,
+            projectName: projectName,
             requireTimesheetFlag: false,
+            includeProjectDocuments: true,
             categories: PulseAiPrivateRagPolicy.FlowHiveCategories,
-            options);
+            options: options);
         return await ExecuteAsync(
             access,
             query,
@@ -244,6 +303,8 @@ public sealed class PulseAiPrivateRagService
             systemInstruction: FlowHiveSystemInstruction(),
             userInstruction: FlowHiveUserInstruction(requestedOutcome),
             flowHive: true,
+            retrieveAuthorizedDocuments: true,
+            usePrivateModelWhenAvailable: true,
             cancellationToken);
     }
 
@@ -283,6 +344,8 @@ public sealed class PulseAiPrivateRagService
         string systemInstruction,
         string userInstruction,
         bool flowHive,
+        bool retrieveAuthorizedDocuments,
+        bool usePrivateModelWhenAvailable,
         CancellationToken cancellationToken)
     {
         var options = Options();
@@ -294,11 +357,13 @@ public sealed class PulseAiPrivateRagService
                 detailLevel,
                 query.CorrelationId,
                 cancellationToken);
-            var retrieval = await _retrieval.RetrieveAsync(
-                access,
-                query,
-                options,
-                cancellationToken);
+            var retrieval = retrieveAuthorizedDocuments
+                ? await _retrieval.RetrieveAsync(
+                    access,
+                    query,
+                    options,
+                    cancellationToken)
+                : NoDocumentRetrieval(query);
             await _repository.SaveRetrievalEventAsync(
                 answerRunId,
                 query,
@@ -306,7 +371,9 @@ public sealed class PulseAiPrivateRagService
                 retrieval.HasEvidence ? "succeeded" : directKnowledge is not null ? "partial" : "blocked",
                 cancellationToken);
 
-            if (!retrieval.HasEvidence && directKnowledge is not null)
+            if (!retrieval.HasEvidence
+                && directKnowledge is not null
+                && query.AttachmentIds.Count == 0)
             {
                 var deterministic = DirectKnowledgeAnswer(
                     answerRunId,
@@ -314,24 +381,28 @@ public sealed class PulseAiPrivateRagService
                     retrieval,
                     directKnowledge,
                     detailLevel);
-                await _repository.CompleteAnswerRunAsync(
+                var directCompletionSaved = await _repository.CompleteAnswerRunAsync(
                     deterministic,
                     query,
                     EmptyModel("direct_product_knowledge"),
                     options.PersistAnswerText,
                     cancellationToken);
+                if (!directCompletionSaved)
+                    return AttachmentInvalidated(answerRunId, query);
                 return deterministic;
             }
 
             if (!retrieval.HasEvidence)
             {
                 var insufficient = InsufficientEvidence(answerRunId, query, retrieval);
-                await _repository.CompleteAnswerRunAsync(
+                var insufficientCompletionSaved = await _repository.CompleteAnswerRunAsync(
                     insufficient,
                     query,
                     EmptyModel(retrieval.DiagnosticCode),
                     options.PersistAnswerText,
                     cancellationToken);
+                if (!insufficientCompletionSaved)
+                    return AttachmentInvalidated(answerRunId, query);
                 return insufficient;
             }
 
@@ -346,7 +417,9 @@ public sealed class PulseAiPrivateRagService
                 MaximumOutputTokens: options.MaximumOutputTokens,
                 Temperature: flowHive ? 0.15m : query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature ? 0.05m : 0.10m,
                 CorrelationId: query.CorrelationId);
-            var model = await _model.GenerateAsync(modelRequest, options, cancellationToken);
+            var model = usePrivateModelWhenAvailable
+                ? await _model.GenerateAsync(modelRequest, options, cancellationToken)
+                : EmptyModel("private_model_disabled_by_request");
 
             PulseAiPrivateRagAnswer answer;
             if (model.Succeeded)
@@ -391,12 +464,14 @@ public sealed class PulseAiPrivateRagService
                     DiagnosticCode: model.DiagnosticCode);
             }
 
-            await _repository.CompleteAnswerRunAsync(
+            var completionSaved = await _repository.CompleteAnswerRunAsync(
                 answer,
                 query,
                 model,
                 options.PersistAnswerText,
                 cancellationToken);
+            if (!completionSaved)
+                return AttachmentInvalidated(answerRunId, query);
             return answer;
         }
         catch (Exception exception)
@@ -446,7 +521,15 @@ public sealed class PulseAiPrivateRagService
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (dto is null) throw new JsonException("Detailed answer JSON was empty.");
             var validCitationIds = ValidCitationIds(dto.CitationIds, retrieval.Chunks.Count);
-            var confidence = Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m);
+            var citationCoverage = CitationCoverage(validCitationIds, retrieval.Chunks.Count);
+            var requestedConfidence = Math.Clamp(dto.Confidence ?? retrieval.CoverageScore, 0m, 1m);
+            var confidence = Math.Min(
+                requestedConfidence,
+                EvidenceConfidenceCeiling(retrieval, citationCoverage));
+            var evidenceGatePassed = retrieval.CoverageScore >= options.MinimumEvidenceScore
+                && validCitationIds.Count > 0
+                && citationCoverage > 0m;
+            var completed = evidenceGatePassed && confidence >= options.MinimumConfidence;
             var answer = new PulseAiPrivateDetailedAnswer(
                 DirectConclusion: Limit(dto.DirectConclusion, options.MaximumAnswerCharacters, "Authorized evidence was retrieved, but no direct conclusion was returned."),
                 ExecutiveSummary: Limit(dto.ExecutiveSummary, 6_000, string.Empty),
@@ -463,12 +546,14 @@ public sealed class PulseAiPrivateRagService
                 NavigationTargets: List(dto.NavigationTargets, 30, 1_000),
                 CitationIds: validCitationIds,
                 Confidence: confidence,
-                ConfidenceExplanation: Limit(dto.ConfidenceExplanation, 2_000, "Confidence reflects private source coverage and citation support."),
+                ConfidenceExplanation: Limit(
+                    $"{Limit(dto.ConfidenceExplanation, 1_400, "Confidence reflects private source coverage and citation support.")} Governed confidence is capped by authorized evidence coverage ({retrieval.CoverageScore:P0}) and citation coverage ({citationCoverage:P0}).",
+                    2_000,
+                    "Confidence is capped by private evidence and citation support."),
                 DataAsOf: retrieval.DataAsOf);
-            var citationCoverage = CitationCoverage(validCitationIds, retrieval.Chunks.Count);
             return new PulseAiPrivateRagAnswer(
                 answerRunId,
-                confidence >= options.MinimumConfidence ? "completed" : "partial",
+                completed ? "completed" : "partial",
                 query.FeatureCode,
                 query.PurposeCode,
                 retrieval.RetrievalMode,
@@ -479,15 +564,17 @@ public sealed class PulseAiPrivateRagService
                 retrieval.ResolvedProjectName,
                 answer,
                 null,
-                Citations(retrieval.Chunks),
-                confidence >= options.MinimumConfidence ? [] : ["The private answer confidence is below the configured threshold; review the cited evidence before use."],
+                Citations(retrieval.Chunks, validCitationIds),
+                completed
+                    ? []
+                    : ["The private answer did not pass the configured evidence, citation, and confidence gates; review the cited evidence before use."],
                 retrieval.MissingEvidence,
                 [.. retrieval.Conflicts, .. answer.Conflicts],
                 retrieval.CoverageScore,
                 citationCoverage,
                 retrieval.DataAsOf,
                 query.CorrelationId,
-                string.Empty);
+                completed ? string.Empty : "private_answer_below_evidence_quality_gate");
         }
         catch (Exception)
         {
@@ -535,9 +622,24 @@ public sealed class PulseAiPrivateRagService
                 .OrderBy(value => value)
                 .ToArray();
             var citationCoverage = CitationCoverage(allCitationIds, retrieval.Chunks.Count);
+            var confidence = Math.Min(
+                plan.Confidence,
+                EvidenceConfidenceCeiling(retrieval, citationCoverage));
+            plan = plan with
+            {
+                Confidence = confidence,
+                ConfidenceExplanation = Limit(
+                    $"{plan.ConfidenceExplanation} Governed confidence is capped by authorized evidence coverage ({retrieval.CoverageScore:P0}) and citation coverage ({citationCoverage:P0}).",
+                    2_000,
+                    "Confidence is capped by private evidence and citation support.")
+            };
+            var completed = retrieval.CoverageScore >= options.MinimumEvidenceScore
+                && allCitationIds.Length > 0
+                && citationCoverage > 0m
+                && confidence >= options.MinimumConfidence;
             return new PulseAiPrivateRagAnswer(
                 answerRunId,
-                plan.Confidence >= options.MinimumConfidence ? "completed" : "partial",
+                completed ? "completed" : "partial",
                 query.FeatureCode,
                 query.PurposeCode,
                 retrieval.RetrievalMode,
@@ -548,9 +650,12 @@ public sealed class PulseAiPrivateRagService
                 retrieval.ResolvedProjectName,
                 null,
                 plan,
-                Citations(retrieval.Chunks),
+                Citations(retrieval.Chunks, allCitationIds),
                 [
-                    "This is a draft for Project Manager and Engineering review. It is not a FlowHive baseline, resource reservation, or customer date commitment."
+                    "This is a draft for Project Manager and Engineering review. It is not a FlowHive baseline, resource reservation, or customer date commitment.",
+                    .. (completed
+                        ? Array.Empty<string>()
+                        : ["The plan did not pass the configured evidence, citation, and confidence gates."])
                 ],
                 retrieval.MissingEvidence,
                 [.. retrieval.Conflicts, .. plan.Conflicts],
@@ -558,7 +663,7 @@ public sealed class PulseAiPrivateRagService
                 citationCoverage,
                 retrieval.DataAsOf,
                 query.CorrelationId,
-                string.Empty);
+                completed ? string.Empty : "private_plan_below_evidence_quality_gate");
         }
         catch (Exception)
         {
@@ -680,7 +785,7 @@ public sealed class PulseAiPrivateRagService
 
         var first = retrieval.Chunks.First();
         var conclusion = query.FeatureCode == PulseAiPrivateRagPolicy.TimesheetFeature
-            ? "Reviewed the assigned project work and performed the reported activity using the approved project scope and technical documentation as context."
+            ? "Authorized project evidence was retrieved, but the approved private model was unavailable. Planned scope does not establish which activity occurred; use the Engineer-provided work detail to prepare the customer-facing description without inventing work."
             : directKnowledge?.Summary ?? $"Authorized evidence was found in {first.OriginalFileName}, but the approved private model was unavailable for a complete detailed synthesis.";
         var answer = new PulseAiPrivateDetailedAnswer(
             conclusion,
@@ -775,6 +880,38 @@ public sealed class PulseAiPrivateRagService
             query.CorrelationId,
             retrieval.DiagnosticCode);
 
+    private static PulseAiPrivateRagAnswer AttachmentInvalidated(
+        Guid answerRunId,
+        PulseAiPrivateRetrievalQuery query) =>
+        new(
+            answerRunId,
+            "blocked",
+            query.FeatureCode,
+            query.PurposeCode,
+            "none",
+            string.Empty,
+            string.Empty,
+            null,
+            string.Empty,
+            string.Empty,
+            new PulseAiPrivateDetailedAnswer(
+                "The selected private attachment was revoked, expired, or purged while Celar AI was preparing the answer. No attachment-derived answer was retained.",
+                "Select an active, ready attachment and try again.",
+                [], [], [], [], [], [], [], [], [], [], [], [],
+                0m,
+                "Confidence is zero because attachment authorization changed during the request.",
+                DateTimeOffset.UtcNow),
+            null,
+            [],
+            ["Attachment authorization changed before answer completion."],
+            ["No attachment content was retained in the completed answer."],
+            [],
+            0m,
+            0m,
+            DateTimeOffset.UtcNow,
+            query.CorrelationId,
+            "private_attachment_retention_purged");
+
     private static PulseAiPrivateRagAnswer Blocked(
         string featureCode,
         string purposeCode,
@@ -816,11 +953,16 @@ public sealed class PulseAiPrivateRagService
         string purpose,
         string question,
         Guid? projectId,
+        Guid? taskId,
+        Guid? assignmentId,
         string? projectCode,
         string? projectName,
         bool requireTimesheetFlag,
+        bool includeProjectDocuments,
         IReadOnlyList<string> categories,
-        PulseAiPrivateRagOptions options) =>
+        PulseAiPrivateRagOptions options,
+        Guid? conversationId = null,
+        IReadOnlyList<Guid>? attachmentIds = null) =>
         new(
             actualUserId,
             effectiveUserId,
@@ -828,19 +970,49 @@ public sealed class PulseAiPrivateRagService
             purpose,
             Clean(question, options.MaximumQuestionCharacters),
             projectId,
+            taskId,
+            assignmentId,
             Clean(projectCode, 120),
             Clean(projectName, 300),
             requireTimesheetFlag,
+            includeProjectDocuments,
             categories,
             options.MaximumRetrievedChunks,
             options.MaximumCandidateChunks,
             options.LexicalWeight,
             options.SemanticWeight,
+            options.MinimumEvidenceScore,
+            conversationId,
+            (attachmentIds ?? [])
+                .Where(value => value != Guid.Empty)
+                .Distinct()
+                .Take(CelarAiConversationAttachmentPolicy.MaximumFilesPerRequest)
+                .ToArray(),
             Guid.NewGuid().ToString("N"));
 
+    private static PulseAiPrivateRetrievalResult NoDocumentRetrieval(
+        PulseAiPrivateRetrievalQuery query) =>
+        new(
+            Status: "private_document_retrieval_not_requested",
+            RetrievalMode: "none",
+            ResolvedProjectId: query.ProjectId,
+            ResolvedProjectCode: query.ProjectCode ?? string.Empty,
+            ResolvedProjectName: query.ProjectName ?? string.Empty,
+            CandidateCount: 0,
+            AuthorizedCandidateCount: 0,
+            Chunks: [],
+            MissingEvidence: [],
+            Conflicts: [],
+            CoverageScore: 0m,
+            DataAsOf: DateTimeOffset.UtcNow,
+            DiagnosticCode: "private_document_retrieval_not_requested");
+
     private static IReadOnlyList<PulseAiPrivateAnswerCitation> Citations(
-        IReadOnlyList<PulseAiPrivateRetrievedChunk> chunks) =>
-        chunks.Select(chunk => new PulseAiPrivateAnswerCitation(
+        IReadOnlyList<PulseAiPrivateRetrievedChunk> chunks,
+        IReadOnlyCollection<int>? selectedCitationIds = null) =>
+        chunks
+        .Where(chunk => selectedCitationIds is null || selectedCitationIds.Contains(chunk.RankOrder))
+        .Select(chunk => new PulseAiPrivateAnswerCitation(
             CitationId: chunk.RankOrder,
             DocumentId: chunk.DocumentId,
             ProjectId: chunk.ProjectId,
@@ -873,6 +1045,17 @@ public sealed class PulseAiPrivateRagService
         if (available <= 0) return 0m;
         var used = citationIds.Distinct().Count();
         return Math.Clamp((decimal)used / available, 0m, 1m);
+    }
+
+    private static decimal EvidenceConfidenceCeiling(
+        PulseAiPrivateRetrievalResult retrieval,
+        decimal citationCoverage)
+    {
+        if (!retrieval.HasEvidence || citationCoverage <= 0m) return 0.20m;
+        var ceiling = 0.25m
+            + (0.50m * Math.Clamp(retrieval.CoverageScore, 0m, 1m))
+            + (0.25m * Math.Clamp(citationCoverage, 0m, 1m));
+        return Math.Clamp(ceiling, 0m, 0.95m);
     }
 
     private static IReadOnlyList<PulseAiPrivateFlowHiveTask> asTasks(
@@ -984,9 +1167,12 @@ public sealed class PulseAiPrivateRagService
         You are Pulse AI generating an Engineer-reviewed Timesheet description.
         The Engineer's rough note is the primary evidence of work actually performed.
         SOW, GSD, task, request, and project documents may improve terminology and scope alignment but cannot prove unreported work occurred.
-        Produce a concise professional directConclusion suitable for a Timesheet description, usually one to three sentences.
+        Produce a detailed, customer-facing directConclusion in complete sentence structure. When the evidence supports it, use two to four sentences and approximately 75 to 150 words.
+        State the specific activity, its supported purpose or scope relationship, and any supported result or next state. Do not add generic filler merely to reach a length target.
+        Return prose only in directConclusion: no bullets, headings, markdown, citations, confidence language, or statements about AI.
         Do not change hours, date, time type, project, task, request, allocation, save state, submission, or approval.
         Do not claim installation, completion, validation, migration, testing, customer delivery, or resolution unless supported by the Engineer note and source evidence.
+        If the Engineer note and authorized evidence do not establish what work occurred, say that additional factual work detail is required instead of inventing activity.
         Include detailed evidence, missing information, limitations, citations, and confidence in the remaining JSON fields for the review panel.
         Return valid JSON matching PulseAiPrivateDetailedAnswer.
         """;
@@ -994,7 +1180,8 @@ public sealed class PulseAiPrivateRagService
     private static string TimesheetUserInstruction(string engineerNote) => $"""
         Generate the reviewable Timesheet description from the request and private evidence.
         Engineer rough note: {(engineerNote.Length == 0 ? "No rough note was supplied. Avoid claiming specific completed activity." : engineerNote)}
-        The directConclusion must be usable as the proposed description but remains subject to Engineer review and explicit application.
+        Use private SOW or project evidence to align terminology and scope only; never treat planned scope as proof that an activity occurred.
+        The directConclusion must be polished customer-facing prose, detailed enough for invoice review, and limited to facts supported by the Engineer note and authorized evidence. It remains subject to Engineer review and explicit application.
         """;
 
     private static string FlowHiveSystemInstruction() => """

@@ -12,7 +12,7 @@ namespace ProjectTime.Api.Modules;
 public static class ModuleAvailabilityOverridesModule
 {
     private const string MigrationFile = "042_module_availability_controls.sql";
-    private const int RegisteredModuleCount = 64;
+    private const int RegisteredModuleCount = 65;
 
     public static WebApplication MapModuleAvailabilityOverrideEndpoints(this WebApplication app)
     {

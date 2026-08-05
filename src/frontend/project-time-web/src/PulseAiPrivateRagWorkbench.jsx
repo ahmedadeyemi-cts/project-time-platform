@@ -9,7 +9,7 @@ const TABS = Object.freeze([
   { id: 'audit', label: 'Answer Audit & Feedback', description: 'Citations, confidence, source health, and controlled feedback' }
 ]);
 
-const EMPTY_HELP = Object.freeze({ question: '', projectCode: '', projectName: '', detailLevel: 'comprehensive' });
+const EMPTY_HELP = Object.freeze({ question: '', projectCode: '', projectName: '', detailLevel: 'comprehensive', includeAuthorizedProjectDocuments: true });
 const EMPTY_TIME = Object.freeze({ workDate: '', timeType: 'normal', rowType: 'project', rowLabel: '', projectCode: '', projectName: '', taskCode: '', taskName: '', categoryCode: '', engineerNote: '' });
 const EMPTY_FLOW = Object.freeze({ projectCode: '', projectName: '', requestedOutcome: '', detailLevel: 'comprehensive' });
 

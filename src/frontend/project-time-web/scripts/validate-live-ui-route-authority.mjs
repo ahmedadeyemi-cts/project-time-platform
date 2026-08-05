@@ -17,7 +17,9 @@ const files = {
   celarPlatform: 'src/CelarAiEnterprisePlatform.jsx',
   architecture: 'src/CelarAiArchitectureOverview.jsx',
   microsoftPortal: 'src/MicrosoftIntegrationDualConnectionPortal.jsx',
-  mailPanel: 'src/MicrosoftMailTransportReadinessPanel.jsx'
+  mailPanel: 'src/MicrosoftMailTransportReadinessPanel.jsx',
+  pageContext: 'src/PageContextGuide.jsx',
+  moduleAvailabilityBridge: 'src/module-availability-bridge.js'
 };
 
 let checks = 0;
@@ -42,6 +44,8 @@ const celarPlatform = read(files.celarPlatform);
 const architecture = read(files.architecture);
 const microsoftPortal = read(files.microsoftPortal);
 const mailPanel = read(files.mailPanel);
+const pageContext = read(files.pageContext);
+const moduleAvailabilityBridge = read(files.moduleAvailabilityBridge);
 
 const requiredAliases = [
   "'celar-ai': 'work-task-builder'",
@@ -105,6 +109,19 @@ test('CELAR_NATIVE_MOUNT', generated.includes('<WorkTaskBuilderPanel />'));
 test('CELAR_ARCHITECTURE_MOUNT', celarPlatform.includes('<CelarAiArchitectureOverview />')
   && architecture.includes('Celar AI Architecture Overview')
   && architecture.includes('<svg'));
+test('CELAR_PAGE_CONTEXT', pageContext.includes("'work-task-builder': {")
+  && pageContext.includes("page: 'Celar AI — Module 011'")
+  && pageContext.includes('/api/celar-ai/v2/chat')
+  && pageContext.includes('/api/project-flowhive/ai/production-generate'));
+test('MODULE_NAVIGATION_AUTHORITY_CONVERGED',
+  moduleAvailabilityBridge.includes("nativeFetch('/api/security/me', request)")
+    && moduleAvailabilityBridge.includes('security?.permanentFullControl === true')
+    && moduleAvailabilityBridge.includes('canonicalRoleCode')
+    && moduleAvailabilityBridge.includes("'GLOBAL_ADMINISTRATOR'")
+    && moduleAvailabilityBridge.includes('isViewAs: effectiveViewAs')
+    && moduleAvailabilityBridge.includes("authoritySource: effectiveActor.authoritySource || ''")
+    && moduleAvailabilityBridge.includes('roleSet.has(canonicalRoleCode(grant.roleCode))'),
+  'Module directory links share actual-session authority with route mounting');
 test('GUIDED_CLOSEOUT_ONLY', generated.includes('<ProjectCloseoutCenter />')
   && !generated.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"'));
 test('MICROSOFT_PORTAL_CANONICAL_ROUTE', microsoftPortal.includes("const ACTIVE_ROUTE = 'entra-secret-administration'")

@@ -96,7 +96,7 @@ Module 032 is the productivity enhancement selected from the available 031–035
 - active routing rules and schedules; and
 - failed project-financial sources.
 
-Modules 034 and 035 were not reused because the repository already assigns them to Dashboard and Navigation Labeling and Guided Project Intake Launch. Module 033 remains reserved.
+Modules 034 and 035 were not reused because the repository already assigns them to Dashboard and Navigation Labeling and Guided Project Intake Launch. Module 033 is assigned to Project Forge and integrates with this notification contract through governed Module 065 source events.
 
 ## Module 041 — Closeout notification compatibility
 

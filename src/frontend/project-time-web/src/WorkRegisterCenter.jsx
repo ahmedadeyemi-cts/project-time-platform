@@ -158,6 +158,44 @@ function projectPulseCreateEstimatedEndDateValidationMessage(value) {
     : '';
 }
 
+
+function pr467CanonicalWorkType(value) {
+  const normalized = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (normalized === 'servicerequest' || normalized === 'service' || normalized === 'sr') return 'service_request';
+  if (normalized === 'iqs') return 'iqs';
+  if (normalized === 'internalproject' || normalized === 'internal') return 'internal_project';
+  if (normalized === 'presales' || normalized === 'presale') return 'pre_sales';
+  return 'project';
+}
+
+function pr467IdentifierLabel(item = {}) {
+  const type = pr467CanonicalWorkType(item.workType || item.requestedWorkType || item.projectType || item.type);
+  if (type === 'service_request') return 'Service Request Number';
+  if (type === 'iqs') return 'IQS Number';
+  if (type === 'internal_project') return 'Internal Project Number';
+  if (type === 'pre_sales') return 'Pre-Sales Number';
+  return 'Project Number';
+}
+
+function pr467FindWorkItem(value, workId) {
+  if (!value || !workId) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = pr467FindWorkItem(item, workId);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+  const identity = value.workId || value.projectId || value.id;
+  if (String(identity || '') === String(workId)) return value;
+  for (const nested of Object.values(value)) {
+    const found = pr467FindWorkItem(nested, workId);
+    if (found) return found;
+  }
+  return null;
+}
+
 export default function WorkRegisterCenter({ mode = 'edit' }) {
   const isCreateMode = mode === 'create';
   const [payload, setPayload] = useState({ loading: true, data: null, error: null });
@@ -171,6 +209,16 @@ export default function WorkRegisterCenter({ mode = 'edit' }) {
 
   const [editFoundation, setEditFoundation] = useState({ loading: true, data: null, error: null });
   const [selectedWorkItem, setSelectedWorkItem] = useState(null);
+
+  useEffect(() => {
+    if (isCreateMode || !payload.data) return;
+    const requestedWorkId = sessionStorage.getItem('projectPulseOpenWorkId');
+    if (!requestedWorkId) return;
+    const exact = pr467FindWorkItem(payload.data, requestedWorkId);
+    if (!exact) return;
+    setSelectedWorkItem(exact);
+    sessionStorage.removeItem('projectPulseOpenWorkId');
+  }, [isCreateMode, payload.data]);
   const [editForm, setEditForm] = useState({});
   const [editStatus, setEditStatus] = useState('');
   const [purchaseOrders, setPurchaseOrders] = useState({ loading: true, projects: [], error: null });
@@ -182,6 +230,7 @@ export default function WorkRegisterCenter({ mode = 'edit' }) {
   const [taskAssignmentForms, setTaskAssignmentForms] = useState({});
   const [taskAssignmentStatus, setTaskAssignmentStatus] = useState('');
   const [intakeSaveBanner, setIntakeSaveBanner] = useState('');
+  const [creationReceipt, setCreationReceipt] = useState(null);
 
   const [multiEngineerTasks, setMultiEngineerTasks] = useState({});
   const [taskRosterForms, setTaskRosterForms] = useState({});
@@ -652,6 +701,8 @@ const updateIntakeForm = (field, value) => {
 
       const haystack = [
         item.customerName,
+        item.projectCode,
+        item.workCode,
         item.workName,
         item.workType,
         item.status,
@@ -2907,7 +2958,18 @@ async function createWorkRegisterFromReviewedIntake() {
       || '';
 
 
-    const successMessage = result.message || 'Work Register record created successfully.';
+    let receipt = result.creationReceipt || result.receipt || null;
+    if (!receipt && createdProjectId) {
+      try {
+        receipt = await fetchJson(`/api/work-register/projects/${createdProjectId}/creation-receipt`);
+      } catch {
+        receipt = null;
+      }
+    }
+    if (receipt) setCreationReceipt(receipt);
+    const successMessage = receipt
+      ? `Your ${receipt.workTypeLabel} has been created successfully. ${receipt.identifierLabel}: ${receipt.workCode}`
+      : (result.message || 'Work Register record created successfully.');
     setIntakeSaveBanner(successMessage);
     setIntakeReviewStatus(successMessage);
 
@@ -3590,6 +3652,34 @@ async function createWorkRegisterFromReviewedIntake() {
                           {intakeSaveBanner ? (
                             <div className="work-register-save-banner success">{intakeSaveBanner}</div>
                           ) : null}
+                          {creationReceipt ? (
+                            <section className="work-register-creation-receipt" aria-live="polite">
+                              <p className="eyebrow">Created successfully</p>
+                              <h3>Your {creationReceipt.workTypeLabel} has been created successfully.</h3>
+                              <div>
+                                <span>{creationReceipt.identifierLabel}</span>
+                                <strong>{creationReceipt.workCode}</strong>
+                              </div>
+                              <p>{creationReceipt.customerName} · {creationReceipt.workName}</p>
+                              <nav>
+                                <button type="button" className="secondary-action" onClick={() => navigator.clipboard?.writeText(creationReceipt.workCode)}>Copy ID</button>
+                                <button type="button" className="primary-action" onClick={() => {
+                                  sessionStorage.setItem('projectPulseOpenWorkId', creationReceipt.workId);
+                                  window.location.hash = 'work-register';
+                                }}>Open in Module 055C</button>
+                                <button type="button" className="secondary-action" onClick={() => {
+                                  setCreationReceipt(null);
+                                  setIntakeSaveBanner('');
+                                  sessionStorage.removeItem('projectPulseLastCreatedWorkId');
+                                  sessionStorage.removeItem('projectPulseCurrentIntakePackageId');
+                                  setCurrentIntakePackageId('');
+                                  setSelectedIntakeReview(null);
+                                  setIntakeReviewForm(null);
+                                  setIntakeWizardOpen(true);
+                                }}>Create Another</button>
+                              </nav>
+                            </section>
+                          ) : null}
         {!isCreateMode ? (
           <button data-pp-marker="055C_REFRESH_BUTTON" type="button" className="secondary-action" onClick={load}>
             Refresh
@@ -3629,7 +3719,7 @@ async function createWorkRegisterFromReviewedIntake() {
             type="search"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search customer, project, PM, engineer, AE, SA, SAA, task..."
+            placeholder="Search customer, project, project number, PM, engineer, AE, SA, SAA, task..."
           />
         </label>
         <label>
@@ -3705,6 +3795,13 @@ async function createWorkRegisterFromReviewedIntake() {
                 <td>
                   <strong>{item.customerName || 'No customer linked'}</strong>
                   <small>{item.workName}</small>
+                  {(item.projectCode || item.project_code) ? (
+                    <div className="work-register-row-identifier" data-pr467-row-work-identifier="true">
+                      <span>{pr467IdentifierLabel(item)}</span>
+                      <strong>{item.projectCode || item.project_code}</strong>
+                      <button type="button" onClick={() => navigator.clipboard?.writeText(item.projectCode || item.project_code)}>Copy</button>
+                    </div>
+                  ) : <small className="work-register-row-identifier-missing">Immutable identifier not assigned</small>}
                   <small>{item.contractType ? `Contract: ${projectPulseCanonicalContractType(item.contractType)}` : 'Contract: not set'}</small>
 
                   <button type="button" className="work-register-row-action" onClick={() => openEditDrawer(item)}>
@@ -4884,6 +4981,13 @@ async function createWorkRegisterFromReviewedIntake() {
 
 
 
+      {selectedWorkItem?.projectCode ? (
+        <div className="work-register-identifier-card" data-pr467-work-identifier="true">
+          <span>{pr467IdentifierLabel(selectedWorkItem)}</span>
+          <strong>{selectedWorkItem.projectCode}</strong>
+          <small>Immutable Project Health Dashboard identifier</small>
+        </div>
+      ) : null}
       {selectedWorkItem ? (
         <div className="work-register-drawer-backdrop" role="presentation">
           <aside className="work-register-drawer" aria-label="Work Register project setup editor">
@@ -4894,6 +4998,13 @@ async function createWorkRegisterFromReviewedIntake() {
                 <p className="muted">
                   {selectedWorkItem.customerName || 'No customer linked'} · {labelize(selectedWorkItem.sourceTable)}
                 </p>
+                {(selectedWorkItem.projectCode || selectedWorkItem.project_code) ? (
+                  <div className="work-register-drawer-identifier" data-pr467-drawer-work-identifier="true">
+                    <span>{pr467IdentifierLabel(selectedWorkItem)}</span>
+                    <strong>{selectedWorkItem.projectCode || selectedWorkItem.project_code}</strong>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(selectedWorkItem.projectCode || selectedWorkItem.project_code)}>Copy ID</button>
+                  </div>
+                ) : null}
               </div>
               <button type="button" className="secondary-action" onClick={closeEditDrawer}>Close</button>
             </div>

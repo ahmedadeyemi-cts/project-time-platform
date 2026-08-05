@@ -135,7 +135,7 @@ public sealed class ProjectPulseAiHealthRegistry
         string outcome = ProjectPulseAiOutcomes.Success,
         ProjectPulseAiRateLimits? rateLimits = null)
     {
-        if (!_states.TryGetValue(provider, out var state)) return;
+        if (!TryGetRecordableState(provider, out var state)) return;
 
         lock (state.Sync)
         {
@@ -173,7 +173,7 @@ public sealed class ProjectPulseAiHealthRegistry
 
     public void RecordFailure(string provider, string code, string? requestId)
     {
-        if (!_states.TryGetValue(provider, out var state)) return;
+        if (!TryGetRecordableState(provider, out var state)) return;
 
         lock (state.Sync)
         {
@@ -200,7 +200,7 @@ public sealed class ProjectPulseAiHealthRegistry
 
     public void RecordProbe(ProjectPulseAiProbeResult result)
     {
-        if (!_states.TryGetValue(result.Provider, out var state)) return;
+        if (!TryGetRecordableState(result.Provider, out var state)) return;
 
         lock (state.Sync)
         {
@@ -237,9 +237,10 @@ public sealed class ProjectPulseAiHealthRegistry
             .Select(Snapshot)
             .OrderBy(item => item.Provider switch
             {
-                ProjectPulseAiProviders.Claude => 0,
-                ProjectPulseAiProviders.OpenAi => 1,
-                _ => 2
+                "celar_ai" => 0,
+                ProjectPulseAiProviders.Claude => 1,
+                ProjectPulseAiProviders.OpenAi => 2,
+                _ => 3
             })
             .ToArray();
     }
@@ -289,6 +290,19 @@ public sealed class ProjectPulseAiHealthRegistry
 
     private static long? Add(long? current, long? increment) =>
         increment is null ? current : (current ?? 0) + increment.Value;
+
+    private bool TryGetRecordableState(string provider, out ProviderState state)
+    {
+        if (_states.TryGetValue(provider, out state!)) return true;
+        if (!string.Equals(provider, "celar_ai", StringComparison.OrdinalIgnoreCase)) return false;
+
+        // Celar AI's private profile is administered by the capability-routing
+        // store rather than ProjectPulseAiConfiguration. Register its execution
+        // state lazily on the first real route attempt so private generations are
+        // counted without pretending that a health probe configured the target.
+        state = _states.GetOrAdd(provider, ProviderState.PrivateTarget);
+        return true;
+    }
 
     private static string SanitizeCode(string value)
     {
@@ -356,6 +370,16 @@ public sealed class ProjectPulseAiHealthRegistry
             Status = "available",
             LastOutcome = "ready",
             ProbeStatus = "available"
+        };
+
+        public static ProviderState PrivateTarget(string provider) => new()
+        {
+            Provider = provider,
+            Enabled = true,
+            Configured = true,
+            Status = "checking",
+            LastOutcome = "none",
+            ProbeStatus = "not_checked"
         };
     }
 }

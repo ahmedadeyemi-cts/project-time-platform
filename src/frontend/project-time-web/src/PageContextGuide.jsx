@@ -1,6 +1,8 @@
 import './page-context-guide.css';
 
 const routeContext = {
+  // PR467_MODULE_006_PAGE_CONTEXT
+  'toyota-hyundai-pipelines': { page: 'Toyota & Hyundai Pipelines — Module 006', purpose: 'Standalone Toyota and Hyundai pipeline management for project rows, tasks, status updates, notes, review dates, history, and exports.', backend: '/api/module-006/pipeline and /api/module-006/tasks', check: 'Create or open a project, save a status note, create a standalone task, and confirm no other project module is opened or modified.' },
   'production-data-readiness': {
     page: 'Production Data Readiness Center',
     purpose: 'Shows whether core production data exists for users, roles, customers, projects, tasks, time, approvals, exports, audit evidence, and notifications.',
@@ -28,6 +30,12 @@ const routeContext = {
     purpose: 'Role-based landing page showing the modules, alerts, and work areas available to the signed-in user.',
     backend: '/api/dashboard/module-visibility-smoke and role/module visibility checks',
     check: 'Confirm the app loads, navigation is usable, and visible modules match the current role.'
+  },
+  'work-task-builder': {
+    page: 'Celar AI — Module 011',
+    purpose: 'Unified operational intelligence for the US Signal Solution Provider division, including intent-first answers, private knowledge and RAG, governed live-data tools, architecture, solution composition, model lifecycle, and Project FlowHive planning.',
+    backend: '/api/celar-ai/v2/chat, /api/celar-ai/v1/production/readiness, /api/celar-ai/v1/production/architecture, and /api/project-flowhive/ai/production-generate',
+    check: 'Confirm the Celar AI production workspace and architecture render, the page identifies Module 011, procedural questions receive direct intent-first answers with a trust classification, and Project FlowHive generation remains review-only.'
   },
   'production-readiness': {
     page: 'Production Readiness Center',

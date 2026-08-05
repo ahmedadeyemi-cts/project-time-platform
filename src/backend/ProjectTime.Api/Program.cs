@@ -21,6 +21,10 @@ builder.Services
 
 var app = builder.Build();
 
+// This must remain the first middleware. Candidate revisions are closed before
+// authentication, View-As, module middleware, or any application endpoint can run.
+app.UseProjectPulseAiCandidateRequestFence();
+
 /* 050_CRITICAL_LAUNCH_BLOCKER_PRODUCTION_GUARD_START */
 var projectPulse050BlockedDevRouteTokens = new[]
 {
@@ -2101,6 +2105,7 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             GROUP BY err.project_id, erra.user_id
         )
         SELECT
+            pa.project_assignment_id AS assignment_id,
             p.project_id AS project_id,
             pt.task_id AS task_id,
             p.project_code AS project_code,
@@ -2109,6 +2114,12 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             pt.task_code AS task_code,
             pt.task_name AS task_name,
             pt.task_description AS task_description,
+            COALESCE(
+                NULLIF(to_jsonb(pt)->>'work_task_category', ''),
+                NULLIF(to_jsonb(pt)->>'work_type', ''),
+                'project_task'
+            ) AS work_task_category,
+            COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number', ''), '') AS service_request_number,
             pt.billable AS billable,
             COALESCE(pt.utilization_bucket, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS utilization_bucket,
             COALESCE(pm.display_name, 'No PM assigned') AS project_manager_name,
@@ -2161,9 +2172,17 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
     while (await reader.ReadAsync())
     {
         int O(string name) => reader.GetOrdinal(name);
+        var workTaskCategory = reader.GetString(O("work_task_category"));
+        var serviceRequestNumber = reader.GetString(O("service_request_number"));
+        var isServiceRequest = string.Equals(
+                workTaskCategory.Trim(),
+                "service_request_task",
+                StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(serviceRequestNumber);
 
         tasks.Add(new
         {
+            assignmentId = reader.GetGuid(O("assignment_id")),
             projectId = reader.GetGuid(O("project_id")),
             taskId = reader.GetGuid(O("task_id")),
             projectCode = reader.GetString(O("project_code")),
@@ -2172,6 +2191,9 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
             taskCode = reader.GetString(O("task_code")),
             taskName = reader.GetString(O("task_name")),
             taskDescription = reader.IsDBNull(O("task_description")) ? null : reader.GetString(O("task_description")),
+            rowType = isServiceRequest ? "service_request" : "projectTask",
+            workTaskCategory,
+            serviceRequestNumber,
             billable = reader.GetBoolean(O("billable")),
             utilizationBucket = reader.GetString(O("utilization_bucket")),
             projectManagerName = reader.GetString(O("project_manager_name")),
@@ -2738,6 +2760,7 @@ app.MapApprovalCenterEndpoints();
 app.MapPost("/api/timesheets/ai-description-suggestions", async (
     ProjectPulseAiTimeEntrySuggestionRequest request,
     HttpContext httpContext,
+    ProjectPulseAiTimesheetContextResolver contextResolver,
     ProjectPulseAiTimeEntrySuggestionService aiService,
     CancellationToken cancellationToken) =>
 {
@@ -2752,18 +2775,43 @@ app.MapPost("/api/timesheets/ai-description-suggestions", async (
         return Results.BadRequest(new { status = "validation_failed", message = "Work date is required." });
     }
 
-    var rowLabel = request.RowLabel?.Trim();
-    var taskName = request.TaskName?.Trim();
-    var projectName = request.ProjectName?.Trim();
-
-    if (string.IsNullOrWhiteSpace(rowLabel)
-        && string.IsNullOrWhiteSpace(taskName)
-        && string.IsNullOrWhiteSpace(projectName))
+    var roughNote = request.CurrentDescription ?? string.Empty;
+    if (roughNote.Length > 4_000)
     {
-        return Results.BadRequest(new { status = "validation_failed", message = "Project, task, or activity context is required before generating a suggestion." });
+        return Results.BadRequest(new
+        {
+            status = "validation_failed",
+            message = "The rough work note cannot exceed 4,000 characters. Keep only the factual details needed for this time entry."
+        });
     }
 
-    var result = await aiService.GenerateAsync(request, cancellationToken);
+    var roughNoteCharacters = roughNote.Count(character => !char.IsWhiteSpace(character));
+    var roughNoteFactualCharacters = roughNote.Count(char.IsLetterOrDigit);
+    if (roughNoteCharacters < 12 || roughNoteFactualCharacters < 8)
+    {
+        return Results.BadRequest(new
+        {
+            status = "more_detail_required",
+            message = "Add a brief factual note about the work performed before generating a customer-facing description."
+        });
+    }
+
+    var contextResolution = await contextResolver.ResolveAsync(
+        sessionUserId.Value,
+        request,
+        cancellationToken);
+    if (!contextResolution.Succeeded || contextResolution.Request is null)
+    {
+        return Results.Json(
+            new
+            {
+                status = contextResolution.Status,
+                message = contextResolution.Message
+            },
+            statusCode: contextResolution.StatusCode);
+    }
+
+    var result = await aiService.GenerateAsync(contextResolution.Request, cancellationToken);
 
     return Results.Ok(new
     {
@@ -2773,12 +2821,16 @@ app.MapPost("/api/timesheets/ai-description-suggestions", async (
         suggestion = result.Suggestion,
         provider = result.Provider,
         warning = result.Warning,
+        targetDecisions = result.TargetDecisions ?? [],
+        contextSource = contextResolution.ContextSource,
         message = result.Provider switch
         {
             ProjectPulseAiProviders.Claude when !string.IsNullOrWhiteSpace(result.Suggestion) =>
                 "Claude generated a time-entry description suggestion.",
             ProjectPulseAiProviders.OpenAi when !string.IsNullOrWhiteSpace(result.Suggestion) =>
                 "OpenAI generated a time-entry description suggestion.",
+            CelarAiCapabilityTargets.CelarAi when !string.IsNullOrWhiteSpace(result.Suggestion) =>
+                "Celar AI generated a privately grounded time-entry description suggestion.",
             ProjectPulseAiProviders.Local =>
                 "The governed local template generated a time-entry description suggestion.",
             _ => "The selected provider declined this request under its safety controls."
@@ -17664,11 +17716,16 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
         return new ProjectPulseSessionValidation(false, null, null, null, null, "Missing session token.");
     }
 
+    var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
     var config = DatabaseConfig.FromEnvironment();
+    var connectionString = release.IsCandidate
+        ? ProjectPulseAiDatabaseConnection.Resolve()
+            ?? throw new InvalidOperationException("Candidate session validation requires the canonical AI database connection.")
+        : config.ConnectionString;
 
     try
     {
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
         await using var command = new NpgsqlCommand("""
@@ -17713,14 +17770,20 @@ async Task<ProjectPulseSessionValidation> ValidateProjectPulseSessionAsync(HttpC
 
         await reader.CloseAsync();
 
-        await using var updateCommand = new NpgsqlCommand("""
-            UPDATE auth_sessions
-            SET last_seen_at = NOW()
-            WHERE auth_session_id = @auth_session_id;
-            """, connection);
+        // Candidate verification uses a database identity that must be incapable
+        // of writes. Session validation is therefore deliberately read-only and
+        // does not update auth_sessions.last_seen_at.
+        if (!ProjectPulseAiReleaseRuntimePolicy.RequireValid().IsCandidate)
+        {
+            await using var updateCommand = new NpgsqlCommand("""
+                UPDATE auth_sessions
+                SET last_seen_at = NOW()
+                WHERE auth_session_id = @auth_session_id;
+                """, connection);
 
-        updateCommand.Parameters.AddWithValue("auth_session_id", sessionId);
-        await updateCommand.ExecuteNonQueryAsync();
+            updateCommand.Parameters.AddWithValue("auth_session_id", sessionId);
+            await updateCommand.ExecuteNonQueryAsync();
+        }
 
         return new ProjectPulseSessionValidation(true, userId, email, providerCode, expiresAt, null);
     }
@@ -24197,14 +24260,7 @@ async Task<bool> ProjectAllocationUserHasPermissionAsync(NpgsqlConnection connec
 
 string GetProjectPulseUploadRoot()
 {
-    var configured = Environment.GetEnvironmentVariable("PROJECT_PULSE_UPLOAD_ROOT");
-
-    if (!string.IsNullOrWhiteSpace(configured))
-    {
-        return configured;
-    }
-
-    return "/opt/project-time-platform/uploads";
+    return ProjectPulseUploadStorage.ResolveRoot();
 }
 
 string SanitizeProjectPulseFileName(string fileName)
@@ -37347,6 +37403,8 @@ app.MapAiProviderConfigurationEndpoints();
 app.MapEntraSecretAdministrationEndpoints();
 /* MODULE_065_ENTRA_SECRET_ENDPOINT_MAP_END */
 
+app.MapProjectForgeEndpoints();
+
 /* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_START */
 app.MapProjectFlowHiveEndpoints();
 /* MODULE_066A1_PROJECT_FLOWHIVE_ENDPOINT_MAP_END */
@@ -38344,6 +38402,8 @@ static async Task<List<object>> LoadOpenAssignedProjectTasksAsync(NpgsqlConnecti
         LEFT JOIN clients c ON c.client_id = p.client_id
         LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
         WHERE pa.user_id = @user_id
+          AND pa.effective_start_date <= @week_end
+          AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
           /* 053G_HIDE_CLOSED_PROJECTS_FROM_OPEN_TASKS */
           AND lower(COALESCE(p.status, 'active')) = 'active'
           AND pt.is_active = TRUE
@@ -39405,7 +39465,13 @@ static async Task<IReadOnlyList<object>> LoadTimesheetNonProjectCategoriesAsync(
     var categories = new List<object>();
 
     const string categorySql = """
-        SELECT category_code, category_name, category_description, utilization_bucket, requires_approval
+        SELECT
+            non_project_time_category_id,
+            category_code,
+            category_name,
+            category_description,
+            utilization_bucket,
+            requires_approval
         FROM non_project_time_categories
         WHERE is_active = TRUE
         ORDER BY display_order, category_name;
@@ -39418,11 +39484,12 @@ static async Task<IReadOnlyList<object>> LoadTimesheetNonProjectCategoriesAsync(
     {
         categories.Add(new
         {
-            code = reader.GetString(0),
-            name = reader.GetString(1),
-            description = reader.IsDBNull(2) ? null : reader.GetString(2),
-            utilizationBucket = reader.GetString(3),
-            requiresApproval = reader.GetBoolean(4)
+            categoryId = reader.GetGuid(0),
+            code = reader.GetString(1),
+            name = reader.GetString(2),
+            description = reader.IsDBNull(3) ? null : reader.GetString(3),
+            utilizationBucket = reader.GetString(4),
+            requiresApproval = reader.GetBoolean(5)
         });
     }
 
@@ -39526,7 +39593,13 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
             p.project_name,
             pt.task_code,
             pt.task_name,
-            c.client_name
+            c.client_name,
+            COALESCE(
+                NULLIF(to_jsonb(pt)->>'work_task_category', ''),
+                NULLIF(to_jsonb(pt)->>'work_type', ''),
+                'project_task'
+            ) AS work_task_category,
+            COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number', ''), '') AS service_request_number
         FROM time_entries te
         LEFT JOIN non_project_time_categories npt
             ON npt.non_project_time_category_id = te.non_project_time_category_id
@@ -39549,11 +39622,23 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
         var projectId = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6);
         var taskId = reader.IsDBNull(7) ? (Guid?)null : reader.GetGuid(7);
         var categoryCode = reader.IsDBNull(9) ? null : reader.GetString(9);
+        var workTaskCategory = reader.GetString(19);
+        var serviceRequestNumber = reader.GetString(20);
+        var isServiceRequest = projectId is not null
+            && taskId is not null
+            && (string.Equals(
+                    workTaskCategory.Trim(),
+                    "service_request_task",
+                    StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(serviceRequestNumber));
 
         entries.Add(new
         {
             id = reader.GetGuid(0),
-            rowType = projectId is not null && taskId is not null ? "projectTask" : "nonProject",
+            timeEntryId = reader.GetGuid(0),
+            rowType = isServiceRequest
+                ? "service_request"
+                : projectId is not null && taskId is not null ? "projectTask" : "nonProject",
             workDate = reader.GetFieldValue<DateOnly>(1),
             timeType = reader.GetString(2),
             hours = reader.GetDecimal(3),
@@ -39571,7 +39656,9 @@ static async Task<List<object>> LoadSavedTimeEntriesAsync(NpgsqlConnection conne
             projectName = reader.IsDBNull(15) ? null : reader.GetString(15),
             taskCode = reader.IsDBNull(16) ? null : reader.GetString(16),
             taskName = reader.IsDBNull(17) ? null : reader.GetString(17),
-            clientName = reader.IsDBNull(18) ? null : reader.GetString(18)
+            clientName = reader.IsDBNull(18) ? null : reader.GetString(18),
+            workTaskCategory,
+            serviceRequestNumber
         });
     }
 
@@ -40396,9 +40483,15 @@ record UserAdminUserLifecycleRequest(
 
 record ProjectPulseAiTimeEntrySuggestionRequest(
     DateOnly WorkDate,
+    Guid? TimeEntryId,
+    Guid? AssignmentId,
+    Guid? ProjectId,
+    Guid? TaskId,
+    Guid? NonProjectTimeCategoryId,
     string? TimeType,
     string? RowType,
     string? RowLabel,
+    string? CustomerName,
     string? ProjectName,
     string? ProjectCode,
     string? TaskName,
@@ -40410,7 +40503,8 @@ record ProjectPulseAiTimeEntrySuggestionRequest(
 record ProjectPulseAiTimeEntrySuggestionResult(
     string Suggestion,
     string Provider,
-    string? Warning);
+    string? Warning,
+    IReadOnlyList<ProjectPulseAiTargetDecision>? TargetDecisions = null);
 
 
 internal sealed record ProjectPulseReplicationSyncSettingsRequest(

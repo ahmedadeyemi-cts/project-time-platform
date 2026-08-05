@@ -15,7 +15,7 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
     public async Task<IReadOnlyList<PulseAiPrivateRetrievedChunk>> ReauthorizeAsync(
         PulseAiPrivateRagAccess access,
         IReadOnlyList<PulseAiPrivateRetrievedChunk> chunks,
-        bool requireTimesheetFlag,
+        PulseAiPrivateRetrievalQuery query,
         CancellationToken cancellationToken = default)
     {
         if (!access.IsActive || chunks.Count == 0) return [];
@@ -33,13 +33,14 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
                   ON v.pulse_ai_document_version_id = ch.pulse_ai_document_version_id
                 JOIN projects p ON p.project_id = ch.project_id
                 WHERE ch.chunk_id = ANY(@chunk_ids)
+                  AND @include_project_documents = TRUE
                   AND ch.is_active = TRUE
                   AND ch.index_status IN ('lexical_ready','embedding_ready','ready')
                   AND d.is_active = TRUE
                   AND COALESCE(d.engineering_visible, FALSE) = TRUE
                   AND COALESCE(d.pulse_ai_processing_status, '') = 'ready'
                   AND d.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
-                  AND v.authority_status NOT IN ('rejected','revoked','superseded')
+                  AND v.authority_status IN ('approved','canonical')
                   AND (@require_timesheet = FALSE OR ch.ai_timesheet_context_enabled = TRUE)
                   AND (
                     @is_broad = TRUE
@@ -63,14 +64,56 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
                                   AND erra.user_id = @user_id
                             )
                           )
-                    )
-                  );
+                      )
+                  )
+
+                UNION
+
+                SELECT ch.chunk_id
+                FROM pulse_ai_document_chunks ch
+                JOIN project_intake_documents document
+                  ON document.project_intake_document_id = ch.project_intake_document_id
+                JOIN pulse_ai_document_versions version
+                  ON version.pulse_ai_document_version_id = ch.pulse_ai_document_version_id
+                JOIN pulse_ai_conversation_attachments attachment
+                  ON attachment.project_intake_document_id = ch.project_intake_document_id
+                JOIN pulse_ai_conversations conversation
+                  ON conversation.pulse_ai_conversation_id = attachment.pulse_ai_conversation_id
+                WHERE ch.chunk_id = ANY(@chunk_ids)
+                  AND cardinality(@attachment_ids) > 0
+                  AND @conversation_id IS NOT NULL
+                  AND attachment.pulse_ai_conversation_attachment_id = ANY(@attachment_ids)
+                  AND attachment.pulse_ai_conversation_id = @conversation_id
+                  AND attachment.uploaded_by_user_id = @user_id
+                  AND attachment.revoked_at IS NULL
+                  AND attachment.retention_until > NOW()
+                  AND conversation.actual_user_id = @user_id
+                  AND conversation.effective_user_id = @user_id
+                  AND conversation.status = 'active'
+                  AND (conversation.retention_until IS NULL OR conversation.retention_until > NOW())
+                  AND document.upload_source = 'celar_ai_chat_attachment'
+                  AND document.uploaded_by_user_id = @user_id
+                  AND document.is_active = TRUE
+                  AND COALESCE(document.pulse_ai_processing_status, '') = 'ready'
+                  AND document.pulse_ai_active_version_id = ch.pulse_ai_document_version_id
+                  AND version.authority_status IN ('candidate','approved','canonical')
+                  AND ch.is_active = TRUE
+                  AND ch.index_status IN ('lexical_ready','embedding_ready','ready');
                 """;
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("chunk_ids", chunks.Select(chunk => chunk.ChunkId).ToArray());
-            command.Parameters.AddWithValue("require_timesheet", requireTimesheetFlag);
+            command.Parameters.AddWithValue("require_timesheet", query.RequireTimesheetFlag);
+            command.Parameters.AddWithValue("include_project_documents", query.IncludeProjectDocuments);
             command.Parameters.AddWithValue("is_broad", access.IsBroadScope);
             command.Parameters.AddWithValue("user_id", access.UserId);
+            var conversationParameter = command.Parameters.Add("conversation_id", NpgsqlTypes.NpgsqlDbType.Uuid);
+            conversationParameter.Value = query.ConversationId is null
+                ? DBNull.Value
+                : query.ConversationId.Value;
+            var attachmentParameter = command.Parameters.Add(
+                "attachment_ids",
+                NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid);
+            attachmentParameter.Value = query.AttachmentIds.ToArray();
             var authorized = new HashSet<string>(StringComparer.Ordinal);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -94,30 +137,13 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        var required = new[] { "PTP_DB_HOST", "PTP_DB_PORT", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" };
-        return required
-            .Where(name => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
-            .ToArray();
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
-    private static string ConnectionString()
-    {
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = Environment.GetEnvironmentVariable("PTP_DB_HOST"),
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PTP_DB_PORT"), out var port) ? port : 5432,
-            Database = Environment.GetEnvironmentVariable("PTP_DB_NAME"),
-            Username = Environment.GetEnvironmentVariable("PTP_DB_USER"),
-            Password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"),
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 5,
-            Timeout = 8,
-            CommandTimeout = 20
-        };
-        return builder.ConnectionString;
-    }
+    private static string ConnectionString() =>
+        ProjectPulseAiDatabaseConnection.Resolve()
+        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

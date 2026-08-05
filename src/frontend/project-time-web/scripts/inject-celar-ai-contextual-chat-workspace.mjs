@@ -8,13 +8,9 @@ let content = fs.readFileSync(helpPath, 'utf8');
 
 function hasCompatibleOwnedExtension(label) {
   if (label === 'window_state') {
-    return content.includes(`  const [sending, setSending] = useState(false);
-  const [chatSize, setChatSize] = useState(initialChatSize);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
-  const [questionContext, setQuestionContext] = useState({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
-  const inputRef = useRef(null);`);
+    return content.includes(`const [chatSize, setChatSize] = useState(initialChatSize)`)
+      && content.includes(`const [questionContext, setQuestionContext]`)
+      && content.includes(`const inputRef = useRef(null)`);
   }
 
   if (label === 'fresh_hydration_policy') {
@@ -22,17 +18,16 @@ function hasCompatibleOwnedExtension(label) {
       setActiveConversationId('');
       setMessages([WELCOME_MESSAGE]);
       followLatestRef.current = true;`)
-      && content.includes(`  function beginFreshConversation() {
-    setActiveConversationId('');
-    setMessages([WELCOME_MESSAGE]);
-    setQuestion('');
-    setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
-    setHistoryOpen(false);
-    setContextOpen(false);
-    followLatestRef.current = true;
-    window.setTimeout(() => inputRef.current?.focus(), 40);
-  }`);
+      && content.includes(`function beginFreshConversation()`)
+      && content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`)
+      && content.includes(`setHistoryOpen(false)`);
   }
+
+  if (label === 'launcher_restore') return content.includes(`aria-controls="celar-ai-global-chat"`);
+  if (label === 'contextual_panel_class') return content.includes(`id="celar-ai-global-chat"`)
+    && content.includes(`celar-ai-contextual-chat is-size-`);
+  if (label === 'header_controls_and_context_bar') return content.includes(`className="celar-ai-chat-window-controls"`)
+    && content.includes(`className="celar-ai-context-bar"`);
 
   return false;
 }

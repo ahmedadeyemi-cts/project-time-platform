@@ -31,6 +31,14 @@ function installGeneratedAppCorrection() {
   return cleaned || 'dashboard';
 }`;
 
+  const module006Normalizer = `function normalizeRoute(hash) {
+  const cleaned = (hash || window.location.hash || '#dashboard').replace('#', '').split('?')[0].trim();
+  const route = cleaned || 'dashboard';
+  return route === 'psa-modules' || route === 'project-register'
+    ? 'toyota-hyundai-pipelines'
+    : route;
+}`;
+
   const governedNormalizer = `const PROJECTPULSE_RUNTIME_ROUTE_ALIASES = Object.freeze({
   'celar-ai': 'work-task-builder',
   'pulse-ai': 'work-task-builder',
@@ -60,10 +68,13 @@ function normalizeRoute(hash) {
 }`;
 
   if (!source.includes(governedNormalizer)) {
-    if (!source.includes(legacyNormalizer)) {
+    if (source.includes(module006Normalizer)) {
+      source = source.replace(module006Normalizer, governedNormalizer);
+    } else if (source.includes(legacyNormalizer)) {
+      source = source.replace(legacyNormalizer, governedNormalizer);
+    } else {
       throw new Error('Live UI correction could not locate the generated route normalizer.');
     }
-    source = source.replace(legacyNormalizer, governedNormalizer);
   }
 
   const legacyPermissionGate = `  function hasPermission(permissionCode) {
