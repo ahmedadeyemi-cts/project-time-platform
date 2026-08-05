@@ -18,9 +18,9 @@ const expectedFeatures = [
 ];
 
 const sourceSha = process.env.SOURCE_SHA || "";
-const base = (process.env.PUBLIC_URL || "").replace(/\/+$/, "");
-const session = process.env.PROJECTPULSE_TEST_UAT_SESSION || "";
-const forgeProjectId = process.env.PROJECTPULSE_TEST_FORGE_PROJECT_ID || "";
+const base = (process.env.PUBLIC_URL || "").trim().replace(/\/+$/, "");
+const session = (process.env.PROJECTPULSE_TEST_UAT_SESSION || "").trim();
+const forgeProjectId = (process.env.PROJECTPULSE_TEST_FORGE_PROJECT_ID || "").trim().toLowerCase();
 const evidencePath = process.env.EVIDENCE_PATH || "/tmp/current-main-release-runtime-evidence.json";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -122,7 +122,7 @@ async function revokeAttachment() {
       { authenticated: true, moduleNumber: "011" },
     );
     assert(lookup.status === 200, "Attachment cleanup lookup returned HTTP " + lookup.status + ".");
-    const matches = (lookup.json?.attachments || []).filter((item) => item?.originalFileName === attachmentFileName);
+    const matches = (lookup.json?.attachments || []).filter((item) => item?.fileName === attachmentFileName);
     assert(matches.length <= 1, "Attachment cleanup found duplicate release fixtures.");
     attachmentId = String(matches[0]?.attachmentId || "");
     if (!attachmentId) {
