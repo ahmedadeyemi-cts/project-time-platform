@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "64c3168778957f39203c4a17377418e0a8f1ed23";
+const expectedSource = "b70cf8d9b8bfa11441095a6bb037e7ad9dd67ce4";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -324,6 +324,16 @@ async function run() {
   });
   assert(bundle.status === 200, "Web production bundle returned HTTP " + bundle.status + ".");
   assert(bundle.text.includes("brand-logo-image"), "Web production bundle does not mount the main-page US Signal logo.");
+  for (const marker of [
+    "authorized-typeahead",
+    "celar-ai-chat-drag-handle",
+    "Type a project name or code",
+    "Temporal context graph",
+    "Self-monitoring adapters",
+  ]) {
+    assert(bundle.text.includes(marker), "Web production bundle is missing the Celar smart-interaction or context-fabric marker: " + marker + ".");
+  }
+  evidence.publicChecks.celarSmartInteractionBundle = "passed";
   const logoPath = bundle.text.match(/\/assets\/(?:USSNavyStacked|ussignal)-[A-Za-z0-9_-]+\.png/)?.[0] || "";
   assert(logoPath.length > 0, "Web production bundle does not reference the approved stacked US Signal logo asset.");
   const logoBytes = await requestBytes(logoPath);
@@ -493,6 +503,7 @@ async function run() {
   assert(routes.json?.controls?.configurationAuthority === "database_managed_active", "Module 064 routing authority is not the explicit database-managed Test mode.");
   assert(routes.json?.controls?.configurationSourceCommit === sourceSha, "Module 064 source binding is incorrect.");
   assert(routes.json?.controls?.catalogCapabilityCount === 8, "Module 064 catalog count is incorrect.");
+  const configuredRoutes = new Map();
   for (const feature of expectedFeatures) {
     const route = routes.json.routes.find((item) => item?.feature === feature);
     assert(route, "Module 064 route is missing: " + feature + ".");
@@ -500,9 +511,13 @@ async function run() {
     assert(Number.isInteger(route.revision) && route.revision > 0, "Module 064 route has no persisted revision: " + feature + ".");
     assert(route.deploymentManaged === false && route.readOnly === false, "Module 064 database-managed route is unexpectedly deployment locked: " + feature + ".");
     assert(route.configurationAuthority === "database_managed_active", "Module 064 route has the wrong configuration authority: " + feature + ".");
-    assert(JSON.stringify(route.targets) === JSON.stringify(expectedTargets), "Module 064 target order is wrong for " + feature + ".");
+    assert(Array.isArray(route.targets) && route.targets.length === expectedTargets.length, "Module 064 target count is wrong for " + feature + ".");
+    assert(new Set(route.targets).size === expectedTargets.length && expectedTargets.every((target) => route.targets.includes(target)), "Module 064 route is not an exact eligible-target permutation for " + feature + ".");
+    assert(route.targets.at(-1) === "local_template", "Module 064 governed local fallback is not last for " + feature + ".");
+    configuredRoutes.set(feature, route.targets);
   }
-  evidence.authenticatedChecks.module064Routes = "passed";
+  evidence.authenticatedChecks.module064Routes = Object.fromEntries(configuredRoutes);
+  evidence.authenticatedChecks.module064SelectedOrderPreserved = "passed";
   evidence.authenticatedChecks.module064SuperAdministratorAuthority = "passed";
 
   const providerConfiguration = await request("/api/ai-configuration", {
@@ -559,6 +574,10 @@ async function run() {
   assert(fabric.ready === true, "The comprehensive knowledge fabric is not ready.");
   assert(fabric.routeGraphReady === true, "The Module 064 capability route graph is not ready.");
   assert(fabric.contentGraphReady === true, "The current private document/content graph is not ready.");
+  assert(fabric.contextGraphReady === true, "The Celar temporal and policy context graph is not ready.");
+  assert(fabric.temporalGraphReady === true, "The Celar temporal graph is not ready.");
+  assert(fabric.policyGraphReady === true, "The Celar policy graph is not ready.");
+  assert(fabric.decisionTraceReady === true, "The Celar privacy-safe decision trace is not ready.");
   assert(fabric.privateEndpointsReady === true, "One or more required private endpoints are not ready.");
   assert(fabric.sourceCommit === sourceSha, "Knowledge-fabric source binding is incorrect.");
   assert(fabric.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "The latest product knowledge catalog is not active.");
@@ -567,8 +586,17 @@ async function run() {
   assert(Number(fabric.readySowDocumentCount) > 0, "The private content graph has no current ready SOW/GSD document.");
   assert(Number(fabric.activeVersionCount) > 0, "The private content graph has no authoritative active versions.");
   assert(Number(fabric.activeChunkCount) > 0, "The private content graph has no searchable active chunks.");
+  assert(Number(fabric.pendingIndexCount) === 0, "The latest private knowledge content still has pending indexing work.");
+  assert(fabric.freshnessStatus === "authoritative_index_current", "The private knowledge fabric is not current.");
+  assert(String(fabric.knowledgeAsOf || "").length > 0, "The private knowledge fabric has no evidence-as-of time.");
   assert(Array.isArray(fabric.blockers) && fabric.blockers.length === 0, "The knowledge fabric reported readiness blockers.");
   assert(Array.isArray(fabric.contentGraphRelationships) && fabric.contentGraphRelationships.some((item) => String(item).includes("authoritative version")), "The authoritative private content-graph relationship is missing.");
+  assert(Array.isArray(fabric.contextGraphRelationships) && fabric.contextGraphRelationships.some((item) => String(item).includes("question time")), "The temporal policy context relationship is missing.");
+  assert(fabric.contextGraphRelationships.some((item) => String(item).includes("evidence as-of")), "The evidence freshness and confidence relationship is missing.");
+  const endpointComponents = new Set((fabric.endpoints || []).map((item) => item?.component));
+  for (const component of ["private_inference", "private_database", "private_malware_scanning", "private_ocr", "private_embedding", "private_training", "persistent_private_content_storage"]) {
+    assert(endpointComponents.has(component), "Module 064 is missing private-adapter readiness evidence for " + component + ".");
+  }
   const requiredPrivateEndpoints = (fabric.endpoints || []).filter((item) => item?.required === true);
   assert(requiredPrivateEndpoints.length >= 4, "Module 064 returned incomplete required private-endpoint evidence.");
   assert(requiredPrivateEndpoints.every((item) => item?.configured === true && item?.privateBoundaryVerified === true && item?.runtimeVerified === true), "A required Celar private endpoint is not configured, private, and runtime-verified.");
@@ -577,12 +605,19 @@ async function run() {
   assert(forgeFabricCapability?.centralRouterConnected === true, "Project Forge is not connected to the Module 064 central router.");
   assert(forgeFabricCapability?.privateContextCompliant === true && forgeFabricCapability?.directProviderFree === true, "Project Forge does not satisfy the private, router-only provider boundary.");
   assert(forgeFabricCapability?.privateKnowledgeReady === true, "Project Forge cannot use the ready private knowledge fabric.");
-  assert(JSON.stringify(forgeFabricCapability?.route) === JSON.stringify(expectedTargets), "Project Forge has the wrong Module 064 target route.");
+  assert(JSON.stringify(forgeFabricCapability?.route) === JSON.stringify(configuredRoutes.get("project_forge_plan_estimate")), "Project Forge does not reflect its selected Module 064 target order.");
+  assert(Array.isArray(fabric.decisionTraces) && fabric.decisionTraces.length === expectedFeatures.length, "Module 064 returned incomplete capability decision traces.");
+  for (const trace of fabric.decisionTraces) {
+    assert(JSON.stringify(trace?.configuredRoute) === JSON.stringify(configuredRoutes.get(trace?.feature)), "A live decision trace does not reflect the selected Module 064 order for " + trace?.feature + ".");
+    assert(trace?.hiddenReasoningReturned === false, "A decision trace reported hidden reasoning exposure.");
+  }
   assert(knowledgeFabric.json?.privacyBoundary?.endpointValuesReturned === false, "Knowledge-fabric response exposed private endpoint values.");
   assert(knowledgeFabric.json?.privacyBoundary?.secretValuesReturned === false, "Knowledge-fabric response exposed secret values.");
   assert(knowledgeFabric.json?.privacyBoundary?.rawDocumentsReturned === false, "Knowledge-fabric response exposed raw documents.");
   assert(knowledgeFabric.json?.privacyBoundary?.embeddingVectorsReturned === false, "Knowledge-fabric response exposed embedding vectors.");
   evidence.authenticatedChecks.module064KnowledgeFabric = "passed";
+  evidence.authenticatedChecks.module064ContextFabric = "passed";
+  evidence.authenticatedChecks.module064PrivateAdapterMatrix = "passed";
 
   const generalKnowledgeChat = await request("/api/celar-ai/v2/chat", {
     method: "POST",
@@ -800,7 +835,7 @@ async function run() {
   assert(forgeConnection.status === "connected_private_knowledge_ready", "Project Forge does not report a ready private Module 064 connection.");
   assert(forgeConnection.permissionAuthorized === true, "Project Forge AI permission is not authorized.");
   assert(forgeConnection.privateKnowledgeReady === true, "Project Forge private knowledge is not ready.");
-  assert(JSON.stringify(forgeConnection.route) === JSON.stringify(expectedTargets), "Project Forge exposes the wrong Module 064 route.");
+  assert(JSON.stringify(forgeConnection.route) === JSON.stringify(configuredRoutes.get("project_forge_plan_estimate")), "Project Forge does not expose its selected Module 064 route order.");
   assert(forgeConnection.sourceCommit === sourceSha, "Project Forge Module 064 evidence is not bound to this release.");
   assert(forgeConnection.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "Project Forge is not using the latest product knowledge catalog.");
   assert(forgeConnection.systemKnowledgeVersion === "celar-ai-system-knowledge-v3-20260806", "Project Forge is not using the latest system knowledge catalog.");

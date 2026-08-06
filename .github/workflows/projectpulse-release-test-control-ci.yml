@@ -57,6 +57,12 @@ jobs:
           grep -Fq 'canonical_task_created' scripts/release-test/verify-runtime.mjs
           grep -Fq 'canonical_task_archived' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module064KnowledgeFabric' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celarSmartInteractionBundle' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'module064SelectedOrderPreserved' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'module064ContextFabric' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'module064PrivateAdapterMatrix' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'authorized-typeahead' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'private_training' scripts/release-test/verify-runtime.mjs
           grep -Fq 'projectForgeModule064Connection' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module011CoreAskAccess' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module011SuperAdministratorAuthority' scripts/release-test/verify-runtime.mjs
@@ -131,7 +137,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'DEPLOY-64C31687-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DEPLOY-B70CF8D9-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
@@ -140,13 +146,13 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-64c31687-20260806-r1"
+          assert manifest["releaseName"] == "current-main-b70cf8d9-20260806-r1"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
           assert manifest["allowSanitizedExternalEscalation"] is True
           assert manifest["sanitizedExternalFallbackEnabled"] is True
-          assert manifest["sourceSha"] == "64c3168778957f39203c4a17377418e0a8f1ed23"
+          assert manifest["sourceSha"] == "b70cf8d9b8bfa11441095a6bb037e7ad9dd67ce4"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
