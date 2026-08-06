@@ -42,9 +42,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           CHANGED="$(git diff --name-only origin/main...HEAD)"
           printf '%s\n' "$CHANGED"
-          if grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
+          if [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
+            DISALLOWED_DATABASE="$(grep '^database/' <<<"$CHANGED" | grep -Ev '^(database/migrations/074_module_066_project_flowhive_production\.sql|database/rollback/074_module_066_project_flowhive_production_rollback\.sql)$' || true)"
+            if [[ -n "$DISALLOWED_DATABASE" ]]; then
+              echo 'The FlowHive production package contains an unrelated database change:' >&2
+              printf '%s\n' "$DISALLOWED_DATABASE" >&2
+              exit 1
+            fi
+            RESERVED="$(grep -E '^(deployment/azure/|\.github/workflows/projectpulse-deploy-|src/frontend/project-time-web/src/(CrmErpIntegrationCenter|CustomerDirectoryCenter|customer-directory-sell-sync|crm-erp-integration-center)\.|src/backend/ProjectTime.Api/Modules/(CustomerDirectorySellSyncModule|CrmErpIntegrationModule)\.cs)' <<<"$CHANGED" || true)"
+            echo 'MODULES_010_065_VALIDATION_MODE=FLOWHIVE_PRODUCTION_REGRESSION' >> "$GITHUB_ENV"
+          elif grep -Fxq 'tests/test-uat-functional-completion-contract.sh' <<<"$CHANGED"; then
             DISALLOWED_DATABASE="$(grep '^database/' <<<"$CHANGED" | grep -Ev '^(database/migrations/066_immutable_project_numbers\.sql|database/rollback/066_immutable_project_numbers_rollback\.sql)$' || true)"
             if [[ -n "$DISALLOWED_DATABASE" ]]; then
               echo 'The UAT Module 010/065 regression contains an unrelated database change:' >&2
