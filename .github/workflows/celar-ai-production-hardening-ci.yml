@@ -39,9 +39,10 @@ jobs:
           case "$HEAD_BRANCH" in
             security/celar-ai-production-readiness-knowledge-fabric-*)
               SCOPE_LABEL='knowledge fabric and comprehensive project planning'
-              SCOPE_MARKER='EXACT_22_KNOWLEDGE_FABRIC_FILES'
+              SCOPE_MARKER='EXACT_24_KNOWLEDGE_FABRIC_FILES'
               SOURCE_MANIFEST="$(cat <<'EOF'
           .github/workflows/celar-ai-production-hardening-ci.yml
+          .github/workflows/pulse-ai-help-chat-usability-ci.yml
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
           src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
           src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs
@@ -56,6 +57,7 @@ jobs:
           src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs
           src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
           src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs
           src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
           src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
           src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
@@ -251,8 +253,8 @@ jobs:
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
           case "$SCOPE_MARKER" in
-            EXACT_22_KNOWLEDGE_FABRIC_FILES)
-              echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_22_KNOWLEDGE_FABRIC_FILES'
+            EXACT_24_KNOWLEDGE_FABRIC_FILES)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_24_KNOWLEDGE_FABRIC_FILES'
               ;;
             EXACT_16_UNIVERSAL_ROUTING_FILES)
               echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_16_UNIVERSAL_ROUTING_FILES'

@@ -156,6 +156,30 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CENTRAL_SECURITY_CONVERGENCE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_CENTRAL_SECURITY_CONVERGENCE=PASSED'
               ;;
+            security/celar-ai-production-readiness-knowledge-fabric-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              KNOWLEDGE_FABRIC_HELP_BOUNDARY='^src/backend/ProjectTime\.Api/Ai/PulseAiProductKnowledgeCatalog\.cs$'
+              UNAPPROVED_HELP="$(grep -Ev "$KNOWLEDGE_FABRIC_HELP_BOUNDARY" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The knowledge-fabric package changed Help-chat runtime source outside the reviewed product-knowledge catalog boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The knowledge-fabric Help-chat validation cannot include a migration or deployment operation.' >&2
+                exit 1
+              fi
+              for required in \
+                'src/frontend/project-time-web/src/HelpAssistant.jsx' \
+                'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs' \
+                'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs' \
+                'src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs'; do
+                test -f "$required"
+                git cat-file -e "origin/$BASE_BRANCH:$required"
+              done
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=KNOWLEDGE_FABRIC' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_KNOWLEDGE_FABRIC=PASSED'
+              ;;
             security/celar-ai-production-readiness-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"

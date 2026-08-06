@@ -542,8 +542,10 @@ assert(
 assert(
   'KNOWLEDGE_FABRIC_GOVERNED_SCOPE',
   hardeningCi.includes('security/celar-ai-production-readiness-knowledge-fabric-*')
-    && hardeningCi.includes('EXACT_22_KNOWLEDGE_FABRIC_FILES')
+    && hardeningCi.includes('EXACT_24_KNOWLEDGE_FABRIC_FILES')
+    && hardeningCi.includes('.github/workflows/pulse-ai-help-chat-usability-ci.yml')
     && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs')
+    && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs')
     && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'),
   'the knowledge-fabric and comprehensive-planning package has an exact governed source manifest'
 );
