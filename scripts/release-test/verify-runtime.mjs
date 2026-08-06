@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "99ce17d3d2981d9fd96ca3447b617b51d8dd78dc";
+const expectedSource = "b94dead5bfeec03fecacf27d7e78d14e4e5d92a7";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -48,6 +48,59 @@ function sentenceCount(value) {
     .map((item) => item.trim())
     .filter(Boolean)
     .length;
+}
+
+function assertPopulatedList(value, label, minimum = 1) {
+  assert(Array.isArray(value), label + " is not an array.");
+  assert(value.length >= minimum, label + " was not automatically populated.");
+  assert(value.every((item) => String(item || "").trim().length > 0), label + " contains an empty value.");
+}
+
+function assertDetailedPlanningTask(task, label, requirePriority = true) {
+  assert(String(task?.wbs || "").trim().length > 0, label + " has no WBS value.");
+  assert(String(task?.phase || "").trim().length > 0, label + " has no phase.");
+  assert(String(task?.name || "").trim().length > 0, label + " has no name.");
+  assert(String(task?.description || "").trim().length >= 80, label + " description is not customer-ready or sufficiently detailed.");
+  assertPopulatedList(task?.detailedSteps, label + " detailed steps", 3);
+  assert(task.detailedSteps.every((step) => String(step).trim().length >= 60), label + " contains a vague detailed step.");
+  assertPopulatedList(task?.inputs, label + " inputs");
+  assertPopulatedList(task?.outputs, label + " outputs");
+  assertPopulatedList(task?.acceptanceCriteria, label + " acceptance criteria");
+  assertPopulatedList(task?.validationSteps, label + " validation steps");
+  assertPopulatedList(task?.customerResponsibilities, label + " customer responsibilities");
+  assertPopulatedList(task?.usSignalResponsibilities, label + " US Signal responsibilities");
+  assertPopulatedList(task?.prerequisites, label + " prerequisites");
+  assertPopulatedList(task?.risks, label + " risks");
+  assertPopulatedList(task?.openQuestions, label + " open questions");
+  assertPopulatedList(task?.requiredRoles, label + " required roles");
+  assert(Array.isArray(task?.predecessors), label + " predecessors are missing.");
+  assertPopulatedList(task?.citationIds, label + " citations");
+  assert(Number(task?.estimatedDurationDays) > 0, label + " has no positive duration estimate.");
+  assert(Number(task?.estimatedHours) > 0, label + " has no positive engineering-hours estimate.");
+  if (requirePriority) {
+    assert(["low", "normal", "high", "critical"].includes(String(task?.priority || "").toLowerCase()), label + " has an invalid priority.");
+  }
+}
+
+function assertDetailedPlan(plan, label) {
+  assert(String(plan?.objective || "").trim().length >= 80, label + " objective is not sufficiently detailed.");
+  assert(Array.isArray(plan?.tasks) && plan.tasks.length > 0, label + " returned no structured tasks.");
+  plan.tasks.forEach((task, index) => assertDetailedPlanningTask(task, label + " task " + (index + 1)));
+  assert(Array.isArray(plan?.milestones) && plan.milestones.length > 0, label + " returned no milestones.");
+  for (const [index, milestone] of plan.milestones.entries()) {
+    assert(String(milestone?.name || "").trim().length > 0, label + " milestone " + (index + 1) + " has no name.");
+    assert(String(milestone?.description || "").trim().length >= 60, label + " milestone " + (index + 1) + " is not detailed.");
+    assertPopulatedList(milestone?.acceptanceEvidence, label + " milestone " + (index + 1) + " acceptance evidence");
+    assertPopulatedList(milestone?.citationIds, label + " milestone " + (index + 1) + " citations");
+  }
+  assertPopulatedList(plan?.dependencies, label + " dependencies");
+  assertPopulatedList(plan?.requiredRoles, label + " required roles");
+  assertPopulatedList(plan?.assumptions, label + " assumptions");
+  assertPopulatedList(plan?.risks, label + " risks");
+  assertPopulatedList(plan?.outOfScopeItems, label + " out-of-scope items");
+  assertPopulatedList(plan?.openQuestions, label + " open questions");
+  assert(Array.isArray(plan?.conflicts), label + " conflicts section is missing.");
+  assertPopulatedList(plan?.citationIds, label + " citations");
 }
 
 assert(sourceSha === expectedSource, "Unexpected deployed source SHA.");
@@ -271,6 +324,7 @@ async function run() {
     ["GET", "/api/pulse-ai/v1/system/apis?search=project-forge&module=033&limit=10"],
     ["POST", "/api/celar-ai/v2/chat"],
     ["GET", "/api/ai-configuration/routes"],
+    ["GET", "/api/ai-configuration/knowledge-fabric"],
     ["GET", "/api/celar-ai/v2/attachments/readiness"],
     ["GET", authenticatedUatEnabled
       ? "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical"
@@ -459,6 +513,43 @@ async function run() {
   assert(externalProductionProbe.json?.policy?.enterpriseSanitizedExternalFallbackEnabled === true, "Enterprise sanitized fallback policy is not active.");
   assert(Array.isArray(externalProductionProbe.json?.targets) && externalProductionProbe.json.targets.length === 2, "The sanitized external production probe did not exercise Claude and OpenAI.");
   evidence.authenticatedChecks.externalProviderProductionProbe = "passed";
+
+  const knowledgeFabric = await request("/api/ai-configuration/knowledge-fabric", {
+    moduleNumber: "064",
+    authenticated: true,
+    timeoutMs: 120000,
+  });
+  assert(knowledgeFabric.status === 200, "Module 064 knowledge fabric returned HTTP " + knowledgeFabric.status + ".");
+  assert(knowledgeFabric.json?.module === "064", "Knowledge-fabric response has the wrong module.");
+  assert(knowledgeFabric.json?.status === "celar_ai_knowledge_fabric_ready", "Module 064 knowledge fabric is not ready.");
+  const fabric = knowledgeFabric.json?.knowledgeFabric || {};
+  assert(fabric.ready === true, "The comprehensive knowledge fabric is not ready.");
+  assert(fabric.routeGraphReady === true, "The Module 064 capability route graph is not ready.");
+  assert(fabric.contentGraphReady === true, "The current private document/content graph is not ready.");
+  assert(fabric.privateEndpointsReady === true, "One or more required private endpoints are not ready.");
+  assert(fabric.sourceCommit === sourceSha, "Knowledge-fabric source binding is incorrect.");
+  assert(fabric.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "The latest product knowledge catalog is not active.");
+  assert(fabric.systemKnowledgeVersion === "celar-ai-system-knowledge-v3-20260806", "The latest system knowledge catalog is not active.");
+  assert(Number(fabric.readyDocumentCount) > 0, "The private content graph has no ready documents.");
+  assert(Number(fabric.readySowDocumentCount) > 0, "The private content graph has no current ready SOW/GSD document.");
+  assert(Number(fabric.activeVersionCount) > 0, "The private content graph has no authoritative active versions.");
+  assert(Number(fabric.activeChunkCount) > 0, "The private content graph has no searchable active chunks.");
+  assert(Array.isArray(fabric.blockers) && fabric.blockers.length === 0, "The knowledge fabric reported readiness blockers.");
+  assert(Array.isArray(fabric.contentGraphRelationships) && fabric.contentGraphRelationships.some((item) => String(item).includes("authoritative version")), "The authoritative private content-graph relationship is missing.");
+  const requiredPrivateEndpoints = (fabric.endpoints || []).filter((item) => item?.required === true);
+  assert(requiredPrivateEndpoints.length >= 4, "Module 064 returned incomplete required private-endpoint evidence.");
+  assert(requiredPrivateEndpoints.every((item) => item?.configured === true && item?.privateBoundaryVerified === true && item?.runtimeVerified === true), "A required Celar private endpoint is not configured, private, and runtime-verified.");
+  const forgeFabricCapability = (fabric.capabilities || []).find((item) => item?.feature === "project_forge_plan_estimate");
+  assert(forgeFabricCapability?.module === "011/033", "The knowledge fabric does not map Project Forge to Modules 011/033.");
+  assert(forgeFabricCapability?.centralRouterConnected === true, "Project Forge is not connected to the Module 064 central router.");
+  assert(forgeFabricCapability?.privateContextCompliant === true && forgeFabricCapability?.directProviderFree === true, "Project Forge does not satisfy the private, router-only provider boundary.");
+  assert(forgeFabricCapability?.privateKnowledgeReady === true, "Project Forge cannot use the ready private knowledge fabric.");
+  assert(JSON.stringify(forgeFabricCapability?.route) === JSON.stringify(expectedTargets), "Project Forge has the wrong Module 064 target route.");
+  assert(knowledgeFabric.json?.privacyBoundary?.endpointValuesReturned === false, "Knowledge-fabric response exposed private endpoint values.");
+  assert(knowledgeFabric.json?.privacyBoundary?.secretValuesReturned === false, "Knowledge-fabric response exposed secret values.");
+  assert(knowledgeFabric.json?.privacyBoundary?.rawDocumentsReturned === false, "Knowledge-fabric response exposed raw documents.");
+  assert(knowledgeFabric.json?.privacyBoundary?.embeddingVectorsReturned === false, "Knowledge-fabric response exposed embedding vectors.");
+  evidence.authenticatedChecks.module064KnowledgeFabric = "passed";
 
   const generalKnowledgeChat = await request("/api/celar-ai/v2/chat", {
     method: "POST",
@@ -666,8 +757,92 @@ async function run() {
   assert(forge.status === 200, "Project Forge bootstrap returned HTTP " + forge.status + ".");
   assert(forge.json?.status === "project_forge_loaded", "Project Forge did not report loaded.");
   assert(forge.json?.access?.canManage === true, "Project Forge fixture is not manageable by the Test session.");
-  assert((forge.json?.projects || []).some((item) => item?.projectId === forgeProjectId), "Project Forge fixture project was not returned.");
+  const forgeProject = (forge.json?.projects || []).find((item) => item?.projectId === forgeProjectId);
+  assert(forgeProject, "Project Forge fixture project was not returned.");
   assert(forge.json?.summary?.selectedProjectId === forgeProjectId, "Project Forge selected project binding is incorrect.");
+  const forgeConnection = forge.json?.ai?.module064Connection || {};
+  assert(forge.json?.ai?.enabled === true, "Project Forge does not expose AI as enabled for the authorized Test session.");
+  assert(forge.json?.ai?.capability === "project_forge_plan_estimate", "Project Forge exposes the wrong Celar AI capability.");
+  assert(forgeConnection.connected === true, "Project Forge is not visibly connected to Module 064.");
+  assert(forgeConnection.status === "connected_private_knowledge_ready", "Project Forge does not report a ready private Module 064 connection.");
+  assert(forgeConnection.permissionAuthorized === true, "Project Forge AI permission is not authorized.");
+  assert(forgeConnection.privateKnowledgeReady === true, "Project Forge private knowledge is not ready.");
+  assert(JSON.stringify(forgeConnection.route) === JSON.stringify(expectedTargets), "Project Forge exposes the wrong Module 064 route.");
+  assert(forgeConnection.sourceCommit === sourceSha, "Project Forge Module 064 evidence is not bound to this release.");
+  assert(forgeConnection.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "Project Forge is not using the latest product knowledge catalog.");
+  assert(forgeConnection.systemKnowledgeVersion === "celar-ai-system-knowledge-v3-20260806", "Project Forge is not using the latest system knowledge catalog.");
+  assert(Number(forgeConnection.readyDocumentCount) > 0 && Number(forgeConnection.readySowDocumentCount) > 0, "Project Forge has no ready private project/SOW knowledge.");
+  assert(Number(forgeConnection.activeVersionCount) > 0 && Number(forgeConnection.activeChunkCount) > 0, "Project Forge has no active authoritative content graph.");
+  assert(Array.isArray(forgeConnection.blockers) && forgeConnection.blockers.length === 0, "Project Forge reports Module 064 connection blockers.");
+  assert(forgeConnection.endpointValuesReturned === false && forgeConnection.secretValuesReturned === false, "Project Forge exposed private endpoint or secret values.");
+  evidence.authenticatedChecks.projectForgeModule064Connection = "passed";
+
+  const projectCode = String(forgeProject.projectCode || "").trim();
+  const projectName = String(forgeProject.projectName || "").trim();
+  assert(projectCode.length > 0 && projectName.length > 0, "Project Forge fixture is missing project identity required for grounded planning UAT.");
+  const composePlanning = async (mode, capabilityCode, requestedOutcome) => request("/api/celar-ai/v1/compose", {
+    method: "POST",
+    moduleNumber: "011",
+    authenticated: true,
+    timeoutMs: 180000,
+    body: {
+      mode,
+      projectId: forgeProjectId,
+      projectCode,
+      projectName,
+      startDate: new Date().toISOString().slice(0, 10),
+      requestedOutcome,
+      detailLevel: "comprehensive",
+      diagramType: "gantt",
+      allowSanitizedExternalFallback: false,
+      capabilityCode,
+    },
+  });
+
+  const sowComposition = await composePlanning(
+    "sow_draft",
+    "sow_gsd_planning",
+    "Automatically populate every customer-facing SOW section and every work package with ordered actor/action/input/output/evidence/completion steps, responsibilities, prerequisites, estimates, acceptance criteria, validation, risks, open questions, dependencies, and citations.",
+  );
+  assert(sowComposition.status === 200, "Comprehensive SOW composition returned HTTP " + sowComposition.status + ".");
+  assert(sowComposition.json?.result?.status === "celar_ai_solution_draft_completed", "Comprehensive SOW composition did not complete.");
+  assert(["celar_ai", "claude", "openai"].includes(String(sowComposition.json?.result?.selectedTarget || "").toLowerCase()), "SOW composition fell through to a local template.");
+  const sowDraft = sowComposition.json?.result?.sowDraft || {};
+  assert(String(sowDraft.title || "").trim().length > 0 && String(sowDraft.executiveSummary || "").trim().length >= 80, "SOW title or executive summary is incomplete.");
+  for (const [field, label] of [
+    ["objectives", "objectives"], ["inScope", "in-scope services"], ["outOfScope", "out-of-scope services"],
+    ["deliverables", "deliverables"], ["customerResponsibilities", "customer responsibilities"],
+    ["usSignalResponsibilities", "US Signal responsibilities"], ["assumptions", "assumptions"],
+    ["dependencies", "dependencies"], ["acceptanceCriteria", "acceptance criteria"],
+    ["timelineAndMilestones", "timeline and milestones"], ["risks", "risks"], ["openQuestions", "open questions"],
+  ]) assertPopulatedList(sowDraft[field], "SOW " + label);
+  assert(Array.isArray(sowDraft.workPackages) && sowDraft.workPackages.length > 0, "SOW returned no populated work packages.");
+  sowDraft.workPackages.forEach((item, index) => assertDetailedPlanningTask(item, "SOW work package " + (index + 1), false));
+  assert(sowDraft.reviewRequired === true && sowDraft.contractuallyBinding === false, "SOW violated the required non-binding human-review boundary.");
+  assert(sowComposition.json?.result?.controls?.sowPublished === false && sowComposition.json?.result?.controls?.stateChanged === false, "SOW composition changed or published state.");
+  evidence.authenticatedChecks.sowComprehensiveStructuredDraft = "passed";
+
+  const flowHiveComposition = await composePlanning(
+    "project_plan",
+    "project_flowhive_plan",
+    "Create an extremely detailed customer-facing FlowHive plan and automatically populate every structured task and planning section with executable steps, dependencies, roles, estimates, responsibilities, evidence, and completion criteria.",
+  );
+  assert(flowHiveComposition.status === 200, "Comprehensive FlowHive composition returned HTTP " + flowHiveComposition.status + ".");
+  assert(flowHiveComposition.json?.result?.status === "celar_ai_solution_draft_completed", "Comprehensive FlowHive composition did not complete.");
+  assertDetailedPlan(flowHiveComposition.json?.result?.flowHivePlan, "FlowHive plan");
+  assert(flowHiveComposition.json?.result?.controls?.projectPlanBaselined === false && flowHiveComposition.json?.result?.controls?.stateChanged === false, "FlowHive composition changed or baselined project state.");
+  evidence.authenticatedChecks.flowHiveComprehensiveStructuredPlan = "passed";
+
+  const forgeComposition = await composePlanning(
+    "project_plan",
+    "project_forge_plan_estimate",
+    "Create an extremely detailed customer-facing Project Forge task and estimate draft; automatically populate each supported section so a delivery professional can execute and validate the work without guessing.",
+  );
+  assert(forgeComposition.status === 200, "Comprehensive Project Forge composition returned HTTP " + forgeComposition.status + ".");
+  assert(forgeComposition.json?.result?.status === "celar_ai_solution_draft_completed", "Comprehensive Project Forge composition did not complete.");
+  assertDetailedPlan(forgeComposition.json?.result?.flowHivePlan, "Project Forge plan");
+  assert(forgeComposition.json?.result?.controls?.projectPlanBaselined === false && forgeComposition.json?.result?.controls?.engineersAssigned === false && forgeComposition.json?.result?.controls?.stateChanged === false, "Project Forge composition changed project state.");
+  evidence.authenticatedChecks.projectForgeComprehensiveStructuredPlan = "passed";
 
   forgeTaskName = "Guarded Test persistence probe " + randomUUID().slice(0, 8);
   const createTask = await request("/api/project-forge/projects/" + encodeURIComponent(forgeProjectId) + "/tasks", {
