@@ -53,6 +53,15 @@ jobs:
           grep -Fq 'celar_ai_chat_attachment_revoked' scripts/release-test/verify-runtime.mjs
           grep -Fq 'canonical_task_created' scripts/release-test/verify-runtime.mjs
           grep -Fq 'canonical_task_archived' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'module064KnowledgeFabric' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'projectForgeModule064Connection' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'sowComprehensiveStructuredDraft' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'flowHiveComprehensiveStructuredPlan' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'projectForgeComprehensiveStructuredPlan' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'assertDetailedPlanningTask' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celar-ai-product-knowledge-v3-20260806' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'celar-ai-system-knowledge-v3-20260806' scripts/release-test/verify-runtime.mjs
+          grep -Fq '["GET", "/api/ai-configuration/knowledge-fabric"]' scripts/release-test/verify-runtime.mjs
           grep -Fq 'keyVaultUrl' scripts/release-test/run-migration-job.sh
           grep -Fq 'identity: $identity' scripts/release-test/run-migration-job.sh
           grep -Fq 'CREATE_ATTEMPTED=1' scripts/release-test/run-migration-job.sh
@@ -116,7 +125,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'DEPLOY-99CE17D3-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DEPLOY-B94DEAD5-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
@@ -125,13 +134,13 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-99ce17d3-20260806-r3"
+          assert manifest["releaseName"] == "current-main-b94dead5-20260806-r4"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
           assert manifest["allowSanitizedExternalEscalation"] is True
           assert manifest["sanitizedExternalFallbackEnabled"] is True
-          assert manifest["sourceSha"] == "99ce17d3d2981d9fd96ca3447b617b51d8dd78dc"
+          assert manifest["sourceSha"] == "b94dead5bfeec03fecacf27d7e78d14e4e5d92a7"
           assert manifest["flowHiveIncluded"] is False
           assert manifest["migration074Included"] is False
           assert [item["id"] for item in manifest["migrations"]] == [
