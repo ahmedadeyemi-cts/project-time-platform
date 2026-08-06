@@ -227,7 +227,7 @@ jobs:
             '/api/celar-ai/v2/chat' \
             '/api/celar-ai/v1/production/readiness' \
             '/api/project-flowhive/ai/production-generate' \
-            'Generate detailed Celar AI plan' \
+            'Generate and auto-fill detailed plan' \
             'Initialize production lifecycle schema' \
             'Verified current fact' \
             'Knowledge & RAG' \
