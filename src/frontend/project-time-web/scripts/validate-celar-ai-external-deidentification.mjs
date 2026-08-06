@@ -152,6 +152,20 @@ check(
   'known and uncertain personal, customer, organization, and location entities are removed'
 );
 check(
+  'CELAR_EXTERNAL_TIMESHEET_OUTPUT_GRAMMAR',
+  containsAll(sanitizer, [
+    'ApprovedSentenceStarters',
+    'IsApprovedCapitalizedWord',
+    'LeadingNamedActor'
+  ])
+    && containsAll(externalCapsuleCatalog, [
+      'Begin every sentence',
+      'approved generic work verbs',
+      'Provided, Performed, Reviewed, Analyzed'
+    ]),
+  'Claude/OpenAI Timesheet prose uses a closed generic sentence grammar while unknown leading identities remain blocked'
+);
+check(
   'CELAR_EXTERNAL_DLP_NO_CROSS_LINE_IDENTITY_MATCH',
   sanitizer.includes('Identity labels never use \\s around separators')
     && sanitizer.includes('[ \\t]*[:=][ \\t]*')

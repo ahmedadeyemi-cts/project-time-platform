@@ -121,7 +121,7 @@ public sealed class PulseAiEscalationSanitizer
         RegexTimeout);
 
     private static readonly Regex LeadingNamedActor = new(
-        @"\b[A-Z][\p{L}\p{M}'’\-]+(?:[ \t]+[A-Z][\p{L}\p{M}'’\-]+){1,3}[ \t]+(?=(?:asked|approved|requested|confirmed|reported|provided|joined|emailed|called|reviewed|validated|assigned|submitted)\b)",
+        @"(?:^|(?<=[.!?][ \t]))[A-Z][\p{L}\p{M}'’\-]+(?:[ \t]+[A-Z][\p{L}\p{M}'’\-]+){0,3}[ \t]+(?=(?:asked|approved|requested|confirmed|reported|provided|joined|emailed|called|reviewed|validated|assigned|submitted|supported|coordinated|configured|tested|documented|investigated|implemented|updated|prepared|performed|verified|resolved|troubleshot)\b)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
         RegexTimeout);
 
@@ -169,6 +169,18 @@ public sealed class PulseAiEscalationSanitizer
         "Supported", "Task", "TCP", "Teams", "Terraform", "Tested", "The", "This", "Time", "TLS",
         "Troubleshot", "UDP", "Updated", "Use", "Validated", "Verified",
         "VLAN", "VMware", "VPN", "WAN", "When", "Windows", "Work", "Write"
+    };
+
+    // Provider output often begins a sentence with an ordinary work verb. Keep
+    // that grammar valid without treating every first word as an approved name.
+    // The list is deliberately closed: an unknown leading token such as a
+    // person's or customer's name still fails the output privacy gate.
+    private static readonly HashSet<string> ApprovedSentenceStarters = new(StringComparer.Ordinal)
+    {
+        "Analyzed", "Assessed", "Assisted", "Completed", "Configured", "Coordinated", "Created",
+        "Developed", "Documented", "Evaluated", "Implemented", "Installed", "Investigated",
+        "Monitored", "Performed", "Planned", "Prepared", "Provided", "Resolved", "Reviewed",
+        "Supported", "Tested", "Troubleshot", "Updated", "Validated", "Verified"
     };
 
     private static readonly HashSet<string> OutputBlockingCategories = new(StringComparer.OrdinalIgnoreCase)
@@ -544,7 +556,7 @@ public sealed class PulseAiEscalationSanitizer
         var count = 0;
         var result = PotentialProperNoun.Replace(source, match =>
         {
-            if (ApprovedCapitalizedWords.Contains(match.Value)) return match.Value;
+            if (IsApprovedCapitalizedWord(source, match)) return match.Value;
             count += 1;
             return "[REDACTED_UNAPPROVED_ENTITY]";
         });
@@ -559,6 +571,16 @@ public sealed class PulseAiEscalationSanitizer
         }
 
         return result;
+    }
+
+    private static bool IsApprovedCapitalizedWord(string source, Match match)
+    {
+        if (ApprovedCapitalizedWords.Contains(match.Value)) return true;
+        if (!ApprovedSentenceStarters.Contains(match.Value)) return false;
+        if (match.Index == 0) return true;
+
+        var prefix = source.AsSpan(0, match.Index).TrimEnd();
+        return prefix.Length > 0 && prefix[^1] is '.' or '!' or '?';
     }
 
     private static Regex SensitiveTermExpression(string term)
@@ -604,7 +626,7 @@ public sealed class PulseAiEscalationSanitizer
 
         if (PotentialProperNoun.Matches(content)
             .Cast<Match>()
-            .Any(match => !ApprovedCapitalizedWords.Contains(match.Value)))
+            .Any(match => !IsApprovedCapitalizedWord(content, match)))
         {
             return true;
         }

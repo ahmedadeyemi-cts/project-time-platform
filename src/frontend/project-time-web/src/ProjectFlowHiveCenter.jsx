@@ -3,6 +3,7 @@ import usSignalLogoUrl from '../brand/ussignal.png';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
 import useIdentityProfile from './identity/useIdentityProfile.js';
 import './project-flowhive-center.css';
+import './project-flowhive-ai-confidence.css';
 import './projectpulse-module-standard.css';
 
 const views = [
@@ -698,6 +699,7 @@ export default function ProjectFlowHiveCenter() {
               <header><div><span>Celar AI result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
               <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
               <p>{aiPreview.confidenceExplanation}</p>
+              {Number(aiPreview.confidence || 0) <= .35 && !aiPreview.citations?.length ? <aside className="flowhive-confidence-help"><strong>Why confidence is 35%</strong><span>This is the governed deterministic floor: Celar AI had no citation-ready private project evidence to interpret. Add approved SOW/GSD excerpts above or process and index the project documents in Module 011, then generate again. Confidence rises from evidence coverage and validation—not from changing the displayed score.</span></aside> : null}
               {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description</th><th>Duration</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{labelFrom(task.status)}</td></tr>)}</tbody></table></div> : null}
               {aiPreview.citations?.length ? <details open><summary>Private source citations ({aiPreview.citations.length})</summary><ul>{aiPreview.citations.map((citation) => <li key={citation.citationId}><strong>[{citation.citationId}] {citation.originalFileName}</strong> · {citation.documentVersion} · {citation.citationAnchor}</li>)}</ul></details> : null}
               {aiPreview.missingEvidence?.length ? <details open><summary>Missing evidence</summary><ul>{aiPreview.missingEvidence.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}

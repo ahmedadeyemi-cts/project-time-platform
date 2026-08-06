@@ -19,7 +19,7 @@ export default function CelarAiArchitectureOverview() {
           <h2 id="celar-ai-architecture-title">Celar AI Architecture Overview</h2>
           <span>
             Celar AI is the unified operational intelligence system for the US Signal Solution Provider division.
-            It combines private knowledge, governed Pulse tools, evidence-based confidence, and controlled model routing.
+            This is the governed target architecture; the Module 011 readiness cards show which optional runtime services are active now.
           </span>
         </div>
         <a href="#system-architecture">Open system architecture</a>
@@ -35,7 +35,7 @@ export default function CelarAiArchitectureOverview() {
           >
             <title id="celar-ai-svg-title">Celar AI private-first enterprise architecture</title>
             <desc id="celar-ai-svg-description">
-              Pulse users authenticate and receive role and record scope. Authorized private documents, governed live-data tools, private adapters, and a temporal policy context graph feed the private Celar AI intelligence layer. Confidence and freshness assessment follows the saved Module 064 order among eligible targets and records a privacy-safe live decision trace. Every result is privately verified before a detailed cited answer or reviewable draft is returned.
+              Pulse users authenticate and receive role and record scope. Authorized private documents and governed live-data tools may feed configured private Celar AI services. Confidence and freshness assessment follows the saved Module 064 order among eligible targets. Private source content never enters a public route; an eligible external provider can receive only a fixed identity-free capsule. Returned output passes privacy and source checks applicable to its route and remains subject to human review.
             </desc>
             <defs>
               <marker id="celar-ai-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
@@ -83,8 +83,8 @@ export default function CelarAiArchitectureOverview() {
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-intelligence" x="175" y="350" width="850" height="88" rx="12" />
               <text className="diagram-node-title" x="600" y="377" textAnchor="middle">Celar AI private intelligence and context fabric</text>
-              <text className="diagram-node-subtitle" x="600" y="399" textAnchor="middle">Private RAG · inference · OCR · embeddings · deterministic tools · solution composer</text>
-              <text className="diagram-node-subtitle" x="600" y="420" textAnchor="middle">Temporal context · policy eligibility · authoritative versions · private fine-tuning lifecycle</text>
+              <text className="diagram-node-subtitle" x="600" y="399" textAnchor="middle">Configured private RAG · inference · OCR · embeddings · deterministic tools · solution composer</text>
+              <text className="diagram-node-subtitle" x="600" y="420" textAnchor="middle">Readiness-gated services · authoritative versions · governed fine-tuning lifecycle</text>
             </g>
 
             <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 438 L600 452" />
@@ -102,11 +102,11 @@ export default function CelarAiArchitectureOverview() {
 
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-external" x="715" y="558" width="380" height="54" rx="10" />
-              <text className="diagram-node-title" x="905" y="591" textAnchor="middle">Saved eligible route may use sanitized help</text>
+              <text className="diagram-node-title" x="905" y="591" textAnchor="middle">Eligible route may use identity-free assistance</text>
               <rect className="diagram-chip is-external" x="715" y="629" width="115" height="40" rx="8" />
               <rect className="diagram-chip is-external" x="848" y="629" width="115" height="40" rx="8" />
               <rect className="diagram-chip is-external" x="981" y="629" width="115" height="40" rx="8" />
-              <text className="diagram-chip-text" x="772" y="654" textAnchor="middle">DLP</text>
+              <text className="diagram-chip-text" x="772" y="654" textAnchor="middle">Fixed capsule</text>
               <text className="diagram-chip-text" x="905" y="654" textAnchor="middle">Module 064</text>
               <text className="diagram-chip-text" x="1038" y="654" textAnchor="middle">Claude / OpenAI</text>
             </g>
@@ -114,7 +114,7 @@ export default function CelarAiArchitectureOverview() {
             <path className="diagram-line" d="M295 612 L295 690 L600 690 M905 669 L905 690 L600 690" />
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-verification" x="330" y="690" width="540" height="48" rx="10" />
-              <text className="diagram-node-title" x="600" y="720" textAnchor="middle">Private re-grounding · claim checks · citations · human review</text>
+              <text className="diagram-node-title" x="600" y="720" textAnchor="middle">Output safety · applicable source checks · citations · human review</text>
             </g>
             <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 738 L600 754" />
             <rect className="diagram-result" x="345" y="750" width="510" height="28" rx="8" />
@@ -134,10 +134,10 @@ export default function CelarAiArchitectureOverview() {
             Celar AI links evidence to authoritative versions, freshness, policy revisions, eligibility decisions, and privacy-safe live route traces.
           </AtAGlance>
           <AtAGlance icon="◉" title="Self-monitoring adapters" tone="private">
-            Module 064 shows private inference, database, scanning, OCR, embedding, storage, and fine-tuning readiness without exposing endpoints or secrets.
+            Module 011 and Module 064 show private inference, database, scanning, OCR, embedding, storage, and training readiness without exposing endpoints or secrets.
           </AtAGlance>
           <AtAGlance icon="↗" title="Governed external fallback" tone="external">
-            Only a generic sanitized problem may leave the private boundary through Module 064. The result returns for private verification.
+            Only a fixed identity-free purpose capsule may leave the private boundary through Module 064. Private evidence is never included.
           </AtAGlance>
           <AtAGlance icon="✓" title="Reviewable outcomes" tone="review">
             Generated Timesheet descriptions, SOWs, plans, timelines, and diagrams remain drafts until the owning human workflow approves them.

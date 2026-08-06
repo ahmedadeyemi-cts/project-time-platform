@@ -14,6 +14,7 @@ internal static class ReleaseRuntimeBehavior
     public static async Task RunAsync(string databaseConnectionString)
     {
         await VerifyImmutableSnapshotBehaviorAsync();
+        VerifyExternalOutputPrivacyBehavior();
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleasePrivateInferenceDestination(
                 "https://celar.private.example/v1/chat/completions", string.Empty, out _),
             "empty private endpoint allowlist is rejected");
@@ -281,6 +282,41 @@ internal static class ReleaseRuntimeBehavior
         }
 
         Console.WriteLine("CELAR_AI_RELEASE_RUNTIME_BEHAVIOR=PASSED");
+    }
+
+    private static void VerifyExternalOutputPrivacyBehavior()
+    {
+        var sanitizer = new PulseAiEscalationSanitizer();
+        Require(sanitizer.IsExternalOutputSafe(
+                "Provided technical support and documented the result. Coordinated follow-up validation.",
+                [],
+                out var safeDecision)
+            && safeDecision == "external_output_privacy_validated",
+            "generic sentence-leading work verbs pass external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Daniel supported the implementation and documented the result.",
+                [],
+                out var namedActorDecision)
+            && namedActorDecision == "external_output_identity_validation_failed",
+            "a sentence-leading named actor fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Provided technical support for Acme Corporation and documented the result.",
+                [],
+                out var customerDecision)
+            && customerDecision == "external_output_identity_validation_failed",
+            "a customer organization fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Provided technical support for restricted-project and documented the result.",
+                ["restricted-project"],
+                out var protectedTermDecision)
+            && protectedTermDecision == "external_output_identity_validation_failed",
+            "a server-resolved protected term fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Ensured technical support was delivered and documented the result.",
+                [],
+                out var unknownStarterDecision)
+            && unknownStarterDecision == "external_output_identity_validation_failed",
+            "an unapproved sentence-leading token remains fail-closed");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()

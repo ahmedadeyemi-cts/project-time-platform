@@ -21,6 +21,7 @@ function asArray(value) {
 function title(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -143,6 +144,37 @@ function ReadinessView({ payload }) {
         extractionReadyDocumentCount: readiness.extractionReadyDocumentCount,
         generatedAt: formatDate(readiness.generatedAt)
       }} />
+
+      <section className="pulse-ai-doc-activation-guide" aria-labelledby="pulse-ai-doc-activation-guide-heading">
+        <div>
+          <p className="pulse-ai-doc-eyebrow">What the “No” values mean</p>
+          <h5 id="pulse-ai-doc-activation-guide-heading">Activation path</h5>
+          <p>These are live checks, not feature promises. A capability stays unavailable until its code switch, private service, security evidence, and authorized document gates are all satisfied.</p>
+        </div>
+        <div className="pulse-ai-doc-activation-grid">
+          <article className={readiness.extractionPreviewEnabled ? 'is-ready' : ''}>
+            <strong>1 · Extraction preview</strong>
+            <span>{readiness.extractionPreviewEnabled ? 'Enabled.' : 'The extraction preview switch is off. Enable it only after durable storage and malware scanning are production-ready.'}</span>
+          </article>
+          <article className={readiness.malwareScanAttested ? 'is-ready' : ''}>
+            <strong>2 · Malware protection</strong>
+            <span>{readiness.malwareScanAttested ? 'Verified scanner evidence is present.' : 'No verified scanner evidence is present. Configure the approved private scanner and current signature evidence; do not use a UI-only attestation.'}</span>
+          </article>
+          <article className={readiness.ocrEndpointConfigured ? 'is-ready' : ''}>
+            <strong>3 · OCR</strong>
+            <span>{readiness.ocrEndpointConfigured ? 'Private OCR is configured.' : 'No private OCR endpoint is configured. Native PDF, Office, and text extraction still works; OCR is required for scanned or image-only pages.'}</span>
+          </article>
+          <article className={readiness.privateEmbeddingEndpointConfigured && readiness.privateVectorIndexConfigured ? 'is-ready' : ''}>
+            <strong>4 · Private retrieval</strong>
+            <span>{readiness.privateEmbeddingEndpointConfigured && readiness.privateVectorIndexConfigured ? 'Private embeddings and vector index are configured.' : 'Configure an approved private embedding endpoint and model, its host allowlist, and a private vector index—or explicitly approve lexical-only retrieval.'}</span>
+          </article>
+          <article className={Number(readiness.extractionReadyDocumentCount || 0) > 0 ? 'is-ready' : ''}>
+            <strong>5 · Grounded evidence</strong>
+            <span>{Number(readiness.extractionReadyDocumentCount || 0) > 0 ? `${readiness.extractionReadyDocumentCount} document(s) are ready.` : 'Upload an active, engineering-visible SOW or GSD to an authorized project, enable its AI context, process it, and approve the resulting version.'}</span>
+          </article>
+        </div>
+        <p className="pulse-ai-doc-training-note"><strong>Automatic learning:</strong> eligible approved documents may be auto-queued for indexing after the worker and service principal are enabled. Model training remains a separate reviewed dataset, evaluation, and promotion workflow; conversations never train or promote the model automatically.</p>
+      </section>
 
       <div className="pulse-ai-doc-two-column">
         <ListBlock heading="Ready capabilities" values={readiness.readyCapabilities} />
