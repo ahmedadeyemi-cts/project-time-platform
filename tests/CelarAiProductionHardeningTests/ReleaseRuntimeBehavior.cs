@@ -341,6 +341,18 @@ internal static class ReleaseRuntimeBehavior
                 out var passiveResolutionClaimDecision)
             && passiveResolutionClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported passive resolution claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and resolved the issue. Documented the result.",
+                [],
+                out var activeConjunctResolutionClaimDecision)
+            && activeConjunctResolutionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported active outcome appended after an approved starter remains fail-closed");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and documented the result. Coordinated follow-up validation.",
+                [],
+                out var safeTimesheetDecision)
+            && safeTimesheetDecision == "external_output_privacy_validated",
+            "ordinary work performed without a terminal outcome claim remains valid for Timesheet suggestions");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()
