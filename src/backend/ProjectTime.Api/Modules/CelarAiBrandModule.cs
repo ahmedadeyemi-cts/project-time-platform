@@ -10,14 +10,6 @@ public static class CelarAiBrandModule
     private const string GuidanceCatalogRoute = "/api/celar-ai/v1/guidance/catalog";
     private const string PeopleActivityReadinessRoute = "/api/celar-ai/v1/people-activity/readiness";
 
-    private static readonly HashSet<string> Module064AdministratorRoles =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "SUPER_ADMINISTRATOR",
-            "SYSTEM_ADMINISTRATOR",
-            "ADMINISTRATOR"
-        };
-
     public static IEndpointRouteBuilder MapCelarAiBrandEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
@@ -142,8 +134,10 @@ public static class CelarAiBrandModule
         var actualAccess = identities.Value.Actual == identities.Value.Effective
             ? access
             : await service.LoadAccessAsync(identities.Value.Actual, cancellationToken);
-        if (!actualAccess.IsActive
-            || !actualAccess.RoleCodes.Any(Module064AdministratorRoles.Contains))
+        if (!ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(
+                context,
+                actualAccess.RoleCodes)
+            && !actualAccess.RoleCodes.Contains("SYSTEM_ADMINISTRATOR"))
             return Forbidden("MODULE_064_ADMINISTRATOR");
         var privateOptions = CelarAiPrivateModelRuntime.Apply(PulseAiPrivateRagOptions.FromEnvironment());
         var endpointResolution = privateOptions.InferenceConfigured

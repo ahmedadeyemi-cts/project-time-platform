@@ -14,6 +14,7 @@ function assert(name, condition, evidence) {
 const routing = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs');
 const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs');
 const ragContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
+const systemAccessContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs');
 const storage = read('src/backend/ProjectTime.Api/Ai/ProjectPulseUploadStorage.cs');
 const repository = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs');
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs');
@@ -33,6 +34,10 @@ const refusalFixtures = JSON.parse(read('tests/fixtures/celar-ai-private-model-r
 const retrieval = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs');
 const reauthorization = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs');
 const module064 = read('src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs');
+const providerConfigurationModule = read('src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs');
+const brandModule = read('src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs');
+const attachmentModule = read('src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs');
+const productionModule = read('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs');
 const runtimeModule = read('src/backend/ProjectTime.Api/Modules/PulseAiPrivateRuntimeModule.cs');
 const services = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs');
 const panel = read('src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx');
@@ -537,6 +542,44 @@ assert(
     && forgePanel.includes('Project Forge is connected')
     && forgePanel.includes('automatically fills each customer-facing task'),
   'SOW, FlowHive, and Project Forge use one capability-aware private planning schema that automatically fills detailed customer-facing work sections and preserves review controls'
+);
+
+assert(
+  'ALL_ACTIVE_USERS_CAN_USE_ASK_CELAR_AI',
+  systemAccessContracts.includes('public bool CanUseCoreAssistant => IsActive;')
+    && systemAccessContracts.includes('public bool CanAsk => CanUseCoreAssistant;')
+    && systemAccessContracts.includes('public bool CanViewConversations => CanUseCoreAssistant;')
+    && systemAccessContracts.includes('public bool CanAttachDocuments => CanUseCoreAssistant;')
+    && ragContracts.includes('public bool CanHelpSearch => CanUseCoreAssistant;')
+    && ragContracts.includes('public bool CanSowPlanning => CanUseCoreAssistant;')
+    && ragContracts.includes('public bool CanSubmitFeedback => CanUseCoreAssistant;')
+    && attachmentModule.includes('&& access.CanAttachDocuments;'),
+  'every active authenticated user can ask questions, keep private conversation history, attach owned documents, use private Help/Search and SOW drafting, and submit answer feedback'
+);
+
+assert(
+  'CORE_ASSISTANT_DOES_NOT_WIDEN_SOURCE_AUTHORITY',
+  systemAccessContracts.includes('PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.ApiInventoryPermission)')
+    && systemAccessContracts.includes('PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.TroubleshootingPermission)')
+    && systemAccessContracts.includes('PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.RetestPermission)')
+    && systemAccessContracts.includes('PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AuditPermission)')
+    && ragContracts.includes('PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING")')
+    && ragContracts.includes('PermissionCodes.Contains("USE_PULSE_AI_FLOWHIVE_PLANNING")')
+    && ragContracts.includes('PermissionCodes.Contains("USE_PROJECT_FORGE_AI_033")')
+    && ragContracts.includes('PermissionCodes.Contains("VIEW_PULSE_AI_ANSWER_AUDIT")'),
+  'API inventory, troubleshooting, retest, audit, Timesheet, FlowHive, Forge, project, document, and record access remain permission-scoped'
+);
+
+assert(
+  'SUPER_ADMINISTRATOR_MODULE_011_AND_064_AUTHORITY',
+  productionModule.includes('ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(')
+    && productionModule.includes('ProjectPulseActualSessionAuthority.IsViewAs(context)')
+    && providerConfigurationModule.includes('ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(')
+    && module064.includes('ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(')
+    && brandModule.includes('ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(')
+    && providerConfigurationModule.includes('AdditionalModuleAdministratorRoles')
+    && module064.includes('AdditionalModuleAdministratorRoles'),
+  'Modules 011 and 064 use non-transferable actual-session Super Administrator authority while preserving the prior Module 064 SYSTEM_ADMINISTRATOR grant'
 );
 
 assert(

@@ -10,12 +10,10 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static class AiProviderConfigurationModule
 {
-    private static readonly HashSet<string> AdministratorRoles =
+    private static readonly HashSet<string> AdditionalModuleAdministratorRoles =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "SUPER_ADMINISTRATOR",
-            "SYSTEM_ADMINISTRATOR",
-            "ADMINISTRATOR"
+            "SYSTEM_ADMINISTRATOR"
         };
 
     public static WebApplication MapAiProviderConfigurationEndpoints(this WebApplication app)
@@ -479,6 +477,11 @@ public static class AiProviderConfigurationModule
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
+        if (ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(
+                context,
+                Array.Empty<string>()))
+            return null;
+
         var connectionString = ConnectionString();
         if (connectionString is null)
         {
@@ -491,9 +494,15 @@ public static class AiProviderConfigurationModule
 
         try
         {
-            await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync();
+            if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                    context,
+                    cancellationToken: context.RequestAborted))
+                return null;
 
+            // Preserve the pre-existing Module 064 SYSTEM_ADMINISTRATOR grant
+            // without promoting that role to permanent platform-wide control.
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(context.RequestAborted);
             const string sql = """
                 SELECT COALESCE(string_agg(DISTINCT r.role_code, ','), '')
                 FROM app_users u
@@ -506,15 +515,13 @@ public static class AiProviderConfigurationModule
                 WHERE u.user_id = @user_id
                   AND u.is_active = TRUE;
                 """;
-
             await using var command = new NpgsqlCommand(sql, connection);
             command.Parameters.AddWithValue("user_id", userId.Value);
-            var roleText = (await command.ExecuteScalarAsync())?.ToString() ?? string.Empty;
+            var roleText = (await command.ExecuteScalarAsync(context.RequestAborted))?.ToString() ?? string.Empty;
             var roles = roleText.Split(
                 ',',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (roles.Any(AdministratorRoles.Contains)) return null;
+            if (roles.Any(AdditionalModuleAdministratorRoles.Contains)) return null;
         }
         catch (Exception exception)
         {

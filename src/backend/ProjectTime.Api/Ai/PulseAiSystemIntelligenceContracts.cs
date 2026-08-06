@@ -127,14 +127,19 @@ public sealed record PulseAiSystemAccess(
     IReadOnlySet<string> PermissionCodes)
 {
     public bool IsSuperAdministrator => PulseAiRoleAuthority.HasAdministratorRole(RoleCodes);
-    public bool CanAsk => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AskPermission);
+    // Ask Celar AI is a baseline capability for every active authenticated
+    // user. The assistant still applies the effective user's module, record,
+    // project, document, API, troubleshooting, and audit permissions to every
+    // source it may retrieve; this baseline never widens the underlying data.
+    public bool CanUseCoreAssistant => IsActive;
+    public bool CanAsk => CanUseCoreAssistant;
     public bool CanViewApis => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.ApiInventoryPermission);
     public bool CanTroubleshoot => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.TroubleshootingPermission);
-    public bool CanEnhance => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.EnhancementPermission);
-    public bool CanViewConversations => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.ConversationPermission);
+    public bool CanEnhance => CanUseCoreAssistant;
+    public bool CanViewConversations => CanUseCoreAssistant;
     public bool CanRetest => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.RetestPermission);
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AuditPermission);
-    public bool CanAttachDocuments => IsSuperAdministrator || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AttachmentPermission);
+    public bool CanAttachDocuments => CanUseCoreAssistant;
 
     public static PulseAiSystemAccess From(PulseAiPrivateRagAccess access) =>
         new(access.UserId, access.IsActive, access.RoleCodes, access.PermissionCodes);

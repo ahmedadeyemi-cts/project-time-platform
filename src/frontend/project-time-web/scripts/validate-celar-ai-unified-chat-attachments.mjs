@@ -383,7 +383,7 @@ check(
     && projectIntake.includes("COALESCE(upload_source, '') <> 'celar_ai_chat_attachment'")
     && securityHardening.includes("COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'")
     && runtimeRepository.includes("COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'"),
-  'View-As and revoked permissions fail closed, selected files do not mix ambient project evidence, and legacy document routes cannot expose chat uploads'
+  'View-As and inactive-user access fail closed, selected files do not mix ambient project evidence, and legacy document routes cannot expose chat uploads'
 );
 
 check(

@@ -205,16 +205,18 @@ public sealed record PulseAiPrivateRagAccess(
         "PM_TEAM_LEAD"
     });
 
-    public bool CanHelpSearch => IsSuperAdministrator || PermissionCodes.Contains("ASK_PULSE_AI_HELP_SEARCH");
-    public bool CanSowPlanning => IsSuperAdministrator
-        || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AskPermission);
-    public bool CanAttachDocuments => IsSuperAdministrator
-        || PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission);
+    // Core Ask Celar AI capabilities follow the active authenticated user.
+    // Retrieval authorization below this boundary continues to enforce the
+    // user's project, document, module, record, and field-level scope.
+    public bool CanUseCoreAssistant => IsActive;
+    public bool CanHelpSearch => CanUseCoreAssistant;
+    public bool CanSowPlanning => CanUseCoreAssistant;
+    public bool CanAttachDocuments => CanUseCoreAssistant;
     public bool CanTimesheet => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING");
     public bool CanFlowHive => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_FLOWHIVE_PLANNING");
     public bool CanProjectForge => IsSuperAdministrator || PermissionCodes.Contains("USE_PROJECT_FORGE_AI_033");
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains("VIEW_PULSE_AI_ANSWER_AUDIT");
-    public bool CanSubmitFeedback => IsSuperAdministrator || PermissionCodes.Contains("SUBMIT_PULSE_AI_FEEDBACK");
+    public bool CanSubmitFeedback => CanUseCoreAssistant;
 
     public static PulseAiPrivateRagAccess Empty(Guid userId) =>
         new(

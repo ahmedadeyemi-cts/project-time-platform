@@ -37,6 +37,24 @@ jobs:
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-access-continuity-*)
+              SCOPE_LABEL='all-user Ask Celar AI and administrator access continuity'
+              SCOPE_MARKER='EXACT_11_ACCESS_CONTINUITY_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs
+          src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiConversationAttachmentModule.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs
+          src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-unified-chat-attachments.mjs
+          src/frontend/project-time-web/scripts/validate-module-064-shared-ai.mjs
+          EOF
+          )"
+              ;;
             security/celar-ai-production-readiness-knowledge-fabric-*)
               SCOPE_LABEL='knowledge fabric and comprehensive project planning'
               SCOPE_MARKER='EXACT_24_KNOWLEDGE_FABRIC_FILES'
@@ -253,6 +271,9 @@ jobs:
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
           case "$SCOPE_MARKER" in
+            EXACT_11_ACCESS_CONTINUITY_FILES)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_11_ACCESS_CONTINUITY_FILES'
+              ;;
             EXACT_24_KNOWLEDGE_FABRIC_FILES)
               echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_24_KNOWLEDGE_FABRIC_FILES'
               ;;
