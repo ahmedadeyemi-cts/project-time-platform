@@ -79,6 +79,11 @@ function formatHours(value) {
   });
 }
 
+function formatPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${Math.round(number * 100)}%` : 'Not recorded';
+}
+
 function labelFrom(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
@@ -87,7 +92,7 @@ function labelFrom(value) {
 
 function statusTone(status) {
   const normalized = String(status ?? '').toLowerCase();
-  if (['active', 'available', 'source_ready', 'preview_ready', 'request_ready'].includes(normalized)) return 'ready';
+  if (['active', 'available', 'ready', 'production_ready', 'module_064_routed'].includes(normalized)) return 'ready';
   if (['locked', 'blocked', 'error'].includes(normalized)) return 'blocked';
   return 'planned';
 }
@@ -190,25 +195,29 @@ export default function ProjectFlowHiveCenter() {
   const [schedule, setSchedule] = useState(null);
   const [validation, setValidation] = useState(null);
   const [aiPreview, setAiPreview] = useState(null);
+  const [savedPlans, setSavedPlans] = useState([]);
+  const [baselineNote, setBaselineNote] = useState('Reviewed with project delivery and engineering stakeholders.');
   const [gsdExcerpt, setGsdExcerpt] = useState('');
   const [sowExcerpt, setSowExcerpt] = useState('');
-  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with dependencies, risks, and assumptions.');
+  const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with detailed tasks, dependencies, risks, assumptions, milestones, acceptance, operational handoff, and closeout.');
   const { profile: identityProfile } = useIdentityProfile({ refreshSeconds: 90 });
 
   async function loadModule() {
     setLoading(true);
     setError('');
     try {
-      const [capabilities, portfolioResult, readinessResult, artifactResult] = await Promise.all([
+      const [capabilities, portfolioResult, readinessResult, artifactResult, plansResult] = await Promise.all([
         getJson('/api/project-flowhive/capabilities'),
         getJson('/api/project-flowhive/portfolio'),
         getJson('/api/project-flowhive/readiness'),
-        getJson('/api/project-flowhive/artifacts/readiness')
+        getJson('/api/project-flowhive/artifacts/readiness'),
+        getJson('/api/project-flowhive/plans')
       ]);
       setCapabilityResponse(capabilities);
       setPortfolio(portfolioResult);
       setReadiness(readinessResult);
       setArtifactReadiness(artifactResult);
+      setSavedPlans(plansResult.plans || []);
       setSelectedProjectId((current) => current || portfolioResult.projects?.[0]?.projectId || '');
     } catch (loadError) {
       setError(loadError.message || 'Project FlowHive could not be loaded.');
@@ -270,7 +279,7 @@ export default function ProjectFlowHiveCenter() {
     setSchedule(null);
     setValidation(null);
     setAiPreview(null);
-    setNotice('Local planning draft created in browser memory. No database record was created.');
+    setNotice('A new FlowHive draft is ready. Save it to create the first immutable version.');
     setActiveView('planner');
   }
 
@@ -396,19 +405,92 @@ export default function ProjectFlowHiveCenter() {
     }
   }
 
+  async function saveDraft() {
+    if (!draftPlan) return;
+    setBusy('save');
+    setError('');
+    try {
+      const result = await postJson('/api/project-flowhive/plans/drafts', draftPlan);
+      setDraftPlan((current) => current ? { ...current, planId: result.planId } : current);
+      setNotice(`FlowHive draft version ${result.version} was saved with immutable schedule and validation evidence.`);
+      const plansResult = await getJson('/api/project-flowhive/plans');
+      setSavedPlans(plansResult.plans || []);
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function establishBaseline() {
+    if (!draftPlan?.planId) return;
+    const current = savedPlans.find((plan) => plan.planId === draftPlan.planId);
+    setBusy('baseline');
+    setError('');
+    try {
+      const result = await postJson(`/api/project-flowhive/plans/${draftPlan.planId}/baseline`, {
+        approvalNote: baselineNote,
+        expectedVersion: current?.currentVersion || null
+      });
+      setNotice(`FlowHive version ${result.version} is now the reviewer-approved baseline.`);
+      const plansResult = await getJson('/api/project-flowhive/plans');
+      setSavedPlans(plansResult.plans || []);
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function loadSavedPlan(planId) {
+    if (!planId) return;
+    setBusy('load-plan');
+    setError('');
+    try {
+      const result = await getJson(`/api/project-flowhive/plans/${planId}`);
+      setDraftPlan(result.plan);
+      setSchedule(result.schedule);
+      setValidation(result.validation);
+      setSelectedProjectId(result.summary.projectId);
+      setNotice(`Loaded immutable FlowHive version ${result.summary.currentVersion}.`);
+      setActiveView('planner');
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function previewAiRequest() {
     if (!draftPlan) return;
     setBusy('ai');
     setError('');
     try {
-      const result = await postJson('/api/project-flowhive/ai/request-preview', {
+      const result = await postJson('/api/project-flowhive/ai/production-generate', {
         plan: draftPlan,
         gsdExcerpt,
         sowExcerpt,
-        requestedOutcome
+        requestedOutcome,
+        detailLevel: 'comprehensive',
+        diagramType: 'flowchart',
+        allowSanitizedExternalFallback: true
       });
       setAiPreview(result);
-      setNotice('Module 064 request preview created. No AI provider was called.');
+      if (result.plan) {
+        setDraftPlan({
+          ...result.plan,
+          planId: draftPlan.planId || null,
+          sourceKind: 'celar_ai',
+          celarAiProviderCode: result.executionPath || '',
+          celarAiCorrelationId: result.correlationId || '',
+          celarAiConfidence: result.confidence ?? null
+        });
+      }
+      if (result.schedule?.valid) setSchedule(result.schedule);
+      setValidation(result.validation || null);
+      setNotice(result.schedule?.valid
+        ? 'Celar AI produced and auto-filled a detailed private review plan. Save it to create an immutable version.'
+        : 'Celar AI produced a review draft that requires correction before it can be saved.');
     } catch (actionError) {
       setError(actionError.message);
     } finally {
@@ -456,7 +538,7 @@ export default function ProjectFlowHiveCenter() {
       data-module="066"
       data-brand="us-signal"
       data-phase="066A.1-066E"
-      data-mode="release-train-source-registered"
+      data-mode="production"
     >
       <header className="flowhive-hero">
         <div className="flowhive-brand-lockup">
@@ -464,7 +546,7 @@ export default function ProjectFlowHiveCenter() {
           <div>
             <p className="flowhive-eyebrow">Module 066 · Project planning command center</p>
             <h2>Project FlowHive</h2>
-            <p>Governed portfolio, WBS, dependency, schedule, risk, AI-request, and branded artifact source.</p>
+            <p>Production portfolio planning with immutable versions, deterministic schedules, Celar AI drafting, reviewer baselines, and governed artifacts.</p>
           </div>
         </div>
         <div className="flowhive-hero-actions">
@@ -472,14 +554,14 @@ export default function ProjectFlowHiveCenter() {
             <IdentityAvatar profile={identityProfile} size="small" />
             <span>{identityProfile?.displayName || portfolio?.access?.displayName || 'ProjectPulse user'}</span>
           </div>
-          <span className="flowhive-phase-badge">Source registered</span>
+          <span className="flowhive-phase-badge">Production connected</span>
           <button type="button" onClick={loadModule} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
         </div>
       </header>
 
-      <aside className="flowhive-foundation-notice" aria-label="Governed source boundary">
-        <strong>Complete safe source registered in the current-main release train.</strong>
-        <span>Draft editing stays in browser memory. Database writes, baselines, AI provider calls, customer links, and delivery are hard-locked.</span>
+      <aside className="flowhive-foundation-notice" aria-label="Governed production boundary">
+        <strong>Project FlowHive is connected to Celar AI, Module 064 routing, and immutable production persistence.</strong>
+        <span>Saving creates a separate governed plan version and never changes canonical tasks. Customer delivery still requires an explicit reviewed action.</span>
       </aside>
 
       {portfolio?.access ? (
@@ -487,7 +569,7 @@ export default function ProjectFlowHiveCenter() {
           <div><span>Effective user</span><strong>{portfolio.access.displayName || portfolio.access.email}</strong></div>
           <div><span>Backend scope</span><strong>{labelFrom(portfolio.access.scope)}</strong></div>
           <div><span>View-As</span><strong>{portfolio.access.isViewAs ? 'Read-only preview' : 'Not active'}</strong></div>
-          <div><span>Persistence</span><strong>Locked</strong></div>
+          <div><span>Persistence</span><strong>{capabilityResponse?.databaseMutationEnabled ? 'Ready' : 'Unavailable'}</strong></div>
           <div><span>Customer links</span><strong>Disabled</strong></div>
         </div>
       ) : null}
@@ -514,7 +596,7 @@ export default function ProjectFlowHiveCenter() {
             <article><span>Authorized projects</span><strong>{portfolio?.summary?.projectCount ?? 0}</strong><small>{filteredProjects.length} match filters</small></article>
             <article><span>Visible tasks</span><strong>{portfolio?.summary?.taskCount ?? 0}</strong><small>Canonical task records</small></article>
             <article><span>Assignments</span><strong>{portfolio?.summary?.assignmentCount ?? 0}</strong><small>{formatHours(portfolio?.summary?.assignedHours)} assigned hours</small></article>
-            <article><span>Controlled baselines</span><strong>0</strong><small>Persistence locked</small></article>
+            <article><span>Controlled baselines</span><strong>{portfolio?.summary?.controlledBaselineCount ?? 0}</strong><small>Reviewer-approved versions</small></article>
           </div>
           {loading ? <EmptyState>Loading authorized portfolio…</EmptyState> : null}
           {!loading && !error && filteredProjects.length === 0 ? <EmptyState>No authorized projects match the filters.</EmptyState> : null}
@@ -523,7 +605,7 @@ export default function ProjectFlowHiveCenter() {
               <article className={`flowhive-project-card ${selectedProjectId === project.projectId ? 'selected' : ''}`} key={project.projectId}>
                 <div className="flowhive-project-card-heading"><div><span>{project.customerName}</span><h3>{project.projectCode} · {project.projectName}</h3></div><span className={`flowhive-status ${statusTone(project.status)}`}>{labelFrom(project.status)}</span></div>
                 <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
-                <footer><button type="button" onClick={() => setSelectedProjectId(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => { setSelectedProjectId(project.projectId); setDraftPlan(buildLocalDraft(project, tasks, assignments)); setActiveView('planner'); }}>Open local planner</button></footer>
+                <footer><button type="button" onClick={() => setSelectedProjectId(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => { setSelectedProjectId(project.projectId); setDraftPlan(buildLocalDraft(project, tasks, assignments)); setActiveView('planner'); }}>Open planner</button></footer>
               </article>
             ))}
           </div>
@@ -534,13 +616,17 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
             <label>Canonical project<select value={selectedProjectId} onChange={(event) => { setSelectedProjectId(event.target.value); setDraftPlan(null); setSchedule(null); }}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
-            <button type="button" onClick={createLocalDraft} disabled={!selectedProject}>Create/reset local draft</button>
+            <button type="button" onClick={createLocalDraft} disabled={!selectedProject}>Create/reset draft</button>
             <button type="button" onClick={validatePlan} disabled={!draftPlan || busy}>Validate</button>
             <button type="button" className="primary" onClick={calculateSchedule} disabled={!draftPlan || busy}>{busy === 'schedule' ? 'Calculating…' : 'Calculate schedule'}</button>
-            <button type="button" disabled title="Persistence requires a separately approved database phase">Save draft — locked</button>
-            <button type="button" disabled title="Baseline approval requires persistence and Module 002 integration">Establish baseline — locked</button>
+            <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || portfolio?.access?.isViewAs}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
+            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || portfolio?.access?.isViewAs || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button>
           </div>
-          {!draftPlan ? <EmptyState>Select an authorized project and create a browser-local draft.</EmptyState> : (
+          <div className="flowhive-plan-metadata">
+            <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">New unsaved plan</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
+            <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>
+          </div>
+          {!draftPlan ? <EmptyState>Select an authorized project and create or load a FlowHive draft.</EmptyState> : (
             <>
               <div className="flowhive-plan-metadata">
                 <label>Plan name<input value={draftPlan.planName} onChange={(event) => updatePlan('planName', event.target.value)} /></label>
@@ -549,7 +635,7 @@ export default function ProjectFlowHiveCenter() {
                 <label>GSD version<input value={draftPlan.gsdVersion} onChange={(event) => updatePlan('gsdVersion', event.target.value)} placeholder="Approved GSD version" /></label>
                 <label>SOW version<input value={draftPlan.sowVersion} onChange={(event) => updatePlan('sowVersion', event.target.value)} placeholder="Approved SOW version" /></label>
               </div>
-              <div className="flowhive-table-heading"><div><h3>Controlled draft task grid</h3><p>Identity choices use Module 062-backed ProjectPulse user IDs. Edits are not persisted.</p></div><button type="button" onClick={addTask}>Add local task</button></div>
+              <div className="flowhive-table-heading"><div><h3>Controlled draft task grid</h3><p>Identity choices use Module 062-backed user IDs. Save creates an immutable FlowHive version without modifying canonical tasks.</p></div><button type="button" onClick={addTask}>Add planning task</button></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table">
                   <thead><tr><th>WBS</th><th>Task</th><th>Duration</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Lead/lag</th><th>Assigned identity</th></tr></thead>
@@ -598,13 +684,27 @@ export default function ProjectFlowHiveCenter() {
 
       {activeView === 'ai' ? (
         <div className="flowhive-view-panel flowhive-ai-layout">
-          <div className="flowhive-ai-copy"><h3>Module 064 governed draft request</h3><p>Project FlowHive never calls Claude or OpenAI directly. This studio prepares a sanitized request for the shared Claude → OpenAI → local route and stops before execution.</p><ol><li>Claude is attempted only when Module 064 health permits.</li><li>OpenAI is next only when Claude is unavailable—not after a safety refusal.</li><li>The governed local template is always last.</li><li>Every output remains a draft requiring human review.</li></ol></div>
-          {!draftPlan ? <EmptyState>Create a local plan draft first.</EmptyState> : <div className="flowhive-ai-form">
-            <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} /></label>
-            <label>Approved GSD excerpt<textarea value={gsdExcerpt} onChange={(event) => setGsdExcerpt(event.target.value)} placeholder="Paste only the approved, authorized excerpt." /></label>
-            <label>Approved SOW excerpt<textarea value={sowExcerpt} onChange={(event) => setSowExcerpt(event.target.value)} placeholder="Paste only the approved, authorized excerpt." /></label>
-            <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai' ? 'Preparing…' : 'Build request preview — no provider call'}</button>
-            {aiPreview ? <div className="flowhive-ai-result"><div><span>Status</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Required service</span><strong>{aiPreview.requiredService}</strong></div><div><span>Provider order</span><strong>{aiPreview.requiredProviderOrder?.join(' → ')}</strong></div><div><span>Execution</span><strong>{aiPreview.executionEnabled ? 'Enabled' : 'Locked'}</strong></div><details><summary>Sanitized prompt preview</summary><pre>{aiPreview.request?.userPrompt}</pre></details></div> : null}
+          <div className="flowhive-ai-copy">
+            <h3>Celar AI governed Project FlowHive generation</h3>
+            <p>Celar AI retrieves authorized private project evidence, auto-fills a detailed customer-ready delivery plan, validates the WBS and dependency network, and calculates the deterministic schedule.</p>
+            <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>Any eligible external fallback receives only a backend-owned identity-free capsule.</li><li>The local governed target remains the mandatory final fallback.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
+          </div>
+          {!draftPlan ? <EmptyState>Create or load a plan draft first.</EmptyState> : <div className="flowhive-ai-form">
+            <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} rows={5} /></label>
+            <label>Optional approved GSD excerpt<textarea value={gsdExcerpt} onChange={(event) => setGsdExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt; indexed project documents are also searched." /></label>
+            <label>Optional approved SOW excerpt<textarea value={sowExcerpt} onChange={(event) => setSowExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt; raw document text is never sent to a public provider." /></label>
+            <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai' ? 'Generating detailed Celar AI plan…' : 'Generate and auto-fill detailed plan'}</button>
+            {aiPreview ? <section className="celar-flowhive-production-result">
+              <header><div><span>Celar AI result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
+              <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
+              <p>{aiPreview.confidenceExplanation}</p>
+              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description</th><th>Duration</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{labelFrom(task.status)}</td></tr>)}</tbody></table></div> : null}
+              {aiPreview.citations?.length ? <details open><summary>Private source citations ({aiPreview.citations.length})</summary><ul>{aiPreview.citations.map((citation) => <li key={citation.citationId}><strong>[{citation.citationId}] {citation.originalFileName}</strong> · {citation.documentVersion} · {citation.citationAnchor}</li>)}</ul></details> : null}
+              {aiPreview.missingEvidence?.length ? <details open><summary>Missing evidence</summary><ul>{aiPreview.missingEvidence.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
+              {aiPreview.conflicts?.length ? <details open><summary>Conflicts</summary><ul>{aiPreview.conflicts.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
+              {aiPreview.warnings?.length ? <details><summary>Warnings and review controls</summary><ul>{aiPreview.warnings.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
+              <footer><span>Configured order: {aiPreview.providerOrder?.join(' → ')}</span><span>Correlation <code>{aiPreview.correlationId}</code></span></footer>
+            </section> : null}
           </div>}
         </div>
       ) : null}
@@ -620,7 +720,7 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-phase-grid">{(readiness?.phases || []).map((phase) => <article key={phase.phase}><span>{phase.phase}</span><h3>{phase.capability}</h3><p className={`flowhive-status ${statusTone(phase.status)}`}>{labelFrom(phase.status)}</p></article>)}</div>
           <div className="flowhive-capability-grid">{capabilities.map((capability) => <article key={capability.code}><div><span>{capability.priority}</span><span className={`flowhive-status ${statusTone(capability.status)}`}>{labelFrom(capability.status)}</span></div><h3>{labelFrom(capability.code)}</h3><p>{capability.evidence}</p></article>)}</div>
-          <div className="flowhive-governance-checks"><h3>Protected boundaries</h3><ul><li>Module 002 source <code>f5ede8f…</code> and merge <code>2b4a6d1…</code> remain the verified base.</li><li>Program.cs, App.jsx, package.json, Dockerfiles, and central governance are semantically integrated once in the release train.</li><li>Database, Azure, Entra, deployment, external links, and AI provider execution are unchanged.</li><li>Source registration is present but remains uncommitted, unmerged, and undeployed.</li></ul></div>
+          <div className="flowhive-governance-checks"><h3>Protected boundaries</h3><ul><li>Canonical project, task, and assignment records remain read only from FlowHive.</li><li>Every saved draft is an immutable version with validation, schedule, actor, source, and Celar correlation evidence.</li><li>A baseline names an exact reviewed version and requires a reviewer decision note.</li><li>View-As cannot save or approve. External customer delivery remains a separate governed action.</li></ul></div>
         </div>
       ) : null}
     </section>

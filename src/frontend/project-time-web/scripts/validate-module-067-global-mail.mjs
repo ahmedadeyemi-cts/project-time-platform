@@ -220,9 +220,9 @@ assert('ROUTE_AND_STYLE_OWNERSHIP',
 assert('REGISTRY_AND_BUILD',
   registry.includes("moduleNumber: '010', route: 'azure-admin', displayName: 'Azure / Entra Directory Users'")
     && registry.includes("moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration Connection'")
-    && !registry.includes("moduleNumber: '067'")
+    && registry.includes("moduleNumber: '067', route: 'global-mail-configuration', displayName: 'Global Mail Configuration Center'")
     && packageJson.scripts?.build?.includes('validate:module067'),
-  'active registry identities and frontend build guard remain authoritative');
+  'Modules 010, 065, and 067 retain distinct canonical identities and the frontend build guard remains authoritative');
 
 if (exists(paths.migration045) && exists(paths.rollback045)) {
   const migration045 = read(paths.migration045);

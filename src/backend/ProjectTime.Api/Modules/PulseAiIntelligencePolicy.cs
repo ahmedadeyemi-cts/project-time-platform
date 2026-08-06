@@ -4,14 +4,14 @@ namespace ProjectTime.Api.Modules;
 /// Source-only Module 011 policy contract.
 ///
 /// This contract defines the approved product mission and privacy boundary for
-/// Pulse AI without registering an endpoint, reading a document, calling a
+/// Celar AI without registering an endpoint, reading a document, calling a
 /// provider, creating an embedding, starting a training job, or mutating data.
 /// Runtime implementation remains separately gated.
 /// </summary>
 public static class PulseAiIntelligencePolicy
 {
     public const string ModuleNumber = "011";
-    public const string ModuleName = "Pulse AI";
+    public const string ModuleName = "Celar AI";
     public const string PolicyVersion = "pulse-ai-authoritative-intelligence-v2-20260728";
     public const string DefaultRawDocumentBoundary = "private_projectpulse_runtime_only";
     public const string DefaultExternalEscalationPayload = "sanitized_reasoning_capsule_only";

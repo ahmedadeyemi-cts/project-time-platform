@@ -5,7 +5,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 064 is the single sanitized configuration, health, and routing
-/// boundary for every ProjectPulse AI consumer. Provider secrets remain
+/// boundary for every Celar AI consumer. Provider secrets remain
 /// encrypted, write-only, and never appear in health or routing responses.
 /// </summary>
 public static class AiProviderConfigurationModule

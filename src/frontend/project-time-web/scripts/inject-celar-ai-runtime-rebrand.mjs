@@ -89,9 +89,9 @@ function rebrandCelarValue(value) {
 
   content = replaceRequired(
     content,
-    `  const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
+    `  const payload = await getJson('/api/celar-ai/v1/system/conversations?limit=100');
     const rows = asArray(payload.conversations);`,
-    `  const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
+    `  const payload = await getJson('/api/celar-ai/v1/system/conversations?limit=100');
     const rows = asArray(payload.conversations).map((conversation) => ({
       ...conversation,
       title: rebrandCelarString(conversation.title)
@@ -174,8 +174,8 @@ function rebrandCelarValue(value) {
     'workbench_answer_rebrand');
   content = replaceRequired(
     content,
-    `    try { setConversationDetail(await getJson(\`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(id)}\`)); }`,
-    `    try { setConversationDetail(rebrandCelarValue(await getJson(\`/api/pulse-ai/v1/system/conversations/\${encodeURIComponent(id)}\`))); }`,
+    `    try { setConversationDetail(await getJson(\`/api/celar-ai/v1/system/conversations/\${encodeURIComponent(id)}\`)); }`,
+    `    try { setConversationDetail(rebrandCelarValue(await getJson(\`/api/celar-ai/v1/system/conversations/\${encodeURIComponent(id)}\`))); }`,
     'workbench_history_rebrand');
   save(relative, content);
 }

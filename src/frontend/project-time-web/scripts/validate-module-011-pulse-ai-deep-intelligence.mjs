@@ -370,7 +370,7 @@ assert(
 );
 
 const legacyGlobalHelp = includesAll(source.help, [
-  "'/api/pulse-ai/v1/help-search/plan'",
+  "'/api/celar-ai/v1/help-search/plan'",
   'DetailedAssistantAnswer',
   'Automatic multi-tool execution is not yet enabled',
   'fallbackAnswer',

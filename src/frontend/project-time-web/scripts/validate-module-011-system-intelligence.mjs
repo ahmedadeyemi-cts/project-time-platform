@@ -317,7 +317,7 @@ assert(
     'CompleteInquiryRunAsync',
     'BeginTransactionAsync'
   ])
-    && source.help.includes('/api/pulse-ai/v1/system/conversations')
+    && source.help.includes('/api/celar-ai/v1/system/conversations')
     && source.help.includes('completed responses remain in conversation history')
     && !/localStorage|sessionStorage|indexedDB/.test(source.help),
   'completed answers are durable server-side and not dependent on browser storage'

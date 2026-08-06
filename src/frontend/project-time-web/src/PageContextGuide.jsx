@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useState } from 'react';
+import { moduleForRoute } from './module-availability-registry.js';
 import './page-context-guide.css';
 
 const routeContext = {
@@ -165,17 +167,85 @@ const routeContext = {
   }
 };
 
-function getContext(route) {
-  return routeContext[route] || {
-    page: route || 'Current page',
-    purpose: 'Installed Project Health Dashboard page for the current role.',
-    backend: 'Role-protected application endpoints',
-    check: 'Confirm the page loads, navigation works, and role restrictions make sense.'
+const groupPurpose = {
+  'AI & Automation': 'Provides governed Celar AI, private knowledge, routing, model, and automation capabilities without bypassing role or data-scope controls.',
+  'Time Management': 'Supports governed time entry, compliance, calendars, and related operational controls.',
+  Approvals: 'Supports controlled review, approval, export, and audit decisions.',
+  'Resource Management': 'Supports authorized resource, utilization, workload, and capacity decisions.',
+  'Project Management': 'Supports scoped project administration and delivery oversight.',
+  'Project Delivery': 'Supports customer delivery planning and execution within the current user’s project scope.',
+  'Project Operations': 'Supports authoritative project operations and governed delivery records.',
+  'Sales & Opportunities': 'Supports governed sales intake, opportunity, pipeline, and handoff workflows.',
+  Customers: 'Supports governed customer records, contacts, commercial context, and customer-to-project workflows.',
+  Resources: 'Supports governed people qualifications, certifications, assignments, and delivery-readiness records.',
+  'Reports & Workflow': 'Supports role-scoped operational reporting, exceptions, billing, and workflow evidence.',
+  Integrations: 'Supports governed external-system connection, readiness, synchronization, and audit evidence.',
+  Administration: 'Supports restricted identity, role, and application administration.',
+  Security: 'Supports restricted security and AI configuration controls.',
+  'Security & Audit': 'Supports security operations, evidence, audit, retention, and privacy controls.',
+  'Platform Operations': 'Supports platform health, recovery, diagnostics, delivery, and operational governance.',
+  'Help & Documentation': 'Provides governed help, documentation, defect, and user-guidance workflows.'
+};
+
+function authenticationHeaders() {
+  try {
+    const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+    if (!session?.sessionToken) return {};
+    return { Authorization: `Bearer ${session.sessionToken}`, 'X-ProjectPulse-Session': session.sessionToken };
+  } catch {
+    return {};
+  }
+}
+
+function getContext(route, module) {
+  const configured = routeContext[route] || {};
+  if (!module) return {
+    page: configured.page || route || 'Current page',
+    purpose: configured.purpose || 'Role-protected application workspace for the current user.',
+    backend: configured.backend || 'Role-protected application endpoints',
+    check: configured.check || 'Confirm the page loads, navigation works, and role restrictions match the active user.'
+  };
+  return {
+    page: `${module.displayName} — Module ${module.moduleNumber}`,
+    purpose: module.description || configured.purpose || groupPurpose[module.group] || `Provides the governed ${module.displayName} workflow.`,
+    backend: configured.backend || `Live endpoints registered to Module ${module.moduleNumber}`,
+    check: configured.check || `Confirm ${module.displayName} loads, its primary workflow completes, and its role and project scope are enforced.`
   };
 }
 
 export default function PageContextGuide({ activeRoute }) {
-  const context = getContext(activeRoute);
+  const module = useMemo(() => moduleForRoute(activeRoute), [activeRoute]);
+  const context = useMemo(() => getContext(activeRoute, module), [activeRoute, module]);
+  const [apiEvidence, setApiEvidence] = useState({ status: 'idle', apis: [] });
+
+  useEffect(() => {
+    let active = true;
+    if (!module) {
+      setApiEvidence({ status: 'not_applicable', apis: [] });
+      return () => { active = false; };
+    }
+    setApiEvidence({ status: 'loading', apis: [] });
+    const url = `/api/celar-ai/v1/system/apis?module=${encodeURIComponent(module.moduleNumber)}&limit=200`;
+    fetch(url, { headers: authenticationHeaders() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (!active) return;
+        const apis = (payload.apis || []).filter((api) => !String(api.routePattern || '').startsWith('/api/pulse-ai'));
+        setApiEvidence({ status: 'live', apis, contractVersion: payload.contractVersion });
+      })
+      .catch(() => {
+        if (active) setApiEvidence({ status: 'permission_limited', apis: [] });
+      });
+    return () => { active = false; };
+  }, [module]);
+
+  const apiRoutes = apiEvidence.apis.map((api) => `${api.method} ${api.routePattern}`).filter(Boolean);
+  const backendSummary = apiEvidence.status === 'live'
+    ? `${apiRoutes.length} live registered ${apiRoutes.length === 1 ? 'endpoint' : 'endpoints'}`
+    : context.backend;
 
   return (
     <aside className="page-context-guide" aria-label="Page context guide">
@@ -195,7 +265,9 @@ export default function PageContextGuide({ activeRoute }) {
 
           <div>
             <span>Backend support</span>
-            <p><code>{context.backend}</code></p>
+            <p><code>{backendSummary}</code></p>
+            {apiRoutes.length ? <details className="page-context-api-list"><summary>Show exact API routes</summary><ul>{apiRoutes.map((route) => <li key={route}><code>{route}</code></li>)}</ul></details> : null}
+            {apiEvidence.status === 'permission_limited' ? <small>Exact live API inventory requires the API inventory permission; the documented module contract is shown.</small> : null}
           </div>
 
           <div>

@@ -42,7 +42,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 if (result.Status == "document_snapshot_cleanup_unavailable")
                 {
                     _logger.LogWarning(
-                        "Pulse AI private snapshot cleanup was unavailable; no orphan deletion or document processing occurred. Diagnostic=document_snapshot_cleanup_unavailable");
+                        "Celar AI private snapshot cleanup was unavailable; no orphan deletion or document processing occurred. Diagnostic=document_snapshot_cleanup_unavailable");
                     await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
                     continue;
                 }
@@ -53,7 +53,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
                 }
 
                 _logger.LogInformation(
-                    "Pulse AI private processing cycle completed. Status={Status} JobId={JobId} DocumentId={DocumentId} Sections={SectionCount} Chunks={ChunkCount} Embedded={EmbeddedChunkCount} Diagnostic={Diagnostic}",
+                    "Celar AI private processing cycle completed. Status={Status} JobId={JobId} DocumentId={DocumentId} Sections={SectionCount} Chunks={ChunkCount} Embedded={EmbeddedChunkCount} Diagnostic={Diagnostic}",
                     result.Status,
                     result.JobId,
                     result.DocumentId,
@@ -70,7 +70,7 @@ public sealed class PulseAiPrivateDocumentRuntimeWorker : BackgroundService
             {
                 _logger.LogError(
                     exception,
-                    "Pulse AI private document worker encountered a bounded processing failure. No document content was logged.");
+                    "Celar AI private document worker encountered a bounded processing failure. No document content was logged.");
                 await DelayAsync(TimeSpan.FromSeconds(Math.Max(10, options.PollSeconds)), stoppingToken);
             }
         }

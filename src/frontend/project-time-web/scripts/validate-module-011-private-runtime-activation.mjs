@@ -252,9 +252,9 @@ assert(
 
 assert(
   'EXACT_CONFIRMATIONS',
-  contracts.includes('QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
-    && contracts.includes('RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
-    && contracts.includes('CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
+  contracts.includes('QUEUE-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
+    && contracts.includes('RETRY-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
+    && contracts.includes('CANCEL-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
     && moduleSource.includes('ConfirmationRequired'),
   'all state-changing runtime requests require exact confirmations'
 );
@@ -313,9 +313,9 @@ assert(
 
 assert(
   'WORKBENCH_CONFIRMATIONS_NO_CACHE',
-  workbench.includes('QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
-    && workbench.includes('RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
-    && workbench.includes('CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING')
+  workbench.includes('QUEUE-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
+    && workbench.includes('RETRY-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
+    && workbench.includes('CANCEL-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING')
     && !workbench.includes('localStorage')
     && !workbench.includes('sessionStorage')
     && !workbench.includes('indexedDB'),

@@ -66,17 +66,17 @@ public static class PulseAiProductKnowledgeCatalog
         ["#celar-ai", "#timesheet", "#project-workspace", "#project-flowhive", "#reporting", "#roles-permissions-matrix", "#ai-provider-configuration", "#service-control", "#observability-slo-health", "#system-diagnostics", "#user-guide"]);
 
     private static PulseAiKnowledgeAnswer PulseAiCompatibilityPurpose() => new(
-        "Pulse AI is the former user-facing name for Celar AI",
-        "Module 011 is now branded Celar AI. Existing Pulse AI routes, API paths, permission codes, database objects, environment variables, and internal source identifiers remain available as compatibility contracts while the visible application uses the Celar AI identity.",
+        "Celar AI is the current and canonical identity for Module 011",
+        "Use Celar AI for the intelligence system, its Module 011 workspace, its architecture, and every new API integration. Older bookmarks may redirect internally, but they are not product names or documented integration routes.",
         [
-            "Compatibility summary: Pulse AI is the private intelligence layer for Pulse; it provides document-grounded Timesheet suggestions, FlowHive project-plan drafting, reporting or financial insight, and Claude or OpenAI is optional under the approved sanitized fallback policy.",
-            "Celar AI preserves every approved private-document, Timesheet, Help, Search, FlowHive, reporting, financial, API-discovery, troubleshooting, and model-governance capability developed under the Pulse AI technical name.",
-            "Use #celar-ai for the current Module 011 workspace. Existing #work-task-builder and internal /api/pulse-ai paths remain compatible during the controlled transition.",
+            "Celar AI is the private intelligence layer for Pulse; it provides document-grounded Timesheet suggestions, FlowHive project-plan drafting, reporting or financial insight, and optional policy-approved sanitized external assistance.",
+            "Celar AI includes the approved private-document, Timesheet, Help, Search, FlowHive, reporting, financial, API-discovery, troubleshooting, and model-governance capabilities.",
+            "Use #celar-ai for the Module 011 workspace and /api/celar-ai for new API integrations.",
             "The full Celar AI identity, creator attribution, Celeritas origin, US Signal fiber connection, speed-of-delivery mission, and Changepoint catalyst are available through the Celar AI product answer."
         ],
         [
             "The platform remains Pulse; Celar AI is the Module 011 intelligence brand.",
-            "Technical compatibility identifiers should not be removed until all callers, tests, audit evidence, deployments, and rollback paths have been reconciled."
+            "Transport compatibility remains an internal implementation concern and is not displayed as a second AI product identity."
         ],
         ["011", "064", "999"],
         ["#celar-ai", "#ai-provider-configuration", "#user-guide"]);

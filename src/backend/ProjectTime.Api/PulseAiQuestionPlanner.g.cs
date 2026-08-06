@@ -352,7 +352,7 @@ public sealed class PulseAiQuestionPlanner
         {
             return new PulseAiKnowledgeAnswer(
                 "Generate a document-grounded timesheet description",
-                "Module 001 can prepare a reviewable description for the selected Regular Task or Request / Service Request. The Engineer’s rough note remains the primary statement of work performed. Pulse AI then resolves the authorized project, task or request, assignment, and approved SOW/GSD context before drafting wording.",
+                "Module 001 can prepare a reviewable description for the selected Regular Task or Request / Service Request. The Engineer’s rough note remains the primary statement of work performed. Celar AI then resolves the authorized project, task or request, assignment, and approved SOW/GSD context before drafting wording.",
                 [
                     "Open Module 001 and select the correct week, project row, work date, and Normal or Afterhours time type.",
                     "Select the exact Regular Task or Request / Service Request associated with the work.",
@@ -360,10 +360,10 @@ public sealed class PulseAiQuestionPlanner
                     "Choose Generate AI suggestion. The backend—not the browser—resolves the project and retrieves only engineering-visible documents enabled for AI context.",
                     "Review the grounding warning for the SOW, GSD, extraction readiness, coverage, conflicts, and whether a private or non-document provider path was used.",
                     "Use the suggestion only after confirming it accurately describes the work. Edit it whenever the wording is incomplete, too broad, or implies an unsupported result.",
-                    "Save or submit the timesheet separately through the normal Module 001 workflow. Pulse AI cannot perform those actions."
+                    "Save or submit the timesheet separately through the normal Module 001 workflow. Celar AI cannot perform those actions."
                 ],
                 [
-                    "Pulse AI never changes hours, date, project, task, request, allocation, or time type.",
+                    "Celar AI never changes hours, date, project, task, request, allocation, or time type.",
                     "The SOW or GSD may improve terminology and scope alignment but cannot prove that an activity occurred.",
                     "Raw document text is not sent to Claude or OpenAI by the private-grounding path.",
                     "If extraction is incomplete, the response must identify that limitation rather than claim document grounding."
@@ -388,7 +388,7 @@ public sealed class PulseAiQuestionPlanner
                 [
                     "Super Administrator receives Full Control, but View-As remains a read-only preview of the selected user.",
                     "Navigation visibility is not proof that an API action is authorized; the backend remains authoritative.",
-                    "Pulse AI must never answer with information outside the effective user’s scope even when it knows the record exists."
+                    "Celar AI must never answer with information outside the effective user’s scope even when it knows the record exists."
                 ],
                 ["009", "012", "037", "059", "062"],
                 ["#role-admin", "#roles-permissions-matrix", "#user-admin"]);
@@ -408,8 +408,8 @@ public sealed class PulseAiQuestionPlanner
                     "Use Module 019 for role-scoped engineering documents and Module 066 for a reviewable planning draft when authorized."
                 ],
                 [
-                    "Module 011 Pulse AI does not create projects or tasks.",
-                    "SELL remains authoritative for fields assigned to the SELL contract; Pulse AI may explain but cannot override them.",
+                    "Module 011 Celar AI does not create projects or tasks.",
+                    "SELL remains authoritative for fields assigned to the SELL contract; Celar AI may explain but cannot override them.",
                     "Project and task changes require the applicable Module 055C/055D permissions and audit evidence."
                 ],
                 ["019", "020", "024", "027", "055C", "055D", "066"],
@@ -419,8 +419,8 @@ public sealed class PulseAiQuestionPlanner
         if (ContainsAny(normalized, "upload sow", "upload gsd", "project document", "document extraction", "ai context"))
         {
             return new PulseAiKnowledgeAnswer(
-                "Prepare an internal project document for Pulse AI",
-                "SOW, GSD, architecture, order, and supporting documents belong to the governed project document workflow. A document must be linked to the correct intake or project, classified, visible to the appropriate audience, processed privately, and explicitly eligible for the intended AI use before Pulse AI can ground an answer.",
+                "Prepare an internal project document for Celar AI",
+                "SOW, GSD, architecture, order, and supporting documents belong to the governed project document workflow. A document must be linked to the correct intake or project, classified, visible to the appropriate audience, processed privately, and explicitly eligible for the intended AI use before Celar AI can ground an answer.",
                 [
                     "Upload the document through the authorized Project Intake, Project Workspace, Work Register, or document workflow for the correct project.",
                     "Classify the document accurately, such as SOW, GSD, architecture, order, proposal, quote, or supporting evidence.",
@@ -442,7 +442,7 @@ public sealed class PulseAiQuestionPlanner
         {
             return new PulseAiKnowledgeAnswer(
                 "Create a detailed FlowHive planning draft",
-                "Pulse AI should retrieve the authorized SOW, GSD, architecture, order, constraints, calendars, capacity, and approved templates; extract deliverables and planning facts; and prepare a reviewable WBS. FlowHive’s deterministic schedule engine—not the language model—calculates dates, dependencies, critical path, and float.",
+                "Celar AI should retrieve the authorized SOW, GSD, architecture, order, constraints, calendars, capacity, and approved templates; extract deliverables and planning facts; and prepare a reviewable WBS. FlowHive’s deterministic schedule engine—not the language model—calculates dates, dependencies, critical path, and float.",
                 [
                     "Resolve the project and identify the authoritative SOW, GSD, architecture, order, and supporting versions.",
                     "Extract deliverables, scope, exclusions, assumptions, prerequisites, customer responsibilities, internal responsibilities, technical components, acceptance criteria, quantities, locations, constraints, and change-control requirements.",
@@ -452,7 +452,7 @@ public sealed class PulseAiQuestionPlanner
                     "The Project Manager presents the draft to Engineering. Engineering modifies technical steps, durations, sequencing, and assumptions before any baseline approval."
                 ],
                 [
-                    "Pulse AI cannot baseline the plan, assign people, reserve capacity, publish a customer commitment, or change approved dates.",
+                    "Celar AI cannot baseline the plan, assign people, reserve capacity, publish a customer commitment, or change approved dates.",
                     "Claude or OpenAI may receive only a sanitized planning problem when policy allows; raw documents remain private.",
                     "The final baseline requires the existing FlowHive approval and audit workflow."
                 ],
@@ -464,7 +464,7 @@ public sealed class PulseAiQuestionPlanner
         {
             return new PulseAiKnowledgeAnswer(
                 "Ask a detailed reporting or financial question",
-                "Pulse AI should use the authoritative project financial truth and reporting contracts rather than estimating from prose. It must apply the user’s financial and project scope, calculate exact values deterministically, preserve unavailable values as unknown, and then explain the drivers in detail.",
+                "Celar AI should use the authoritative project financial truth and reporting contracts rather than estimating from prose. It must apply the user’s financial and project scope, calculate exact values deterministically, preserve unavailable values as unknown, and then explain the drivers in detail.",
                 [
                     "State the business question, reporting period, currency, customer or project scope, and whether the answer should use actual, approved, forecast, or combined values.",
                     "Resolve the authorized Group 3 workspace and retrieve project, assignment, time, expense, cost-alert, document, Work Register, and SELL commercial source health.",
@@ -474,7 +474,7 @@ public sealed class PulseAiQuestionPlanner
                     "Display the contract version, currency, filters, record counts, data-as-of time, and links to the relevant ProjectPulse financial modules."
                 ],
                 [
-                    "Pulse AI cannot use arbitrary generated SQL or unrestricted database credentials.",
+                    "Celar AI cannot use arbitrary generated SQL or unrestricted database credentials.",
                     "It cannot change a rate, contract, expense, billing status, invoice, reconciliation, or accounting period.",
                     "Restricted financial values remain private; external escalation is disabled by default and requires an aggregated, redacted exception policy."
                 ],
@@ -486,13 +486,13 @@ public sealed class PulseAiQuestionPlanner
         {
             return new PulseAiKnowledgeAnswer(
                 "Configure and govern an AI provider",
-                "Module 064 is the shared provider, encrypted-secret, health, usage, routing, circuit-breaker, and fallback boundary. Pulse AI consumes that boundary; it does not display or manage usable API-key values itself.",
+                "Module 064 is the shared provider, encrypted-secret, health, usage, routing, circuit-breaker, and fallback boundary. Celar AI consumes that boundary; it does not display or manage usable API-key values itself.",
                 [
                     "Open Module 064 with authorized administrator access.",
                     "Select the provider, choose an approved model, and enter the API key through the write-only secret control.",
                     "Confirm the key is stored through the encrypted provider-secret path. The value must never be returned to the browser after submission.",
                     "Enable the provider only after configuration and health readiness are confirmed.",
-                    "Review feature-specific routing so Timesheet, Help, FlowHive, closeout, and future Pulse AI features use the approved provider order.",
+                    "Review feature-specific routing so Timesheet, Help, FlowHive, closeout, and future Celar AI features use the approved provider order.",
                     "For raw SOW, GSD, contract, customer, or financial context, configure a private model path. Direct public-provider routing must not receive unrestricted internal context."
                 ],
                 [
@@ -517,7 +517,7 @@ public sealed class PulseAiQuestionPlanner
                     "Assign priority and ownership according to business impact, then track comments, resolution, verification, and GitHub linkage through the governed workflow."
                 ],
                 [
-                    "Do not use Pulse AI to conceal or automatically remediate a production issue.",
+                    "Do not use Celar AI to conceal or automatically remediate a production issue.",
                     "A troubleshooting answer should distinguish confirmed evidence, likely causes, and unverified hypotheses.",
                     "Deployments, rollbacks, database changes, and security remediation remain separately authorized actions."
                 ],

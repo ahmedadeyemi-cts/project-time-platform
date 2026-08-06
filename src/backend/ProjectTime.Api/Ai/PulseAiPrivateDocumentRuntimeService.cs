@@ -320,7 +320,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         return await _repository.RequestCancellationAsync(
             jobId,
             actualUserId,
-            request.Reason ?? "Cancellation requested by an authorized Pulse AI operator.",
+            request.Reason ?? "Cancellation requested by an authorized Celar AI operator.",
             cancellationToken);
     }
 
@@ -768,7 +768,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         {
             _logger.LogError(
                 exception,
-                "Pulse AI private runtime processing failed without logging private document content. JobId={JobId} Diagnostic={Diagnostic}",
+                "Celar AI private runtime processing failed without logging private document content. JobId={JobId} Diagnostic={Diagnostic}",
                 job.JobId,
                 Diagnostic(exception));
             try
@@ -784,7 +784,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             {
                 _logger.LogError(
                     completionException,
-                    "Pulse AI could not persist the terminal processing state. JobId={JobId}",
+                    "Celar AI could not persist the terminal processing state. JobId={JobId}",
                     job.JobId);
             }
             return Result("failed", job, null, 0, 0, 0, Diagnostic(exception), []);
@@ -851,7 +851,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             if (!await _repository.RenewLeaseAsync(job, options.LeaseSeconds, cancellationToken))
             {
                 _logger.LogWarning(
-                    "Pulse AI stopped renewing a stale or transferred document lease. JobId={JobId} LeaseGeneration={LeaseGeneration}",
+                    "Celar AI stopped renewing a stale or transferred document lease. JobId={JobId} LeaseGeneration={LeaseGeneration}",
                     job.JobId,
                     job.LeaseGeneration);
                 processingStop.Cancel();

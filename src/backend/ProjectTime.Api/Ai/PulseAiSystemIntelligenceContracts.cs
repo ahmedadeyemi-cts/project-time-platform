@@ -5,14 +5,14 @@ namespace ProjectTime.Api.Ai;
 
 public static class PulseAiSystemIntelligencePolicy
 {
-    public const string ContractVersion = "pulse-ai-system-intelligence-v1-20260730";
-    public const string ApiCatalogVersion = "pulse-ai-live-api-catalog-v1-20260730";
-    public const string TroubleshootingVersion = "pulse-ai-troubleshooting-v1-20260730";
-    public const string EnhancementVersion = "pulse-ai-enhancement-advisor-v1-20260730";
-    public const string ConversationVersion = "pulse-ai-durable-conversations-v1-20260730";
+    public const string ContractVersion = "celar-ai-system-intelligence-v2-20260806";
+    public const string ApiCatalogVersion = "celar-ai-live-api-catalog-v2-20260806";
+    public const string TroubleshootingVersion = "celar-ai-troubleshooting-v2-20260806";
+    public const string EnhancementVersion = "celar-ai-enhancement-advisor-v2-20260806";
+    public const string ConversationVersion = "celar-ai-durable-conversations-v2-20260806";
     public const string MigrationId = "054_pulse_ai_system_intelligence_conversations";
     public const string ModuleNumber = "011";
-    public const string PrivacyBoundary = "private_pulse_runtime_and_authorized_same_origin_tools";
+    public const string PrivacyBoundary = "private_celar_runtime_and_authorized_same_origin_tools";
     public const string FeatureCode = "pulse_ai_system_intelligence";
 
     public const string AskPermission = "ASK_PULSE_AI_SYSTEM_INTELLIGENCE";
@@ -25,7 +25,7 @@ public static class PulseAiSystemIntelligencePolicy
     public const string AttachmentPermission = "ATTACH_CELAR_AI_CHAT_DOCUMENTS";
     public const string ResolvedIntentContextItem = "ProjectPulseCelarAiResolvedIntent";
 
-    public const string RetestConfirmation = "RETEST-PULSE-AI-SAFE-API";
+    public const string RetestConfirmation = "RETEST-CELAR-AI-SAFE-API";
 
     public static readonly string[] DetailLevels =
     [

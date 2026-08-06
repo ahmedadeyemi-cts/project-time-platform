@@ -88,7 +88,7 @@ public sealed class PulseAiSystemIntelligenceService
             },
             guarantees = new[]
             {
-                "Every question receives a direct answer or an explicit evidence-limited answer; Pulse AI does not return only an execution plan.",
+                "Every question receives a direct answer or an explicit evidence-limited answer; Celar AI does not return only an execution plan.",
                 "Running APIs are discovered from the current ASP.NET EndpointDataSource rather than a static route list.",
                 "Troubleshooting tools are allowlisted same-origin GET operations and the owning module remains the authorization authority.",
                 "Future enhancements are compared with current modules, APIs, architecture, operations, security, testing, rollout, and rollback evidence.",
@@ -165,7 +165,7 @@ public sealed class PulseAiSystemIntelligenceService
             return Blocked(
                 request.ConversationId ?? Guid.Empty,
                 "forbidden",
-                "The current effective user is not authorized to ask Pulse AI system-intelligence questions.",
+                "The current effective user is not authorized to ask Celar AI system-intelligence questions.",
                 correlationId);
         }
         if (question.Length == 0)
@@ -560,7 +560,7 @@ public sealed class PulseAiSystemIntelligenceService
         {
             _logger.LogError(
                 exception,
-                "Pulse AI system question failed without logging question or tool response bodies. Intent={Intent} Diagnostic={Diagnostic}",
+                "Celar AI system question failed without logging question or tool response bodies. Intent={Intent} Diagnostic={Diagnostic}",
                 plan.IntentCode,
                 Diagnostic(exception));
             var answer = EvidenceFailureAnswer(plan, correlationId);
@@ -736,7 +736,7 @@ public sealed class PulseAiSystemIntelligenceService
 
         var limitations = new List<string>
         {
-            "Pulse AI can only use sources that the current effective user is authorized to read; hidden data is not inferred.",
+            "Celar AI can only use sources that the current effective user is authorized to read; hidden data is not inferred.",
             "The same-origin tool boundary reads bounded JSON and does not retrieve raw provider secrets, unrestricted logs, database credentials, or arbitrary URLs.",
             "Some modules expose a source contract or readiness surface rather than a fully active external connector; Pulse reports that distinction instead of treating configuration as live proof.",
             "Production-changing remediation, deployment, permission, financial, project, and provider actions remain outside this answer workflow."
@@ -959,7 +959,7 @@ public sealed class PulseAiSystemIntelligenceService
                 rank: sources.Count + 1,
                 sourceCode: "private_rag_answer",
                 moduleCode: "011",
-                moduleName: "Pulse AI",
+                moduleName: "Celar AI",
                 text: Limit(JsonSerializer.Serialize(privateRag.ToPublicResponse()), Math.Max(2_000, maximumPerToolCharacters)),
                 observedAt: privateRag.DataAsOf));
         }
@@ -1194,7 +1194,7 @@ public sealed class PulseAiSystemIntelligenceService
     }
 
     private static string SystemInstruction(PulseAiSystemIntentPlan plan) => $"""
-        You are the private Pulse AI system intelligence, API discovery, troubleshooting, and future-enhancement assistant.
+        You are the private Celar AI system intelligence, API discovery, troubleshooting, and future-enhancement assistant.
         The classified intent is {plan.IntentCode}.
 
         Requirements:
@@ -1241,7 +1241,7 @@ public sealed class PulseAiSystemIntelligenceService
         PulseAiSystemIntentPlan plan,
         string correlationId) =>
         new(
-            DirectConclusion: "Pulse AI could not complete the system-intelligence request from the currently available authorized evidence.",
+            DirectConclusion: "Celar AI could not complete the system-intelligence request from the currently available authorized evidence.",
             ExecutiveSummary: "The request failed inside the governed system-intelligence boundary. No restricted source content, credential, tool body, or provider detail was exposed. Use the correlation ID with the operational and diagnostic modules.",
             ScopeAndFilters: [$"Intent: {plan.IntentCode}", $"Correlation ID: {correlationId}"],
             CurrentState: ["System-intelligence execution status: failed."],
@@ -1261,7 +1261,7 @@ public sealed class PulseAiSystemIntelligenceService
             KnownUnknownAndStaleValues: ["The specific failed dependency is unknown because the complete authorized evidence set was not available."],
             Assumptions: [],
             Conflicts: [],
-            Limitations: ["Pulse AI intentionally did not fabricate a system answer."],
+            Limitations: ["Celar AI intentionally did not fabricate a system answer."],
             RisksAndImplications: ["Changing infrastructure or permissions before identifying the failed boundary may worsen the incident or create an access-control issue."],
             RecommendedActions: ["Use the correlation ID with Modules 013, 016, 076, 078, and 998."],
             FutureEnhancementBlueprint: null,

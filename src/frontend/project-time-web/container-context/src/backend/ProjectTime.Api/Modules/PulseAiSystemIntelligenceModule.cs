@@ -8,6 +8,38 @@ public static class PulseAiSystemIntelligenceModule
         this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
+            "/api/celar-ai/v1/system/readiness",
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/system/tools",
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetToolsAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/system/apis",
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetApisAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/system/apis/{apiId}",
+            (Func<string, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetApiAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/system/apis/{apiId}/retest",
+            (Func<string, PulseAiSafeApiRetestRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)RetestApiAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/system/questions",
+            (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)AskAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/system/conversations",
+            (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)ListConversationsAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/system/conversations",
+            (Func<PulseAiConversationCreateRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)CreateConversationAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/system/conversations/{conversationId:guid}",
+            (Func<Guid, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetConversationAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/system/conversations/{conversationId:guid}/messages",
+            (Func<Guid, PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)AskInConversationAsync);
+
+        // Transport-only compatibility routes for already deployed callers.
+        endpoints.MapGet(
             "/api/pulse-ai/v1/system/readiness",
             (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetReadinessAsync);
         endpoints.MapGet(
@@ -293,8 +325,8 @@ public static class PulseAiSystemIntelligenceModule
             summary = new { returned = conversations.Count, limit },
             conversations,
             viewAsHistoryPolicy = identities.Value.Actual != identities.Value.Effective
-                ? "Only the actual administrator's own Pulse AI conversation history is returned while View-As is active."
-                : "The current user's own Pulse AI conversation history is returned.",
+                ? "Only the actual administrator's own Celar AI conversation history is returned while View-As is active."
+                : "The current user's own Celar AI conversation history is returned.",
             generatedAt = DateTimeOffset.UtcNow
         });
     }
@@ -320,7 +352,7 @@ public static class PulseAiSystemIntelligenceModule
             {
                 module = "011",
                 status = "conversation_schema_unavailable",
-                message = "Migration 054 is required before durable Pulse AI conversations can be created."
+                message = "Migration 054 is required before durable Celar AI conversations can be created."
             }, statusCode: StatusCodes.Status503ServiceUnavailable)
             : Results.Ok(new
             {
@@ -352,7 +384,7 @@ public static class PulseAiSystemIntelligenceModule
                 module = "011",
                 status = "conversation_not_found_or_not_authorized",
                 conversationId,
-                message = "The conversation is not available in the actual user's Pulse AI history."
+                message = "The conversation is not available in the actual user's Celar AI history."
             }, statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(new
             {
@@ -446,7 +478,7 @@ public static class PulseAiSystemIntelligenceModule
             module = "011",
             status = "forbidden",
             requiredPermission = permission,
-            message = "The current effective user is not authorized for this Pulse AI system-intelligence operation."
+            message = "The current effective user is not authorized for this Celar AI system-intelligence operation."
         }, statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult ViewAsMutationBlocked() =>

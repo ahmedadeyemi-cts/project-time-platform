@@ -373,7 +373,7 @@ export default function PulseAiPrivateDocumentPipelineWorkbench() {
   async function loadReadiness() {
     setLoading('readiness'); setError('');
     try {
-      const payload = await getJson('/api/pulse-ai/v1/documents/pipeline/readiness');
+      const payload = await getJson('/api/celar-ai/v1/documents/pipeline/readiness');
       setReadiness(payload);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Private document pipeline readiness could not be loaded.');
@@ -386,7 +386,7 @@ export default function PulseAiPrivateDocumentPipelineWorkbench() {
     event?.preventDefault();
     setLoading('inventory'); setError('');
     try {
-      const payload = await getJson(buildQuery('/api/pulse-ai/v1/documents/inventory', filters));
+      const payload = await getJson(buildQuery('/api/celar-ai/v1/documents/inventory', filters));
       setInventory(payload);
       setActiveWorkspace('inventory');
     } catch (reason) {
@@ -399,7 +399,7 @@ export default function PulseAiPrivateDocumentPipelineWorkbench() {
   async function loadProcessing(documentId) {
     setLoading('processing'); setError('');
     try {
-      const payload = await getJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(documentId)}/processing-preview`);
+      const payload = await getJson(`/api/celar-ai/v1/documents/${encodeURIComponent(documentId)}/processing-preview`);
       setProcessing(payload);
       setActiveWorkspace('processing');
     } catch (reason) {

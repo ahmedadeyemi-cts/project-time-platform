@@ -236,7 +236,7 @@ public sealed class PulseAiPrivateRetrievalService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private retrieval orchestration failed without logging question or source text. Feature={Feature} Diagnostic={Diagnostic}",
+                "Celar AI private retrieval orchestration failed without logging question or source text. Feature={Feature} Diagnostic={Diagnostic}",
                 query.FeatureCode,
                 Diagnostic(exception));
             return Empty(

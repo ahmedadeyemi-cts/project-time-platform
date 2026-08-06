@@ -8,6 +8,29 @@ public static class PulseAiPrivateRuntimeModule
         this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
+            "/api/celar-ai/v1/documents/runtime/readiness",
+            (Func<HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/documents/runtime/jobs",
+            (Func<HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)ListJobsAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/documents/{documentId:guid}/runtime-state",
+            (Func<Guid, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)GetDocumentStateAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/documents/{documentId:guid}/processing-jobs",
+            (Func<Guid, PulseAiQueueDocumentRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)QueueAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/documents/{documentId:guid}/versions/{versionId:guid}/approve",
+            (Func<Guid, Guid, PulseAiApproveDocumentVersionRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)ApproveVersionAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/documents/runtime/jobs/{jobId:guid}/cancel",
+            (Func<Guid, PulseAiCancelDocumentJobRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)CancelAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/documents/runtime/jobs/{jobId:guid}/retry",
+            (Func<Guid, PulseAiRetryDocumentJobRequest, HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)RetryAsync);
+
+        // Transport-only compatibility routes for already deployed callers.
+        endpoints.MapGet(
             "/api/pulse-ai/v1/documents/runtime/readiness",
             (Func<HttpContext, PulseAiPrivateDocumentRuntimeService, CancellationToken, Task<IResult>>)GetReadinessAsync);
         endpoints.MapGet(
@@ -332,7 +355,7 @@ public static class PulseAiPrivateRuntimeModule
             cancellationToken);
         return updated
             ? Results.Accepted(
-                $"/api/pulse-ai/v1/documents/runtime/jobs?status=queued",
+                $"/api/celar-ai/v1/documents/runtime/jobs?status=queued",
                 new
                 {
                     module = "011",
@@ -434,7 +457,7 @@ public static class PulseAiPrivateRuntimeModule
             module = "011",
             status = "forbidden",
             requiredPermission = permission,
-            message = "The current user is not authorized for this Pulse AI private runtime operation."
+            message = "The current user is not authorized for this Celar AI private runtime operation."
         }, statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult ViewAsMutationBlocked() =>
@@ -442,7 +465,7 @@ public static class PulseAiPrivateRuntimeModule
         {
             module = "011",
             status = "view_as_mutation_blocked",
-            message = "Administrator View-As is read-only and cannot queue, retry, cancel, approve, or otherwise mutate Pulse AI processing."
+            message = "Administrator View-As is read-only and cannot queue, retry, cancel, approve, or otherwise mutate Celar AI processing."
         }, statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult? CandidateMutationBlocked()

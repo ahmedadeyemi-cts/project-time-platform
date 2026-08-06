@@ -173,7 +173,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private document pipeline readiness failed. Diagnostic={Diagnostic}",
+                "Celar AI private document pipeline readiness failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
 
             return new PulseAiDocumentPipelineReadiness(
@@ -243,7 +243,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private document inventory failed. Diagnostic={Diagnostic}",
+                "Celar AI private document inventory failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return [];
         }
@@ -305,7 +305,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private document processing preview failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                "Celar AI private document processing preview failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
                 documentId,
                 Diagnostic(exception));
             return null;
@@ -740,13 +740,13 @@ public sealed class PulseAiPrivateDocumentPipelineService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

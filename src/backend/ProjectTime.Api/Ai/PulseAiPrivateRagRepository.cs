@@ -39,7 +39,7 @@ public sealed class PulseAiPrivateRagRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private RAG schema readiness failed. Diagnostic={Diagnostic}",
+                "Celar AI private RAG schema readiness failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return false;
         }
@@ -88,7 +88,7 @@ public sealed class PulseAiPrivateRagRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private RAG access resolution failed. UserId={UserId} Diagnostic={Diagnostic}",
+                "Celar AI private RAG access resolution failed. UserId={UserId} Diagnostic={Diagnostic}",
                 userId,
                 Diagnostic(exception));
             return PulseAiPrivateRagAccess.Empty(userId);
@@ -542,7 +542,7 @@ public sealed class PulseAiPrivateRagRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private retrieval failed without logging question or chunk text. Feature={Feature} Diagnostic={Diagnostic}",
+                "Celar AI private retrieval failed without logging question or chunk text. Feature={Feature} Diagnostic={Diagnostic}",
                 query.FeatureCode,
                 Diagnostic(exception));
             return RetrievalRows.Empty with { DiagnosticCode = Diagnostic(exception) };
@@ -597,7 +597,7 @@ public sealed class PulseAiPrivateRagRepository
         command.Parameters.AddWithValue("retrieval_version", PulseAiPrivateRagPolicy.RetrievalContractVersion);
         command.Parameters.AddWithValue("correlation_id", correlationId);
         return (Guid)(await command.ExecuteScalarAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Pulse AI answer run identifier was not returned."));
+            ?? throw new InvalidOperationException("Celar AI answer run identifier was not returned."));
     }
 
     public async Task SaveRetrievalEventAsync(
@@ -1206,13 +1206,13 @@ public sealed class PulseAiPrivateRagRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

@@ -8,10 +8,10 @@ const TABS = Object.freeze([
   { id: 'document', label: 'Document State', description: 'Version, chunk, embedding, and recent job status' }
 ]);
 
-const QUEUE_CONFIRMATION = 'QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
-const RETRY_CONFIRMATION = 'RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
-const CANCEL_CONFIRMATION = 'CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING';
-const APPROVE_VERSION_CONFIRMATION = 'APPROVE-PULSE-AI-PRIVATE-DOCUMENT-VERSION';
+const QUEUE_CONFIRMATION = 'QUEUE-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING';
+const RETRY_CONFIRMATION = 'RETRY-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING';
+const CANCEL_CONFIRMATION = 'CANCEL-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING';
+const APPROVE_VERSION_CONFIRMATION = 'APPROVE-CELAR-AI-PRIVATE-DOCUMENT-VERSION';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -284,7 +284,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
 
   const loadReadiness = useCallback(async () => {
     setBusy(true); setError('');
-    try { setReadiness(await getJson('/api/pulse-ai/v1/documents/runtime/readiness')); }
+    try { setReadiness(await getJson('/api/celar-ai/v1/documents/runtime/readiness')); }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Runtime readiness could not be loaded.'); }
     finally { setBusy(false); }
   }, []);
@@ -292,7 +292,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
   const loadJobs = useCallback(async () => {
     setBusy(true); setError('');
     try {
-      const url = new URL('/api/pulse-ai/v1/documents/runtime/jobs', window.location.origin);
+      const url = new URL('/api/celar-ai/v1/documents/runtime/jobs', window.location.origin);
       if (jobStatus.trim()) url.searchParams.set('status', jobStatus.trim());
       url.searchParams.set('limit', '100');
       setJobs(await getJson(`${url.pathname}${url.search}`));
@@ -307,7 +307,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
     event.preventDefault();
     setBusy(true); setError(''); setNotice('');
     try {
-      const payload = await postJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(queueForm.documentId.trim())}/processing-jobs`, {
+      const payload = await postJson(`/api/celar-ai/v1/documents/${encodeURIComponent(queueForm.documentId.trim())}/processing-jobs`, {
         purpose: queueForm.purpose.trim(),
         priority: Number(queueForm.priority),
         maximumAttempts: Number(queueForm.maximumAttempts),
@@ -323,7 +323,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
   async function loadDocument(event) {
     event.preventDefault();
     setBusy(true); setError(''); setNotice('');
-    try { setDocumentState(await getJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(documentId.trim())}/runtime-state`)); }
+    try { setDocumentState(await getJson(`/api/celar-ai/v1/documents/${encodeURIComponent(documentId.trim())}/runtime-state`)); }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Document runtime state could not be loaded.'); }
     finally { setBusy(false); }
   }
@@ -334,7 +334,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
     if (!document?.documentId || !document?.activeVersionId || !document?.activeVersionSourceSha256) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      const payload = await postJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(document.documentId)}/versions/${encodeURIComponent(document.activeVersionId)}/approve`, {
+      const payload = await postJson(`/api/celar-ai/v1/documents/${encodeURIComponent(document.documentId)}/versions/${encodeURIComponent(document.activeVersionId)}/approve`, {
         reason: approvalReason.trim(),
         expectedSourceSha256: document.activeVersionSourceSha256,
         confirmation: approvalConfirmation.trim()
@@ -342,7 +342,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
       setNotice(title(payload.status));
       setApprovalReason('');
       setApprovalConfirmation('');
-      setDocumentState(await getJson(`/api/pulse-ai/v1/documents/${encodeURIComponent(document.documentId)}/runtime-state`));
+      setDocumentState(await getJson(`/api/celar-ai/v1/documents/${encodeURIComponent(document.documentId)}/runtime-state`));
       await loadReadiness();
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : 'The active document version could not be approved.'); }
     finally { setBusy(false); }
@@ -362,7 +362,7 @@ export default function PulseAiPrivateRuntimeWorkbench() {
     setBusy(true); setError(''); setNotice('');
     try {
       const endpoint = jobAction.action === 'cancel' ? 'cancel' : 'retry';
-      const payload = await postJson(`/api/pulse-ai/v1/documents/runtime/jobs/${jobAction.job.jobId}/${endpoint}`, {
+      const payload = await postJson(`/api/celar-ai/v1/documents/runtime/jobs/${jobAction.job.jobId}/${endpoint}`, {
         reason: actionReason.trim(),
         confirmation: actionConfirmation.trim()
       });

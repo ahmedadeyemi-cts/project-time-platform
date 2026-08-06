@@ -128,7 +128,7 @@ public sealed class PulseAiPrivateOcrClient
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private OCR failed without logging source content. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                "Celar AI private OCR failed without logging source content. DocumentId={DocumentId} Diagnostic={Diagnostic}",
                 source.DocumentId,
                 Diagnostic(exception));
             return Failure("private_ocr_failed", Diagnostic(exception), DateTimeOffset.UtcNow);

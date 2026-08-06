@@ -4,8 +4,8 @@ namespace ProjectTime.Api.Ai;
 
 /// <summary>
 /// Canonical, non-secret product identity for the Module 011 intelligence layer.
-/// Technical Pulse AI identifiers remain compatible while the user-facing brand
-/// transitions to Celar AI.
+/// All public identity, metadata, and canonical routes use the Celar AI brand.
+/// Transport-only legacy identifiers are intentionally excluded from this profile.
 /// </summary>
 public static partial class CelarAiBrandProfile
 {
@@ -58,7 +58,7 @@ public static partial class CelarAiBrandProfile
         CurrentState:
         [
             "Pulse remains the business platform. Celar AI is the user-facing brand for the private operational-intelligence capability in Module 011.",
-            "The current implementation preserves existing Pulse AI API paths, database objects, permission codes, environment variables, and internal class names as compatibility identifiers during the controlled transition.",
+            "All user-facing identity, route guidance, API metadata, architecture, and module descriptions use the Celar AI name.",
             "Module 064 remains the governed provider-credential, model-health, routing, circuit-breaker, and sanitized external-fallback boundary."
         ],
         DetailedAnalysis:
@@ -77,7 +77,7 @@ public static partial class CelarAiBrandProfile
             "The user-facing Celar AI chat route is /api/celar-ai/v1/chat.",
             "The canonical identity route is /api/celar-ai/v1/about.",
             "The Module 064 relationship and private-model readiness route is /api/celar-ai/v1/provider-bridge/readiness.",
-            "Existing /api/pulse-ai/* routes remain compatibility APIs until a separately approved technical-identifier migration is completed."
+            "The live registered API inventory is available through /api/celar-ai/v1/system/apis."
         ],
         TroubleshootingFindings:
         [
@@ -105,8 +105,8 @@ public static partial class CelarAiBrandProfile
         ],
         Assumptions:
         [
-            "Pulse remains the platform name while Celar AI becomes the Module 011 user-facing intelligence brand.",
-            "Existing technical identifiers are retained during the first runtime rebrand to avoid unnecessary compatibility and migration risk."
+            "Pulse remains the business-platform name while Celar AI is the sole public identity for Module 011.",
+            "Compatibility internals do not appear in user-facing labels, headers, API guidance, or architecture evidence."
         ],
         Conflicts: [],
         Limitations:
@@ -116,13 +116,13 @@ public static partial class CelarAiBrandProfile
         ],
         RisksAndImplications:
         [
-            "A wholesale rename of API paths, database objects, permissions, source namespaces, and environment variables in one release would create avoidable operational risk. The transition therefore separates the user-facing brand from stable technical compatibility identifiers.",
+            "Transport compatibility must remain isolated from user-facing product identity so old callers cannot cause branding or API-documentation drift.",
             "The brand story should remain consistent across Module 011, Module 064, Help, Search, the User Guide, architecture documents, demos, and future training datasets."
         ],
         RecommendedActions:
         [
             "Use Celar AI as the visible product identity and keep Pulse as the business-platform identity.",
-            "Retain compatibility aliases for existing routes and APIs until telemetry confirms that all callers have moved to Celar AI entry points.",
+            "Use only canonical Celar AI routes and labels in application code, documentation, tests, and new integrations.",
             "Complete Legal and Marketing name clearance before external customer-facing launch.",
             "Use the canonical answer in Help, Search, onboarding, demos, architecture reviews, and approved product documentation."
         ],
@@ -160,14 +160,12 @@ public static partial class CelarAiBrandProfile
         tagline = Tagline,
         canonicalAnswer = CanonicalAnswer,
         contractVersion = ContractVersion,
-        compatibility = new
+        api = new
         {
-            technicalName = "Pulse AI",
-            existingApiPrefix = "/api/pulse-ai",
-            existingDatabasePrefix = "pulse_ai_",
-            existingPermissionPrefix = "PULSE_AI",
-            existingEnvironmentPrefix = "PROJECTPULSE_PULSE_AI",
-            compatibilityRetained = true
+            canonicalPrefix = "/api/celar-ai",
+            liveInventory = "/api/celar-ai/v1/system/apis",
+            publicIdentity = "Celar AI",
+            legacyAliasesExposed = false
         }
     };
 

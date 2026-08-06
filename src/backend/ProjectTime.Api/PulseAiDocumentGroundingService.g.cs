@@ -220,7 +220,7 @@ public sealed class PulseAiDocumentGroundingService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private runtime readiness failed without exposing database details.");
+                "Celar AI private runtime readiness failed without exposing database details.");
 
             return new PulseAiPrivateRuntimeReadiness(
                 Status: "private_runtime_readiness_unavailable",
@@ -449,7 +449,7 @@ public sealed class PulseAiDocumentGroundingService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI document grounding failed without exposing source details. Purpose={Purpose}",
+                "Celar AI document grounding failed without exposing source details. Purpose={Purpose}",
                 purpose);
 
             return EmptyContext(
@@ -1216,13 +1216,13 @@ public sealed class PulseAiDocumentGroundingService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

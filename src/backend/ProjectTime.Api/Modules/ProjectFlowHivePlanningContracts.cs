@@ -17,7 +17,12 @@ public sealed record ProjectFlowHivePlanRequest(
     IReadOnlyList<ProjectFlowHivePlanAssignmentInput>? Assignments,
     string? GsdVersion,
     string? SowVersion,
-    string? Notes);
+    string? Notes,
+    Guid? PlanId = null,
+    string? SourceKind = "manual",
+    string? CelarAiProviderCode = null,
+    string? CelarAiCorrelationId = null,
+    decimal? CelarAiConfidence = null);
 
 public sealed record ProjectFlowHivePlanTaskInput(
     Guid? ClientTaskId,
@@ -105,9 +110,55 @@ public sealed record ProjectFlowHiveArtifactRequest(
     bool ExcludeNotes,
     bool AcknowledgeInternalDraft);
 
+public sealed record ProjectFlowHiveBaselineRequest(
+    string? ApprovalNote,
+    int? ExpectedVersion);
+
+public sealed record ProjectFlowHiveRepositoryReadiness(
+    bool Ready,
+    string Status,
+    IReadOnlyList<string> Missing,
+    DateTimeOffset CheckedAt);
+
+public sealed record ProjectFlowHivePersistedPlanSummary(
+    Guid PlanId,
+    Guid ProjectId,
+    string PlanName,
+    string PlanStatus,
+    int CurrentVersion,
+    int? BaselineVersion,
+    string ProjectCode,
+    string ProjectName,
+    string UpdatedBy,
+    DateTimeOffset UpdatedAt);
+
+public sealed record ProjectFlowHivePersistedPlan(
+    ProjectFlowHivePersistedPlanSummary Summary,
+    ProjectFlowHivePlanRequest Plan,
+    ProjectFlowHiveScheduleResult Schedule,
+    ProjectFlowHivePlanValidationResult Validation,
+    string SourceKind,
+    string CelarAiProviderCode,
+    string CelarAiCorrelationId,
+    decimal? CelarAiConfidence,
+    DateTimeOffset VersionCreatedAt);
+
 public interface IProjectFlowHivePlanRepository
 {
     bool WritesEnabled { get; }
+
+    Task<ProjectFlowHiveRepositoryReadiness> GetReadinessAsync(
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ProjectFlowHivePersistedPlanSummary>> ListAsync(
+        Guid actorUserId,
+        Guid? projectId,
+        CancellationToken cancellationToken);
+
+    Task<ProjectFlowHivePersistedPlan?> LoadAsync(
+        Guid actorUserId,
+        Guid planId,
+        CancellationToken cancellationToken);
 
     Task<ProjectFlowHivePersistenceResult> SaveDraftAsync(
         Guid actorUserId,
@@ -118,6 +169,7 @@ public interface IProjectFlowHivePlanRepository
         Guid actorUserId,
         Guid planId,
         string? approvalNote,
+        int? expectedVersion,
         CancellationToken cancellationToken);
 }
 
@@ -137,6 +189,26 @@ public sealed class LockedProjectFlowHivePlanRepository : IProjectFlowHivePlanRe
 {
     public bool WritesEnabled => false;
 
+    public Task<ProjectFlowHiveRepositoryReadiness> GetReadinessAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new ProjectFlowHiveRepositoryReadiness(
+            false,
+            "persistence_locked",
+            ["Migration 074 and the production repository are required."],
+            DateTimeOffset.UtcNow));
+
+    public Task<IReadOnlyList<ProjectFlowHivePersistedPlanSummary>> ListAsync(
+        Guid actorUserId,
+        Guid? projectId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ProjectFlowHivePersistedPlanSummary>>([]);
+
+    public Task<ProjectFlowHivePersistedPlan?> LoadAsync(
+        Guid actorUserId,
+        Guid planId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<ProjectFlowHivePersistedPlan?>(null);
+
     public Task<ProjectFlowHivePersistenceResult> SaveDraftAsync(
         Guid actorUserId,
         ProjectFlowHivePlanRequest request,
@@ -149,6 +221,7 @@ public sealed class LockedProjectFlowHivePlanRepository : IProjectFlowHivePlanRe
         Guid actorUserId,
         Guid planId,
         string? approvalNote,
+        int? expectedVersion,
         CancellationToken cancellationToken)
     {
         return Task.FromResult(Locked());

@@ -8,6 +8,17 @@ public static class PulseAiPrivateDocumentPipelineModule
         this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
+            "/api/celar-ai/v1/documents/pipeline/readiness",
+            (Func<HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/documents/inventory",
+            (Func<HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetInventoryAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/documents/{documentId:guid}/processing-preview",
+            (Func<Guid, HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetProcessingPreviewAsync);
+
+        // Transport-only compatibility routes for already deployed callers.
+        endpoints.MapGet(
             "/api/pulse-ai/v1/documents/pipeline/readiness",
             (Func<HttpContext, PulseAiPrivateDocumentPipelineService, CancellationToken, Task<IResult>>)GetReadinessAsync);
         endpoints.MapGet(

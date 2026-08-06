@@ -175,7 +175,7 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private source resolution failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                "Celar AI private source resolution failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
                 documentId,
                 Diagnostic(exception));
             return null;
@@ -253,13 +253,13 @@ public sealed class PulseAiPrivateRuntimeSourceResolver
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

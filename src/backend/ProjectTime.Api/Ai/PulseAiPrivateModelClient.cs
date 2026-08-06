@@ -169,7 +169,7 @@ public sealed class PulseAiPrivateModelClient
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private model request failed without logging prompt or source text. Feature={Feature} Diagnostic={Diagnostic}",
+                "Celar AI private model request failed without logging prompt or source text. Feature={Feature} Diagnostic={Diagnostic}",
                 request.FeatureCode,
                 Diagnostic(exception));
             return Failure(

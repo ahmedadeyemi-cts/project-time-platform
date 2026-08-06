@@ -17,11 +17,11 @@ export const PROJECTPULSE_MODULES = Object.freeze([
     displayName: 'Celar AI',
     group: 'AI & Automation',
     lifecycle: 'active_operational_intelligence',
-    description: 'Unified operational intelligence for the US Signal Solution Provider division, combining authorized documents, live Pulse data, API discovery, troubleshooting, Timesheet assistance, FlowHive planning, reporting insight, and governed model lifecycle through Module 064.',
+    description: 'Unified operational intelligence for the US Signal Solution Provider division, combining authorized documents, live system data, API discovery, troubleshooting, Timesheet assistance, FlowHive planning, reporting insight, and governed model lifecycle through Module 064.',
     compatibilityRoute: true,
     publicAlias: 'celar-ai',
     tagline: 'Speed of light. Speed of delivery.',
-    technicalIdentity: 'Pulse AI',
+    technicalIdentity: 'Celar AI',
     previousIdentity: Object.freeze({
       displayName: 'Work Task Builder',
       lifecycle: 'retired_non_destructively',
@@ -69,6 +69,7 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '064', route: 'ai-provider-configuration', displayName: 'AI Provider Configuration Center', group: 'Security' }),
   Object.freeze({ moduleNumber: '065', route: 'entra-secret-administration', displayName: 'Microsoft Integration Connection', group: 'Integrations' }),
   Object.freeze({ moduleNumber: '066', route: 'project-flowhive', displayName: 'Project FlowHive', group: 'Project Delivery' }),
+  Object.freeze({ moduleNumber: '067', route: 'global-mail-configuration', displayName: 'Global Mail Configuration Center', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '068', route: 'system-architecture', displayName: 'Provider-Neutral System Architecture', group: 'Platform Operations', description: 'Live provider, system, integration, module-to-API, region, redundancy, and data-flow architecture generated from the shared platform registry with a branded export.' }),
   Object.freeze({ moduleNumber: '069', route: 'qualifications-certifications', displayName: 'Qualifications & Certification Matrix', group: 'Resources' }),
   Object.freeze({ moduleNumber: '070', route: 'capacity-pipeline-forecast', displayName: 'Capacity & Pipeline Forecasting', group: 'Resource Management', description: 'Reads capacity, assignments, and project-intake demand directly. It has no Module 011 dependency.' }),
@@ -95,11 +96,9 @@ const ROUTE_ALIASES = Object.freeze({
   'psa-modules': 'toyota-hyundai-pipelines',
   'project-register': 'toyota-hyundai-pipelines',
   'celar-ai': 'work-task-builder',
-  'pulse-ai': 'work-task-builder',
   'project-manager-workload': 'project-workload',
   'project-management-workload': 'project-workload',
-  'resource-assignment-handoff': 'signed-handoff',
-  'global-mail-configuration': 'entra-secret-administration'
+  'resource-assignment-handoff': 'signed-handoff'
 });
 
 export const MODULE_BY_NUMBER = new Map(PROJECTPULSE_MODULES.map((module) => [module.moduleNumber.toUpperCase(), module]));

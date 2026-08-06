@@ -495,9 +495,9 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     setReadiness({ loading: true, payload: null, error: '' });
     setTools({ loading: true, payload: null, error: '' });
     const [overviewResult, readinessResult, toolsResult] = await Promise.allSettled([
-      getJson('/api/pulse-ai/v1/overview'),
-      getJson('/api/pulse-ai/v1/private-runtime/readiness'),
-      getJson('/api/pulse-ai/v1/tools')
+      getJson('/api/celar-ai/v1/overview'),
+      getJson('/api/celar-ai/v1/private-runtime/readiness'),
+      getJson('/api/celar-ai/v1/tools')
     ]);
     if (overviewResult.status === 'fulfilled') setOverview(overviewResult.value);
     if (readinessResult.status === 'fulfilled') setReadiness({ loading: false, payload: readinessResult.value, error: '' });
@@ -514,7 +514,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     event.preventDefault();
     setTimesheetResult({ loading: true, payload: null, error: '' });
     try {
-      const payload = await getJson(buildQuery('/api/pulse-ai/v1/timesheet/context-preview', timesheet));
+      const payload = await getJson(buildQuery('/api/celar-ai/v1/timesheet/context-preview', timesheet));
       setTimesheetResult({ loading: false, payload, error: '' });
     } catch (error) {
       setTimesheetResult({ loading: false, payload: null, error: error instanceof Error ? error.message : 'Timesheet grounding failed.' });
@@ -525,7 +525,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     event.preventDefault();
     setHelpResult({ loading: true, payload: null, error: '' });
     try {
-      const payload = await getJson(buildQuery('/api/pulse-ai/v1/help-search/plan', { question: helpQuestion }));
+      const payload = await getJson(buildQuery('/api/celar-ai/v1/help-search/plan', { question: helpQuestion }));
       setHelpResult({ loading: false, payload, error: '' });
     } catch (error) {
       setHelpResult({ loading: false, payload: null, error: error instanceof Error ? error.message : 'Help/Search planning failed.' });
@@ -536,7 +536,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     event.preventDefault();
     setFlowhiveResult({ loading: true, payload: null, error: '' });
     try {
-      const payload = await getJson(buildQuery('/api/pulse-ai/v1/flowhive/context-preview', flowhive));
+      const payload = await getJson(buildQuery('/api/celar-ai/v1/flowhive/context-preview', flowhive));
       setFlowhiveResult({ loading: false, payload, error: '' });
     } catch (error) {
       setFlowhiveResult({ loading: false, payload: null, error: error instanceof Error ? error.message : 'FlowHive grounding failed.' });
@@ -547,7 +547,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     event.preventDefault();
     setInsightResult({ loading: true, payload: null, error: '' });
     try {
-      const payload = await getJson(buildQuery('/api/pulse-ai/v1/insights/plan', { question: insightQuestion }));
+      const payload = await getJson(buildQuery('/api/celar-ai/v1/insights/plan', { question: insightQuestion }));
       setInsightResult({ loading: false, payload, error: '' });
     } catch (error) {
       setInsightResult({ loading: false, payload: null, error: error instanceof Error ? error.message : 'Insight planning failed.' });
@@ -558,7 +558,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
     event.preventDefault();
     setPrivacyResult({ loading: true, payload: null, error: '' });
     try {
-      const payload = await postJson('/api/pulse-ai/v1/external-escalation/sanitize-preview', {
+      const payload = await postJson('/api/celar-ai/v1/external-escalation/sanitize-preview', {
         purpose: privacy.purpose,
         classification: privacy.classification,
         content: privacy.content,

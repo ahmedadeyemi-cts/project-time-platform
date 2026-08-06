@@ -189,7 +189,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private RAG Timesheet suggestion failed without logging the Engineer note or private source text.");
+                "Celar AI private RAG Timesheet suggestion failed without logging the Engineer note or private source text.");
             return null;
         }
     }
@@ -229,7 +229,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI timesheet document grounding failed. The existing non-document suggestion path remains available without exposing source details.");
+                "Celar AI timesheet document grounding failed. The existing non-document suggestion path remains available without exposing source details.");
             return null;
         }
     }
@@ -486,7 +486,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         var diagnostic = string.IsNullOrWhiteSpace(privateRag.DiagnosticCode)
             ? string.Empty
             : $" Diagnostic: {privateRag.DiagnosticCode}.";
-        return $"Provider decision: {providerDecision}. Pulse AI used {sourceCount} authorized private source citation(s) as of {privateRag.DataAsOf:O}; no private document text was sent to Claude or OpenAI. Engineer must review and explicitly apply the proposed description. Hours, project, task, save, submission, and approval were not changed.{diagnostic}";
+        return $"Provider decision: {providerDecision}. Celar AI used {sourceCount} authorized private source citation(s) as of {privateRag.DataAsOf:O}; no private document text was sent to Claude or OpenAI. Engineer must review and explicitly apply the proposed description. Hours, project, task, save, submission, and approval were not changed.{diagnostic}";
     }
 
     private static string? BuildGroundingReadinessWarning(PulseAiGroundingContext? grounding)

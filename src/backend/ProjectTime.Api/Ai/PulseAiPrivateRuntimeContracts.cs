@@ -7,10 +7,10 @@ public static class PulseAiPrivateRuntimePolicy
 {
     public const string ContractVersion = "pulse-ai-private-runtime-v1-20260729";
     public const string MigrationId = "052_pulse_ai_private_document_runtime";
-    public const string QueueConfirmation = "QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING";
-    public const string RetryConfirmation = "RETRY-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING";
-    public const string CancelConfirmation = "CANCEL-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING";
-    public const string ApproveVersionConfirmation = "APPROVE-PULSE-AI-PRIVATE-DOCUMENT-VERSION";
+    public const string QueueConfirmation = "QUEUE-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING";
+    public const string RetryConfirmation = "RETRY-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING";
+    public const string CancelConfirmation = "CANCEL-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING";
+    public const string ApproveVersionConfirmation = "APPROVE-CELAR-AI-PRIVATE-DOCUMENT-VERSION";
     public const string PrivacyBoundary = "private_pulse_runtime_only";
     public const string IndexProvider = "projectpulse_postgresql_hybrid";
 

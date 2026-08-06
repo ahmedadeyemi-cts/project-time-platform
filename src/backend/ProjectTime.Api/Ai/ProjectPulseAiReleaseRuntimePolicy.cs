@@ -378,7 +378,7 @@ public static class ProjectPulseAiReleaseRuntimePolicy
         try
         {
             if (!ProjectPulseAiDatabaseConnection.ResolveEvidence().Configured)
-                errors.Add("A canonical ProjectPulse AI database connection is required.");
+                errors.Add("A canonical Celar AI database connection is required.");
         }
         catch (InvalidOperationException exception)
         {

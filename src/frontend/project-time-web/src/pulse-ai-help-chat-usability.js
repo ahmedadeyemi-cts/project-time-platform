@@ -43,7 +43,7 @@ function wirePanel(panel) {
     messages.setAttribute('aria-live', 'polite');
     messages.setAttribute('aria-relevant', 'additions text');
     messages.setAttribute('tabindex', '0');
-    messages.setAttribute('aria-label', 'Pulse AI conversation');
+    messages.setAttribute('aria-label', 'Celar AI conversation');
 
     let shouldFollowConversation = true;
     const updateFollowState = () => {

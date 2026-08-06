@@ -126,7 +126,7 @@ public sealed class PulseAiPrivateEmbeddingClient
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private embedding request failed without logging input text. Diagnostic={Diagnostic}",
+                "Celar AI private embedding request failed without logging input text. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return Failure(
                 "private_embeddings_failed",

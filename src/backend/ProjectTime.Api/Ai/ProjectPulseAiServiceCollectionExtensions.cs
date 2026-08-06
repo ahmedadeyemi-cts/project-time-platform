@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using ProjectTime.Api.Modules;
 
 namespace ProjectTime.Api.Ai;
 
@@ -101,6 +102,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<CelarAiPeopleAndGuidanceService>();
         services.AddSingleton<CelarAiExternalReasoningService>();
         services.AddSingleton<CelarAiEnterprisePlatformService>();
+        services.AddSingleton<IProjectFlowHivePlanRepository, PostgresProjectFlowHivePlanRepository>();
         services.AddSingleton<ProjectPulseAiTimesheetContextResolver>();
         services.AddSingleton<ProjectPulseAiTimeEntrySuggestionService>();
         services.AddHostedService<ProjectPulseAiHealthMonitor>();

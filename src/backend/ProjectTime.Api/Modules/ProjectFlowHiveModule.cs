@@ -3,11 +3,10 @@ using Npgsql;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Module 066 exposes the module-owned Project FlowHive source contract on top
-/// of canonical ProjectPulse projects, tasks, and assignments. Deterministic
-/// planning previews are enabled; persistence, provider calls, customer links,
-/// and external delivery remain locked until their governed integrations are
-/// separately authorized and registered.
+/// Module 066 exposes production Project FlowHive planning on top of canonical
+/// projects, tasks, assignments, Celar AI routing, and immutable plan versions.
+/// Customer delivery remains a separate reviewed action and is never implied by
+/// saving or baselining a plan.
 /// </summary>
 public static class ProjectFlowHiveModule
 {
@@ -15,13 +14,19 @@ public static class ProjectFlowHiveModule
     {
         app.MapGet(
             "/api/project-flowhive/capabilities",
-            (Func<HttpContext, IResult>)GetCapabilities);
+            (Func<HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)GetCapabilitiesAsync);
         app.MapGet(
             "/api/project-flowhive/portfolio",
-            (Func<HttpContext, Task<IResult>>)GetPortfolioAsync);
+            (Func<HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)GetPortfolioAsync);
         app.MapGet(
             "/api/project-flowhive/readiness",
-            (Func<HttpContext, IResult>)GetReadiness);
+            (Func<HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        app.MapGet(
+            "/api/project-flowhive/plans",
+            (Func<Guid?, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)ListPlansAsync);
+        app.MapGet(
+            "/api/project-flowhive/plans/{planId:guid}",
+            (Func<Guid, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)LoadPlanAsync);
         app.MapPost(
             "/api/project-flowhive/planning/validate",
             (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)ValidatePlan);
@@ -30,10 +35,10 @@ public static class ProjectFlowHiveModule
             (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)CalculateSchedule);
         app.MapPost(
             "/api/project-flowhive/plans/drafts",
-            (Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)PersistenceLocked);
+            (Func<ProjectFlowHivePlanRequest, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)SaveDraftAsync);
         app.MapPost(
             "/api/project-flowhive/plans/{planId:guid}/baseline",
-            (Func<Guid, HttpContext, IResult>)BaselineLocked);
+            (Func<Guid, ProjectFlowHiveBaselineRequest, HttpContext, IProjectFlowHivePlanRepository, CancellationToken, Task<IResult>>)EstablishBaselineAsync);
         app.MapPost(
             "/api/project-flowhive/ai/request-preview",
             (Func<ProjectFlowHiveAiDraftPreviewRequest, HttpContext, IResult>)PreviewAiRequest);
@@ -50,7 +55,10 @@ public static class ProjectFlowHiveModule
         return app;
     }
 
-    private static IResult GetCapabilities(HttpContext httpContext)
+    private static async Task<IResult> GetCapabilitiesAsync(
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
     {
         var effectiveUserId = EffectiveSessionUserId(httpContext);
 
@@ -59,72 +67,73 @@ public static class ProjectFlowHiveModule
             return SessionRequired();
         }
 
+        var persistence = await repository.GetReadinessAsync(cancellationToken);
         return Results.Ok(new
         {
             module = "066",
             moduleName = "Project FlowHive",
             phase = "066A.1-066E",
-            status = "release_train_source_registered_external_locks_preserved",
+            status = persistence.Ready ? "production_ready" : "production_dependency_unavailable",
             route = "project-flowhive",
-            databaseMutationEnabled = false,
-            aiExecutionEnabled = false,
-            deterministicPlanningPreviewEnabled = true,
+            databaseMutationEnabled = persistence.Ready,
+            aiExecutionEnabled = true,
+            deterministicPlanningEnabled = true,
             internalDraftArtifactEnabled = true,
             customerExportEnabled = false,
             customerSharingEnabled = false,
             capabilities = CapabilityRows(),
             integration = new
             {
-                canonicalProjects = "available_read_only",
-                canonicalTasks = "available_read_only",
-                canonicalAssignments = "available_read_only",
-                workRegister = "dependency_identified",
-                timesheet = "dependency_identified",
+                canonicalProjects = "available_scoped",
+                canonicalTasks = "available_scoped",
+                canonicalAssignments = "available_scoped",
+                planPersistence = persistence.Status,
+                immutableVersionHistory = persistence.Ready,
+                reviewerControlledBaseline = persistence.Ready,
+                workRegister = "canonical_reference_available",
+                timesheet = "canonical_reference_available",
                 calendarCapacity = "weekday_preview_only_module_057_authority_required",
-                aiProvider = "module_064_shared_router_registered_flowhive_execution_locked",
-                aiProviderOrder = new[] { "claude", "openai", "local_template" },
+                aiProvider = "module_064_celar_ai_capability_router",
+                aiProviderOrder = "database_managed_per_capability",
                 identityProfile = "module_062_available",
                 approvalCenter = "module_002_preserved_on_current_main",
-                brandedPdfAndExcel = "internal_draft_preview_source_ready",
+                brandedPdfAndExcel = "internal_draft_available",
                 logoSha256 = ProjectFlowHiveBrandAssets.LogoSha256,
-                sharedRegistration = "integrated_uncommitted_source"
+                sharedRegistration = "production_registered"
             }
         });
     }
 
-    private static IResult GetReadiness(HttpContext httpContext)
+    private static async Task<IResult> GetReadinessAsync(
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
     {
         if (EffectiveSessionUserId(httpContext) is null) return SessionRequired();
+        var persistence = await repository.GetReadinessAsync(cancellationToken);
 
         return Results.Ok(new
         {
             module = "066",
-            sourceBaseline = "main@2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4",
-            module002 = new
-            {
-                sourceCommit = "f5ede8f6717b01c8f4bf7905b433fead38210007",
-                mergeCommit = "2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4",
-                preserved = true
-            },
+            moduleName = "Project FlowHive",
+            route = "project-flowhive",
+            apiBase = "/api/project-flowhive",
+            checkedAt = persistence.CheckedAt,
             phases = new object[]
             {
-                new { phase = "066A.1", capability = "shared registration", status = "source_integrated_uncommitted" },
-                new { phase = "066B", capability = "governed planning contracts", status = "source_ready_persistence_locked" },
-                new { phase = "066C", capability = "schedule and portfolio experience", status = "deterministic_preview_source_ready" },
-                new { phase = "066D", capability = "automation and AI", status = "module_064_request_ready_execution_locked" },
-                new { phase = "066E", capability = "customer artifacts and sharing", status = "internal_branded_preview_ready_external_sharing_locked" }
+                new { phase = "066A", capability = "canonical scoped portfolio", status = "production_ready" },
+                new { phase = "066B", capability = "immutable plan persistence and baselines", status = persistence.Status },
+                new { phase = "066C", capability = "deterministic schedule and critical path", status = "production_ready" },
+                new { phase = "066D", capability = "Celar AI comprehensive project planning", status = "module_064_routed" },
+                new { phase = "066E", capability = "branded artifacts", status = "internal_review_ready_external_delivery_governed" }
             },
-            sharedFilesChanged = true,
-            databaseApplied = false,
-            azureChanged = false,
-            entraChanged = false,
-            deploymentPerformed = false,
-            blockers = new[]
+            ready = persistence.Ready,
+            persistence,
+            governedRestrictions = new[]
             {
-                "Complete release-train validation and obtain publication authority before commit or deployment.",
-                "Keep FlowHive provider execution locked until its reviewed adapter calls the registered Module 064 router.",
-                "Authorize and review a persistence schema before registering a write repository.",
-                "Authorize external customer sharing before creating any customer link."
+                "Customer delivery requires a separate reviewed action.",
+                "Canonical project tasks are not changed when a FlowHive plan is saved or baselined.",
+                "View-As sessions cannot create versions or approve baselines."
             }
         });
     }
@@ -146,24 +155,137 @@ public static class ProjectFlowHiveModule
         return result.Valid ? Results.Ok(result) : Results.BadRequest(result);
     }
 
-    private static IResult PersistenceLocked(
+    private static async Task<IResult> SaveDraftAsync(
         ProjectFlowHivePlanRequest request,
-        HttpContext httpContext)
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
     {
-        if (ActualSessionUserId(httpContext) is null) return SessionRequired();
-        return LockedPhase(
-            "066B",
-            "persistence_locked",
-            "Plan drafts cannot be stored until a separately approved persistence adapter is registered.");
+        var actor = WriteActor(httpContext);
+        if (actor is null) return WriteSessionRequired(httpContext);
+        try
+        {
+            var result = await repository.SaveDraftAsync(actor.Value, request, cancellationToken);
+            return PersistenceResponse(result);
+        }
+        catch (Exception exception)
+        {
+            return PersistenceUnavailable(httpContext, exception, "save a draft");
+        }
     }
 
-    private static IResult BaselineLocked(Guid planId, HttpContext httpContext)
+    private static async Task<IResult> EstablishBaselineAsync(
+        Guid planId,
+        ProjectFlowHiveBaselineRequest request,
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
     {
-        if (ActualSessionUserId(httpContext) is null) return SessionRequired();
-        return LockedPhase(
-            "066B",
-            "baseline_locked",
-            "A Project FlowHive baseline cannot be established without approved persistence, authorization, and Module 002 approval integration.");
+        var actor = WriteActor(httpContext);
+        if (actor is null) return WriteSessionRequired(httpContext);
+        try
+        {
+            var result = await repository.EstablishBaselineAsync(
+                actor.Value, planId, request.ApprovalNote, request.ExpectedVersion, cancellationToken);
+            return PersistenceResponse(result);
+        }
+        catch (Exception exception)
+        {
+            return PersistenceUnavailable(httpContext, exception, "establish a baseline");
+        }
+    }
+
+    private static async Task<IResult> ListPlansAsync(
+        Guid? projectId,
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var actor = EffectiveSessionUserId(httpContext);
+        if (actor is null) return SessionRequired();
+        try
+        {
+            var plans = await repository.ListAsync(actor.Value, projectId, cancellationToken);
+            return Results.Ok(new
+            {
+                module = "066",
+                moduleName = "Project FlowHive",
+                projectId,
+                count = plans.Count,
+                plans
+            });
+        }
+        catch (Exception exception)
+        {
+            return PersistenceUnavailable(httpContext, exception, "list plans");
+        }
+    }
+
+    private static async Task<IResult> LoadPlanAsync(
+        Guid planId,
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var actor = EffectiveSessionUserId(httpContext);
+        if (actor is null) return SessionRequired();
+        try
+        {
+            var plan = await repository.LoadAsync(actor.Value, planId, cancellationToken);
+            return plan is null
+                ? Results.NotFound(new { status = "flowhive_plan_not_found", message = "The plan is unavailable in the current project scope." })
+                : Results.Ok(plan);
+        }
+        catch (Exception exception)
+        {
+            return PersistenceUnavailable(httpContext, exception, "load a plan");
+        }
+    }
+
+    private static IResult PersistenceResponse(ProjectFlowHivePersistenceResult result)
+    {
+        if (result.Succeeded) return Results.Ok(result);
+        return result.Status switch
+        {
+            "forbidden" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
+            "plan_not_found" => Results.NotFound(result),
+            "version_conflict" => Results.Conflict(result),
+            "persistence_dependency_unavailable" or "configuration_missing" =>
+                Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => Results.BadRequest(result)
+        };
+    }
+
+    private static Guid? WriteActor(HttpContext httpContext)
+    {
+        var actual = ActualSessionUserId(httpContext);
+        var effective = EffectiveSessionUserId(httpContext);
+        var viewAs = httpContext.Items.TryGetValue("ProjectPulseIsViewAs", out var value)
+            && value is bool active && active;
+        return actual.HasValue && effective.HasValue && actual == effective && !viewAs ? actual : null;
+    }
+
+    private static IResult WriteSessionRequired(HttpContext httpContext)
+    {
+        if (ActualSessionUserId(httpContext) is null || EffectiveSessionUserId(httpContext) is null)
+            return SessionRequired();
+        return Results.Json(new
+        {
+            status = "view_as_write_blocked",
+            message = "Exit View-As before saving or approving a Project FlowHive plan."
+        }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    private static IResult PersistenceUnavailable(HttpContext httpContext, Exception exception, string action)
+    {
+        httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ProjectFlowHiveModule")
+            .LogError(exception, "Project FlowHive could not {Action}.", action);
+        return Results.Json(new
+        {
+            status = "persistence_dependency_unavailable",
+            message = "Project FlowHive persistence is temporarily unavailable. No plan data was changed."
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     private static IResult PreviewAiRequest(
@@ -272,7 +394,10 @@ public static class ProjectFlowHiveModule
             : "project-flowhive-plan";
     }
 
-    private static async Task<IResult> GetPortfolioAsync(HttpContext httpContext)
+    private static async Task<IResult> GetPortfolioAsync(
+        HttpContext httpContext,
+        IProjectFlowHivePlanRepository repository,
+        CancellationToken cancellationToken)
     {
         var effectiveUserId = EffectiveSessionUserId(httpContext);
 
@@ -312,6 +437,10 @@ public static class ProjectFlowHiveModule
             var projects = await LoadProjectsAsync(connection, access);
             var tasks = await LoadTasksAsync(connection, access);
             var assignments = await LoadAssignmentsAsync(connection, access);
+            var persistence = await repository.GetReadinessAsync(cancellationToken);
+            IReadOnlyList<ProjectFlowHivePersistedPlanSummary> persistedPlans = persistence.Ready
+                ? await repository.ListAsync(effectiveUserId.Value, null, cancellationToken)
+                : [];
             var actualUserId = ActualSessionUserId(httpContext) ?? effectiveUserId.Value;
             var isViewAs = actualUserId != effectiveUserId.Value
                 || (httpContext.Items.TryGetValue("ProjectPulseIsViewAs", out var viewAsValue)
@@ -344,10 +473,10 @@ public static class ProjectFlowHiveModule
                     assignedHours = assignments.Sum(row => row.AssignedHours),
                     usedHours = tasks.Sum(row => row.UsedHours),
                     remainingHours = tasks.Sum(row => row.RemainingHours),
-                    controlledBaselineCount = 0,
+                    controlledBaselineCount = persistedPlans.Count(plan => plan.BaselineVersion.HasValue),
                     dependencyCount = 0,
                     planningPreviewAvailable = true,
-                    persistenceAvailable = false
+                    persistenceAvailable = persistence.Ready
                 },
                 projects,
                 tasks,
@@ -358,22 +487,22 @@ public static class ProjectFlowHiveModule
                     controlledWbsPreviewAvailable = true,
                     dependencyNetworkPreviewAvailable = true,
                     scheduleEnginePreviewAvailable = true,
-                    baselineVersioningAvailable = false,
-                    collaborationHistoryAvailable = false,
-                    aiExecutionAvailable = false,
+                    baselineVersioningAvailable = persistence.Ready,
+                    collaborationHistoryAvailable = persistence.Ready,
+                    aiExecutionAvailable = true,
                     internalBrandedArtifactsAvailable = true,
                     customerSharingAvailable = false,
-                    explanation = "Canonical records remain read only. Deterministic plan and artifact previews do not persist or share data."
+                    explanation = "Canonical records remain read only while FlowHive drafts, immutable versions, schedules, and reviewer-approved baselines are stored separately."
                 },
                 guardrails = new[]
                 {
                     "All portfolio rows are filtered by backend assignment and role scope.",
                     "Project Managers see managed projects; engineers see assigned projects and tasks.",
                     "Project Team Coordinators and authorized leadership retain their broader business scope.",
-                    "No Project FlowHive endpoint creates, updates, deletes, approves, or baselines database data.",
+                    "FlowHive saves immutable plan versions without changing canonical project tasks or assignments.",
                     "Task codes remain canonical references until a validated local planning preview assigns controlled draft WBS values.",
                     "Schedule calculations are weekday-only previews until Module 057 calendar authority is integrated.",
-                    "AI execution is locked to Module 064; direct provider clients are prohibited.",
+                    "Celar AI execution is routed through Module 064; direct provider clients are prohibited.",
                     "PDF and Excel previews are US Signal branded internal drafts; customer sharing remains disabled."
                 }
             });
@@ -397,16 +526,16 @@ public static class ProjectFlowHiveModule
     {
         return
         [
-            new { code = "portfolio", priority = "P0", status = "source_ready", evidence = "Role-scoped canonical project summary" },
-            new { code = "task_grid", priority = "P0", status = "source_ready", evidence = "Read-only canonical task grid plus local controlled-draft editor" },
-            new { code = "resource_assignments", priority = "P0", status = "source_ready", evidence = "Module 062 identity-backed assignment references" },
-            new { code = "controlled_wbs", priority = "P0", status = "preview_ready", evidence = "Numeric hierarchy validation; persistence locked" },
-            new { code = "dependencies", priority = "P0", status = "preview_ready", evidence = "FS/SS/FF/SF, lead/lag, duplicate, and cycle validation" },
-            new { code = "gantt_timeline", priority = "P0", status = "preview_ready", evidence = "Deterministic weekday schedule, float, and critical path preview" },
-            new { code = "baselines", priority = "P0", status = "locked", evidence = "Contract present; persistence and approval integration not authorized" },
-            new { code = "collaboration", priority = "P0", status = "locked", evidence = "History design present; persistence not authorized" },
-            new { code = "ai_plan_generation", priority = "P1", status = "request_ready", evidence = "Module 064 request preview with Claude, OpenAI, local routing contract; execution locked" },
-            new { code = "internal_exports", priority = "P1", status = "preview_ready", evidence = "US Signal logo embedded in internal draft PDF and Excel source" },
+            new { code = "portfolio", priority = "P0", status = "production_ready", evidence = "Backend-scoped canonical project summary" },
+            new { code = "task_grid", priority = "P0", status = "production_ready", evidence = "Canonical task references plus governed FlowHive plan editor" },
+            new { code = "resource_assignments", priority = "P0", status = "production_ready", evidence = "Module 062 identity-backed assignment references" },
+            new { code = "controlled_wbs", priority = "P0", status = "production_ready", evidence = "Validated numeric hierarchy in immutable plan versions" },
+            new { code = "dependencies", priority = "P0", status = "production_ready", evidence = "FS/SS/FF/SF, lead/lag, duplicate, and cycle validation" },
+            new { code = "gantt_timeline", priority = "P0", status = "production_ready", evidence = "Deterministic weekday schedule, float, and critical path" },
+            new { code = "baselines", priority = "P0", status = "production_ready", evidence = "Exact-version reviewer approval with immutable review evidence" },
+            new { code = "collaboration", priority = "P0", status = "production_ready", evidence = "Immutable version and review history" },
+            new { code = "ai_plan_generation", priority = "P1", status = "production_ready", evidence = "Comprehensive Celar AI generation through the stored Module 064 order" },
+            new { code = "internal_exports", priority = "P1", status = "production_ready", evidence = "US Signal logo embedded in internal review PDF and Excel artifacts" },
             new { code = "customer_sharing", priority = "P1", status = "locked", evidence = "No customer link, token, delivery, or external state change" }
         ];
     }
