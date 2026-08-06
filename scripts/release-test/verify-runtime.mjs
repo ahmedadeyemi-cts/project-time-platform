@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "b94dead5bfeec03fecacf27d7e78d14e4e5d92a7";
+const expectedSource = "64c3168778957f39203c4a17377418e0a8f1ed23";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -343,6 +343,7 @@ async function run() {
     ["POST", "/api/celar-ai/v2/chat"],
     ["GET", "/api/ai-configuration/routes"],
     ["GET", "/api/ai-configuration/knowledge-fabric"],
+    ["GET", "/api/celar-ai/v1/production/readiness"],
     ["GET", "/api/celar-ai/v2/attachments/readiness"],
     ["GET", authenticatedUatEnabled
       ? "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical"
@@ -464,6 +465,19 @@ async function run() {
   assert(noMatch.json?.rawPrivateContextSentToExternalProvider === false, "Celar no-match search privacy flag was not strictly false.");
   evidence.authenticatedChecks.celarApiSearch = "passed";
 
+  const module011Readiness = await request("/api/celar-ai/v1/production/readiness", {
+    moduleNumber: "011",
+    authenticated: true,
+  });
+  assert(module011Readiness.status === 200, "Module 011 production readiness returned HTTP " + module011Readiness.status + ".");
+  assert(module011Readiness.json?.module === "011", "Module 011 readiness response has the wrong module.");
+  assert(module011Readiness.json?.access?.canAsk === true, "The active Test user cannot use Ask Celar AI.");
+  assert(module011Readiness.json?.access?.canManage === true, "The actual-session Test Super Administrator cannot manage Module 011.");
+  assert(module011Readiness.json?.access?.isViewAs === false, "Module 011 management authority was evaluated through View-As.");
+  assert(module011Readiness.json?.access?.mutationAuthorityTransferredByViewAs === false, "Module 011 reported transferred mutation authority.");
+  evidence.authenticatedChecks.module011CoreAskAccess = "passed";
+  evidence.authenticatedChecks.module011SuperAdministratorAuthority = "passed";
+
   const routes = await request("/api/ai-configuration/routes", {
     moduleNumber: "064",
     authenticated: true,
@@ -489,6 +503,7 @@ async function run() {
     assert(JSON.stringify(route.targets) === JSON.stringify(expectedTargets), "Module 064 target order is wrong for " + feature + ".");
   }
   evidence.authenticatedChecks.module064Routes = "passed";
+  evidence.authenticatedChecks.module064SuperAdministratorAuthority = "passed";
 
   const providerConfiguration = await request("/api/ai-configuration", {
     moduleNumber: "064",

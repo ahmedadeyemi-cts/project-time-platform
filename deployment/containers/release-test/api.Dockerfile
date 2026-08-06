@@ -12,10 +12,10 @@ RUN dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
     --no-restore \
     --output /app/publish \
     /p:UseAppHost=false \
-    /p:ProjectPulseSourceRevision=b94dead5bfeec03fecacf27d7e78d14e4e5d92a7
+    /p:ProjectPulseSourceRevision=64c3168778957f39203c4a17377418e0a8f1ed23
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
-LABEL org.opencontainers.image.revision="b94dead5bfeec03fecacf27d7e78d14e4e5d92a7"
+LABEL org.opencontainers.image.revision="64c3168778957f39203c4a17377418e0a8f1ed23"
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=5080 \
