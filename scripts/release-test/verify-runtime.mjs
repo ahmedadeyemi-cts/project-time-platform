@@ -92,7 +92,10 @@ async function request(route, options = {}) {
       signal: controller.signal,
     });
     assert(response.status < 300 || response.status >= 400, "Verifier refused an HTTP redirect for " + method + " " + route + ".");
-    const text = (await response.text()).slice(0, 1_000_000);
+    const maxCharacters = Number.isInteger(options.maxCharacters)
+      ? options.maxCharacters
+      : 1_000_000;
+    const text = (await response.text()).slice(0, maxCharacters);
     let json = null;
     try {
       json = text ? JSON.parse(text) : null;
@@ -101,6 +104,39 @@ async function request(route, options = {}) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function cacheBustedRoute(route, attempt) {
+  const target = new URL(route, base);
+  target.searchParams.set("release", sourceSha.slice(0, 12) + "-" + attempt);
+  return target.pathname + target.search;
+}
+
+async function verifyOfficialUsSignalLogo() {
+  let lastError = new Error("The web bundle was not inspected.");
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    try {
+      const shell = await request(cacheBustedRoute("/", attempt), { accept: "text/html" });
+      assert(shell.status === 200, "Web application shell returned HTTP " + shell.status + ".");
+      const scriptPath = shell.text.match(/<script[^>]+src=["']([^"']+\.js)["']/i)?.[1] || "";
+      assert(scriptPath.length > 0, "Web application shell did not reference its production bundle.");
+      const bundle = await request(cacheBustedRoute(scriptPath, attempt), {
+        accept: "text/javascript",
+        maxCharacters: 5_000_000,
+      });
+      assert(bundle.status === 200, "Web production bundle returned HTTP " + bundle.status + ".");
+      assert(bundle.text.includes("brand-logo-image"), "Web production bundle does not mount the main-page US Signal logo.");
+      const logoPath = bundle.text.match(/\/assets\/(?:USSNavyStacked|ussignal)-[A-Za-z0-9_-]+\.png/)?.[0] || "";
+      assert(logoPath.length > 0, "Web production bundle does not reference the approved stacked US Signal logo asset.");
+      const logoBytes = await requestBytes(cacheBustedRoute(logoPath, attempt));
+      assert(createHash("sha256").update(logoBytes).digest("hex") === officialLogoSha256, "Live US Signal logo bytes do not match the approved governed asset.");
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < 12) await sleep(5_000);
+    }
+  }
+  throw new Error("Web release did not become cache coherent: " + safeError(lastError));
 }
 
 async function requestBytes(route) {
@@ -235,22 +271,12 @@ async function archiveForgeTask() {
 }
 
 async function run() {
-  const stamp = await request("/release.json");
+  const stamp = await request(cacheBustedRoute("/release.json", 1));
   assert(stamp.status === 200, "Web source stamp returned HTTP " + stamp.status + ".");
   assert(stamp.json?.sourceSha === sourceSha, "Web source stamp does not match the exact release SHA.");
   evidence.publicChecks.webSourceStamp = "passed";
 
-  const shell = await request("/", { accept: "text/html" });
-  assert(shell.status === 200, "Web application shell returned HTTP " + shell.status + ".");
-  const scriptPath = shell.text.match(/<script[^>]+src=["']([^"']+\.js)["']/i)?.[1] || "";
-  assert(scriptPath.length > 0, "Web application shell did not reference its production bundle.");
-  const bundle = await request(scriptPath, { accept: "text/javascript" });
-  assert(bundle.status === 200, "Web production bundle returned HTTP " + bundle.status + ".");
-  assert(bundle.text.includes("brand-logo-image"), "Web production bundle does not mount the main-page US Signal logo.");
-  const logoPath = bundle.text.match(/\/assets\/(?:USSNavyStacked|ussignal)-[A-Za-z0-9_-]+\.png/)?.[0] || "";
-  assert(logoPath.length > 0, "Web production bundle does not reference the approved stacked US Signal logo asset.");
-  const logoBytes = await requestBytes(logoPath);
-  assert(createHash("sha256").update(logoBytes).digest("hex") === officialLogoSha256, "Live US Signal logo bytes do not match the approved governed asset.");
+  await verifyOfficialUsSignalLogo();
   evidence.publicChecks.officialUsSignalLogo = "passed";
 
   const health = await request("/api/health");
