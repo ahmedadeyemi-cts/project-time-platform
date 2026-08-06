@@ -515,7 +515,10 @@ public sealed record PulseAiPrivateDocumentRuntimeReadiness(
     IReadOnlyList<string> Blockers,
     IReadOnlyList<string> MissingConfiguration,
     DateTimeOffset GeneratedAt,
-    string? DiagnosticCode = null);
+    string? DiagnosticCode = null,
+    long ActiveVersionCount = 0,
+    long UnembeddedChunkCount = 0,
+    DateTimeOffset? LastIndexedAt = null);
 
 public sealed record PulseAiQueueDocumentRequest(
     string? Purpose,

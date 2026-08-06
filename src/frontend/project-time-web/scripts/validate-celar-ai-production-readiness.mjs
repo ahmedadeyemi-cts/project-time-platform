@@ -23,6 +23,12 @@ const snapshot = read('src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSn
 const ocr = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs');
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs');
 const model = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs');
+const ragService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+const enterpriseService = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
+const enterpriseContracts = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs');
+const knowledgeFabric = read('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs');
+const forgeModule = read('src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs');
+const forgePanel = read('src/frontend/project-time-web/src/ProjectForgeCenter.jsx');
 const refusalFixtures = JSON.parse(read('tests/fixtures/celar-ai-private-model-refusal-responses.json'));
 const retrieval = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs');
 const reauthorization = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs');
@@ -489,6 +495,59 @@ assert(
     && panel.includes('productionReadiness')
     && panel.includes('production-readiness item'),
   'Module 064 exposes end-to-end readiness and actionable blockers without returning paths or secrets'
+);
+
+assert(
+  'KNOWLEDGE_CONTENT_GRAPH_AND_PRIVATE_ENDPOINTS',
+  knowledgeFabric.includes('celar-ai-knowledge-fabric-v1-20260806')
+    && knowledgeFabric.includes('project -> document -> authoritative version -> section or worksheet -> chunk -> citation')
+    && knowledgeFabric.includes('private_inference')
+    && knowledgeFabric.includes('private_database')
+    && knowledgeFabric.includes('private_malware_scanning')
+    && knowledgeFabric.includes('private_ocr')
+    && knowledgeFabric.includes('private_embedding')
+    && knowledgeFabric.includes('persistent_private_content_storage')
+    && knowledgeFabric.includes('endpointValuesReturned') === false
+    && services.includes('AddSingleton<CelarAiKnowledgeFabricService>()')
+    && module064.includes('/api/ai-configuration/knowledge-fabric')
+    && panel.includes('Comprehensive knowledge fabric')
+    && panel.includes('Latest indexed content')
+    && model.includes('[CONTENT GRAPH]')
+    && model.includes('Project({document.Key.ProjectCode}')
+    && model.includes('Prefer the newest supported authoritative version'),
+  'Module 064 projects source-controlled knowledge, capability relationships, current content versions and chunks, private endpoint evidence, citations, and freshness without returning endpoint or secret values'
+);
+
+assert(
+  'COMPREHENSIVE_SOW_FLOWHIVE_FORGE_TASKS',
+  ragContracts.includes('IReadOnlyList<string>? DetailedSteps')
+    && ragContracts.includes('IReadOnlyList<string>? AcceptanceCriteria')
+    && ragContracts.includes('IReadOnlyList<string>? CustomerResponsibilities')
+    && ragContracts.includes('decimal? EstimatedHours')
+    && ragContracts.includes('public bool CanProjectForge')
+    && ragService.includes('CelarAiCapabilityCatalog.ProjectForgePlanEstimate => access.CanProjectForge')
+    && ragService.includes('CelarAiCapabilityCatalog.SowGsdPlanning => access.CanSowPlanning')
+    && ragService.includes('Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition.')
+    && enterpriseService.includes('FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning')
+    && enterpriseContracts.includes('public sealed record CelarAiSowWorkPackage')
+    && enterpriseService.includes('WorkPackages: workPackages')
+    && forgeModule.includes('PlanningDescription(task)')
+    && forgeModule.includes('AppendPlanningSection(value, "Detailed procedure"')
+    && forgeModule.includes('task.EstimatedHours ?? task.EstimatedDurationDays * 8m')
+    && forgePanel.includes('Project Forge is connected')
+    && forgePanel.includes('automatically fills each customer-facing task'),
+  'SOW, FlowHive, and Project Forge use one capability-aware private planning schema that automatically fills detailed customer-facing work sections and preserves review controls'
+);
+
+assert(
+  'KNOWLEDGE_FABRIC_GOVERNED_SCOPE',
+  hardeningCi.includes('security/celar-ai-production-readiness-knowledge-fabric-*')
+    && hardeningCi.includes('EXACT_24_KNOWLEDGE_FABRIC_FILES')
+    && hardeningCi.includes('.github/workflows/pulse-ai-help-chat-usability-ci.yml')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs')
+    && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs')
+    && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'),
+  'the knowledge-fabric and comprehensive-planning package has an exact governed source manifest'
 );
 
 const failed = checks.filter((check) => !check.condition);

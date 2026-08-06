@@ -26,6 +26,9 @@ const capability = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting
 const aiContracts = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiContracts.cs');
 const enterpriseContracts = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs');
 const enterpriseService = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
+const privateRagContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
+const privateRagService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+const knowledgeFabric = read('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs');
 const externalReasoning = read('src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs');
 const compileTargets = read('src/backend/ProjectTime.Api/Directory.Build.targets');
 const migration = read('database/migrations/070_module_033_project_forge.sql');
@@ -259,6 +262,56 @@ if ((backend.split('compositionStatus = composition.Status').length - 1) < 5) {
 if (backend.includes('groundedStatus && string.Equals(composition.SelectedTarget')) {
   throw new Error('Project Forge must preserve a citation-backed private scaffold when a separate external/local assistance target finishes the route.');
 }
+
+for (const token of [
+  'public bool CanProjectForge',
+  'IReadOnlyList<string>? DetailedSteps',
+  'IReadOnlyList<string>? Inputs',
+  'IReadOnlyList<string>? Outputs',
+  'IReadOnlyList<string>? AcceptanceCriteria',
+  'IReadOnlyList<string>? ValidationSteps',
+  'IReadOnlyList<string>? CustomerResponsibilities',
+  'IReadOnlyList<string>? UsSignalResponsibilities',
+  'IReadOnlyList<string>? Prerequisites',
+  'IReadOnlyList<string>? Risks',
+  'IReadOnlyList<string>? OpenQuestions',
+  'decimal? EstimatedHours'
+]) requireText(privateRagContracts, token, 'Project Forge comprehensive private task contract');
+
+for (const token of [
+  'CelarAiCapabilityCatalog.ProjectForgePlanEstimate => access.CanProjectForge',
+  'Automatically fill every supported section.',
+  'Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition.'
+]) requireText([privateRagService, enterpriseService].join('\n'), token, 'Project Forge capability-aware private planning');
+
+for (const token of [
+  'var planningCapability = ResolveCapability(mode, request);',
+  'FeatureCode: planningCapability'
+]) requireText(enterpriseService, token, 'Project Forge centrally resolved planning capability');
+
+for (const token of [
+  'PlanningDescription(task)',
+  'AppendPlanningSection(value, "Detailed procedure"',
+  'AppendPlanningSection(value, "Acceptance criteria"',
+  'task.EstimatedHours ?? task.EstimatedDurationDays * 8m',
+  'CelarAiKnowledgeFabricService knowledgeFabricService',
+  'module064Connection = new',
+  'privateKnowledgeReady = forgeConnection?.PrivateKnowledgeReady == true'
+]) requireText(backend, token, 'Project Forge comprehensive task projection and Module 064 connection evidence');
+
+for (const token of [
+  'Project Forge is connected',
+  'Your Project Forge permission, governed route, private inference, and current document knowledge are ready.',
+  'automatically fills each customer-facing task'
+]) requireText(center, token, 'Project Forge visible Module 064 connection and customer-ready generation');
+
+for (const token of [
+  'CelarAiCapabilityCatalog.Definitions',
+  'connected_private_knowledge_ready',
+  'private_inference',
+  'private_database',
+  'project -> document -> authoritative version -> section or worksheet -> chunk -> citation'
+]) requireText(knowledgeFabric, token, 'Project Forge knowledge-fabric evidence');
 for (const token of [
   'composition.SelectedTarget',
   'composition.AttemptedTargets',

@@ -102,6 +102,27 @@
 .forge-banner.error { color: var(--forge-error-ink); background: var(--forge-error-surface); border-color: var(--forge-error-line); }
 .forge-banner.success { color: var(--forge-success-ink); background: var(--forge-success-surface); border-color: var(--forge-success-line); }
 
+.forge-ai-connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 16px 24px 0;
+  padding: 14px 16px;
+  color: var(--forge-ink);
+  background: var(--forge-subtle);
+  border: 1px solid var(--forge-line);
+  border-left: 5px solid var(--forge-amber);
+  border-radius: 10px;
+}
+
+.forge-ai-connection.is-connected { border-left-color: var(--forge-green); background: var(--forge-success-surface); }
+.forge-ai-connection > div:first-child { display: grid; gap: 3px; }
+.forge-ai-connection > div:first-child > span { color: var(--forge-accent-ink); font-size: .7rem; font-weight: 850; letter-spacing: .12em; }
+.forge-ai-connection small { color: var(--forge-muted); line-height: 1.45; }
+.forge-ai-connection__evidence { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.forge-ai-connection__evidence span { padding: 5px 8px; color: var(--forge-muted); background: var(--forge-panel); border: 1px solid var(--forge-line); border-radius: 99px; font-size: .72rem; font-weight: 750; white-space: nowrap; }
+
 .forge-ai-studio {
   margin: 20px 24px;
   display: grid;

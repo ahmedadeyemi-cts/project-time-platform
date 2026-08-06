@@ -71,7 +71,13 @@ const refusalResult = section(
 );
 
 assert('SOLUTION_MODES', ['timesheet_description', 'sow_draft', 'project_plan', 'project_timeline', 'project_diagram'].every((value) => contracts.includes(`"${value}"`)), 'all enterprise composition modes are registered');
-assert('PRIVATE_RAG_COMPOSITION', service.includes('GenerateTimesheetAsync') && service.includes('AskHelpSearchAsync') && service.includes('GenerateFlowHivePlanAsync'), 'Timesheet, SOW, and FlowHive use the private RAG service');
+assert(
+  'PRIVATE_RAG_COMPOSITION',
+  service.includes('GenerateTimesheetAsync')
+    && service.includes('GenerateFlowHivePlanAsync')
+    && service.includes('FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning'),
+  'Timesheet uses private grounding while SOW, FlowHive, and Project Forge use the structured private planning schema'
+);
 assert(
   'SAFETY_REFUSAL_CLEARS_ARTIFACTS',
   service.includes('if (routed.Outcome == ProjectPulseAiOutcomes.Refusal)')

@@ -28,6 +28,9 @@ public static class CelarAiCapabilityRoutingModule
         endpoints.MapGet(
             "/api/ai-configuration/consumers",
             (Func<HttpContext, CelarAiCapabilityRoutingStore, CelarAiConsumerAssuranceRegistry, CancellationToken, Task<IResult>>)GetConsumersAsync);
+        endpoints.MapGet(
+            "/api/ai-configuration/knowledge-fabric",
+            (Func<HttpContext, CelarAiKnowledgeFabricService, CancellationToken, Task<IResult>>)GetKnowledgeFabricAsync);
 
         endpoints.MapGet(
             "/api/ai-configuration/private-model",
@@ -636,6 +639,33 @@ public static class CelarAiCapabilityRoutingModule
                 privateEvidenceExternalized = false
             },
             generatedAt = DateTimeOffset.UtcNow,
+            stateChanged = false
+        });
+    }
+
+    private static async Task<IResult> GetKnowledgeFabricAsync(
+        HttpContext context,
+        CelarAiKnowledgeFabricService knowledgeFabric,
+        CancellationToken cancellationToken)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var authorization = await AuthorizeAdministratorAsync(context, requireSameOrigin: false, cancellationToken);
+        if (authorization is not null) return authorization;
+        var snapshot = await knowledgeFabric.GetSnapshotAsync(cancellationToken);
+        return Results.Ok(new
+        {
+            module = "064",
+            status = snapshot.Status,
+            contractVersion = CelarAiKnowledgeFabricService.ContractVersion,
+            knowledgeFabric = snapshot,
+            privacyBoundary = new
+            {
+                endpointValuesReturned = false,
+                secretValuesReturned = false,
+                rawDocumentsReturned = false,
+                promptsReturned = false,
+                embeddingVectorsReturned = false
+            },
             stateChanged = false
         });
     }

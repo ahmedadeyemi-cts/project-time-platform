@@ -317,26 +317,18 @@ public sealed class CelarAiEnterprisePlatformService
         }
         if (mode == "sow_draft")
         {
-            var outcome = Clean(request.RequestedOutcome, 6_000);
-            var question = $"""
-                Create a comprehensive, reviewable Statement of Work draft for the authorized project.
-                Project code: {projectCode}
-                Project name: {projectName}
-                Requested outcome: {(outcome.Length == 0 ? "Use the authorized scope, deliverables, design, responsibilities, constraints, acceptance evidence, assumptions, dependencies, risks, and open questions." : outcome)}
-                The output is a draft only. Separate cited facts from assumptions. Do not invent prices, rates, dates, quantities, responsibilities, acceptance criteria, or contractual commitments.
-                """;
-            return await _privateRag.AskHelpSearchAsync(
+            return await _privateRag.GenerateFlowHivePlanAsync(
                 actualUserId,
                 effectiveUserId,
-                new PulseAiPrivateHelpSearchRequest(
-                    Question: question,
+                new PulseAiPrivateFlowHiveRequest(
                     ProjectCode: projectCode,
                     ProjectName: projectName,
+                    RequestedOutcome: request.RequestedOutcome,
                     DetailLevel: request.DetailLevel ?? "comprehensive",
-                    IncludeAuthorizedProjectDocuments: true,
-                    IncludeDirectProductKnowledge: false),
+                    FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning),
                 cancellationToken);
         }
+        var planningCapability = ResolveCapability(mode, request);
         return await _privateRag.GenerateFlowHivePlanAsync(
             actualUserId,
             effectiveUserId,
@@ -344,7 +336,8 @@ public sealed class CelarAiEnterprisePlatformService
                 ProjectCode: projectCode,
                 ProjectName: projectName,
                 RequestedOutcome: request.RequestedOutcome,
-                DetailLevel: request.DetailLevel ?? "comprehensive"),
+                DetailLevel: request.DetailLevel ?? "comprehensive",
+                FeatureCode: planningCapability),
             cancellationToken);
     }
 
@@ -477,40 +470,49 @@ public sealed class CelarAiEnterprisePlatformService
         string projectCode,
         string projectName)
     {
-        var answer = result.Answer;
-        if (answer is null) return null;
+        var plan = result.FlowHivePlan;
+        if (plan is null) return null;
         var titleProject = projectName.Length > 0 ? projectName : projectCode.Length > 0 ? projectCode : "Authorized Project";
-        var analysis = answer.DetailedAnalysis.Count > 0 ? answer.DetailedAnalysis : answer.SourceEvidence;
+        var workPackages = plan.Tasks.Select(task => new CelarAiSowWorkPackage(
+            Wbs: task.Wbs,
+            Phase: task.Phase,
+            Name: task.Name,
+            Description: task.Description,
+            DetailedSteps: task.DetailedSteps ?? [],
+            Inputs: task.Inputs ?? [],
+            Outputs: task.Outputs ?? [],
+            AcceptanceCriteria: task.AcceptanceCriteria ?? [],
+            ValidationSteps: task.ValidationSteps ?? [],
+            CustomerResponsibilities: task.CustomerResponsibilities ?? [],
+            UsSignalResponsibilities: task.UsSignalResponsibilities ?? [],
+            Prerequisites: task.Prerequisites ?? [],
+            Risks: task.Risks ?? [],
+            OpenQuestions: task.OpenQuestions ?? [],
+            EstimatedDurationDays: task.EstimatedDurationDays,
+            EstimatedHours: task.EstimatedHours,
+            RequiredRoles: task.RequiredRoles,
+            Predecessors: task.Predecessors,
+            CitationIds: task.CitationIds,
+            IsAssumption: task.IsAssumption)).ToArray();
         return new CelarAiSowDraft(
             Title: $"Statement of Work Draft — {titleProject}",
-            ExecutiveSummary: answer.ExecutiveSummary,
-            Objectives: TakeOrFallback([answer.DirectConclusion], "Confirm the business and technical objectives with the customer and delivery stakeholders."),
-            InScope: TakeOrFallback(analysis.Take(12), "Confirm the detailed in-scope services from the authoritative SOW/GSD and approved project evidence."),
-            OutOfScope: TakeOrFallback(answer.Limitations.Take(8), "Anything not explicitly approved in the final scope remains out of scope."),
-            Deliverables: TakeOrFallback(answer.RecommendedActions.Take(10), "Confirm named deliverables, formats, owners, and acceptance evidence during review."),
-            CustomerResponsibilities:
-            [
-                "Provide timely access, technical contacts, decisions, prerequisites, and acceptance participation identified during review.",
-                "Validate that customer responsibilities match the signed commercial and technical source documents."
-            ],
-            UsSignalResponsibilities:
-            [
-                "Perform only the reviewed and approved services using authorized delivery resources and governed project controls.",
-                "Maintain project evidence, risks, decisions, status, and acceptance records in the owning Pulse modules."
-            ],
-            Assumptions: TakeOrFallback(answer.Assumptions.Take(12), "No assumption is contractually valid until it is reviewed and approved."),
-            Dependencies: TakeOrFallback(answer.Conflicts.Concat(answer.KnownUnknownAndStaleValues).Take(12), "Confirm technical, customer, vendor, resource, and scheduling dependencies."),
-            AcceptanceCriteria: TakeOrFallback(answer.SourceEvidence.Take(10), "Define objective, measurable acceptance criteria and required evidence before final approval."),
-            TimelineAndMilestones:
-            [
-                "Use the approved FlowHive plan and deterministic schedule for dates; this draft does not commit a customer timeline.",
-                "Include discovery, design validation, implementation, testing, acceptance, operational handoff, and closeout as applicable."
-            ],
-            Risks: TakeOrFallback(answer.RisksAndImplications.Take(10), "Review delivery, technical, resource, customer, security, and dependency risks."),
-            OpenQuestions: TakeOrFallback(answer.KnownUnknownAndStaleValues.Take(10), "Resolve every material unknown before final SOW approval."),
-            CitationIds: answer.CitationIds,
+            ExecutiveSummary: plan.Objective,
+            Objectives: TakeOrFallback([plan.Objective], "Confirm the business and technical objectives with the customer and delivery stakeholders."),
+            InScope: TakeOrFallback(plan.Tasks.Select(task => $"{task.Wbs} — {task.Name}: {task.Description}"), "Confirm the detailed in-scope services from the authoritative SOW/GSD and approved project evidence."),
+            OutOfScope: TakeOrFallback(plan.OutOfScopeItems, "Anything not explicitly approved in the final scope remains out of scope."),
+            Deliverables: TakeOrFallback(plan.Tasks.SelectMany(task => task.Outputs ?? []).Distinct(StringComparer.OrdinalIgnoreCase), "Confirm named deliverables, formats, owners, and acceptance evidence during review."),
+            CustomerResponsibilities: TakeOrFallback(plan.Tasks.SelectMany(task => task.CustomerResponsibilities ?? []).Distinct(StringComparer.OrdinalIgnoreCase), "Confirm customer access, contacts, decisions, prerequisites, and acceptance participation during review."),
+            UsSignalResponsibilities: TakeOrFallback(plan.Tasks.SelectMany(task => task.UsSignalResponsibilities ?? []).Distinct(StringComparer.OrdinalIgnoreCase), "Perform only the reviewed and approved services using authorized delivery resources and governed project controls."),
+            Assumptions: TakeOrFallback(plan.Assumptions, "No assumption is contractually valid until it is reviewed and approved."),
+            Dependencies: TakeOrFallback(plan.Dependencies, "Confirm technical, customer, vendor, resource, and scheduling dependencies."),
+            AcceptanceCriteria: TakeOrFallback(plan.Tasks.SelectMany(task => task.AcceptanceCriteria ?? []).Distinct(StringComparer.OrdinalIgnoreCase), "Define objective, measurable acceptance criteria and required evidence before final approval."),
+            TimelineAndMilestones: TakeOrFallback(plan.Milestones.Select(milestone => $"{milestone.Name}: {milestone.Description} Proposed timing: {milestone.ProposedTiming}. Acceptance evidence: {JoinOrNone(milestone.AcceptanceEvidence)}."), "Use the deterministic FlowHive schedule for dates; this draft does not commit a customer timeline."),
+            Risks: TakeOrFallback(plan.Risks.Concat(plan.Tasks.SelectMany(task => task.Risks ?? [])).Distinct(StringComparer.OrdinalIgnoreCase), "Review delivery, technical, resource, customer, security, and dependency risks."),
+            OpenQuestions: TakeOrFallback(plan.OpenQuestions.Concat(plan.Tasks.SelectMany(task => task.OpenQuestions ?? [])).Distinct(StringComparer.OrdinalIgnoreCase), "Resolve every material unknown before final SOW approval."),
+            CitationIds: plan.CitationIds.Concat(plan.Tasks.SelectMany(task => task.CitationIds)).Distinct().ToArray(),
             ReviewRequired: true,
-            ContractuallyBinding: false);
+            ContractuallyBinding: false,
+            WorkPackages: workPackages);
     }
 
     private static PulseAiPrivateDetailedAnswer BuildPlanSummary(
@@ -691,7 +693,7 @@ public sealed class CelarAiEnterprisePlatformService
             RequiresEngineeringReview: true);
     }
 
-    private static IEnumerable<string> TakeOrFallback(IEnumerable<string> values, string fallback)
+    private static IReadOnlyList<string> TakeOrFallback(IEnumerable<string> values, string fallback)
     {
         var rows = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         return rows.Length > 0 ? rows : [fallback];

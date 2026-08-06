@@ -265,7 +265,9 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                           )
                     ),
                     (SELECT COUNT(*)::bigint FROM pulse_ai_document_chunks WHERE is_active = TRUE AND index_status IN ('lexical_ready','embedding_ready','ready')),
-                    (SELECT COUNT(*)::bigint FROM pulse_ai_document_chunks WHERE is_active = TRUE AND embedding_status = 'ready');
+                    (SELECT COUNT(*)::bigint FROM pulse_ai_document_chunks WHERE is_active = TRUE AND embedding_status = 'ready'),
+                    (SELECT COUNT(*)::bigint FROM pulse_ai_document_versions WHERE authority_status IN ('approved','canonical')),
+                    (SELECT MAX(processed_at) FROM pulse_ai_document_chunks WHERE is_active = TRUE AND index_status IN ('lexical_ready','embedding_ready','ready'));
                 """;
             await using var command = new NpgsqlCommand(sql, connection);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -279,7 +281,11 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
                 ReadySowDocuments: reader.GetInt64(5),
                 PendingSowDocuments: reader.GetInt64(6),
                 ActiveChunks: reader.GetInt64(7),
-                EmbeddedChunks: reader.GetInt64(8));
+                EmbeddedChunks: reader.GetInt64(8),
+                ActiveVersions: reader.GetInt64(9),
+                LastIndexedAt: reader.IsDBNull(10)
+                    ? null
+                    : new DateTimeOffset(reader.GetDateTime(10).ToUniversalTime()));
         }
         catch (PostgresException exception) when (exception.SqlState is "42P01" or "42703")
         {
@@ -1799,9 +1805,11 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         long ReadySowDocuments,
         long PendingSowDocuments,
         long ActiveChunks,
-        long EmbeddedChunks)
+        long EmbeddedChunks,
+        long ActiveVersions,
+        DateTimeOffset? LastIndexedAt)
     {
-        public static RuntimeCounts Empty => new(0, 0, 0, 0, 0, 0, 0, 0, 0);
+        public static RuntimeCounts Empty => new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
     }
 
     public sealed record AutoQueueResult(

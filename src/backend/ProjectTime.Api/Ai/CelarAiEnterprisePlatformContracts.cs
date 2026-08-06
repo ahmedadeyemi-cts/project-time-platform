@@ -87,6 +87,28 @@ public sealed record CelarAiGeneratedDiagram(
     bool RequiresPmReview,
     bool RequiresEngineeringReview);
 
+public sealed record CelarAiSowWorkPackage(
+    string Wbs,
+    string Phase,
+    string Name,
+    string Description,
+    IReadOnlyList<string> DetailedSteps,
+    IReadOnlyList<string> Inputs,
+    IReadOnlyList<string> Outputs,
+    IReadOnlyList<string> AcceptanceCriteria,
+    IReadOnlyList<string> ValidationSteps,
+    IReadOnlyList<string> CustomerResponsibilities,
+    IReadOnlyList<string> UsSignalResponsibilities,
+    IReadOnlyList<string> Prerequisites,
+    IReadOnlyList<string> Risks,
+    IReadOnlyList<string> OpenQuestions,
+    decimal EstimatedDurationDays,
+    decimal? EstimatedHours,
+    IReadOnlyList<string> RequiredRoles,
+    IReadOnlyList<string> Predecessors,
+    IReadOnlyList<int> CitationIds,
+    bool IsAssumption);
+
 public sealed record CelarAiSowDraft(
     string Title,
     string ExecutiveSummary,
@@ -104,7 +126,8 @@ public sealed record CelarAiSowDraft(
     IReadOnlyList<string> OpenQuestions,
     IReadOnlyList<int> CitationIds,
     bool ReviewRequired,
-    bool ContractuallyBinding);
+    bool ContractuallyBinding,
+    IReadOnlyList<CelarAiSowWorkPackage>? WorkPackages = null);
 
 public sealed record CelarAiExternalReasoningRequest(
     string Mode,

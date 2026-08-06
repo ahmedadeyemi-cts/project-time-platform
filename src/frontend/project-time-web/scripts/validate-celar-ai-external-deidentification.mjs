@@ -10,6 +10,7 @@ const read = (...parts) => fs.readFileSync(path.join(repositoryRoot, ...parts), 
 const sanitizer = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiEscalationSanitizer.cs');
 const routing = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiCapabilityRouting.cs');
 const privateModel = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiPrivateModelClient.cs');
+const privateRag = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'PulseAiPrivateRagService.cs');
 const timesheet = read('src', 'backend', 'ProjectTime.Api', 'ProjectPulseAiTimeEntrySuggestionService.cs');
 const enterpriseContracts = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiEnterprisePlatformContracts.cs');
 const enterpriseExternal = read('src', 'backend', 'ProjectTime.Api', 'Ai', 'CelarAiExternalReasoningService.cs');
@@ -457,8 +458,14 @@ check(
       'CelarAiSowDraft('
     ])
     && containsAll(enterpriseService, [
-      'Create a comprehensive, reviewable Statement of Work draft',
-      'DetailLevel: request.DetailLevel ?? "comprehensive"'
+      'DetailLevel: request.DetailLevel ?? "comprehensive"',
+      'FeatureCode: CelarAiCapabilityCatalog.SowGsdPlanning',
+      'WorkPackages: workPackages'
+    ])
+    && containsAll(privateRag, [
+      'Create a comprehensive, cited, customer-ready delivery draft',
+      'Automatically fill every supported section.',
+      'Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition.'
     ])
     && containsAll(flowHiveFactory, [
       'Produce a detailed cited draft only.',

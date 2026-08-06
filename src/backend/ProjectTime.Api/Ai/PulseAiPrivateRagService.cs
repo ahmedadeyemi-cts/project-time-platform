@@ -263,27 +263,37 @@ public sealed class PulseAiPrivateRagService
     {
         var options = Options();
         var access = await _repository.LoadAccessAsync(effectiveUserId, cancellationToken);
-        if (!access.IsActive || !access.CanFlowHive)
+        var feature = PlanningFeature(request.FeatureCode);
+        var purpose = PlanningPurpose(feature);
+        var authorized = feature switch
         {
-            return Blocked(PulseAiPrivateRagPolicy.FlowHiveFeature, "flowhive_plan", "forbidden", "The current effective user cannot use Pulse AI FlowHive planning.");
+            CelarAiCapabilityCatalog.ProjectForgePlanEstimate => access.CanProjectForge,
+            CelarAiCapabilityCatalog.SowGsdPlanning => access.CanSowPlanning,
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan => access.CanFlowHive,
+            _ => false
+        };
+        if (!access.IsActive || !authorized)
+        {
+            return Blocked(feature, purpose, "forbidden", "The current effective user cannot use this private Celar AI planning capability.");
         }
         var projectCode = Clean(request.ProjectCode, 120);
         var projectName = Clean(request.ProjectName, 300);
         if (projectCode.Length == 0 && projectName.Length == 0)
         {
-            return Blocked(PulseAiPrivateRagPolicy.FlowHiveFeature, "flowhive_plan", "project_context_required", "An authorized project code or name is required.");
+            return Blocked(feature, purpose, "project_context_required", "An authorized project code or name is required.");
         }
         var requestedOutcome = Clean(request.RequestedOutcome, 6_000);
         var question = $"""
-            Create a detailed, cited project-plan draft for Project Manager and Engineering review.
+            Create a comprehensive, cited, customer-ready delivery draft for Project Manager and Engineering review.
             Project: {projectCode} {projectName}
             Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
+            Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
             """;
         var query = BuildQuery(
             actualUserId: actualUserId,
             effectiveUserId: effectiveUserId,
-            feature: PulseAiPrivateRagPolicy.FlowHiveFeature,
-            purpose: "flowhive_plan",
+            feature: feature,
+            purpose: purpose,
             question: question,
             projectId: null,
             taskId: null,
@@ -300,8 +310,8 @@ public sealed class PulseAiPrivateRagService
             DetailLevel(request.DetailLevel, "comprehensive"),
             directKnowledge: null,
             modelSchema: "PulseAiPrivateFlowHivePlan",
-            systemInstruction: FlowHiveSystemInstruction(),
-            userInstruction: FlowHiveUserInstruction(requestedOutcome),
+            systemInstruction: FlowHiveSystemInstruction(feature),
+            userInstruction: FlowHiveUserInstruction(feature, requestedOutcome),
             flowHive: true,
             retrieveAuthorizedDocuments: true,
             usePrivateModelWhenAvailable: true,
@@ -1071,7 +1081,20 @@ public sealed class PulseAiPrivateRagService
                 EstimatedDurationDays = Math.Clamp(task.EstimatedDurationDays, 0.1m, 365m),
                 RequiredRoles = List(task.RequiredRoles, 30, 300),
                 Predecessors = List(task.Predecessors, 30, 80),
-                CitationIds = ValidCitationIds(task.CitationIds.ToArray(), citationMaximum)
+                CitationIds = ValidCitationIds(task.CitationIds.ToArray(), citationMaximum),
+                Phase = Limit(task.Phase, 200, "Delivery"),
+                DetailedSteps = List(task.DetailedSteps, 60, 2_000),
+                Inputs = List(task.Inputs, 40, 1_500),
+                Outputs = List(task.Outputs, 40, 1_500),
+                AcceptanceCriteria = List(task.AcceptanceCriteria, 40, 2_000),
+                ValidationSteps = List(task.ValidationSteps, 40, 2_000),
+                CustomerResponsibilities = List(task.CustomerResponsibilities, 40, 2_000),
+                UsSignalResponsibilities = List(task.UsSignalResponsibilities, 40, 2_000),
+                Prerequisites = List(task.Prerequisites, 40, 2_000),
+                Risks = List(task.Risks, 40, 2_000),
+                OpenQuestions = List(task.OpenQuestions, 40, 2_000),
+                EstimatedHours = task.EstimatedHours is null ? null : Math.Clamp(task.EstimatedHours.Value, 0.1m, 4_000m),
+                Priority = PlanningPriority(task.Priority)
             })
             .ToArray();
 
@@ -1184,22 +1207,46 @@ public sealed class PulseAiPrivateRagService
         The directConclusion must be polished customer-facing prose, detailed enough for invoice review, and limited to facts supported by the Engineer note and authorized evidence. It remains subject to Engineer review and explicit application.
         """;
 
-    private static string FlowHiveSystemInstruction() => """
-        You are Pulse AI preparing a private, cited FlowHive project-plan draft.
+    private static string FlowHiveSystemInstruction(string feature) => $"""
+        You are Celar AI preparing a private, cited, customer-facing delivery artifact for capability {feature}.
         Extract and organize scope, deliverables, exclusions, responsibilities, prerequisites, quantities, locations, acceptance criteria, constraints, assumptions, risks, dependencies, milestones, required roles, and open questions.
-        Return structured tasks and milestones with source citation IDs.
+        Return structured tasks and milestones with source citation IDs. Automatically populate every task field supported by PulseAiPrivateFlowHiveTask.
+        Each task must be executable by a delivery professional without guessing. Include an ordered detailedSteps list; explicit inputs and outputs; validationSteps; measurable acceptanceCriteria; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks and openQuestions; phase; priority; estimatedDurationDays; estimatedHours; roles; predecessors; citations; and an assumption flag.
+        Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition. Use complete customer-ready sentences, not vague labels such as configure, test, or validate without explaining what is performed and how success is established.
         Do not calculate authoritative dates inside the language model; describe proposed timing and dependencies for the deterministic FlowHive schedule engine.
         Do not baseline a plan, assign a person, reserve capacity, publish to a customer, change a contract, or commit a customer date.
-        Clearly label every unsupported duration, dependency, milestone, or role as an assumption.
+        Clearly label every unsupported duration, hour estimate, dependency, milestone, responsibility, acceptance criterion, or role as an assumption and place unresolved facts in openQuestions.
         The Project Manager and Engineering must modify and validate the draft before any separately authorized baseline.
         Return valid JSON matching PulseAiPrivateFlowHivePlan.
         """;
 
-    private static string FlowHiveUserInstruction(string requestedOutcome) => $"""
-        Prepare the most complete reviewable WBS, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence.
+    private static string FlowHiveUserInstruction(string feature, string requestedOutcome) => $"""
+        Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
         Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
-        Preserve source citations and identify every missing contractual or technical input.
+        Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
         """;
+
+    private static string PlanningFeature(string? feature) => feature?.Trim().ToLowerInvariant() switch
+    {
+        CelarAiCapabilityCatalog.ProjectForgePlanEstimate => CelarAiCapabilityCatalog.ProjectForgePlanEstimate,
+        CelarAiCapabilityCatalog.SowGsdPlanning => CelarAiCapabilityCatalog.SowGsdPlanning,
+        _ => CelarAiCapabilityCatalog.ProjectFlowHivePlan
+    };
+
+    private static string PlanningPurpose(string feature) => feature switch
+    {
+        CelarAiCapabilityCatalog.ProjectForgePlanEstimate => "project_forge_plan_estimate",
+        CelarAiCapabilityCatalog.SowGsdPlanning => "sow_draft",
+        _ => "flowhive_plan"
+    };
+
+    private static string PlanningPriority(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "low" => "low",
+        "high" => "high",
+        "critical" => "critical",
+        _ => "normal"
+    };
 
     private static string Diagnostic(Exception exception) => exception switch
     {
