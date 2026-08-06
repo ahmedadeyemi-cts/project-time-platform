@@ -24,11 +24,27 @@ public sealed record CelarAiCapabilityConnectionStatus(
     DateTimeOffset? LastExercisedAt,
     DateTimeOffset? LastSuccessAt);
 
+public sealed record CelarAiContextDecisionTrace(
+    string Feature,
+    string Module,
+    IReadOnlyList<string> ConfiguredRoute,
+    string Policy,
+    string LastTarget,
+    string LastOutcome,
+    string CorrelationId,
+    DateTimeOffset? EvaluatedAt,
+    bool Current,
+    bool HiddenReasoningReturned);
+
 public sealed record CelarAiKnowledgeFabricSnapshot(
     string Status,
     bool Ready,
     bool RouteGraphReady,
     bool ContentGraphReady,
+    bool ContextGraphReady,
+    bool TemporalGraphReady,
+    bool PolicyGraphReady,
+    bool DecisionTraceReady,
     bool PrivateEndpointsReady,
     string SourceCommit,
     string ProductKnowledgeVersion,
@@ -46,10 +62,15 @@ public sealed record CelarAiKnowledgeFabricSnapshot(
     long ActiveChunkCount,
     long EmbeddedChunkCount,
     long UnembeddedChunkCount,
+    long PendingIndexCount,
     DateTimeOffset? LastIndexedAt,
+    DateTimeOffset? KnowledgeAsOf,
+    string FreshnessStatus,
     IReadOnlyList<string> ContentGraphRelationships,
+    IReadOnlyList<string> ContextGraphRelationships,
     IReadOnlyList<CelarAiKnowledgeEndpointStatus> Endpoints,
     IReadOnlyList<CelarAiCapabilityConnectionStatus> Capabilities,
+    IReadOnlyList<CelarAiContextDecisionTrace> DecisionTraces,
     IReadOnlyList<string> Blockers,
     DateTimeOffset GeneratedAt);
 
@@ -106,6 +127,23 @@ public sealed class CelarAiKnowledgeFabricService
             ? privateHealth is { ProbeStatus: "available", LastProbeSuccessAt: { } successAt }
                 && successAt >= DateTimeOffset.UtcNow.AddMinutes(-15)
             : probe is { Available: true, Fresh: true } && probe.ProfileRevision == profile.Revision;
+        var trainingEnabled = Enabled("PROJECTPULSE_CELAR_AI_TRAINING_ENABLED");
+        var trainingEndpoint = Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_TRAINING_ENDPOINT")?.Trim() ?? string.Empty;
+        var trainingAllowlist = Values("PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST");
+        var trainingAuthenticationConfigured = !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_TRAINING_BEARER_TOKEN"));
+        var trainingResolution = trainingEnabled && trainingEndpoint.Length > 0
+            ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                trainingEndpoint,
+                trainingAllowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken)
+            : new PulseAiPrivateEndpointPolicy.ResolutionResult(
+                false,
+                null,
+                trainingEnabled ? "not_configured" : "disabled",
+                0);
 
         var expectedFeatures = CelarAiCapabilityCatalog.Definitions.Keys
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -128,6 +166,7 @@ public sealed class CelarAiKnowledgeFabricService
             Endpoint("private_malware_scanning", true, runtime.ClamAvConfigured || runtime.PreScanAttestationConfigured, runtime.MalwareScannerEndpointPrivate, runtime.MalwareScannerEndpointPrivate, runtime.MalwareScannerEndpointPrivate ? "verified" : "private_scanner_not_verified"),
             Endpoint("private_ocr", runtime.AwaitingOcrJobCount > 0, runtime.OcrConfigured, runtime.OcrEndpointPrivate, runtime.AwaitingOcrJobCount == 0 || runtime.OcrEndpointPrivate, runtime.OcrEndpointPrivate ? "verified" : runtime.AwaitingOcrJobCount == 0 ? "not_required" : "private_ocr_not_verified"),
             Endpoint("private_embedding", !runtime.LexicalOnlyCompletionApproved, runtime.EmbeddingConfigured, runtime.EmbeddingEndpointPrivate, runtime.EmbeddingEndpointPrivate || runtime.LexicalOnlyCompletionApproved, runtime.EmbeddingEndpointPrivate ? "verified" : runtime.LexicalOnlyCompletionApproved ? "approved_lexical_only" : "private_embedding_not_verified"),
+            Endpoint("private_training", trainingEnabled, trainingEndpoint.Length > 0 && trainingAuthenticationConfigured, trainingResolution.Approved, trainingResolution.Approved && trainingAuthenticationConfigured, trainingResolution.Reason),
             Endpoint("persistent_private_content_storage", true, runtime.UploadStorageProductionReady, runtime.UploadStorageProductionReady, runtime.UploadStorageProductionReady, runtime.UploadStorageProductionReady ? "verified" : "persistent_storage_not_ready")
         };
         var endpointsReady = endpointStatuses.All(item => !item.Required
@@ -163,16 +202,80 @@ public sealed class CelarAiKnowledgeFabricService
                 item.LastExercisedAt,
                 item.LastSuccessAt);
         }).ToArray();
+        var now = DateTimeOffset.UtcNow;
+        var decisionTraces = consumers.Select(item =>
+        {
+            var route = routeMap.TryGetValue(item.Feature, out var configuredRoute)
+                ? configuredRoute.Targets
+                : CelarAiCapabilityTargets.DefaultOrder;
+            var definition = CelarAiCapabilityCatalog.Resolve(item.Feature);
+            var current = item.LastExercisedAt is { } exercisedAt
+                && exercisedAt <= now.AddMinutes(1)
+                && exercisedAt >= now.AddDays(-7);
+            return new CelarAiContextDecisionTrace(
+                item.Feature,
+                item.Module,
+                route,
+                definition.ExternalContextPolicy,
+                item.LastTarget,
+                item.LastOutcome,
+                item.LastCorrelationId,
+                item.LastExercisedAt,
+                current,
+                HiddenReasoningReturned: false);
+        }).ToArray();
+        var policyGraphReady = routes.All(route =>
+        {
+            var definition = CelarAiCapabilityCatalog.Resolve(route.FeatureCode);
+            return string.Equals(
+                    route.ExternalContextPolicy,
+                    definition.ExternalContextPolicy,
+                    StringComparison.OrdinalIgnoreCase)
+                && route.Targets.Count == CelarAiCapabilityTargets.All.Length
+                && string.Equals(route.Targets[^1], CelarAiCapabilityTargets.Local, StringComparison.OrdinalIgnoreCase);
+        });
+        var temporalGraphReady = runtime.LastIndexedAt is { } indexedAt
+            && indexedAt <= now.AddMinutes(1)
+            && routes.All(route => route.UpdatedAt <= now.AddMinutes(1));
+        var decisionTraceReady = decisionTraces.Count == expectedFeatures.Count
+            && decisionTraces.All(trace => routeMap.ContainsKey(trace.Feature)
+                && trace.ConfiguredRoute.Count == CelarAiCapabilityTargets.All.Length
+                && !trace.HiddenReasoningReturned);
+        var contextGraphReady = routeGraphReady
+            && contentGraphReady
+            && temporalGraphReady
+            && policyGraphReady
+            && decisionTraceReady;
+        var pendingIndexCount = runtime.PendingSowDocumentCount + runtime.UnembeddedChunkCount;
+        var freshnessStatus = runtime.LastIndexedAt is null
+            ? "index_freshness_not_available"
+            : pendingIndexCount > 0
+                ? "authoritative_index_refresh_pending"
+                : "authoritative_index_current";
+        var knowledgeAsOf = new DateTimeOffset?[]
+            {
+                runtime.LastIndexedAt,
+                routes.Count > 0 ? routes.Max(route => route.UpdatedAt) : null,
+                consumers.Where(item => item.LastExercisedAt.HasValue).Select(item => item.LastExercisedAt).Max()
+            }
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .DefaultIfEmpty()
+            .Max();
+        var knowledgeAsOfValue = knowledgeAsOf == default ? (DateTimeOffset?)null : knowledgeAsOf;
 
         var blockers = new List<string>();
         if (!routeGraphReady) blockers.Add("The Module 064 capability and consumer route graph is incomplete or invalid.");
         if (!contentGraphReady) blockers.Add("The private content graph does not yet have a current ready SOW/GSD, active authoritative version, and searchable chunk index.");
+        if (!temporalGraphReady) blockers.Add("The temporal context graph does not yet have valid authoritative indexing and route-revision timestamps.");
+        if (!policyGraphReady) blockers.Add("The policy context graph does not match the registered capability privacy contracts.");
+        if (!decisionTraceReady) blockers.Add("The live decision-trace contract is incomplete for one or more central AI capabilities.");
         blockers.AddRange(endpointStatuses
             .Where(item => item.Required && (!item.Configured || !item.PrivateBoundaryVerified || !item.RuntimeVerified))
             .Select(item => $"{item.Component} requires private-boundary and runtime verification ({item.DiagnosticCode})."));
         blockers.AddRange(runtime.Blockers);
         blockers.AddRange(runtime.MissingConfiguration);
-        var ready = routeGraphReady && contentGraphReady && endpointsReady;
+        var ready = contextGraphReady && endpointsReady;
         var sourceCommit = release.RunningSourceCommit.Length > 0
             ? release.RunningSourceCommit
             : release.SourceCommit.Length > 0
@@ -184,6 +287,10 @@ public sealed class CelarAiKnowledgeFabricService
             ready,
             routeGraphReady,
             contentGraphReady,
+            contextGraphReady,
+            temporalGraphReady,
+            policyGraphReady,
+            decisionTraceReady,
             endpointsReady,
             sourceCommit,
             PulseAiProductKnowledgeCatalog.ContractVersion,
@@ -193,7 +300,11 @@ public sealed class CelarAiKnowledgeFabricService
             consumers.Count,
             CelarAiCapabilityTargets.All.Length,
             PulseAiSystemKnowledgeCatalog.Tools.Count,
-            routes.Sum(route => route.Targets.Count) + consumers.Count + PulseAiSystemKnowledgeCatalog.Tools.Count,
+            routes.Sum(route => route.Targets.Count)
+                + consumers.Count
+                + PulseAiSystemKnowledgeCatalog.Tools.Count
+                + decisionTraces.Count
+                + 5,
             runtime.ReadyDocumentCount,
             runtime.ReadySowDocumentCount,
             runtime.PendingSowDocumentCount,
@@ -201,16 +312,27 @@ public sealed class CelarAiKnowledgeFabricService
             runtime.ActiveChunkCount,
             runtime.EmbeddedChunkCount,
             runtime.UnembeddedChunkCount,
+            pendingIndexCount,
             runtime.LastIndexedAt,
+            knowledgeAsOfValue,
+            freshnessStatus,
             [
                 "capability -> consumer module -> Module 064 route -> governed target",
                 "project -> document -> authoritative version -> section or worksheet -> chunk -> citation",
                 "system question -> authorized tool -> permission-scoped evidence -> comprehensive answer"
             ],
+            [
+                "question time -> effective permission -> capability policy -> configured route",
+                "configured route -> eligible target -> outcome code -> correlation trace",
+                "claim -> evidence as-of -> freshness -> confidence -> human review",
+                "project -> current authoritative document version -> replacement or supersession time",
+                "decision trace -> privacy-safe diagnostic -> Module 064 audit evidence"
+            ],
             endpointStatuses,
             capabilities,
+            decisionTraces,
             blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-            DateTimeOffset.UtcNow);
+            now);
     }
 
     private static CelarAiKnowledgeEndpointStatus Endpoint(
@@ -253,4 +375,14 @@ public sealed class CelarAiKnowledgeFabricService
             return (false, false, false, "database_private_dns_verification_unavailable");
         }
     }
+
+    private static bool Enabled(string name) =>
+        bool.TryParse(Environment.GetEnvironmentVariable(name), out var enabled) && enabled;
+
+    private static IReadOnlyList<string> Values(string name) =>
+        (Environment.GetEnvironmentVariable(name) ?? string.Empty)
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => value.ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 }

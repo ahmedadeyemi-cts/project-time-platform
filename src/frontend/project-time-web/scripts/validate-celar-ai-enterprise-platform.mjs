@@ -30,6 +30,7 @@ const files = {
   services: 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs',
   targets: 'src/backend/ProjectTime.Api/Directory.Build.targets',
   enterprise: 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx',
+  help: 'src/frontend/project-time-web/src/HelpAssistant.jsx',
   architecture: 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx',
   composer: 'src/frontend/project-time-web/src/CelarAiSolutionComposer.jsx',
   panel: 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx',
@@ -56,6 +57,7 @@ const moduleSource = read(files.module);
 const services = read(files.services);
 const targets = read(files.targets);
 const enterprise = read(files.enterprise);
+const help = read(files.help);
 const architecture = read(files.architecture);
 const composer = read(files.composer);
 const panel = read(files.panel);
@@ -147,10 +149,30 @@ assert('SERVICES_REGISTERED', services.includes('CelarAiPeopleAndGuidanceService
 assert('COMPILE_COMPATIBILITY', targets.includes('MapCelarAiEnterprisePlatformEndpoints') && targets.includes('persistence.EffectiveUserId') && targets.includes('CelarAiEnterprisePlatformService.g.cs'), 'endpoint mapping and durable-user persistence compile copies are generated');
 assert('ARCHITECTURE_US_SIGNAL', architecture.includes('usSignalLogoDataUrl') && architecture.includes('Created by Dr. Ahmed Adeyemi') && architecture.includes('Module 064') && architecture.includes('Claude / OpenAI'), 'the page contains the US Signal private-first architecture and creator attribution');
 assert('ARCHITECTURE_ACCESSIBLE', architecture.includes('role="img"') && architecture.includes('<title id="celar-ai-svg-title">') && architecture.includes('<desc id="celar-ai-svg-description">'), 'architecture diagram is accessible');
+assert(
+  'ARCHITECTURE_CONTEXT_FABRIC',
+  moduleSource.includes('celar-ai-private-first-architecture-v5-context-fabric')
+    && architecture.includes('Private content graph and retrieval')
+    && architecture.includes('Temporal context · policy eligibility · authoritative versions · private fine-tuning lifecycle')
+    && architecture.includes('Confidence · freshness · policy · live decision trace')
+    && architecture.includes('Self-monitoring adapters'),
+  'Module 011 shows the current content, temporal, policy, decision-trace, private-adapter, and fine-tuning architecture'
+);
 assert('ENTERPRISE_MOUNT', panel.includes("import CelarAiEnterprisePlatform") && panel.includes('<CelarAiEnterprisePlatform />'), 'Module 011 mounts the enterprise platform before lifecycle workbenches');
 assert('COMPOSER_INTERFACE', composer.includes("'/api/celar-ai/v1/compose'") && composer.includes('Download SVG') && composer.includes('Mermaid source') && composer.includes('Fallback is automatic and governed by Module 064') && composer.includes('allowSanitizedExternalFallback: true'), 'composer supports private artifacts and diagrams while backend-managed fallback follows stored Module 064 order without an Engineer checkbox');
 assert('CHAT_NORMAL_SIZE', chatCss.includes('width: min(560px') && chatCss.includes('height: min(720px') && chatCss.includes('resize: both'), 'chat defaults to a normal resizable working-companion window');
 assert('CHAT_SIZE_CONTROLS', ['is-size-compact', 'is-size-standard', 'is-size-wide', 'is-size-fullscreen', 'is-minimized'].every((value) => chatCss.includes(value)), 'compact, standard, wide, fullscreen, and minimized states exist');
+assert(
+  'CHAT_SIZE_AND_MOVEMENT_EXECUTABLE',
+  chatCss.includes('.help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-compact')
+    && chatCss.includes('.help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-wide')
+    && chatCss.includes('transform: translate(var(--celar-chat-x, 0), var(--celar-chat-y, 0))')
+    && help.includes('function beginChatDrag(event)')
+    && help.includes('function moveChat(event)')
+    && help.includes('function selectChatSize(size)')
+    && help.includes('data-movable='),
+  'C/S/W/fullscreen have winning CSS dimensions and the desktop chat has bounded pointer movement plus reset'
+);
 assert(
   'FRESH_CHAT_DEFAULT',
   chatInjector.includes("setActiveConversationId('');")
@@ -166,6 +188,24 @@ assert(
     && chatInjector.includes('CELAR_AI_CONTEXTUAL_CHAT_HISTORY_AUTO_INJECTED=NO'),
   'history is loaded only after the user selects a retained conversation');
 assert('QUESTION_CONTEXT', contextInjector.includes('projectCode') && contextInjector.includes('personOrTeam') && contextInjector.includes('dateFrom') && contextInjector.includes('current question and selected thread'), 'project, person/team, and date context is explicit and current-question scoped');
+assert(
+  'AUTHORIZED_PROJECT_TYPEAHEAD',
+  help.includes("getJson('/api/project-workspace/overview')")
+    && help.includes('role="combobox"')
+    && help.includes('role="listbox"')
+    && help.includes('function selectProjectContext(project)')
+    && help.includes('data-project-context="authorized-typeahead"'),
+  'typing a project name or code suggests only projects returned by the authorized project-workspace API'
+);
+assert(
+  'PRIVATE_ADAPTER_TRANSPORTS',
+  services.includes('AddHttpClient("PulseAiPrivateOcr"')
+    && services.includes('AddHttpClient("PulseAiPrivateEmbedding"')
+    && services.includes('AddHttpClient("PulseAiPrivateInference"')
+    && services.includes('AddHttpClient("PulseAiPrivateTraining"')
+    && services.includes('ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler())'),
+  'OCR, embedding, inference, and fine-tuning use dedicated DNS-pinned private transports'
+);
 assert('CONTEXT_INJECTOR_ACTIVE', rebrandInjector.includes("inject-celar-ai-enterprise-chat-context.mjs"), 'enterprise context injection runs after contextual chat injection');
 assert('PEOPLE_AUTHORIZED_TOOLS', people.includes('/api/project-workspace/overview') && people.includes('/api/capacity-forecast/forecast?weeks=14') && people.includes('/api/manager/approval-summary'), 'people/work questions use governed owning APIs');
 assert(
