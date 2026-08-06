@@ -237,7 +237,7 @@ public sealed class CelarAiKnowledgeFabricService
         var temporalGraphReady = runtime.LastIndexedAt is { } indexedAt
             && indexedAt <= now.AddMinutes(1)
             && routes.All(route => route.UpdatedAt <= now.AddMinutes(1));
-        var decisionTraceReady = decisionTraces.Count == expectedFeatures.Count
+        var decisionTraceReady = decisionTraces.Length == expectedFeatures.Count
             && decisionTraces.All(trace => routeMap.ContainsKey(trace.Feature)
                 && trace.ConfiguredRoute.Count == CelarAiCapabilityTargets.All.Length
                 && !trace.HiddenReasoningReturned);
@@ -303,7 +303,7 @@ public sealed class CelarAiKnowledgeFabricService
             routes.Sum(route => route.Targets.Count)
                 + consumers.Count
                 + PulseAiSystemKnowledgeCatalog.Tools.Count
-                + decisionTraces.Count
+                + decisionTraces.Length
                 + 5,
             runtime.ReadyDocumentCount,
             runtime.ReadySowDocumentCount,
