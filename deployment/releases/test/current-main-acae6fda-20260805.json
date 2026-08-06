@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "releaseName": "current-main-40e32a3b-20260806-r1",
+  "releaseName": "current-main-6f2a2adc-20260806-r1",
   "environment": "test",
   "aiReleasePhase": "disabled",
   "routingAuthority": "database_managed_active",
   "allowSanitizedExternalEscalation": true,
   "sanitizedExternalFallbackEnabled": true,
-  "sourceSha": "40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c",
+  "sourceSha": "6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83",
   "requiredPriorLedger": [
     "052_pulse_ai_private_document_runtime",
     "053_pulse_ai_private_rag_orchestration",
@@ -32,9 +32,15 @@
       "path": "database/migrations/073_module_033_project_forge_interactive.sql",
       "blobSha": "43dcf8403ef08fd48e2feaee0147dc9431ea0090",
       "sha256": "e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6"
+    },
+    {
+      "id": "074_module_066_project_flowhive_production",
+      "path": "database/migrations/074_module_066_project_flowhive_production.sql",
+      "blobSha": "64de4e3c7bf64790a302009cf1d39958921499f6",
+      "sha256": "44395e1b9ce09fd443380b89382c33ff4ffa594015e78c4316fb9408a8d5fce9"
     }
   ],
-  "flowHiveIncluded": false,
-  "migration074Included": false,
+  "flowHiveIncluded": true,
+  "migration074Included": true,
   "databaseRollbackOnApplicationFailure": false
 }

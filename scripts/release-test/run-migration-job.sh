@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c"
+EXPECTED_RELEASE_COMMIT="6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83"
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
@@ -113,7 +113,7 @@ validate_job_ownership() {
       (.name == $jobName) and
       ((.location | ascii_downcase) == ($location | ascii_downcase)) and
       (.tags == {
-        "projectpulse-scope": "current-main-071-073-test",
+        "projectpulse-scope": "current-main-071-074-test",
         "projectpulse-release": $release,
         "projectpulse-control": $control,
         "projectpulse-mode": $mode,
@@ -311,7 +311,7 @@ jq -n \
       userAssignedIdentities: {($identity): {}}
     },
     tags: {
-      "projectpulse-scope": "current-main-071-073-test",
+      "projectpulse-scope": "current-main-071-074-test",
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-mode": $mode,

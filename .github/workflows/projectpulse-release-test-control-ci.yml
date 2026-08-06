@@ -71,6 +71,11 @@ jobs:
           grep -Fq 'module064SuperAdministratorAuthority' scripts/release-test/verify-runtime.mjs
           grep -Fq 'sowComprehensiveStructuredDraft' scripts/release-test/verify-runtime.mjs
           grep -Fq 'flowHiveComprehensiveStructuredPlan' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'flowHiveCanonicalApiInventory' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'flowHiveProductionReadiness' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'flowHivePersistenceRead' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'Generate and auto-fill detailed plan' scripts/release-test/verify-runtime.mjs
+          ! grep -Fq '/api/pulse-ai' scripts/release-test/verify-runtime.mjs
           grep -Fq 'projectForgeComprehensiveStructuredPlan' scripts/release-test/verify-runtime.mjs
           grep -Fq 'assertDetailedPlanningTask' scripts/release-test/verify-runtime.mjs
           grep -Fq 'celar-ai-product-knowledge-v3-20260806' scripts/release-test/verify-runtime.mjs
@@ -90,7 +95,9 @@ jobs:
           grep -Fq 'psql "${PSQL_TARGET[@]}"' scripts/release-test/apply-071-073.sh
           grep -Fq 'PGDATABASE does not match the protected Test database name' scripts/release-test/apply-071-073.sh
           grep -Fq "current_database() <> current_setting('projectpulse.release.expected_database')" scripts/release-test/apply-071-073.sh
-          grep -Fq 'Refusing partial, duplicate, or mixed 071-073 ledger state' scripts/release-test/apply-071-073.sh
+          grep -Fq 'Refusing partial, duplicate, or mixed 071-074 ledger state' scripts/release-test/apply-071-073.sh
+          grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=071_073_PREFIX_APPLYING_074' scripts/release-test/apply-071-073.sh
+          grep -Fq 'MAIN_RELEASE_MIGRATIONS_071_074=' scripts/release-test/apply-071-073.sh
           grep -Fq 'MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING' scripts/release-test/apply-071-073.sh
           ! grep -Fq "find \"\$MIGRATION_ROOT\" -maxdepth" scripts/release-test/apply-071-073.sh
           ! grep -Fq 'run: bash control/scripts/export-pr55-test-database-url.sh' .github/workflows/projectpulse-deploy-test.yml
@@ -139,7 +146,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'DEPLOY-40E32A3B-MIGRATIONS-071-073-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DEPLOY-6F2A2ADC-MIGRATIONS-071-074-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
@@ -148,19 +155,20 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-40e32a3b-20260806-r1"
+          assert manifest["releaseName"] == "current-main-6f2a2adc-20260806-r1"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
           assert manifest["allowSanitizedExternalEscalation"] is True
           assert manifest["sanitizedExternalFallbackEnabled"] is True
-          assert manifest["sourceSha"] == "40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c"
-          assert manifest["flowHiveIncluded"] is False
-          assert manifest["migration074Included"] is False
+          assert manifest["sourceSha"] == "6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83"
+          assert manifest["flowHiveIncluded"] is True
+          assert manifest["migration074Included"] is True
           assert [item["id"] for item in manifest["migrations"]] == [
               "071_ai_runtime_production_hardening",
               "072_celar_ai_conversation_attachments",
               "073_module_033_project_forge_interactive",
+              "074_module_066_project_flowhive_production",
           ]
           assert manifest["requiredPriorLedger"] == [
               "052_pulse_ai_private_document_runtime",
@@ -169,13 +177,17 @@ jobs:
               "061_celar_ai_capability_routing",
               "070_module_033_project_forge",
           ]
-          assert len({item["path"] for item in manifest["migrations"]}) == 3
-          assert len({item["sha256"] for item in manifest["migrations"]}) == 3
+          assert len({item["path"] for item in manifest["migrations"]}) == 4
+          assert len({item["sha256"] for item in manifest["migrations"]}) == 4
           PY
           printf '%s  %s\n' \
             108f898a0f5e7f76833d42741ba1caa9a0f1ff427db17728cf5a5008a91ee6e7 database/migrations/071_ai_runtime_production_hardening.sql \
             b1a898d72916027f02f7ea5578facd7d9149436b2db9e11dca833d74a7cecf1f database/migrations/072_celar_ai_conversation_attachments.sql \
             e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6 database/migrations/073_module_033_project_forge_interactive.sql \
+            44395e1b9ce09fd443380b89382c33ff4ffa594015e78c4316fb9408a8d5fce9 database/migrations/074_module_066_project_flowhive_production.sql \
+            | sha256sum --check --strict
+          printf '%s  %s\n' \
+            620f211bf0041dfb92d3c77398e5d56dbabe4522ecd39ffb2e511b2536e3a406 database/rollback/074_module_066_project_flowhive_production_rollback.sql \
             | sha256sum --check --strict
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           git diff --check

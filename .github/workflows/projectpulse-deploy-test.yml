@@ -6,10 +6,10 @@ on:
       release_commit:
         description: Exact reviewed source commit
         required: true
-        default: 40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c
+        default: 6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83
         type: string
       confirmation:
-        description: Enter DEPLOY-40E32A3B-MIGRATIONS-071-073-TO-TEST
+        description: Enter DEPLOY-6F2A2ADC-MIGRATIONS-071-074-TO-TEST
         required: true
         type: string
   push:
@@ -28,14 +28,14 @@ concurrency:
 
 jobs:
   release:
-    name: Guarded current-main migrations 071-073 and application Test release
+    name: Guarded current-main migrations 071-074 and application Test release
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       RELEASE_MANIFEST: deployment/releases/test/current-main-acae6fda-20260805.json
-      EXPECTED_SOURCE_SHA: 40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c
+      EXPECTED_SOURCE_SHA: 6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83
 
     steps:
       - name: Check out deployment controls
@@ -49,7 +49,7 @@ jobs:
       - name: Check out exact application source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c
+          ref: 6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -78,15 +78,15 @@ jobs:
           [[ "$(jq -r .routingAuthority "control/$RELEASE_MANIFEST")" == database_managed_active ]]
           [[ "$(jq -r .allowSanitizedExternalEscalation "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == false ]]
-          [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == false ]]
-          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
+          [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
               echo "Only the exact reviewed source SHA may deploy." >&2
               exit 1
             }
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-40E32A3B-MIGRATIONS-071-073-TO-TEST ]] || {
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-6F2A2ADC-MIGRATIONS-071-074-TO-TEST ]] || {
               echo "Deployment confirmation does not match." >&2
               exit 1
             }
@@ -129,12 +129,13 @@ jobs:
           mapfile -t PATHS < <(jq -r '.migrations[].path' "control/$RELEASE_MANIFEST")
           mapfile -t BLOBS < <(jq -r '.migrations[].blobSha' "control/$RELEASE_MANIFEST")
           mapfile -t HASHES < <(jq -r '.migrations[].sha256' "control/$RELEASE_MANIFEST")
-          for index in 0 1 2; do
+          for index in 0 1 2 3; do
             [[ "$(git -C release rev-parse "HEAD:${PATHS[$index]}")" == "${BLOBS[$index]}" ]]
             [[ "$(sha256sum "release/${PATHS[$index]}" | awk '{print $1}')" == "${HASHES[$index]}" ]]
           done
-          test ! -e release/database/migrations/074_module_066_project_flowhive_production.sql
-          test ! -e release/database/rollback/074_module_066_project_flowhive_production_rollback.sql
+          test -f release/database/migrations/074_module_066_project_flowhive_production.sql
+          test -f release/database/rollback/074_module_066_project_flowhive_production_rollback.sql
+          [[ "$(sha256sum release/database/rollback/074_module_066_project_flowhive_production_rollback.sql | awk '{print $1}')" == "620f211bf0041dfb92d3c77398e5d56dbabe4522ecd39ffb2e511b2536e3a406" ]]
           OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b
           [[ "$(sha256sum release/src/frontend/project-time-web/brand/USSNavyStacked.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
           [[ "$(sha256sum release/src/frontend/project-time-web/brand/ussignal.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
@@ -415,7 +416,7 @@ jobs:
             release/deployment/containers/release-test/api.Dockerfile
           install -d release/src/frontend/project-time-web/public
           cat > release/src/frontend/project-time-web/public/release.json <<JSON
-          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","flowHiveIncluded":false,"migration074Included":false}
+          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","flowHiveIncluded":true,"migration074Included":true}
           JSON
           API_REPO=project-health-dashboard-api
           WEB_REPO=project-health-dashboard-web
@@ -443,7 +444,8 @@ jobs:
           for file in \
             071_ai_runtime_production_hardening.sql \
             072_celar_ai_conversation_attachments.sql \
-            073_module_033_project_forge_interactive.sql; do
+            073_module_033_project_forge_interactive.sql \
+            074_module_066_project_flowhive_production.sql; do
             install -m 0644 "release/database/migrations/$file" "$CONTEXT/migrations/$file"
           done
           jq -r '.migrations[] | "\(.sha256)  \(.path | split("/")[-1])"' \
@@ -456,7 +458,7 @@ jobs:
           echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-main-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Apply or verify migrations 071 through 073 in the private Test network
+      - name: Apply or verify migrations 071 through 074 in the private Test network
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -471,11 +473,11 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-a
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr714-${{ github.run_id }}-${{ github.run_attempt }}-a
           MAIN_RELEASE_MIGRATION_MODE: apply
         run: bash control/scripts/release-test/run-migration-job.sh
 
-      - name: Reverify migrations 071 through 073 without writes
+      - name: Reverify migrations 071 through 074 without writes
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -490,7 +492,7 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr713-${{ github.run_id }}-${{ github.run_attempt }}-v
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr714-${{ github.run_id }}-${{ github.run_attempt }}-v
           MAIN_RELEASE_MIGRATION_MODE: verify
         run: bash control/scripts/release-test/run-migration-job.sh
 
@@ -939,8 +941,8 @@ jobs:
             "controlSha": "${{ steps.guard.outputs.control_sha }}",
             "runId": "${{ github.run_id }}",
             "runAttempt": "${{ github.run_attempt }}",
-            "flowHiveIncluded": false,
-            "migration074Included": false,
+            "flowHiveIncluded": true,
+            "migration074Included": true,
             "migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive"],
             "migrationImage": "${{ steps.migration.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
