@@ -147,6 +147,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'DEPLOY-6F2A2ADC-MIGRATIONS-071-074-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq '"migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive", "074_module_066_project_flowhive_production"]' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'configurationAuthority === "database_managed_active"' scripts/release-test/verify-runtime.mjs
           python3 - <<'PY'
@@ -155,7 +156,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-6f2a2adc-20260806-r1"
+          assert manifest["releaseName"] == "current-main-6f2a2adc-20260806-r2"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"

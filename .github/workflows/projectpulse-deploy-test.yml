@@ -943,7 +943,7 @@ jobs:
             "runAttempt": "${{ github.run_attempt }}",
             "flowHiveIncluded": true,
             "migration074Included": true,
-            "migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive"],
+            "migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive", "074_module_066_project_flowhive_production"],
             "migrationImage": "${{ steps.migration.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
