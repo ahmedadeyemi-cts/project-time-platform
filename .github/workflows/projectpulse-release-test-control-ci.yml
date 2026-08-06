@@ -37,6 +37,8 @@ jobs:
           grep -Fq 'PENDING_USER_SESSION_VALIDATION' scripts/release-test/verify-runtime.mjs
           grep -Fq 'officialUsSignalLogo' scripts/release-test/verify-runtime.mjs
           grep -Fq 'maxTextLength: 4_000_000' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'const health = await request("/health")' scripts/release-test/verify-runtime.mjs
+          ! grep -Fq 'request("/api/health")' scripts/release-test/verify-runtime.mjs
           grep -Fq 'profilePicturePersistence' scripts/release-test/verify-runtime.mjs
           grep -Fq 'externalProviderReadiness' scripts/release-test/verify-runtime.mjs
           grep -Fq 'celarSystemNameAnswerFirst' scripts/release-test/verify-runtime.mjs
@@ -123,7 +125,7 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-99ce17d3-20260805-r2"
+          assert manifest["releaseName"] == "current-main-99ce17d3-20260806-r3"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
