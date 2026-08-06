@@ -286,6 +286,11 @@ export default function ProjectForgeCenter() {
   const canViewCosts = Boolean((data?.access?.canViewFinancials || data?.access?.canViewCosts) && !data?.access?.isViewAs) || canManage;
   const canSelectPm = Boolean(data?.access?.canSelectProjectManager);
   const aiConnection = data?.ai?.module064Connection || null;
+  const projectEvidenceMissing = Boolean(
+    currentProjectId
+      && aiConnection
+      && Number(aiConnection.projectReadyDocumentCount || 0) === 0
+  );
   const engineers = useMemo(() => {
     const candidates = [
       ...(data?.eligibleReviewers || []),
@@ -682,14 +687,14 @@ export default function ProjectForgeCenter() {
             </small>
           </div>
           <div className="forge-ai-connection__evidence">
-            <span>{aiConnection.readyDocumentCount ?? 0} ready document(s)</span>
-            <span>{aiConnection.activeVersionCount ?? 0} active version(s)</span>
-            <span>{aiConnection.activeChunkCount ?? 0} searchable chunk(s)</span>
-            <span>Indexed {shortDate(aiConnection.lastIndexedAt)}</span>
+            <span>{aiConnection.projectReadyDocumentCount ?? 0} project document(s)</span>
+            <span>{aiConnection.projectActiveVersionCount ?? 0} project version(s)</span>
+            <span>{aiConnection.projectActiveChunkCount ?? 0} project chunk(s)</span>
+            <span>Project indexed {shortDate(aiConnection.projectLastIndexedAt)}</span>
           </div>
         </div>
       ) : null}
-      {aiConnection && Number(aiConnection.readyDocumentCount || 0) === 0 ? (
+      {projectEvidenceMissing ? (
         <aside className="forge-ai-readiness-help" role="status">
           <div><strong>Project evidence is not ready yet</strong><span>Project Forge requires at least one citation-ready private document and will not create an uncited plan.</span></div>
           <ol><li>Upload an approved SOW, GSD, design, order, proposal, or supporting document to this project.</li><li>Mark it active and engineering-visible, and enable its AI context.</li><li>Wait for scanning, extraction, version approval, and indexing; then refresh this page.</li></ol>
@@ -698,7 +703,7 @@ export default function ProjectForgeCenter() {
       {error ? <div className="forge-banner error" role="alert">{error}</div> : null}
       {notice ? <div className="forge-banner success" role="status">{notice}</div> : null}
 
-      {aiOpen ? <section className="forge-ai-studio"><div><span>MODULE 064 · CELAR AI</span><h3>Document-grounded plan and estimate</h3><p>Uses only project evidence the effective user is authorized to access. Celar AI automatically fills each customer-facing task with detailed procedures, inputs, outputs, validation, measurable acceptance criteria, responsibilities, prerequisites, risks, open questions, roles, dependencies, durations, hours, priority, and citations. The result remains a review draft until a Project Manager explicitly adopts it.</p></div><label>Requested outcome<textarea rows="5" value={aiOutcome} onChange={(event) => setAiOutcome(event.target.value)} /></label><aside className="forge-ai-external" aria-label="Automatic AI fallback policy"><strong>Fallback is automatic and backend governed.</strong><span>Module 064 follows the stored priority among eligible targets. Private document evidence is never sent to a public fallback.</span></aside><div className="forge-ai-actions"><button type="button" title={aiConnection && Number(aiConnection.readyDocumentCount || 0) === 0 ? 'Process and approve at least one project document first.' : undefined} disabled={!currentProjectId || busy === 'ai' || (aiConnection && Number(aiConnection.readyDocumentCount || 0) === 0)} onClick={generateAiDraft}>{busy === 'ai' ? 'Generating…' : aiConnection && Number(aiConnection.readyDocumentCount || 0) === 0 ? 'Project evidence required' : 'Generate review draft'}</button>{workspace === 'review_plan' && (generatedDraft || currentPlan) ? <><label>Engineer reviewer<select value={reviewerId} onChange={(event) => setReviewerId(event.target.value)}><option value="">Select an eligible project Engineer</option>{engineers.map((engineer) => <option key={engineer.id} value={engineer.id}>{engineer.name}</option>)}</select></label><button type="button" disabled={!reviewerId || busy === 'reviewer'} onClick={assignReviewer}>Assign review</button>{canManage ? <button type="button" className="adopt" disabled={busy === 'adopt' || (currentPlan?.sourceKind === 'ai_generated' && normalize(currentPlan?.status) !== 'reviewed')} onClick={adoptPlan}>Adopt reviewed plan</button> : null}</> : null}</div>{generatedDraft ? <div className="forge-ai-evidence"><b>Confidence: {Math.round(Number(generatedDraft.confidence || 0) * 100)}%</b><span>{generatedDraft.confidenceExplanation || 'Human review is required.'}</span><span>{(generatedDraft.citations || []).length} authorized citation(s)</span><span>{(generatedDraft.warnings || []).length} warning(s)</span></div> : null}</section> : null}
+      {aiOpen ? <section className="forge-ai-studio"><div><span>MODULE 064 · CELAR AI</span><h3>Document-grounded plan and estimate</h3><p>Uses only project evidence the effective user is authorized to access. Celar AI automatically fills each customer-facing task with detailed procedures, inputs, outputs, validation, measurable acceptance criteria, responsibilities, prerequisites, risks, open questions, roles, dependencies, durations, hours, priority, and citations. The result remains a review draft until a Project Manager explicitly adopts it.</p></div><label>Requested outcome<textarea rows="5" value={aiOutcome} onChange={(event) => setAiOutcome(event.target.value)} /></label><aside className="forge-ai-external" aria-label="Automatic AI fallback policy"><strong>Fallback is automatic and backend governed.</strong><span>Module 064 follows the stored priority among eligible targets. Private document evidence is never sent to a public fallback.</span></aside><div className="forge-ai-actions"><button type="button" title={projectEvidenceMissing ? 'Process and approve at least one document for this project first.' : undefined} disabled={!currentProjectId || busy === 'ai' || projectEvidenceMissing} onClick={generateAiDraft}>{busy === 'ai' ? 'Generating…' : projectEvidenceMissing ? 'Project evidence required' : 'Generate review draft'}</button>{workspace === 'review_plan' && (generatedDraft || currentPlan) ? <><label>Engineer reviewer<select value={reviewerId} onChange={(event) => setReviewerId(event.target.value)}><option value="">Select an eligible project Engineer</option>{engineers.map((engineer) => <option key={engineer.id} value={engineer.id}>{engineer.name}</option>)}</select></label><button type="button" disabled={!reviewerId || busy === 'reviewer'} onClick={assignReviewer}>Assign review</button>{canManage ? <button type="button" className="adopt" disabled={busy === 'adopt' || (currentPlan?.sourceKind === 'ai_generated' && normalize(currentPlan?.status) !== 'reviewed')} onClick={adoptPlan}>Adopt reviewed plan</button> : null}</> : null}</div>{generatedDraft ? <div className="forge-ai-evidence"><b>Confidence: {Math.round(Number(generatedDraft.confidence || 0) * 100)}%</b><span>{generatedDraft.confidenceExplanation || 'Human review is required.'}</span><span>{(generatedDraft.citations || []).length} authorized citation(s)</span><span>{(generatedDraft.warnings || []).length} warning(s)</span></div> : null}</section> : null}
 
       <nav className="forge-tabs" aria-label="Project Forge workbook tabs" role="tablist" aria-orientation="horizontal">
         {WORKBOOK_TABS.map((tab, index) => <button ref={(node) => { tabButtons.current[index] = node; }} id={`forge-tab-${tab.id}`} aria-controls={`forge-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} type="button" role="tab" aria-selected={activeTab === tab.id} key={tab.id} className={activeTab === tab.id ? 'active' : ''} onKeyDown={(event) => handleTabKeyDown(event, index)} onClick={() => setActiveTab(tab.id)}><span>{String(index + 1).padStart(2, '0')}</span>{tab.label}</button>)}

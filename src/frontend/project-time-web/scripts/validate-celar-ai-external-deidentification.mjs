@@ -162,8 +162,11 @@ check(
       'Begin every sentence',
       'approved generic work verbs',
       'Provided, Performed, Reviewed, Analyzed'
-    ]),
-  'Claude/OpenAI Timesheet prose uses a closed generic sentence grammar while unknown leading identities remain blocked'
+    ])
+    && !externalCapsuleCatalog.includes('or Resolved')
+    && !sanitizer.includes('"Resolved"')
+    && !sanitizer.includes('"Completed"'),
+  'Claude/OpenAI Timesheet prose uses a closed generic sentence grammar while identities and unsupported outcome claims remain blocked'
 );
 check(
   'CELAR_EXTERNAL_DLP_NO_CROSS_LINE_IDENTITY_MATCH',

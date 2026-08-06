@@ -215,7 +215,7 @@ public static class CelarAiExternalCapsuleCatalog
             Write two to four detailed, complete, professional past-tense sentences. Begin every sentence
             with one of these approved generic work verbs: Provided, Performed, Reviewed, Analyzed,
             Investigated, Configured, Implemented, Tested, Validated, Documented, Coordinated, Supported,
-            Monitored, Planned, Prepared, Updated, or Resolved. Do not identify or
+            Monitored, Planned, Prepared, or Updated. Do not identify or
             infer any person, role, organization, customer, project, task, record, system, product, location,
             date, duration, identifier, source, document, or confidential detail. Do not claim completion,
             success, resolution, approval, delivery, customer acceptance, or a measured outcome. Do not add

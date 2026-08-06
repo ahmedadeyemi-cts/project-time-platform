@@ -317,6 +317,18 @@ internal static class ReleaseRuntimeBehavior
                 out var unknownStarterDecision)
             && unknownStarterDecision == "external_output_identity_validation_failed",
             "an unapproved sentence-leading token remains fail-closed");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Resolved the issue and documented the result.",
+                [],
+                out var resolutionClaimDecision)
+            && resolutionClaimDecision == "external_output_identity_validation_failed",
+            "an unsupported resolution claim remains fail-closed");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Completed the implementation and documented the result.",
+                [],
+                out var completionClaimDecision)
+            && completionClaimDecision == "external_output_identity_validation_failed",
+            "an unsupported completion claim remains fail-closed");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()

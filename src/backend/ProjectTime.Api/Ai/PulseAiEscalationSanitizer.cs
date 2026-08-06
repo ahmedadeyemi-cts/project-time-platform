@@ -158,13 +158,13 @@ public sealed class PulseAiEscalationSanitizer
     private static readonly HashSet<string> ApprovedCapitalizedWords = new(StringComparer.Ordinal)
     {
         "A", "AI", "API", "Active", "Additional", "After", "Alto", "Analyzed", "Ansible", "Assessed",
-        "Azure", "AWS", "BGP", "Category", "Cisco", "Completed", "Configured", "Coordinated", "Created",
+        "Azure", "AWS", "BGP", "Category", "Cisco", "Configured", "Coordinated", "Created",
         "Customer", "Developed", "DHCP", "DNS", "Docker", "Documented", "EDR", "Engineer", "Entra",
         "Evaluated", "Exchange", "Fortinet", "Google", "HPE", "HTTP", "HTTPS", "IAM", "If",
         "Implemented", "Implementation", "Installed", "Investigated", "I",
         "JSON", "Juniper", "Kubernetes", "LAN", "Linux", "Make", "Meraki", "MFA", "Microsoft",
         "MySQL", "Never", "No", "Open", "Oracle", "OSPF", "PaaS", "Palo", "PostgreSQL", "Prefer",
-        "Performed", "Prepared", "Primary", "Privacy", "Project", "PSA", "RDP", "Resolved", "REST",
+        "Performed", "Prepared", "Primary", "Privacy", "Project", "PSA", "RDP", "REST",
         "Return", "Reviewed", "Row", "Rules", "SaaS", "SharePoint", "SIEM", "SQL", "SSH", "SSO",
         "Supported", "Task", "TCP", "Teams", "Terraform", "Tested", "The", "This", "Time", "TLS",
         "Troubleshot", "UDP", "Updated", "Use", "Validated", "Verified",
@@ -177,9 +177,9 @@ public sealed class PulseAiEscalationSanitizer
     // person's or customer's name still fails the output privacy gate.
     private static readonly HashSet<string> ApprovedSentenceStarters = new(StringComparer.Ordinal)
     {
-        "Analyzed", "Assessed", "Assisted", "Completed", "Configured", "Coordinated", "Created",
+        "Analyzed", "Assessed", "Assisted", "Configured", "Coordinated", "Created",
         "Developed", "Documented", "Evaluated", "Implemented", "Installed", "Investigated",
-        "Monitored", "Performed", "Planned", "Prepared", "Provided", "Resolved", "Reviewed",
+        "Monitored", "Performed", "Planned", "Prepared", "Provided", "Reviewed",
         "Supported", "Tested", "Troubleshot", "Updated", "Validated", "Verified"
     };
 
