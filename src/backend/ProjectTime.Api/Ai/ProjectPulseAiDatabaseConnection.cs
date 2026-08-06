@@ -28,14 +28,14 @@ public static class ProjectPulseAiDatabaseConnection
 
     public static ProjectPulseAiDatabaseConnectionEvidence ResolveEvidence()
     {
-        var candidates = new List<(string Source, NpgsqlConnectionStringBuilder Builder)>();
+        var directCandidates = new List<(string Source, NpgsqlConnectionStringBuilder Builder)>();
         foreach (var name in DirectAliases)
         {
             var value = Environment.GetEnvironmentVariable(name)?.Trim();
             if (string.IsNullOrWhiteSpace(value)) continue;
             try
             {
-                candidates.Add((name, Harden(new NpgsqlConnectionStringBuilder(value))));
+                directCandidates.Add((name, Harden(new NpgsqlConnectionStringBuilder(value))));
             }
             catch (Exception exception) when (exception is ArgumentException or FormatException)
             {
@@ -52,6 +52,7 @@ public static class ProjectPulseAiDatabaseConnection
             name => Environment.GetEnvironmentVariable(name)?.Trim() ?? string.Empty,
             StringComparer.Ordinal);
         var anyComponents = components.Values.Any(value => value.Length > 0);
+        (string Source, NpgsqlConnectionStringBuilder Builder)? componentCandidate = null;
         if (anyComponents)
         {
             var missing = new[] { "PTP_DB_HOST", "PTP_DB_NAME", "PTP_DB_USER", "PTP_DB_PASSWORD" }
@@ -67,32 +68,63 @@ public static class ProjectPulseAiDatabaseConnection
                 throw new InvalidOperationException("PTP_DB_PORT must be an integer from 1 through 65535.");
             }
 
-            candidates.Add(("PTP_DB_*", Harden(new NpgsqlConnectionStringBuilder
+            componentCandidate = ("PTP_DB_*", Harden(new NpgsqlConnectionStringBuilder
             {
                 Host = components["PTP_DB_HOST"],
                 Port = int.TryParse(components["PTP_DB_PORT"], out var port) ? port : 5432,
                 Database = components["PTP_DB_NAME"],
                 Username = components["PTP_DB_USER"],
                 Password = components["PTP_DB_PASSWORD"]
-            })));
+            }));
         }
 
-        if (candidates.Count == 0)
+        if (directCandidates.Count == 0 && componentCandidate is null)
             return ProjectPulseAiDatabaseConnectionEvidence.Unconfigured;
 
-        var selected = candidates[0];
-        var selectedSecretFingerprint = SecretFingerprint(selected.Builder);
-        var conflicts = candidates.Skip(1)
+        // Full connection-string aliases must remain byte-for-byte equivalent
+        // after Npgsql normalization. This preserves fail-closed handling for
+        // conflicting TLS, certificate, timeout, search-path, or application
+        // behavior declared by two equally expressive sources.
+        var selected = directCandidates.FirstOrDefault();
+        var selectedSecretFingerprint = selected.Builder is null
+            ? string.Empty
+            : FullConnectionFingerprint(selected.Builder);
+        var conflicts = directCandidates.Skip(1)
             .Where(candidate => !CryptographicOperations.FixedTimeEquals(
                 Convert.FromHexString(selectedSecretFingerprint),
-                Convert.FromHexString(SecretFingerprint(candidate.Builder))))
+                Convert.FromHexString(FullConnectionFingerprint(candidate.Builder))))
             .Select(candidate => candidate.Source)
-            .ToArray();
-        if (conflicts.Length > 0)
+            .ToList();
+
+        // The protected Container Apps deployment intentionally carries both
+        // legacy full aliases and the PTP_DB_* component contract. Components
+        // cannot express every Npgsql transport option, so compare only the
+        // credential and destination identity they do express. When they
+        // agree, keep the full connection string so its TLS/options are not
+        // weakened. A host, port, database, username, or password mismatch is
+        // still rejected.
+        if (componentCandidate is { } component && selected.Builder is not null
+            && !CryptographicOperations.FixedTimeEquals(
+                Convert.FromHexString(CoreCredentialFingerprint(selected.Builder)),
+                Convert.FromHexString(CoreCredentialFingerprint(component.Builder))))
+        {
+            conflicts.Add(component.Source);
+        }
+        if (conflicts.Count > 0)
         {
             throw new InvalidOperationException(
                 $"Conflicting AI database declarations were rejected ({selected.Source} versus {string.Join(", ", conflicts)}). Keep exactly one source or make every declaration identical.");
         }
+
+        if (selected.Builder is null)
+            selected = componentCandidate!.Value;
+
+        var equivalentSources = directCandidates
+            .Select(candidate => candidate.Source)
+            .Concat(componentCandidate is null
+                ? Array.Empty<string>()
+                : [componentCandidate.Value.Source])
+            .ToArray();
 
         var nonSecretIdentity = string.Join('|', new[]
         {
@@ -105,7 +137,7 @@ public static class ProjectPulseAiDatabaseConnection
         return new ProjectPulseAiDatabaseConnectionEvidence(
             selected.Builder.ConnectionString,
             selected.Source,
-            candidates.Select(candidate => candidate.Source).ToArray(),
+            equivalentSources,
             Fingerprint(nonSecretIdentity),
             Fingerprint(selected.Builder.Username.Trim().ToLowerInvariant()));
     }
@@ -130,9 +162,23 @@ public static class ProjectPulseAiDatabaseConnection
     }
 
     // This digest is used only for equality. It is never returned or logged.
-    private static string SecretFingerprint(NpgsqlConnectionStringBuilder builder) =>
+    private static string FullConnectionFingerprint(NpgsqlConnectionStringBuilder builder) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ConnectionString)))
             .ToLowerInvariant();
+
+    private static string CoreCredentialFingerprint(NpgsqlConnectionStringBuilder builder)
+    {
+        var identity = new NpgsqlConnectionStringBuilder
+        {
+            Host = builder.Host.Trim().ToLowerInvariant(),
+            Port = builder.Port,
+            Database = builder.Database.Trim(),
+            Username = builder.Username.Trim(),
+            Password = builder.Password
+        }.ConnectionString;
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))
+            .ToLowerInvariant();
+    }
 
     private static string Fingerprint(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))

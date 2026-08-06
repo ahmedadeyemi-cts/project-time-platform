@@ -223,11 +223,15 @@ assert(
   'CANONICAL_DATABASE_AND_BEHAVIORAL_PROOF',
   database.includes('ProjectPulseAiDatabaseConnectionEvidence')
     && database.includes('Conflicting AI database declarations were rejected')
+    && database.includes('CoreCredentialFingerprint')
+    && database.includes('FullConnectionFingerprint')
     && database.includes('DatabaseFingerprint')
     && database.includes('ConfiguredRoleFingerprint')
     && behavior.includes('candidate fence blocks mutation before downstream execution')
     && behavior.includes('active phase preserves the normal data plane')
     && behavior.includes('conflicting database aliases fail closed')
+    && behavior.includes('equivalent full alias and PTP_DB_* deployment contracts are accepted together')
+    && behavior.includes('PTP_DB_* credential conflicts with a full alias still fail closed')
     && behavior.includes('canonical database resolver accepts the complete PTP_DB_* contract')
     && behavior.includes('release digest normalizes sets, booleans, and endpoint trailing slash'),
   'one canonical DB resolver rejects ambiguity and executable tests cover phase, digest, DB, fence, and no-write behavior',

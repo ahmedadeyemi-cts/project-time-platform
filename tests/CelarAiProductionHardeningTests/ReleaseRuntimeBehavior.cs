@@ -243,9 +243,29 @@ internal static class ReleaseRuntimeBehavior
                     "routing-store conflict preserves every governed default route");
             }
 
+            Environment.SetEnvironmentVariable("ConnectionStrings__ProjectPulse", null);
+            var parsed = new NpgsqlConnectionStringBuilder(databaseConnectionString);
+            Set("PTP_DB_HOST", parsed.Host);
+            Set("PTP_DB_PORT", parsed.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Set("PTP_DB_NAME", parsed.Database);
+            Set("PTP_DB_USER", parsed.Username);
+            Set("PTP_DB_PASSWORD", parsed.Password);
+            var mixedEvidence = ProjectPulseAiDatabaseConnection.ResolveEvidence();
+            Require(
+                mixedEvidence.Configured
+                && mixedEvidence.Source == "PROJECTPULSE_CONNECTION_STRING"
+                && mixedEvidence.EquivalentSources.Contains("PTP_DB_*", StringComparer.Ordinal),
+                "equivalent full alias and PTP_DB_* deployment contracts are accepted together");
+
+            Set("PTP_DB_PASSWORD", parsed.Password + "-conflict");
+            conflictRejected = false;
+            try { _ = ProjectPulseAiDatabaseConnection.ResolveEvidence(); }
+            catch (InvalidOperationException) { conflictRejected = true; }
+            Require(conflictRejected,
+                "PTP_DB_* credential conflicts with a full alias still fail closed");
+
             foreach (var alias in ProjectPulseAiDatabaseConnection.DirectAliases)
                 Environment.SetEnvironmentVariable(alias, null);
-            var parsed = new NpgsqlConnectionStringBuilder(databaseConnectionString);
             Set("PTP_DB_HOST", parsed.Host);
             Set("PTP_DB_PORT", parsed.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Set("PTP_DB_NAME", parsed.Database);
