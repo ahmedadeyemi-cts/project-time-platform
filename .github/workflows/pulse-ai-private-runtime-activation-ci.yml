@@ -195,7 +195,7 @@ jobs:
             'Processing Jobs' \
             'Queue Document' \
             'Document State' \
-            'QUEUE-PULSE-AI-PRIVATE-DOCUMENT-PROCESSING'; do
+            'QUEUE-CELAR-AI-PRIVATE-DOCUMENT-PROCESSING'; do
             grep -Fq "$marker" /tmp/pulse-ai-private-runtime.js
           done
           grep -Fq '.pulse-ai-runtime-workbench' /tmp/pulse-ai-private-runtime.css
