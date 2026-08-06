@@ -159,6 +159,23 @@ async function request(route, options = {}) {
   }
 }
 
+async function requestWithTransientReadinessRetry(route, options = {}) {
+  const maximumAttempts = 12;
+  let result = null;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    const separator = route.includes("?") ? "&" : "?";
+    result = await request(
+      route + separator + "release_readiness=" + sourceSha.slice(0, 12) + "-" + attempt,
+      options,
+    );
+    if (![502, 503, 504].includes(result.status)) {
+      return { ...result, readinessAttempts: attempt };
+    }
+    if (attempt < maximumAttempts) await sleep(5000);
+  }
+  return { ...result, readinessAttempts: maximumAttempts };
+}
+
 async function requestBytes(route) {
   const target = new URL(route, base);
   assert(target.origin === new URL(base).origin, "Verifier refused a cross-origin asset request.");
@@ -296,8 +313,9 @@ async function run() {
   assert(stamp.json?.sourceSha === sourceSha, "Web source stamp does not match the exact release SHA.");
   evidence.publicChecks.webSourceStamp = "passed";
 
-  const shell = await request("/", { accept: "text/html" });
+  const shell = await requestWithTransientReadinessRetry("/", { accept: "text/html" });
   assert(shell.status === 200, "Web application shell returned HTTP " + shell.status + ".");
+  evidence.publicChecks.webShellReadinessAttempts = shell.readinessAttempts;
   const scriptPath = shell.text.match(/<script[^>]+src=["']([^"']+\.js)["']/i)?.[1] || "";
   assert(scriptPath.length > 0, "Web application shell did not reference its production bundle.");
   const bundle = await request(scriptPath, {
