@@ -586,7 +586,12 @@ async function run() {
   assert(Number(fabric.readySowDocumentCount) > 0, "The private content graph has no current ready SOW/GSD document.");
   assert(Number(fabric.activeVersionCount) > 0, "The private content graph has no authoritative active versions.");
   assert(Number(fabric.activeChunkCount) > 0, "The private content graph has no searchable active chunks.");
+  const privateEmbeddingAdapter = (fabric.endpoints || []).find((item) => item?.component === "private_embedding");
+  const approvedLexicalOnlyIndex = privateEmbeddingAdapter?.required === false
+    && privateEmbeddingAdapter?.runtimeVerified === true
+    && privateEmbeddingAdapter?.diagnosticCode === "approved_lexical_only";
   assert(Number(fabric.pendingIndexCount) === 0, "The latest private knowledge content still has pending indexing work.");
+  assert(Number(fabric.unembeddedChunkCount) === 0 || approvedLexicalOnlyIndex, "Unembedded chunks are present without an approved lexical-only retrieval contract.");
   assert(fabric.freshnessStatus === "authoritative_index_current", "The private knowledge fabric is not current.");
   assert(String(fabric.knowledgeAsOf || "").length > 0, "The private knowledge fabric has no evidence-as-of time.");
   assert(Array.isArray(fabric.blockers) && fabric.blockers.length === 0, "The knowledge fabric reported readiness blockers.");

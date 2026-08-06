@@ -436,6 +436,13 @@ assert(
 );
 
 assert(
+  'KNOWLEDGE_FABRIC_LEXICAL_INDEX_FRESHNESS',
+  knowledgeFabric.includes('var pendingEmbeddingCount = runtime.LexicalOnlyCompletionApproved')
+    && knowledgeFabric.includes('runtime.PendingSowDocumentCount + pendingEmbeddingCount'),
+  'knowledge-fabric freshness treats explicitly approved lexical chunks as indexed while true pending document work remains blocking'
+);
+
+assert(
   'SOW_REPROCESS_AND_READY_EVIDENCE',
   repository.includes("authority_status IN ('approved','canonical')")
     && retrieval.includes("v.authority_status IN ('approved','canonical')")
