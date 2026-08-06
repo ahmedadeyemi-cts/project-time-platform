@@ -35,7 +35,7 @@ export default function CelarAiArchitectureOverview() {
           >
             <title id="celar-ai-svg-title">Celar AI private-first enterprise architecture</title>
             <desc id="celar-ai-svg-description">
-              Pulse users authenticate and receive role and record scope. Authorized private documents and governed live-data tools feed the private Celar AI intelligence layer. Confidence assessment either continues privately or sends a generic sanitized problem through Module 064 to Claude or OpenAI. Every result is privately verified before a detailed cited answer or reviewable draft is returned.
+              Pulse users authenticate and receive role and record scope. Authorized private documents, governed live-data tools, private adapters, and a temporal policy context graph feed the private Celar AI intelligence layer. Confidence and freshness assessment follows the saved Module 064 order among eligible targets and records a privacy-safe live decision trace. Every result is privately verified before a detailed cited answer or reviewable draft is returned.
             </desc>
             <defs>
               <marker id="celar-ai-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
@@ -60,13 +60,13 @@ export default function CelarAiArchitectureOverview() {
 
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-private" x="95" y="215" width="410" height="58" rx="10" />
-              <text className="diagram-node-title" x="300" y="249" textAnchor="middle">Private document retrieval</text>
+              <text className="diagram-node-title" x="300" y="249" textAnchor="middle">Private content graph and retrieval</text>
               <rect className="diagram-chip is-private" x="115" y="292" width="105" height="42" rx="8" />
               <rect className="diagram-chip is-private" x="247" y="292" width="105" height="42" rx="8" />
               <rect className="diagram-chip is-private" x="379" y="292" width="105" height="42" rx="8" />
               <text className="diagram-chip-text" x="167" y="318" textAnchor="middle">SOW</text>
               <text className="diagram-chip-text" x="299" y="318" textAnchor="middle">GSD</text>
-              <text className="diagram-chip-text" x="431" y="318" textAnchor="middle">Design docs</text>
+              <text className="diagram-chip-text" x="431" y="318" textAnchor="middle">Versions</text>
             </g>
 
             <g filter="url(#celar-ai-shadow)">
@@ -81,27 +81,28 @@ export default function CelarAiArchitectureOverview() {
             <path className="diagram-line" d="M300 273 L300 355 L600 355 M900 273 L900 355 L600 355" />
 
             <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-intelligence" x="175" y="355" width="850" height="62" rx="12" />
-              <text className="diagram-node-title" x="600" y="382" textAnchor="middle">Celar AI private intelligence layer</text>
-              <text className="diagram-node-subtitle" x="600" y="403" textAnchor="middle">Private RAG · Private model · Deterministic calculations · Solution composer</text>
+              <rect className="diagram-node is-intelligence" x="175" y="350" width="850" height="88" rx="12" />
+              <text className="diagram-node-title" x="600" y="377" textAnchor="middle">Celar AI private intelligence and context fabric</text>
+              <text className="diagram-node-subtitle" x="600" y="399" textAnchor="middle">Private RAG · inference · OCR · embeddings · deterministic tools · solution composer</text>
+              <text className="diagram-node-subtitle" x="600" y="420" textAnchor="middle">Temporal context · policy eligibility · authoritative versions · private fine-tuning lifecycle</text>
             </g>
 
-            <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 417 L600 452" />
+            <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 438 L600 452" />
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-confidence" x="335" y="452" width="530" height="56" rx="10" />
-              <text className="diagram-node-title" x="600" y="486" textAnchor="middle">Confidence and evidence assessment</text>
+              <text className="diagram-node-title" x="600" y="486" textAnchor="middle">Confidence · freshness · policy · live decision trace</text>
             </g>
 
             <path className="diagram-line" d="M600 508 L600 532 M600 532 L295 532 L295 558 M600 532 L905 532 L905 558" />
 
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-sufficient" x="105" y="558" width="380" height="54" rx="10" />
-              <text className="diagram-node-title" x="295" y="591" textAnchor="middle">Sufficient private evidence</text>
+              <text className="diagram-node-title" x="295" y="591" textAnchor="middle">Private evidence sufficient · no public call</text>
             </g>
 
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-external" x="715" y="558" width="380" height="54" rx="10" />
-              <text className="diagram-node-title" x="905" y="591" textAnchor="middle">Generic reasoning may help</text>
+              <text className="diagram-node-title" x="905" y="591" textAnchor="middle">Saved eligible route may use sanitized help</text>
               <rect className="diagram-chip is-external" x="715" y="629" width="115" height="40" rx="8" />
               <rect className="diagram-chip is-external" x="848" y="629" width="115" height="40" rx="8" />
               <rect className="diagram-chip is-external" x="981" y="629" width="115" height="40" rx="8" />
@@ -113,7 +114,7 @@ export default function CelarAiArchitectureOverview() {
             <path className="diagram-line" d="M295 612 L295 690 L600 690 M905 669 L905 690 L600 690" />
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-verification" x="330" y="690" width="540" height="48" rx="10" />
-              <text className="diagram-node-title" x="600" y="720" textAnchor="middle">Private evidence verification and human review</text>
+              <text className="diagram-node-title" x="600" y="720" textAnchor="middle">Private re-grounding · claim checks · citations · human review</text>
             </g>
             <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 738 L600 754" />
             <rect className="diagram-result" x="345" y="750" width="510" height="28" rx="8" />
@@ -128,6 +129,12 @@ export default function CelarAiArchitectureOverview() {
           </AtAGlance>
           <AtAGlance icon="◎" title="Permission-aware" tone="permission">
             Every source remains limited by the current effective user, owning module, project, customer, team, and record scope.
+          </AtAGlance>
+          <AtAGlance icon="⌁" title="Temporal context graph" tone="permission">
+            Celar AI links evidence to authoritative versions, freshness, policy revisions, eligibility decisions, and privacy-safe live route traces.
+          </AtAGlance>
+          <AtAGlance icon="◉" title="Self-monitoring adapters" tone="private">
+            Module 064 shows private inference, database, scanning, OCR, embedding, storage, and fine-tuning readiness without exposing endpoints or secrets.
           </AtAGlance>
           <AtAGlance icon="↗" title="Governed external fallback" tone="external">
             Only a generic sanitized problem may leave the private boundary through Module 064. The result returns for private verification.

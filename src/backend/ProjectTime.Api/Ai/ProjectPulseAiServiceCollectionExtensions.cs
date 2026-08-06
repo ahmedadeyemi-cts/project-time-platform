@@ -37,6 +37,11 @@ public static class ProjectPulseAiServiceCollectionExtensions
             client.Timeout = TimeSpan.FromMinutes(5);
         })
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        services.AddHttpClient("PulseAiPrivateTraining", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(10);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
         // System Intelligence forwards current-session headers only to a configured,
         // allowlisted same-origin target. Redirects and shared cookie storage stay disabled.
         services.AddHttpClient("PulseAiSystemTools", client =>

@@ -139,6 +139,19 @@ PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST
 
 The endpoint must pass private-endpoint policy. Endpoint and token values are never returned to the browser.
 
+Training submission uses the dedicated `PulseAiPrivateTraining` transport. Like private OCR, embedding, and inference, it disables redirects, cookies, and proxies; validates the configured allowlist; resolves only private addresses; and pins the connection to a revalidated private address. Module 064 reports the training adapter as optional when disabled and requires configuration, authentication, and private DNS verification when enabled.
+
+## Knowledge and context fabric
+
+Module 064 combines four related structures into one metadata-only readiness view:
+
+1. The route graph maps every AI capability and in-system consumer to its saved eligible target order.
+2. The content graph maps project, document, authoritative version, section or worksheet, searchable chunk, and citation relationships.
+3. The temporal and policy context graph records evidence-as-of time, current authoritative versions, effective permissions, privacy eligibility, and route revisions.
+4. The operational decision trace records the capability, configured route, selected target, outcome code, safe correlation ID, and evaluation time without exposing prompts, content, endpoints, secrets, vectors, or hidden chain-of-thought.
+
+Freshness is explicit. Pending SOW processing and unembedded chunks appear as a refresh-pending state; current indexes report their latest authoritative indexing time. This lets operators distinguish a connected route from a fully current private-knowledge path.
+
 ## Runtime lifecycle schema
 
 An actual-session Super Administrator or Administrator initializes the idempotent lifecycle metadata schema from Module 011 Governance. View-As remains read-only.

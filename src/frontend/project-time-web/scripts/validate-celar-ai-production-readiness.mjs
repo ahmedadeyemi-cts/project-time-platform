@@ -489,6 +489,17 @@ assert(
 );
 
 assert(
+  'MODULE064_PERSISTED_ORDER_IS_RUNTIME_AUTHORITY',
+  routing.includes('var route = await _store.LoadRouteAsync(feature, cancellationToken);')
+    && routing.includes('var orderedTargets = requirePrivateTargetBeforeExternal')
+    && routing.includes(': route.Targets;')
+    && routing.includes('foreach (var target in orderedTargets)')
+    && routing.includes('var validated = CelarAiCapabilityCatalog.ValidateTargets(targets);')
+    && module064.includes('var route = await store.SaveRouteAsync('),
+  'every routed request reloads and executes the saved Module 064 capability order; only documented private-data eligibility rules may defer an otherwise earlier public target'
+);
+
+assert(
   'MODULE064_PRODUCTION_GATE_VISIBLE',
   module064.includes('celar_ai_private_platform_production_ready')
     && module064.includes('privateTargetVerificationFresh')
@@ -511,6 +522,7 @@ assert(
     && knowledgeFabric.includes('private_malware_scanning')
     && knowledgeFabric.includes('private_ocr')
     && knowledgeFabric.includes('private_embedding')
+    && knowledgeFabric.includes('private_training')
     && knowledgeFabric.includes('persistent_private_content_storage')
     && knowledgeFabric.includes('endpointValuesReturned') === false
     && services.includes('AddSingleton<CelarAiKnowledgeFabricService>()')
@@ -521,6 +533,31 @@ assert(
     && model.includes('Project({document.Key.ProjectCode}')
     && model.includes('Prefer the newest supported authoritative version'),
   'Module 064 projects source-controlled knowledge, capability relationships, current content versions and chunks, private endpoint evidence, citations, and freshness without returning endpoint or secret values'
+);
+
+assert(
+  'TEMPORAL_POLICY_CONTEXT_GRAPH_AND_LIVE_TRACES',
+  knowledgeFabric.includes('ContextGraphReady')
+    && knowledgeFabric.includes('TemporalGraphReady')
+    && knowledgeFabric.includes('PolicyGraphReady')
+    && knowledgeFabric.includes('DecisionTraceReady')
+    && knowledgeFabric.includes('question time -> effective permission -> capability policy -> configured route')
+    && knowledgeFabric.includes('claim -> evidence as-of -> freshness -> confidence -> human review')
+    && knowledgeFabric.includes('HiddenReasoningReturned: false')
+    && panel.includes('Temporal context graph')
+    && panel.includes('Policy and decision traces')
+    && panel.includes('hidden reasoning never returned'),
+  'the context graph combines time, policy, evidence freshness, saved route decisions, and privacy-safe operational traces without exposing hidden reasoning'
+);
+
+assert(
+  'DEDICATED_PRIVATE_TRAINING_ADAPTER',
+  services.includes('AddHttpClient("PulseAiPrivateTraining"')
+    && services.includes('ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler())')
+    && productionModule.includes('CreateClient("PulseAiPrivateTraining")')
+    && knowledgeFabric.includes('PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST')
+    && knowledgeFabric.includes('VerifyResolvedPrivateEndpointAsync'),
+  'fine-tuning submission uses a dedicated private, DNS-revalidated transport and appears in Module 064 endpoint readiness'
 );
 
 assert(
@@ -591,6 +628,17 @@ assert(
     && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-platform.mjs')
     && hardeningCi.includes('src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'),
   'the knowledge-fabric and comprehensive-planning package has an exact governed source manifest'
+);
+
+assert(
+  'PRIVATE_FIRST_CONTEXT_FABRIC_GOVERNED_SCOPE',
+  hardeningCi.includes('security/celar-ai-production-readiness-private-first-context-fabric-*')
+    && hardeningCi.includes('EXACT_15_PRIVATE_FIRST_CONTEXT_FABRIC_FILES')
+    && hardeningCi.includes('src/frontend/project-time-web/src/HelpAssistant.jsx')
+    && hardeningCi.includes('src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx')
+    && hardeningCi.includes('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs')
+    && hardeningCi.includes('docs/modules/module-011-pulse-ai/CELAR-AI-ENTERPRISE-PLATFORM-INTERFACE.md'),
+  'the interaction, private-adapter, context-graph, architecture, documentation, and validator changes have an exact governed source manifest'
 );
 
 const failed = checks.filter((check) => !check.condition);

@@ -13,7 +13,8 @@ function replaceRequired(before, after, label) {
       && content.includes(`const [questionContext, setQuestionContext]`)) return;
   if (label === 'fresh_context_reset'
       && content.includes(`function beginFreshConversation()`)
-      && content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`)
+      && (content.includes(`setQuestionContext(EMPTY_QUESTION_CONTEXT)`)
+        || content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`))
       && content.includes(`setContextOpen(false)`)) return;
   if (!content.includes(before)) throw new Error(`CELAR_AI_ENTERPRISE_CHAT_MISSING_ANCHOR=${label}`);
   content = content.replace(before, after);

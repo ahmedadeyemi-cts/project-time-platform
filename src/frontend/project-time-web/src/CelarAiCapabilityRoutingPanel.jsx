@@ -317,13 +317,15 @@ export default function CelarAiCapabilityRoutingPanel() {
               <span>Comprehensive knowledge fabric</span>
               <strong id="celar-knowledge-fabric-title">{knowledge?.ready ? 'Connected and current' : 'Connected with readiness items'}</strong>
             </div>
-            <small>Source-controlled knowledge, capability graph, content graph, private endpoints, citations, and freshness</small>
+            <small>Source-controlled knowledge, content and context graphs, time, policy, live route traces, private adapters, citations, and freshness</small>
           </header>
           <div className="celar-ai-routing__knowledge-grid">
             <article><span>Knowledge graph</span><strong>{knowledge?.routeGraphReady ? 'Ready' : 'Review required'}</strong><small>{knowledge?.capabilityNodeCount ?? 0} capabilities · {knowledge?.consumerNodeCount ?? 0} consumers · {knowledge?.relationshipCount ?? 0} relationships</small></article>
             <article><span>Content graph</span><strong>{knowledge?.contentGraphReady ? 'Ready' : 'Review required'}</strong><small>{knowledge?.readyDocumentCount ?? 0} documents · {knowledge?.activeVersionCount ?? 0} active versions · {knowledge?.activeChunkCount ?? 0} searchable chunks</small></article>
-            <article><span>Private endpoints</span><strong>{knowledge?.privateEndpointsReady ? 'Verified' : 'Review required'}</strong><small>{(knowledge?.endpoints ?? []).filter((item) => item.status === 'ready').length} of {(knowledge?.endpoints ?? []).filter((item) => item.required).length} required components ready</small></article>
-            <article><span>Latest indexed content</span><strong>{formatDate(knowledge?.lastIndexedAt)}</strong><small>Source {knowledge?.sourceCommit ? knowledge.sourceCommit.slice(0, 12) : 'not recorded'} · {knowledge?.embeddedChunkCount ?? 0} embedded chunks</small></article>
+            <article><span>Temporal context graph</span><strong>{knowledge?.contextGraphReady ? 'Ready' : 'Review required'}</strong><small>{title(knowledge?.freshnessStatus || 'not available')} · as of {formatDate(knowledge?.knowledgeAsOf)}</small></article>
+            <article><span>Policy and decision traces</span><strong>{knowledge?.policyGraphReady && knowledge?.decisionTraceReady ? 'Ready' : 'Review required'}</strong><small>{(knowledge?.decisionTraces ?? []).length} governed capability traces · hidden reasoning never returned</small></article>
+            <article><span>Private endpoints</span><strong>{knowledge?.privateEndpointsReady ? 'Verified' : 'Review required'}</strong><small>{(knowledge?.endpoints ?? []).filter((item) => item.required && item.status === 'ready').length} of {(knowledge?.endpoints ?? []).filter((item) => item.required).length} required components ready</small></article>
+            <article><span>Latest indexed content</span><strong>{formatDate(knowledge?.lastIndexedAt)}</strong><small>Source {knowledge?.sourceCommit ? knowledge.sourceCommit.slice(0, 12) : 'not recorded'} · {knowledge?.embeddedChunkCount ?? 0} embedded · {knowledge?.pendingIndexCount ?? 0} pending</small></article>
           </div>
           <div className="celar-ai-routing__knowledge-versions">
             <span>Product knowledge: {knowledge?.productKnowledgeVersion || 'not recorded'}</span>
@@ -338,6 +340,16 @@ export default function CelarAiCapabilityRoutingPanel() {
                 </span>
               ))}
             </div>
+          ) : null}
+          {(knowledge?.decisionTraces ?? []).length ? (
+            <details>
+              <summary>View privacy-safe live routing traces</summary>
+              <ul>{knowledge.decisionTraces.map((trace) => (
+                <li key={trace.feature}>
+                  <strong>{title(trace.feature)}</strong>: {(trace.configuredRoute ?? []).map((target) => TARGET_LABELS[target] || title(target)).join(' → ')} · last target {title(trace.lastTarget)} · {title(trace.lastOutcome)} · {formatDate(trace.evaluatedAt)}
+                </li>
+              ))}</ul>
+            </details>
           ) : null}
           {!knowledge?.ready && (knowledge?.blockers ?? []).length ? (
             <details>

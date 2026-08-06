@@ -16,6 +16,7 @@ function hasCompatibleOwnedExtension(label) {
   if (label === 'window_state') {
     return content.includes(`const [chatSize, setChatSize] = useState(initialChatSize)`)
       && content.includes(`const [questionContext, setQuestionContext]`)
+      && content.includes(`const [chatPosition, setChatPosition]`)
       && content.includes(`const inputRef = useRef(null)`);
   }
 
@@ -25,7 +26,8 @@ function hasCompatibleOwnedExtension(label) {
       setMessages([WELCOME_MESSAGE]);
       followLatestRef.current = true;`)
       && content.includes(`function beginFreshConversation()`)
-      && content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`)
+      && (content.includes(`setQuestionContext(EMPTY_QUESTION_CONTEXT)`)
+        || content.includes(`setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })`))
       && content.includes(`setHistoryOpen(false)`);
   }
 
@@ -33,7 +35,8 @@ function hasCompatibleOwnedExtension(label) {
   if (label === 'contextual_panel_class') return content.includes(`id="celar-ai-global-chat"`)
     && content.includes(`celar-ai-contextual-chat is-size-`);
   if (label === 'header_controls_and_context_bar') return content.includes(`className="celar-ai-chat-window-controls"`)
-    && content.includes(`className="celar-ai-context-bar"`);
+    && content.includes(`className="celar-ai-context-bar"`)
+    && content.includes(`className="help-header celar-ai-chat-drag-handle"`);
 
   return false;
 }

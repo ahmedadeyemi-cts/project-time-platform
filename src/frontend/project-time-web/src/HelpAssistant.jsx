@@ -23,6 +23,7 @@ const WELCOME_MESSAGE = Object.freeze({
 });
 
 const CELAR_AI_CHAT_SIZES = Object.freeze(['compact', 'standard', 'wide', 'fullscreen']);
+const EMPTY_QUESTION_CONTEXT = Object.freeze({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
 
 function initialChatSize() {
   return 'standard';
@@ -65,6 +66,22 @@ function formatDate(value) {
 function formatPercent(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? `${Math.round(numeric * 100)}%` : 'Not recorded';
+}
+
+function projectOptionId(project) {
+  return String(project?.id ?? project?.projectId ?? '');
+}
+
+function projectOptionCode(project) {
+  return String(project?.projectCode ?? project?.code ?? '').trim();
+}
+
+function projectOptionName(project) {
+  return String(project?.projectName ?? project?.name ?? '').trim();
+}
+
+function projectOptionLabel(project) {
+  return [projectOptionCode(project), projectOptionName(project)].filter(Boolean).join(' — ');
 }
 
 async function readJson(response) {
@@ -491,7 +508,14 @@ export default function HelpAssistant() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
-  const [questionContext, setQuestionContext] = useState({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+  const [questionContext, setQuestionContext] = useState(EMPTY_QUESTION_CONTEXT);
+  const [projectLookup, setProjectLookup] = useState('');
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [projectOptionsLoaded, setProjectOptionsLoaded] = useState(false);
+  const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
+  const [projectOptionsError, setProjectOptionsError] = useState('');
+  const [projectSuggestionsOpen, setProjectSuggestionsOpen] = useState(false);
+  const [chatPosition, setChatPosition] = useState({ x: 0, y: 0 });
   const [attachments, setAttachments] = useState([]);
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -502,6 +526,7 @@ export default function HelpAssistant() {
   const messagesRef = useRef(null);
   const followLatestRef = useRef(true);
   const sendingRef = useRef(false);
+  const chatDragRef = useRef(null);
 
   const activeConversation = useMemo(
     () => conversations.find((item) => item.conversationId === activeConversationId) ?? null,
@@ -592,7 +617,9 @@ export default function HelpAssistant() {
     setActiveConversationId('');
     setMessages([WELCOME_MESSAGE]);
     setQuestion('');
-    setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });
+    setQuestionContext(EMPTY_QUESTION_CONTEXT);
+    setProjectLookup('');
+    setProjectSuggestionsOpen(false);
     setAttachments([]);
     setSelectedAttachmentIds([]);
     setAttachmentError('');
@@ -606,6 +633,43 @@ export default function HelpAssistant() {
     if (!isOpen) return;
     void hydrate();
     window.setTimeout(() => inputRef.current?.focus(), 40);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !contextOpen || projectOptionsLoaded || projectOptionsLoading) return;
+    let active = true;
+    setProjectOptionsLoading(true);
+    setProjectOptionsError('');
+    void getJson('/api/project-workspace/overview')
+      .then((payload) => {
+        if (!active) return;
+        const rows = asArray(payload?.projects)
+          .filter((project) => projectOptionCode(project) || projectOptionName(project))
+          .sort((left, right) => projectOptionLabel(left).localeCompare(projectOptionLabel(right)));
+        setProjectOptions(rows);
+        setProjectOptionsLoaded(true);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setProjectOptions([]);
+        setProjectOptionsLoaded(true);
+        setProjectOptionsError(error instanceof Error
+          ? error.message
+          : 'Authorized project suggestions are temporarily unavailable.');
+      })
+      .finally(() => {
+        if (active) setProjectOptionsLoading(false);
+      });
+    return () => { active = false; };
+  }, [contextOpen, isOpen, projectOptionsLoaded, projectOptionsLoading]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const keepChatVisible = () => {
+      if (window.innerWidth <= 620) setChatPosition({ x: 0, y: 0 });
+    };
+    window.addEventListener('resize', keepChatVisible);
+    return () => window.removeEventListener('resize', keepChatVisible);
   }, [isOpen]);
 
   useEffect(() => {
@@ -640,6 +704,83 @@ export default function HelpAssistant() {
   function onConversationScroll(event) {
     const element = event.currentTarget;
     followLatestRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  }
+
+  const projectSuggestions = useMemo(() => {
+    const query = projectLookup.trim().toLowerCase();
+    const matches = query.length === 0
+      ? projectOptions
+      : projectOptions.filter((project) => projectOptionLabel(project).toLowerCase().includes(query));
+    return matches.slice(0, 12);
+  }, [projectLookup, projectOptions]);
+
+  function updateProjectLookup(value) {
+    setProjectLookup(value);
+    setQuestionContext((current) => ({ ...current, projectCode: '', projectName: value.trim() }));
+    setProjectSuggestionsOpen(true);
+  }
+
+  function selectProjectContext(project) {
+    const code = projectOptionCode(project);
+    const name = projectOptionName(project);
+    setProjectLookup(projectOptionLabel(project));
+    setQuestionContext((current) => ({ ...current, projectCode: code, projectName: name }));
+    setProjectSuggestionsOpen(false);
+  }
+
+  function clearQuestionContext() {
+    setQuestionContext(EMPTY_QUESTION_CONTEXT);
+    setProjectLookup('');
+    setProjectSuggestionsOpen(false);
+  }
+
+  function beginChatDrag(event) {
+    if (event.button !== 0
+      || chatSize === 'fullscreen'
+      || isMinimized
+      || event.target.closest('button, a, input, select, textarea, summary')) return;
+    const panel = event.currentTarget.closest('#celar-ai-global-chat');
+    if (!panel) return;
+    const bounds = panel.getBoundingClientRect();
+    chatDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: chatPosition.x,
+      originY: chatPosition.y,
+      bounds,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveChat(event) {
+    const drag = chatDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const margin = 8;
+    const requestedX = drag.originX + event.clientX - drag.startX;
+    const requestedY = drag.originY + event.clientY - drag.startY;
+    const minimumX = drag.originX - drag.bounds.left + margin;
+    const maximumX = drag.originX + window.innerWidth - drag.bounds.right - margin;
+    const minimumY = drag.originY - drag.bounds.top + margin;
+    const maximumY = drag.originY + window.innerHeight - drag.bounds.bottom - margin;
+    setChatPosition({
+      x: Math.min(Math.max(requestedX, minimumX), maximumX),
+      y: Math.min(Math.max(requestedY, minimumY), maximumY),
+    });
+  }
+
+  function endChatDrag(event) {
+    if (chatDragRef.current?.pointerId !== event.pointerId) return;
+    chatDragRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
+
+  function selectChatSize(size) {
+    if (!CELAR_AI_CHAT_SIZES.includes(size)) return;
+    setChatSize(size);
+    setIsMinimized(false);
+    if (size === 'fullscreen') setChatPosition({ x: 0, y: 0 });
   }
 
   async function uploadAttachments(files) {
@@ -833,17 +974,28 @@ export default function HelpAssistant() {
           aria-label="Celar AI system intelligence assistant"
           data-context-policy="current-conversation-only"
           data-history-policy="retained-not-auto-injected"
+          data-project-context="authorized-typeahead"
+          data-movable={chatSize !== 'fullscreen' && !isMinimized}
+          style={{ '--celar-chat-x': `${chatPosition.x}px`, '--celar-chat-y': `${chatPosition.y}px` }}
         >
-          <div className="help-header">
+          <div
+            className="help-header celar-ai-chat-drag-handle"
+            onPointerDown={beginChatDrag}
+            onPointerMove={moveChat}
+            onPointerUp={endChatDrag}
+            onPointerCancel={endChatDrag}
+            onDoubleClick={() => setChatPosition({ x: 0, y: 0 })}
+            title={chatSize === 'fullscreen' || isMinimized ? undefined : 'Drag to move Celar AI. Double-click to reset its position.'}
+          >
             <div>
               <strong>Celar AI Help & Search</strong>
               <span>Platform guidance · authorized people/work answers · APIs · troubleshooting</span>
             </div>
             <div className="celar-ai-chat-window-controls" aria-label="Celar AI window controls">
-              <button type="button" data-size="compact" className={chatSize === 'compact' ? 'is-active' : ''} aria-label="Compact chat" title="Compact" onClick={() => { setChatSize('compact'); setIsMinimized(false); }}>C</button>
-              <button type="button" data-size="standard" className={chatSize === 'standard' ? 'is-active' : ''} aria-label="Standard chat" title="Standard" onClick={() => { setChatSize('standard'); setIsMinimized(false); }}>S</button>
-              <button type="button" data-size="wide" className={chatSize === 'wide' ? 'is-active' : ''} aria-label="Wide chat" title="Wide" onClick={() => { setChatSize('wide'); setIsMinimized(false); }}>W</button>
-              <button type="button" data-size="fullscreen" className={chatSize === 'fullscreen' ? 'is-active' : ''} aria-label="Fullscreen chat" title="Fullscreen" onClick={() => { setChatSize('fullscreen'); setIsMinimized(false); }}>□</button>
+              <button type="button" data-size="compact" className={chatSize === 'compact' ? 'is-active' : ''} aria-label="Compact chat" title="Compact" onClick={() => selectChatSize('compact')}>C</button>
+              <button type="button" data-size="standard" className={chatSize === 'standard' ? 'is-active' : ''} aria-label="Standard chat" title="Standard" onClick={() => selectChatSize('standard')}>S</button>
+              <button type="button" data-size="wide" className={chatSize === 'wide' ? 'is-active' : ''} aria-label="Wide chat" title="Wide" onClick={() => selectChatSize('wide')}>W</button>
+              <button type="button" data-size="fullscreen" className={chatSize === 'fullscreen' ? 'is-active' : ''} aria-label="Fullscreen chat" title="Fullscreen" onClick={() => selectChatSize('fullscreen')}>□</button>
               <button type="button" aria-label={isMinimized ? 'Restore Celar AI' : 'Minimize Celar AI'} title={isMinimized ? 'Restore' : 'Minimize'} onClick={() => setIsMinimized((current) => !current)}>{isMinimized ? '▣' : '—'}</button>
               <button type="button" className="celar-ai-chat-close" aria-label="Close Celar AI" title="Close" onClick={() => setIsOpen(false)}>×</button>
             </div>
@@ -867,12 +1019,47 @@ export default function HelpAssistant() {
           </div>
 
           <div className={`celar-ai-question-context${contextOpen ? ' is-open' : ''}`} aria-hidden={!contextOpen}>
-            <label>Project code<input value={questionContext.projectCode} onChange={(event) => setQuestionContext((current) => ({ ...current, projectCode: event.target.value }))} placeholder="Optional" /></label>
-            <label>Project name<input value={questionContext.projectName} onChange={(event) => setQuestionContext((current) => ({ ...current, projectName: event.target.value }))} placeholder="Optional" /></label>
+            <label className="celar-ai-project-context-picker">
+              Project
+              <div className="celar-ai-project-combobox">
+                <input
+                  type="search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={projectSuggestionsOpen && projectSuggestions.length > 0}
+                  aria-controls="celar-ai-project-suggestions"
+                  autoComplete="off"
+                  value={projectLookup}
+                  onFocus={() => setProjectSuggestionsOpen(true)}
+                  onBlur={() => window.setTimeout(() => setProjectSuggestionsOpen(false), 120)}
+                  onChange={(event) => updateProjectLookup(event.target.value)}
+                  placeholder={projectOptionsLoading ? 'Loading authorized projects…' : 'Type a project name or code'}
+                />
+                {projectSuggestionsOpen && projectSuggestions.length > 0 ? (
+                  <div id="celar-ai-project-suggestions" className="celar-ai-project-suggestions" role="listbox">
+                    {projectSuggestions.map((project) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={questionContext.projectCode === projectOptionCode(project)}
+                        key={projectOptionId(project) || projectOptionLabel(project)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectProjectContext(project)}
+                      >
+                        <strong>{projectOptionName(project) || projectOptionCode(project)}</strong>
+                        <span>{[projectOptionCode(project), project?.clientName, project?.status].filter(Boolean).join(' · ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {questionContext.projectCode ? <small>Selected: {questionContext.projectCode} · {questionContext.projectName}</small> : null}
+              {projectOptionsError ? <small className="celar-ai-project-context-error">Suggestions unavailable; you can still enter a project name manually.</small> : null}
+            </label>
             <label>Person or team<input value={questionContext.personOrTeam} onChange={(event) => setQuestionContext((current) => ({ ...current, personOrTeam: event.target.value }))} placeholder="Authorized scope only" /></label>
             <label>Date from<input type="date" value={questionContext.dateFrom} onChange={(event) => setQuestionContext((current) => ({ ...current, dateFrom: event.target.value }))} /></label>
             <label>Date to<input type="date" value={questionContext.dateTo} onChange={(event) => setQuestionContext((current) => ({ ...current, dateTo: event.target.value }))} /></label>
-            <button type="button" onClick={() => setQuestionContext({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' })}>Clear context</button>
+            <button type="button" onClick={clearQuestionContext}>Clear context</button>
           </div>
 
           <div className={`pulse-ai-conversation-toolbar${historyOpen ? ' is-open' : ''}`}>

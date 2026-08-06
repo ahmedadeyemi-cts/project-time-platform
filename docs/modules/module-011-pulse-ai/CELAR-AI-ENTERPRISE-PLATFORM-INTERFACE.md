@@ -12,13 +12,13 @@
 
 This package turns Module 011 from a collection of lifecycle placeholders into a visible, useful enterprise AI platform surface. It combines the existing Celar AI system-intelligence, private-document, private-RAG, FlowHive, Timesheet, reporting, financial, API-discovery, troubleshooting, provider, training, evaluation, and governance foundations into one understandable interface.
 
-The user-visible architecture uses the US Signal logo and identifies the system as created by Dr. Ahmed Adeyemi. It explains the complete private-first flow from authentication through document and tool retrieval, private reasoning, confidence assessment, optional sanitized external reasoning, private verification, and the final cited answer or reviewable draft.
+The user-visible architecture uses the US Signal logo and identifies the system as created by Dr. Ahmed Adeyemi. Architecture revision `celar-ai-private-first-architecture-v5-context-fabric` explains the complete private-first flow from authentication through the content graph, governed tools, private adapters, temporal and policy context, private reasoning, evidence freshness and confidence, optional sanitized external reasoning, private verification, and the final cited answer or reviewable draft.
 
 ## Enterprise outcomes
 
 ### Normal contextual chat
 
-The global chat defaults to a normal working-companion size rather than covering the entire Pulse workspace. It supports compact, standard, wide, fullscreen, minimized, and manually resized desktop states.
+The global chat defaults to a normal working-companion size rather than covering the entire Pulse workspace. It supports compact, standard, wide, fullscreen, minimized, manually resized, and bounded movable desktop states. The header is the movement handle; double-clicking it resets the panel position.
 
 - Enter sends.
 - Shift+Enter inserts a line.
@@ -30,7 +30,7 @@ The global chat defaults to a normal working-companion size rather than covering
 - Unrelated conversations are never merged.
 - New-chat context fields are cleared.
 
-The user may explicitly add a project code, project name, person/team, and date range to the current question. This context is not copied from a prior conversation.
+The user may explicitly add a project, person/team, and date range to the current question. Project context is an authorized typeahead: opening the field loads projects from the permission-scoped Project Workspace API, and typing a project name or code filters the suggestions. Selecting a suggestion stores the exact project code and name; manual text remains available if suggestions are temporarily unavailable. This context is not copied from a prior conversation.
 
 ### People and work intelligence
 
@@ -84,16 +84,23 @@ The composer produces an accessible structured diagram and Mermaid source from t
 
 The diagram is a review artifact. It cannot commit a customer date, publish architecture externally, baseline a plan, or assign an Engineer.
 
-## Private-first architecture
+## Private-first context-fabric architecture
 
 ```text
 Pulse users
     |
 Authentication / roles / permissions / record scope
     |
-    +-- Private document retrieval: SOW, GSD, design, architecture, project evidence
+    +-- Private content graph: project -> document -> authoritative version -> section -> chunk -> citation
     |
     +-- Governed live-data tools: projects, time, capacity, finance, APIs, diagnostics
+    |
+Private adapters: scanning, OCR, embedding, inference, private storage, fine-tuning
+    |
+Temporal and policy context graph
+    +-- question time -> effective permission -> capability policy -> eligible saved route
+    +-- claim -> evidence as-of -> freshness -> confidence -> human review
+    +-- route -> selected target -> outcome -> privacy-safe correlation trace
     |
 Private Celar AI intelligence layer
     |
@@ -113,6 +120,8 @@ Confidence and evidence assessment
     |
 Detailed cited answer or reviewable Timesheet, SOW, plan, timeline, or diagram
 ```
+
+Module 064 exposes metadata-only readiness for every private adapter and every registered AI consumer. It reports configuration, private-boundary verification, runtime verification, content freshness, pending indexing, the saved eligible route, and privacy-safe decision outcomes. It never returns endpoint hosts, tokens, prompt text, source bodies, vectors, or hidden chain-of-thought.
 
 ## Optional sanitized external reasoning
 
@@ -166,6 +175,9 @@ Existing `/api/pulse-ai/*`, `pulse_ai_*`, `PULSE_AI*`, and `PROJECTPULSE_PULSE_A
 - Raw document chunks and vectors are never returned to the browser.
 - No arbitrary SQL or URL is accepted.
 - No public model receives raw internal documents or restricted live data.
+- Module 064's saved order is evaluated for every capability; privacy policy may make a target ineligible but cannot silently introduce a target outside that order.
+- Private OCR, embedding, inference, and training use dedicated DNS-pinned transports with request-time private-address revalidation.
+- Context-graph traces disclose operational decisions and evidence freshness, never hidden model reasoning.
 - Feedback does not automatically become training data.
 - Consequential actions remain human controlled.
 
