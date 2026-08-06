@@ -465,8 +465,7 @@ for (const backendFile of [
   'ProjectFlowHiveScheduleEngine.cs',
   'ProjectFlowHiveAiRequestFactory.cs',
   'ProjectFlowHiveBrandAssets.cs',
-  'ProjectFlowHiveArtifactRenderer.cs',
-  'PostgresProjectFlowHivePlanRepository.cs'
+  'ProjectFlowHiveArtifactRenderer.cs'
 ]) {
   assertInvariant(
     `MODULE_066_CONTAINER_${backendFile.replaceAll(/[^a-z0-9]+/gi, '_').toUpperCase()}`,
@@ -474,6 +473,14 @@ for (const backendFile of [
     `web build context includes ${backendFile}`
   );
 }
+
+assertInvariant(
+  'MODULE_066_PRODUCTION_REPOSITORY_COMPILE_DISCOVERY',
+  fs.existsSync(paths.repository) &&
+    repository.includes('PostgresProjectFlowHivePlanRepository') &&
+    repository.includes('IProjectFlowHivePlanRepository'),
+  'SDK project compile discovery includes the production repository source without a Dockerfile marker'
+);
 
 assertInvariant(
   'MODULE_066_CONTAINER_GOVERNANCE_CONTEXT',

@@ -109,14 +109,14 @@ assert(
 );
 
 assert(
-  'DIRECT_PULSE_AI_PURPOSE_ANSWER',
+  'DIRECT_CELAR_AI_PURPOSE_ANSWER',
   knowledge.includes('"what is pulse ai"')
     && knowledge.includes('"purpose of module 011"')
-    && knowledge.includes('Pulse AI is the private intelligence layer for Pulse')
+    && knowledge.includes('Celar AI is the private intelligence layer for Pulse')
     && knowledge.includes('document-grounded Timesheet suggestions')
     && knowledge.includes('FlowHive project-plan drafting')
     && knowledge.includes('reporting or financial insight')
-    && knowledge.includes('Claude or OpenAI is optional'),
+    && knowledge.includes('optional policy-approved sanitized external assistance'),
   'the exact question shown by the user receives a comprehensive direct answer'
 );
 

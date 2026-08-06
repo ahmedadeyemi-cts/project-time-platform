@@ -86,20 +86,20 @@ const newFrontend = [
 ].join('\n');
 
 const routes = [
-  '/api/pulse-ai/v1/overview',
-  '/api/pulse-ai/v1/private-runtime/readiness',
-  '/api/pulse-ai/v1/tools',
-  '/api/pulse-ai/v1/timesheet/context-preview',
-  '/api/pulse-ai/v1/help-search/plan',
-  '/api/pulse-ai/v1/flowhive/context-preview',
-  '/api/pulse-ai/v1/insights/plan',
-  '/api/pulse-ai/v1/external-escalation/sanitize-preview'
+  '/api/celar-ai/v1/overview',
+  '/api/celar-ai/v1/private-runtime/readiness',
+  '/api/celar-ai/v1/tools',
+  '/api/celar-ai/v1/timesheet/context-preview',
+  '/api/celar-ai/v1/help-search/plan',
+  '/api/celar-ai/v1/flowhive/context-preview',
+  '/api/celar-ai/v1/insights/plan',
+  '/api/celar-ai/v1/external-escalation/sanitize-preview'
 ];
 
 assert(
   'API_FAMILY',
   routes.every((route) => source.module.includes(`"${route}"`)),
-  `${routes.length} isolated Pulse AI routes`
+  `${routes.length} isolated Celar AI routes`
 );
 assert(
   'ENDPOINT_REGISTRATION',
@@ -272,7 +272,7 @@ assert(
     'Generate a document-grounded timesheet description',
     'Understand ProjectPulse access and permissions',
     'Create and maintain a ProjectPulse project',
-    'Prepare an internal project document for Pulse AI',
+    'Prepare an internal project document for Celar AI',
     'Create a detailed FlowHive planning draft',
     'Ask a detailed reporting or financial question',
     'Configure and govern an AI provider',

@@ -54,7 +54,6 @@ RUN npm ci --no-audit --no-fund
 # COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiRequestFactory.cs
 # COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveBrandAssets.cs
 # COPY src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs
-# COPY src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs
 # COPY src/backend/ProjectTime.Api/Modules/SecurityOperationsResponseModule.cs
 # COPY src/backend/ProjectTime.Api/Modules/SecurityDiagnosticsOperations.cs
 # COPY src/backend/ProjectTime.Api/Modules/GlobalMailConfigurationModule.cs

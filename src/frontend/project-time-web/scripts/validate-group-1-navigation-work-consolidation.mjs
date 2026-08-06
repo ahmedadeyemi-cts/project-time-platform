@@ -166,20 +166,20 @@ assert('MODULE_007_RETAINED', registry.includes("moduleNumber: '007'")
 assert('MODULE_011_CELAR_AI', module011Block.includes("displayName: 'Celar AI'")
   && module011Block.includes("group: 'AI & Automation'")
   && module011Block.includes("lifecycle: 'active_operational_intelligence'")
-  && module011Block.includes("technicalIdentity: 'Pulse AI'")
+  && module011Block.includes("technicalIdentity: 'Celar AI'")
   && !module011Block.includes('isRetired: true'),
-'Module 011 is visibly rebranded as Celar AI while its technical compatibility identity remains explicit');
+'Module 011 uses the canonical Celar AI product and technical identity');
 
 assert('MODULE_011_COMPATIBILITY_MOUNT', module011Block.includes("route: 'work-task-builder'")
   && module011Block.includes('compatibilityRoute: true')
   && module011Block.includes("publicAlias: 'celar-ai'")
   && registry.includes("'celar-ai': 'work-task-builder'")
-  && registry.includes("'pulse-ai': 'work-task-builder'")
+  && !registry.includes("'pulse-ai': 'work-task-builder'")
   && !registry.includes("'work-task-builder': 'work-register'")
   && app.includes("activeRoute === 'work-task-builder'")
   && pulseCompatibility.includes("import PulseAiCenter from './PulseAiCenter.jsx';")
   && pulseCompatibility.includes('return <PulseAiCenter />;'),
-'Celar AI uses the preserved Module 011 compatibility mount without redirecting users to Module 055C');
+'Celar AI uses the preserved internal Module 011 mount without exposing the retired public alias');
 
 assert('MODULE_011_NAVIGATION_ACTIVE', !css.includes('a[href="#work-task-builder"]')
   && !css.includes('button[data-route="work-task-builder"]')
