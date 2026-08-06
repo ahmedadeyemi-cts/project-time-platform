@@ -506,3 +506,4 @@
     grid-template-columns: 1fr;
   }
 }
+.system-diagnostic-adapter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}.system-diagnostic-adapter-grid article{display:grid;gap:.3rem;padding:.8rem;border:1px solid var(--diagnostic-border,#d7e0ea);border-radius:.7rem}.system-diagnostic-adapter-grid small{color:var(--text-muted,#5c6878)}.system-diagnostic-row-actions a{display:inline-flex;align-items:center;padding:.55rem .75rem;border-radius:.55rem;background:color-mix(in srgb,#0077c8 9%,transparent);color:#0077c8;font-weight:800;text-decoration:none}@media(max-width:760px){.system-diagnostic-adapter-grid{grid-template-columns:1fr}}

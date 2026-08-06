@@ -221,6 +221,14 @@ function AuditHistoryPanelContent({ stableRouteOwner }) {
         ))}
       </div>
 
+      <div className="audit-quick-filters" aria-label="Common history views"><span>Common views</span>{[
+        ['authentication', 'Authentication & sessions'],
+        ['notification', 'Email & notifications'],
+        ['workflow', 'Timesheet & approvals'],
+        ['ai_usage', 'AI usage'],
+        ['user_administration', 'Changes & administration']
+      ].map(([category, label]) => <button type="button" key={category} className={filters.category === category ? 'active' : ''} onClick={() => setFilters((current) => ({ ...current, category, source: 'all' }))}>{label}</button>)}<button type="button" onClick={() => setFilters((current) => ({ ...current, category: 'all', source: 'all' }))}>All history</button></div>
+
       <form className="audit-filter-bar" onSubmit={applySearch}>
         <label>
           Lookback

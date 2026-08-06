@@ -480,6 +480,9 @@ function Workbench({ authSession }) {
   const [busy, setBusy] = useState('');
   const [notes, setNotes] = useState({});
   const [statusFilter, setStatusFilter] = useState('open');
+  const [search, setSearch] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }));
@@ -525,7 +528,14 @@ function Workbench({ authSession }) {
     } finally { setBusy(''); }
   }
 
-  const items = state.data?.items ?? [];
+  const items = (state.data?.items ?? []).filter((item) => {
+    if (priorityFilter && item.priority !== priorityFilter) return false;
+    const query = search.trim().toLowerCase();
+    return !query || [item.title, item.detail, item.moduleCode, item.itemType, item.ownerName, item.sourceKey].some((value) => String(value ?? '').toLowerCase().includes(query));
+  });
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const visibleItems = items.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
   return (
     <div className="group5-workbench-layout">
       <section className="group5-card">
@@ -536,6 +546,8 @@ function Workbench({ authSession }) {
             <p>One accountable queue for source failures, budget risk, billing blockers, closeout blockers, reconciliation exceptions, and notification failures.</p>
           </div>
           <div className="group5-action-row">
+            <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search recovery queue" aria-label="Search financial recovery queue" />
+            <select aria-label="Work item priority" value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setPage(1); }}><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
             <select aria-label="Work item status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="open">Open</option><option value="acknowledged">Acknowledged</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option><option value="">All</option>
             </select>
@@ -550,7 +562,7 @@ function Workbench({ authSession }) {
           <article><span>Source failures</span><strong>{state.data?.summary?.sourceFailures ?? 0}</strong><small>Retry independently</small></article>
         </div>
         <div className="group5-work-item-list">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <article key={item.workItemId} className={`group5-work-item ${item.priority}`}>
               <div className="group5-work-item-main">
                 <div className="group5-work-item-heading"><div><span>Module {item.moduleCode} · {words(item.itemType)}</span><strong>{item.title}</strong></div><Status value={item.priority}>{words(item.priority)}</Status></div>
@@ -565,6 +577,7 @@ function Workbench({ authSession }) {
           ))}
           {!state.loading && !items.length ? <EmptyState title="No work items in this view">Refresh the queue or select another status.</EmptyState> : null}
         </div>
+        {items.length > pageSize ? <div className="group5-pagination"><button type="button" className="group5-secondary" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button><span>Page {Math.min(page, pageCount)} of {pageCount} · {items.length} items</span><button type="button" className="group5-secondary" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</button></div> : null}
       </section>
       <SourceGrid sources={state.data?.sources ?? []} canRetry={Boolean(state.data?.capabilities?.canRetrySources)} busySource={busy.replace('source:', '')} onRetry={retrySource} />
     </div>

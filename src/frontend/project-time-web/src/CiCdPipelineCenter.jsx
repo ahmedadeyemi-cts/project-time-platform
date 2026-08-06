@@ -23,6 +23,7 @@ export default function CiCdPipelineCenter() {
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState('');
   const [message, setMessage] = useState('');
+  const [dispatchDraft, setDispatchDraft] = useState({ workflow: 'projectpulse-deploy-test.yml', ref: '', environment: 'test' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,6 +39,7 @@ export default function CiCdPipelineCenter() {
 
       if (configurationResult.status === 'fulfilled') {
         setConfiguration(configurationResult.value);
+        setDispatchDraft((current) => ({ ...current, ref: current.ref || configurationResult.value?.sourceControl?.defaultBranch || 'main', environment: configurationResult.value?.deployment?.environment || current.environment }));
       }
 
       if (statusResult.status === 'fulfilled') {
@@ -77,7 +79,7 @@ export default function CiCdPipelineCenter() {
     return repository ? `https://github.com/${repository}` : '';
   }, [configuration]);
 
-  const dispatch = async (workflow) => {
+  const dispatch = async (workflow = dispatchDraft.workflow) => {
     setAction(workflow);
     setMessage('');
     try {
@@ -86,8 +88,8 @@ export default function CiCdPipelineCenter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workflow,
-          ref: configuration?.sourceControl?.defaultBranch,
-          inputs: { environment: 'test' }
+          ref: dispatchDraft.ref || configuration?.sourceControl?.defaultBranch,
+          inputs: { environment: dispatchDraft.environment }
         })
       });
       setMessage(body?.status || 'Workflow dispatch accepted.');
@@ -175,12 +177,15 @@ export default function CiCdPipelineCenter() {
         </div>
 
         <div className="cicd-actions">
+          <label>Workflow<select value={dispatchDraft.workflow} onChange={(event) => setDispatchDraft((current) => ({ ...current, workflow: event.target.value }))}>{(configuration?.workflows || ['projectpulse-ci.yml','projectpulse-deploy-test.yml','projectpulse-deploy-production.yml','projectpulse-rollback.yml']).filter((item) => !item.includes('rollback')).map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
+          <label>Source ref<input value={dispatchDraft.ref} onChange={(event) => setDispatchDraft((current) => ({ ...current, ref: event.target.value }))} placeholder="main or approved commit SHA" /></label>
+          <label>Environment<select value={dispatchDraft.environment} onChange={(event) => setDispatchDraft((current) => ({ ...current, environment: event.target.value }))}><option value="test">Test</option><option value="production">Production (approval protected)</option></select></label>
           <button
             className="primary-action"
             disabled={!configuration?.sourceControl?.tokenConfigured || Boolean(action)}
-            onClick={() => dispatch('projectpulse-deploy-test.yml')}
+            onClick={() => dispatch()}
           >
-            {action === 'projectpulse-deploy-test.yml' ? 'Dispatching…' : 'Deploy test'}
+            {action ? 'Dispatching…' : 'Dispatch selected workflow'}
           </button>
           <button
             disabled={!configuration?.sourceControl?.tokenConfigured || Boolean(action)}
@@ -194,11 +199,7 @@ export default function CiCdPipelineCenter() {
         </div>
 
         {!configuration?.sourceControl?.tokenConfigured ? (
-          <p className="muted">
-            In-application dispatch is intentionally disabled until
-            PROJECTPULSE_CICD_SCM_TOKEN is configured. GitHub Actions can still
-            run through the repository interface and OIDC.
-          </p>
+          <div className="cicd-setup-guide"><strong>In-app dispatch setup</strong><span>The live pipeline remains available in GitHub. To dispatch from this page, store a fine-grained repository Actions token as <code>PROJECTPULSE_CICD_SCM_TOKEN</code>; never enter it in the browser. Azure deployment continues to use OIDC, environment approval, immutable images, health checks, and rollback.</span>{repoUrl ? <a href={`${repoUrl}/actions`} target="_blank" rel="noreferrer">Open GitHub Actions now</a> : null}</div>
         ) : null}
       </section>
 

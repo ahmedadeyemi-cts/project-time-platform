@@ -422,6 +422,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
   const [lifecycleState, setLifecycleState] = useState({ loading: false, data: null, error: '' });
   const [closeoutForm, setCloseoutForm] = useState({ ...EMPTY_CLOSEOUT_FORM });
   const [actionState, setActionState] = useState({ busy: '', message: '', tone: '' });
+  const [activeView, setActiveView] = useState('readiness');
 
   const loadModule = useCallback(async () => {
     setModuleState((current) => ({ ...current, loading: true, error: '' }));
@@ -612,7 +613,8 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
   }
 
   function scrollToForm() {
-    document.getElementById('module040-closeout-decision')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveView('decision');
+    window.requestAnimationFrame(() => document.getElementById('module040-closeout-decision')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   function refreshSelectedProject() {
@@ -701,7 +703,13 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </div>
       ) : null}
 
-      <section className="project-closeout-path" aria-labelledby="module040-path-title">
+      <nav className="project-closeout-view-tabs" aria-label="Project closeout views">{[
+        ['readiness', 'Readiness & blockers', `${blockers.length} blocker${blockers.length === 1 ? '' : 's'}`],
+        ['decision', 'Closeout decision', titleCase(closeoutStatus, 'Not started')],
+        ['evidence', 'Source health & history', `${(lifecycle?.audit ?? []).length} events`]
+      ].map(([value, label, detail]) => <button type="button" key={value} className={activeView === value ? 'is-active' : ''} onClick={() => setActiveView(value)}><strong>{label}</strong><span>{detail}</span></button>)}</nav>
+
+      <section className="project-closeout-path" aria-labelledby="module040-path-title" hidden={activeView !== 'readiness'}>
         <div className="project-closeout-section-heading">
           <div>
             <p className="project-closeout-eyebrow">Closeout path</p>
@@ -722,7 +730,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </ol>
       </section>
 
-      <section className={`project-closeout-next-action ${guidance.tone}`} aria-labelledby="module040-next-action-title">
+      <section className={`project-closeout-next-action ${guidance.tone}`} aria-labelledby="module040-next-action-title" hidden={activeView !== 'readiness'}>
         <div>
           <p className="project-closeout-eyebrow">What you need to do now</p>
           <h2 id="module040-next-action-title">{guidance.title}</h2>
@@ -755,7 +763,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
       </section>
 
       {selectedProject ? (
-        <section className="project-closeout-summary-grid" aria-label="Selected project closeout summary">
+        <section className="project-closeout-summary-grid" aria-label="Selected project closeout summary" hidden={activeView !== 'readiness'}>
           <article><span>Project status</span><strong>{titleCase(selectedProject.projectStatus)}</strong><small>{selectedProject.projectCode}</small></article>
           <article><span>Billing readiness</span><strong>{titleCase(lifecycle?.billingReadiness?.reviewStatus ?? selectedProject.billingReadiness?.reviewStatus, 'Not recorded')}</strong><small>{lifecycle?.billingReadiness?.packageType ?? 'No package type recorded'}</small></article>
           <article><span>Approved / used hours</span><strong>{number(selectedProject.approvedHours)} / {number(selectedProject.usedHours)}</strong><small>{number(selectedProject.plannedHours)} planned</small></article>
@@ -765,7 +773,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </section>
       ) : null}
 
-      <div className="project-closeout-main-grid">
+      <div className="project-closeout-main-grid" hidden={activeView !== 'readiness'}>
         <section className="project-closeout-card project-closeout-blockers" aria-labelledby="module040-blockers-title">
           <div className="project-closeout-section-heading">
             <div>
@@ -829,7 +837,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </aside>
       </div>
 
-      <section id="module040-closeout-decision" className="project-closeout-card project-closeout-decision" aria-labelledby="module040-decision-title">
+      <section id="module040-closeout-decision" className="project-closeout-card project-closeout-decision" aria-labelledby="module040-decision-title" hidden={activeView !== 'decision'}>
         <div className="project-closeout-section-heading">
           <div>
             <p className="project-closeout-eyebrow">Governed closeout</p>
@@ -922,7 +930,7 @@ export default function ProjectCloseoutCenter({ authSession = null }) {
         </p>
       </section>
 
-      <section className="project-closeout-evidence-grid">
+      <section className="project-closeout-evidence-grid" hidden={activeView !== 'evidence'}>
         <details className="project-closeout-card project-closeout-source-health">
           <summary>
             <span><strong>Supporting source health</strong><small>{unavailableSources.length ? `${unavailableSources.length} source${unavailableSources.length === 1 ? '' : 's'} need attention` : 'All Module 040 sources are available'}</small></span>

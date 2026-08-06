@@ -157,7 +157,7 @@ export default function TimeComplianceCenter() {
     <section id="time-compliance" className="time-compliance-center">
       <div className="time-compliance-header">
         <div>
-          <p className="eyebrow">019M-O</p>
+          <p className="eyebrow">Module 023</p>
           <h2>Time Compliance & Notification Center</h2>
           <p className="muted">
             Production notification preview for missing weekly time, manager/PTC copy visibility, month-end settings, holiday reminders, notification history, and audit readiness.
@@ -190,16 +190,14 @@ export default function TimeComplianceCenter() {
 
       <div className={`time-compliance-demo-banner ${isDemoReady ? 'ready' : 'attention'}`}>
         <div>
-          <strong>{isDemoReady ? 'Ready for production review' : 'Production readiness needs attention'}</strong>
+          <strong>{isDemoReady ? 'Preview coverage complete' : 'Preview has recipient gaps'}</strong>
           <span>
             {isDemoReady
-              ? 'All preview recipients have trusted CC coverage. Real send remains locked until approval.'
-              : 'Review manager/PTC gaps before presenting this workflow.'}
+              ? 'All preview recipients have trusted manager or PTC coverage.'
+              : 'Some preview rows do not have an authoritative manager or PTC recipient. Update the project team before the next scheduled run.'}
           </span>
         </div>
-        <button type="button" disabled title="Real send will be enabled only after production approval, SMTP/provider validation, and audit sign-off.">
-          Real send locked
-        </button>
+        <a className="secondary-action" href="#global-mail-configuration">Review delivery readiness</a>
       </div>
 
       {preview.error && <div className="time-compliance-error">{preview.error}</div>}

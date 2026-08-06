@@ -223,102 +223,14 @@ public static class CiCdPipelineModule
 
     private static async Task<IResult?> RequireAdminAsync(HttpContext context)
     {
-        var userId = SessionUserId(context);
-        if (userId is null)
-            return Results.Json(new
-            {
-                status = "session_required",
-                message = "A ProjectPulse session is required."
-            }, statusCode: 401);
+        if (context.Request.Method != HttpMethods.Get && GovernedOperationsReadModule.IsViewAs(context))
+            return Results.Json(new { module = "058", status = "view_as_read_only", message = "CI/CD mutations are blocked while View-As is active." }, statusCode: StatusCodes.Status403Forbidden);
 
-        await using var connection = new NpgsqlConnection(ConnectionString());
-        await connection.OpenAsync();
-
-        await using var command = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM app_user_role_assignments ura
-                JOIN app_roles r
-                  ON r.role_id = ura.role_id
-                WHERE ura.user_id = @user_id
-                  AND COALESCE(
-                        NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
-                        TRUE
-                      ) = TRUE
-                  AND (
-                        lower(COALESCE(
-                          NULLIF(to_jsonb(r)->>'name', ''),
-                          NULLIF(to_jsonb(r)->>'role_name', ''),
-                          NULLIF(to_jsonb(r)->>'code', ''),
-                          ''
-                        )) IN (
-                          'administrator',
-                          'admin',
-                          'super administrator',
-                          'system administrator'
-                        )
-                     OR EXISTS (
-                          SELECT 1
-                          FROM app_role_permissions rp
-                          JOIN app_permissions p
-                            ON p.permission_id = rp.permission_id
-                          WHERE rp.role_id = r.role_id
-                            AND upper(COALESCE(
-                              NULLIF(to_jsonb(p)->>'code', ''),
-                              NULLIF(to_jsonb(p)->>'permission_code', ''),
-                              NULLIF(to_jsonb(p)->>'name', ''),
-                              ''
-                            )) IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
-                     )
-                  )
-            );
-            """, connection);
-
-        command.Parameters.AddWithValue("user_id", userId.Value);
-
-        try
-        {
-            var allowed = Convert.ToBoolean(await command.ExecuteScalarAsync());
-            return allowed
-                ? null
-                : Results.Json(new
-                {
-                    status = "administrator_access_required",
-                    message = "Module 058 is restricted to administrators."
-                }, statusCode: 403);
-        }
-        catch (PostgresException)
-        {
-            await using var fallback = new NpgsqlCommand("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM app_user_role_assignments ura
-                    JOIN app_roles r
-                      ON r.role_id = ura.role_id
-                    WHERE ura.user_id = @user_id
-                      AND lower(COALESCE(
-                        NULLIF(to_jsonb(r)->>'name', ''),
-                        NULLIF(to_jsonb(r)->>'role_name', ''),
-                        NULLIF(to_jsonb(r)->>'code', ''),
-                        ''
-                      )) IN (
-                        'administrator',
-                        'admin',
-                        'super administrator',
-                        'system administrator'
-                      )
-                );
-                """, connection);
-            fallback.Parameters.AddWithValue("user_id", userId.Value);
-            var allowed = Convert.ToBoolean(await fallback.ExecuteScalarAsync());
-            return allowed
-                ? null
-                : Results.Json(new
-                {
-                    status = "administrator_access_required",
-                    message = "Module 058 is restricted to administrators."
-                }, statusCode: 403);
-        }
+        return await GovernedOperationsReadModule.AuthorizeAsync(
+            context,
+            "058",
+            ["SUPER_ADMINISTRATOR", "ADMINISTRATOR"],
+            ["SYSTEM_ADMINISTRATION", "MANAGE_ALL"]);
     }
 
     private static async Task<object[]> ReadRecentRunsAsync()

@@ -27,6 +27,7 @@ public static class SystemDiagnosticRemediationModule
         app.MapGet("/api/system-diagnostics/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context) => GetSessionAsync(sessionId, context));
         app.MapGet("/api/system-diagnostics/evidence-policy", (Func<HttpContext, Task<IResult>>)GetEvidencePolicyAsync);
         app.MapGet("/api/system-diagnostics/remediation-policy", (Func<HttpContext, Task<IResult>>)GetRemediationPolicyAsync);
+        app.MapGet("/api/system-diagnostics/operations-adapter-readiness", (Func<HttpContext, Task<IResult>>)GetOperationsAdapterReadinessAsync);
         app.MapGet("/api/system-diagnostics/runbooks", (Func<HttpContext, Task<IResult>>)GetRunbooksAsync);
         app.MapGet("/api/system-diagnostics/remediations", (Func<HttpContext, Task<IResult>>)GetRemediationsAsync);
 
@@ -253,8 +254,16 @@ public static class SystemDiagnosticRemediationModule
         {
             module = ModuleNumber, status = "remediation_policy_loaded", lifecycle = RemediationLifecycle(),
             gates = new { persistedPlan = true, requesterApproverSeparation = true, previewRequired = true, evidenceRequired = true, rollbackRequiredForExternalActions = true },
-            execution = new { nativeActions = new[] { "refresh_health_snapshot" }, externalActions = new[] { "restart_service", "scale_service", "rollback_deployment", "replay_integration_event", "refresh_configuration", "database_repair" }, externalAdapterConfigured = false }
+            execution = new { nativeActions = new[] { "refresh_health_snapshot" }, managedActions = AzureOperationsReadiness().Ready ? new[] { "restart_service" } : Array.Empty<string>(), externalActions = new[] { "scale_service", "rollback_deployment", "replay_integration_event", "refresh_configuration", "database_repair" }, externalAdapterConfigured = AzureOperationsReadiness().Ready }
         });
+    }
+
+    private static async Task<IResult> GetOperationsAdapterReadinessAsync(HttpContext context)
+    {
+        var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
+        await using var connection = outcome.Connection!;
+        var readiness = AzureOperationsReadiness();
+        return Results.Ok(new { module = ModuleNumber, status = readiness.Ready ? "azure_operations_adapter_ready" : "azure_operations_adapter_setup_required", adapter = "azure_container_apps", enabled = readiness.Enabled, ready = readiness.Ready, readiness.Missing, allowedTargets = readiness.AllowedTargets, authentication = "managed_identity_no_client_secret", apiVersion = "2026-01-01", guardrails = new[] { "Exact allowlisted Container App target", "Diagnostic evidence before action", "Separate requester and approver", "Stage before execution", "Post-action verification", "Immutable audit evidence" } });
     }
 
     private static async Task<IResult> GetRunbooksAsync(HttpContext context)
@@ -360,6 +369,30 @@ public static class SystemDiagnosticRemediationModule
             var requestedBy = reader.GetGuid(4); var approvedBy = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5); await reader.DisposeAsync();
             if (state is not ("approved" or "staged") || approvedBy is null || requestedBy == approvedBy)
                 return Results.Json(new { module = ModuleNumber, status = "approved_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
+            if (action == "restart_service")
+            {
+                var readiness = AzureOperationsReadiness();
+                if (!readiness.Ready)
+                    return Results.Json(new { module = ModuleNumber, status = "execution_adapter_required", action, target, configured = false, missing = readiness.Missing, requiredConfiguration = AdapterConfiguration(action) }, statusCode: StatusCodes.Status423Locked);
+                if (!readiness.AllowedTargets.Contains(target, StringComparer.OrdinalIgnoreCase))
+                    return Results.Json(new { module = ModuleNumber, status = "restart_target_not_allowed", action, target, allowedTargets = readiness.AllowedTargets, message = "The target must exactly match an administrator-approved Container App." }, statusCode: StatusCodes.Status403Forbidden);
+
+                var restart = await RestartContainerAppAsync(readiness, target, context.RequestAborted);
+                if (!restart.Success)
+                    return Results.Json(new { module = ModuleNumber, status = "azure_restart_failed", action, target, restart.HttpStatus, restart.Message, stateChanged = false }, statusCode: StatusCodes.Status502BadGateway);
+
+                await using var restartTransaction = await connection.BeginTransactionAsync(context.RequestAborted);
+                await using (var restartUpdate = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = 'executed', executed_by = @actor, executed_at = now(), result_json = CAST(@result AS jsonb) WHERE remediation_request_id = @request_id;", connection, restartTransaction))
+                {
+                    restartUpdate.Parameters.AddWithValue("actor", access.UserId);
+                    restartUpdate.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { action, target, revisions = restart.Revisions, observedAt = DateTimeOffset.UtcNow, provider = "azure_container_apps" }));
+                    restartUpdate.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+                    await restartUpdate.ExecuteNonQueryAsync(context.RequestAborted);
+                }
+                await SecurityDiagnosticsOperations.WriteAuditAsync(connection, restartTransaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "azure_container_app_revision_restart_executed", access.UserId, new { sessionId, target, revisions = restart.Revisions }, context.RequestAborted);
+                await restartTransaction.CommitAsync(context.RequestAborted);
+                return Results.Accepted(value: new { module = ModuleNumber, status = "azure_container_app_restart_accepted", request.RemediationRequestId, sessionId, target, revisions = restart.Revisions, verificationRequired = true });
+            }
             if (action != "refresh_health_snapshot")
                 return Results.Json(new { module = ModuleNumber, status = "execution_adapter_required", action, target, configured = false, requiredConfiguration = AdapterConfiguration(action), message = "The approved plan is preserved; connect the owning adapter before production execution." }, statusCode: StatusCodes.Status423Locked);
 
@@ -643,13 +676,76 @@ public static class SystemDiagnosticRemediationModule
 
     private static string AdapterConfiguration(string action) => action switch
     {
-        "restart_service" or "scale_service" => "Configure an approved Azure Container Apps operations adapter and production scope.",
+        "restart_service" => "Enable the API Container App managed identity; set PROJECTPULSE_AZURE_OPERATIONS_ENABLED=true, AZURE_SUBSCRIPTION_ID, PROJECTPULSE_AZURE_RESOURCE_GROUP, and PROJECTPULSE_AZURE_ALLOWED_CONTAINER_APPS; grant only Microsoft.App/containerApps/revisions/read and Microsoft.App/containerApps/revisions/restart/action on the allowed apps.",
+        "scale_service" => "Configure a separate, approved Azure Container Apps scaling adapter and bounded replica policy.",
         "rollback_deployment" => "Configure Module 077 release evidence, a known-good revision, and the approved Azure deployment adapter.",
         "replay_integration_event" => "Configure Module 075 event validation, quarantine release, and replay authority.",
         "refresh_configuration" => "Configure a bounded configuration-refresh adapter that never returns secrets.",
         "database_repair" => "Configure a reviewed database runbook, backup checkpoint, maintenance window, and rollback plan.",
         _ => "Configure the approved owner adapter and production authorization."
     };
+
+    private static AzureOperationsAdapterReadiness AzureOperationsReadiness()
+    {
+        var enabled = string.Equals(Environment.GetEnvironmentVariable("PROJECTPULSE_AZURE_OPERATIONS_ENABLED"), "true", StringComparison.OrdinalIgnoreCase);
+        var subscription = Environment.GetEnvironmentVariable("AZURE_SUBSCRIPTION_ID")?.Trim() ?? string.Empty;
+        var resourceGroup = Environment.GetEnvironmentVariable("PROJECTPULSE_AZURE_RESOURCE_GROUP")?.Trim() ?? string.Empty;
+        var identityEndpoint = Environment.GetEnvironmentVariable("IDENTITY_ENDPOINT")?.Trim() ?? string.Empty;
+        var identityHeader = Environment.GetEnvironmentVariable("IDENTITY_HEADER")?.Trim() ?? string.Empty;
+        var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID")?.Trim() ?? string.Empty;
+        var allowed = (Environment.GetEnvironmentVariable("PROJECTPULSE_AZURE_ALLOWED_CONTAINER_APPS") ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => item.Length is > 0 and <= 63 && item.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var missing = new List<string>();
+        if (!enabled) missing.Add("PROJECTPULSE_AZURE_OPERATIONS_ENABLED=true");
+        if (!Guid.TryParse(subscription, out _)) missing.Add("AZURE_SUBSCRIPTION_ID");
+        if (resourceGroup.Length is < 1 or > 90) missing.Add("PROJECTPULSE_AZURE_RESOURCE_GROUP");
+        if (!Uri.TryCreate(identityEndpoint, UriKind.Absolute, out var identityUri) || identityUri.Scheme != Uri.UriSchemeHttp) missing.Add("IDENTITY_ENDPOINT");
+        if (identityHeader.Length < 10) missing.Add("IDENTITY_HEADER");
+        if (allowed.Length == 0) missing.Add("PROJECTPULSE_AZURE_ALLOWED_CONTAINER_APPS");
+        return new(enabled, missing.Count == 0, subscription, resourceGroup, identityEndpoint, identityHeader, clientId, allowed, missing.ToArray());
+    }
+
+    private static async Task<AzureRestartResult> RestartContainerAppAsync(AzureOperationsAdapterReadiness readiness, string target, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var identityUrl = $"{readiness.IdentityEndpoint}{(readiness.IdentityEndpoint.Contains('?') ? '&' : '?')}resource={Uri.EscapeDataString("https://management.azure.com/")}&api-version=2019-08-01{(string.IsNullOrWhiteSpace(readiness.ClientId) ? string.Empty : $"&client_id={Uri.EscapeDataString(readiness.ClientId)}")}";
+            using var tokenRequest = new HttpRequestMessage(HttpMethod.Get, identityUrl);
+            tokenRequest.Headers.TryAddWithoutValidation("X-IDENTITY-HEADER", readiness.IdentityHeader);
+            using var tokenResponse = await client.SendAsync(tokenRequest, cancellationToken);
+            if (!tokenResponse.IsSuccessStatusCode) return new(false, (int)tokenResponse.StatusCode, "Managed identity token acquisition failed.", []);
+            using var tokenDocument = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync(cancellationToken));
+            if (!tokenDocument.RootElement.TryGetProperty("access_token", out var tokenElement) || string.IsNullOrWhiteSpace(tokenElement.GetString())) return new(false, 502, "Managed identity returned no access token.", []);
+            var accessToken = tokenElement.GetString()!;
+            var basePath = $"https://management.azure.com/subscriptions/{Uri.EscapeDataString(readiness.SubscriptionId)}/resourceGroups/{Uri.EscapeDataString(readiness.ResourceGroup)}/providers/Microsoft.App/containerApps/{Uri.EscapeDataString(target)}/revisions";
+            using var listRequest = new HttpRequestMessage(HttpMethod.Get, $"{basePath}?api-version=2026-01-01");
+            listRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            using var listResponse = await client.SendAsync(listRequest, cancellationToken);
+            if (!listResponse.IsSuccessStatusCode) return new(false, (int)listResponse.StatusCode, "Azure could not list the allowed app's revisions.", []);
+            using var listDocument = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(cancellationToken));
+            var revisions = listDocument.RootElement.TryGetProperty("value", out var values)
+                ? values.EnumerateArray().Where(item => item.TryGetProperty("properties", out var properties) && properties.TryGetProperty("active", out var active) && active.ValueKind == JsonValueKind.True).Select(item => item.GetProperty("name").GetString() ?? string.Empty).Where(name => name.Length > 0).ToArray()
+                : [];
+            if (revisions.Length == 0) return new(false, 409, "No active revision was found for the allowed Container App.", []);
+            foreach (var revision in revisions)
+            {
+                using var restartRequest = new HttpRequestMessage(HttpMethod.Post, $"{basePath}/{Uri.EscapeDataString(revision)}/restart?api-version=2026-01-01");
+                restartRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+                using var restartResponse = await client.SendAsync(restartRequest, cancellationToken);
+                if (!restartResponse.IsSuccessStatusCode) return new(false, (int)restartResponse.StatusCode, $"Azure did not accept the restart for revision {revision}.", revisions);
+            }
+            return new(true, 200, "Azure accepted the active revision restart.", revisions);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(false, 504, "The Azure operations adapter timed out.", []); }
+        catch { return new(false, 502, "The Azure operations adapter was unavailable.", []); }
+    }
+
+    private sealed record AzureOperationsAdapterReadiness(bool Enabled, bool Ready, string SubscriptionId, string ResourceGroup, string IdentityEndpoint, string IdentityHeader, string ClientId, string[] AllowedTargets, string[] Missing);
+    private sealed record AzureRestartResult(bool Success, int HttpStatus, string Message, string[] Revisions);
 
     private static object[] DiagnosticCategories() =>
     [

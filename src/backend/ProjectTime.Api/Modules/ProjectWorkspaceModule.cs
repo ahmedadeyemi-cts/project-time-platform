@@ -136,7 +136,7 @@ public static class ProjectWorkspaceModule
 
         return Results.Ok(new
         {
-            module = "019M-U Project Workspace User Experience Preview",
+            module = "019",
             mode = "role_scope_enforced",
             access = new
             {
@@ -167,6 +167,7 @@ public static class ProjectWorkspaceModule
                 "Administrator View-As preview is read-only.",
                 "View-As preview records both the administrator and effective viewed user.",
                 "Engineers see only directly assigned work.",
+                "Closed, completed, cancelled, and archived projects are removed from assigned engineering workspaces.",
                 "PMs see all documents for projects they manage.",
                 "Legacy PROJECT_MANAGER and PROJECT_MANAGEMENT roles share managed-project workspace scope.",
                 "Project Team Coordinators, Executives, and Administrators have broader visibility based on role."
@@ -371,6 +372,8 @@ public static class ProjectWorkspaceModule
             LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
             LEFT JOIN project_intake_documents d ON d.project_id = p.project_id
             WHERE
+                (@hide_closed_projects = FALSE OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
+                AND (
                 @is_broad_scope = TRUE
                 OR (@can_view_managed_projects = TRUE AND p.project_manager_user_id = @user_id)
                 OR EXISTS (
@@ -389,6 +392,7 @@ public static class ProjectWorkspaceModule
                 OR (
                     @can_view_team_scope = TRUE
                     AND p.project_manager_user_id IN (SELECT user_id FROM team_members)
+                )
                 )
             GROUP BY p.project_id, p.project_code, p.project_name, c.client_name, p.status, p.start_date, p.end_date, p.billable, pm.display_name, pm.email, ae.display_name, ae.email, sa.display_name, sa.email
             ORDER BY p.created_at DESC
@@ -466,6 +470,7 @@ public static class ProjectWorkspaceModule
             LEFT JOIN project_intake_requests pir ON pir.project_intake_request_id = d.project_intake_request_id
             WHERE d.is_active = TRUE
               AND COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
+              AND (@hide_closed_projects = FALSE OR p.project_id IS NULL OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
               AND (
                   @is_broad_scope = TRUE
                   OR (@can_view_managed_projects = TRUE AND (p.project_manager_user_id = @user_id OR pir.assigned_pm_user_id = @user_id))
@@ -602,10 +607,13 @@ public static class ProjectWorkspaceModule
                AND used_time.task_id = pa.task_id
                AND used_time.user_id = pa.user_id
             WHERE
+                (@hide_closed_projects = FALSE OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
+                AND (
                 @is_broad_scope = TRUE
                 OR pa.user_id = @user_id
                 OR (@can_view_managed_projects = TRUE AND p.project_manager_user_id = @user_id)
                 OR (@can_view_team_scope = TRUE AND pa.user_id IN (SELECT user_id FROM team_members))
+                )
             ORDER BY p.project_code, u.display_name, pa.effective_start_date
             LIMIT 100;
             """;
@@ -680,6 +688,8 @@ public static class ProjectWorkspaceModule
                 GROUP BY erra.engineering_resource_request_id
             ) assigned ON assigned.engineering_resource_request_id = err.engineering_resource_request_id
             WHERE
+                (@hide_closed_projects = FALSE OR p.project_id IS NULL OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
+                AND (
                 @is_broad_scope = TRUE
                 OR err.fulfilled_by_user_id = @user_id
                 OR EXISTS (
@@ -699,6 +709,7 @@ public static class ProjectWorkspaceModule
                               AND team_erra.user_id IN (SELECT user_id FROM team_members)
                         )
                     )
+                )
                 )
             ORDER BY err.created_at DESC
             LIMIT 100;
@@ -769,6 +780,7 @@ public static class ProjectWorkspaceModule
             WHERE d.project_intake_document_id = @document_id
               AND d.is_active = TRUE
               AND COALESCE(d.upload_source, '') <> 'celar_ai_chat_attachment'
+              AND (@hide_closed_projects = FALSE OR p.project_id IS NULL OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
               AND (
                   @is_broad_scope = TRUE
                   OR (@can_view_managed_projects = TRUE AND (p.project_manager_user_id = @user_id OR pir.assigned_pm_user_id = @user_id))
@@ -832,6 +844,7 @@ public static class ProjectWorkspaceModule
         command.Parameters.AddWithValue("is_broad_scope", access.IsBroadScope);
         command.Parameters.AddWithValue("can_view_managed_projects", access.CanViewManagedProjects);
         command.Parameters.AddWithValue("can_view_team_scope", access.CanViewTeamScope);
+        command.Parameters.AddWithValue("hide_closed_projects", access.HideClosedProjects);
     }
 
     private static Guid? GetSessionUserId(HttpContext httpContext)
@@ -932,6 +945,7 @@ internal sealed record ProjectWorkspaceAccessContext(
     public bool IsBroadScope => IsAdministrator || IsCoordinator || IsExecutive;
     public bool CanViewManagedProjects => IsBroadScope || IsProjectManager || IsProjectManagementLead || IsCoordinator;
     public bool CanViewTeamScope => IsBroadScope || IsManager || IsEngineeringLead || IsProjectManagementLead || IsCoordinator;
+    public bool HideClosedProjects => !IsBroadScope && !IsProjectManager && !IsProjectManagementLead;
 
     public string ScopeLabel
     {

@@ -181,7 +181,7 @@ export default function CostOverrunAlertCenter({ canManageCostAlerts = false }) 
     <section className="cost-alert-center">
       <div className="cost-alert-header">
         <div>
-          <p className="eyebrow">019M-AJ</p>
+          <p className="eyebrow">Module 022</p>
           <h2>Cost Alert Routing Controls</h2>
           <p className="muted">
             Evaluate project cost alerts, hold notifications by default, acknowledge alerts, resolve alerts, and release routing only when Admin/PTC is ready.

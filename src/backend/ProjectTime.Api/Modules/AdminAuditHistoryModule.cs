@@ -25,6 +25,8 @@ public static class AdminAuditHistoryModule
     [
         "audit_logs",
         "auth_login_attempts",
+        "auth_login_events",
+        "auth_sessions",
         "auth_password_reset_requests",
         "azure_sync_runs",
         "notification_log",
@@ -35,7 +37,26 @@ public static class AdminAuditHistoryModule
         "scoped_approval_stage_events",
         "scoped_time_correction_events",
         "projectpulse_native_admin_document_history",
-        "microsoft_integration_audit_events"
+        "microsoft_integration_audit_events",
+        "timesheet_day_statuses",
+        "scoped_time_management_events",
+        "scoped_time_correction_events",
+        "time_workflow_exports",
+        "module001_timer_audit_events",
+        "ai_capability_route_audit",
+        "ai_provider_probe_evidence",
+        "pulse_ai_answer_runs",
+        "pulse_ai_system_inquiry_runs",
+        "pulse_ai_system_tool_events",
+        "pulse_ai_retrieval_events",
+        "pulse_ai_document_processing_events",
+        "project_intake_change_history",
+        "work_register_change_history",
+        "project_notification_dispatches",
+        "project_notification_delivery_attempts",
+        "enterprise_notification_event_history",
+        "enterprise_notification_run_history",
+        "system_email_provider_test_events"
     ];
 
     private static readonly string[] TimestampCandidates =
@@ -629,6 +650,7 @@ public static class AdminAuditHistoryModule
         var text = $"{tableName} {eventType}".ToLowerInvariant();
         if (text.Contains("password")) return "password_reset";
         if (text.Contains("auth") || text.Contains("login") || text.Contains("session")) return "authentication";
+        if (text.Contains("pulse_ai") || text.Contains("celar") || text.Contains("ai_provider") || text.Contains("ai_capability")) return "ai_usage";
         if (text.Contains("service") || text.Contains("restart")) return "service_control";
         if (text.Contains("deploy") || text.Contains("release") || text.Contains("container") || text.Contains("runtime")) return "platform";
         if (text.Contains("azure") || text.Contains("entra") || text.Contains("microsoft") || text.Contains("sync") || text.Contains("integration")) return "integration";

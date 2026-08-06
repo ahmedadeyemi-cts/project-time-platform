@@ -453,3 +453,4 @@
   .module-api-relationship-list summary { grid-template-columns: 1fr; }
   .system-architecture-hero-actions { grid-template-columns: 1fr; }
 }
+.architecture-workflow-map{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.architecture-workflow-map article{padding:.9rem;border:1px solid var(--architecture-border,#d7e0ea);border-radius:.75rem;background:color-mix(in srgb,#0077c8 5%,var(--surface,#fff))}.architecture-workflow-map p{margin:.35rem 0 0}@media(max-width:700px){.architecture-workflow-map{grid-template-columns:1fr}}

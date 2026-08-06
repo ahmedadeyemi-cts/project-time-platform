@@ -35,7 +35,8 @@ const SURFACES = {
   overview: '/api/system-diagnostics/overview', checks: '/api/system-diagnostics/checks',
   issues: '/api/system-diagnostics/issues', sessions: '/api/system-diagnostics/sessions',
   evidence: '/api/system-diagnostics/evidence-policy', remediation: '/api/system-diagnostics/remediation-policy',
-  runbooks: '/api/system-diagnostics/runbooks', remediations: '/api/system-diagnostics/remediations'
+  runbooks: '/api/system-diagnostics/runbooks', remediations: '/api/system-diagnostics/remediations',
+  operationsAdapter: '/api/system-diagnostics/operations-adapter-readiness'
 };
 
 function titleCase(value) { return String(value ?? 'unknown').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
@@ -88,6 +89,7 @@ export default function SystemDiagnosticRemediationCenter({ authSession }) {
   const canManage = state.data.overview?.access?.canManage === true && !state.data.overview?.access?.isViewAs;
   const runbooks = state.data.runbooks?.runbooks ?? [];
   const selectedRunbook = useMemo(() => runbooks.find((item) => item.id === remediationForm.runbookCode), [runbooks, remediationForm.runbookCode]);
+  const operationsAdapter = state.data.operationsAdapter;
 
   async function createSession(event) {
     event.preventDefault();
@@ -196,7 +198,7 @@ export default function SystemDiagnosticRemediationCenter({ authSession }) {
         </article>
       </section>
 
-      <section className="system-diagnostic-panel"><div className="system-diagnostic-heading"><div><p className="system-diagnostic-eyebrow">Adapter readiness</p><h2>Production-changing automation</h2></div><span className="system-diagnostic-locked-label">Connector required</span></div><p>Restart, scale, rollback, replay, configuration refresh, and database repair can be planned and approved here. Execution returns the precise missing adapter until that authority is configured.</p><div className="system-diagnostic-locked-actions"><button type="button" disabled>Restart service</button><button type="button" disabled>Scale service</button><button type="button" disabled>Rollback deployment</button><button type="button" disabled>Replay integration event</button><button type="button" disabled>Refresh configuration</button><button type="button" disabled>Run database repair</button><button type="button" disabled>Execute rollback</button><button type="button" disabled>Run AI analysis</button></div></section>
+      <section className="system-diagnostic-panel"><div className="system-diagnostic-heading"><div><p className="system-diagnostic-eyebrow">Service &amp; API recovery</p><h2>Azure Container Apps restart control</h2></div><span className={`diagnostic-badge is-${operationsAdapter?.ready ? 'success' : 'warning'}`}>{operationsAdapter?.ready ? 'Adapter ready' : 'Setup required'}</span></div><p>ProjectPulse HTTP routes share the API service, so an individual route cannot be restarted. This controlled runbook restarts the active revision of an allowlisted API or web Container App through managed identity.</p><div className="system-diagnostic-adapter-grid"><article><strong>Authentication</strong><span>{titleCase(operationsAdapter?.authentication || 'managed_identity_no_client_secret')}</span><small>No Azure client secret is accepted by this page.</small></article><article><strong>Allowed targets</strong><span>{operationsAdapter?.allowedTargets?.join(', ') || 'None configured'}</span><small>The runbook target must match exactly.</small></article><article><strong>Required Azure permission</strong><span>Container App revision read + restart/action</span><small>Scope a custom role only to the allowed Test apps.</small></article></div>{operationsAdapter?.missing?.length ? <div className="system-diagnostic-preview"><strong>Administrator setup</strong><span>Enable the API Container App managed identity, assign the least-privilege custom role, then set these environment references:</span><ul>{operationsAdapter.missing.map((item) => <li key={item}><code>{item}</code></li>)}</ul></div> : <div className="system-diagnostic-preview"><strong>How to restart safely</strong><span>Run a diagnostic session → choose Service recovery / Restart service → enter an allowed target → prepare → have a different administrator approve → stage → execute → verify.</span></div>}<div className="system-diagnostic-row-actions"><button type="button" onClick={() => setRemediationForm((form) => ({ ...form, runbookCode: 'service_recovery', actionCode: 'restart_service', targetReference: operationsAdapter?.allowedTargets?.[0] || form.targetReference }))}>Prepare restart runbook</button><a href="#service-control">Open live API diagnostics</a><a href="#audit-history">Review restart history</a></div></section>
     </section>
   );
 }

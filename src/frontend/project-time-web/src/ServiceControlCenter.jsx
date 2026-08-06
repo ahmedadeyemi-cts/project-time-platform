@@ -317,6 +317,7 @@ export default function ServiceControlCenter({ authSession }) {
             <article key={capability.key}><div><strong>{capability.name}</strong><Status value={capability.state} /></div><p>{capability.message}</p></article>
           ))}
         </div>
+        <div className="service-restart-handoff"><div><strong>Need to restart the API or web service?</strong><span>Routes share the API process. Module 998 provides the allowlisted Azure Container Apps restart runbook with diagnostic evidence, separate approval, staging, audit, and verification.</span></div><a className="primary-action" href="#system-diagnostics">Open controlled service restart</a></div>
       </section>
 
       <section className="service-control-card">

@@ -60,13 +60,13 @@ check('MODULE_998_NATIVE_EXECUTION',backend.includes('refresh_health_snapshot')&
 check('MODULE_998_EXTERNAL_ACTIONS_GATED',backend.includes('StatusCodes.Status423Locked')&&backend.includes('execution_adapter_required')&&['restart_service','scale_service','rollback_deployment','replay_integration_event','refresh_configuration','database_repair'].every((x)=>backend.includes(x)));
 check('MODULE_998_STATUS_INTEGRITY',backend.includes('external_infrastructure')&&backend.includes('"unknown"')&&backend.includes('adapter = "azure_diagnostics"'));
 check('MODULE_998_EVIDENCE_BOUNDARY',backend.includes('rawLogAccessEnabled = false')&&backend.includes('secretAccessEnabled = false')&&backend.includes('connectionStringAccessEnabled = false'));
-check('MODULE_998_NO_EXTERNAL_CONNECTOR',!/(?:HttpClient|TcpClient|UdpClient|Process\.Start|GraphServiceClient|OpenAIClient|SmtpClient)/.test(backend));
+check('MODULE_998_NO_EXTERNAL_CONNECTOR',!/(?:TcpClient|UdpClient|Process\.Start|GraphServiceClient|OpenAIClient|SmtpClient)/.test(backend)&&['IDENTITY_ENDPOINT','PROJECTPULSE_AZURE_ALLOWED_CONTAINER_APPS','X-IDENTITY-HEADER','restart?api-version=2026-01-01'].every((x)=>backend.includes(x))&&!backend.includes('AZURE_CLIENT_SECRET'));
 
 check('MODULE_998_FRONTEND_MARKERS',frontend.includes('data-module="998"')&&frontend.includes('data-execution-mode="governed-native"')&&frontend.includes('data-contract-version'));
 check('MODULE_998_INDEPENDENT_LOADING',frontend.includes('Promise.allSettled')&&frontend.includes('Some diagnostic surfaces are unavailable'));
 for(const route of ['/api/system-diagnostics/overview','/api/system-diagnostics/checks','/api/system-diagnostics/issues','/api/system-diagnostics/sessions','/api/system-diagnostics/runbooks','/api/system-diagnostics/remediations']) check(`MODULE_998_FRONTEND_${route.replaceAll(/[^a-z0-9]/gi,'_').toUpperCase()}`,frontend.includes(`'${route}'`),route);
 check('MODULE_998_FRONTEND_MUTATIONS',frontend.includes("method: 'POST'")&&['Run diagnostics','Prepare remediation','Approve as separate actor','Stage','Execute','Verify','Close'].every((x)=>frontend.includes(x)));
-check('MODULE_998_ADAPTER_CONTROLS_VISIBLE',count(frontend,'<button type="button" disabled>')>=8&&['Restart service','Scale service','Rollback deployment','Replay integration event','Run database repair'].every((x)=>frontend.includes(x)));
+check('MODULE_998_ADAPTER_CONTROLS_VISIBLE',['Azure Container Apps restart control','Allowed targets','Prepare restart runbook','No Azure client secret is accepted by this page'].every((x)=>frontend.includes(x)));
 check('MODULE_998_US_SIGNAL_BRAND',frontend.includes('usSignalLogoDataUrl')&&frontend.includes('alt="US Signal"')&&css.includes('--diagnostic-blue: #005baa')&&css.includes('--diagnostic-navy: #002f5d'));
 check('MODULE_998_SCOPED_STYLES',css.includes('.system-diagnostic-center')&&!/(^|\n)\s*(?:html|body|:root|#root)\s*[{,]/m.test(css));
 

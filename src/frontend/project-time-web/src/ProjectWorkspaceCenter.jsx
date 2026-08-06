@@ -95,6 +95,8 @@ function StatusBadge({ children, tone = 'neutral' }) {
 export default function ProjectWorkspaceCenter() {
   const [overview, setOverview] = useState({ loading: true, data: null, error: null });
   const [documentFilter, setDocumentFilter] = useState('engineering');
+  const [documentSearch, setDocumentSearch] = useState('');
+  const [projectFilter, setProjectFilter] = useState('all');
   const [viewAsUsers, setViewAsUsers] = useState([]);
   const [selectedViewAsUserId, setSelectedViewAsUserId] = useState('');
   const [documentDownload, setDocumentDownload] = useState({
@@ -102,6 +104,7 @@ export default function ProjectWorkspaceCenter() {
     message: '',
     error: false
   });
+  const [documentPreview, setDocumentPreview] = useState({ loading: false, item: null, url: '', error: '' });
 
   async function loadViewAsUsers() {
     try {
@@ -185,6 +188,25 @@ export default function ProjectWorkspaceCenter() {
     }
   }
 
+  async function previewDocument(workspaceDocument) {
+    setDocumentPreview({ loading: true, item: workspaceDocument, url: '', error: '' });
+    try {
+      const response = await fetch(workspaceDocument.downloadUrl, { headers: getProjectPulseAuthHeaders(selectedViewAsUserId) });
+      if (!response.ok) throw new Error(await readDownloadError(response));
+      const blob = await response.blob();
+      const previewable = String(blob.type || workspaceDocument.contentType || '').match(/^(application\/pdf|image\/|text\/)/i);
+      if (!previewable) throw new Error('This file type opens through a secure download. Use Download to view it in its native application.');
+      setDocumentPreview({ loading: false, item: workspaceDocument, url: URL.createObjectURL(blob), error: '' });
+    } catch (error) {
+      setDocumentPreview({ loading: false, item: workspaceDocument, url: '', error: error instanceof Error ? error.message : 'Preview is unavailable.' });
+    }
+  }
+
+  function closePreview() {
+    if (documentPreview.url) URL.revokeObjectURL(documentPreview.url);
+    setDocumentPreview({ loading: false, item: null, url: '', error: '' });
+  }
+
   const projects = overview.data?.projects ?? [];
   const documents = overview.data?.documents ?? [];
   const assignments = overview.data?.assignments ?? [];
@@ -192,17 +214,14 @@ export default function ProjectWorkspaceCenter() {
   const access = overview.data?.access;
   const selectedViewAsUser = viewAsUsers.find((user) => user.userId === selectedViewAsUserId);
 
-  const filteredDocuments = useMemo(() => {
-    if (documentFilter === 'ai') {
-      return documents.filter((document) => document.aiTimesheetContextEnabled);
-    }
-
-    if (documentFilter === 'engineering') {
-      return documents.filter((document) => document.engineeringVisible);
-    }
-
-    return documents;
-  }, [documents, documentFilter]);
+  const filteredDocuments = useMemo(() => documents.filter((document) => {
+    if (documentFilter === 'ai' && !document.aiTimesheetContextEnabled) return false;
+    if (documentFilter === 'engineering' && !document.engineeringVisible) return false;
+    if (projectFilter !== 'all' && document.projectCode !== projectFilter) return false;
+    const query = documentSearch.trim().toLowerCase();
+    return !query || [document.originalFileName, document.projectOrIntakeName, document.projectCode, document.documentCategory, document.documentType]
+      .some((value) => String(value ?? '').toLowerCase().includes(query));
+  }), [documents, documentFilter, documentSearch, projectFilter]);
 
   return (
     <section className="project-workspace-center">
@@ -238,7 +257,7 @@ export default function ProjectWorkspaceCenter() {
 
       <div className="project-workspace-header">
         <div>
-          <p className="eyebrow">019M-U</p>
+          <p className="eyebrow">Module 019</p>
           <h2>Project Workspace & Engineering Documents</h2>
           <p className="muted">
             Project-centered view of assignments, engineering-visible documents, resource requests, and role-scoped workspace access.
@@ -309,6 +328,8 @@ export default function ProjectWorkspaceCenter() {
             <p className="muted">SOW, GSD, and supporting documents uploaded from intake remain available based on role scope.</p>
           </div>
           <div className="workspace-filter-row">
+            <input type="search" value={documentSearch} onChange={(event) => setDocumentSearch(event.target.value)} placeholder="Search documents" aria-label="Search engineering documents" />
+            <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label="Filter documents by project"><option value="all">All active projects</option>{[...new Set(documents.map((item) => item.projectCode).filter(Boolean))].sort().map((code) => <option value={code} key={code}>{code}</option>)}</select>
             <button type="button" className={documentFilter === 'engineering' ? 'active' : ''} onClick={() => setDocumentFilter('engineering')}>Engineering visible</button>
             <button type="button" className={documentFilter === 'ai' ? 'active' : ''} onClick={() => setDocumentFilter('ai')}>Timesheet context</button>
             <button type="button" className={documentFilter === 'all' ? 'active' : ''} onClick={() => setDocumentFilter('all')}>All</button>
@@ -333,16 +354,10 @@ export default function ProjectWorkspaceCenter() {
                 <span>{document.aiTimesheetContextEnabled ? 'Timesheet assistant context ready' : 'Not used for timesheet context'}</span>
                 <span>Extraction: {document.extractionStatus}</span>
               </div>
-              <button
-                type="button"
-                className="workspace-download-link"
-                onClick={() => downloadDocument(document)}
-                disabled={documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ')}
-              >
-                {documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ')
-                  ? 'Downloading...'
-                  : 'Download document'}
-              </button>
+              <div className="workspace-document-actions">
+                <button type="button" onClick={() => previewDocument(document)}>View</button>
+                <button type="button" className="workspace-download-link" onClick={() => downloadDocument(document)} disabled={documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ')}>{documentDownload.documentId === document.id && !documentDownload.error && documentDownload.message.startsWith('Downloading ') ? 'Downloading...' : 'Download'}</button>
+              </div>
               {documentDownload.documentId === document.id && documentDownload.message ? (
                 <small className={`workspace-download-status ${documentDownload.error ? 'error' : ''}`}>
                   {documentDownload.message}
@@ -352,6 +367,8 @@ export default function ProjectWorkspaceCenter() {
           ))}
         </div>
       </article>
+
+      {documentPreview.item ? <div className="workspace-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePreview(); }}><section className="workspace-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-preview-title"><header><div><p className="eyebrow">Secure document preview</p><h3 id="workspace-preview-title">{documentPreview.item.originalFileName}</h3><span>{documentPreview.item.projectCode} · {documentPreview.item.projectOrIntakeName}</span></div><button type="button" onClick={closePreview} aria-label="Close document preview">Close</button></header>{documentPreview.loading ? <div className="workspace-preview-state">Preparing authorized preview…</div> : null}{documentPreview.error ? <div className="workspace-preview-state error">{documentPreview.error}<button type="button" onClick={() => downloadDocument(documentPreview.item)}>Download file</button></div> : null}{documentPreview.url ? <iframe src={documentPreview.url} title={`Preview ${documentPreview.item.originalFileName}`} /> : null}</section></div> : null}
 
       <article className="workspace-panel">
         <h3>Engineering Assignments</h3>

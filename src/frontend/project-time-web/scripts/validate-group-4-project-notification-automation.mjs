@@ -305,11 +305,11 @@ assert(count(generatedApp, "import ProjectNotificationAutomationCenter from './P
   'Generated App must import Group 4 exactly once.');
 assert(count(generatedApp, 'GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE') === 1,
   'Generated App must contain one Module 032 route.');
-assert(count(generatedApp, '<ProjectNotificationAutomationCenter mode="routing-rules" authSession={authSession} />') === 1,
+assert(count(generatedApp, '<ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} />') === 1,
   'Module 022 Group 4 panel must be unique.');
-assert(count(generatedApp, '<ProjectNotificationAutomationCenter mode="schedules" authSession={authSession} />') === 1,
+assert(count(generatedApp, '<ProjectNotificationAutomationCenter workspace="scheduling" authSession={authSession} />') === 1,
   'Module 023 Group 4 panel must be unique.');
-assert(count(generatedApp, '<ProjectNotificationAutomationCenter mode="delivery-monitor" authSession={authSession} />') === 1,
+assert(count(generatedApp, '<ProjectNotificationAutomationCenter workspace="delivery" authSession={authSession} />') === 1,
   'Module 032 Group 4 route must be unique.');
 assert(count(generatedRegistry, "moduleNumber: '032'") === 1,
   'Generated Module 032 registry entry must be unique.');

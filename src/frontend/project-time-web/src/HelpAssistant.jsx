@@ -1112,29 +1112,36 @@ export default function HelpAssistant() {
             ))}
           </div>
 
-          <section className="celar-ai-chat-attachments" aria-labelledby="celar-ai-chat-attachments-heading">
-            <div className="celar-ai-chat-attachments-heading">
-              <div><strong id="celar-ai-chat-attachments-heading">Documents for this conversation</strong><span>Files are privately scanned, extracted, and authorized before Celar AI can use them. Raw file contents are never stored in this browser.</span></div>
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentBusy}>{attachmentBusy ? 'Processing…' : 'Attach documents'}</button>
-            </div>
-            <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
-            <div
-              className={`celar-ai-chat-dropzone${draggingFiles ? ' is-dragging' : ''}`}
-              onDragEnter={(event) => { event.preventDefault(); setDraggingFiles(true); }}
-              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
-              onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
-              onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
-            >Drop approved documents here or use Attach documents.</div>
-            {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
-            {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
-              const id = attachmentId(item);
-              const ready = attachmentIsReady(item);
-              return <li key={id || attachmentName(item)}>
-                <label><input type="checkbox" checked={ready && selectedAttachmentIds.includes(id)} disabled={!ready || attachmentBusy} onChange={() => toggleAttachment(item)} /><span><strong>{attachmentName(item)}</strong><small>{[ready ? (selectedAttachmentIds.includes(id) ? 'Ready and selected for the next question' : 'Ready — not selected') : titleFrom(attachmentStatus(item)), formatFileSize(item.sizeBytes), item.diagnosticCode && item.diagnosticCode !== 'none' ? item.diagnosticCode : ''].filter(Boolean).join(' · ')}</small></span></label>
-                <button type="button" onClick={() => void removeAttachment(item)} disabled={attachmentBusy} aria-label={`Remove ${attachmentName(item)}`}>Remove</button>
-              </li>;
-            })}</ul> : null}
-          </section>
+          <details className="celar-ai-chat-attachments">
+            <summary className="celar-ai-chat-attachments-summary">
+              <span className="celar-ai-chat-attachments-icon" aria-hidden="true">+</span>
+              <span><strong>Documents for this conversation</strong><small>{attachments.length ? `${attachments.length} attached · ${selectedAttachmentIds.length} selected` : 'Optional · add private context only when needed'}</small></span>
+              <span className="celar-ai-chat-attachments-toggle">Expand</span>
+            </summary>
+            <section className="celar-ai-chat-attachments-body" aria-label="Documents for this conversation">
+              <div className="celar-ai-chat-attachments-heading">
+                <div><strong>Private document context</strong><span>Files are scanned, extracted, and authorized before Celar AI can use them. Raw contents are never stored in this browser.</span></div>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentBusy}>{attachmentBusy ? 'Processing…' : 'Choose documents'}</button>
+              </div>
+              <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
+              <div
+                className={`celar-ai-chat-dropzone${draggingFiles ? ' is-dragging' : ''}`}
+                onDragEnter={(event) => { event.preventDefault(); setDraggingFiles(true); }}
+                onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
+                onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
+                onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
+              ><strong>Drop approved documents here</strong><span>PDF, Word, PowerPoint, Excel, text, CSV, JSON, XML, or HTML</span></div>
+              {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
+              {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
+                const id = attachmentId(item);
+                const ready = attachmentIsReady(item);
+                return <li key={id || attachmentName(item)}>
+                  <label><input type="checkbox" checked={ready && selectedAttachmentIds.includes(id)} disabled={!ready || attachmentBusy} onChange={() => toggleAttachment(item)} /><span><strong>{attachmentName(item)}</strong><small>{[ready ? (selectedAttachmentIds.includes(id) ? 'Ready and selected for the next question' : 'Ready — not selected') : titleFrom(attachmentStatus(item)), formatFileSize(item.sizeBytes), item.diagnosticCode && item.diagnosticCode !== 'none' ? item.diagnosticCode : ''].filter(Boolean).join(' · ')}</small></span></label>
+                  <button type="button" onClick={() => void removeAttachment(item)} disabled={attachmentBusy} aria-label={`Remove ${attachmentName(item)}`}>Remove</button>
+                </li>;
+              })}</ul> : null}
+            </section>
+          </details>
 
           <form className="help-input-row" onSubmit={submitQuestion}>
             <textarea

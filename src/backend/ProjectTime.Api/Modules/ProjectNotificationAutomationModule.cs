@@ -91,7 +91,7 @@ public static class ProjectNotificationAutomationModule
             }
 
             var result = await ProjectNotificationAutomationService.QueueCloseoutAsync(
-                request ?? new(null, null, null, null, null, null, null, null),
+                request ?? new(null, null, null, null, null, null, null, null, null),
                 context);
             await result.ExecuteAsync(context);
         });

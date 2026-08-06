@@ -1,3 +1,5 @@
+using System.Net.Mail;
+
 namespace ProjectTime.Api.Modules;
 
 internal static class ProjectNotificationAutomationService
@@ -706,9 +708,22 @@ internal static class ProjectNotificationAutomationService
                 "account_executive",
                 "project_team_coordinator"
             ],
-            null);
+            null).ToList();
 
-        if (recipients.Length == 0)
+        var additionalCc = request.AdditionalCcRecipients ?? [];
+        if (additionalCc.Count > 25)
+            return Results.BadRequest(new { module = "041", status = "too_many_additional_cc_recipients", message = "No more than 25 additional CC recipients may be added." });
+
+        foreach (var candidate in additionalCc)
+        {
+            var email = candidate.Email?.Trim() ?? string.Empty;
+            if (!ValidEmail(email))
+                return Results.BadRequest(new { module = "041", status = "invalid_additional_cc_recipient", message = $"The additional CC address '{email}' is not valid." });
+            if (recipients.Any(item => item.Email.Equals(email, StringComparison.OrdinalIgnoreCase))) continue;
+            recipients.Add(new ProjectNotificationUser(null, string.IsNullOrWhiteSpace(candidate.Name) ? email : candidate.Name.Trim(), email, "additional_cc", "module_041_authorized_additional_cc", "cc"));
+        }
+
+        if (recipients.Count == 0)
         {
             return Results.BadRequest(new
             {
@@ -748,6 +763,7 @@ internal static class ProjectNotificationAutomationService
                     actorEmail = actor.Email,
                     serverDerivedRecipients = true,
                     clientRecipientListIgnored = true,
+                    authorizedAdditionalCcCount = additionalCc.Count,
                     sourceStates = snapshot.Sources
                 },
                 context.RequestAborted);
@@ -797,10 +813,18 @@ internal static class ProjectNotificationAutomationService
             auditPath = $"/api/project-notifications/dispatches?dispatchId={dispatchId:D}",
             outboxPath = $"/api/project-notifications/dispatches?dispatchId={dispatchId:D}",
             serverDerivedRecipients = true,
-            clientRecipientListIgnored = true
+            clientRecipientListIgnored = true,
+            authorizedAdditionalCcAccepted = true
         }, statusCode: delivery.Sent
             ? StatusCodes.Status200OK
             : StatusCodes.Status202Accepted);
+    }
+
+    private static bool ValidEmail(string email)
+    {
+        if (email.Length is < 3 or > 320 || email.Contains('\r') || email.Contains('\n')) return false;
+        try { return new MailAddress(email).Address.Equals(email, StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
     }
 
     private static async Task<ProjectNotificationSnapshotResult> LoadSnapshotSafelyAsync(

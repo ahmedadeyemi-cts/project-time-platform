@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
@@ -160,16 +162,26 @@ public static class SecurityOperationsResponseModule
         if (outcome.Failure is not null) return outcome.Failure;
         await using var connection = outcome.Connection!;
         var sessions = new List<object>();
+        var currentToken = ReadSessionToken(context.Request);
+        var currentTokenHash = string.IsNullOrWhiteSpace(currentToken) ? string.Empty : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(currentToken))).ToLowerInvariant();
         await using var command = new NpgsqlCommand("""
             SELECT s.auth_session_id, s.user_id, COALESCE(u.display_name, u.email, s.user_id::text),
                    s.provider_code, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at,
-                   s.ip_address
+                   s.ip_address, u.email, s.user_agent, s.session_window_minutes, s.revoked_reason,
+                   COALESCE((
+                       SELECT string_agg(DISTINCT r.role_code, ', ' ORDER BY r.role_code)
+                       FROM app_user_role_assignments ura
+                       JOIN app_roles r ON r.app_role_id = ura.app_role_id AND r.is_active = TRUE
+                       WHERE ura.user_id = s.user_id AND ura.is_active = TRUE
+                   ), ''),
+                   s.session_token_hash = @current_token_hash
             FROM auth_sessions s
             JOIN app_users u ON u.user_id = s.user_id
             WHERE s.created_at >= now() - interval '30 days'
             ORDER BY s.last_seen_at DESC
             LIMIT 100;
             """, connection);
+        command.Parameters.AddWithValue("current_token_hash", currentTokenHash);
         await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
         while (await reader.ReadAsync(context.RequestAborted))
         {
@@ -180,10 +192,30 @@ public static class SecurityOperationsResponseModule
                 lastSeenAt = reader.GetFieldValue<DateTimeOffset>(5), expiresAt = reader.GetFieldValue<DateTimeOffset>(6),
                 revokedAt = reader.IsDBNull(7) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(7),
                 sourceIp = reader.IsDBNull(8) ? null : reader.GetString(8),
-                active = reader.IsDBNull(7) && reader.GetFieldValue<DateTimeOffset>(6) > DateTimeOffset.UtcNow
+                email = reader.GetString(9), userAgent = reader.IsDBNull(10) ? null : reader.GetString(10),
+                sessionWindowMinutes = reader.GetInt32(11), revokedReason = reader.IsDBNull(12) ? null : reader.GetString(12),
+                roles = reader.GetString(13).Split(", ", StringSplitOptions.RemoveEmptyEntries), isCurrentSession = reader.GetBoolean(14),
+                active = reader.IsDBNull(7) && reader.GetFieldValue<DateTimeOffset>(6) > DateTimeOffset.UtcNow,
+                riskSignals = SessionRiskSignals(reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetFieldValue<DateTimeOffset>(5), reader.GetFieldValue<DateTimeOffset>(6))
             });
         }
         return Results.Ok(new { module = ModuleNumber, status = "security_sessions_loaded", sessions, sessionRevocationEnabled = NativeSessionRevocationEnabled() });
+    }
+
+    private static string? ReadSessionToken(HttpRequest request)
+    {
+        if (request.Headers.TryGetValue("X-ProjectPulse-Session", out var values) && !string.IsNullOrWhiteSpace(values.FirstOrDefault())) return values.First()!.Trim();
+        var authorization = request.Headers.Authorization.ToString();
+        return authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? authorization[7..].Trim() : null;
+    }
+
+    private static string[] SessionRiskSignals(string? ipAddress, string? userAgent, DateTimeOffset lastSeen, DateTimeOffset expiresAt)
+    {
+        var signals = new List<string>();
+        if (string.IsNullOrWhiteSpace(ipAddress)) signals.Add("source_ip_unavailable");
+        if (string.IsNullOrWhiteSpace(userAgent)) signals.Add("user_agent_unavailable");
+        if (lastSeen < DateTimeOffset.UtcNow.AddDays(-7) && expiresAt > DateTimeOffset.UtcNow) signals.Add("long_idle_session");
+        return signals.Count == 0 ? ["no_local_risk_signal"] : signals.ToArray();
     }
 
     private static async Task<IResult> GetIncidentsAsync(HttpContext context)

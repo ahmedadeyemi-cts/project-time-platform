@@ -610,7 +610,11 @@
 .group5-work-item-list {
   display: grid;
   gap: 0.7rem;
+  max-height: 68vh;
+  overflow: auto;
+  padding-right: 4px;
 }
+.group5-pagination { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding-top: .75rem; }
 
 .group5-work-item {
   display: grid;

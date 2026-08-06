@@ -196,3 +196,4 @@
     bottom: 0.75rem;
   }
 }
+.cicd-actions label{display:grid;gap:.25rem;font-weight:750}.cicd-actions input,.cicd-actions select{min-height:2.5rem;padding:.45rem .65rem;border:1px solid #cbd5e1;border-radius:.6rem;background:var(--surface,#fff);color:inherit}.cicd-setup-guide{display:grid;gap:.45rem;margin-top:.8rem;padding:.85rem;border-left:4px solid #0077c8;background:color-mix(in srgb,#0077c8 7%,transparent)}.cicd-setup-guide a{width:fit-content;font-weight:800;color:#0077c8}

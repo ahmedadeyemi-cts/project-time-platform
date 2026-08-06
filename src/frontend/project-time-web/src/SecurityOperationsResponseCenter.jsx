@@ -38,7 +38,9 @@ const SURFACES = {
   incidents: '/api/security-operations/incidents',
   response: '/api/security-operations/response-policy',
   intelligence: '/api/security-operations/threat-intelligence',
-  controls: '/api/security-operations/control-posture'
+  controls: '/api/security-operations/control-posture',
+  integrations: '/api/security-operations/integration-policy',
+  reporting: '/api/security-operations/reporting-policy'
 };
 
 function titleCase(value) {
@@ -65,6 +67,9 @@ export default function SecurityOperationsResponseCenter({ authSession }) {
   const [state, setState] = useState({ loading: true, data: {}, errors: {}, action: '', result: null });
   const [declareForm, setDeclareForm] = useState(EMPTY_DECLARE);
   const [containForm, setContainForm] = useState(EMPTY_CONTAIN);
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [sessionStatus, setSessionStatus] = useState('active');
+  const [selectedSession, setSelectedSession] = useState(null);
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, errors: {} }));
@@ -101,6 +106,13 @@ export default function SecurityOperationsResponseCenter({ authSession }) {
   const canManage = state.data.overview?.access?.canManage === true && !state.data.overview?.access?.isViewAs;
 
   const activeSessions = useMemo(() => sessions.filter((session) => session.active), [sessions]);
+  const filteredSessions = useMemo(() => sessions.filter((session) => {
+    if (sessionStatus === 'active' && !session.active) return false;
+    if (sessionStatus === 'revoked' && !session.revokedAt) return false;
+    if (sessionStatus === 'expired' && (session.active || session.revokedAt)) return false;
+    const query = sessionSearch.trim().toLowerCase();
+    return !query || [session.user, session.email, session.sessionId, session.sourceIp, session.provider, session.userAgent, ...(session.roles || [])].some((value) => String(value ?? '').toLowerCase().includes(query));
+  }), [sessions, sessionSearch, sessionStatus]);
 
   async function declareIncident(event) {
     event.preventDefault();
@@ -161,6 +173,14 @@ export default function SecurityOperationsResponseCenter({ authSession }) {
         <article><span>Active sessions</span><strong>{metrics.activeSessions ?? 0}</strong><small>Revocation switch: {state.data.overview?.posture?.nativeSessionRevocationEnabled ? 'enabled' : 'disabled'}</small></article>
       </section>
 
+      <section className="security-operations-panel security-operations-session-intelligence">
+        <div className="security-operations-heading"><div><p className="security-operations-eyebrow">Session intelligence</p><h2>Active identity sessions</h2><p>Inspect identity, role, provider, device/browser evidence, network origin, activity window, revocation state, and local risk signals.</p></div><span>{filteredSessions.length} shown</span></div>
+        <div className="security-operations-session-filters"><input type="search" value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="Search user, email, IP, role, session…" /><select value={sessionStatus} onChange={(event) => setSessionStatus(event.target.value)}><option value="active">Active</option><option value="all">All recent</option><option value="revoked">Revoked</option><option value="expired">Expired</option></select></div>
+        <div className="security-operations-table-wrap"><table className="security-operations-table"><thead><tr><th>Identity</th><th>Provider / roles</th><th>Network &amp; client</th><th>Activity</th><th>Risk</th><th>Action</th></tr></thead><tbody>{filteredSessions.slice(0, 100).map((session) => <tr key={session.sessionId}><td><strong>{session.user}{session.isCurrentSession ? ' · Current' : ''}</strong><span>{session.email}</span><small>{session.sessionId}</small></td><td><strong>{titleCase(session.provider)}</strong><span>{(session.roles || []).join(', ') || 'No active role'}</span></td><td><strong>{session.sourceIp || 'IP unavailable'}</strong><span>{session.userAgent || 'User agent unavailable'}</span></td><td><span>Created {when(session.createdAt)}</span><span>Last seen {when(session.lastSeenAt)}</span><small>Expires {when(session.expiresAt)}</small></td><td>{(session.riskSignals || []).map((signal) => <span className={`ops-badge is-${signal === 'no_local_risk_signal' ? 'success' : 'warning'}`} key={signal}>{titleCase(signal)}</span>)}</td><td><div className="security-operations-row-actions"><button type="button" onClick={() => setSelectedSession(session)}>Inspect</button>{session.active ? <button type="button" disabled={!canManage} onClick={() => setContainForm((form) => ({ ...form, actionCode: 'revoke_session', targetReference: session.sessionId, reason: `Revoke ${session.user}'s ${session.isCurrentSession ? 'current ' : ''}session after incident review.` }))}>Prepare revoke</button> : null}</div></td></tr>)}{!filteredSessions.length ? <tr><td colSpan="6">No session matches the current filters.</td></tr> : null}</tbody></table></div>
+      </section>
+
+      {selectedSession ? <div className="security-session-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSession(null); }}><aside className="security-session-drawer" role="dialog" aria-modal="true" aria-labelledby="security-session-title"><header><div><p className="security-operations-eyebrow">Session evidence</p><h2 id="security-session-title">{selectedSession.user}</h2><span>{selectedSession.isCurrentSession ? 'Current browser session' : 'Recent ProjectPulse session'}</span></div><button type="button" onClick={() => setSelectedSession(null)}>Close</button></header><dl>{[['Email', selectedSession.email], ['Session ID', selectedSession.sessionId], ['Provider', titleCase(selectedSession.provider)], ['Roles', (selectedSession.roles || []).join(', ') || 'None'], ['Source IP', selectedSession.sourceIp || 'Unavailable'], ['User agent', selectedSession.userAgent || 'Unavailable'], ['Created', when(selectedSession.createdAt)], ['Last seen', when(selectedSession.lastSeenAt)], ['Expires', when(selectedSession.expiresAt)], ['Window', `${selectedSession.sessionWindowMinutes} minutes`], ['Revoked', when(selectedSession.revokedAt)], ['Revocation reason', selectedSession.revokedReason || 'Not revoked']].map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl><div className="security-operations-boundary"><strong>Risk interpretation</strong><span>{(selectedSession.riskSignals || []).map(titleCase).join(' · ')}</span></div>{selectedSession.active ? <button type="button" disabled={!canManage} onClick={() => { setContainForm((form) => ({ ...form, actionCode: 'revoke_session', targetReference: selectedSession.sessionId, reason: `Revoke ${selectedSession.user}'s session after incident review.` })); setSelectedSession(null); }}>Prepare governed revocation</button> : null}</aside></div> : null}
+
       <section className="security-operations-grid">
         <article className="security-operations-panel">
           <div className="security-operations-heading"><div><p className="security-operations-eyebrow">Live signal queue</p><h2>Authentication anomalies</h2></div><span>{state.data.alerts?.queue?.total ?? 0} findings</span></div>
@@ -218,7 +238,7 @@ export default function SecurityOperationsResponseCenter({ authSession }) {
             <label className="is-wide">Reason<textarea value={containForm.reason} onChange={(event) => setContainForm((form) => ({ ...form, reason: event.target.value }))} required /></label>
             <button type="submit" disabled={!canManage || Boolean(state.action)}>Prepare containment</button>
           </form>
-          <details className="security-operations-sessions"><summary>Recent ProjectPulse sessions ({activeSessions.length} active)</summary>{sessions.map((session) => <button key={session.sessionId} type="button" className="security-operations-session" onClick={() => setContainForm((form) => ({ ...form, actionCode: 'revoke_session', targetReference: session.sessionId }))}><strong>{session.user}</strong><span>{session.sessionId}</span><small>{session.sourceIp || 'IP unavailable'} · last seen {when(session.lastSeenAt)} · {session.active ? 'active' : 'inactive'}</small></button>)}</details>
+          <div className="security-operations-boundary"><strong>Revocation guardrail</strong><span>Select a session in Session Intelligence, link it to an incident, and obtain approval from a different authorized actor. Set <code>PROJECTPULSE_SECURITY_NATIVE_SESSION_REVOCATION_ENABLED=true</code> for native ProjectPulse session revocation.</span></div>
         </article>
 
         <article className="security-operations-panel">
@@ -238,9 +258,16 @@ export default function SecurityOperationsResponseCenter({ authSession }) {
       </section>
 
       <section className="security-operations-panel">
-        <div className="security-operations-heading"><div><p className="security-operations-eyebrow">External controls</p><h2>Connector-bound actions</h2></div><span className="security-operations-locked">Adapters not configured</span></div>
-        <p>These controls remain visible so an analyst knows what is missing. They do not pretend to work.</p>
-        <div className="security-operations-locked-actions"><button type="button" disabled>Suspend Entra user</button><button type="button" disabled>Block WAF indicator</button><button type="button" disabled>Isolate endpoint</button><button type="button" disabled>Send external notification</button><button type="button" disabled>Export evidence package</button><button type="button" disabled>Run AI analysis</button></div>
+        <div className="security-operations-heading"><div><p className="security-operations-eyebrow">External controls</p><h2>Connector readiness &amp; activation</h2></div><span className="security-operations-locked">Setup required</span></div>
+        <p>Every adapter can now be inspected. Execution remains locked until the tenant-scoped identity, target allowlist, approval, audit, and rollback contract is proven.</p>
+        <div className="security-operations-adapter-grid">{[
+          ['Microsoft Entra / Graph', 'Suspend user, revoke Entra sessions, and review risky identities.', 'Use an environment-specific Entra app or managed identity. Grant only the approved Graph read/revocation permissions and configure it in Module 065.'],
+          ['Azure WAF', 'Block or release a verified malicious indicator.', 'Use managed identity with a custom role scoped to the approved WAF policy; configure an indicator allowlist and automatic expiry.'],
+          ['Microsoft Defender', 'Inspect or isolate an endpoint.', 'Connect the Defender API with machine read/isolate permissions and require an incident plus separate approval.'],
+          ['Module 065 notifications', 'Send approved incident communications.', 'Use the existing environment-specific mail provider and authoritative recipient groups; do not add a second mail secret.'],
+          ['Evidence repository', 'Export encrypted, access-controlled evidence.', 'Configure a restricted immutable container, retention policy, legal hold, and download audit.'],
+          ['Module 064 analysis', 'Analyze only approved, redacted security evidence.', 'Create a security-analysis capability route and verify that secrets, tokens, and raw payloads are excluded.']
+        ].map(([name, capability, setup]) => <details key={name}><summary><strong>{name}</strong><span>Review setup</span></summary><p>{capability}</p><small>{setup}</small></details>)}</div>
       </section>
     </section>
   );

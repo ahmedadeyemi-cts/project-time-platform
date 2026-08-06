@@ -35,6 +35,7 @@
   margin: 0 auto 1.5rem;
   color: var(--m040-slate-950);
 }
+.module040-guided-closeout [hidden]{display:none!important}.project-closeout-view-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;position:sticky;top:.5rem;z-index:20;padding:.6rem;border:1px solid var(--m040-slate-200);border-radius:.85rem;background:color-mix(in srgb,var(--m040-white) 94%,transparent);backdrop-filter:blur(8px)}.project-closeout-view-tabs button{display:grid;gap:.2rem;padding:.7rem;text-align:left;border:1px solid var(--m040-slate-300);border-radius:.65rem;background:var(--m040-white);color:inherit}.project-closeout-view-tabs button span{color:var(--m040-slate-600);font-size:.75rem}.project-closeout-view-tabs button.is-active{border-color:var(--m040-blue-700);box-shadow:inset 0 0 0 1px var(--m040-blue-700);background:var(--m040-cyan-100)}@media(max-width:640px){.project-closeout-view-tabs{grid-template-columns:1fr;position:static}}
 
 .module040-guided-closeout *,
 .module040-guided-closeout *::before,

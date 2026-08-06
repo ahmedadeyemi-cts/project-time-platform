@@ -224,6 +224,16 @@ export default function SystemArchitectureCenter({ authSession }) {
         <div><p className="eyebrow">Export contract</p><h2>Official branding and complete runtime evidence</h2><p>The HTML export uses the approved US Signal asset, provider, environment, release SHA, architecture legend, API appendix, generation date, and the footer “Created by Ahmed Adeyemi.”</p></div>
         <button type="button" className="primary-action" onClick={exportArchitecture}>Export architecture</button>
       </section>
+
+      <section className="system-architecture-panel">
+        <div className="system-architecture-heading"><div><p className="eyebrow">Current operating model</p><h2>Workflow ownership after the latest module changes</h2><p>These boundaries prevent duplicate modules from competing for the same data or action.</p></div><Status value="active" /></div>
+        <div className="architecture-workflow-map">{[
+          ['Intake → project → engineering', '020 captures and validates intake · 055D creates the canonical project · 055C manages it · 019 gives assigned engineers the linked documents.'],
+          ['Notification configuration → delivery → audit', '022 owns cost routing · 023 owns schedule timing · 032 owns delivery operations · 065 owns provider/recipient authority · 008 owns searchable history.'],
+          ['Health → diagnosis → remediation', '013 owns live service/API health · 998 owns evidence-backed diagnosis and controlled restart/remediation · 997 owns security incidents and containment.'],
+          ['Build → release → architecture', '058 owns CI/CD dispatch and pipeline evidence · 077 owns promotion/rollback governance · 068 reports the current provider-neutral runtime and API map.']
+        ].map(([name, detail]) => <article key={name}><strong>{name}</strong><p>{detail}</p></article>)}</div>
+      </section>
     </section>
   );
 }
