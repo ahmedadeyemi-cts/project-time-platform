@@ -164,6 +164,23 @@ jobs:
           path: /tmp/module006-migration-069.log
           retention-days: 7
 
+      - name: Test Project FlowHive migration 074 apply, immutability, and guarded rollback
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-module-066-project-flowhive-migration-074.sh > /tmp/project-flowhive-migration-074.log 2>&1
+          status=$?
+          cat /tmp/project-flowhive-migration-074.log
+          exit $status
+
+      - name: Upload Project FlowHive migration 074 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: project-flowhive-migration-074-diagnostics
+          path: /tmp/project-flowhive-migration-074.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 

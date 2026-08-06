@@ -1,0 +1,75 @@
+/* Shared accessibility floor for every routed module. Component themes may
+   refine these values, but no page may fall below this readable contract. */
+:root {
+  color-scheme: light;
+  --readable-text: #172033;
+  --readable-muted: #52627a;
+  --readable-link: #005ea8;
+  --readable-focus: #006fb9;
+  --readable-control: #ffffff;
+  --readable-control-border: #8190a5;
+  --readable-disabled-bg: #e7ebf0;
+  --readable-disabled-text: #586577;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --readable-text: #f4f8ff;
+  --readable-muted: #b8c4d6;
+  --readable-link: #75c2ff;
+  --readable-focus: #70d7ff;
+  --readable-control: #111f33;
+  --readable-control-border: #71839c;
+  --readable-disabled-bg: #27364a;
+  --readable-disabled-text: #bdc8d8;
+}
+
+:where(body, button, input, select, textarea) {
+  color: var(--readable-text);
+}
+
+:where(input, select, textarea) {
+  border-color: var(--readable-control-border);
+  background-color: var(--readable-control);
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--readable-muted);
+  opacity: 1;
+}
+
+:where(button, input, select, textarea, a, summary):focus-visible {
+  outline: 3px solid var(--readable-focus);
+  outline-offset: 2px;
+}
+
+:where(button, input, select, textarea):disabled {
+  color: var(--readable-disabled-text);
+  background-color: var(--readable-disabled-bg);
+  border-color: var(--readable-control-border);
+  opacity: 1;
+}
+
+:where(.muted, .subtitle, .helper-text, .supporting-text, small) {
+  color: var(--readable-muted);
+}
+
+:where(main, .app-shell) a:not([class]) {
+  color: var(--readable-link);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.15em;
+}
+
+:where(table) {
+  color: var(--readable-text);
+}
+
+:where(code, pre) {
+  color: var(--readable-text);
+}
+
+@media (forced-colors: active) {
+  :where(button, input, select, textarea, a, summary):focus-visible {
+    outline-color: Highlight;
+  }
+}

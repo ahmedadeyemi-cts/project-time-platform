@@ -8,6 +8,26 @@ public static class PulseAiPrivateRagModule
         this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
+            "/api/celar-ai/v1/rag/readiness",
+            (Func<HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/rag/help-search",
+            (Func<PulseAiPrivateHelpSearchRequest, HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)AskHelpSearchAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/rag/timesheet-suggestion",
+            (Func<PulseAiPrivateTimesheetRequest, HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)GenerateTimesheetAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/rag/flowhive-plan",
+            (Func<PulseAiPrivateFlowHiveRequest, HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/rag/answers/{answerRunId:guid}",
+            (Func<Guid, HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)GetAnswerAuditAsync);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/rag/answers/{answerRunId:guid}/feedback",
+            (Func<Guid, PulseAiPrivateFeedbackRequest, HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)SaveFeedbackAsync);
+
+        // Transport-only compatibility routes for already deployed callers.
+        endpoints.MapGet(
             "/api/pulse-ai/v1/rag/readiness",
             (Func<HttpContext, PulseAiPrivateRagService, CancellationToken, Task<IResult>>)GetReadinessAsync);
         endpoints.MapPost(
@@ -343,7 +363,7 @@ public static class PulseAiPrivateRagModule
             module = "011",
             status = "forbidden",
             requiredPermission = permission,
-            message = "The current effective user is not authorized for this private Pulse AI operation."
+            message = "The current effective user is not authorized for this private Celar AI operation."
         }, statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult ViewAsMutationBlocked() =>
@@ -351,6 +371,6 @@ public static class PulseAiPrivateRagModule
         {
             module = "011",
             status = "view_as_mutation_blocked",
-            message = "Administrator View-As is read-only and cannot submit Pulse AI feedback or create training evidence."
+            message = "Administrator View-As is read-only and cannot submit Celar AI feedback or create training evidence."
         }, statusCode: StatusCodes.Status403Forbidden);
 }

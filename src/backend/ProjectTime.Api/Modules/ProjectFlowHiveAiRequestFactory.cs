@@ -4,7 +4,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Builds a private-first planning contract without calling any model. Detailed
-/// document context stays inside the future private Pulse AI runtime. The
+/// document context stays inside the future private Celar AI runtime. The
 /// optional Module 064 fallback receives only a generic abstract problem.
 /// </summary>
 internal static class ProjectFlowHiveAiRequestFactory

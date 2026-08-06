@@ -11,7 +11,7 @@ const TABS = Object.freeze([
 ]);
 
 function asArray(value) { return Array.isArray(value) ? value : []; }
-function rebrandCelarString(value) { return String(value ?? '').replaceAll('CELAR AI', 'CELAR AI').replaceAll('Celar AI', 'Celar AI'); }
+function rebrandCelarString(value) { return String(value ?? '').replace(/\bPulse\s+AI\b/gi, 'Celar AI'); }
 function rebrandCelarValue(value) {
   if (typeof value === 'string') return rebrandCelarString(value);
   if (Array.isArray(value)) return value.map(rebrandCelarValue);
@@ -154,7 +154,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
 
   async function refreshReadiness() {
     setError('');
-    try { setReadiness(await getJson('/api/pulse-ai/v1/system/readiness')); }
+    try { setReadiness(await getJson('/api/celar-ai/v1/system/readiness')); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Readiness could not be loaded.'); }
   }
 
@@ -162,7 +162,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
     event?.preventDefault?.();
     setBusy(true); setError('');
     try {
-      const url = new URL('/api/pulse-ai/v1/system/apis', window.location.origin);
+      const url = new URL('/api/celar-ai/v1/system/apis', window.location.origin);
       Object.entries(apiFilters).forEach(([key, value]) => { if (String(value).trim()) url.searchParams.set(key, String(value).trim()); });
       setApiPayload(await getJson(`${url.pathname}${url.search}`));
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'API inventory could not be loaded.'); }
@@ -171,7 +171,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
 
   async function loadConversations() {
     try {
-      const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
+      const payload = await getJson('/api/celar-ai/v1/system/conversations?limit=100');
       setConversations(asArray(payload.conversations));
     } catch {
       setConversations([]);
@@ -215,7 +215,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
     if (!approved) return;
     setBusy(true); setError('');
     try {
-      const payload = await postJson(`/api/pulse-ai/v1/system/apis/${encodeURIComponent(api.apiId)}/retest`, { confirmation: 'RETEST-PULSE-AI-SAFE-API' });
+      const payload = await postJson(`/api/celar-ai/v1/system/apis/${encodeURIComponent(api.apiId)}/retest`, { confirmation: 'RETEST-CELAR-AI-SAFE-API' });
       setRetestResult(payload);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Safe API retest failed.'); }
     finally { setBusy(false); }
@@ -223,7 +223,7 @@ export default function PulseAiSystemIntelligenceWorkbench() {
 
   async function openConversation(id) {
     setBusy(true); setError('');
-    try { setConversationDetail(rebrandCelarValue(await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(id)}`))); }
+    try { setConversationDetail(rebrandCelarValue(await getJson(`/api/celar-ai/v1/system/conversations/${encodeURIComponent(id)}`))); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Conversation could not be loaded.'); }
     finally { setBusy(false); }
   }

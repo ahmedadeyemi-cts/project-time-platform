@@ -105,6 +105,9 @@ jobs:
           elif [[ "$HEAD_BRANCH" == feature/celar-ai-unified-chat-routing-attachments-* ]]; then
             ALLOWED_DATABASE='^(database/migrations/072_celar_ai_conversation_attachments\.sql|database/rollback/072_celar_ai_conversation_attachments_rollback\.sql)$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=UNIFIED_CHAT_ATTACHMENTS' >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/074_module_066_project_flowhive_production\.sql|database/rollback/074_module_066_project_flowhive_production_rollback\.sql)$'
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=FLOWHIVE_PRODUCTION' >> "$GITHUB_ENV"
           elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
             # Module 033 owns its review-first Project Forge persistence while
             # consuming the governed Celar AI capability router. Permit only
@@ -142,6 +145,9 @@ jobs:
           fi
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             PROHIBITED="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$PROHIBITED" || true)"
+          fi
+          if [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
+            PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs' <<<"$PROHIBITED" || true)"
           fi
           if [[ -n "$PROHIBITED" ]]; then
             echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2

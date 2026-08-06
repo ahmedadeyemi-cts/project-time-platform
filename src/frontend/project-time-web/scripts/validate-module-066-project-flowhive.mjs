@@ -12,6 +12,7 @@ const backendDirectory = path.join(repositoryRoot, 'src/backend/ProjectTime.Api/
 const paths = {
   backend: path.join(backendDirectory, 'ProjectFlowHiveModule.cs'),
   contracts: path.join(backendDirectory, 'ProjectFlowHivePlanningContracts.cs'),
+  repository: path.join(backendDirectory, 'PostgresProjectFlowHivePlanRepository.cs'),
   schedule: path.join(backendDirectory, 'ProjectFlowHiveScheduleEngine.cs'),
   ai: path.join(backendDirectory, 'ProjectFlowHiveAiRequestFactory.cs'),
   brand: path.join(backendDirectory, 'ProjectFlowHiveBrandAssets.cs'),
@@ -38,7 +39,10 @@ const paths = {
   register: path.join(repositoryRoot, 'docs/MODULE-WORK-REGISTER.md'),
   tracker: path.join(repositoryRoot, 'docs/production-readiness/AUGUST_PRODUCTION_READINESS_TRACKER.md'),
   calculationProject: path.join(repositoryRoot, 'scripts/module-066-validation/ProjectPulse.Module066.Validation.csproj'),
-  calculationProgram: path.join(repositoryRoot, 'scripts/module-066-validation/Program.cs')
+  calculationProgram: path.join(repositoryRoot, 'scripts/module-066-validation/Program.cs'),
+  migration: path.join(repositoryRoot, 'database/migrations/074_module_066_project_flowhive_production.sql'),
+  rollback: path.join(repositoryRoot, 'database/rollback/074_module_066_project_flowhive_production_rollback.sql'),
+  migrationTest: path.join(repositoryRoot, 'tests/test-module-066-project-flowhive-migration-074.sh')
 };
 
 const assertions = [];
@@ -56,6 +60,7 @@ function readRequired(name, filePath) {
 
 const backend = readRequired('BACKEND', paths.backend);
 const contracts = readRequired('CONTRACTS', paths.contracts);
+const repository = readRequired('PRODUCTION_REPOSITORY', paths.repository);
 const schedule = readRequired('SCHEDULE_ENGINE', paths.schedule);
 const ai = readRequired('AI_REQUEST_FACTORY', paths.ai);
 const brand = readRequired('BRAND_ASSETS', paths.brand);
@@ -85,6 +90,9 @@ const register = readRequired('WORK_REGISTER', paths.register);
 const tracker = readRequired('PRODUCTION_TRACKER', paths.tracker);
 const calculationProject = readRequired('CALCULATION_PROJECT', paths.calculationProject);
 const calculationProgram = readRequired('CALCULATION_PROGRAM', paths.calculationProgram);
+const migration = readRequired('MIGRATION_074', paths.migration);
+const rollback = readRequired('ROLLBACK_074', paths.rollback);
+const migrationTest = readRequired('MIGRATION_074_TEST', paths.migrationTest);
 
 const moduleBackend = [backend, contracts, schedule, ai, brand, artifacts].join('\n');
 const moduleDocs = [readme, matrix, apiContract, authorization, persistence, scheduling, aiDoc, artifactsDoc, overlap, evidence].join('\n');
@@ -121,7 +129,8 @@ assertInvariant(
 assertInvariant(
   'MODULE_066_TYPED_MAP_METHOD',
   backend.includes('MapProjectFlowHiveEndpoints') &&
-    backend.includes('(Func<HttpContext, IResult>)GetCapabilities') &&
+    backend.includes('IProjectFlowHivePlanRepository') &&
+    backend.includes('Task<IResult>>)GetCapabilitiesAsync') &&
     backend.includes('(Func<ProjectFlowHivePlanRequest, HttpContext, IResult>)CalculateSchedule'),
   'isolated route registration and typed handlers'
 );
@@ -166,13 +175,14 @@ assertInvariant(
 );
 
 assertInvariant(
-  'MODULE_066_PERSISTENCE_HARD_LOCK',
-  contracts.includes('LockedProjectFlowHivePlanRepository') &&
-    contracts.includes('WritesEnabled => false') &&
-    backend.includes('StatusCodes.Status423Locked') &&
-    backend.includes('persistence_locked') &&
-    backend.includes('baseline_locked'),
-  'no registered planning write repository'
+  'MODULE_066_PRODUCTION_PERSISTENCE',
+  repository.includes('PostgresProjectFlowHivePlanRepository') &&
+    repository.includes('project_flowhive_plan_versions') &&
+    repository.includes('EstablishBaselineAsync') &&
+    backend.includes('SaveDraftAsync') &&
+    backend.includes('view_as_write_blocked') &&
+    migration.includes('074_module_066_project_flowhive_production'),
+  'immutable versions, reviewer baselines, scoped authorization, and View-As write blocking'
 );
 
 const forbiddenSqlMutation = /\b(?:INSERT\s+INTO|UPDATE\s+[a-z_]|DELETE\s+FROM|ALTER\s+TABLE|CREATE\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i;
@@ -310,14 +320,13 @@ assertInvariant(
 );
 
 assertInvariant(
-  'MODULE_066_FRONTEND_BROWSER_LOCAL_DRAFT',
-  frontend.includes('Local planning draft created in browser memory') &&
-    frontend.includes('Save draft — locked') &&
-    frontend.includes('Establish baseline — locked') &&
-    !frontend.includes("postJson('/api/project-flowhive/plans/drafts'") &&
-    !frontend.includes("postJson('/api/project-flowhive/plans/") &&
+  'MODULE_066_FRONTEND_PRODUCTION_PERSISTENCE',
+  frontend.includes("postJson('/api/project-flowhive/plans/drafts'") &&
+    frontend.includes('Save immutable version') &&
+    frontend.includes('Establish reviewed baseline') &&
+    frontend.includes('Baseline review note') &&
     !/localStorage\.setItem\([^)]*flowhive/i.test(frontend),
-  'no hidden browser or server persistence'
+  'server persistence is explicit, versioned, reviewed, and never hidden in browser storage'
 );
 
 assertInvariant(
@@ -333,9 +342,9 @@ assertInvariant(
   'MODULE_066_FRONTEND_COMPUTE_AND_ARTIFACT_ROUTES',
   frontend.includes("postJson('/api/project-flowhive/planning/validate'") &&
     frontend.includes("postJson('/api/project-flowhive/schedule/calculate'") &&
-    frontend.includes("postJson('/api/project-flowhive/ai/request-preview'") &&
+    frontend.includes("postJson('/api/project-flowhive/ai/production-generate'") &&
     frontend.includes('/api/project-flowhive/artifacts/${format}-preview'),
-  'only side-effect-free active frontend actions'
+  'validation, deterministic schedule, governed Celar generation, and reviewed artifact actions'
 );
 
 assertInvariant(
@@ -365,10 +374,11 @@ for (const phase of ['066A.1', '066B', '066C', '066D', '066E']) {
 }
 
 assertInvariant(
-  'MODULE_066_BASE_AND_MODULE002_RECORDED',
-  [readme, overlap, backend].every((content) => content.includes('2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4')) &&
-    [readme, overlap, backend].every((content) => content.includes('f5ede8f6717b01c8f4bf7905b433fead38210007')),
-  'verified Module 002 source and merge baseline'
+  'MODULE_066_RUNTIME_METADATA_CURRENT',
+  !backend.includes('sourceBaseline =') &&
+    backend.includes('apiBase = "/api/project-flowhive"') &&
+    backend.includes('moduleName = "Project FlowHive"'),
+  'runtime readiness describes the current route and API instead of a historical source commit'
 );
 
 assertInvariant(
@@ -465,6 +475,14 @@ for (const backendFile of [
 }
 
 assertInvariant(
+  'MODULE_066_PRODUCTION_REPOSITORY_COMPILE_DISCOVERY',
+  fs.existsSync(paths.repository) &&
+    repository.includes('PostgresProjectFlowHivePlanRepository') &&
+    repository.includes('IProjectFlowHivePlanRepository'),
+  'SDK project compile discovery includes the production repository source without a Dockerfile marker'
+);
+
+assertInvariant(
   'MODULE_066_CONTAINER_GOVERNANCE_CONTEXT',
   webDockerfile.includes('docs/modules/module-066-project-flowhive/') &&
     webDockerfile.includes('docs/MODULE-CATALOG.md') &&
@@ -483,33 +501,32 @@ function filesBelow(directory) {
   });
 }
 
-const activeExternalArtifacts = [
-  ...filesBelow(path.join(repositoryRoot, 'database')),
-  ...filesBelow(path.join(repositoryRoot, 'deployment'))
-].filter((filePath) => /(?:module[-_]?066|flowhive)/i.test(path.basename(filePath)));
 assertInvariant(
-  'MODULE_066_NO_DATABASE_OR_DEPLOYMENT_ARTIFACT',
-  activeExternalArtifacts.length === 0,
-  activeExternalArtifacts.length ? activeExternalArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ') : 'none'
+  'MODULE_066_GOVERNED_DATABASE_LIFECYCLE',
+  migration.includes('project_flowhive_plan_versions') &&
+    migration.includes('project_flowhive_plan_reviews') &&
+    rollback.includes('Rollback refused: Project FlowHive versions exist.') &&
+    migrationTest.includes('MODULE_066_PROJECT_FLOWHIVE_MIGRATION_074=PASS'),
+  'Migration 074 has immutable evidence, guarded rollback, idempotence, and executable lifecycle validation'
 );
 
 assertInvariant(
-  'MODULE_066_STATUS_SOURCE_INTEGRATED_NOT_DEPLOYED',
-  readme.includes('source-integrated') &&
-    readme.includes('not merged, deployed, or runtime-verified') &&
-    matrix.includes('No capability in this source-only package is labeled active') &&
-    !/status\s*=\s*"(?:active|deployed)"/i.test(backend),
-  'source integration is not represented as merge, deployment, or runtime completion'
+  'MODULE_066_STATUS_PRODUCTION_READY',
+  backend.includes('status = persistence.Ready ? "production_ready"') &&
+    frontend.includes('data-mode="production"') &&
+    frontend.includes('Production connected') &&
+    frontend.includes('Configured order:'),
+  'runtime and UI report production capability from dependency evidence rather than a static connected label'
 );
 
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log('');
 console.log(`MODULE_066_VALIDATION_CHECKS=${assertions.length}`);
 console.log('MODULE_066_IMPLEMENTATION_PHASES=066A.1_066B_066C_066D_066E');
-console.log('MODULE_066_PERSISTENCE=LOCKED_NOT_APPLIED');
-console.log('MODULE_066_AI_EXECUTION=LOCKED_TO_MODULE_064');
+console.log('MODULE_066_PERSISTENCE=IMMUTABLE_VERSIONED');
+console.log('MODULE_066_AI_EXECUTION=CELAR_MODULE_064_ROUTED');
 console.log('MODULE_066_CUSTOMER_SHARING=LOCKED');
-console.log('MODULE_066_SHARED_INTEGRATION=ACTIVATED_SOURCE_DRAFT_PR_24_OPEN');
+console.log('MODULE_066_SHARED_INTEGRATION=PRODUCTION_PACKAGE');
 
 if (failed.length) {
   console.error('MODULE_066_COMPLETE_SOURCE_CONTRACT=FAILED');

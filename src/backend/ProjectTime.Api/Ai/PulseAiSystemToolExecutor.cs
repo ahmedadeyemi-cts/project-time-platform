@@ -161,7 +161,7 @@ public sealed class PulseAiSystemToolExecutor
             stopwatch.Stop();
             _logger.LogWarning(
                 exception,
-                "Pulse AI system tool failed without logging a response body. Tool={Tool} Diagnostic={Diagnostic}",
+                "Celar AI system tool failed without logging a response body. Tool={Tool} Diagnostic={Diagnostic}",
                 definition.Code,
                 Diagnostic(exception));
             return Result(

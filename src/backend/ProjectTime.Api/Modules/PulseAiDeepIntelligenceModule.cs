@@ -8,6 +8,32 @@ public static class PulseAiDeepIntelligenceModule
         this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(
+            "/api/celar-ai/v1/overview",
+            (Func<HttpContext, PulseAiQuestionPlanner, IResult>)GetOverview);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/private-runtime/readiness",
+            (Func<HttpContext, PulseAiDocumentGroundingService, CancellationToken, Task<IResult>>)GetReadinessAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/tools",
+            (Func<HttpContext, PulseAiQuestionPlanner, IResult>)GetTools);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/timesheet/context-preview",
+            (Func<HttpContext, PulseAiDocumentGroundingService, CancellationToken, Task<IResult>>)GetTimesheetContextAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/help-search/plan",
+            (Func<HttpContext, PulseAiQuestionPlanner, IResult>)GetHelpSearchPlan);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/flowhive/context-preview",
+            (Func<HttpContext, PulseAiDocumentGroundingService, CancellationToken, Task<IResult>>)GetFlowHiveContextAsync);
+        endpoints.MapGet(
+            "/api/celar-ai/v1/insights/plan",
+            (Func<HttpContext, PulseAiQuestionPlanner, IResult>)GetInsightPlan);
+        endpoints.MapPost(
+            "/api/celar-ai/v1/external-escalation/sanitize-preview",
+            (Func<PulseAiSanitizationRequest, HttpContext, PulseAiEscalationSanitizer, IResult>)SanitizeEscalationPreview);
+
+        // Transport-only compatibility routes for already deployed callers.
+        endpoints.MapGet(
             "/api/pulse-ai/v1/overview",
             (Func<HttpContext, PulseAiQuestionPlanner, IResult>)GetOverview);
         endpoints.MapGet(
@@ -136,7 +162,7 @@ public static class PulseAiDeepIntelligenceModule
             rules = new[]
             {
                 "A listed tool is not automatically callable by every user; the owning module and record scope remain authoritative.",
-                "Pulse AI receives sanitized results from approved read-only tools and never receives unrestricted database credentials.",
+                "Celar AI receives sanitized results from approved read-only tools and never receives unrestricted database credentials.",
                 "Unknown, stale, unavailable, or optional values remain explicit and are never silently replaced with zero or a model estimate.",
                 "Tool execution cannot mutate ProjectPulse state unless a separate, explicit, confirmed action contract is implemented and authorized."
             },
@@ -217,7 +243,7 @@ public static class PulseAiDeepIntelligenceModule
                 "The suggestion may improve terminology and scope alignment but may not claim work the Engineer did not report.",
                 "Raw document text and context summaries are not returned by this endpoint.",
                 "When ready private document context exists, the current source uses a private deterministic grounded suggestion and does not send that context to Claude or OpenAI.",
-                "The Engineer must review and explicitly apply the suggestion; Pulse AI cannot save or submit time."
+                "The Engineer must review and explicitly apply the suggestion; Celar AI cannot save or submit time."
             },
             stateChanged = false,
             externalProviderCalled = false
@@ -385,7 +411,7 @@ public static class PulseAiDeepIntelligenceModule
                     "/api/project-financials/sources"
                 },
                 runtimeConsumption = "not_registered_in_this_dependent_branch",
-                rule = "Pulse AI will consume the authoritative Group 3 contract after it is independently reviewed and integrated. It will not duplicate or estimate those calculations."
+                rule = "Celar AI will consume the authoritative Group 3 contract after it is independently reviewed and integrated. It will not duplicate or estimate those calculations."
             },
             responseRequirements = new[]
             {

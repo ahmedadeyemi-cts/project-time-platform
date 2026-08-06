@@ -38,7 +38,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI system intelligence schema readiness failed. Diagnostic={Diagnostic}",
+                "Celar AI system intelligence schema readiness failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return false;
         }
@@ -75,7 +75,7 @@ public sealed class PulseAiSystemIntelligenceRepository
             {
                 _logger.LogWarning(
                     exception,
-                    "Pulse AI system intelligence readiness counts failed. Diagnostic={Diagnostic}",
+                    "Celar AI system intelligence readiness counts failed. Diagnostic={Diagnostic}",
                     Diagnostic(exception));
             }
         }
@@ -107,7 +107,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         var conversationId = Guid.NewGuid();
         var mode = NormalizeMode(request.Mode);
         var title = Clean(request.Title, 240);
-        if (title.Length == 0) title = "New Pulse AI conversation";
+        if (title.Length == 0) title = "New Celar AI conversation";
         var scopeJson = Serialize(request.Scope ?? new { });
 
         try
@@ -142,7 +142,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI conversation creation failed. EffectiveUserId={EffectiveUserId} Diagnostic={Diagnostic}",
+                "Celar AI conversation creation failed. EffectiveUserId={EffectiveUserId} Diagnostic={Diagnostic}",
                 effectiveUserId,
                 Diagnostic(exception));
             return null;
@@ -181,7 +181,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI conversation listing failed. EffectiveUserId={EffectiveUserId} Diagnostic={Diagnostic}",
+                "Celar AI conversation listing failed. EffectiveUserId={EffectiveUserId} Diagnostic={Diagnostic}",
                 effectiveUserId,
                 Diagnostic(exception));
             return [];
@@ -256,7 +256,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI conversation read failed. ConversationId={ConversationId} Diagnostic={Diagnostic}",
+                "Celar AI conversation read failed. ConversationId={ConversationId} Diagnostic={Diagnostic}",
                 conversationId,
                 Diagnostic(exception));
             return null;
@@ -428,7 +428,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI conversation message persistence failed. ConversationId={ConversationId} Role={Role} Diagnostic={Diagnostic}",
+                "Celar AI conversation message persistence failed. ConversationId={ConversationId} Role={Role} Diagnostic={Diagnostic}",
                 conversationId,
                 role,
                 Diagnostic(exception));
@@ -482,7 +482,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI inquiry-run persistence failed. ConversationId={ConversationId} Diagnostic={Diagnostic}",
+                "Celar AI inquiry-run persistence failed. ConversationId={ConversationId} Diagnostic={Diagnostic}",
                 conversationId,
                 Diagnostic(exception));
             return Guid.Empty;
@@ -537,7 +537,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI tool-event persistence failed. Tool={Tool} Diagnostic={Diagnostic}",
+                "Celar AI tool-event persistence failed. Tool={Tool} Diagnostic={Diagnostic}",
                 result.ToolCode,
                 Diagnostic(exception));
         }
@@ -608,7 +608,7 @@ public sealed class PulseAiSystemIntelligenceRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI inquiry-run completion failed. InquiryRunId={InquiryRunId} Diagnostic={Diagnostic}",
+                "Celar AI inquiry-run completion failed. InquiryRunId={InquiryRunId} Diagnostic={Diagnostic}",
                 inquiryRunId,
                 Diagnostic(exception));
         }
@@ -711,13 +711,13 @@ public sealed class PulseAiSystemIntelligenceRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength)
     {

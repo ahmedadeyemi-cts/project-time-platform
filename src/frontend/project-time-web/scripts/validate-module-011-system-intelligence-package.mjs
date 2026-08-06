@@ -93,7 +93,7 @@ assert('SAFE_RETEST',
     'Download, export, stream, and attachment routes are excluded',
     'Refresh, retest, and probe routes require an explicit owning-module action contract'
   ])
-  && s.contracts.includes('RETEST-PULSE-AI-SAFE-API')
+  && s.contracts.includes('RETEST-CELAR-AI-SAFE-API')
   && s.module.includes('access.CanRetest')
   && s.module.includes('ViewAsMutationBlocked'),
   'exactly confirmed non-View-As same-origin safe GET verification');
@@ -153,18 +153,18 @@ assert('PROJECT_FORGE_DISCOVERY',
 assert('MODULE_064_API_DISCOVERY',
   all(s.knowledge, [
     'if (ContainsAny(normalized, "ai provider configuration", "ai-provider-configuration", "ai configuration", "ai-configuration", "capability routing", "feature routing")) modules.Add("064");',
-    '("011", "Pulse AI", ["/api/pulse-ai", "/api/ai/"])',
-    '("064", "AI Provider Configuration", ["/api/ai-configuration", "/api/ai-provider"])'
+    '("011", "Celar AI", ["/api/celar-ai", "/api/ai/"])',
+    '("064", "AI Provider Configuration Center", ["/api/ai-configuration", "/api/ai-provider"])'
   ])
-  && !s.knowledge.includes('("011", "Pulse AI", ["/api/pulse-ai", "/api/ai-configuration"'),
-  'intent-independent AI configuration aliases resolve Module 064; Pulse AI retains only its own API prefixes');
+  && !s.knowledge.includes('("011", "Celar AI", ["/api/celar-ai", "/api/ai-configuration"'),
+  'intent-independent AI configuration aliases resolve Module 064; Celar AI retains only its own canonical and compatibility API prefixes');
 
 const routes = [
-  '/api/pulse-ai/v1/system/readiness','/api/pulse-ai/v1/system/tools',
-  '/api/pulse-ai/v1/system/apis','/api/pulse-ai/v1/system/apis/{apiId}',
-  '/api/pulse-ai/v1/system/apis/{apiId}/retest','/api/pulse-ai/v1/system/questions',
-  '/api/pulse-ai/v1/system/conversations','/api/pulse-ai/v1/system/conversations/{conversationId:guid}',
-  '/api/pulse-ai/v1/system/conversations/{conversationId:guid}/messages'
+  '/api/celar-ai/v1/system/readiness','/api/celar-ai/v1/system/tools',
+  '/api/celar-ai/v1/system/apis','/api/celar-ai/v1/system/apis/{apiId}',
+  '/api/celar-ai/v1/system/apis/{apiId}/retest','/api/celar-ai/v1/system/questions',
+  '/api/celar-ai/v1/system/conversations','/api/celar-ai/v1/system/conversations/{conversationId:guid}',
+  '/api/celar-ai/v1/system/conversations/{conversationId:guid}/messages'
 ];
 assert('SYSTEM_API_FAMILY', routes.every((route) => s.module.includes(`"${route}"`)), `${routes.length} registered routes`);
 
@@ -226,7 +226,7 @@ assert('DURABLE_RESPONSES',
     'CreateConversationAsync','ListConversationsAsync','GetConversationAsync',
     'AppendMessageAsync','CreateInquiryRunAsync','SaveToolEventAsync','CompleteInquiryRunAsync'
   ])
-  && s.help.includes('/api/pulse-ai/v1/system/conversations')
+  && s.help.includes('/api/celar-ai/v1/system/conversations')
   && s.help.includes('completed responses remain in conversation history')
   && !/localStorage|sessionStorage|indexedDB/.test(s.help),
   'completed answers survive close, navigation, and refresh through server persistence');

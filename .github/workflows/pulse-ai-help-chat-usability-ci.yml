@@ -213,6 +213,30 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CELAR_PRODUCTION_HARDENING' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_CELAR_PRODUCTION_HARDENING=PASSED'
               ;;
+            feature/celar-ai-flowhive-production-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              FLOWHIVE_HELP_BOUNDARY='^(src/frontend/project-time-web/(scripts/validate-pulse-ai-help-chat-usability\.mjs|src/(HelpAssistant\.jsx|pulse-ai-help-chat-usability\.js))|src/backend/ProjectTime\.Api/Ai/(PulseAiProductKnowledgeCatalog|PulseAiQuestionPlanner)\.cs)$'
+              UNAPPROVED_HELP="$(grep -Ev "$FLOWHIVE_HELP_BOUNDARY" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The FlowHive production package changed Help-chat runtime source outside the reviewed product-knowledge and validation boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+                | grep -Ev '^database/(migrations/074_module_066_project_flowhive_production\.sql|rollback/074_module_066_project_flowhive_production_rollback\.sql)$' \
+                || true)"
+              if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+                echo 'Unexpected database scope in the FlowHive production package:' >&2
+                printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+                exit 1
+              fi
+              if grep -E '^(deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The FlowHive Help-chat validation cannot include a deployment operation.' >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=FLOWHIVE_PRODUCTION' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_FLOWHIVE_PRODUCTION=PASSED'
+              ;;
             *)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               if [[ -n "$DIRECT_HELP_CHANGES" ]]; then

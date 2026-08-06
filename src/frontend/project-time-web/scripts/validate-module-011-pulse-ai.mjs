@@ -90,18 +90,12 @@ const module011Block = module011Start >= 0 && module012Start > module011Start
 
 assert(
   'REGISTRY_IDENTITY',
-  (
-    module011Block.includes("displayName: 'Pulse AI'")
-      && module011Block.includes("group: 'AI & Automation'")
-      && module011Block.includes("lifecycle: 'source_foundation'")
-  ) || (
-    module011Block.includes("displayName: 'Celar AI'")
-      && module011Block.includes("group: 'AI & Automation'")
-      && module011Block.includes("lifecycle: 'active_operational_intelligence'")
-      && module011Block.includes("technicalIdentity: 'Pulse AI'")
-      && module011Block.includes("publicAlias: 'celar-ai'")
-  ),
-  'Module 011 uses the approved Celar AI public identity or the preserved Pulse AI foundation identity'
+  module011Block.includes("displayName: 'Celar AI'")
+    && module011Block.includes("group: 'AI & Automation'")
+    && module011Block.includes("lifecycle: 'active_operational_intelligence'")
+    && module011Block.includes("technicalIdentity: 'Celar AI'")
+    && module011Block.includes("publicAlias: 'celar-ai'"),
+  'Module 011 uses Celar AI as its display name, technical identity, and canonical public alias'
 );
 
 assert(

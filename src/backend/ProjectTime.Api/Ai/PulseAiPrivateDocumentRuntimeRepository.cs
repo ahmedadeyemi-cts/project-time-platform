@@ -75,7 +75,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI runtime schema inspection failed. Diagnostic={Diagnostic}",
+                "Celar AI runtime schema inspection failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return RuntimeSchemaState.Missing;
         }
@@ -124,7 +124,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI runtime access resolution failed. UserId={UserId} Diagnostic={Diagnostic}",
+                "Celar AI runtime access resolution failed. UserId={UserId} Diagnostic={Diagnostic}",
                 userId,
                 Diagnostic(exception));
             return RuntimeAccess.Empty(userId);
@@ -205,7 +205,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI document service-principal readiness inspection failed. Diagnostic={Diagnostic}",
+                "Celar AI document service-principal readiness inspection failed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return DocumentServicePrincipalReadiness.LookupUnavailable;
         }
@@ -1293,7 +1293,7 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
             versionCommand.Parameters.AddWithValue("effective_at", source.UploadedAt);
             versionCommand.Parameters.AddWithValue("job_id", job.JobId);
             var versionId = (Guid)(await versionCommand.ExecuteScalarAsync(cancellationToken)
-                ?? throw new InvalidOperationException("Pulse AI document version was not returned."));
+                ?? throw new InvalidOperationException("Celar AI document version was not returned."));
 
             await using (var deleteSections = new NpgsqlCommand(
                 "DELETE FROM pulse_ai_document_sections WHERE pulse_ai_document_version_id = @version_id;",
@@ -1755,13 +1755,13 @@ public sealed class PulseAiPrivateDocumentRuntimeRepository
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Clean(string? value, int maximumLength, string fallback)
     {

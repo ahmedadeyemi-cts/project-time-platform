@@ -150,7 +150,7 @@ public sealed class PulseAiSystemApiCatalogService
             || route.Contains("token", StringComparison.OrdinalIgnoreCase)
             || route.Contains("secret", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "Authentication, callback, token, or secret routes are never retested by Pulse AI.");
+            return (false, "Authentication, callback, token, or secret routes are never retested by Celar AI.");
         }
         if (route.Contains("download", StringComparison.OrdinalIgnoreCase)
             || route.Contains("export", StringComparison.OrdinalIgnoreCase)
@@ -159,7 +159,8 @@ public sealed class PulseAiSystemApiCatalogService
         {
             return (false, "Download, export, stream, and attachment routes are excluded.");
         }
-        if (route.StartsWith("/api/pulse-ai/v1/system/apis/", StringComparison.OrdinalIgnoreCase)
+        if (route.StartsWith("/api/celar-ai/v1/system/apis/", StringComparison.OrdinalIgnoreCase)
+            || route.StartsWith("/api/pulse-ai/v1/system/apis/", StringComparison.OrdinalIgnoreCase)
             || route.StartsWith("/api/platform-operations/apis/", StringComparison.OrdinalIgnoreCase))
         {
             return (false, "The route could recurse into an API diagnostic operation.");
@@ -173,7 +174,7 @@ public sealed class PulseAiSystemApiCatalogService
 
         return (
             true,
-            "A same-origin GET can verify status and latency. Pulse AI does not return the response body from a safe retest.");
+            "A same-origin GET can verify status and latency. Celar AI does not return the response body from a safe retest.");
     }
 
     private static bool IsPublicPath(string route) =>

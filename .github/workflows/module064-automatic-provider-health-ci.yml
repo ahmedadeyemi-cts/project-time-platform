@@ -59,6 +59,7 @@ jobs:
           CENTRAL_SECURITY_BRANCH='false'
           CONSOLIDATED_RELEASE_BRANCH='false'
           PRODUCTION_HARDENING_BRANCH='false'
+          FLOWHIVE_PRODUCTION_BRANCH='false'
           if [[ "$HEAD_BRANCH" == fix/module-064-automatic-provider-health-routing-* ]]; then
             OWNED_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
@@ -67,6 +68,8 @@ jobs:
             CONSOLIDATED_RELEASE_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == security/celar-ai-production-readiness-* ]]; then
             PRODUCTION_HARDENING_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
+            FLOWHIVE_PRODUCTION_BRANCH='true'
           fi
 
           ALLOWED='^(\.github/workflows/module064-automatic-provider-health-ci\.yml|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthRegistry\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiHealthMonitor\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiRouter\.cs|src/backend/ProjectTime.Api/Ai/ProjectPulseAiSecretStore\.cs|src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule\.cs|src/frontend/project-time-web/package(-lock)?\.json|src/frontend/project-time-web/src/AiProviderConfigurationCenter\.jsx|src/frontend/project-time-web/src/ai-provider-configuration-center\.css|src/frontend/project-time-web/scripts/validate-module-064-shared-ai\.mjs)$'
@@ -135,6 +138,29 @@ jobs:
             test -f database/migrations/061_celar_ai_capability_routing.sql
             echo 'MODULE_064_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
             echo 'MODULE_064_CONSOLIDATED_RELEASE=PASSED'
+          elif [[ "$FLOWHIVE_PRODUCTION_BRANCH" == 'true' ]]; then
+            DIRECT_MODULE064="$(grep -E "$MODULE064_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+            FLOWHIVE_MODULE064_BOUNDARY='^src/backend/ProjectTime\.Api/Modules/AiProviderConfigurationModule\.cs$'
+            UNAPPROVED_MODULE064="$(grep -Ev "$FLOWHIVE_MODULE064_BOUNDARY" <<<"$DIRECT_MODULE064" || true)"
+            if [[ -n "$UNAPPROVED_MODULE064" ]]; then
+              echo 'The FlowHive production package changed Module 064 automatic-health source outside the reviewed API-catalog boundary:' >&2
+              printf '%s\n' "$UNAPPROVED_MODULE064" >&2
+              exit 1
+            fi
+            UNEXPECTED_DATABASE="$(grep -E '^database/' <<<"$CHANGED" \
+              | grep -Ev '^database/(migrations/074_module_066_project_flowhive_production\.sql|rollback/074_module_066_project_flowhive_production_rollback\.sql)$' \
+              || true)"
+            if [[ -n "$UNEXPECTED_DATABASE" ]]; then
+              echo 'Unexpected database scope in the FlowHive Module 064 regression:' >&2
+              printf '%s\n' "$UNEXPECTED_DATABASE" >&2
+              exit 1
+            fi
+            if grep -E '^(deployment/azure/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime.Api/Modules/(Microsoft|CustomerDirectory|CrmErp)|src/frontend/project-time-web/src/(Microsoft|CrmErp|CustomerDirectory))' <<<"$CHANGED"; then
+              echo 'The FlowHive Module 064 regression overlaps an unauthorized deployment or adjacent module surface.' >&2
+              exit 1
+            fi
+            echo 'MODULE_064_VALIDATION_MODE=FLOWHIVE_PRODUCTION_REGRESSION' >> "$GITHUB_ENV"
+            echo 'MODULE_064_FLOWHIVE_PRODUCTION_REGRESSION=PASSED'
           else
             DIRECT_MODULE064="$(grep -E "$MODULE064_RUNTIME_OWNED" <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_MODULE064" ]]; then

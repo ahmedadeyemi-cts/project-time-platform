@@ -95,7 +95,7 @@ public sealed class PulseAiPrivateDocumentExtractionService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI private document extraction failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
+                "Celar AI private document extraction failed. DocumentId={DocumentId} Diagnostic={Diagnostic}",
                 source.DocumentId,
                 Diagnostic(exception));
 

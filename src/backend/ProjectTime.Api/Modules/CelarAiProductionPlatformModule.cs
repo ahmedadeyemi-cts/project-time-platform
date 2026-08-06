@@ -141,7 +141,7 @@ public static partial class CelarAiProductionPlatformModule
             (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ChatAsync);
         endpoints.MapCelarAiConversationAttachmentEndpoints();
         endpoints.MapPost(FlowHiveRoute,
-            (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
+            (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
         return endpoints;
     }
 
@@ -349,6 +349,7 @@ public static partial class CelarAiProductionPlatformModule
         HttpContext context,
         PulseAiSystemIntelligenceService system,
         CelarAiEnterprisePlatformService enterprise,
+        CelarAiCapabilityRoutingStore routing,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -376,6 +377,9 @@ public static partial class CelarAiProductionPlatformModule
             cancellationToken);
 
         var privatePlanAvailable = composition.FlowHivePlan?.Tasks.Count > 0;
+        var configuredRoute = await routing.LoadRouteAsync(
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+            cancellationToken);
         var generated = BuildPlan(request.Plan, composition.FlowHivePlan);
         var validation = ProjectFlowHiveScheduleEngine.Validate(generated);
         var schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
@@ -394,7 +398,8 @@ public static partial class CelarAiProductionPlatformModule
             status = schedule.Valid ? "celar_ai_flowhive_review_draft_completed" : "celar_ai_flowhive_review_draft_requires_correction",
             executionEnabled = true,
             executionPath = privatePlanAvailable ? composition.PrimaryExecutionPath : "deterministic_flowhive_plan_from_authorized_current_draft",
-            providerOrder = CelarAiCapabilityTargets.DefaultOrder,
+            providerOrder = configuredRoute.Targets,
+            providerConfiguration = configuredRoute.ToPublicResponse(),
             project = new { request.Plan.ProjectId, request.Plan.ProjectCode, request.Plan.ProjectName, request.Plan.CustomerName },
             plan = generated,
             validation,
@@ -1148,7 +1153,7 @@ public static partial class CelarAiProductionPlatformModule
     }
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("The canonical ProjectPulse AI database connection is unavailable.");
+        ?? throw new InvalidOperationException("The canonical Celar AI database connection is unavailable.");
 
     private sealed record Intent(string Code, bool IncludeApis, bool IncludeTroubleshooting, bool IncludeEnhancement, bool IncludeDocuments, int MaximumTools, bool RequiresCurrentEvidence, string Reason);
     private sealed record DatasetRow(Guid DatasetVersionId,string Name,string Purpose,string Classification,string ArtifactUri,string Sha256,int ExampleCount,string State);

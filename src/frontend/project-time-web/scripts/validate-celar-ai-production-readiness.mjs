@@ -450,7 +450,7 @@ assert(
     && repository.includes('RecoverExpiredLeasesAsync')
     && repository.includes('WHEN attempt_count >= maximum_attempts THEN 0')
     && repository.includes('version.source_sha256 = @expected_source_sha256')
-    && contracts.includes('APPROVE-PULSE-AI-PRIVATE-DOCUMENT-VERSION')
+    && contracts.includes('APPROVE-CELAR-AI-PRIVATE-DOCUMENT-VERSION')
     && contracts.includes('string? ExpectedSourceSha256')
     && runtime.includes('request.ExpectedSourceSha256')
     && runtimeModule.includes('/versions/{versionId:guid}/approve')

@@ -12,6 +12,29 @@
   color: var(--flowhive-ink);
 }
 
+[data-theme='dark'] .project-flowhive-center {
+  --flowhive-navy: #061a2d;
+  --flowhive-blue: #54c5ed;
+  --flowhive-sky: #132d3c;
+  --flowhive-ink: #f2f7fc;
+  --flowhive-muted: #b9c7d6;
+  --flowhive-line: #4e6275;
+  --flowhive-surface: #111f2d;
+  --flowhive-soft: #172a3b;
+}
+
+[data-theme='dark'] .flowhive-foundation-notice {
+  border-color: #a77a20;
+  color: #ffe4a3;
+  background: #33260c;
+}
+
+[data-theme='dark'] .flowhive-error {
+  border-color: #b96767;
+  color: #ffd6d6;
+  background: #3a1717;
+}
+
 .project-flowhive-center *,
 .project-flowhive-center *::before,
 .project-flowhive-center *::after {

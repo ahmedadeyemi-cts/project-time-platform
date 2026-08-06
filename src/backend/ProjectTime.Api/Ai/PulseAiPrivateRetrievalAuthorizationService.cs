@@ -129,7 +129,7 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
         {
             _logger.LogWarning(
                 exception,
-                "Pulse AI prompt-assembly reauthorization failed closed. Diagnostic={Diagnostic}",
+                "Celar AI prompt-assembly reauthorization failed closed. Diagnostic={Diagnostic}",
                 Diagnostic(exception));
             return [];
         }
@@ -137,13 +137,13 @@ public sealed class PulseAiPrivateRetrievalAuthorizationService
 
     private static IReadOnlyList<string> MissingDatabaseConfiguration()
     {
-        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["ProjectPulse AI database connection"] : []; }
+        try { return ProjectPulseAiDatabaseConnection.Resolve() is null ? ["Celar AI database connection"] : []; }
         catch (InvalidOperationException exception) { return [exception.Message]; }
     }
 
     private static string ConnectionString() =>
         ProjectPulseAiDatabaseConnection.Resolve()
-        ?? throw new InvalidOperationException("ProjectPulse AI database configuration is unavailable.");
+        ?? throw new InvalidOperationException("Celar AI database configuration is unavailable.");
 
     private static string Diagnostic(Exception exception) => exception switch
     {

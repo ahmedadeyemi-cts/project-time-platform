@@ -38,9 +38,7 @@ function unique(values) {
 }
 
 function rebrandCelarString(value) {
-  return String(value ?? '')
-    .replaceAll('CELAR AI', 'CELAR AI')
-    .replaceAll('Celar AI', 'Celar AI');
+  return String(value ?? '').replace(/\bPulse\s+AI\b/gi, 'Celar AI');
 }
 
 function rebrandCelarValue(value) {
@@ -156,7 +154,7 @@ function formatFileSize(value) {
 }
 
 async function loadLegacyPlan(question) {
-  const url = new URL('/api/pulse-ai/v1/help-search/plan', window.location.origin);
+  const url = new URL('/api/celar-ai/v1/help-search/plan', window.location.origin);
   url.searchParams.set('question', question);
   const answerPreferences = applyHelpAnswerPreferences(url, question);
   const payload = await getJson(`${url.pathname}${url.search}`);
@@ -552,7 +550,7 @@ export default function HelpAssistant() {
   }
 
   async function refreshConversationList(selectId = '') {
-    const payload = await getJson('/api/pulse-ai/v1/system/conversations?limit=100');
+    const payload = await getJson('/api/celar-ai/v1/system/conversations?limit=100');
     const rows = asArray(payload.conversations).map((conversation) => ({
       ...conversation,
       title: rebrandCelarString(conversation.title)
@@ -571,7 +569,7 @@ export default function HelpAssistant() {
     setSelectedAttachmentIds([]);
     setAttachmentError('');
     try {
-      const payload = await getJson(`/api/pulse-ai/v1/system/conversations/${encodeURIComponent(conversationId)}`);
+      const payload = await getJson(`/api/celar-ai/v1/system/conversations/${encodeURIComponent(conversationId)}`);
       const rows = asArray(payload?.conversation?.messages).map(serverMessageToUi);
       setMessages(rows.length ? rows : [WELCOME_MESSAGE]);
       setActiveConversationId(conversationId);
@@ -583,7 +581,7 @@ export default function HelpAssistant() {
   }
 
   async function createConversation(mode = 'system_help', resetMessages = true) {
-    const payload = await postJson('/api/pulse-ai/v1/system/conversations', {
+    const payload = await postJson('/api/celar-ai/v1/system/conversations', {
       title: 'New Celar AI conversation',
       mode,
       scope: { source: 'global_help_chat' }

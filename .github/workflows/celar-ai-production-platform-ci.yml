@@ -17,6 +17,9 @@ on:
       - 'database/migrations/072_celar_ai_conversation_attachments.sql'
       - 'database/rollback/072_celar_ai_conversation_attachments_rollback.sql'
       - 'tests/test-celar-ai-conversation-attachments-migration-072.sh'
+      - 'database/migrations/074_module_066_project_flowhive_production.sql'
+      - 'database/rollback/074_module_066_project_flowhive_production_rollback.sql'
+      - 'tests/test-module-066-project-flowhive-migration-074.sh'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-enterprise-chat-context.mjs'
       - 'src/frontend/project-time-web/scripts/validate-celar-ai-production-platform.mjs'
@@ -98,6 +101,21 @@ jobs:
               done
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=UNIFIED_CHAT_ATTACHMENTS'
               ;;
+            feature/celar-ai-flowhive-production-*)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/074_module_066_project_flowhive_production\.sql|rollback/074_module_066_project_flowhive_production_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected numbered migration in the Project FlowHive production package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/074_module_066_project_flowhive_production.sql' \
+                'database/rollback/074_module_066_project_flowhive_production_rollback.sql' \
+                'tests/test-module-066-project-flowhive-migration-074.sh'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=FLOWHIVE_PRODUCTION'
+              ;;
             *)
               if [[ -n "$CHANGED_MIGRATIONS" ]]; then
                 echo 'Celar AI production source may not alter numbered migrations outside the reviewed production-hardening branch family.' >&2
@@ -149,6 +167,13 @@ jobs:
           bash -n tests/test-celar-ai-conversation-attachments-migration-072.sh
           chmod +x tests/test-celar-ai-conversation-attachments-migration-072.sh
           tests/test-celar-ai-conversation-attachments-migration-072.sh
+
+      - name: Validate Migration 074 Project FlowHive production lifecycle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n tests/test-module-066-project-flowhive-migration-074.sh
+          bash tests/test-module-066-project-flowhive-migration-074.sh
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
@@ -202,7 +227,7 @@ jobs:
             '/api/celar-ai/v2/chat' \
             '/api/celar-ai/v1/production/readiness' \
             '/api/project-flowhive/ai/production-generate' \
-            'Generate detailed Celar AI plan' \
+            'Generate and auto-fill detailed plan' \
             'Initialize production lifecycle schema' \
             'Verified current fact' \
             'Knowledge & RAG' \

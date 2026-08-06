@@ -127,10 +127,10 @@ assert(
   registry.includes("displayName: 'Celar AI'")
     && registry.includes("publicAlias: 'celar-ai'")
     && registry.includes("tagline: 'Speed of light. Speed of delivery.'")
-    && registry.includes("technicalIdentity: 'Pulse AI'")
+    && registry.includes("technicalIdentity: 'Celar AI'")
     && registry.includes("'celar-ai': 'work-task-builder'")
-    && registry.includes("'pulse-ai': 'work-task-builder'"),
-  'Module 011 is visibly Celar AI while the historic compatibility route remains operational'
+    && !registry.includes("'pulse-ai': 'work-task-builder'"),
+  'Module 011 uses Celar AI as its only public identity and canonical route alias'
 );
 
 assert(
@@ -216,22 +216,23 @@ assert(
   'PRODUCT_KNOWLEDGE_FALLBACK',
   knowledge.includes('CelarAiBrandProfile.IsIdentityQuestion(normalizedQuestion)')
     && knowledge.includes('CelarAiPurpose()')
-    && knowledge.includes('Pulse AI is the former user-facing name for Celar AI')
+    && knowledge.includes('Celar AI is the current and canonical identity for Module 011')
     && knowledge.includes('Changepoint catalyst')
     && knowledge.includes('Dr. Ahmed Adeyemi'),
-  'legacy Help planning also answers Celar AI identity questions and explains the compatibility transition'
+  'Help planning answers Celar AI identity questions with the canonical current product narrative'
 );
 
 assert(
-  'TECHNICAL_COMPATIBILITY_PRESERVED',
+  'TECHNICAL_COMPATIBILITY_HIDDEN',
   contracts.includes('public const string FeatureCode = "pulse_ai_system_intelligence"')
     && contracts.includes('public const string MigrationId = "054_pulse_ai_system_intelligence_conversations"')
     && repository.includes('FROM pulse_ai_conversations')
     && privateContracts.includes('PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED')
     && moduleSource.includes('technicalCompatibilityFeature = PulseAiSystemIntelligencePolicy.FeatureCode')
-    && profile.includes('existingApiPrefix = "/api/pulse-ai"')
-    && profile.includes('existingDatabasePrefix = "pulse_ai_"'),
-  'API, permission, database, environment, and rollback compatibility identifiers remain intact during the visible rebrand'
+    && profile.includes('canonicalPrefix = "/api/celar-ai"')
+    && profile.includes('legacyAliasesExposed = false')
+    && !profile.includes('existingApiPrefix'),
+  'stable internal compatibility identifiers remain intact but public metadata exposes only canonical Celar AI routes'
 );
 
 assert(
