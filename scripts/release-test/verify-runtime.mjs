@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83";
+const expectedSource = "e2ab37c93b565a4e1d5a94ef5e54efaf3d22e6a3";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -489,8 +489,20 @@ async function run() {
   assert(module011Readiness.json?.access?.canManage === true, "The actual-session Test Super Administrator cannot manage Module 011.");
   assert(module011Readiness.json?.access?.isViewAs === false, "Module 011 management authority was evaluated through View-As.");
   assert(module011Readiness.json?.access?.mutationAuthorityTransferredByViewAs === false, "Module 011 reported transferred mutation authority.");
+  assert(module011Readiness.json?.lifecycle?.databaseConfigured === true, "Module 011 did not resolve the existing Test database configuration.");
+  assert(module011Readiness.json?.lifecycle?.schemaReady === true, "Module 011 production schema is not ready.");
+  assert(module011Readiness.json?.lifecycle?.status === "celar_ai_production_schema_ready", "Module 011 lifecycle is not database ready.");
+  assert(module011Readiness.json?.privateRag?.status === "private_rag_ready", "Module 011 private RAG is not ready.");
+  assert(module011Readiness.json?.privateRag?.schemaReady === true, "Module 011 private RAG schema is not ready.");
+  assert(module011Readiness.json?.privateRag?.enabled === true, "Module 011 private RAG is not enabled.");
+  assert(module011Readiness.json?.chatAttachments?.status === "celar_ai_chat_attachments_ready", "Ask Celar AI private attachment pipeline is not ready.");
+  assert(module011Readiness.json?.chatAttachments?.privateRuntimeSchemaReady === true, "Ask Celar AI private runtime schema is not ready.");
+  assert(module011Readiness.json?.chatAttachments?.privateWorkerEnabled === true, "Ask Celar AI private worker is not enabled.");
+  assert(Array.isArray(module011Readiness.json?.chatAttachments?.blockers) && module011Readiness.json.chatAttachments.blockers.length === 0, "Ask Celar AI private attachment pipeline reported blockers.");
   evidence.authenticatedChecks.module011CoreAskAccess = "passed";
   evidence.authenticatedChecks.module011SuperAdministratorAuthority = "passed";
+  evidence.authenticatedChecks.module011DatabaseConfiguration = "passed";
+  evidence.authenticatedChecks.module011PrivatePipeline = "passed";
 
   const flowHiveApis = await request("/api/celar-ai/v1/system/apis?search=project-flowhive&module=066&limit=25", {
     moduleNumber: "011",
