@@ -321,14 +321,20 @@ internal static class ReleaseRuntimeBehavior
                 "Resolved the issue and documented the result.",
                 [],
                 out var resolutionClaimDecision)
-            && resolutionClaimDecision == "external_output_identity_validation_failed",
+            && resolutionClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported resolution claim remains fail-closed");
         Require(!sanitizer.IsExternalOutputSafe(
                 "Completed the implementation and documented the result.",
                 [],
                 out var completionClaimDecision)
-            && completionClaimDecision == "external_output_identity_validation_failed",
+            && completionClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported completion claim remains fail-closed");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Provided technical support. The issue was resolved.",
+                [],
+                out var passiveResolutionClaimDecision)
+            && passiveResolutionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported passive resolution claim remains fail-closed");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()

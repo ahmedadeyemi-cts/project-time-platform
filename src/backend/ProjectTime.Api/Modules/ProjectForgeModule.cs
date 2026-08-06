@@ -2182,10 +2182,15 @@ public static partial class ProjectForgeModule
             WHERE document.project_id = @project_id
               AND document.is_active = TRUE
               AND COALESCE(document.engineering_visible, FALSE) = TRUE
+              AND LOWER(COALESCE(document.document_category, document.document_type, '')) = ANY(@flowhive_categories)
               AND COALESCE(document.pulse_ai_processing_status, '') = 'ready';
             """;
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue(
+            "flowhive_categories",
+            NpgsqlDbType.Array | NpgsqlDbType.Text,
+            PulseAiPrivateRagPolicy.FlowHiveCategories);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return ProjectForgeProjectEvidenceReadiness.Empty;
         return new ProjectForgeProjectEvidenceReadiness(

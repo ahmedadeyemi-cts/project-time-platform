@@ -262,6 +262,8 @@ for (const token of [
   'projectReadyDocumentCount = projectEvidence.ReadyDocumentCount',
   'projectActiveChunkCount = projectEvidence.ActiveChunkCount',
   'projectEvidence.ReadyDocumentCount == 0',
+  'PulseAiPrivateRagPolicy.FlowHiveCategories',
+  'ANY(@flowhive_categories)',
   'No AI target was called and no draft was saved.'
 ]) requireText(backend, token, 'Project Forge selected-project evidence preflight');
 for (const token of [

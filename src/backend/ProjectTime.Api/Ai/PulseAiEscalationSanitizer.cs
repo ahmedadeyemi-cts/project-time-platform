@@ -125,6 +125,11 @@ public sealed class PulseAiEscalationSanitizer
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
         RegexTimeout);
 
+    private static readonly Regex UnsupportedOutcomeClaim = new(
+        @"(?:^|(?<=[.!?][ \t]))(?:completed|resolved|fixed|closed|approved|accepted|delivered)[ \t]+\b|\b(?:issue|incident|problem|request|task|work|implementation|configuration|service|system|deployment|migration|testing|validation|remediation|rollout|change)[ \t]+(?:was|were|is|are|has[ \t]+been|have[ \t]+been)[ \t]+(?:completed|resolved|fixed|closed|approved|accepted|delivered|implemented|validated|verified|successful)\b",
+        CommonOptions,
+        RegexTimeout);
+
     private static readonly Regex PossessiveProperName = new(
         @"\b[A-Z][\p{L}\p{M}'’\-]{1,40}(?:'s|’s)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
@@ -230,6 +235,12 @@ public sealed class PulseAiEscalationSanitizer
         if (string.IsNullOrWhiteSpace(content))
         {
             decisionCode = "external_output_empty";
+            return false;
+        }
+
+        if (UnsupportedOutcomeClaim.IsMatch(content))
+        {
+            decisionCode = "external_output_unsupported_outcome_claim";
             return false;
         }
 

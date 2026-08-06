@@ -532,6 +532,15 @@ check(
   'untrusted Claude/OpenAI output is discarded if it reintroduces protected data; the isolated public-question path applies its separate credential and identifier boundary'
 );
 check(
+  'CELAR_EXTERNAL_OUTPUT_UNSUPPORTED_OUTCOME_BLOCKED',
+  containsAll(sanitizer, [
+    'UnsupportedOutcomeClaim',
+    'UnsupportedOutcomeClaim.IsMatch(content)',
+    'external_output_unsupported_outcome_claim'
+  ]),
+  'untrusted provider output cannot assert completion, resolution, or another unsupported terminal outcome'
+);
+check(
   'CELAR_EXTERNAL_DEIDENTIFICATION_DIAGNOSTICS',
   containsAll(routing, [
     'sanitized_external_request_ready_after_deidentification',

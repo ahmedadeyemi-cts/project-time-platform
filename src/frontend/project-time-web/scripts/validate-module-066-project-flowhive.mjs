@@ -348,6 +348,15 @@ assertInvariant(
 );
 
 assertInvariant(
+  'MODULE_066_DETERMINISTIC_CONFIDENCE_EXPLANATION',
+  frontend.includes("String(aiPreview?.executionPath || '').toLowerCase() === 'deterministic_private_fallback'") &&
+    frontend.includes('Number(aiPreview?.confidence) === 0.35') &&
+    frontend.includes('{aiPreviewIsDeterministicFloor ?') &&
+    !frontend.includes('Number(aiPreview.confidence || 0) <= .35'),
+  'the 35% explanation is limited to the exact deterministic fallback result'
+);
+
+assertInvariant(
   'MODULE_066_SCOPED_STYLES',
   stylesheet.includes('.project-flowhive-center') &&
     stylesheet.includes('.flowhive-timeline') &&
