@@ -2435,6 +2435,14 @@ public sealed class CelarAiCapabilityRouter
                         result.Content,
                         outputSensitiveTerms,
                         out outputDecisionCode)
+                    : string.Equals(
+                        execution.ExternalCapsulePurpose,
+                        CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
+                        StringComparison.Ordinal)
+                        ? _sanitizer.IsTimesheetExternalOutputSafe(
+                            result.Content,
+                            outputSensitiveTerms,
+                            out outputDecisionCode)
                     : _sanitizer.IsExternalOutputSafe(
                         result.Content,
                         outputSensitiveTerms,

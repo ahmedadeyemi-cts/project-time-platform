@@ -180,7 +180,7 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=KNOWLEDGE_FABRIC' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_KNOWLEDGE_FABRIC=PASSED'
               ;;
-            security/celar-ai-production-readiness-*)
+            security/celar-ai-production-readiness-*|fix/celar-ai-readiness-routing-ui-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
               if [[ -n "$UNAPPROVED_HELP" ]]; then

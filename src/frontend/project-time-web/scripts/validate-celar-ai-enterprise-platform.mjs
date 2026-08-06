@@ -153,7 +153,7 @@ assert(
   'ARCHITECTURE_CONTEXT_FABRIC',
   moduleSource.includes('celar-ai-private-first-architecture-v5-context-fabric')
     && architecture.includes('Private content graph and retrieval')
-    && architecture.includes('Temporal context · policy eligibility · authoritative versions · private fine-tuning lifecycle')
+    && architecture.includes('Readiness-gated services · authoritative versions · governed fine-tuning lifecycle')
     && architecture.includes('Confidence · freshness · policy · live decision trace')
     && architecture.includes('Self-monitoring adapters'),
   'Module 011 shows the current content, temporal, policy, decision-trace, private-adapter, and fine-tuning architecture'

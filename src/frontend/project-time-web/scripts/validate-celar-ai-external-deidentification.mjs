@@ -520,10 +520,12 @@ check(
 check(
   'CELAR_EXTERNAL_OUTPUT_REVALIDATED',
   sanitizer.includes('public bool IsExternalOutputSafe(')
+    && sanitizer.includes('public bool IsTimesheetExternalOutputSafe(')
     && sanitizer.includes('public bool IsPublicExternalOutputSafe(')
     && sanitizer.includes('public bool TryPreparePublicQuestion(')
     && containsAll(externalSuccess, [
       '_sanitizer.IsExternalOutputSafe(',
+      '_sanitizer.IsTimesheetExternalOutputSafe(',
       '_sanitizer.IsPublicExternalOutputSafe(',
       'out outputDecisionCode',
       '_health.RecordFailure(target, outputDecisionCode',
@@ -535,10 +537,11 @@ check(
   'CELAR_EXTERNAL_OUTPUT_UNSUPPORTED_OUTCOME_BLOCKED',
   containsAll(sanitizer, [
     'UnsupportedOutcomeClaim',
-    'UnsupportedOutcomeClaim.IsMatch(content)',
+    'UnsupportedOutcomeClaim.IsMatch(',
+    'IsTimesheetExternalOutputSafe(',
     'external_output_unsupported_outcome_claim'
   ]),
-  'untrusted provider output cannot assert completion, resolution, or another unsupported terminal outcome'
+  'customer-facing Timesheet provider output cannot assert an unsupported completion, resolution, or terminal outcome while other routes may restate approved facts'
 );
 check(
   'CELAR_EXTERNAL_DEIDENTIFICATION_DIAGNOSTICS',

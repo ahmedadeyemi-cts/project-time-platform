@@ -238,12 +238,6 @@ public sealed class PulseAiEscalationSanitizer
             return false;
         }
 
-        if (UnsupportedOutcomeClaim.IsMatch(content))
-        {
-            decisionCode = "external_output_unsupported_outcome_claim";
-            return false;
-        }
-
         var inspection = SanitizeInternal(
             new PulseAiSanitizationRequest(
                 Purpose: "external_output_privacy_validation",
@@ -276,6 +270,29 @@ public sealed class PulseAiEscalationSanitizer
         }
 
         decisionCode = "external_output_privacy_validated";
+        return true;
+    }
+
+    /// <summary>
+    /// Applies the stricter customer-facing Timesheet claim policy after the
+    /// common external-output privacy boundary. Other governed capabilities may
+    /// legitimately restate a server-supplied completion fact, including the
+    /// fixed Module 064 production readiness probe.
+    /// </summary>
+    public bool IsTimesheetExternalOutputSafe(
+        string? content,
+        IReadOnlyList<string>? sensitiveTerms,
+        out string decisionCode)
+    {
+        if (!IsExternalOutputSafe(content, sensitiveTerms, out decisionCode))
+            return false;
+
+        if (UnsupportedOutcomeClaim.IsMatch(content!))
+        {
+            decisionCode = "external_output_unsupported_outcome_claim";
+            return false;
+        }
+
         return true;
     }
 

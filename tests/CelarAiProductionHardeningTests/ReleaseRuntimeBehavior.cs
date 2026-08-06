@@ -293,6 +293,12 @@ internal static class ReleaseRuntimeBehavior
                 out var safeDecision)
             && safeDecision == "external_output_privacy_validated",
             "generic sentence-leading work verbs pass external-output validation");
+        Require(sanitizer.IsExternalOutputSafe(
+                "The configuration verification was completed. The result was documented for review.",
+                [],
+                out var supportedProbeDecision)
+            && supportedProbeDecision == "external_output_privacy_validated",
+            "a server-supplied completion fact remains valid for the Module 064 production probe");
         Require(!sanitizer.IsExternalOutputSafe(
                 "Daniel supported the implementation and documented the result.",
                 [],
@@ -317,19 +323,19 @@ internal static class ReleaseRuntimeBehavior
                 out var unknownStarterDecision)
             && unknownStarterDecision == "external_output_identity_validation_failed",
             "an unapproved sentence-leading token remains fail-closed");
-        Require(!sanitizer.IsExternalOutputSafe(
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
                 "Resolved the issue and documented the result.",
                 [],
                 out var resolutionClaimDecision)
             && resolutionClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported resolution claim remains fail-closed");
-        Require(!sanitizer.IsExternalOutputSafe(
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
                 "Completed the implementation and documented the result.",
                 [],
                 out var completionClaimDecision)
             && completionClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported completion claim remains fail-closed");
-        Require(!sanitizer.IsExternalOutputSafe(
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
                 "Provided technical support. The issue was resolved.",
                 [],
                 out var passiveResolutionClaimDecision)
