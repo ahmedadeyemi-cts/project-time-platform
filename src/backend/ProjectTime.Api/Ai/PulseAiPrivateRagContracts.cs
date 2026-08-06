@@ -206,10 +206,13 @@ public sealed record PulseAiPrivateRagAccess(
     });
 
     public bool CanHelpSearch => IsSuperAdministrator || PermissionCodes.Contains("ASK_PULSE_AI_HELP_SEARCH");
+    public bool CanSowPlanning => IsSuperAdministrator
+        || PermissionCodes.Contains(PulseAiSystemIntelligencePolicy.AskPermission);
     public bool CanAttachDocuments => IsSuperAdministrator
         || PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission);
     public bool CanTimesheet => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_TIMESHEET_GROUNDING");
     public bool CanFlowHive => IsSuperAdministrator || PermissionCodes.Contains("USE_PULSE_AI_FLOWHIVE_PLANNING");
+    public bool CanProjectForge => IsSuperAdministrator || PermissionCodes.Contains("USE_PROJECT_FORGE_AI_033");
     public bool CanViewAudit => IsSuperAdministrator || PermissionCodes.Contains("VIEW_PULSE_AI_ANSWER_AUDIT");
     public bool CanSubmitFeedback => IsSuperAdministrator || PermissionCodes.Contains("SUBMIT_PULSE_AI_FEEDBACK");
 
@@ -360,7 +363,20 @@ public sealed record PulseAiPrivateFlowHiveTask(
     IReadOnlyList<string> RequiredRoles,
     IReadOnlyList<string> Predecessors,
     IReadOnlyList<int> CitationIds,
-    bool IsAssumption);
+    bool IsAssumption,
+    string Phase = "",
+    IReadOnlyList<string>? DetailedSteps = null,
+    IReadOnlyList<string>? Inputs = null,
+    IReadOnlyList<string>? Outputs = null,
+    IReadOnlyList<string>? AcceptanceCriteria = null,
+    IReadOnlyList<string>? ValidationSteps = null,
+    IReadOnlyList<string>? CustomerResponsibilities = null,
+    IReadOnlyList<string>? UsSignalResponsibilities = null,
+    IReadOnlyList<string>? Prerequisites = null,
+    IReadOnlyList<string>? Risks = null,
+    IReadOnlyList<string>? OpenQuestions = null,
+    decimal? EstimatedHours = null,
+    string Priority = "normal");
 
 public sealed record PulseAiPrivateFlowHiveMilestone(
     string Name,
@@ -477,7 +493,8 @@ public sealed record PulseAiPrivateFlowHiveRequest(
     string? ProjectCode,
     string? ProjectName,
     string? RequestedOutcome,
-    string? DetailLevel = "comprehensive");
+    string? DetailLevel = "comprehensive",
+    string? FeatureCode = null);
 
 public sealed record PulseAiPrivateFeedbackRequest(
     string? FeedbackType,

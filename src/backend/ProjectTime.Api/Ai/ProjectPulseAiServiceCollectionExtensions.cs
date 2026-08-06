@@ -65,6 +65,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<CelarAiCapabilityRoutingStore>();
         services.AddSingleton<CelarAiPrivateGenerationTarget>();
         services.AddSingleton<CelarAiConsumerAssuranceRegistry>();
+        services.AddSingleton<CelarAiKnowledgeFabricService>();
         services.AddSingleton<CelarAiCapabilityRouter>();
         services.AddHostedService<CelarAiCapabilityRoutingLoader>();
 

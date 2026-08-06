@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Npgsql;
@@ -18,7 +19,7 @@ public static partial class ProjectForgeModule
 
     public static WebApplication MapProjectForgeEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CancellationToken, Task<IResult>>)GetBootstrapAsync);
+        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
         app.MapPost("/api/project-forge/plans", (Func<ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)CreatePlanAsync);
         app.MapPut("/api/project-forge/plans/{planId:guid}", (Func<Guid, ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)UpdatePlanAsync);
         app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
@@ -46,6 +47,8 @@ public static partial class ProjectForgeModule
         string? workspace,
         Guid? planId,
         HttpContext context,
+        CelarAiKnowledgeFabricService knowledgeFabricService,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -153,6 +156,23 @@ public static partial class ProjectForgeModule
                 AddNullableUuid(command, "project_filter", detailProjectFilter);
             }, cancellationToken);
             var holidays = await ReadJsonRowsAsync(connection, HolidaysSql, null, cancellationToken);
+            CelarAiKnowledgeFabricSnapshot? knowledgeFabric = null;
+            CelarAiCapabilityConnectionStatus? forgeConnection = null;
+            try
+            {
+                knowledgeFabric = await knowledgeFabricService.GetSnapshotAsync(cancellationToken);
+                forgeConnection = knowledgeFabric.Capabilities.FirstOrDefault(item =>
+                    string.Equals(item.Feature, CelarAiCapabilityCatalog.ProjectForgePlanEstimate, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                loggerFactory.CreateLogger("ProjectTime.Api.Modules.ProjectForgeModule")
+                    .LogWarning("Module 033 could not load Module 064 knowledge-fabric evidence. Diagnostic=knowledge_fabric_snapshot_unavailable");
+            }
 
             return Results.Ok(new
             {
@@ -209,6 +229,30 @@ public static partial class ProjectForgeModule
                 {
                     enabled = access.CanUseAi && !access.IsViewAs,
                     capability = ProjectForgePolicy.CapabilityCode,
+                    module064Connection = new
+                    {
+                        connected = forgeConnection?.CentralRouterConnected == true,
+                        status = access.IsViewAs
+                            ? "view_as_read_only"
+                            : !access.CanUseAi
+                                ? "permission_required"
+                                : forgeConnection?.Status ?? "connection_evidence_unavailable",
+                        permissionAuthorized = access.CanUseAi && !access.IsViewAs,
+                        privateKnowledgeReady = forgeConnection?.PrivateKnowledgeReady == true,
+                        route = forgeConnection?.Route ?? CelarAiCapabilityTargets.DefaultOrder,
+                        sourceCommit = knowledgeFabric?.SourceCommit ?? "unavailable",
+                        productKnowledgeVersion = knowledgeFabric?.ProductKnowledgeVersion ?? "unavailable",
+                        systemKnowledgeVersion = knowledgeFabric?.SystemKnowledgeVersion ?? "unavailable",
+                        readyDocumentCount = knowledgeFabric?.ReadyDocumentCount ?? 0,
+                        readySowDocumentCount = knowledgeFabric?.ReadySowDocumentCount ?? 0,
+                        activeVersionCount = knowledgeFabric?.ActiveVersionCount ?? 0,
+                        activeChunkCount = knowledgeFabric?.ActiveChunkCount ?? 0,
+                        embeddedChunkCount = knowledgeFabric?.EmbeddedChunkCount ?? 0,
+                        lastIndexedAt = knowledgeFabric?.LastIndexedAt,
+                        blockers = knowledgeFabric?.Blockers.Take(8).ToArray() ?? ["knowledge_fabric_snapshot_unavailable"],
+                        endpointValuesReturned = false,
+                        secretValuesReturned = false
+                    },
                     privateDocumentGrounding = true,
                     humanReviewRequired = true,
                     automaticAdoption = false
@@ -428,17 +472,17 @@ public static partial class ProjectForgeModule
                 task.Wbs,
                 ParentWbs(task.Wbs),
                 TaskName(task.Name, index + 1),
-                task.Description,
+                PlanningDescription(task),
                 "variable",
-                null,
-                "normal",
+                task.Phase,
+                Normalize(task.Priority, "normal", "low", "normal", "high", "critical"),
                 "draft",
                 "backlog",
                 "decide",
                 null,
                 null,
                 Math.Max(1, (int)Math.Ceiling(task.EstimatedDurationDays)),
-                Math.Max(1m, task.EstimatedDurationDays * 8m),
+                Math.Max(1m, task.EstimatedHours ?? task.EstimatedDurationDays * 8m),
                 0m, 0m, 0m, 0m, 0m, 0m, 0m,
                 0m,
                 false,
@@ -2142,6 +2186,39 @@ public static partial class ProjectForgeModule
     {
         var clean = Clean(value, 255, $"Task {index}");
         return clean.Length >= 3 ? clean : $"{clean} task";
+    }
+
+    private static string PlanningDescription(PulseAiPrivateFlowHiveTask task)
+    {
+        var value = new StringBuilder();
+        value.AppendLine(Clean(task.Description, 1_200, "Complete the cited delivery work package and retain review evidence."));
+        AppendPlanningSection(value, "Detailed procedure", task.DetailedSteps);
+        AppendPlanningSection(value, "Inputs", task.Inputs);
+        AppendPlanningSection(value, "Outputs and deliverables", task.Outputs);
+        AppendPlanningSection(value, "Validation", task.ValidationSteps);
+        AppendPlanningSection(value, "Acceptance criteria", task.AcceptanceCriteria);
+        AppendPlanningSection(value, "Customer responsibilities", task.CustomerResponsibilities);
+        AppendPlanningSection(value, "US Signal responsibilities", task.UsSignalResponsibilities);
+        AppendPlanningSection(value, "Prerequisites", task.Prerequisites);
+        AppendPlanningSection(value, "Risks", task.Risks);
+        AppendPlanningSection(value, "Open questions", task.OpenQuestions);
+        if (task.IsAssumption) value.AppendLine().Append("Assumption: One or more planning values require Project Manager, Engineering, or customer validation before adoption.");
+        return Clean(value.ToString(), 4_000, task.Description);
+    }
+
+    private static void AppendPlanningSection(
+        StringBuilder value,
+        string heading,
+        IReadOnlyList<string>? items)
+    {
+        var supported = (items ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Take(20)
+            .ToArray();
+        if (supported.Length == 0) return;
+        value.AppendLine().AppendLine(heading + ":");
+        for (var index = 0; index < supported.Length; index++)
+            value.Append(index + 1).Append(". ").AppendLine(supported[index].Trim());
     }
 
     private static string Normalize(string? value, string fallback, params string[] allowed)

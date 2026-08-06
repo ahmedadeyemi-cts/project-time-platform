@@ -200,7 +200,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             ReadyCapabilities: ready.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Blockers: blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             MissingConfiguration: missing,
-            GeneratedAt: DateTimeOffset.UtcNow);
+            GeneratedAt: DateTimeOffset.UtcNow,
+            ActiveVersionCount: counts.ActiveVersions,
+            UnembeddedChunkCount: Math.Max(0, counts.ActiveChunks - counts.EmbeddedChunks),
+            LastIndexedAt: counts.LastIndexedAt);
     }
 
     public async Task<PulseAiPrivateDocumentRuntimeRepository.RuntimeAccess> LoadAccessAsync(

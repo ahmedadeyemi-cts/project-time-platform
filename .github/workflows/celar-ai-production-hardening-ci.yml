@@ -37,6 +37,35 @@ jobs:
           BASE_BRANCH="${GITHUB_BASE_REF:-main}"
           HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           case "$HEAD_BRANCH" in
+            security/celar-ai-production-readiness-knowledge-fabric-*)
+              SCOPE_LABEL='knowledge fabric and comprehensive project planning'
+              SCOPE_MARKER='EXACT_22_KNOWLEDGE_FABRIC_FILES'
+              SOURCE_MANIFEST="$(cat <<'EOF'
+          .github/workflows/celar-ai-production-hardening-ci.yml
+          src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
+          src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs
+          src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateModelClient.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiProductKnowledgeCatalog.cs
+          src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs
+          src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+          src/frontend/project-time-web/src/ProjectForgeCenter.jsx
+          src/frontend/project-time-web/src/celar-ai-capability-routing-panel.css
+          src/frontend/project-time-web/src/project-forge-center.css
+          EOF
+          )"
+              ;;
             security/celar-ai-production-readiness-universal-routing-*)
               SCOPE_LABEL='universal answer-first routing'
               SCOPE_MARKER='EXACT_16_UNIVERSAL_ROUTING_FILES'
@@ -222,6 +251,9 @@ jobs:
           done < <(git diff --name-status --no-renames "$DIFF_RANGE")
           git diff --check "$DIFF_RANGE"
           case "$SCOPE_MARKER" in
+            EXACT_22_KNOWLEDGE_FABRIC_FILES)
+              echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_22_KNOWLEDGE_FABRIC_FILES'
+              ;;
             EXACT_16_UNIVERSAL_ROUTING_FILES)
               echo 'CELAR_AI_PRODUCTION_HARDENING_SCOPE=EXACT_16_UNIVERSAL_ROUTING_FILES'
               ;;

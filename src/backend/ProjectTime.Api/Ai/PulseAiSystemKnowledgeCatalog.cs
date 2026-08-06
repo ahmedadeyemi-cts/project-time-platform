@@ -19,6 +19,8 @@ public sealed record PulseAiSystemIntentPlan(
 
 public static class PulseAiSystemKnowledgeCatalog
 {
+    public const string ContractVersion = "celar-ai-system-knowledge-v3-20260806";
+
     private static readonly PulseAiSystemToolDefinition[] ToolDefinitions =
     [
         Tool(

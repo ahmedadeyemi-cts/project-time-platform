@@ -42,7 +42,7 @@ function routeDraft(route) {
 }
 
 export default function CelarAiCapabilityRoutingPanel() {
-  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, consumers: [], controls: null });
+  const [state, setState] = useState({ loading: true, error: '', routes: [], profile: null, productionReadiness: null, knowledgeFabric: null, consumers: [], controls: null });
   const [drafts, setDrafts] = useState({});
   const [savingRoute, setSavingRoute] = useState('');
   const [notice, setNotice] = useState('');
@@ -62,10 +62,11 @@ export default function CelarAiCapabilityRoutingPanel() {
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const [routesPayload, profilePayload, consumersPayload] = await Promise.all([
+      const [routesPayload, profilePayload, consumersPayload, knowledgePayload] = await Promise.all([
         readJson(await fetch('/api/ai-configuration/routes', { credentials: 'include', cache: 'no-store' })),
         readJson(await fetch('/api/ai-configuration/private-model', { credentials: 'include', cache: 'no-store' })),
         readJson(await fetch('/api/ai-configuration/consumers', { credentials: 'include', cache: 'no-store' })),
+        readJson(await fetch('/api/ai-configuration/knowledge-fabric', { credentials: 'include', cache: 'no-store' })),
       ]);
       const routes = routesPayload.routes ?? [];
       const profile = profilePayload.profile ?? null;
@@ -86,6 +87,7 @@ export default function CelarAiCapabilityRoutingPanel() {
         routes,
         profile,
         productionReadiness: profilePayload.productionReadiness ?? null,
+        knowledgeFabric: knowledgePayload.knowledgeFabric ?? null,
         consumers: consumersPayload.consumers ?? [],
         controls: routesPayload.controls ?? null,
       });
@@ -226,6 +228,7 @@ export default function CelarAiCapabilityRoutingPanel() {
 
   const profile = state.profile;
   const production = state.productionReadiness;
+  const knowledge = state.knowledgeFabric;
   const deploymentManaged = state.controls?.deploymentManaged === true || profile?.deploymentManaged === true;
   const releasePhase = state.controls?.releasePhase || production?.releasePhase || 'disabled';
 
@@ -307,6 +310,42 @@ export default function CelarAiCapabilityRoutingPanel() {
             </details>
           ) : null}
         </div>
+
+        <section className="celar-ai-routing__knowledge-fabric" aria-labelledby="celar-knowledge-fabric-title">
+          <header>
+            <div>
+              <span>Comprehensive knowledge fabric</span>
+              <strong id="celar-knowledge-fabric-title">{knowledge?.ready ? 'Connected and current' : 'Connected with readiness items'}</strong>
+            </div>
+            <small>Source-controlled knowledge, capability graph, content graph, private endpoints, citations, and freshness</small>
+          </header>
+          <div className="celar-ai-routing__knowledge-grid">
+            <article><span>Knowledge graph</span><strong>{knowledge?.routeGraphReady ? 'Ready' : 'Review required'}</strong><small>{knowledge?.capabilityNodeCount ?? 0} capabilities · {knowledge?.consumerNodeCount ?? 0} consumers · {knowledge?.relationshipCount ?? 0} relationships</small></article>
+            <article><span>Content graph</span><strong>{knowledge?.contentGraphReady ? 'Ready' : 'Review required'}</strong><small>{knowledge?.readyDocumentCount ?? 0} documents · {knowledge?.activeVersionCount ?? 0} active versions · {knowledge?.activeChunkCount ?? 0} searchable chunks</small></article>
+            <article><span>Private endpoints</span><strong>{knowledge?.privateEndpointsReady ? 'Verified' : 'Review required'}</strong><small>{(knowledge?.endpoints ?? []).filter((item) => item.status === 'ready').length} of {(knowledge?.endpoints ?? []).filter((item) => item.required).length} required components ready</small></article>
+            <article><span>Latest indexed content</span><strong>{formatDate(knowledge?.lastIndexedAt)}</strong><small>Source {knowledge?.sourceCommit ? knowledge.sourceCommit.slice(0, 12) : 'not recorded'} · {knowledge?.embeddedChunkCount ?? 0} embedded chunks</small></article>
+          </div>
+          <div className="celar-ai-routing__knowledge-versions">
+            <span>Product knowledge: {knowledge?.productKnowledgeVersion || 'not recorded'}</span>
+            <span>System knowledge: {knowledge?.systemKnowledgeVersion || 'not recorded'}</span>
+            <span>Private runtime: {knowledge?.privateRuntimeVersion || 'not recorded'}</span>
+          </div>
+          {(knowledge?.endpoints ?? []).length ? (
+            <div className="celar-ai-routing__endpoint-matrix" role="list" aria-label="Private endpoint readiness">
+              {knowledge.endpoints.map((endpoint) => (
+                <span key={endpoint.component} role="listitem" className={endpoint.status === 'ready' || endpoint.status === 'not_required' ? 'is-good' : 'is-bad'}>
+                  {title(endpoint.component)}: {title(endpoint.status)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {!knowledge?.ready && (knowledge?.blockers ?? []).length ? (
+            <details>
+              <summary>Review {knowledge.blockers.length} knowledge-fabric item{knowledge.blockers.length === 1 ? '' : 's'}</summary>
+              <ul>{knowledge.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+            </details>
+          ) : null}
+        </section>
 
         <form className="celar-ai-routing__profile-form" onSubmit={savePrivateSettings}>
           <label>

@@ -8,6 +8,9 @@ namespace ProjectTime.Api.Ai;
 /// </summary>
 public static class PulseAiProductKnowledgeCatalog
 {
+    public const string ContractVersion = "celar-ai-product-knowledge-v3-20260806";
+    public const int EntryCount = 2;
+
     public static PulseAiKnowledgeAnswer? Find(string normalizedQuestion)
     {
         if (string.IsNullOrWhiteSpace(normalizedQuestion)) return null;

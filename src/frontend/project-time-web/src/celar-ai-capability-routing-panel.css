@@ -212,6 +212,78 @@
   background: #f6fbfe;
 }
 
+.celar-ai-routing__knowledge-fabric {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid #9ecfbd;
+  border-radius: 1rem;
+  background: linear-gradient(145deg, #f2fbf7, #ffffff);
+}
+
+.celar-ai-routing__knowledge-fabric > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.celar-ai-routing__knowledge-fabric > header div,
+.celar-ai-routing__knowledge-grid article {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.celar-ai-routing__knowledge-fabric > header span,
+.celar-ai-routing__knowledge-grid span {
+  color: #477064;
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.celar-ai-routing__knowledge-fabric > header small,
+.celar-ai-routing__knowledge-grid small,
+.celar-ai-routing__knowledge-versions {
+  color: #5e766f;
+  line-height: 1.45;
+}
+
+.celar-ai-routing__knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.celar-ai-routing__knowledge-grid article {
+  padding: 0.8rem;
+  border: 1px solid #cce0d8;
+  border-radius: 0.75rem;
+  background: #ffffff;
+}
+
+.celar-ai-routing__knowledge-versions,
+.celar-ai-routing__endpoint-matrix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.celar-ai-routing__knowledge-versions span,
+.celar-ai-routing__endpoint-matrix span {
+  padding: 0.42rem 0.65rem;
+  border-radius: 999px;
+  background: #e9f4ef;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.celar-ai-routing__endpoint-matrix .is-good { color: #2c752e; }
+.celar-ai-routing__endpoint-matrix .is-bad { color: #9c2f2f; background: #fff0f0; }
+
+.celar-ai-routing__knowledge-fabric summary { color: #694900; font-weight: 850; cursor: pointer; }
+.celar-ai-routing__knowledge-fabric li { margin-top: 0.35rem; line-height: 1.45; }
+
 .celar-ai-routing__production-readiness > header {
   display: flex;
   align-items: flex-start;
@@ -493,7 +565,8 @@
 @media (max-width: 1100px) {
   .celar-ai-routing__architecture,
   .celar-ai-routing__private-summary,
-  .celar-ai-routing__production-readiness > div {
+  .celar-ai-routing__production-readiness > div,
+  .celar-ai-routing__knowledge-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
