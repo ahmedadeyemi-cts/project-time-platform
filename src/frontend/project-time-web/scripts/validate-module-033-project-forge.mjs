@@ -281,9 +281,13 @@ for (const token of [
 for (const token of [
   'CelarAiCapabilityCatalog.ProjectForgePlanEstimate => access.CanProjectForge',
   'Automatically fill every supported section.',
-  'Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition.',
-  'FeatureCode: ResolveCapability(mode, request)'
+  'Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition.'
 ]) requireText([privateRagService, enterpriseService].join('\n'), token, 'Project Forge capability-aware private planning');
+
+for (const token of [
+  'var planningCapability = ResolveCapability(mode, request);',
+  'FeatureCode: planningCapability'
+]) requireText(enterpriseService, token, 'Project Forge centrally resolved planning capability');
 
 for (const token of [
   'PlanningDescription(task)',
