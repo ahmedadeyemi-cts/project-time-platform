@@ -161,6 +161,17 @@ public static partial class CelarAiProductionPlatformModule
         var actualAccess = identity.Value.Actual == identity.Value.Effective
             ? access
             : await system.LoadAccessAsync(identity.Value.Actual, cancellationToken);
+        var permanentAdministrator = false;
+        try
+        {
+            permanentAdministrator = await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context,
+                cancellationToken: cancellationToken);
+        }
+        catch
+        {
+            // The existing role evidence below remains a fail-closed fallback.
+        }
         var schemaReady = await IsSchemaReadyAsync(cancellationToken);
         var counts = schemaReady ? await CountsAsync(cancellationToken) : EmptyCounts();
         var helpRoute = await routing.LoadRouteAsync(CelarAiCapabilityCatalog.HelpAssistant, cancellationToken);
@@ -206,7 +217,7 @@ public static partial class CelarAiProductionPlatformModule
                 currentPassRate = cases.Length == 0 ? 0m : (decimal)cases.Count(test => test.passed) / cases.Length,
                 cases
             },
-            access = AccessEvidence(identity.Value, access, CanManage(identity.Value, actualAccess)),
+            access = AccessEvidence(identity.Value, access, CanManage(context, identity.Value, actualAccess, permanentAdministrator)),
             guarantees = new[]
             {
                 "Utility questions are answered directly before API, RAG, or provider selection.",
