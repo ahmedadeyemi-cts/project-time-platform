@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-const expectedSource = "40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c";
+const expectedSource = "6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83";
 const expectedBase = "https://phd-west-test.onenecklab.com";
 const expectedTargets = ["celar_ai", "claude", "openai", "local_template"];
 const expectedFeatures = [
@@ -191,8 +191,8 @@ const evidence = {
   environment: "test",
   sourceSha,
   publicOrigin: base,
-  flowHiveIncluded: false,
-  migration074Included: false,
+  flowHiveIncluded: true,
+  migration074Included: true,
   aiReleasePhase: "disabled",
   routingAuthority: "database_managed_active",
   authenticatedUatStatus: authenticatedUatEnabled ? "executing" : "pending_user_session_validation",
@@ -330,6 +330,9 @@ async function run() {
     "Type a project name or code",
     "Temporal context graph",
     "Self-monitoring adapters",
+    "Project planning command center",
+    "Generate and auto-fill detailed plan",
+    "/api/project-flowhive",
   ]) {
     assert(bundle.text.includes(marker), "Web production bundle is missing the Celar smart-interaction or context-fabric marker: " + marker + ".");
   }
@@ -349,12 +352,13 @@ async function run() {
   evidence.publicChecks.version = "passed";
 
   const protectedRoutes = [
-    ["GET", "/api/pulse-ai/v1/system/apis?search=project-forge&module=033&limit=10"],
+    ["GET", "/api/celar-ai/v1/system/apis?search=project-forge&module=033&limit=10"],
     ["POST", "/api/celar-ai/v2/chat"],
     ["GET", "/api/ai-configuration/routes"],
     ["GET", "/api/ai-configuration/knowledge-fabric"],
     ["GET", "/api/celar-ai/v1/production/readiness"],
     ["GET", "/api/celar-ai/v2/attachments/readiness"],
+    ["GET", "/api/project-flowhive/readiness"],
     ["GET", authenticatedUatEnabled
       ? "/api/project-forge/bootstrap?projectId=" + encodeURIComponent(forgeProjectId) + "&workspace=canonical"
       : "/api/project-forge/bootstrap?workspace=canonical"],
@@ -487,6 +491,49 @@ async function run() {
   assert(module011Readiness.json?.access?.mutationAuthorityTransferredByViewAs === false, "Module 011 reported transferred mutation authority.");
   evidence.authenticatedChecks.module011CoreAskAccess = "passed";
   evidence.authenticatedChecks.module011SuperAdministratorAuthority = "passed";
+
+  const flowHiveApis = await request("/api/celar-ai/v1/system/apis?search=project-flowhive&module=066&limit=25", {
+    moduleNumber: "011",
+    authenticated: true,
+  });
+  assert(flowHiveApis.status === 200, "Project FlowHive canonical API inventory returned HTTP " + flowHiveApis.status + ".");
+  assert(flowHiveApis.json?.status === "live_registered_api_inventory_loaded", "Project FlowHive live API inventory is unavailable.");
+  assert(flowHiveApis.json?.filters?.moduleCode === "066", "Project FlowHive API inventory did not retain the Module 066 filter.");
+  assert(Array.isArray(flowHiveApis.json?.apis) && flowHiveApis.json.apis.length >= 10, "Project FlowHive API inventory is incomplete.");
+  assert(flowHiveApis.json.apis.every((item) => item?.moduleCode === "066" && String(item?.routePattern || "").startsWith("/api/project-flowhive")), "Project FlowHive API inventory contains a mismatched module or route.");
+  assert(flowHiveApis.json.apis.every((item) => item?.moduleName === "Project FlowHive"), "Project FlowHive API inventory contains an inconsistent module name.");
+  evidence.authenticatedChecks.flowHiveCanonicalApiInventory = "passed";
+
+  const flowHiveReadiness = await request("/api/project-flowhive/readiness", {
+    moduleNumber: "066",
+    authenticated: true,
+  });
+  assert(flowHiveReadiness.status === 200, "Project FlowHive readiness returned HTTP " + flowHiveReadiness.status + ".");
+  assert(flowHiveReadiness.json?.module === "066" && flowHiveReadiness.json?.moduleName === "Project FlowHive", "Project FlowHive readiness exposes an inconsistent module identity.");
+  assert(flowHiveReadiness.json?.route === "project-flowhive" && flowHiveReadiness.json?.apiBase === "/api/project-flowhive", "Project FlowHive readiness exposes an inconsistent route or API base.");
+  assert(flowHiveReadiness.json?.ready === true, "Project FlowHive is not production ready after Migration 074.");
+  assert(flowHiveReadiness.json?.persistence?.ready === true && flowHiveReadiness.json?.persistence?.status === "project_flowhive_production_ready", "Project FlowHive persistence is not ready after Migration 074.");
+
+  const flowHiveCapabilities = await request("/api/project-flowhive/capabilities", {
+    moduleNumber: "066",
+    authenticated: true,
+  });
+  assert(flowHiveCapabilities.status === 200, "Project FlowHive capabilities returned HTTP " + flowHiveCapabilities.status + ".");
+  assert(flowHiveCapabilities.json?.module === "066" && flowHiveCapabilities.json?.moduleName === "Project FlowHive", "Project FlowHive capabilities expose an inconsistent module identity.");
+  assert(flowHiveCapabilities.json?.route === "project-flowhive" && flowHiveCapabilities.json?.status === "production_ready", "Project FlowHive capabilities do not report production readiness.");
+  assert(flowHiveCapabilities.json?.databaseMutationEnabled === true && flowHiveCapabilities.json?.aiExecutionEnabled === true, "Project FlowHive persistence or Celar AI execution is not enabled.");
+  assert(flowHiveCapabilities.json?.integration?.aiProvider === "module_064_celar_ai_capability_router", "Project FlowHive is not connected to the Module 064 Celar AI router.");
+  assert(flowHiveCapabilities.json?.integration?.sharedRegistration === "production_registered", "Project FlowHive shared registration is not production ready.");
+
+  const flowHivePlans = await request("/api/project-flowhive/plans?projectId=" + encodeURIComponent(forgeProjectId), {
+    moduleNumber: "066",
+    authenticated: true,
+  });
+  assert(flowHivePlans.status === 200, "Project FlowHive plan persistence read returned HTTP " + flowHivePlans.status + ".");
+  assert(flowHivePlans.json?.module === "066" && flowHivePlans.json?.moduleName === "Project FlowHive", "Project FlowHive plan persistence read exposes an inconsistent module identity.");
+  assert(Array.isArray(flowHivePlans.json?.plans), "Project FlowHive plan persistence read did not return a plan collection.");
+  evidence.authenticatedChecks.flowHiveProductionReadiness = "passed";
+  evidence.authenticatedChecks.flowHivePersistenceRead = "passed";
 
   const routes = await request("/api/ai-configuration/routes", {
     moduleNumber: "064",
@@ -745,7 +792,7 @@ async function run() {
   assert(readiness.rawDocumentsSentToClaudeOrOpenAi === false, "Attachment readiness permits raw documents to a public provider.");
   evidence.authenticatedChecks.attachmentReadiness = "passed";
 
-  const createConversation = await request("/api/pulse-ai/v1/system/conversations", {
+  const createConversation = await request("/api/celar-ai/v1/system/conversations", {
     method: "POST",
     moduleNumber: "011",
     authenticated: true,

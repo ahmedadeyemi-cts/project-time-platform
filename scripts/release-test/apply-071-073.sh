@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="40e32a3b125cc1adbee6dc2ac289ffdbb3d25a9c"
+EXPECTED_RELEASE_COMMIT="6f2a2adc66ed6870a78ef3b92ed6aa8ec4a10d83"
 RELEASE_ROOT="${1:-}"
 DATABASE_URL="${PROJECTPULSE_TEST_DATABASE_URL:-}"
 EXPECTED_DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
@@ -42,11 +42,13 @@ FILES=(
   071_ai_runtime_production_hardening.sql
   072_celar_ai_conversation_attachments.sql
   073_module_033_project_forge_interactive.sql
+  074_module_066_project_flowhive_production.sql
 )
 HASHES=(
   108f898a0f5e7f76833d42741ba1caa9a0f1ff427db17728cf5a5008a91ee6e7
   b1a898d72916027f02f7ea5578facd7d9149436b2db9e11dca833d74a7cecf1f
   e4280b1f020f9aaed4376da4d6e687706ba9805e70bc2adb8cb23ffdb30ec4c6
+  44395e1b9ce09fd443380b89382c33ff4ffa594015e78c4316fb9408a8d5fce9
 )
 [[ -f "$MIGRATION_ROOT/SHA256SUMS" ]] || fail "Migration checksum manifest is missing."
 mapfile -t ACTUAL_FILES < <(
@@ -55,15 +57,15 @@ mapfile -t ACTUAL_FILES < <(
   done | LC_ALL=C sort
 )
 diff -u <(printf '%s\n' "${FILES[@]}" | LC_ALL=C sort) <(printf '%s\n' "${ACTUAL_FILES[@]}") ||
-  fail "Migration image must contain exactly migrations 071, 072, and 073."
-[[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == "3" ]] ||
-  fail "SHA256SUMS must contain exactly three entries."
+  fail "Migration image must contain exactly migrations 071, 072, 073, and 074."
+[[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == "4" ]] ||
+  fail "SHA256SUMS must contain exactly four entries."
 (
   cd "$MIGRATION_ROOT"
   sha256sum --check --strict SHA256SUMS
 ) || fail "Migration checksum validation failed."
 
-for index in 0 1 2; do
+for index in 0 1 2 3; do
   file="${FILES[$index]}"
   actual="$(sha256sum "$MIGRATION_ROOT/$file" | awk '{print $1}')"
   [[ "$actual" == "${HASHES[$index]}" ]] || fail "Unexpected source bytes for $file."
@@ -97,7 +99,8 @@ psql "${PSQL_TARGET[@]}" \
   --set=expected_database_name="$EXPECTED_DATABASE_NAME" \
   --set=body071="$BODY_ROOT/${FILES[0]}" \
   --set=body072="$BODY_ROOT/${FILES[1]}" \
-  --set=body073="$BODY_ROOT/${FILES[2]}" <<'SQL'
+  --set=body073="$BODY_ROOT/${FILES[2]}" \
+  --set=body074="$BODY_ROOT/${FILES[3]}" <<'SQL'
 \set ON_ERROR_STOP on
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -118,7 +121,7 @@ END
 $release_database_identity$;
 \echo DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED
 
-SELECT pg_advisory_xact_lock(71072073);
+SELECT pg_advisory_xact_lock(71072074);
 
 DO $release_prerequisites$
 DECLARE
@@ -138,34 +141,53 @@ BEGIN
       RAISE EXCEPTION 'Required prerequisite migration is missing or duplicated: %', required_id;
     END IF;
   END LOOP;
-  IF EXISTS(
-    SELECT 1 FROM schema_migrations
-    WHERE migration_id='074_module_066_project_flowhive_production'
-  ) THEN
-    RAISE EXCEPTION 'FlowHive Migration 074 is outside this exact release and must not already be applied.';
-  END IF;
 END
 $release_prerequisites$;
 
 \if :release_apply
   SELECT
-    COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3 AS complete,
-    COUNT(*) <> 0 AND NOT (COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3) AS inconsistent
+    COUNT(*) = 0 AS absent,
+    COUNT(*) = 3
+      AND COUNT(*) FILTER (WHERE migration_id IN (
+        '071_ai_runtime_production_hardening',
+        '072_celar_ai_conversation_attachments',
+        '073_module_033_project_forge_interactive'
+      )) = 3
+      AND COUNT(*) FILTER (WHERE migration_id='074_module_066_project_flowhive_production') = 0 AS prior_prefix,
+    COUNT(*) = 4 AND COUNT(DISTINCT migration_id) = 4 AS complete,
+    NOT (
+      COUNT(*) = 0
+      OR (
+        COUNT(*) = 3
+        AND COUNT(*) FILTER (WHERE migration_id IN (
+          '071_ai_runtime_production_hardening',
+          '072_celar_ai_conversation_attachments',
+          '073_module_033_project_forge_interactive'
+        )) = 3
+        AND COUNT(*) FILTER (WHERE migration_id='074_module_066_project_flowhive_production') = 0
+      )
+      OR (COUNT(*) = 4 AND COUNT(DISTINCT migration_id) = 4)
+    ) AS inconsistent
   FROM schema_migrations
   WHERE migration_id IN (
     '071_ai_runtime_production_hardening',
     '072_celar_ai_conversation_attachments',
-    '073_module_033_project_forge_interactive'
+    '073_module_033_project_forge_interactive',
+    '074_module_066_project_flowhive_production'
   )
   \gset release_target_
   \if :release_target_inconsistent
-    \echo ERROR: Refusing partial, duplicate, or mixed 071-073 ledger state; explicit operator recovery is required.
+    \echo ERROR: Refusing partial, duplicate, or mixed 071-074 ledger state; only an empty ledger, the exact 071-073 prefix, or all four migrations are accepted.
     \quit 3
   \endif
   \if :release_target_complete
     \echo MAIN_RELEASE_TARGET_LEDGER=COMPLETE_RECONCILING
   \else
-    \echo MAIN_RELEASE_TARGET_LEDGER=ABSENT_APPLYING
+    \if :release_target_prior_prefix
+      \echo MAIN_RELEASE_TARGET_LEDGER=071_073_PREFIX_APPLYING_074
+    \else
+      \echo MAIN_RELEASE_TARGET_LEDGER=ABSENT_APPLYING
+    \endif
   \endif
 \endif
 
@@ -225,6 +247,22 @@ SELECT EXISTS(
   \endif
 \endif
 
+SELECT EXISTS(
+  SELECT 1 FROM schema_migrations
+  WHERE migration_id='074_module_066_project_flowhive_production'
+) AS present \gset m074_
+\if :m074_present
+  \echo MAIN_RELEASE_074=ALREADY_PRESENT_VERIFYING
+\else
+  \if :release_apply
+    \echo MAIN_RELEASE_074=APPLYING
+    \i :body074
+  \else
+    \echo ERROR: Migration 074 is absent in verify mode.
+    \quit 3
+  \endif
+\endif
+
 DO $release_postconditions$
 DECLARE
   missing text[];
@@ -257,6 +295,15 @@ BEGIN
      ) THEN
     RAISE EXCEPTION 'Migration 073 ledger evidence is incomplete.';
   END IF;
+  IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='074_module_066_project_flowhive_production') <> 1
+     OR NOT EXISTS(
+       SELECT 1 FROM schema_migrations
+       WHERE migration_id='074_module_066_project_flowhive_production'
+         AND applied_at IS NOT NULL
+         AND description='Enable persistent versioned Project FlowHive planning, immutable reviews and baselines, scoped RBAC, and Celar AI catalog labels'
+     ) THEN
+    RAISE EXCEPTION 'Migration 074 ledger evidence is incomplete.';
+  END IF;
 
   SELECT array_agg(name) INTO missing
   FROM unnest(ARRAY[
@@ -265,7 +312,11 @@ BEGIN
     'ai_provider_probe_evidence',
     'pulse_ai_conversation_attachments',
     'pulse_ai_conversation_attachment_purge_audit',
-    'project_task_dependencies'
+    'project_task_dependencies',
+    'project_flowhive_plans',
+    'project_flowhive_plan_versions',
+    'project_flowhive_plan_reviews',
+    'project_flowhive_audit_events'
   ]) AS name
   WHERE to_regclass('public.' || name) IS NULL;
   IF missing IS NOT NULL THEN
@@ -364,13 +415,48 @@ BEGIN
     RAISE EXCEPTION 'Migration 073 interactive Project Forge controls are incomplete.';
   END IF;
 
+  IF (
+    SELECT COUNT(*) FROM pg_trigger
+    WHERE tgname IN (
+      'trg_project_flowhive_plan_touch_074',
+      'trg_project_flowhive_versions_immutable_074',
+      'trg_project_flowhive_reviews_immutable_074',
+      'trg_project_flowhive_audit_immutable_074'
+    ) AND NOT tgisinternal AND tgenabled <> 'D'
+  ) <> 4 OR (
+    SELECT COUNT(*) FROM app_permissions
+    WHERE module_code='066' AND permission_code IN (
+      'VIEW_PROJECT_FLOWHIVE_066',
+      'MANAGE_PROJECT_FLOWHIVE_066',
+      'BASELINE_PROJECT_FLOWHIVE_066'
+    )
+  ) <> 3 OR NOT EXISTS(
+    SELECT 1 FROM app_feature_catalog
+    WHERE feature_code='PROJECT_FLOWHIVE_PRODUCTION'
+      AND module_code='066'
+      AND route_anchor='#project-flowhive'
+      AND required_permission_code='VIEW_PROJECT_FLOWHIVE_066'
+      AND is_active=TRUE
+  ) THEN
+    RAISE EXCEPTION 'Migration 074 FlowHive persistence, immutability, permission, or catalog evidence is incomplete.';
+  END IF;
+  IF EXISTS(
+    SELECT 1 FROM app_permissions
+    WHERE permission_name ILIKE '%Pulse AI%' OR permission_description ILIKE '%Pulse AI%'
+  ) OR EXISTS(
+    SELECT 1 FROM app_feature_catalog
+    WHERE feature_name ILIKE '%Pulse AI%' OR feature_description ILIKE '%Pulse AI%'
+  ) THEN
+    RAISE EXCEPTION 'Migration 074 left a retired Pulse AI label on an administrative catalog surface.';
+  END IF;
+
   SELECT * INTO before_counts FROM release_business_counts;
   IF before_counts.app_users <> (SELECT COUNT(*) FROM app_users)
      OR before_counts.projects <> (SELECT COUNT(*) FROM projects)
      OR before_counts.project_assignments <> (SELECT COUNT(*) FROM project_assignments)
      OR before_counts.time_entries <> (SELECT COUNT(*) FROM time_entries)
      OR before_counts.project_tasks <> (SELECT COUNT(*) FROM project_tasks) THEN
-    RAISE EXCEPTION 'Migrations 071-073 changed protected business-row counts.';
+    RAISE EXCEPTION 'Migrations 071-074 changed protected business-row counts.';
   END IF;
 END
 $release_postconditions$;
@@ -378,4 +464,4 @@ $release_postconditions$;
 COMMIT;
 SQL
 
-echo "MAIN_RELEASE_MIGRATIONS_071_073=$([ "$MODE" = apply ] && echo APPLIED_OR_VERIFIED || echo VERIFY_ONLY_PASS)"
+echo "MAIN_RELEASE_MIGRATIONS_071_074=$([ "$MODE" = apply ] && echo APPLIED_OR_VERIFIED || echo VERIFY_ONLY_PASS)"
