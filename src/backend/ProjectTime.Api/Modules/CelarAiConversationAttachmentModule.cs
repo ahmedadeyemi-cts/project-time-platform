@@ -209,8 +209,7 @@ public static class CelarAiConversationAttachmentModule
     private static bool CanAttach(PulseAiSystemAccess access) =>
         access.IsActive
         && access.CanAsk
-        && (access.IsSuperAdministrator
-            || access.PermissionCodes.Contains(CelarAiConversationAttachmentPolicy.Permission));
+        && access.CanAttachDocuments;
 
     private static (Guid Actual, Guid Effective)? Identity(HttpContext context)
     {

@@ -6,11 +6,9 @@ namespace ProjectTime.Api.Modules;
 
 public static class CelarAiCapabilityRoutingModule
 {
-    private static readonly HashSet<string> AdministratorRoles = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> AdditionalModuleAdministratorRoles = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SUPER_ADMINISTRATOR",
-        "SYSTEM_ADMINISTRATOR",
-        "ADMINISTRATOR"
+        "SYSTEM_ADMINISTRATOR"
     };
 
     public static IEndpointRouteBuilder MapCelarAiCapabilityRoutingEndpoints(
@@ -1423,11 +1421,22 @@ public static class CelarAiCapabilityRoutingModule
             }, statusCode: StatusCodes.Status403Forbidden);
         if (requireSameOrigin && !SameOrigin(context))
             return Results.Json(new { status = "origin_rejected", message = "The request origin is not allowed." }, statusCode: StatusCodes.Status403Forbidden);
+        if (ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(
+                context,
+                Array.Empty<string>()))
+            return null;
         var connectionString = ConnectionString();
         if (connectionString is null)
             return Results.Json(new { status = "configuration_unavailable", message = "Administrator authorization could not be verified." }, statusCode: StatusCodes.Status503ServiceUnavailable);
         try
         {
+            if (await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                    context,
+                    cancellationToken: cancellationToken))
+                return null;
+
+            // Preserve the pre-existing Module 064 SYSTEM_ADMINISTRATOR grant
+            // without promoting that role to permanent platform-wide control.
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(cancellationToken);
             const string sql = """
@@ -1443,7 +1452,7 @@ public static class CelarAiCapabilityRoutingModule
             command.Parameters.AddWithValue("user_id", actual.Value);
             var roles = ((await command.ExecuteScalarAsync(cancellationToken))?.ToString() ?? string.Empty)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (roles.Any(AdministratorRoles.Contains)) return null;
+            if (roles.Any(AdditionalModuleAdministratorRoles.Contains)) return null;
         }
         catch (Exception exception)
         {

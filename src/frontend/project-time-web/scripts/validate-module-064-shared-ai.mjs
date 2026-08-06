@@ -82,7 +82,15 @@ assert(
 assert('MODULE_064_CONSUMER_HAS_NO_DIRECT_CLIENT', !consumer.includes('new HttpClient') && !consumer.includes('PROJECTPULSE_CLAUDE_API_KEY'));
 assert('MODULE_064_PROGRAM_DI', program.includes('builder.Services.AddProjectPulseAi();') && program.includes('ProjectPulseAiTimeEntrySuggestionService aiService'));
 assert('MODULE_064_BACKEND_ENDPOINTS', moduleBackend.includes('"/api/ai-configuration"') && moduleBackend.includes('"/api/ai-configuration/health"'));
-assert('MODULE_064_ADMIN_AUTHORITY', moduleBackend.includes('ProjectPulseActualUserId') && moduleBackend.includes('AdministratorRoles'));
+assert(
+  'MODULE_064_ADMIN_AUTHORITY',
+  moduleBackend.includes('ProjectPulseActualUserId')
+    && moduleBackend.includes('ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(')
+    && moduleBackend.includes('ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(')
+    && moduleBackend.includes('AdditionalModuleAdministratorRoles')
+    && moduleBackend.includes('"SYSTEM_ADMINISTRATOR"'),
+  'actual-session Super Administrator authority is canonical, non-transferable, and retains the prior Module 064 system-administrator grant',
+);
 assert('MODULE_064_WRITE_ONLY_SECRET_ENDPOINT', moduleBackend.includes('MapPut(') && moduleBackend.includes('/providers/{providerCode}/secret') && moduleBackend.includes('valueReturned = false'));
 assert('MODULE_064_ENCRYPTED_SECRET_STORE', secretStore.includes('AesGcm') && keyRing.includes('PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY') && keyRing.includes('key.Length == 32') && secretStore.includes('CryptographicOperations.ZeroMemory'));
 assert('MODULE_064_SANITIZED_SECRET_AUDIT', secretStore.includes('ai_provider_secret_audit') && !secretStore.includes('api_key'));
@@ -102,6 +110,13 @@ assert('MODULE_064_APP_IMPORT_COUNT', count(app, "import AiProviderConfiguration
 assert('MODULE_064_APP_ROUTE_COUNT', count(app, "activeRoute === 'ai-provider-configuration'") === 1);
 assert('MODULE_064_APP_NAVIGATION', app.includes("route: 'ai-provider-configuration'") && app.includes("navLabel: 'MODULE 064'"));
 assert('MODULE_064_APP_ADMIN_ONLY', app.includes("activeRoute === 'ai-provider-configuration' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])"));
+assert(
+  'MODULE_064_APP_SUPER_ADMINISTRATOR_FULL_CONTROL',
+  app.includes('actualSessionHasPermanentFullControl')
+    && app.includes("'SUPER_ADMINISTRATOR'")
+    && app.includes("permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']"),
+  'the current actual-session Super Administrator bypasses stale permission payloads for Module 064 while View-As remains scoped',
+);
 assert('MODULE_064_TIMESHEET_PROVIDER_LABELS', app.includes("celar_ai: 'Celar AI'") && app.includes("openai: 'OpenAI'") && app.includes("local_template: 'Governed local template fallback'"));
 assert('MODULE_064_BUILD_GUARD', packageJson.includes('validate:module064') && packageJson.includes('npm run validate:module064'));
 

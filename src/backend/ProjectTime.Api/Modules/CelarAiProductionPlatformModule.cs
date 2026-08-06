@@ -1069,9 +1069,20 @@ public static partial class CelarAiProductionPlatformModule
     }
     private static async Task<((Guid Actual, Guid Effective)? Identity, PulseAiSystemAccess? Access, IResult? Error)> ManageAsync(HttpContext context, PulseAiSystemIntelligenceService system, CancellationToken cancellationToken)
     {
-        var identity = Identities(context); if (identity is null) return (null, null, SessionRequired()); var access = await system.LoadAccessAsync(identity.Value.Actual, cancellationToken); return CanManage(identity.Value, access) ? (identity, access, null) : (identity, access, Results.Json(new { module = "011", status = "management_forbidden", message = "An actual-session Super Administrator or Administrator is required. View-As remains read-only.", stateChanged = false }, statusCode: 403));
+        var permanentAdministrator = false;
+        try
+        {
+            permanentAdministrator = await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context,
+                cancellationToken: cancellationToken);
+        }
+        catch
+        {
+            // The existing role evidence below remains a fail-closed fallback.
+        }
+        var identity = Identities(context); if (identity is null) return (null, null, SessionRequired()); var access = await system.LoadAccessAsync(identity.Value.Actual, cancellationToken); return CanManage(context, identity.Value, access, permanentAdministrator) ? (identity, access, null) : (identity, access, Results.Json(new { module = "011", status = "management_forbidden", message = "An actual-session Super Administrator or Administrator is required. View-As remains read-only.", stateChanged = false }, statusCode: 403));
     }
-    private static bool CanManage((Guid Actual, Guid Effective) identity, PulseAiSystemAccess access) => identity.Actual == identity.Effective && access.IsActive && (access.IsSuperAdministrator || access.RoleCodes.Any(ManagementRoles.Contains));
+    private static bool CanManage(HttpContext context, (Guid Actual, Guid Effective) identity, PulseAiSystemAccess access, bool permanentAdministrator) => identity.Actual == identity.Effective && !ProjectPulseActualSessionAuthority.IsViewAs(context) && (permanentAdministrator || (access.IsActive && (access.IsSuperAdministrator || access.RoleCodes.Any(ManagementRoles.Contains))));
     private static (Guid Actual, Guid Effective)? Identities(HttpContext context) { var effective = UserId(context,"ProjectPulseEffectiveUserId") ?? UserId(context,"ProjectPulseSessionUserId"); if (effective is null) return null; var actual = UserId(context,"ProjectPulseActualUserId") ?? UserId(context,"ProjectPulseSessionUserId") ?? effective.Value; return (actual,effective.Value); }
     private static Guid? UserId(HttpContext context, string key) => context.Items.TryGetValue(key,out var value) && value is Guid id ? id : null;
     private static object AccessEvidence((Guid Actual, Guid Effective) identity, PulseAiSystemAccess access, bool canManage) => new { actualUserId = identity.Actual, effectiveUserId = identity.Effective, isViewAs = identity.Actual != identity.Effective, roles = access.RoleCodes.OrderBy(value => value).ToArray(), access.CanAsk, canManage, mutationAuthorityTransferredByViewAs = false, serverAuthorized = true };
