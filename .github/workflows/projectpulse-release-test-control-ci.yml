@@ -63,6 +63,8 @@ jobs:
           grep -Fq 'module064PrivateAdapterMatrix' scripts/release-test/verify-runtime.mjs
           grep -Fq 'authorized-typeahead' scripts/release-test/verify-runtime.mjs
           grep -Fq 'private_training' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'approvedLexicalOnlyIndex' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'Unembedded chunks are present without an approved lexical-only retrieval contract.' scripts/release-test/verify-runtime.mjs
           grep -Fq 'projectForgeModule064Connection' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module011CoreAskAccess' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module011SuperAdministratorAuthority' scripts/release-test/verify-runtime.mjs

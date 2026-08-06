@@ -246,7 +246,15 @@ public sealed class CelarAiKnowledgeFabricService
             && temporalGraphReady
             && policyGraphReady
             && decisionTraceReady;
-        var pendingIndexCount = runtime.PendingSowDocumentCount + runtime.UnembeddedChunkCount;
+        // In an explicitly approved lexical-only deployment, searchable active chunks are
+        // already indexed even though they intentionally have no embedding vector. Count
+        // unembedded chunks as pending only when the embedding pipeline is part of the
+        // required retrieval contract; truly pending SOW/document work always remains a
+        // freshness blocker.
+        var pendingEmbeddingCount = runtime.LexicalOnlyCompletionApproved
+            ? 0
+            : runtime.UnembeddedChunkCount;
+        var pendingIndexCount = runtime.PendingSowDocumentCount + pendingEmbeddingCount;
         var freshnessStatus = runtime.LastIndexedAt is null
             ? "index_freshness_not_available"
             : pendingIndexCount > 0
