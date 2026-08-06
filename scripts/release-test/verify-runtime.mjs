@@ -259,7 +259,7 @@ async function run() {
   assert(createHash("sha256").update(logoBytes).digest("hex") === officialLogoSha256, "Live US Signal logo bytes do not match the approved governed asset.");
   evidence.publicChecks.officialUsSignalLogo = "passed";
 
-  const health = await request("/api/health");
+  const health = await request("/health");
   assert(health.status === 200, "API health returned HTTP " + health.status + ".");
   evidence.publicChecks.apiHealth = "passed";
 
