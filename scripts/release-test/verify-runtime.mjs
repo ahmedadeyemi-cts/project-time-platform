@@ -92,7 +92,10 @@ async function request(route, options = {}) {
       signal: controller.signal,
     });
     assert(response.status < 300 || response.status >= 400, "Verifier refused an HTTP redirect for " + method + " " + route + ".");
-    const text = (await response.text()).slice(0, 1_000_000);
+    const maxTextLength = Number.isSafeInteger(options.maxTextLength)
+      ? options.maxTextLength
+      : 1_000_000;
+    const text = (await response.text()).slice(0, maxTextLength);
     let json = null;
     try {
       json = text ? JSON.parse(text) : null;
@@ -244,7 +247,10 @@ async function run() {
   assert(shell.status === 200, "Web application shell returned HTTP " + shell.status + ".");
   const scriptPath = shell.text.match(/<script[^>]+src=["']([^"']+\.js)["']/i)?.[1] || "";
   assert(scriptPath.length > 0, "Web application shell did not reference its production bundle.");
-  const bundle = await request(scriptPath, { accept: "text/javascript" });
+  const bundle = await request(scriptPath, {
+    accept: "text/javascript",
+    maxTextLength: 4_000_000,
+  });
   assert(bundle.status === 200, "Web production bundle returned HTTP " + bundle.status + ".");
   assert(bundle.text.includes("brand-logo-image"), "Web production bundle does not mount the main-page US Signal logo.");
   const logoPath = bundle.text.match(/\/assets\/(?:USSNavyStacked|ussignal)-[A-Za-z0-9_-]+\.png/)?.[0] || "";
