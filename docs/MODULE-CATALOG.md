@@ -28,6 +28,7 @@ Modules 998/997 HTTP 401 barriers, and both protected web bundles.
 | Module | Current title | Route/scope | Source state | Governance note |
 |---|---|---|---|---|
 | 001 | Time Entry | `timesheet` | Installed | Active follow-up work is externally owned; preserve current multiview and save behavior |
+| 001A | Engineer Request Closeout | `engineer-task-closeout` | Source candidate | Engineer-owned closeout for assigned Service Request, Pre-Sales, and Internal tasks. Engineer close immediately removes the assignment from Module 001 billing choices and blocks new/increased time; Module 065 notifies the PTC and CCs the Engineer. Reasoned reopen is allowed only before Module 055C final closure. |
 | 002 | Approval Inbox | `manager-approval` | Installed through merged PR 23 | Source commit `f5ede8f6717b01c8f4bf7905b433fead38210007`; merge commit `2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4`; preserve PM, correction, password-reset, and history workflows; three post-merge review threads remain unresolved and separately owned |
 | 003 | Utilization | `utilization` | Installed | Preserve own, manager, and team-lead views |
 | 004 | Holiday Calendar | `holiday-admin` | Installed | No current renumbering decision |

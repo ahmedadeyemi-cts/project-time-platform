@@ -20,6 +20,7 @@ public static class ModuleAvailabilityModule
         new Dictionary<string, ModuleDefinition>(StringComparer.OrdinalIgnoreCase)
         {
             ["001"] = Module("001", "timesheet", "Timesheet", "Time Management"),
+            ["001A"] = Module("001A", "engineer-task-closeout", "Engineer Request Closeout", "Time Management"),
             ["002"] = Module("002", "manager-approval", "Approval Inbox", "Approvals"),
             ["003"] = Module("003", "utilization", "Utilization", "Resource Management"),
             ["004"] = Module("004", "holiday-admin", "Holiday Administration", "Time Management"),

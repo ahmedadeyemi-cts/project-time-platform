@@ -613,6 +613,7 @@ import WorkRegisterCenter from './WorkRegisterCenter.jsx';
 import CostOverrunAlertCenter from './CostOverrunAlertCenter.jsx';
 import ProjectNotificationAutomationCenter from './ProjectNotificationAutomationCenter.jsx';
 import ProjectWorkspaceCenter from './ProjectWorkspaceCenter.jsx';
+import EngineerTaskCloseoutCenter from './EngineerTaskCloseoutCenter.jsx';
 import ProjectForgeCenter from './ProjectForgeCenter.jsx';
 import ProjectFlowHiveCenter from './ProjectFlowHiveCenter.jsx';
 import AiProviderConfigurationCenter from './AiProviderConfigurationCenter.jsx';
@@ -1754,6 +1755,15 @@ function statusToLabel(status, totalHours = 0) {
 
 const roleWorkspaceModules = sortProjectPulseModules([
   {
+    route: 'engineer-task-closeout',
+    href: '#engineer-task-closeout',
+    title: 'Engineer Request Closeout',
+    navLabel: 'MODULE 001A',
+    description: 'Close assigned Service Request, Pre-Sales, and Internal tasks, lock additional billing, review history, and reopen before Module 055C final closure.',
+    permissions: ['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER']
+  },
+  {
     route: 'project-workload',
     href: '#project-workload',
     title: 'Project Workload',
@@ -2506,7 +2516,7 @@ function userIsProjectManagementRole(user) {
 
 function getPrimaryNavigationPriority(user) {
   if (userIsAdministrator(user)) {
-    return ['dashboard', 'timesheet', 'manager-approval', 'project-workspace'];
+    return ['dashboard', 'timesheet', 'engineer-task-closeout', 'manager-approval'];
   }
 
   if (userIsProjectManagementRole(user) && !userIsAdministrator(user)) {
@@ -2520,6 +2530,10 @@ function getPrimaryNavigationPriority(user) {
     userHasPermissionCode(user, 'MANAGE_CUSTOMERS')
   ) {
     return ['dashboard', 'timesheet', 'project-intake', 'customer-directory'];
+  }
+
+  if (userHasRoleText(user, ['engineer', 'engineering'])) {
+    return ['dashboard', 'timesheet', 'engineer-task-closeout', 'project-workspace'];
   }
 
   if (
@@ -2536,6 +2550,7 @@ function getPrimaryNavigationPriority(user) {
 function getNavigationGroup(item) {
   switch (item.route) {
     case 'timesheet':
+    case 'engineer-task-closeout':
     case 'manager-approval':
     case 'utilization':
     case 'holiday-admin':
@@ -3321,6 +3336,14 @@ function getInstalledProjectPulseModuleRegistry() {
       description: 'Allows users to enter, save, submit, and review weekly or daily time entries.'
     },
     {
+      route: 'engineer-task-closeout',
+      title: 'Engineer Request Closeout',
+      navLabel: 'MODULE 001A',
+      group: 'Time Management',
+      permissions: ['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+      description: 'Lets Engineers close assigned Service Request, Pre-Sales, and Internal tasks, immediately lock additional billing, review immutable history, and reopen with a required reason only before Module 055C final closure.'
+    },
+    {
       route: 'manager-approval',
       title: 'Approval Inbox',
     navLabel: 'MODULE 002',
@@ -3979,6 +4002,7 @@ function getInstalledModuleDescription(module) {
     'production-readiness': 'Shows a web-visible production readiness command center backed by protected readiness checks, route governance, and release validation guidance.',
     'production-data-readiness': 'Shows production data readiness for users, roles, customers, projects, tasks, timesheets, approvals, exports, audit evidence, and notifications.',
     timesheet: 'Allows engineers and eligible users to enter, save, submit, and review weekly or day-level time entries.',
+    'engineer-task-closeout': 'Lets Engineers close their assigned Service Request, Pre-Sales, and Internal tasks, removes closed work from Module 001, preserves history, and permits a reasoned reopen only before the Project Team Coordinator finalizes the original request in Module 055C.',
     utilization: 'Shows billable and eligible utilization performance against quarterly and annual targets.',
     'project-workload': 'Shows project managers their assigned project workload, active and closed project counts, status mix, hours, and workload risk.',
     'manager-approval': 'Lets managers review submitted time, approve valid days, return days for correction, and monitor pending approval counts.',
@@ -4424,6 +4448,37 @@ export default function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, [selectedWeekStart, authSession?.sessionToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshModule001AvailableTasks() {
+      if (!hasProjectPulseSession(authSession)) return;
+      setOpenTasks((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const result = await fetchJson(`/api/assignments/available-tasks?weekStart=${selectedWeekStart}`, authSession);
+        if (!cancelled) setOpenTasks({ loading: false, data: result, error: null });
+      } catch (refreshError) {
+        if (!cancelled) {
+          setOpenTasks((current) => ({
+            ...current,
+            loading: false,
+            error: refreshError instanceof Error ? refreshError.message : 'Unable to refresh assigned tasks.'
+          }));
+        }
+      }
+    }
+
+    function handleModule001AQueueChange() {
+      void refreshModule001AvailableTasks();
+    }
+
+    window.addEventListener('projectpulse:timesheet-work-queue-changed', handleModule001AQueueChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('projectpulse:timesheet-work-queue-changed', handleModule001AQueueChange);
     };
   }, [selectedWeekStart, authSession?.sessionToken]);
 
@@ -8378,6 +8433,12 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'project-workspace' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_ENGINEERING_PROJECT_DOCUMENTS', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-workspace" className="panel project-workspace-route-panel">
           <ProjectWorkspaceCenter />
+        </section>
+      ) : null}
+
+      {(activeRoute === 'engineer-task-closeout' && canSeeAny(['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
+          <EngineerTaskCloseoutCenter />
         </section>
       ) : null}
 
