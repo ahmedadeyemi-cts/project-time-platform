@@ -11,7 +11,7 @@ on:
       release_commit:
         description: Exact verified Pulse login source commit
         required: true
-        default: f8fc8c61a5333c9c7980b325aef660b0809c1592
+        default: 7d659f3d4520a29edecce5cd719e45e9fac868f3
         type: string
       confirmation:
         description: Enter DEPLOY-PULSE-LOGIN-TO-TEST
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      EXPECTED_RELEASE_COMMIT: f8fc8c61a5333c9c7980b325aef660b0809c1592
+      EXPECTED_RELEASE_COMMIT: 7d659f3d4520a29edecce5cd719e45e9fac868f3
       EXPECTED_PUBLIC_URL: https://phd-west-test.onenecklab.com
       EXPECTED_WEB_APP: ca-phd-test-web-westus3
       EXPECTED_API_APP: ca-phd-test-api-westus3
@@ -48,7 +48,7 @@ jobs:
       - name: Check out exact Pulse login source
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'f8fc8c61a5333c9c7980b325aef660b0809c1592' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || '7d659f3d4520a29edecce5cd719e45e9fac868f3' }}
           path: release
           fetch-depth: 1
 
@@ -57,7 +57,7 @@ jobs:
         shell: bash
         env:
           DEPLOYMENT_EVENT: ${{ github.event_name }}
-          REQUESTED_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'f8fc8c61a5333c9c7980b325aef660b0809c1592' }}
+          REQUESTED_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || '7d659f3d4520a29edecce5cd719e45e9fac868f3' }}
           DEPLOYMENT_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'DEPLOY-PULSE-LOGIN-TO-TEST' }}
           WORKFLOW_SOURCE_REF: ${{ github.ref }}
           WORKFLOW_SOURCE_SHA: ${{ github.sha }}
@@ -304,7 +304,7 @@ jobs:
                 JS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-app.js -w '%{http_code}' "$JS_URL?release_check=$BUSTER" || true)"
                 CSS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-app.css -w '%{http_code}' "$CSS_URL?release_check=$BUSTER" || true)"
                 LAST_STATUS="html=$HTML_STATUS,js=$JS_STATUS,css=$CSS_STATUS"
-                tr -d '[:space:]' < /tmp/pulse-app.css > /tmp/pulse-app.compact.css
+                tr -d '\n\r\t' < /tmp/pulse-app.css > /tmp/pulse-app.compact.css
                 LOGO_PATH="$(grep -oE '[/A-Za-z0-9._-]+\.png' /tmp/pulse-app.js | grep -E '/assets/ussignal-[A-Za-z0-9_-]+\.png$' | head -1 || true)"
                 LOGO_STATUS='not-resolved'
                 LOGO_SHA='not-resolved'
@@ -340,6 +340,8 @@ jobs:
                   && grep -Fq '.phd-auth-experience' /tmp/pulse-app.compact.css \
                   && grep -Fq '.phd-platform-motion' /tmp/pulse-app.compact.css \
                   && grep -Fq '.phd-secure-motion' /tmp/pulse-app.compact.css \
+                  && grep -Eq '\.phd-secure-motion img\{[^}]*object-fit:contain' /tmp/pulse-app.compact.css \
+                  && ! grep -Eq '\.phd-secure-motion img\{[^}]*object-fit:cover' /tmp/pulse-app.compact.css \
                   && grep -Fq '.phd-ai-core' /tmp/pulse-app.compact.css; then
                   READY=true
                   echo "PULSE_LOGIN_SERVED_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH logo=$LOGO_PATH motion=$MOTION_PATH"
@@ -400,6 +402,7 @@ jobs:
             "officialLogoSha256": "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b",
             "defaultMotion": "Pulse operational ecosystem",
             "localPasswordMotion": "Pulse enterprise operations fabric GIF",
+            "secureMotionFit": "contain",
             "enterpriseMotionSha256": "001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914",
             "askCelarLoginVisibility": "authenticated-only",
             "servedAssetValidation": "passed"
