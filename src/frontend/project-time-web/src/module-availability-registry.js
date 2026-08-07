@@ -83,6 +83,8 @@ export const PROJECTPULSE_MODULES = Object.freeze([
   Object.freeze({ moduleNumber: '078', route: 'observability-slo-health', displayName: 'Observability, SLO & Application Health Center', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '079', route: 'data-governance-retention', displayName: 'Data Governance, Retention & Privacy Center', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '080', route: 'customer-delivery-acceptance', displayName: 'Customer Delivery & Acceptance Portal', group: 'Project Operations' }),
+  Object.freeze({ moduleNumber: '081', route: 'lab-equipment-tracker', displayName: 'Lab Equipment Tracker', group: 'Platform Operations', description: 'Role-scoped lab equipment, IP address management, cabling, rack occupancy, reviewed imports, provenance, and branded evidence exports.' }),
+  Object.freeze({ moduleNumber: '082', route: 'project-risk-register', displayName: 'Enterprise Project Risk Register', group: 'Project Delivery', description: 'PMI-aligned project risks, opportunities, response actions, exposure heatmaps, review cadence, governed decisions, and immutable evidence.' }),
   Object.freeze({ moduleNumber: '997', route: 'security-operations', displayName: 'Security Operations, Threat Intelligence & Response Center', group: 'Security & Audit' }),
   Object.freeze({ moduleNumber: '998', route: 'system-diagnostics', displayName: 'System Diagnostic & Controlled Remediation Center', group: 'Platform Operations' }),
   Object.freeze({ moduleNumber: '999', route: 'user-guide', displayName: 'System User Guide', group: 'Help & Documentation' }),

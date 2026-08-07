@@ -1,0 +1,64 @@
+name: Modules 081 and 082 Enterprise Governance CI
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/076_module_081_lab_equipment_tracker.sql'
+      - 'database/migrations/077_module_082_enterprise_project_risk_register.sql'
+      - 'database/rollback/076_module_081_lab_equipment_tracker_rollback.sql'
+      - 'database/rollback/077_module_082_enterprise_project_risk_register_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseGovernance*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/LabEquipment*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'
+      - 'src/frontend/project-time-web/src/*EquipmentTrackerCenter.jsx'
+      - 'src/frontend/project-time-web/src/*RiskRegisterCenter.jsx'
+      - 'src/frontend/project-time-web/src/enterprise-governance-centers.css'
+      - 'src/frontend/project-time-web/scripts/validate-module-08*.mjs'
+      - 'tests/test-modules-081-082-enterprise-governance-migrations.sh'
+      - '.github/workflows/modules-081-082-enterprise-governance-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modules-081-082-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+      - name: Test migrations and guarded rollbacks
+        run: bash tests/test-modules-081-082-enterprise-governance-migrations.sh
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+      - name: Validate Module 081
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module081
+      - name: Validate Module 082
+        working-directory: src/frontend/project-time-web
+        run: npm run validate:module082
+      - name: Build production frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+      - name: Ensure validation did not mutate tracked source
+        run: git diff --check && git diff --exit-code

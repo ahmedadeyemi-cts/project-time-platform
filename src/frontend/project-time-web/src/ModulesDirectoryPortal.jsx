@@ -75,6 +75,8 @@ const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
   'observability-slo-health': '078',
   'data-governance-retention': '079',
   'customer-delivery-acceptance': '080',
+  'lab-equipment-tracker': '081',
+  'project-risk-register': '082',
   'security-operations': '997',
   'system-diagnostics': '998',
   'user-guide': '999'
