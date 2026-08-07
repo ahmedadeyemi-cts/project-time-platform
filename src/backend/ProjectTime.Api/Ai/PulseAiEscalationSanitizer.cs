@@ -126,7 +126,7 @@ public sealed class PulseAiEscalationSanitizer
         RegexTimeout);
 
     private static readonly Regex UnsupportedOutcomeClaim = new(
-        @"\b(?:completed|resolved|fixed|closed|approved|accepted|delivered)\b|\b(?:issue|incident|problem|request|task|work|implementation|configuration|service|system|deployment|migration|testing|validation|remediation|rollout|change)[ \t]+(?:was|were|is|are|has[ \t]+been|have[ \t]+been)[ \t]+(?:implemented|validated|verified|successful)\b",
+        @"\b(?:completed|resolved|fixed|closed|approved|accepted|delivered)\b|\b(?:issue|incident|problem|request|task|work|implementation|configuration|service|system|deployment|migration|testing|validation|remediation|rollout|change|result|outcome)[ \t]+(?:was|were|is|are|has[ \t]+been|have[ \t]+been)[ \t]+(?:implemented|validated|verified|successful)\b|\bsuccessful[ \t]+(?:implementation|configuration|deployment|migration|testing|validation|remediation|rollout|change|result|outcome)\b|\bsuccessfully[ \t]+(?:implemented|configured|deployed|migrated|remediated|validated|verified|rolled[ \t]+out)\b",
         CommonOptions,
         RegexTimeout);
 
