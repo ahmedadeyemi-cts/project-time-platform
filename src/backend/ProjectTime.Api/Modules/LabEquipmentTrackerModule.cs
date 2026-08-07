@@ -52,7 +52,7 @@ public static class LabEquipmentTrackerModule
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var access = await RequireAccessAsync(context, connection, manage: false);
             if (access.Error is not null) return access.Error;
-            var sql = """
+            var sql = $"""
                 SELECT
                   COUNT(*)::bigint,
                   COUNT(*) FILTER(WHERE equipment_status='active')::bigint,
@@ -61,7 +61,8 @@ public static class LabEquipmentTrackerModule
                   COUNT(DISTINCT lab_location)::bigint,
                   COUNT(DISTINCT NULLIF(rack,''))::bigint
                 FROM lab_equipment equipment
-                WHERE """ + EquipmentScopePredicate("equipment") + ";";
+                WHERE {EquipmentScopePredicate("equipment")};
+                """;
             await using var command = new NpgsqlCommand(sql, connection);
             EnterpriseGovernanceAccessResolver.AddScopeParameters(command, access.Value!);
             await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
@@ -70,13 +71,14 @@ public static class LabEquipmentTrackerModule
             var warranty = reader.GetInt64(3);var locations = reader.GetInt64(4);var racks = reader.GetInt64(5);
             await reader.CloseAsync();
 
-            var ipSql = """
+            var ipSql = $"""
                 SELECT COUNT(*)::bigint,
                        COUNT(*) FILTER(WHERE allocation_status='available')::bigint,
                        COUNT(*) FILTER(WHERE allocation_status='assigned')::bigint,
                        COUNT(*) FILTER(WHERE allocation_status='conflict')::bigint
                 FROM lab_ip_allocations allocation
-                WHERE """ + TeamScopePredicate("allocation.managing_team") + ";";
+                WHERE {TeamScopePredicate("allocation.managing_team")};
+                """;
             await using var ipCommand = new NpgsqlCommand(ipSql, connection);
             EnterpriseGovernanceAccessResolver.AddScopeParameters(ipCommand, access.Value!);
             await using var ipReader = await ipCommand.ExecuteReaderAsync(context.RequestAborted);
@@ -108,7 +110,7 @@ public static class LabEquipmentTrackerModule
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var access = await RequireAccessAsync(context, connection, manage: false);
             if (access.Error is not null) return access.Error;
-            var sql = """
+            var sql = $"""
                 SELECT equipment.equipment_id,equipment.equipment_number,equipment.managing_team,
                        equipment.equipment_name,equipment.equipment_type,equipment.manufacturer,equipment.model,
                        equipment.serial_number,equipment.asset_tag,equipment.hostname,
@@ -124,7 +126,7 @@ public static class LabEquipmentTrackerModule
                 LEFT JOIN app_users custodian ON custodian.user_id=equipment.custodian_user_id
                 LEFT JOIN projects project ON project.project_id=equipment.linked_project_id
                 LEFT JOIN lab_ip_allocations allocation ON allocation.equipment_id=equipment.equipment_id AND allocation.allocation_status<>'retired'
-                WHERE """ + EquipmentScopePredicate("equipment") + """
+                WHERE {EquipmentScopePredicate("equipment")}
                   AND (@search='' OR equipment.equipment_number ILIKE '%'||@search||'%'
                     OR equipment.equipment_name ILIKE '%'||@search||'%' OR equipment.hostname ILIKE '%'||@search||'%'
                     OR equipment.serial_number ILIKE '%'||@search||'%' OR equipment.asset_tag ILIKE '%'||@search||'%')
@@ -203,7 +205,7 @@ public static class LabEquipmentTrackerModule
             if(!await CanManageEquipmentAsync(connection,access.Value!,equipmentId,context.RequestAborted))return EnterpriseGovernanceResults.Forbidden(Module,"This equipment record is outside your authorized team or project scope.");
             if(!await CanManageTeamAsync(connection,access.Value!,request.ManagingTeam,context.RequestAborted))return EnterpriseGovernanceResults.Forbidden(Module,"The selected managing team is outside your authorized scope.");
             var prior=await SnapshotAsync(connection,"lab_equipment","equipment_id",equipmentId,context.RequestAborted);
-            var sql="""
+            var sql=$"""
                 UPDATE lab_equipment SET managing_team=@team,equipment_name=@name,equipment_type=@type,manufacturer=@manufacturer,
                   model=@model,serial_number=@serial,asset_tag=@asset,hostname=@hostname,mac_address=NULLIF(@mac,'')::macaddr,
                   lab_location=@location,pod=@pod,physical_location=@physical,rack=@rack,rack_unit_start=@rack_start,
@@ -250,7 +252,7 @@ public static class LabEquipmentTrackerModule
         {
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var access=await RequireAccessAsync(context,connection,manage:false);if(access.Error is not null)return access.Error;
-            var sql="""
+            var sql=$"""
                 SELECT allocation.ip_allocation_id,allocation.managing_team,allocation.lab_location,allocation.pod,allocation.network_zone,
                   allocation.address_family,allocation.network_cidr::text,allocation.usable_range,COALESCE(allocation.ip_address::text,''),
                   allocation.prefix_length,COALESCE(allocation.gateway::text,''),allocation.vlan_id,allocation.vlan_name,allocation.vrf,
@@ -261,7 +263,7 @@ public static class LabEquipmentTrackerModule
                 FROM lab_ip_allocations allocation
                 LEFT JOIN lab_equipment equipment ON equipment.equipment_id=allocation.equipment_id
                 LEFT JOIN app_users owner ON owner.user_id=allocation.reservation_owner_user_id
-                WHERE """+TeamScopePredicate("allocation.managing_team")+"""
+                WHERE {TeamScopePredicate("allocation.managing_team")}
                   AND (@search='' OR allocation.ip_address::text ILIKE '%'||@search||'%' OR allocation.network_cidr::text ILIKE '%'||@search||'%'
                     OR allocation.hostname ILIKE '%'||@search||'%' OR allocation.purpose ILIKE '%'||@search||'%')
                   AND (@location='' OR lower(allocation.lab_location)=lower(@location))
@@ -297,7 +299,7 @@ public static class LabEquipmentTrackerModule
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var access=await RequireAccessAsync(context,connection,manage:true);if(access.Error is not null)return access.Error;
             if(!await CanManageTeamAsync(connection,access.Value!,request.ManagingTeam,context.RequestAborted))return EnterpriseGovernanceResults.Forbidden(Module,"The selected managing team is outside your authorized scope.");
-            var sql="""
+            var sql=$"""
                 INSERT INTO lab_ip_allocations(managing_team,lab_location,pod,network_zone,address_family,network_cidr,usable_range,ip_address,
                   prefix_length,gateway,vlan_id,vlan_name,vrf,allocation_status,equipment_id,interface_name,hostname,purpose,
                   reservation_owner_user_id,reservation_expires_at,created_by_user_id,updated_by_user_id)
@@ -345,7 +347,7 @@ public static class LabEquipmentTrackerModule
         try
         {
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);var access=await RequireAccessAsync(context,connection,false);if(access.Error is not null)return access.Error;
-            var sql="""
+            var sql=$"""
                 SELECT connection.connection_id,connection.lab_location,connection.pod,connection.from_equipment_id,
                   source.equipment_number,source.equipment_name,connection.from_interface,connection.to_equipment_id,
                   target.equipment_number,target.equipment_name,connection.to_interface,connection.media_type,connection.cable_label,
@@ -353,7 +355,7 @@ public static class LabEquipmentTrackerModule
                 FROM lab_cable_connections connection
                 JOIN lab_equipment source ON source.equipment_id=connection.from_equipment_id
                 JOIN lab_equipment target ON target.equipment_id=connection.to_equipment_id
-                WHERE ("""+EquipmentScopePredicate("source")+") AND ("+EquipmentScopePredicate("target")+""" )
+                WHERE ({EquipmentScopePredicate("source")}) AND ({EquipmentScopePredicate("target")})
                   AND (@location='' OR lower(connection.lab_location)=lower(@location))
                   AND (@pod='' OR lower(connection.pod)=lower(@pod))
                 ORDER BY connection.lab_location,connection.pod,source.equipment_number,connection.from_interface LIMIT @limit;
@@ -373,7 +375,7 @@ public static class LabEquipmentTrackerModule
             if(request.FromEquipmentId==Guid.Empty||request.ToEquipmentId==Guid.Empty||string.IsNullOrWhiteSpace(request.FromInterface)||string.IsNullOrWhiteSpace(request.ToInterface))return Bad("CONNECTION_ENDPOINTS_REQUIRED","Select both equipment records and interfaces.");
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);var access=await RequireAccessAsync(context,connection,true);if(access.Error is not null)return access.Error;
             if(!await CanManageEquipmentAsync(connection,access.Value!,request.FromEquipmentId,context.RequestAborted)||!await CanManageEquipmentAsync(connection,access.Value!,request.ToEquipmentId,context.RequestAborted))return EnterpriseGovernanceResults.Forbidden(Module,"Both connection endpoints must be within your authorized equipment scope.");
-            var sql="""
+            var sql=$"""
                 INSERT INTO lab_cable_connections(lab_location,pod,from_equipment_id,from_interface,to_equipment_id,to_interface,
                   media_type,cable_label,vlan_id,ip_address,connection_status,notes,created_by_user_id,updated_by_user_id)
                 VALUES(@location,@pod,@from_id,@from_interface,@to_id,@to_interface,@media,@label,@vlan,NULLIF(@address,'')::inet,@status,@notes,@actor,@actor)
@@ -392,11 +394,11 @@ public static class LabEquipmentTrackerModule
         try
         {
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);var access=await RequireAccessAsync(context,connection,false);if(access.Error is not null)return access.Error;
-            var sql="""
+            var sql=$"""
                 SELECT equipment.lab_location,equipment.rack,equipment.rack_unit_start,equipment.rack_unit_height,
                   equipment.equipment_id,equipment.equipment_number,equipment.equipment_name,equipment.equipment_status
                 FROM lab_equipment equipment
-                WHERE """+EquipmentScopePredicate("equipment")+""" AND equipment.rack_unit_start IS NOT NULL AND btrim(equipment.rack)<>''
+                WHERE {EquipmentScopePredicate("equipment")} AND equipment.rack_unit_start IS NOT NULL AND btrim(equipment.rack)<>''
                   AND equipment.equipment_status NOT IN ('retired','disposed')
                   AND (@location='' OR lower(equipment.lab_location)=lower(@location))
                   AND (@rack='' OR lower(equipment.rack)=lower(@rack))
@@ -440,7 +442,7 @@ public static class LabEquipmentTrackerModule
         try
         {
             await using var connection=await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);var access=await RequireAccessAsync(context,connection,false);if(access.Error is not null)return access.Error;
-            var sql="""
+            var sql=$"""
                 SELECT audit.audit_event_id,audit.entity_type,audit.entity_id,audit.event_code,
                   COALESCE(actor.display_name,actor.email,''),audit.event_metadata,audit.occurred_at
                 FROM lab_equipment_audit_events audit
@@ -449,14 +451,14 @@ public static class LabEquipmentTrackerModule
                   AND (
                     @broad_scope=TRUE
                     OR (audit.entity_type='equipment' AND EXISTS(
-                      SELECT 1 FROM lab_equipment equipment WHERE equipment.equipment_id=audit.entity_id AND """+EquipmentScopePredicate("equipment")+"""))
+                      SELECT 1 FROM lab_equipment equipment WHERE equipment.equipment_id=audit.entity_id AND {EquipmentScopePredicate("equipment")}))
                     OR (audit.entity_type='ip_allocation' AND EXISTS(
-                      SELECT 1 FROM lab_ip_allocations allocation WHERE allocation.ip_allocation_id=audit.entity_id AND """+TeamScopePredicate("allocation.managing_team")+"""))
+                      SELECT 1 FROM lab_ip_allocations allocation WHERE allocation.ip_allocation_id=audit.entity_id AND {TeamScopePredicate("allocation.managing_team")}))
                     OR (audit.entity_type='connection' AND EXISTS(
                       SELECT 1 FROM lab_cable_connections connection
                       JOIN lab_equipment source ON source.equipment_id=connection.from_equipment_id
                       JOIN lab_equipment target ON target.equipment_id=connection.to_equipment_id
-                      WHERE connection.connection_id=audit.entity_id AND """+EquipmentScopePredicate("source")+""" AND """+EquipmentScopePredicate("target")+"""))
+                      WHERE connection.connection_id=audit.entity_id AND {EquipmentScopePredicate("source")} AND {EquipmentScopePredicate("target")}))
                   )
                 ORDER BY audit.occurred_at DESC LIMIT @limit;
                 """;
@@ -577,49 +579,49 @@ public static class LabEquipmentTrackerModule
 
     private static async Task<List<LabEquipmentExportRow>> LoadEquipmentExportAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,string? search,string? location,string? pod,string? status,CancellationToken cancellationToken)
     {
-        var rows=new List<LabEquipmentExportRow>();var sql="""
+        var rows=new List<LabEquipmentExportRow>();var sql=$"""
             SELECT equipment.equipment_number,equipment.managing_team,equipment.equipment_name,equipment.equipment_type,equipment.manufacturer,equipment.model,equipment.serial_number,equipment.asset_tag,equipment.hostname,equipment.lab_location,equipment.pod,equipment.rack,CASE WHEN equipment.rack_unit_start IS NULL THEN '' ELSE equipment.rack_unit_start::text||'–'||(equipment.rack_unit_start+equipment.rack_unit_height-1)::text END,equipment.equipment_status,COALESCE(custodian.display_name,custodian.email,''),concat_ws(' · ',NULLIF(project.project_code,''),NULLIF(project.project_name,'')),equipment.updated_at::text
             FROM lab_equipment equipment LEFT JOIN app_users custodian ON custodian.user_id=equipment.custodian_user_id LEFT JOIN projects project ON project.project_id=equipment.linked_project_id
-            WHERE """+EquipmentScopePredicate("equipment")+""" AND (@search='' OR equipment.equipment_name ILIKE '%'||@search||'%' OR equipment.equipment_number ILIKE '%'||@search||'%') AND (@location='' OR lower(equipment.lab_location)=lower(@location)) AND (@pod='' OR lower(equipment.pod)=lower(@pod)) AND (@status='' OR equipment.equipment_status=@status)
+            WHERE {EquipmentScopePredicate("equipment")} AND (@search='' OR equipment.equipment_name ILIKE '%'||@search||'%' OR equipment.equipment_number ILIKE '%'||@search||'%') AND (@location='' OR lower(equipment.lab_location)=lower(@location)) AND (@pod='' OR lower(equipment.pod)=lower(@pod)) AND (@status='' OR equipment.equipment_status=@status)
             ORDER BY equipment.equipment_number;
             """;await using var command=new NpgsqlCommand(sql,connection);EnterpriseGovernanceAccessResolver.AddScopeParameters(command,access);command.Parameters.AddWithValue("search",Clean(search,120));command.Parameters.AddWithValue("location",Clean(location,180));command.Parameters.AddWithValue("pod",Clean(pod,120));command.Parameters.AddWithValue("status",NormalizeChoice(status,EquipmentStatuses,true));await using var reader=await command.ExecuteReaderAsync(cancellationToken);while(await reader.ReadAsync(cancellationToken))rows.Add(new LabEquipmentExportRow(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4),reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),reader.GetString(9),reader.GetString(10),reader.GetString(11),reader.GetString(12),reader.GetString(13),reader.GetString(14),reader.GetString(15),reader.GetString(16)));return rows;
     }
 
     private static async Task<List<LabIpExportRow>> LoadIpExportAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,string? location,string? pod,CancellationToken cancellationToken)
     {
-        var rows=new List<LabIpExportRow>();var sql="""
+        var rows=new List<LabIpExportRow>();var sql=$"""
             SELECT allocation.lab_location,allocation.pod,allocation.network_zone,allocation.network_cidr::text,COALESCE(allocation.ip_address::text,''),COALESCE(allocation.gateway::text,''),concat_ws(' · ',allocation.vlan_id::text,NULLIF(allocation.vlan_name,'')),allocation.vrf,allocation.allocation_status,concat_ws(' · ',NULLIF(equipment.equipment_number,''),NULLIF(equipment.equipment_name,'')),allocation.interface_name,allocation.purpose
             FROM lab_ip_allocations allocation LEFT JOIN lab_equipment equipment ON equipment.equipment_id=allocation.equipment_id
-            WHERE """+TeamScopePredicate("allocation.managing_team")+""" AND (@location='' OR lower(allocation.lab_location)=lower(@location)) AND (@pod='' OR lower(allocation.pod)=lower(@pod)) ORDER BY allocation.lab_location,allocation.pod,allocation.network_cidr,allocation.ip_address;
+            WHERE {TeamScopePredicate("allocation.managing_team")} AND (@location='' OR lower(allocation.lab_location)=lower(@location)) AND (@pod='' OR lower(allocation.pod)=lower(@pod)) ORDER BY allocation.lab_location,allocation.pod,allocation.network_cidr,allocation.ip_address;
             """;await using var command=new NpgsqlCommand(sql,connection);EnterpriseGovernanceAccessResolver.AddScopeParameters(command,access);command.Parameters.AddWithValue("location",Clean(location,180));command.Parameters.AddWithValue("pod",Clean(pod,120));await using var reader=await command.ExecuteReaderAsync(cancellationToken);while(await reader.ReadAsync(cancellationToken))rows.Add(new LabIpExportRow(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4),reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),reader.GetString(9),reader.GetString(10),reader.GetString(11)));return rows;
     }
 
     private static async Task<List<LabConnectionExportRow>> LoadConnectionExportAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,string? location,string? pod,CancellationToken cancellationToken)
     {
-        var rows=new List<LabConnectionExportRow>();var sql="""
+        var rows=new List<LabConnectionExportRow>();var sql=$"""
             SELECT connection.lab_location,connection.pod,concat_ws(' · ',source.equipment_number,source.equipment_name),connection.from_interface,concat_ws(' · ',target.equipment_number,target.equipment_name),connection.to_interface,connection.media_type,connection.cable_label,COALESCE(connection.vlan_id::text,''),COALESCE(connection.ip_address::text,''),connection.connection_status,connection.notes
             FROM lab_cable_connections connection JOIN lab_equipment source ON source.equipment_id=connection.from_equipment_id JOIN lab_equipment target ON target.equipment_id=connection.to_equipment_id
-            WHERE ("""+EquipmentScopePredicate("source")+") AND ("+EquipmentScopePredicate("target")+""") AND (@location='' OR lower(connection.lab_location)=lower(@location)) AND (@pod='' OR lower(connection.pod)=lower(@pod)) ORDER BY connection.lab_location,connection.pod,source.equipment_number;
+            WHERE ({EquipmentScopePredicate("source")}) AND ({EquipmentScopePredicate("target")}) AND (@location='' OR lower(connection.lab_location)=lower(@location)) AND (@pod='' OR lower(connection.pod)=lower(@pod)) ORDER BY connection.lab_location,connection.pod,source.equipment_number;
             """;await using var command=new NpgsqlCommand(sql,connection);EnterpriseGovernanceAccessResolver.AddScopeParameters(command,access);command.Parameters.AddWithValue("location",Clean(location,180));command.Parameters.AddWithValue("pod",Clean(pod,120));await using var reader=await command.ExecuteReaderAsync(cancellationToken);while(await reader.ReadAsync(cancellationToken))rows.Add(new LabConnectionExportRow(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4),reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),reader.GetString(9),reader.GetString(10),reader.GetString(11)));return rows;
     }
 
     private static async Task<List<string[]>> LoadHistoryExportAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,CancellationToken cancellationToken)
     {
-        var rows=new List<string[]>();var sql="""
+        var rows=new List<string[]>();var sql=$"""
             SELECT audit.occurred_at::text,audit.entity_type||' · '||audit.entity_id::text,audit.event_code,
               COALESCE(actor.display_name,actor.email,''),audit.event_metadata::text
             FROM lab_equipment_audit_events audit
             LEFT JOIN app_users actor ON actor.user_id=audit.effective_actor_user_id
             WHERE @broad_scope=TRUE
               OR (audit.entity_type='equipment' AND EXISTS(
-                SELECT 1 FROM lab_equipment equipment WHERE equipment.equipment_id=audit.entity_id AND """+EquipmentScopePredicate("equipment")+"""))
+                SELECT 1 FROM lab_equipment equipment WHERE equipment.equipment_id=audit.entity_id AND {EquipmentScopePredicate("equipment")}))
               OR (audit.entity_type='ip_allocation' AND EXISTS(
-                SELECT 1 FROM lab_ip_allocations allocation WHERE allocation.ip_allocation_id=audit.entity_id AND """+TeamScopePredicate("allocation.managing_team")+"""))
+                SELECT 1 FROM lab_ip_allocations allocation WHERE allocation.ip_allocation_id=audit.entity_id AND {TeamScopePredicate("allocation.managing_team")}))
               OR (audit.entity_type='connection' AND EXISTS(
                 SELECT 1 FROM lab_cable_connections connection
                 JOIN lab_equipment source ON source.equipment_id=connection.from_equipment_id
                 JOIN lab_equipment target ON target.equipment_id=connection.to_equipment_id
-                WHERE connection.connection_id=audit.entity_id AND """+EquipmentScopePredicate("source")+""" AND """+EquipmentScopePredicate("target")+"""))
+                WHERE connection.connection_id=audit.entity_id AND {EquipmentScopePredicate("source")} AND {EquipmentScopePredicate("target")}))
             ORDER BY audit.occurred_at DESC LIMIT 1000;
             """;
         await using var command=new NpgsqlCommand(sql,connection);EnterpriseGovernanceAccessResolver.AddScopeParameters(command,access);

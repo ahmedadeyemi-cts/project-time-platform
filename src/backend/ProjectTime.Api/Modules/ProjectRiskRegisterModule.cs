@@ -138,13 +138,13 @@ public static class ProjectRiskRegisterModule
         {
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var authorization = await RequireAccessAsync(context, connection, false); if (authorization.Error is not null) return authorization.Error;
-            var sql = ScopedProjectsCte + RiskSelect + """
+            var sql = ScopedProjectsCte + RiskSelect + $"""
                 WHERE (@project_id IS NULL OR risk.project_id=@project_id)
                   AND (@search='' OR risk.risk_title ILIKE '%'||@search||'%' OR risk.description ILIKE '%'||@search||'%' OR risk.trigger_indicator ILIKE '%'||@search||'%')
                   AND (@owner='' OR owner.display_name ILIKE '%'||@owner||'%' OR owner.email ILIKE '%'||@owner||'%')
                   AND (@category='' OR lower(risk.category)=lower(@category))
                   AND (@status='' OR risk.risk_status=@status)
-                  AND (@rating='' OR """ + RatingSql("risk.inherent_exposure") + "=@rating)" + """
+                  AND (@rating='' OR {RatingSql("risk.inherent_exposure")}=@rating)
                   AND (@review='' OR (@review='overdue' AND risk.next_review_date<CURRENT_DATE AND risk.risk_status NOT IN ('closed','retired'))
                     OR (@review='upcoming' AND risk.next_review_date BETWEEN CURRENT_DATE AND CURRENT_DATE+INTERVAL '30 days' AND risk.risk_status NOT IN ('closed','retired')))
                 ORDER BY CASE WHEN risk.risk_status NOT IN ('closed','retired') THEN 0 ELSE 1 END,risk.inherent_exposure DESC,risk.next_review_date,risk.updated_at DESC
@@ -254,7 +254,7 @@ public static class ProjectRiskRegisterModule
         try
         {
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted); var authorization = await RequireAccessAsync(context, connection, false); if (authorization.Error is not null) return authorization.Error;
-            var sql = ScopedProjectsCte + """
+            var sql = ScopedProjectsCte + $"""
                 SELECT risk.probability_score,risk.overall_impact_score,COUNT(*)::bigint,
                   COUNT(*) FILTER(WHERE risk.risk_type='threat')::bigint,COUNT(*) FILTER(WHERE risk.risk_type='opportunity')::bigint
                 FROM project_risks risk JOIN scoped_projects project ON project.project_id=risk.project_id
@@ -362,9 +362,9 @@ public static class ProjectRiskRegisterModule
         {
             start ??= DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)); end ??= DateOnly.FromDateTime(DateTime.UtcNow.AddDays(90)); if (end < start) return Bad("DATE_RANGE_INVALID", "End date must be on or after start date.");
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted); var authorization = await RequireAccessAsync(context, connection, false); if (authorization.Error is not null) return authorization.Error;
-            var sql = ScopedProjectsCte + """
+            var sql = ScopedProjectsCte + $"""
                 SELECT risk.risk_id,risk.risk_number,project.project_code,project.project_name,risk.risk_title,risk.next_review_date,
-                  risk.review_cadence,risk.inherent_exposure,""" + RatingSql("risk.inherent_exposure") + """ AS rating,
+                  risk.review_cadence,risk.inherent_exposure,{RatingSql("risk.inherent_exposure")} AS rating,
                   risk.next_review_date<CURRENT_DATE AS overdue,COALESCE(owner.display_name,owner.email,'')
                 FROM project_risks risk JOIN scoped_projects project ON project.project_id=risk.project_id
                 JOIN app_users owner ON owner.user_id=risk.risk_owner_user_id
@@ -430,7 +430,7 @@ public static class ProjectRiskRegisterModule
 
     private static string ScopedProjectsCte => "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + ", scoped_projects AS (SELECT project.* FROM projects project WHERE " + EnterpriseGovernanceAccessResolver.ProjectScopePredicate + ") ";
 
-    private static readonly string RiskSelect = """
+    private static readonly string RiskSelect = $"""
         SELECT risk.risk_id,risk.risk_number,risk.project_id,project.project_code,project.project_name,
           COALESCE(client.client_name,risk.customer_name_snapshot,''),risk.risk_title,risk.cause_statement,
           risk.uncertain_event_statement,risk.impact_statement,risk.description,risk.risk_type,risk.category,risk.subcategory,
@@ -438,11 +438,11 @@ public static class ProjectRiskRegisterModule
           COALESCE(owner.display_name,owner.email,''),risk.probability_score,risk.schedule_impact_score,risk.cost_impact_score,
           risk.scope_impact_score,risk.quality_impact_score,risk.customer_impact_score,risk.security_impact_score,
           risk.compliance_impact_score,risk.resource_impact_score,risk.operational_impact_score,risk.overall_impact_score,
-          risk.inherent_exposure,""" + RatingSql("risk.inherent_exposure") + """ AS inherent_rating,risk.proximity,risk.velocity,
+          risk.inherent_exposure,{RatingSql("risk.inherent_exposure")} AS inherent_rating,risk.proximity,risk.velocity,
           risk.response_strategy,risk.response_plan,risk.mitigation_actions,risk.contingency_plan,risk.trigger_indicator,
           risk.response_cost,risk.response_schedule_impact_days,risk.target_response_date,risk.next_review_date,risk.review_cadence,
           risk.risk_status,risk.residual_probability_score,risk.residual_impact_score,risk.residual_exposure,
-          """ + RatingSql("risk.residual_exposure") + """ AS residual_rating,risk.escalation_level,risk.escalation_decision,
+          {RatingSql("risk.residual_exposure")} AS residual_rating,risk.escalation_level,risk.escalation_decision,
           risk.issue_reference,risk.realized_at,risk.assumptions,risk.dependencies,risk.evidence_references,
           risk.created_at,risk.updated_at,risk.closed_at,risk.revision_number,
           (risk.next_review_date<CURRENT_DATE AND risk.risk_status NOT IN ('closed','retired')) AS review_overdue,
@@ -585,13 +585,14 @@ public static class ProjectRiskRegisterModule
 
     private static async Task<List<RiskExportRow>> LoadRiskExportAsync(NpgsqlConnection connection, EnterpriseGovernanceAccess access, Guid? projectId, string? status, string? rating, CancellationToken cancellationToken)
     {
-        var rows = new List<RiskExportRow>(); var sql = ScopedProjectsCte + """
+        var rows = new List<RiskExportRow>(); var sql = ScopedProjectsCte + $"""
             SELECT risk.risk_number,project.project_code,project.project_name,COALESCE(client.client_name,''),risk.risk_title,risk.risk_type,risk.category,
               COALESCE(owner.display_name,owner.email,''),risk.probability_score,risk.overall_impact_score,risk.inherent_exposure,
-              """ + RatingSql("risk.inherent_exposure") + ",risk.residual_exposure," + RatingSql("risk.residual_exposure") + """,
+              {RatingSql("risk.inherent_exposure")},risk.residual_exposure,{RatingSql("risk.residual_exposure")},
               risk.response_strategy,risk.risk_status,risk.next_review_date::text,risk.trigger_indicator,risk.updated_at::text
             FROM project_risks risk JOIN scoped_projects project ON project.project_id=risk.project_id LEFT JOIN clients client ON client.client_id=project.client_id JOIN app_users owner ON owner.user_id=risk.risk_owner_user_id
-            WHERE (@project_id IS NULL OR risk.project_id=@project_id) AND (@status='' OR risk.risk_status=@status) AND (@rating='' OR """ + RatingSql("risk.inherent_exposure") + "=@rating) ORDER BY project.project_code,risk.risk_number;";
+            WHERE (@project_id IS NULL OR risk.project_id=@project_id) AND (@status='' OR risk.risk_status=@status) AND (@rating='' OR {RatingSql("risk.inherent_exposure")}=@rating) ORDER BY project.project_code,risk.risk_number;
+            """;
         await using var command = new NpgsqlCommand(sql, connection); EnterpriseGovernanceAccessResolver.AddScopeParameters(command, access); AddNullableGuid(command, "project_id", projectId); command.Parameters.AddWithValue("status", Choice(status, RiskStatuses, string.Empty, true)); command.Parameters.AddWithValue("rating", Choice(rating, ["low","moderate","high","critical"], string.Empty, true)); await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) rows.Add(new RiskExportRow(RiskNumber(reader.GetInt32(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt16(8), reader.GetInt16(9), reader.GetInt16(10), reader.GetString(11), NullableShort(reader, 12), reader.GetString(13), reader.GetString(14), reader.GetString(15), reader.GetString(16), reader.GetString(17), reader.GetString(18))); return rows;
     }
