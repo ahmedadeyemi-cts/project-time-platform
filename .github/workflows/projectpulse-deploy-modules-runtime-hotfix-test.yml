@@ -49,7 +49,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: control
-          fetch-depth: 1
+          # Retain the parents needed by the release-boundary ancestry guard.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Check out exact hotfix release
