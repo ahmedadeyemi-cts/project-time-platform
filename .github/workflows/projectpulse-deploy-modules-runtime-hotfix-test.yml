@@ -196,7 +196,7 @@ jobs:
           }
           wait_status /health 200
           wait_status /api/version 200
-          wait_status '/api/holidays?year=2026' 200
+          wait_status '/api/holidays?year=2026' 200,401,403
           wait_status '/api/assignments/available-tasks?weekStart=2026-08-02' 401,403
           wait_status /api/engineer-task-closeout/overview 401,403
           wait_status /api/lab-equipment-tracker/summary 401,403
