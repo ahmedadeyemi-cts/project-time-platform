@@ -1,4 +1,4 @@
-name: ProjectPulse Deploy Modules 001 001A 081 082 Runtime Hotfix Test
+name: ProjectPulse Deploy Runtime Data Stability Hotfix Test
 
 on:
   workflow_dispatch:
@@ -15,6 +15,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml
+      - src/backend/ProjectTime.Api/Modules/EnterpriseGovernanceAccess.cs
+      - src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs
+      - src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+      - src/frontend/project-time-web/src/App.jsx
+      - src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+      - src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
 
 permissions:
   id-token: write
@@ -88,11 +94,20 @@ jobs:
           test -f release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
 
           grep -Fq '<EngineerTaskCloseoutCenter authSession={authSession} />' release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq 'const results = await Promise.allSettled([' release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq "'customer-delivery-acceptance'," release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq "'engineer-task-closeout'," release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq "'lab-equipment-tracker'," release/src/frontend/project-time-web/src/App.jsx
           grep -Fq "'X-Project-Pulse-Session': token" release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
           grep -Fq 'const PAGE_SIZE = 20;' release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
           grep -Fq 'Promise.allSettled' release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
           grep -Fq "queryPath('/actions',projectScope)" release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
           ! grep -Fq '`/actions?projectId=${filters.projectId}`' release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+          grep -Fq 'LabFullAccessRoles' release/src/backend/ProjectTime.Api/Modules/EnterpriseGovernanceAccess.cs
+          grep -Fq 'LabEngineerRoles' release/src/backend/ProjectTime.Api/Modules/EnterpriseGovernanceAccess.cs
+          grep -Fq 'CanImportLabEquipment => CanManageLabEquipment' release/src/backend/ProjectTime.Api/Modules/EnterpriseGovernanceAccess.cs
+          grep -Fq 'await using (var reader = await command.ExecuteReaderAsync(cancellationToken))' release/src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs
+          ! grep -Fq 'FROM projectpulse_team_scope_assignments' release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
 
           node release/src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
           node release/src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
@@ -256,6 +271,7 @@ jobs:
               case "$JS" in http*) URL="$JS";; /*) URL="$BASE$JS";; *) URL="$BASE/$JS";; esac
               curl -sSL --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/hotfix-app.js "$URL?release_check=$BUSTER" || true
               if grep -Fq '/api/engineer-task-closeout/overview' /tmp/hotfix-app.js \
+                && grep -Fq 'allSettled' /tmp/hotfix-app.js \
                 && grep -Fq 'X-Project-Pulse-Session' /tmp/hotfix-app.js \
                 && grep -Fq ' task pages' /tmp/hotfix-app.js \
                 && grep -Fq '/api/lab-equipment-tracker' /tmp/hotfix-app.js \
@@ -279,7 +295,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/modules-runtime-hotfix-test.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","runId":"${{ github.run_id }}","modules":["001","001A","081","082"],"databaseMutation":false,"migrationsPreserved":["076","077","078"],"apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","apiRevision":"${{ steps.deploy_api.outputs.revision }}","webRevision":"${{ steps.deploy_web.outputs.revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","publicAndProtectedRoutes":"passed","servedAssets":"passed"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","runId":"${{ github.run_id }}","modules":["001","001A","004","005","081","082"],"databaseMutation":false,"migrationsPreserved":["076","077","078"],"apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","apiRevision":"${{ steps.deploy_api.outputs.revision }}","webRevision":"${{ steps.deploy_web.outputs.revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","publicAndProtectedRoutes":"passed","servedAssets":"passed"}
           JSON
 
       - name: Upload deployment evidence

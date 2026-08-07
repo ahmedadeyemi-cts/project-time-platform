@@ -517,12 +517,8 @@ public static class LabEquipmentTrackerModule
 
     private static async Task<bool> CanManageTeamAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,string team,CancellationToken cancellationToken)
     {
-        if(access.IsBroadScope)return true;if(string.Equals(access.TeamName,team,StringComparison.OrdinalIgnoreCase))return true;
-        await using var command=new NpgsqlCommand("""
-            SELECT EXISTS(SELECT 1 FROM projectpulse_team_scope_assignments assignment
-              WHERE assignment.scoped_user_id=@user_id AND assignment.is_active=TRUE
-                AND assignment.team_name IS NOT NULL AND lower(assignment.team_name)=lower(@team));
-            """,connection);command.Parameters.AddWithValue("user_id",access.EffectiveUserId);command.Parameters.AddWithValue("team",Clean(team,160));return await command.ExecuteScalarAsync(cancellationToken) is true;
+        if(access.IsBroadScope||access.CanManageLabEquipment)return true;
+        return string.Equals(access.TeamName,team,StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<bool> CanManageEquipmentAsync(NpgsqlConnection connection,EnterpriseGovernanceAccess access,Guid id,CancellationToken cancellationToken)
@@ -531,15 +527,14 @@ public static class LabEquipmentTrackerModule
     { await using var command=new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM lab_ip_allocations allocation WHERE allocation.ip_allocation_id=@id AND "+TeamScopePredicate("allocation.managing_team")+");",connection);command.Parameters.AddWithValue("id",id);EnterpriseGovernanceAccessResolver.AddScopeParameters(command,access);return await command.ExecuteScalarAsync(cancellationToken) is true; }
 
     private static string EquipmentScopePredicate(string alias)=>$"""
-        (@broad_scope=TRUE OR {alias}.custodian_user_id=@user_id
+        (@broad_scope=TRUE OR @lab_full_scope=TRUE OR {alias}.custodian_user_id=@user_id
           OR (COALESCE(@team_name,'')<>'' AND lower({alias}.managing_team)=lower(@team_name))
-          OR EXISTS(SELECT 1 FROM projectpulse_team_scope_assignments team_scope WHERE team_scope.scoped_user_id=@user_id AND team_scope.is_active=TRUE AND team_scope.team_name IS NOT NULL AND lower(team_scope.team_name)=lower({alias}.managing_team))
           OR ({alias}.linked_project_id IS NOT NULL AND EXISTS(SELECT 1 FROM projects project WHERE project.project_id={alias}.linked_project_id AND (project.project_manager_user_id=@user_id OR EXISTS(SELECT 1 FROM project_assignments assignment WHERE assignment.project_id=project.project_id AND assignment.user_id=@user_id))))
         )
         """;
     private static string TeamScopePredicate(string expression)=>$"""
-        (@broad_scope=TRUE OR (COALESCE(@team_name,'')<>'' AND lower({expression})=lower(@team_name))
-          OR EXISTS(SELECT 1 FROM projectpulse_team_scope_assignments team_scope WHERE team_scope.scoped_user_id=@user_id AND team_scope.is_active=TRUE AND team_scope.team_name IS NOT NULL AND lower(team_scope.team_name)=lower({expression})))
+        (@broad_scope=TRUE OR @lab_full_scope=TRUE
+          OR (COALESCE(@team_name,'')<>'' AND lower({expression})=lower(@team_name)))
         """;
 
     private static async Task<JsonElement?> SnapshotAsync(NpgsqlConnection connection,string table,string key,Guid id,CancellationToken cancellationToken)

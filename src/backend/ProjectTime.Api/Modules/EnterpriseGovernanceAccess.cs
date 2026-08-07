@@ -22,11 +22,11 @@ internal sealed record EnterpriseGovernanceAccess(
         || Permissions.Contains("VIEW_LAB_EQUIPMENT_081");
 
     internal bool CanManageLabEquipment => !IsViewAs && (CanManageOrganization
-        || CanManageTeam
-        || Permissions.Contains("MANAGE_LAB_EQUIPMENT_081"));
+        || Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabFullAccessRoles)
+        || (!Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabEngineerRoles)
+            && Permissions.Contains("MANAGE_LAB_EQUIPMENT_081")));
 
-    internal bool CanImportLabEquipment => !IsViewAs && (CanManageOrganization
-        || Permissions.Contains("IMPORT_LAB_EQUIPMENT_081"));
+    internal bool CanImportLabEquipment => CanManageLabEquipment;
 
     internal bool CanViewRiskRegister => IsBroadScope
         || Roles.Overlaps(EnterpriseGovernanceAccessResolver.RiskViewRoles)
@@ -53,7 +53,23 @@ internal static class EnterpriseGovernanceAccessResolver
         "MANAGER", "ENGINEERING_MANAGER", "ENGINEERING_LEAD", "ENGINEERING_TEAM_LEAD",
         "ENGINEER", "ENGINEERING", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER",
         "ENTERPRISE_NETWORK_ENGINEER", "PROJECT_MANAGER", "PROJECT_MANAGEMENT",
-        "SOLUTION_ARCHITECT", "SA", "SAA"
+        "SOLUTION_ARCHITECT", "SA", "SAA", "ACCOUNT_EXECUTIVE", "EXECUTIVE",
+        "EXECUTIVE_LEADERSHIP"
+    };
+
+    internal static readonly HashSet<string> LabFullAccessRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "SYSTEM_ADMINISTRATOR",
+        "PROJECT_TEAM_COORDINATOR", "MANAGER", "PEOPLE_MANAGER", "ENGINEERING_MANAGER",
+        "ENGINEERING_LEAD", "ENGINEERING_TEAM_LEAD", "PROJECT_MANAGER", "PROJECT_MANAGEMENT",
+        "PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD",
+        "ACCOUNT_EXECUTIVE", "EXECUTIVE", "EXECUTIVE_LEADERSHIP"
+    };
+
+    internal static readonly HashSet<string> LabEngineerRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ENGINEER", "ENGINEERING", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER",
+        "ENTERPRISE_NETWORK_ENGINEER"
     };
 
     internal static readonly HashSet<string> RiskViewRoles = new(StringComparer.OrdinalIgnoreCase)
@@ -102,7 +118,7 @@ internal static class EnterpriseGovernanceAccessResolver
         await using (var command = new NpgsqlCommand("""
             SELECT COALESCE(NULLIF(app_user.display_name, ''), app_user.email),
                    app_user.email,
-                   COALESCE(app_user.team_name, ''),
+                   COALESCE(to_jsonb(app_user)->>'team_name', ''),
                    COALESCE(string_agg(DISTINCT upper(role.role_code), ','), ''),
                    COALESCE(string_agg(DISTINCT upper(permission.permission_code), ','), '')
             FROM app_users app_user
@@ -115,7 +131,10 @@ internal static class EnterpriseGovernanceAccessResolver
             LEFT JOIN app_permissions permission
               ON permission.app_permission_id=role_permission.app_permission_id
             WHERE app_user.user_id=@user_id AND app_user.is_active=TRUE
-            GROUP BY app_user.user_id,app_user.display_name,app_user.email,app_user.team_name;
+            GROUP BY app_user.user_id,
+                     app_user.display_name,
+                     app_user.email,
+                     COALESCE(to_jsonb(app_user)->>'team_name', '');
             """, connection))
         {
             command.Parameters.AddWithValue("user_id", effectiveUserId.Value);
@@ -164,6 +183,7 @@ internal static class EnterpriseGovernanceAccessResolver
     {
         command.Parameters.AddWithValue("user_id", access.EffectiveUserId);
         command.Parameters.AddWithValue("broad_scope", access.IsBroadScope);
+        command.Parameters.AddWithValue("lab_full_scope", access.CanManageLabEquipment);
         command.Parameters.AddWithValue("team_scope", access.CanManageTeam);
         command.Parameters.AddWithValue("team_name", access.TeamName ?? string.Empty);
     }
@@ -174,20 +194,13 @@ internal static class EnterpriseGovernanceAccessResolver
             FROM app_users member
             WHERE member.is_active=TRUE
               AND (
-                    (COALESCE(@team_name,'')<>'' AND lower(COALESCE(member.team_name,''))=lower(@team_name))
+                    (COALESCE(@team_name,'')<>'' AND lower(COALESCE(to_jsonb(member)->>'team_name',''))=lower(@team_name))
                  OR EXISTS (
                       SELECT 1 FROM reporting_relationships relationship
                       WHERE relationship.employee_user_id=member.user_id
                         AND (relationship.manager_user_id=@user_id OR relationship.team_lead_user_id=@user_id)
                         AND relationship.effective_start_date<=CURRENT_DATE
                         AND (relationship.effective_end_date IS NULL OR relationship.effective_end_date>=CURRENT_DATE)
-                 )
-                 OR EXISTS (
-                      SELECT 1 FROM projectpulse_team_scope_assignments scope_assignment
-                      WHERE scope_assignment.scoped_user_id=@user_id
-                        AND scope_assignment.is_active=TRUE
-                        AND scope_assignment.team_name IS NOT NULL
-                        AND lower(COALESCE(member.team_name,''))=lower(scope_assignment.team_name)
                  )
               )
         )

@@ -424,8 +424,10 @@ internal static class EnterpriseNotificationRepository
                     event.updated_at;
                 """, connection, transaction);
             command.Parameters.AddWithValue("maximum", Math.Clamp(maximum, 1, 250));
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadEvent(reader));
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadEvent(reader));
+            }
             await transaction.CommitAsync(cancellationToken);
             return rows.ToArray();
         }
