@@ -10,6 +10,7 @@
   "modules081082001aIncluded": true,
   "celarAiPrivateRagUxIncluded": true,
   "legacyRiskTableReconciliation": true,
+  "protectedRuntimeVerification": true,
   "requiredPriorLedger": [
     "074_module_066_project_flowhive_production"
   ],

@@ -81,6 +81,7 @@ jobs:
           [[ "$(jq -r .modules081082001aIncluded "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .celarAiPrivateRagUxIncluded "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .legacyRiskTableReconciliation "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r .protectedRuntimeVerification "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
