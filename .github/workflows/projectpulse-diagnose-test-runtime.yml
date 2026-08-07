@@ -35,6 +35,11 @@ jobs:
           replica="$(az containerapp replica list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$revision" --query '[0].name' -o tsv --only-show-errors)"
           container="$(jq -r '.properties.template.containers[0].name // empty' <<<"$revision_json")"
           [[ -n "$revision" && -n "$replica" && -n "$container" ]]
+          base='${{ vars.PUBLIC_URL }}'; base="${base%/}"
+          status="$(curl -sS --max-time 30 -H 'Cache-Control: no-cache' -H 'X-ProjectPulse-Module-Number: 001' -o /tmp/probe-body -w '%{http_code}' "$base/api/assignments/available-tasks?weekStart=2026-08-02" || true)"
+          echo "MODULE_HEADER_PROBE_STATUS=$status"
+          sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}/[REDACTED_ID]/g' /tmp/probe-body || true
+          sleep 3
           az containerapp logs show             -g '${{ vars.AZURE_RESOURCE_GROUP }}'             -n '${{ vars.AZURE_API_APP }}'             --revision "$revision"             --replica "$replica"             --container "$container"             --type console --tail 300 --format json             > /tmp/api-console.json
           ACTIVE_REVISION="$revision" python3 - <<'PY'
           import json
