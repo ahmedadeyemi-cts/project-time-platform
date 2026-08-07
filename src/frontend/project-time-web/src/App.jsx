@@ -3160,13 +3160,13 @@ function buildRoleNavigationModel(user, navigationItems) {
 }
 
 
-function SignalLogo() {
+function SignalLogo({ productName = 'Project Health Dashboard', ariaLabel = productName } = {}) {
 
   return (
-    <div className="brand-lockup" aria-label="Project Health Dashboard">
+    <div className="brand-lockup" aria-label={ariaLabel}>
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
-        <strong>Project Health Dashboard</strong>
+        <strong>{productName}</strong>
         <small>Unified Business Operations</small>
       </div>
     </div>
@@ -3192,7 +3192,7 @@ function ProjectHealthDashboardLoginHero() {
   return (
     <div className="phd-auth-story-content">
       <header className="phd-auth-story-header">
-        <SignalLogo />
+        <SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />
         <div className="phd-auth-motion-switcher" role="group" aria-label="Choose login animation">
           <button
             type="button"
@@ -3200,7 +3200,7 @@ function ProjectHealthDashboardLoginHero() {
             aria-pressed={motionMode === 'dashboard'}
             onClick={() => setMotionMode('dashboard')}
           >
-            Platform ecosystem
+            Pulse ecosystem
           </button>
           <button
             type="button"
@@ -3220,13 +3220,13 @@ function ProjectHealthDashboardLoginHero() {
           <span>One intelligent workspace.</span>
         </h1>
         <p>
-          From the first opportunity through project delivery, invoicing, and insight—Project Health Dashboard keeps every team aligned and every decision informed.
+          From the first opportunity through project delivery, invoicing, and insight—Pulse keeps every team aligned and every decision informed.
         </p>
       </div>
 
       <div className="phd-auth-motion-stage">
         {motionMode === 'dashboard' ? (
-          <div className="phd-platform-motion" aria-label="Animated view of the Project Health Dashboard operational ecosystem">
+          <div className="phd-platform-motion" aria-label="Animated view of the Pulse operational ecosystem">
             <div className="phd-motion-grid" aria-hidden="true" />
             <svg className="phd-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
               <defs>
@@ -3291,7 +3291,7 @@ function ProjectHealthDashboardLoginHero() {
         )}
       </div>
 
-      <div className="phd-capability-rail" aria-label="Project Health Dashboard capabilities">
+      <div className="phd-capability-rail" aria-label="Pulse capabilities">
         {PROJECT_HEALTH_DASHBOARD_CAPABILITIES.map((capability, index) => (
           <span key={capability} style={{ '--phd-capability-index': index }}>{capability}</span>
         ))}
@@ -4897,7 +4897,7 @@ export default function App() {
     try {
       const result = await postJson('/api/auth/password-reset/request', {
         username,
-        notes: passwordResetNotes || 'Password reset requested from Project Health Dashboard login screen.'
+        notes: passwordResetNotes || 'Password reset requested from the Pulse login screen.'
       });
 
       setPasswordResetStatus(result.message ?? 'Password reset request queued for approval.');
@@ -6253,7 +6253,7 @@ export default function App() {
   if (!authSession) {
     return (
       <main className="app-shell auth-shell phd-auth-shell">
-        <section className="auth-landing-panel phd-auth-experience" aria-label="Project Health Dashboard sign in">
+        <section className="auth-landing-panel phd-auth-experience" aria-label="Pulse sign in">
           <div className="auth-card phd-auth-card">
             <div className="phd-celar-note">
               <span aria-hidden="true">✦</span>
@@ -6267,7 +6267,7 @@ export default function App() {
                 </span>
                 Secure workspace
               </p>
-              <h2>Welcome to Project Health Dashboard</h2>
+              <h2>Welcome to Pulse</h2>
               <p className="phd-auth-intro">
                 Sign in to open the workspace tailored to your role, priorities, and active work.
               </p>
@@ -6384,11 +6384,11 @@ export default function App() {
       <main className="app-shell auth-shell forced-password-shell">
         <section className="auth-landing-panel">
           <div className="auth-brand-block">
-            <SignalLogo />
+            <SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />
             <p className="eyebrow">Password Change Required</p>
             <h1>Set a new local administrator password</h1>
             <p>
-              You signed in with a temporary password. Before accessing Project Health Dashboard, choose a new password for the local administrator account.
+              You signed in with a temporary password. Before accessing Pulse, choose a new password for the local administrator account.
             </p>
           </div>
 

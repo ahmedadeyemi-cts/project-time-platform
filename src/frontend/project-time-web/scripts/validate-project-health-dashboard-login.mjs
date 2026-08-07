@@ -15,6 +15,18 @@ const officialLogo = fs.readFileSync(officialLogoPath);
 const failures = [];
 const authCardIndex = app.indexOf('<div className="auth-card phd-auth-card">');
 const authStoryIndex = app.indexOf('<div className="auth-brand-block phd-auth-story">', authCardIndex);
+const signedOutStart = app.indexOf('if (!authSession) {');
+const signedOutEnd = app.indexOf("if (authSession?.loginMethod === 'local'", signedOutStart);
+const signedOutExperience = signedOutStart >= 0 && signedOutEnd > signedOutStart
+  ? app.slice(signedOutStart, signedOutEnd)
+  : '';
+const loginComponentsStart = app.indexOf('function SignalLogo()') >= 0
+  ? app.indexOf('function SignalLogo()')
+  : app.indexOf('function SignalLogo(');
+const loginComponentsEnd = app.indexOf('function DataState(', loginComponentsStart);
+const loginExperienceSource = loginComponentsStart >= 0 && loginComponentsEnd > loginComponentsStart
+  ? `${app.slice(loginComponentsStart, loginComponentsEnd)}\n${signedOutExperience}`
+  : '';
 
 function requireInvariant(name, condition) {
   console.log(`${name}=${condition ? 'PASSED' : 'FAILED'}`);
@@ -29,21 +41,24 @@ requireInvariant(
   'PROJECT_HEALTH_DASHBOARD_OFFICIAL_US_SIGNAL_LOGO',
   app.includes("import usSignalLogoUrl from '../brand/USSNavyStacked.png';")
     && app.includes('<img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />')
+    && loginExperienceSource.includes('<SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />')
     && officialLogo.length === 31_117
     && crypto.createHash('sha256').update(officialLogo).digest('hex') === 'f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b'
 );
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_PLATFORM_BRANDING',
-  containsAll(app, [
-    'Project Health Dashboard',
+  'PULSE_LOGIN_PLATFORM_BRANDING',
+  containsAll(loginExperienceSource, [
+    'aria-label="Pulse sign in"',
+    'productName="Pulse"',
     'Unified Business Operations',
     'Every stage of delivery.',
     'One intelligent workspace.',
-    'Welcome to Project Health Dashboard',
+    'Welcome to Pulse',
     'Continue securely'
   ])
-    && !app.includes('Time • Approval • Utilization')
+    && !loginExperienceSource.includes('Welcome to Project Health Dashboard')
+    && !loginExperienceSource.includes('Time • Approval • Utilization')
 );
 
 requireInvariant(
@@ -56,7 +71,7 @@ requireInvariant(
   'PROJECT_HEALTH_DASHBOARD_MOTION_OPTIONS',
   containsAll(app, [
     "https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif",
-    'Platform ecosystem',
+    'Pulse ecosystem',
     'US Signal motion',
     'ProjectHealthDashboardLoginHero'
   ])
