@@ -395,6 +395,12 @@ internal static class ReleaseRuntimeBehavior
                 out var finalizedOutcomeClaimDecision)
             && finalizedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
             "ordinary finalized completion claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and finalised the change. Documented the result.",
+                [],
+                out var finalisedOutcomeClaimDecision)
+            && finalisedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "British-English finalised completion claims remain fail-closed");
         Require(sanitizer.IsTimesheetExternalOutputSafe(
                 "Documented implementation steps and planned validation activities. Coordinated follow-up review.",
                 [],
