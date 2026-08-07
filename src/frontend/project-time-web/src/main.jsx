@@ -27,6 +27,7 @@ import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.j
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
+import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
@@ -39,19 +40,21 @@ import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
-    <CriticalRoutePresentationBoundary />
-    <AdminRuntimeStabilityPortal />
-    <GlobalViewAsDrawer />
-    <ModulesDirectoryPortal />
-    <ModuleAvailabilityController />
-    <DashboardPersonalCalendarPortal />
-    <TimesheetEnhancementPortal />
-    <PtcTimeStewardGate />
-    <ProjectExpenseCrossModulePortal />
-    <Module005ExperienceCompatibility />
-    <MicrosoftIntegrationDualConnectionPortal />
-    <MicrosoftMailTransportReadinessPanel />
-    <AuthenticatedHelpAssistant />
+    <ApplicationErrorBoundary>
+      <App />
+      <CriticalRoutePresentationBoundary />
+      <AdminRuntimeStabilityPortal />
+      <GlobalViewAsDrawer />
+      <ModulesDirectoryPortal />
+      <ModuleAvailabilityController />
+      <DashboardPersonalCalendarPortal />
+      <TimesheetEnhancementPortal />
+      <PtcTimeStewardGate />
+      <ProjectExpenseCrossModulePortal />
+      <Module005ExperienceCompatibility />
+      <MicrosoftIntegrationDualConnectionPortal />
+      <MicrosoftMailTransportReadinessPanel />
+      <AuthenticatedHelpAssistant />
+    </ApplicationErrorBoundary>
   </React.StrictMode>
 );

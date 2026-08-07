@@ -12,6 +12,7 @@ public sealed record ProjectFlowHivePlanRequest(
     string? PlanName,
     string? RevisionLabel,
     DateOnly? ProjectStartDate,
+    DateOnly? ProjectEndDate,
     IReadOnlyList<ProjectFlowHivePlanTaskInput>? Tasks,
     IReadOnlyList<ProjectFlowHiveDependencyInput>? Dependencies,
     IReadOnlyList<ProjectFlowHivePlanAssignmentInput>? Assignments,
@@ -22,7 +23,8 @@ public sealed record ProjectFlowHivePlanRequest(
     string? SourceKind = "manual",
     string? CelarAiProviderCode = null,
     string? CelarAiCorrelationId = null,
-    decimal? CelarAiConfidence = null);
+    decimal? CelarAiConfidence = null,
+    IReadOnlyList<int>? CelarAiCitationIds = null);
 
 public sealed record ProjectFlowHivePlanTaskInput(
     Guid? ClientTaskId,
@@ -37,7 +39,25 @@ public sealed record ProjectFlowHivePlanTaskInput(
     DateOnly? ConstraintDate,
     decimal PercentComplete,
     decimal RemainingEffortHours,
-    string? Status);
+    string? Status,
+    bool IsSummary = false,
+    string? Phase = null,
+    IReadOnlyList<string>? DetailedSteps = null,
+    IReadOnlyList<string>? Inputs = null,
+    IReadOnlyList<string>? Outputs = null,
+    IReadOnlyList<string>? AcceptanceCriteria = null,
+    IReadOnlyList<string>? ValidationSteps = null,
+    IReadOnlyList<string>? CustomerResponsibilities = null,
+    IReadOnlyList<string>? UsSignalResponsibilities = null,
+    IReadOnlyList<string>? Prerequisites = null,
+    IReadOnlyList<string>? Risks = null,
+    IReadOnlyList<string>? OpenQuestions = null,
+    string? Priority = "normal",
+    IReadOnlyList<int>? CitationIds = null,
+    DateOnly? EstimatedStartDate = null,
+    DateOnly? EstimatedFinishDate = null,
+    string? Comments = null,
+    string? Notes = null);
 
 public sealed record ProjectFlowHiveDependencyInput(
     string? PredecessorWbs,
@@ -82,12 +102,15 @@ public sealed record ProjectFlowHiveScheduledTask(
     bool IsMilestone,
     decimal PercentComplete,
     decimal RemainingEffortHours,
-    string Status);
+    string Status,
+    bool IsSummary = false,
+    string Phase = "");
 
 public sealed record ProjectFlowHiveScheduleResult(
     bool Valid,
     string Status,
     DateOnly? ProjectStartDate,
+    DateOnly? ProjectTargetEndDate,
     DateOnly? ProjectFinishDate,
     int ScheduledWorkingDays,
     int CriticalTaskCount,

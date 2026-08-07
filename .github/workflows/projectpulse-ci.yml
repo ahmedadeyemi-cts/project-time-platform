@@ -181,6 +181,23 @@ jobs:
           path: /tmp/project-flowhive-migration-074.log
           retention-days: 7
 
+      - name: Test coordinated document bridge migration 079
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-coordinated-document-bridge-migration-079.sh > /tmp/coordinated-document-bridge-migration-079.log 2>&1
+          status=$?
+          cat /tmp/coordinated-document-bridge-migration-079.log
+          exit $status
+
+      - name: Upload coordinated document bridge migration 079 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coordinated-document-bridge-migration-079-diagnostics
+          path: /tmp/coordinated-document-bridge-migration-079.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 

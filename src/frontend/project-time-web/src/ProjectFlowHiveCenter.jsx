@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import usSignalLogoUrl from '../brand/ussignal.png';
 import IdentityAvatar from './identity/IdentityAvatar.jsx';
 import useIdentityProfile from './identity/useIdentityProfile.js';
@@ -14,6 +14,16 @@ const views = [
   { id: 'exports', label: 'Branded exports' },
   { id: 'governance', label: 'Governance' }
 ];
+
+const plannerPhases = [
+  { wbs: '1', name: 'Plan' },
+  { wbs: '2', name: 'Design' },
+  { wbs: '3', name: 'Implement' },
+  { wbs: '4', name: 'Validate' },
+  { wbs: '5', name: 'Release' }
+];
+
+const plannerStatuses = ['not_started', 'in_progress', 'blocked', 'complete'];
 
 function storedSession() {
   try {
@@ -49,7 +59,9 @@ async function parseResponse(response, path) {
   }
   const body = await response.json();
   if (!response.ok) {
-    throw new Error(body.message || body.detail || `${path} returned HTTP ${response.status}`);
+    const error = new Error(body.message || body.detail || body.issues?.[0]?.message || `${path} returned HTTP ${response.status}`);
+    error.responseBody = body;
+    throw error;
   }
   return body;
 }
@@ -106,31 +118,87 @@ function currentIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function buildLocalDraft(project, tasks, assignments) {
-  if (!project) return null;
-  const projectTasks = tasks.filter((task) => task.projectId === project.projectId);
-  const planTasks = projectTasks.map((task, index) => ({
-    clientTaskId: task.taskId,
-    canonicalTaskId: task.taskId,
-    wbsNumber: String(index + 1),
-    parentWbsNumber: '',
-    name: task.taskName,
-    description: task.taskDescription || '',
-    durationWorkingDays: Math.max(1, Math.ceil(Number(task.assignedHours || task.remainingHours || 8) / 8)),
+function addCalendarDays(value, days) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function localTask(wbsNumber, parentWbsNumber, name, description, canonicalTaskId = null, durationWorkingDays = 1) {
+  return {
+    clientTaskId: canonicalTaskId || crypto.randomUUID(),
+    canonicalTaskId,
+    wbsNumber,
+    parentWbsNumber,
+    name,
+    description,
+    durationWorkingDays,
     isMilestone: false,
     constraintType: 'ASAP',
     constraintDate: null,
+    percentComplete: 0,
+    remainingEffortHours: durationWorkingDays * 8,
+    status: 'not_started',
+    isSummary: false,
+    phase: plannerPhases.find((phase) => phase.wbs === parentWbsNumber)?.name || '',
+    detailedSteps: [],
+    inputs: [],
+    outputs: [],
+    acceptanceCriteria: [],
+    validationSteps: [],
+    customerResponsibilities: [],
+    usSignalResponsibilities: [],
+    prerequisites: [],
+    risks: [],
+    openQuestions: [],
+    priority: 'normal',
+    citationIds: [],
+    comments: '',
+    notes: ''
+  };
+}
+
+function buildLocalDraft(project, tasks, assignments) {
+  if (!project) return null;
+  const projectTasks = tasks.filter((task) => task.projectId === project.projectId);
+  const phaseRows = plannerPhases.map((phase) => ({
+    ...localTask(phase.wbs, '', phase.name, `${phase.name} phase summary.`),
+    durationWorkingDays: 0,
+    remainingEffortHours: 0,
+    isSummary: true,
+    phase: phase.name,
+    priority: 'summary'
+  }));
+  const implementTasks = projectTasks.map((task, index) => ({
+    ...localTask(
+      `3.${index + 1}`,
+      '3',
+      task.taskName,
+      task.taskDescription || 'Review and complete the authorized canonical project task.',
+      task.taskId,
+      Math.max(1, Math.ceil(Number(task.assignedHours || task.remainingHours || 8) / 8))),
     percentComplete: task.assignedHours
       ? Math.min(100, Math.round((Number(task.usedHours || 0) / Number(task.assignedHours)) * 100))
       : 0,
     remainingEffortHours: Number(task.remainingHours || 0),
     status: Number(task.remainingHours || 0) <= 0 && Number(task.usedHours || 0) > 0 ? 'complete' : 'not_started'
   }));
-  const wbsByTaskId = new Map(projectTasks.map((task, index) => [task.taskId, String(index + 1)]));
+  const childTasks = [
+    localTask('1.1', '1', 'Review approved scope and delivery readiness', 'Confirm the approved scope, deliverables, exclusions, prerequisites, responsibilities, acceptance criteria, and open questions.'),
+    localTask('2.1', '2', 'Validate solution design and work instructions', 'Translate the approved scope into a reviewable technical design, implementation procedure, validation plan, and rollback approach.'),
+    ...(implementTasks.length ? implementTasks : [localTask('3.1', '3', 'Execute approved implementation work', 'Perform the reviewed scoped work in controlled stages and retain objective implementation evidence.', null, 2)]),
+    localTask('4.1', '4', 'Validate outcomes and acceptance evidence', 'Execute the approved validation plan, remediate authorized defects, and map objective evidence to the acceptance criteria.'),
+    localTask('5.1', '5', 'Complete handoff, release, and closeout', 'Finalize documentation, knowledge transfer, operational ownership, outstanding actions, acceptance evidence, and closeout review.')
+  ];
+  const planTasks = plannerPhases.flatMap((phase) => [
+    phaseRows.find((row) => row.wbsNumber === phase.wbs),
+    ...childTasks.filter((task) => task.parentWbsNumber === phase.wbs)
+  ]);
+  const wbsByTaskId = new Map(implementTasks.map((task) => [task.canonicalTaskId, task.wbsNumber]));
   const planAssignments = assignments
     .filter((assignment) => assignment.projectId === project.projectId && assignment.resourceUserId)
     .map((assignment) => ({
-      taskWbs: wbsByTaskId.get(assignment.taskId) || planTasks[0]?.wbsNumber || '',
+      taskWbs: wbsByTaskId.get(assignment.taskId) || '',
       resourceUserId: assignment.resourceUserId,
       resourceDisplayName: assignment.resourceName,
       allocationPercent: Number(assignment.allocationPercent || 100),
@@ -146,23 +214,10 @@ function buildLocalDraft(project, tasks, assignments) {
     planName: `${project.projectCode} governed plan`,
     revisionLabel: 'Local draft 1',
     projectStartDate: project.startDate || currentIsoDate(),
-    tasks: planTasks.length ? planTasks : [{
-      clientTaskId: crypto.randomUUID(),
-      canonicalTaskId: null,
-      wbsNumber: '1',
-      parentWbsNumber: '',
-      name: 'Project kickoff',
-      description: '',
-      durationWorkingDays: 1,
-      isMilestone: false,
-      constraintType: 'ASAP',
-      constraintDate: null,
-      percentComplete: 0,
-      remainingEffortHours: 8,
-      status: 'not_started'
-    }],
-    dependencies: planTasks.slice(1).map((task, index) => ({
-      predecessorWbs: planTasks[index].wbsNumber,
+    projectEndDate: project.endDate || addCalendarDays(project.startDate || currentIsoDate(), 60),
+    tasks: planTasks,
+    dependencies: childTasks.slice(1).map((task, index) => ({
+      predecessorWbs: childTasks[index].wbsNumber,
       successorWbs: task.wbsNumber,
       type: 'FS',
       lagWorkingDays: 0
@@ -176,6 +231,21 @@ function buildLocalDraft(project, tasks, assignments) {
 
 function identityKey(profile) {
   return profile?.userId || profile?.effectiveUserId || profile?.id || '';
+}
+
+function taskDetailSections(task) {
+  return [
+    ['Ordered work steps', 'detailedSteps', task.detailedSteps],
+    ['Required inputs', 'inputs', task.inputs],
+    ['Expected outputs', 'outputs', task.outputs],
+    ['Prerequisites', 'prerequisites', task.prerequisites],
+    ['Validation steps', 'validationSteps', task.validationSteps],
+    ['Acceptance criteria', 'acceptanceCriteria', task.acceptanceCriteria],
+    ['Customer responsibilities', 'customerResponsibilities', task.customerResponsibilities],
+    ['US Signal responsibilities', 'usSignalResponsibilities', task.usSignalResponsibilities],
+    ['Risks', 'risks', task.risks],
+    ['Open questions', 'openQuestions', task.openQuestions]
+  ];
 }
 
 export default function ProjectFlowHiveCenter() {
@@ -196,6 +266,8 @@ export default function ProjectFlowHiveCenter() {
   const [schedule, setSchedule] = useState(null);
   const [validation, setValidation] = useState(null);
   const [aiPreview, setAiPreview] = useState(null);
+  const [collapsedPhases, setCollapsedPhases] = useState(() => new Set());
+  const [expandedTaskWbs, setExpandedTaskWbs] = useState('');
   const [savedPlans, setSavedPlans] = useState([]);
   const [baselineNote, setBaselineNote] = useState('Reviewed with project delivery and engineering stakeholders.');
   const [gsdExcerpt, setGsdExcerpt] = useState('');
@@ -236,9 +308,9 @@ export default function ProjectFlowHiveCenter() {
   const assignments = portfolio?.assignments ?? [];
   const capabilities = capabilityResponse?.capabilities ?? [];
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
-  const aiPreviewIsDeterministicFloor =
-    String(aiPreview?.executionPath || '').toLowerCase() === 'deterministic_private_fallback'
-    && Number(aiPreview?.confidence) === 0.35;
+  const scheduleByWbs = useMemo(() => new Map(
+    (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
+  ), [schedule]);
 
   const identityOptions = useMemo(() => {
     const values = new Map();
@@ -283,6 +355,8 @@ export default function ProjectFlowHiveCenter() {
     setSchedule(null);
     setValidation(null);
     setAiPreview(null);
+    setCollapsedPhases(new Set());
+    setExpandedTaskWbs('');
     setNotice('A new FlowHive draft is ready. Save it to create the first immutable version.');
     setActiveView('planner');
   }
@@ -304,16 +378,22 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updateDependencyForTask(index, field, value) {
-    if (!draftPlan || index === 0) return;
+    if (!draftPlan || draftPlan.tasks[index]?.isSummary) return;
     const successorWbs = draftPlan.tasks[index].wbsNumber;
     setDraftPlan((current) => {
+      if (field === 'predecessorWbs' && !value) {
+        return {
+          ...current,
+          dependencies: current.dependencies.filter((dependency) => dependency.successorWbs !== successorWbs)
+        };
+      }
       const existing = current.dependencies.find((dependency) => dependency.successorWbs === successorWbs);
       const next = existing
         ? current.dependencies.map((dependency) => dependency.successorWbs === successorWbs
             ? { ...dependency, [field]: value }
             : dependency)
         : [...current.dependencies, {
-            predecessorWbs: current.tasks[index - 1]?.wbsNumber || '',
+            predecessorWbs: field === 'predecessorWbs' ? value : '',
             successorWbs,
             type: 'FS',
             lagWorkingDays: 0,
@@ -342,32 +422,40 @@ export default function ProjectFlowHiveCenter() {
           : withoutTask
       };
     });
+    setSchedule(null);
   }
 
   function addTask() {
     setDraftPlan((current) => {
       if (!current) return current;
-      const wbsNumber = String(current.tasks.length + 1);
+      const implementChildren = current.tasks.filter((task) => task.parentWbsNumber === '3');
+      const wbsNumber = `3.${implementChildren.length + 1}`;
+      const newTask = localTask(
+        wbsNumber,
+        '3',
+        'New implementation task',
+        'Describe the specific scoped action, required inputs, expected output, validation evidence, and completion criteria.');
+      const releaseIndex = current.tasks.findIndex((task) => task.wbsNumber === '4');
+      const nextTasks = [...current.tasks];
+      nextTasks.splice(releaseIndex < 0 ? nextTasks.length : releaseIndex, 0, newTask);
+      const executable = current.tasks.filter((task) => !task.isSummary);
+      const predecessor = implementChildren.at(-1)?.wbsNumber
+        || executable.find((task) => task.parentWbsNumber === '2')?.wbsNumber
+        || '';
+      const firstValidationTask = current.tasks.find((task) => task.parentWbsNumber === '4');
+      const rewiredDependencies = current.dependencies.map((dependency) => (
+        firstValidationTask
+        && dependency.successorWbs === firstValidationTask.wbsNumber
+        && dependency.predecessorWbs === predecessor
+          ? { ...dependency, predecessorWbs: wbsNumber }
+          : dependency
+      ));
       return {
         ...current,
-        tasks: [...current.tasks, {
-          clientTaskId: crypto.randomUUID(),
-          canonicalTaskId: null,
-          wbsNumber,
-          parentWbsNumber: '',
-          name: 'New planning task',
-          description: '',
-          durationWorkingDays: 1,
-          isMilestone: false,
-          constraintType: 'ASAP',
-          constraintDate: null,
-          percentComplete: 0,
-          remainingEffortHours: 8,
-          status: 'not_started'
-        }],
-        dependencies: current.tasks.length
-          ? [...current.dependencies, {
-              predecessorWbs: current.tasks.at(-1).wbsNumber,
+        tasks: nextTasks,
+        dependencies: predecessor
+          ? [...rewiredDependencies, {
+              predecessorWbs: predecessor,
               successorWbs: wbsNumber,
               type: 'FS',
               lagWorkingDays: 0
@@ -375,6 +463,8 @@ export default function ProjectFlowHiveCenter() {
           : current.dependencies
       };
     });
+    setSchedule(null);
+    setValidation(null);
   }
 
   async function validatePlan() {
@@ -403,6 +493,11 @@ export default function ProjectFlowHiveCenter() {
       setNotice('Weekday schedule preview calculated. Module 057 holiday authority is not applied.');
       setActiveView('timeline');
     } catch (actionError) {
+      if (actionError.responseBody?.issues) {
+        setSchedule(actionError.responseBody);
+        setValidation({ valid: false, issues: actionError.responseBody.issues });
+        setActiveView('planner');
+      }
       setError(actionError.message);
     } finally {
       setBusy('');
@@ -467,7 +562,15 @@ export default function ProjectFlowHiveCenter() {
 
   async function previewAiRequest() {
     if (!draftPlan) return;
-    setBusy('ai');
+    if (!draftPlan.projectStartDate || !draftPlan.projectEndDate) {
+      setError('Select both the project start date and end date before running AI Planner.');
+      return;
+    }
+    if (draftPlan.projectEndDate < draftPlan.projectStartDate) {
+      setError('Project end date must be on or after the project start date.');
+      return;
+    }
+    setBusy('ai-planner');
     setError('');
     try {
       const result = await postJson('/api/project-flowhive/ai/production-generate', {
@@ -491,15 +594,30 @@ export default function ProjectFlowHiveCenter() {
         });
       }
       if (result.schedule?.valid) setSchedule(result.schedule);
-      setValidation(result.validation || null);
+      else setSchedule(result.schedule || null);
+      setValidation(result.schedule?.valid === false
+        ? { valid: false, issues: result.schedule.issues || result.validation?.issues || [] }
+        : result.validation || null);
+      setCollapsedPhases(new Set());
+      setExpandedTaskWbs('');
+      setActiveView('planner');
       setNotice(result.schedule?.valid
-        ? 'Celar AI produced and auto-filled a detailed private review plan. Save it to create an immutable version.'
+        ? `AI Planner populated the five-phase task plan from authorized private evidence${result.planningEvidence?.scopeOfServicesLocated ? ', including the approved SOW Scope of Services' : ''}. Review it, assign owners, then save an immutable version.`
         : 'Celar AI produced a review draft that requires correction before it can be saved.');
     } catch (actionError) {
       setError(actionError.message);
     } finally {
       setBusy('');
     }
+  }
+
+  function togglePhase(wbs) {
+    setCollapsedPhases((current) => {
+      const next = new Set(current);
+      if (next.has(wbs)) next.delete(wbs);
+      else next.add(wbs);
+      return next;
+    });
   }
 
   async function downloadArtifact(format) {
@@ -515,7 +633,7 @@ export default function ProjectFlowHiveCenter() {
           plan: draftPlan,
           artifactTitle: `${draftPlan.planName} — internal preview`,
           audience: 'internal',
-          excludeNotes: true,
+          excludeNotes: false,
           acknowledgeInternalDraft: true
         })
       }), path);
@@ -609,7 +727,7 @@ export default function ProjectFlowHiveCenter() {
               <article className={`flowhive-project-card ${selectedProjectId === project.projectId ? 'selected' : ''}`} key={project.projectId}>
                 <div className="flowhive-project-card-heading"><div><span>{project.customerName}</span><h3>{project.projectCode} · {project.projectName}</h3></div><span className={`flowhive-status ${statusTone(project.status)}`}>{labelFrom(project.status)}</span></div>
                 <dl><div><dt>Project Manager</dt><dd>{project.projectManagerName}</dd></div><div><dt>Current dates</dt><dd>{formatDate(project.startDate)} – {formatDate(project.endDate)}</dd></div><div><dt>Tasks</dt><dd>{project.taskCount}</dd></div><div><dt>Assignments</dt><dd>{project.assignmentCount}</dd></div></dl>
-                <footer><button type="button" onClick={() => setSelectedProjectId(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => { setSelectedProjectId(project.projectId); setDraftPlan(buildLocalDraft(project, tasks, assignments)); setActiveView('planner'); }}>Open planner</button></footer>
+                <footer><button type="button" onClick={() => setSelectedProjectId(project.projectId)}>Select project</button><button type="button" className="primary" onClick={() => { setSelectedProjectId(project.projectId); setDraftPlan(buildLocalDraft(project, tasks, assignments)); setSchedule(null); setValidation(null); setAiPreview(null); setCollapsedPhases(new Set()); setExpandedTaskWbs(''); setActiveView('planner'); }}>Open planner</button></footer>
               </article>
             ))}
           </div>
@@ -619,10 +737,11 @@ export default function ProjectFlowHiveCenter() {
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
-            <label>Canonical project<select value={selectedProjectId} onChange={(event) => { setSelectedProjectId(event.target.value); setDraftPlan(null); setSchedule(null); }}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
+            <label>Canonical project<select value={selectedProjectId} onChange={(event) => { setSelectedProjectId(event.target.value); setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); }}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
             <button type="button" onClick={createLocalDraft} disabled={!selectedProject}>Create/reset draft</button>
+            <button type="button" className="primary flowhive-ai-planner-button" onClick={previewAiRequest} disabled={!draftPlan || busy}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!draftPlan || busy}>Validate</button>
-            <button type="button" className="primary" onClick={calculateSchedule} disabled={!draftPlan || busy}>{busy === 'schedule' ? 'Calculating…' : 'Calculate schedule'}</button>
+            <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>{busy === 'schedule' ? 'Calculating…' : 'Calculate schedule'}</button>
             <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || portfolio?.access?.isViewAs}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
             <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || portfolio?.access?.isViewAs || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button>
           </div>
@@ -632,31 +751,70 @@ export default function ProjectFlowHiveCenter() {
           </div>
           {!draftPlan ? <EmptyState>Select an authorized project and create or load a FlowHive draft.</EmptyState> : (
             <>
-              <div className="flowhive-plan-metadata">
+              <div className="flowhive-plan-metadata flowhive-planner-metadata">
                 <label>Plan name<input value={draftPlan.planName} onChange={(event) => updatePlan('planName', event.target.value)} /></label>
                 <label>Revision<input value={draftPlan.revisionLabel} onChange={(event) => updatePlan('revisionLabel', event.target.value)} /></label>
-                <label>Project start<input type="date" value={draftPlan.projectStartDate} onChange={(event) => updatePlan('projectStartDate', event.target.value)} /></label>
+                <label>Start date<input type="date" value={draftPlan.projectStartDate || ''} onChange={(event) => updatePlan('projectStartDate', event.target.value)} /></label>
+                <label>End date<input type="date" value={draftPlan.projectEndDate || ''} min={draftPlan.projectStartDate || undefined} onChange={(event) => updatePlan('projectEndDate', event.target.value)} /></label>
                 <label>GSD version<input value={draftPlan.gsdVersion} onChange={(event) => updatePlan('gsdVersion', event.target.value)} placeholder="Approved GSD version" /></label>
                 <label>SOW version<input value={draftPlan.sowVersion} onChange={(event) => updatePlan('sowVersion', event.target.value)} placeholder="Approved SOW version" /></label>
               </div>
-              <div className="flowhive-table-heading"><div><h3>Controlled draft task grid</h3><p>Identity choices use Module 062-backed user IDs. Save creates an immutable FlowHive version without modifying canonical tasks.</p></div><button type="button" onClick={addTask}>Add planning task</button></div>
+              {aiPreview ? <aside className="flowhive-ai-planner-summary">
+                <div><span>AI Planner result</span><strong>{labelFrom(aiPreview.status)}</strong><small>{aiPreview.planningEvidence?.scopeOfServicesLocated ? 'Approved SOW Scope of Services located' : 'SOW scope evidence requires review'}</small></div>
+                <div><span>Private evidence</span><strong>{aiPreview.planningEvidence?.approvedSowCitationCount ?? 0} SOW citation(s)</strong><small>{aiPreview.planningEvidence?.scopeOfServicesCitationCount ?? 0} scope citation(s)</small></div>
+                <div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath)}</small></div>
+                <div className="privacy"><span>External privacy</span><strong>No private SOW content sent</strong><small>Only a fixed identity-free planning blueprint is eligible for Claude/OpenAI.</small></div>
+              </aside> : null}
+              <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for the complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Save creates an immutable FlowHive version without modifying canonical tasks.</p></div><button type="button" onClick={addTask}>Add implementation task</button></div>
               <div className="flowhive-table-wrap">
-                <table className="flowhive-task-table flowhive-planner-table">
-                  <thead><tr><th>WBS</th><th>Task</th><th>Duration</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Lead/lag</th><th>Assigned identity</th></tr></thead>
-                  <tbody>{draftPlan.tasks.map((task, index) => {
+                <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
+                  <thead><tr><th>WBS</th><th>Task Name</th><th>Start Date</th><th>End Date</th><th>Duration in Days</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Comments</th><th>Notes</th><th>Assigned Identity</th></tr></thead>
+                  <tbody>{draftPlan.tasks.filter((task) => task.isSummary || !collapsedPhases.has(task.parentWbsNumber)).map((task) => {
+                    const index = draftPlan.tasks.indexOf(task);
                     const dependency = draftPlan.dependencies.find((item) => item.successorWbs === task.wbsNumber);
                     const assignment = draftPlan.assignments.find((item) => item.taskWbs === task.wbsNumber);
+                    const scheduledTask = scheduleByWbs.get(task.wbsNumber);
+                    const detailOpen = expandedTaskWbs === task.wbsNumber;
+                    if (task.isSummary) {
+                      return <tr key={task.clientTaskId || task.wbsNumber} className={`flowhive-phase-row phase-${String(task.phase || task.name).toLowerCase()}`}>
+                        <td><button type="button" className="flowhive-phase-toggle" onClick={() => togglePhase(task.wbsNumber)} aria-expanded={!collapsedPhases.has(task.wbsNumber)}><span aria-hidden="true">{collapsedPhases.has(task.wbsNumber) ? '▸' : '▾'}</span>{task.wbsNumber}</button></td>
+                        <td><strong>{task.name}</strong><small>{draftPlan.tasks.filter((candidate) => candidate.parentWbsNumber === task.wbsNumber).length} detailed task(s)</small></td>
+                        <td><span>{formatDate(scheduledTask?.startDate)}</span></td>
+                        <td><span>{formatDate(scheduledTask?.endDate)}</span></td>
+                        <td><strong>{scheduledTask?.durationWorkingDays ?? '—'}{scheduledTask ? 'd' : ''}</strong></td>
+                        <td><strong>{Math.round(Number(scheduledTask?.percentComplete ?? task.percentComplete ?? 0))}%</strong></td>
+                        <td><span>—</span></td>
+                        <td><span>—</span></td>
+                        <td><span>—</span></td>
+                        <td><span>{draftPlan.tasks.filter((candidate) => candidate.parentWbsNumber === task.wbsNumber).length} detailed task(s)</span></td>
+                        <td><span>Phase summary</span></td>
+                      </tr>;
+                    }
                     return (
-                      <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}>
-                        <td><input aria-label={`WBS for ${task.name}`} value={task.wbsNumber} onChange={(event) => updateTask(index, 'wbsNumber', event.target.value)} /></td>
-                        <td><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /></td>
-                        <td><input type="number" min="0" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /></td>
-                        <td><input type="number" min="0" max="100" value={task.percentComplete} onChange={(event) => updateTask(index, 'percentComplete', Number(event.target.value))} /></td>
-                        <td>{index === 0 ? <span>Start</span> : <select value={dependency?.predecessorWbs || ''} onChange={(event) => updateDependencyForTask(index, 'predecessorWbs', event.target.value)}><option value="">None</option>{draftPlan.tasks.filter((_, otherIndex) => otherIndex !== index).map((option) => <option key={option.wbsNumber} value={option.wbsNumber}>{option.wbsNumber}</option>)}</select>}</td>
-                        <td>{index === 0 ? '—' : <select value={dependency?.type || 'FS'} onChange={(event) => updateDependencyForTask(index, 'type', event.target.value)}>{['FS', 'SS', 'FF', 'SF'].map((type) => <option key={type}>{type}</option>)}</select>}</td>
-                        <td>{index === 0 ? '—' : <input type="number" min="-365" max="365" value={dependency?.lagWorkingDays || 0} onChange={(event) => updateDependencyForTask(index, 'lagWorkingDays', Number(event.target.value))} />}</td>
-                        <td><select value={assignment?.resourceUserId || ''} onChange={(event) => updateTaskResource(task.wbsNumber, event.target.value)}><option value="">Unassigned</option>{identityOptions.map((identity) => <option key={identity.userId} value={identity.userId}>{identity.displayName}{identity.email ? ` — ${identity.email}` : ''}</option>)}</select></td>
-                      </tr>
+                      <Fragment key={task.clientTaskId || `${task.wbsNumber}-${index}`}>
+                        <tr className={`flowhive-work-row phase-${String(task.phase || '').toLowerCase()}`}>
+                          <td><span className="flowhive-wbs-child">{task.wbsNumber}</span></td>
+                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button></div><small>{task.description}</small></td>
+                          <td><span>{formatDate(scheduledTask?.startDate)}</span></td>
+                          <td><span>{formatDate(scheduledTask?.endDate)}</span></td>
+                          <td><div className="flowhive-duration-cell"><input aria-label={`Duration for ${task.name}`} type="number" min="1" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /><span>day(s)</span></div></td>
+                          <td><div className="flowhive-duration-cell"><input aria-label={`Progress for ${task.name}`} type="number" min="0" max="100" value={task.percentComplete || 0} onChange={(event) => updateTask(index, 'percentComplete', Number(event.target.value))} /><span>%</span></div></td>
+                          <td><select value={dependency?.predecessorWbs || ''} onChange={(event) => updateDependencyForTask(index, 'predecessorWbs', event.target.value)}><option value="">Start</option>{draftPlan.tasks.filter((option) => !option.isSummary && option.wbsNumber !== task.wbsNumber).map((option) => <option key={option.wbsNumber} value={option.wbsNumber}>{option.wbsNumber}</option>)}</select></td>
+                          <td><select aria-label={`Dependency type for ${task.name}`} value={dependency?.type || 'FS'} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'type', event.target.value)}>{['FS', 'SS', 'FF', 'SF'].map((type) => <option key={type} value={type}>{type}</option>)}</select></td>
+                          <td><textarea className="flowhive-sheet-textarea" aria-label={`Comments for ${task.name}`} value={task.comments || ''} onChange={(event) => updateTask(index, 'comments', event.target.value)} rows="2" placeholder="Review comments" /></td>
+                          <td><textarea className="flowhive-sheet-textarea" aria-label={`Notes for ${task.name}`} value={task.notes || ''} onChange={(event) => updateTask(index, 'notes', event.target.value)} rows="2" placeholder="Task notes" /></td>
+                          <td><select aria-label={`Assigned identity for ${task.name}`} value={assignment?.resourceUserId || ''} onChange={(event) => updateTaskResource(task.wbsNumber, event.target.value)}><option value="">Unassigned</option>{identityOptions.map((identity) => <option key={identity.userId} value={identity.userId}>{identity.displayName}{identity.email ? ` — ${identity.email}` : ''}</option>)}</select></td>
+                        </tr>
+                        {detailOpen ? <tr className="flowhive-task-detail-row"><td colSpan="11"><div className="flowhive-task-detail-panel">
+                          <header><div><span>{task.phase} · WBS {task.wbsNumber}</span><h4>{task.name}</h4></div><div>{(task.citationIds || []).map((citationId) => <span key={citationId} className="flowhive-citation-chip">Private source [{citationId}]</span>)}</div></header>
+                          <div className="flowhive-task-control-grid">
+                            <label>Status<select aria-label={`Status for ${task.name}`} value={task.status || 'not_started'} onChange={(event) => updateTask(index, 'status', event.target.value)}>{plannerStatuses.map((status) => <option key={status} value={status}>{labelFrom(status)}</option>)}</select></label>
+                            <label>Lead / lag working days<input aria-label={`Lead or lag for ${task.name}`} type="number" min="-365" max="365" value={dependency?.lagWorkingDays || 0} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'lagWorkingDays', Number(event.target.value))} /></label>
+                          </div>
+                          <label className="flowhive-task-description">Task description<textarea value={task.description || ''} onChange={(event) => updateTask(index, 'description', event.target.value)} rows="3" /></label>
+                          <div className="flowhive-task-detail-grid">{taskDetailSections(task).map(([label, field, values]) => <label key={field}>{label}<textarea value={(values || []).join('\n')} onChange={(event) => updateTask(index, field, event.target.value.split('\n').map((value) => value.trim()).filter(Boolean))} placeholder={`Add ${label.toLowerCase()}, one per line`} rows={field === 'detailedSteps' ? 6 : 4} /></label>)}</div>
+                        </div></td></tr> : null}
+                      </Fragment>
                     );
                   })}</tbody>
                 </table>
@@ -690,20 +848,22 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel flowhive-ai-layout">
           <div className="flowhive-ai-copy">
             <h3>Celar AI governed Project FlowHive generation</h3>
-            <p>Celar AI retrieves authorized private project evidence, auto-fills a detailed customer-ready delivery plan, validates the WBS and dependency network, and calculates the deterministic schedule.</p>
-            <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>Any eligible external fallback receives only a backend-owned identity-free capsule.</li><li>The local governed target remains the mandatory final fallback.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
+            <p>Celar AI retrieves the authorized private SOW and related project evidence, converts each supported scope line into a cited WBS task, estimates its working-day duration, and calculates a deterministic review timeline.</p>
+            <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>A citation-ready private plan is required; an uncited generic template is never substituted.</li><li>Each task keeps its evidence citations, duration, estimated hours, dependencies, start date, and finish date in the review plan.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
           </div>
           {!draftPlan ? <EmptyState>Create or load a plan draft first.</EmptyState> : <div className="flowhive-ai-form">
             <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} rows={5} /></label>
             <label>Optional approved GSD excerpt<textarea value={gsdExcerpt} onChange={(event) => setGsdExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt; indexed project documents are also searched." /></label>
             <label>Optional approved SOW excerpt<textarea value={sowExcerpt} onChange={(event) => setSowExcerpt(event.target.value)} placeholder="Optional private supplemental excerpt; raw document text is never sent to a public provider." /></label>
-            <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai' ? 'Generating detailed Celar AI plan…' : 'Generate and auto-fill detailed plan'}</button>
+            <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai-planner' ? 'Generating detailed Celar AI plan…' : 'Generate and auto-fill detailed plan'}</button>
             {aiPreview ? <section className="celar-flowhive-production-result">
               <header><div><span>Celar AI result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
               <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
               <p>{aiPreview.confidenceExplanation}</p>
-              {aiPreviewIsDeterministicFloor ? <aside className="flowhive-confidence-help"><strong>Why confidence is 35%</strong><span>This is the governed deterministic fallback score: the approved private model did not produce an eligible source-grounded plan, so Celar AI returned the limited deterministic draft. Improve approved FlowHive-category evidence in Module 011, then generate again. Confidence rises from evidence coverage and validation—not from changing the displayed score.</span></aside> : null}
-              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description</th><th>Duration</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{labelFrom(task.status)}</td></tr>)}</tbody></table></div> : null}
+              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description &amp; citations</th><th>Duration</th><th>Start</th><th>Finish</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => {
+                const scheduled = aiPreview.schedule?.tasks?.find((row) => row.wbsNumber === task.wbsNumber);
+                return <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{formatDate(task.estimatedStartDate || scheduled?.startDate)}</td><td>{formatDate(task.estimatedFinishDate || scheduled?.endDate)}</td><td>{labelFrom(task.status)}</td></tr>;
+              })}</tbody></table></div> : null}
               {aiPreview.citations?.length ? <details open><summary>Private source citations ({aiPreview.citations.length})</summary><ul>{aiPreview.citations.map((citation) => <li key={citation.citationId}><strong>[{citation.citationId}] {citation.originalFileName}</strong> · {citation.documentVersion} · {citation.citationAnchor}</li>)}</ul></details> : null}
               {aiPreview.missingEvidence?.length ? <details open><summary>Missing evidence</summary><ul>{aiPreview.missingEvidence.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
               {aiPreview.conflicts?.length ? <details open><summary>Conflicts</summary><ul>{aiPreview.conflicts.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
@@ -717,7 +877,7 @@ export default function ProjectFlowHiveCenter() {
       {activeView === 'exports' ? (
         <div className="flowhive-view-panel">
           <div className="flowhive-export-hero"><img src={usSignalLogoUrl} alt="US Signal" /><div><h3>US Signal branded internal artifacts</h3><p>PDF and Excel source embeds the governed logo. Every artifact is watermarked as an internal draft and creates no customer link.</p><code>Logo SHA-256: {artifactReadiness?.branding?.sha256 || 'Loading governed checksum…'}</code></div></div>
-          <div className="flowhive-export-grid"><article><h4>Project schedule PDF</h4><p>Branded summary, paginated task schedule, critical indicators, date range, and artifact-control footer.</p><button type="button" onClick={() => downloadArtifact('pdf')} disabled={!draftPlan || busy}>{busy === 'pdf' ? 'Generating…' : 'Download internal PDF draft'}</button></article><article><h4>Planning workbook</h4><p>Branded summary, schedule, dependencies, and artifact-control sheets with logo checksum evidence.</p><button type="button" onClick={() => downloadArtifact('excel')} disabled={!draftPlan || busy}>{busy === 'excel' ? 'Generating…' : 'Download internal Excel draft'}</button></article><article className="locked"><h4>Customer sharing link</h4><p>Expiration, customer isolation, delivery, and access auditing require a separately authorized external-sharing phase.</p><button type="button" disabled>Create customer link — locked</button></article></div>
+          <div className="flowhive-export-grid"><article><h4>Project schedule PDF</h4><p>US Signal-branded landscape schedule with the Planner columns, comments, notes, assigned identity, date range, and artifact-control footer.</p><button type="button" onClick={() => downloadArtifact('pdf')} disabled={!draftPlan || busy}>{busy === 'pdf' ? 'Generating…' : 'Download internal PDF draft'}</button></article><article><h4>Planning workbook</h4><p>US Signal-branded workbook with the exact Planner column order plus summary, dependencies, and artifact-control sheets.</p><button type="button" onClick={() => downloadArtifact('excel')} disabled={!draftPlan || busy}>{busy === 'excel' ? 'Generating…' : 'Download internal Excel draft'}</button></article><article className="locked"><h4>Customer sharing link</h4><p>Expiration, customer isolation, delivery, and access auditing require a separately authorized external-sharing phase.</p><button type="button" disabled>Create customer link — locked</button></article></div>
         </div>
       ) : null}
 

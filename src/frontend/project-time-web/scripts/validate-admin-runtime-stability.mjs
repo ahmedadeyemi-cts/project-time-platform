@@ -14,7 +14,9 @@ function check(name, condition, evidence) {
 }
 
 const frontendPaths = {
+  index: 'src/frontend/project-time-web/index.html',
   main: 'src/frontend/project-time-web/src/main.jsx',
+  errorBoundary: 'src/frontend/project-time-web/src/ApplicationErrorBoundary.jsx',
   runtime: 'src/frontend/project-time-web/src/runtime-data-compatibility.js',
   timer: 'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx',
   audit: 'src/frontend/project-time-web/src/AuditHistoryPanel.jsx',
@@ -34,7 +36,9 @@ for (const [name, relative] of Object.entries(frontendPaths)) {
   check(`${name.toUpperCase()}_EXISTS`, exists(relative), relative);
 }
 
+const index = read(frontendPaths.index);
 const main = read(frontendPaths.main);
+const errorBoundary = read(frontendPaths.errorBoundary);
 const runtime = read(frontendPaths.runtime);
 const timer = read(frontendPaths.timer);
 const audit = read(frontendPaths.audit);
@@ -48,6 +52,24 @@ const intuitiveMore = read(frontendPaths.intuitiveMore);
 const microsoft = read(frontendPaths.microsoft);
 const microsoftCss = read(frontendPaths.microsoftCss);
 const mailUi = read(frontendPaths.mailUi);
+
+check('REACT_OWNED_DOCUMENT_BOOTSTRAP', index.includes('<div id="root"></div>')
+  && index.includes('<script type="module" src="/src/main.jsx"></script>')
+  && index.includes('type="application/projectpulse-retired"')
+  && !index.includes('new MutationObserver')
+  && !index.includes('removeChild(')
+  && !index.includes('insertAdjacentElement('),
+'index.html retains only theme bootstrap, the Vite mount, and inert historical evidence; no legacy runtime can mutate React-owned nodes');
+
+check('APPLICATION_ERROR_BOUNDARY', main.includes("import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';")
+  && main.includes('<ApplicationErrorBoundary>')
+  && main.includes('</ApplicationErrorBoundary>')
+  && errorBoundary.includes('static getDerivedStateFromError(error)')
+  && errorBoundary.includes('This page could not finish rendering.')
+  && errorBoundary.includes('window.location.reload()')
+  && !errorBoundary.includes('this.state.error.message')
+  && !errorBoundary.includes('this.state.error.stack'),
+'the React root fails into a recoverable, non-sensitive workspace screen instead of a blank page');
 
 check('ROLE_POLICY_DIRECT_VALIDATION', runtime.includes('projectpulse-role-policy-direct-fetch-v3')
   && runtime.includes("'/api/role-policy/summary': '/api/runtime/v2/role-policy/summary'")

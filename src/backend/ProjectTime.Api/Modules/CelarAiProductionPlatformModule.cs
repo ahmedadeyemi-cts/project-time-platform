@@ -87,6 +87,15 @@ public static partial class CelarAiProductionPlatformModule
     public const string ChatRoute = "/api/celar-ai/v2/chat";
     public const string FlowHiveRoute = "/api/project-flowhive/ai/production-generate";
 
+    private static readonly (string Wbs, string Name)[] FlowHivePlannerPhases =
+    [
+        ("1", "Plan"),
+        ("2", "Design"),
+        ("3", "Implement"),
+        ("4", "Validate"),
+        ("5", "Release")
+    ];
+
     private static readonly HashSet<string> ManagementRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "SUPER_ADMINISTRATOR", "SYSTEM_ADMINISTRATOR", "ADMINISTRATOR"
@@ -359,6 +368,10 @@ public static partial class CelarAiProductionPlatformModule
         if (request.Plan is null) return Validation("A FlowHive plan is required.");
         if (string.IsNullOrWhiteSpace(request.Plan.ProjectCode) && string.IsNullOrWhiteSpace(request.Plan.ProjectName))
             return Validation("Select an authorized project before generating a FlowHive draft.");
+        if (!request.Plan.ProjectStartDate.HasValue || !request.Plan.ProjectEndDate.HasValue)
+            return Validation("Select both the project start date and end date before running AI Planner.");
+        if (request.Plan.ProjectEndDate.Value < request.Plan.ProjectStartDate.Value)
+            return Validation("Project end date must be on or after the project start date.");
 
         var outcome = BuildPlanningOutcome(request);
         var composition = await enterprise.ComposeAsync(
@@ -376,19 +389,75 @@ public static partial class CelarAiProductionPlatformModule
             context,
             cancellationToken);
 
-        var privatePlanAvailable = composition.FlowHivePlan?.Tasks.Count > 0;
+        var privateFlowHivePlan = composition.FlowHivePlan;
+        var sowCitations = composition.Citations.Where(citation =>
+            citation.DocumentCategory.Equals("sow", StringComparison.OrdinalIgnoreCase)
+            || citation.DocumentCategory.Equals("statement_of_work", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var scopeCitations = sowCitations.Where(citation =>
+            citation.SectionTitle.Contains("scope", StringComparison.OrdinalIgnoreCase)
+            || citation.CitationAnchor.Contains("scope", StringComparison.OrdinalIgnoreCase)
+            || citation.SectionTitle.Contains("service", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var availableCitationIds = composition.Citations
+            .Select(citation => citation.CitationId)
+            .ToHashSet();
+        var privatePlanAvailable = privateFlowHivePlan is not null
+            && privateFlowHivePlan.Tasks.Count > 0
+            && sowCitations.Length > 0
+            && scopeCitations.Length > 0
+            && privateFlowHivePlan.CitationIds.Count > 0
+            && privateFlowHivePlan.CitationIds.All(availableCitationIds.Contains)
+            && privateFlowHivePlan.Tasks.All(task =>
+                task.CitationIds.Count > 0
+                && task.CitationIds.All(availableCitationIds.Contains));
+        if (!privatePlanAvailable)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                module = "066",
+                feature = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+                status = "flowhive_sow_evidence_not_ready",
+                message = "FlowHive could not create a SOW-grounded project plan because citation-ready private evidence was unavailable. No generic plan was substituted and no plan was saved.",
+                composition.MissingEvidence,
+                composition.Warnings,
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                stateChanged = false
+            });
+        }
         var configuredRoute = await routing.LoadRouteAsync(
             CelarAiCapabilityCatalog.ProjectFlowHivePlan,
             cancellationToken);
         var generated = BuildPlan(request.Plan, composition.FlowHivePlan);
         var validation = ProjectFlowHiveScheduleEngine.Validate(generated);
         var schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
+        if (schedule.Valid)
+        {
+            var scheduledByWbs = schedule.Tasks
+                .GroupBy(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            generated = generated with
+            {
+                Tasks = generated.Tasks.Select(task =>
+                {
+                    var wbs = task.WbsNumber?.Trim() ?? string.Empty;
+                    return scheduledByWbs.TryGetValue(wbs, out var scheduledTask)
+                        ? task with
+                        {
+                            EstimatedStartDate = scheduledTask.StartDate,
+                            EstimatedFinishDate = scheduledTask.EndDate
+                        }
+                        : task;
+                }).ToArray()
+            };
+        }
         var warnings = new List<string>(composition.Warnings)
         {
             "This is a PM and Engineering review draft, not a baseline, assignment, approval, capacity reservation, or customer date commitment.",
             "Schedule dates are deterministic weekday previews until approved Module 057 calendars, holidays, capacity, and customer constraints are applied."
         };
-        if (!privatePlanAvailable) warnings.Add("Private model planning was unavailable or evidence-limited; the authorized current draft and governed deterministic structure were retained.");
         if (!validation.Valid) warnings.Add("Validation issues must be corrected before baseline review.");
 
         return Results.Ok(new
@@ -397,7 +466,7 @@ public static partial class CelarAiProductionPlatformModule
             feature = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
             status = schedule.Valid ? "celar_ai_flowhive_review_draft_completed" : "celar_ai_flowhive_review_draft_requires_correction",
             executionEnabled = true,
-            executionPath = privatePlanAvailable ? composition.PrimaryExecutionPath : "deterministic_flowhive_plan_from_authorized_current_draft",
+            executionPath = composition.PrimaryExecutionPath,
             providerOrder = configuredRoute.Targets,
             providerConfiguration = configuredRoute.ToPublicResponse(),
             project = new { request.Plan.ProjectId, request.Plan.ProjectCode, request.Plan.ProjectName, request.Plan.CustomerName },
@@ -412,9 +481,28 @@ public static partial class CelarAiProductionPlatformModule
             missingEvidence = composition.MissingEvidence,
             conflicts = composition.Conflicts,
             warnings,
-            confidence = privatePlanAvailable ? composition.Confidence : Math.Min(.55m, Math.Max(.35m, composition.Confidence)),
-            confidenceExplanation = privatePlanAvailable ? composition.ConfidenceExplanation : "Confidence is limited because deterministic fallback cannot replace private-model interpretation of approved documents.",
+            confidence = composition.Confidence,
+            confidenceExplanation = composition.ConfidenceExplanation,
             externalAssistance = composition.ExternalAssistance,
+            planningEvidence = new
+            {
+                approvedSowCitationCount = sowCitations.Length,
+                scopeOfServicesCitationCount = scopeCitations.Length,
+                scopeOfServicesLocated = scopeCitations.Length > 0,
+                privateSourceGroundedPlan = privatePlanAvailable,
+                phaseOrder = FlowHivePlannerPhases.Select(phase => phase.Name).ToArray(),
+                selectedStartDate = request.Plan.ProjectStartDate,
+                selectedEndDate = request.Plan.ProjectEndDate
+            },
+            privacyBoundary = new
+            {
+                privateSowTextSentToExternalProvider = false,
+                organizationOrCustomerIdentitySentToExternalProvider = false,
+                peopleOrAssignmentDataSentToExternalProvider = false,
+                datesOrIdentifiersSentToExternalProvider = false,
+                externalPayload = "fixed_backend_owned_identity_free_planning_blueprint_only",
+                privateApplication = "Celar AI applies generic guidance to authorized SOW evidence inside the private boundary"
+            },
             dataAsOf = composition.DataAsOf,
             correlationId = composition.CorrelationId,
             reviewControls = new
@@ -812,61 +900,259 @@ public static partial class CelarAiProductionPlatformModule
 
     private static ProjectFlowHivePlanRequest BuildPlan(ProjectFlowHivePlanRequest source, PulseAiPrivateFlowHivePlan? privatePlan)
     {
-        if (privatePlan?.Tasks.Count > 0)
+        var sourceTasks = privatePlan?.Tasks.Take(450).ToArray() ?? [];
+        var generated = new List<ProjectFlowHivePlanTaskInput>();
+        var generatedWbsBySourceWbs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var phase in FlowHivePlannerPhases)
         {
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var tasks = privatePlan.Tasks.Take(500).Select((task, index) =>
+            generated.Add(new ProjectFlowHivePlanTaskInput(
+                Guid.NewGuid(), null, phase.Wbs, null, phase.Name,
+                $"{phase.Name} phase summary. Dates, duration, progress, and effort roll up from the detailed child tasks.",
+                0, false, "ASAP", null, 0m, 0m, "not_started",
+                IsSummary: true,
+                Phase: phase.Name,
+                Priority: "summary"));
+
+            var phaseTasks = sourceTasks
+                .Where(task => string.Equals(PlannerPhase(task), phase.Name, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            for (var index = 0; index < phaseTasks.Length; index++)
             {
-                var candidate = Regex.IsMatch(task.Wbs ?? string.Empty, @"^\d+(?:\.\d+)*$") ? task.Wbs : (index + 1).ToString();
-                while (!used.Add(candidate)) candidate = $"{index + 1}.{used.Count + 1}";
-                map[task.Wbs ?? string.Empty] = candidate;
+                var task = phaseTasks[index];
+                var wbs = $"{phase.Wbs}.{index + 1}";
+                if (!string.IsNullOrWhiteSpace(task.Wbs)) generatedWbsBySourceWbs[task.Wbs.Trim()] = wbs;
                 var days = Math.Clamp((int)Math.Ceiling(Math.Max(.25m, task.EstimatedDurationDays)), 1, 730);
-                return new ProjectFlowHivePlanTaskInput(Guid.NewGuid(), null, candidate, ParentWbs(candidate), Limit(task.Name, 300, $"Planning task {index + 1}"), Limit(task.Description, 4000, "Review cited planning evidence."), days, false, "ASAP", null, 0m, days * 8m, "not_started");
-            }).ToArray();
-            var dependencies = new List<ProjectFlowHiveDependencyInput>();
-            foreach (var task in privatePlan.Tasks.Take(tasks.Length))
-            {
-                if (!map.TryGetValue(task.Wbs ?? string.Empty, out var successor)) continue;
-                foreach (var predecessor in task.Predecessors)
-                    if (map.TryGetValue(predecessor ?? string.Empty, out var pred) && pred != successor)
-                        dependencies.Add(new(pred, successor, "FS", 0));
+                var citationText = task.CitationIds.Count > 0
+                    ? $"\nPrivate evidence citations: {string.Join(", ", task.CitationIds.Select(id => $"[{id}]"))}."
+                    : string.Empty;
+                var detailedSteps = TakePlanningList(task.DetailedSteps, 20, 1200);
+                if (detailedSteps.Length == 0)
+                {
+                    detailedSteps =
+                    [
+                        $"Review the authorized scope evidence, prerequisites, responsibilities, and constraints for {Limit(task.Name, 240, "this work package")} before work begins.",
+                        Limit(task.Description, 1200, "Execute the scoped work package using the approved design, change controls, and delivery procedures."),
+                        "Capture the resulting output, configuration record, decision, or other objective evidence produced by the work.",
+                        "Validate the output against the documented acceptance criteria, record exceptions, and obtain the required PM and Engineering review."
+                    ];
+                }
+
+                generated.Add(new ProjectFlowHivePlanTaskInput(
+                    Guid.NewGuid(),
+                    null,
+                    wbs,
+                    phase.Wbs,
+                    Limit(task.Name, 300, $"{phase.Name} work package {index + 1}"),
+                    Limit($"{task.Description}{citationText}", 4000, "Complete the cited scope work package and retain objective completion evidence."),
+                    days,
+                    false,
+                    "ASAP",
+                    null,
+                    0m,
+                    Math.Max(days * 8m, task.EstimatedHours ?? 0m),
+                    "not_started",
+                    IsSummary: false,
+                    Phase: phase.Name,
+                    DetailedSteps: detailedSteps,
+                    Inputs: TakePlanningList(task.Inputs, 20, 1000),
+                    Outputs: TakePlanningList(task.Outputs, 20, 1000),
+                    AcceptanceCriteria: TakePlanningList(task.AcceptanceCriteria, 20, 1200),
+                    ValidationSteps: TakePlanningList(task.ValidationSteps, 20, 1200),
+                    CustomerResponsibilities: TakePlanningList(task.CustomerResponsibilities, 20, 1000),
+                    UsSignalResponsibilities: TakePlanningList(task.UsSignalResponsibilities, 20, 1000),
+                    Prerequisites: TakePlanningList(task.Prerequisites, 20, 1000),
+                    Risks: TakePlanningList(task.Risks, 20, 1000),
+                    OpenQuestions: TakePlanningList(task.OpenQuestions, 20, 1000),
+                    Priority: PlanningPriority(task.Priority),
+                    CitationIds: task.CitationIds.Distinct().OrderBy(value => value).Take(40).ToArray()));
             }
-            if (dependencies.Count == 0)
-                dependencies.AddRange(tasks.Skip(1).Select((task, index) => new ProjectFlowHiveDependencyInput(tasks[index].WbsNumber, task.WbsNumber, "FS", 0)));
-            return source with
-            {
-                PlanName = Limit(source.PlanName, 240, $"{source.ProjectCode} Celar AI governed plan"),
-                RevisionLabel = $"Celar AI review draft {DateTimeOffset.UtcNow:yyyyMMdd-HHmm}",
-                ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-                Tasks = tasks,
-                Dependencies = dependencies.GroupBy(item => $"{item.PredecessorWbs}|{item.SuccessorWbs}|{item.Type}|{item.LagWorkingDays}").Select(group => group.First()).Take(4000).ToArray(),
-                Assignments = [],
-                Notes = Limit($"Objective: {privatePlan.Objective}\nAssumptions: {string.Join(" | ", privatePlan.Assumptions)}\nRisks: {string.Join(" | ", privatePlan.Risks)}\nOpen questions: {string.Join(" | ", privatePlan.OpenQuestions)}", 12000, string.Empty)
-            };
         }
-        var current = source.Tasks?.Where(task => !string.IsNullOrWhiteSpace(task.WbsNumber)).Take(500).ToArray() ?? [];
-        if (current.Length > 0)
-            return source with { PlanName = Limit(source.PlanName, 240, $"{source.ProjectCode} Celar AI governed plan"), RevisionLabel = $"Celar AI deterministic review {DateTimeOffset.UtcNow:yyyyMMdd-HHmm}", ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow), Tasks = current, Dependencies = source.Dependencies ?? [], Assignments = source.Assignments ?? [], Notes = Limit(source.Notes, 12000, "Current authorized draft retained because private planning evidence was unavailable.") };
-        var phases = new[]
+
+        generated = FitPlannerTasksToSelectedWindow(
+            generated,
+            source.ProjectStartDate,
+            source.ProjectEndDate);
+        var executionTasks = generated.Where(task => !task.IsSummary).ToArray();
+        var dependencies = new List<ProjectFlowHiveDependencyInput>();
+        foreach (var sourceTask in sourceTasks)
         {
-            ("1","Discovery and prerequisites","Confirm scope, stakeholders, access, prerequisites, constraints, and open questions.",2),
-            ("2","Design validation","Validate architecture, GSD, SOW, assumptions, responsibilities, dependencies, and acceptance.",3),
-            ("3","Implementation preparation","Prepare work instructions, change controls, resources, communications, and rollback criteria.",2),
-            ("4","Implementation","Execute reviewed implementation activities in controlled stages.",5),
-            ("5","Testing and remediation","Validate outcomes, document defects, remediate issues, and collect evidence.",3),
-            ("6","Customer acceptance","Review deliverables and objective acceptance evidence.",2),
-            ("7","Operational handoff","Complete knowledge transfer, documentation, support transition, and ownership handoff.",2),
-            ("8","Closeout","Confirm completion, unresolved items, financial readiness, acceptance, and communication.",1)
+            if (!generatedWbsBySourceWbs.TryGetValue(sourceTask.Wbs?.Trim() ?? string.Empty, out var successor)) continue;
+            foreach (var predecessorSourceWbs in sourceTask.Predecessors)
+            {
+                if (generatedWbsBySourceWbs.TryGetValue(predecessorSourceWbs?.Trim() ?? string.Empty, out var predecessor)
+                    && !predecessor.Equals(successor, StringComparison.OrdinalIgnoreCase))
+                    dependencies.Add(new ProjectFlowHiveDependencyInput(predecessor, successor, "FS", 0));
+            }
+        }
+        if (dependencies.Count == 0)
+        {
+            dependencies.AddRange(executionTasks
+                .Skip(1)
+                .Select((task, index) => new ProjectFlowHiveDependencyInput(
+                    executionTasks[index].WbsNumber,
+                    task.WbsNumber,
+                    "FS",
+                    0)));
+        }
+        var notes = $"Objective: {privatePlan!.Objective}\nPrivate evidence citations: {string.Join(", ", privatePlan.CitationIds.Select(id => $"[{id}]"))}\nAssumptions: {string.Join(" | ", privatePlan.Assumptions)}\nRisks: {string.Join(" | ", privatePlan.Risks)}\nOut of scope: {string.Join(" | ", privatePlan.OutOfScopeItems)}\nOpen questions: {string.Join(" | ", privatePlan.OpenQuestions)}";
+
+        return source with
+        {
+            PlanName = Limit(source.PlanName, 240, $"{source.ProjectCode} Celar AI governed plan"),
+            RevisionLabel = $"Celar AI Planner review {DateTimeOffset.UtcNow:yyyyMMdd-HHmm}",
+            ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+            Tasks = generated,
+            Dependencies = dependencies
+                .GroupBy(item => $"{item.PredecessorWbs}|{item.SuccessorWbs}|{item.Type}|{item.LagWorkingDays}")
+                .Select(group => group.First())
+                .Take(4000)
+                .ToArray(),
+            Assignments = [],
+            Notes = Limit(notes, 12000, string.Empty),
+            CelarAiCitationIds = privatePlan.CitationIds
         };
-        var generated = phases.Select(item => new ProjectFlowHivePlanTaskInput(Guid.NewGuid(), null, item.Item1, string.Empty, item.Item2, item.Item3, item.Item4, false, "ASAP", null, 0m, item.Item4 * 8m, "not_started")).ToArray();
-        return source with { PlanName = $"{Limit(source.ProjectCode, 120, "Project")} Celar AI governed plan", RevisionLabel = $"Celar AI deterministic review {DateTimeOffset.UtcNow:yyyyMMdd-HHmm}", ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow), Tasks = generated, Dependencies = generated.Skip(1).Select((task, index) => new ProjectFlowHiveDependencyInput(generated[index].WbsNumber, task.WbsNumber, "FS", 0)).ToArray(), Assignments = [], Notes = "Generic governed phases are assumptions until private evidence and PM/Engineering review are complete." };
+    }
+
+    private static string PlannerPhase(PulseAiPrivateFlowHiveTask task)
+    {
+        var supplied = task.Phase?.Trim() ?? string.Empty;
+        var exact = FlowHivePlannerPhases.FirstOrDefault(phase =>
+            phase.Name.Equals(supplied, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(exact.Name)) return exact.Name;
+
+        var evidence = $"{supplied} {task.Name} {task.Description}".ToLowerInvariant();
+        if (Regex.IsMatch(evidence, @"\b(release|handoff|transition|knowledge transfer|closeout|lessons learned)\b")) return "Release";
+        if (Regex.IsMatch(evidence, @"\b(validate|validation|test|testing|verify|verification|acceptance|uat|remediat)\b")) return "Validate";
+        if (Regex.IsMatch(evidence, @"\b(design|architecture|workshop|technical requirement|low.level|high.level)\b")) return "Design";
+        if (Regex.IsMatch(evidence, @"\b(plan|planning|discover|kickoff|stakeholder|prerequisite|readiness|scope review)\b")) return "Plan";
+        return "Implement";
+    }
+
+    private static string[] TakePlanningList(IReadOnlyList<string>? values, int maximumItems, int maximumLength) =>
+        (values ?? [])
+            .Select(value => Limit(value, maximumLength, string.Empty))
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(maximumItems)
+            .ToArray();
+
+    private static string PlanningPriority(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "low" => "low",
+        "high" => "high",
+        "critical" => "critical",
+        _ => "normal"
+    };
+
+    private static List<ProjectFlowHivePlanTaskInput> FitPlannerTasksToSelectedWindow(
+        List<ProjectFlowHivePlanTaskInput> tasks,
+        DateOnly? start,
+        DateOnly? end)
+    {
+        if (!start.HasValue || !end.HasValue || end.Value < start.Value) return tasks;
+        var workingDays = 0;
+        for (var date = start.Value; date <= end.Value; date = date.AddDays(1))
+            if (date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) workingDays++;
+
+        var executable = tasks.Where(task => !task.IsSummary).ToArray();
+        var requested = executable.Sum(task => task.DurationWorkingDays);
+        if (workingDays <= 0 || requested <= workingDays || workingDays < executable.Length) return tasks;
+
+        var scaled = executable.ToDictionary(
+            task => task.ClientTaskId!.Value,
+            task => Math.Max(1, (int)Math.Floor(task.DurationWorkingDays * ((decimal)workingDays / requested))));
+        while (scaled.Values.Sum() > workingDays)
+        {
+            var candidate = scaled.Where(pair => pair.Value > 1).OrderByDescending(pair => pair.Value).FirstOrDefault();
+            if (candidate.Key == Guid.Empty) break;
+            scaled[candidate.Key]--;
+        }
+        return tasks.Select(task => task.IsSummary
+            ? task
+            : task with
+            {
+                DurationWorkingDays = scaled[task.ClientTaskId!.Value],
+                RemainingEffortHours = Math.Min(
+                    task.RemainingEffortHours,
+                    scaled[task.ClientTaskId.Value] * 8m)
+            }).ToList();
+    }
+
+    private static PulseAiPrivateFlowHiveTask[] DefaultPlannerTasks(string phase)
+    {
+        var templates = phase switch
+        {
+            "Plan" => new[]
+            {
+                ("Review approved SOW Scope of Services", "Identify each in-scope outcome, deliverable, exclusion, responsibility, dependency, acceptance requirement, and unresolved ambiguity that controls the delivery plan."),
+                ("Confirm delivery readiness and prerequisites", "Validate stakeholders, access, source artifacts, required decisions, scheduling constraints, change controls, and customer or delivery-team prerequisites before technical work begins."),
+                ("Conduct kickoff and establish delivery controls", "Confirm objectives, roles, communication cadence, decision ownership, risk escalation, evidence expectations, and the process for approving plan changes.")
+            },
+            "Design" => new[]
+            {
+                ("Translate scope into technical requirements", "Convert each approved scope outcome into traceable functional, technical, security, operational, and acceptance requirements without adding unapproved scope."),
+                ("Produce and review the implementation design", "Document the proposed target state, dependencies, integration points, configuration approach, assumptions, and design decisions required to perform the scoped work."),
+                ("Define implementation, validation, and rollback procedures", "Create sequenced work instructions, pre-checks, change windows, validation checkpoints, contingency actions, and rollback criteria for Engineering review.")
+            },
+            "Implement" => new[]
+            {
+                ("Complete implementation readiness checks", "Verify approved design, access, backups, prerequisites, maintenance controls, communications, monitoring, and rollback readiness before the first change is performed."),
+                ("Execute the approved scoped work packages", "Perform the reviewed configuration, deployment, migration, integration, or other implementation actions in controlled stages and record objective evidence for each stage."),
+                ("Document the implemented state and exceptions", "Capture final configuration, decisions, deviations, unresolved items, change evidence, and any follow-up action needed before formal validation.")
+            },
+            "Validate" => new[]
+            {
+                ("Run technical and functional validation", "Execute the approved test plan and confirm each implemented outcome against measurable technical, functional, security, and operational acceptance criteria."),
+                ("Remediate defects and complete regression testing", "Record failed checks, determine ownership, correct authorized defects, repeat affected tests, and preserve before-and-after evidence without concealing exceptions."),
+                ("Review acceptance evidence and outstanding items", "Map validation results to scope and acceptance criteria, identify exceptions or deferred items, and prepare the evidence package for PM, Engineering, and required stakeholder review.")
+            },
+            _ => new[]
+            {
+                ("Prepare operational documentation and knowledge transfer", "Finalize the approved configuration record, operating procedures, support information, known limitations, and role-appropriate knowledge-transfer materials."),
+                ("Complete operational handoff and release review", "Confirm monitoring, support ownership, escalation paths, access, documentation, open risks, and readiness for the authorized operational transition."),
+                ("Complete project release and closeout", "Confirm deliverable status, acceptance evidence, unresolved actions, lessons learned, archival requirements, and required approvals before the plan is marked complete.")
+            }
+        };
+
+        return templates.Select((template, index) => new PulseAiPrivateFlowHiveTask(
+            Wbs: $"{phase}-{index + 1}",
+            Name: template.Item1,
+            Description: template.Item2,
+            EstimatedDurationDays: phase == "Implement" ? 2m : 1m,
+            RequiredRoles: ["Project Manager", "Engineer"],
+            Predecessors: [],
+            CitationIds: [],
+            IsAssumption: true,
+            Phase: phase,
+            DetailedSteps:
+            [
+                $"Review the authorized inputs, prerequisites, responsibilities, and constraints for {template.Item1.ToLowerInvariant()}.",
+                template.Item2,
+                "Record the output and objective completion evidence in the governed project workspace.",
+                "Validate the output with the accountable PM and Engineering reviewer, record exceptions, and resolve or assign every open item."
+            ],
+            Inputs: ["Approved SOW Scope of Services and authorized supporting project evidence"],
+            Outputs: [$"Reviewed {template.Item1.ToLowerInvariant()} deliverable or evidence record"],
+            AcceptanceCriteria: ["The accountable PM and Engineering reviewer confirm that the output is complete, traceable to approved scope, and has no unassigned exception."],
+            ValidationSteps: ["Compare the completed output with the approved scope, prerequisites, and acceptance criteria; retain the resulting review evidence."],
+            CustomerResponsibilities: ["Provide required decisions, access, information, and review responses identified by the approved scope."],
+            UsSignalResponsibilities: ["Perform the authorized delivery activity, preserve objective evidence, and escalate any scope conflict or missing prerequisite."],
+            Prerequisites: ["The governing scope and required approvals are available to the authorized delivery team."],
+            Risks: ["Missing evidence, access, decisions, or prerequisites may delay the selected schedule and must be escalated rather than assumed."],
+            OpenQuestions: ["Which source-backed details, owners, or acceptance measures still require PM and Engineering confirmation?"],
+            EstimatedHours: phase == "Implement" ? 16m : 8m,
+            Priority: "normal")).ToArray();
     }
 
     private static string BuildPlanningOutcome(CelarAiFlowHiveProductionRequest request)
     {
         var builder = new StringBuilder();
         builder.AppendLine(Limit(request.RequestedOutcome, 4000, "Create a detailed implementation plan with dependencies, risks, assumptions, milestones, acceptance, handoff, and closeout."));
+        builder.AppendLine("Treat the approved SOW Scope of Services section as the primary delivery authority. Expand every supported scope outcome into executable, ordered child tasks under exactly Plan, Design, Implement, Validate, and Release.");
+        builder.AppendLine("Each child task must include complete ordered steps, inputs, outputs, prerequisites, accountable roles, validation steps, measurable acceptance criteria, risks, open questions, duration, effort, dependency logic, and citations.");
+        builder.AppendLine($"The PM-selected planning window is {request.Plan?.ProjectStartDate:yyyy-MM-dd} through {request.Plan?.ProjectEndDate:yyyy-MM-dd}; the deterministic FlowHive engine, not the model, calculates dates.");
         if (!string.IsNullOrWhiteSpace(request.GsdExcerpt)) { builder.AppendLine("Approved private GSD excerpt:"); builder.AppendLine(Limit(request.GsdExcerpt, 2000, string.Empty)); }
         if (!string.IsNullOrWhiteSpace(request.SowExcerpt)) { builder.AppendLine("Approved private SOW excerpt:"); builder.AppendLine(Limit(request.SowExcerpt, 2000, string.Empty)); }
         builder.AppendLine("Separate verified facts from assumptions, preserve conflicts, and do not create customer commitments.");

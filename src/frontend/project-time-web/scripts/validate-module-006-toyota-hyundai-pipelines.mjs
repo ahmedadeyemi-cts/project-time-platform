@@ -54,9 +54,14 @@ requireAll(component, [
   'Print / Save PDF',
   'PAGE_SIZES',
   'visibleRecords',
-  'TOYOTA_HYUNDAI_PIPELINE_PROJECTS',
-  'TOYOTA_HYUNDAI_PIPELINE_EVENTS'
+  'Authorized live records and append-only history'
 ], 'Module 006 standalone workspace');
+
+rejectAll(component, [
+  'TOYOTA_HYUNDAI_PIPELINE_PROJECTS',
+  'TOYOTA_HYUNDAI_PIPELINE_EVENTS',
+  'snapshot_overlay'
+], 'Module 006 authorized runtime-only data boundary');
 
 requireAll(component, [
   '<th className="project-register-status-column">Status</th>',
@@ -178,6 +183,7 @@ requireAll(injector, [
   'MODULE_006_CUSTOMER_EXPANSION_START',
   'module006-customer-options',
   'All customers',
+  'Project Management access required',
   'US-Signal-Customer-Pipelines-',
   'installStackedLogo',
   'stackedLogoTargetPaths',

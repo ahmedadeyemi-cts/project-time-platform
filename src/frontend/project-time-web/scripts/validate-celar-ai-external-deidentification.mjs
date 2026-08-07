@@ -96,7 +96,7 @@ const remotePrompt = section(
 const purposeBuiltFacts = section(
   timesheet,
   'private static IReadOnlyList<string> BuildPurposeBuiltExternalFactCodes(',
-  'private static bool HasPurposeBuiltExternalActivityFacts('
+  'private static bool HasFactualEngineerNote('
 );
 const serverOwnedExternalCapsules = section(
   enterpriseExternal,
@@ -241,22 +241,30 @@ check(
     'BuildPurposeBuiltExternalFactCodes(request)',
     'ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription',
     'ExternalFactCodes: externalFactCodes',
+    'ExternalProblemStatement: !hasAssociatedDocuments',
+    'BoundedEngineerNote(request.CurrentDescription)',
     '.Select(signal => signal.Code)',
-    '.Append(ExternalWorkClassificationCode(request))'
+    'TimesheetActivityUserProvidedWork',
+    'ExternalWorkClassificationCode(request)'
   ])
     && containsAll(externalCapsuleCatalog, [
       'Create a customer-ready time-entry description using only these approved identity-free facts:',
-      'Write two to four detailed, complete, professional past-tense sentences.',
+      'separately sanitized note supplied by',
       'Do not claim completion,',
       'TimesheetFactLabels[code]',
       'classificationCount != 1',
       'activityOrDomainCount == 0'
     ])
-    && timesheet.includes('no captured token, name, identifier, or substring is copied')
+    && containsAll(externalPreparation, [
+      'timesheetProblemIncluded',
+      'Content: execution.ExternalProblemStatement',
+      '_sanitizer.SanitizeForExecution(',
+      'sanitizedProblem.SanitizedCapsule'
+    ])
     && !externalCapsuleCatalog.includes('request.CurrentDescription')
     && !externalCapsuleCatalog.includes('request.CustomerName')
     && !externalCapsuleCatalog.includes('request.ProjectName'),
-  'Claude/OpenAI receive only fixed backend category labels, never raw free text or structured identity fields'
+  'Claude/OpenAI receive fixed backend labels plus only the separately de-identified Engineer note; private documents and structured identity remain excluded'
 );
 check(
   'CELAR_EXTERNAL_LOWERCASE_UNLABELED_IDENTITY_SAFE',
@@ -266,8 +274,11 @@ check(
     '.Distinct(StringComparer.Ordinal)',
     '.Take(10)'
   ])
-    && !/(?:match\.Value|Groups\[|Substring\(|note\[|string\.Join\([^\n]*note)/.test(purposeBuiltFacts),
-  'free text is used only for boolean signal detection; no lowercase or unlabeled token can be copied'
+    && !/(?:match\.Value|Groups\[|Substring\(|note\[|string\.Join\([^\n]*note)/.test(purposeBuiltFacts)
+    && externalPreparation.includes('execution.SensitiveTerms.Concat(execution.IdentityTerms ?? [])')
+    && externalPreparation.includes('execution.IdentityTerms ?? []')
+    && externalPreparation.includes('sanitizedProblem.Redactions.Count > 0'),
+  'free text is independently bounded and de-identified; known identities and sanitizer-detected protected tokens cannot be copied'
 );
 check(
   'CELAR_EXTERNAL_ANY_MODULE_CLOSED_CAPSULE',

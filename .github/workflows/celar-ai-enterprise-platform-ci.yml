@@ -108,6 +108,10 @@ jobs:
           elif [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
             ALLOWED_DATABASE='^(database/migrations/074_module_066_project_flowhive_production\.sql|database/rollback/074_module_066_project_flowhive_production_rollback\.sql)$'
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=FLOWHIVE_PRODUCTION' >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == feature/module-066-flowhive-ai-planner-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/079_coordinated_runtime_ai_document_rbac_repair\.sql|database/rollback/079_coordinated_runtime_ai_document_rbac_repair_rollback\.sql)$'
+            test -f tests/test-coordinated-document-bridge-migration-079.sh
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=COORDINATED_FLOWHIVE_DOCUMENT_BRIDGE' >> "$GITHUB_ENV"
           elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
             # Module 033 owns its review-first Project Forge persistence while
             # consuming the governed Celar AI capability router. Permit only

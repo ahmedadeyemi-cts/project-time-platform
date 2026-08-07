@@ -1,9 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  TOYOTA_HYUNDAI_PIPELINE_EVENTS,
-  TOYOTA_HYUNDAI_PIPELINE_PROJECTS,
-  TOYOTA_HYUNDAI_SNAPSHOT_METADATA
-} from './toyota-hyundai-pipeline-snapshot.js';
 import './project-register-center.css';
 import './module006-standalone.css';
 
@@ -99,77 +94,13 @@ async function api(path, options = {}) {
   return payload || {};
 }
 
-function snapshotRecord(project) {
-  return {
-    recordId: project.pipelineEntryId,
-    sourceProjectCode: project.sourceProjectCode,
-    sourceKind: 'snapshot_overlay',
-    customer: project.customer,
-    businessUnit: project.businessUnit || '',
-    ussOwner: project.owner || '',
-    projectName: project.projectName || '',
-    quoteText: project.quoteText || '',
-    estimatedValue: Number(project.estimatedValueAmount || 0),
-    estimatedValueRaw: project.estimatedValueRaw || '',
-    status: project.status || 'No Status',
-    lifecycle: project.lifecycle || 'active',
-    updateDate: project.updateDate || null,
-    nextReviewDate: project.nextReviewDate || null,
-    latestNote: project.latestNotes || '',
-    revision: 0,
-    isArchived: project.lifecycle === 'historical',
-    eventCount: Number(project.eventCount || 0),
-    firstSeen: project.firstSeen || null,
-    updatedAt: project.lastImported || null,
-    persisted: false
-  };
-}
-
 function mergePipelineRecords(serverRecords) {
   const server = Array.isArray(serverRecords) ? serverRecords : [];
-  const byId = new Map(server.map((record) => [String(record.recordId), { ...record, persisted: true }]));
-  const byCode = new Map(server.map((record) => [normalize(record.sourceProjectCode), { ...record, persisted: true }]));
-  const merged = TOYOTA_HYUNDAI_PIPELINE_PROJECTS.map((project) => {
-    const snapshot = snapshotRecord(project);
-    const overlay = byId.get(String(snapshot.recordId)) || byCode.get(normalize(snapshot.sourceProjectCode));
-    if (!overlay) return snapshot;
-    byId.delete(String(overlay.recordId));
-    byCode.delete(normalize(overlay.sourceProjectCode));
-    return {
-      ...snapshot,
-      ...overlay,
-      estimatedValue: Number(overlay.estimatedValue ?? snapshot.estimatedValue),
-      persisted: true
-    };
-  });
-
-  for (const record of server) {
-    if (merged.some((item) => String(item.recordId) === String(record.recordId))) continue;
-    if (merged.some((item) => normalize(item.sourceProjectCode) === normalize(record.sourceProjectCode))) continue;
-    merged.push({ ...record, persisted: true, eventCount: 0 });
-  }
-
-  return merged.sort((left, right) => {
+  return server.map((record) => ({ ...record, persisted: true })).sort((left, right) => {
     const lifecycle = Number(Boolean(left.isArchived)) - Number(Boolean(right.isArchived));
     if (lifecycle !== 0) return lifecycle;
     return `${left.customer} ${left.sourceProjectCode}`.localeCompare(`${right.customer} ${right.sourceProjectCode}`);
   });
-}
-
-function normalizedSnapshotUpdate(event, recordByCode) {
-  const record = recordByCode.get(normalize(event.sourceProjectCode));
-  return {
-    updateId: event.eventId,
-    recordId: record?.recordId || '',
-    sourceProjectCode: event.sourceProjectCode,
-    note: event.notes || '',
-    status: '',
-    updateDate: event.updateDate || null,
-    nextReviewDate: event.nextReviewDate || null,
-    createdAt: event.importedOn || event.updateDate || null,
-    createdBy: event.owner || 'Workbook history',
-    source: 'Reviewed workbook'
-  };
 }
 
 function blankProject() {
@@ -192,7 +123,7 @@ function blankProject() {
 function projectForm(record) {
   return {
     sourceProjectCode: record?.sourceProjectCode || '',
-    sourceKind: record?.sourceKind || 'snapshot_overlay',
+    sourceKind: record?.sourceKind || 'manual',
     customer: record?.customer || 'Toyota',
     businessUnit: record?.businessUnit || '',
     ussOwner: record?.ussOwner || '',
@@ -364,7 +295,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
       setRuntime({
         loading: false,
         error: pipelineResult.reason?.message || 'Module 006 editing could not be loaded.',
-        warning: 'The reviewed workbook snapshot remains visible, but create and edit actions are unavailable until the standalone runtime is ready.',
+        warning: 'No pipeline data is displayed while the authorized Module 006 runtime is unavailable.',
         records: [],
         updates: [],
         actor: null
@@ -382,11 +313,9 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
   useEffect(() => { setPage(1); }, [searchTerm, lifecycle, customer, status, owner, pageSize]);
 
   const records = useMemo(() => mergePipelineRecords(runtime.records), [runtime.records]);
-  const recordByCode = useMemo(() => new Map(records.map((record) => [normalize(record.sourceProjectCode), record])), [records]);
-  const updates = useMemo(() => [
-    ...TOYOTA_HYUNDAI_PIPELINE_EVENTS.map((event) => normalizedSnapshotUpdate(event, recordByCode)),
-    ...(runtime.updates || []).map((event) => ({ ...event, source: 'Module 006' }))
-  ].sort((left, right) => String(right.createdAt || right.updateDate || '').localeCompare(String(left.createdAt || left.updateDate || ''))), [recordByCode, runtime.updates]);
+  const updates = useMemo(() => (runtime.updates || [])
+    .map((event) => ({ ...event, source: 'Module 006' }))
+    .sort((left, right) => String(right.createdAt || right.updateDate || '').localeCompare(String(left.createdAt || left.updateDate || ''))), [runtime.updates]);
 
   const customerOptions = useMemo(() => unique(records, (record) => record.customer), [records]);
   const statusOptions = useMemo(() => unique(records, (record) => record.status), [records]);
@@ -454,7 +383,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
       method: 'PUT',
       body: JSON.stringify({
         sourceProjectCode: form.sourceProjectCode,
-        sourceKind: form.sourceKind || (record.persisted ? record.sourceKind : 'snapshot_overlay'),
+        sourceKind: form.sourceKind || (record.persisted ? record.sourceKind : 'manual'),
         customer: form.customer,
         businessUnit: form.businessUnit,
         ussOwner: form.ussOwner,
@@ -677,7 +606,7 @@ export default function ProjectRegisterCenter({ legacyRoute = false }) {
           <p className="eyebrow">MODULE 006 · STANDALONE TOYOTA & HYUNDAI PIPELINE</p>
           <h2>Toyota &amp; Hyundai Pipelines</h2>
           <p>Manage the reviewed Toyota and Hyundai pipeline baseline plus additional customer projects, action items, review dates, status updates, and append-only note history directly in Module 006.</p>
-          <small>Reviewed snapshot: {TOYOTA_HYUNDAI_SNAPSHOT_METADATA.sourceAsOf} · {TOYOTA_HYUNDAI_PIPELINE_EVENTS.length} historical updates preserved</small>
+          <small>Authorized live records and append-only history from the standalone Module 006 service.</small>
         </div>
         <div className="project-register-hero-actions">
           <button type="button" className="primary-action" disabled={!canEdit || isViewAs} onClick={() => setNewProjectOpen(true)}>Add New Project</button>

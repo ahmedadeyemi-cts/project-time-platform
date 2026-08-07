@@ -7,6 +7,18 @@ namespace ProjectTime.Api.Modules;
 internal static class ProjectFlowHiveArtifactRenderer
 {
     private const string DraftLabel = "INTERNAL DRAFT — NOT A CUSTOMER BASELINE";
+    private sealed record ArtifactTaskRow(
+        string Wbs,
+        string TaskName,
+        DateOnly StartDate,
+        DateOnly EndDate,
+        int DurationInDays,
+        decimal Progress,
+        string Predecessor,
+        string DependencyType,
+        string Comments,
+        string Notes,
+        string AssignedIdentity);
 
     public static byte[] BuildExcel(
         ProjectFlowHiveArtifactRequest request,
@@ -46,35 +58,38 @@ internal static class ProjectFlowHiveArtifactRenderer
         summary.Columns("A:D").AdjustToContents();
         summary.SheetView.FreezeRows(4);
 
+        var taskRows = BuildArtifactTaskRows(request, schedule);
         var tasks = workbook.Worksheets.Add("Schedule");
         var taskHeaders = new[]
         {
-            "WBS", "Parent WBS", "Task", "Start", "Finish", "Duration",
-            "Percent Complete", "Remaining Effort", "Total Float", "Free Float",
-            "Critical", "Status"
+            "WBS", "Task Name", "Start Date", "End Date", "Duration in Days",
+            "Progress", "Predecessor", "Type", "Comments", "Notes", "Assigned Identity"
         };
         for (var column = 0; column < taskHeaders.Length; column++)
         {
             tasks.Cell(1, column + 1).Value = taskHeaders[column];
         }
-        for (var index = 0; index < schedule.Tasks.Count; index++)
+        for (var index = 0; index < taskRows.Count; index++)
         {
-            var task = schedule.Tasks[index];
+            var task = taskRows[index];
             var row = index + 2;
-            tasks.Cell(row, 1).Value = task.WbsNumber;
-            tasks.Cell(row, 2).Value = task.ParentWbsNumber ?? string.Empty;
-            tasks.Cell(row, 3).Value = task.Name;
-            tasks.Cell(row, 4).Value = task.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            tasks.Cell(row, 5).Value = task.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            tasks.Cell(row, 6).Value = task.DurationWorkingDays;
-            tasks.Cell(row, 7).Value = task.PercentComplete;
-            tasks.Cell(row, 8).Value = task.RemainingEffortHours;
-            tasks.Cell(row, 9).Value = task.TotalFloatWorkingDays;
-            tasks.Cell(row, 10).Value = task.FreeFloatWorkingDays;
-            tasks.Cell(row, 11).Value = task.IsCritical ? "Yes" : "No";
-            tasks.Cell(row, 12).Value = task.Status;
+            tasks.Cell(row, 1).Value = task.Wbs;
+            tasks.Cell(row, 2).Value = task.TaskName;
+            tasks.Cell(row, 3).Value = task.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            tasks.Cell(row, 4).Value = task.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            tasks.Cell(row, 5).Value = task.DurationInDays;
+            tasks.Cell(row, 6).Value = $"{Math.Round(task.Progress, 0, MidpointRounding.AwayFromZero)}%";
+            tasks.Cell(row, 7).Value = task.Predecessor;
+            tasks.Cell(row, 8).Value = task.DependencyType;
+            tasks.Cell(row, 9).Value = task.Comments;
+            tasks.Cell(row, 10).Value = task.Notes;
+            tasks.Cell(row, 11).Value = task.AssignedIdentity;
         }
-        StyleTable(tasks, taskHeaders.Length, schedule.Tasks.Count + 1);
+        StyleTable(tasks, taskHeaders.Length, taskRows.Count + 1);
+        tasks.Columns(9, 10).Style.Alignment.WrapText = true;
+        tasks.Column(2).Width = Math.Max(tasks.Column(2).Width, 28d);
+        tasks.Columns(9, 10).Width = 36d;
+        tasks.Column(11).Width = Math.Max(tasks.Column(11).Width, 24d);
 
         var dependencies = workbook.Worksheets.Add("Dependencies");
         var dependencyHeaders = new[] { "Predecessor", "Successor", "Type", "Lead / lag working days" };
@@ -121,8 +136,8 @@ internal static class ProjectFlowHiveArtifactRenderer
         ProjectFlowHiveArtifactRequest request,
         ProjectFlowHiveScheduleResult schedule)
     {
-        const int rowsPerPage = 28;
-        var taskPages = schedule.Tasks
+        const int rowsPerPage = 18;
+        var taskPages = BuildArtifactTaskRows(request, schedule)
             .Chunk(rowsPerPage)
             .Select(chunk => chunk.ToArray())
             .ToList();
@@ -136,41 +151,51 @@ internal static class ProjectFlowHiveArtifactRenderer
     private static string BuildPdfPage(
         ProjectFlowHiveArtifactRequest request,
         ProjectFlowHiveScheduleResult schedule,
-        IReadOnlyList<ProjectFlowHiveScheduledTask> tasks,
+        IReadOnlyList<ArtifactTaskRow> tasks,
         int pageNumber,
         int pageCount)
     {
         var content = new StringBuilder();
-        content.Append("q 100 0 0 67 36 690 cm /Im1 Do Q\n");
-        PdfText(content, 155, 744, 18, "US Signal Project FlowHive", true, "0.04 0.17 0.29");
-        PdfText(content, 155, 723, 10, DraftLabel, true, "0.71 0.14 0.09");
-        PdfText(content, 36, 680, 13, request.ArtifactTitle ?? request.Plan?.PlanName ?? "Governed project plan", true, "0.04 0.17 0.29");
-        PdfText(content, 36, 661, 9, $"Project: {Join(request.Plan?.ProjectCode, request.Plan?.ProjectName)}", false, "0.18 0.25 0.34");
-        PdfText(content, 36, 646, 9, $"Customer: {request.Plan?.CustomerName ?? "Not specified"}", false, "0.18 0.25 0.34");
-        PdfText(content, 330, 661, 9, $"Schedule: {FormatDate(schedule.ProjectStartDate)} - {FormatDate(schedule.ProjectFinishDate)}", false, "0.18 0.25 0.34");
-        PdfText(content, 330, 646, 9, $"Critical tasks: {schedule.CriticalTaskCount}", false, "0.18 0.25 0.34");
+        content.Append("q 86 0 0 57 36 520 cm /Im1 Do Q\n");
+        PdfText(content, 135, 568, 18, "US Signal Project FlowHive", true, "0.04 0.17 0.29");
+        PdfText(content, 135, 548, 10, DraftLabel, true, "0.71 0.14 0.09");
+        PdfText(content, 36, 512, 13, request.ArtifactTitle ?? request.Plan?.PlanName ?? "Governed project plan", true, "0.04 0.17 0.29");
+        PdfText(content, 36, 494, 8, $"Project: {Join(request.Plan?.ProjectCode, request.Plan?.ProjectName)}", false, "0.18 0.25 0.34");
+        PdfText(content, 36, 480, 8, $"Customer: {request.Plan?.CustomerName ?? "Not specified"}", false, "0.18 0.25 0.34");
+        PdfText(content, 560, 494, 8, $"Schedule: {FormatDate(schedule.ProjectStartDate)} - {FormatDate(schedule.ProjectFinishDate)}", false, "0.18 0.25 0.34");
+        PdfText(content, 560, 480, 8, $"Tasks: {tasks.Count} on this page | Critical tasks: {schedule.CriticalTaskCount}", false, "0.18 0.25 0.34");
 
-        content.Append("0.04 0.17 0.29 rg 36 608 540 25 re f\n");
-        var headings = new[] { ("WBS", 42), ("TASK", 95), ("START", 345), ("FINISH", 410), ("FLOAT", 475), ("STATUS", 520) };
-        foreach (var (label, x) in headings) PdfText(content, x, 617, 7, label, true, "1 1 1");
+        content.Append("0.04 0.17 0.29 rg 36 444 936 24 re f\n");
+        var headings = new[]
+        {
+            ("WBS", 42), ("TASK NAME", 78), ("START DATE", 220), ("END DATE", 278),
+            ("DURATION IN DAYS", 336), ("PROGRESS", 410), ("PREDECESSOR", 466), ("TYPE", 536),
+            ("COMMENTS", 570), ("NOTES", 690), ("ASSIGNED IDENTITY", 815)
+        };
+        foreach (var (label, x) in headings) PdfText(content, x, 453, 5.8, label, true, "1 1 1");
 
-        var y = 588;
+        var y = 425;
         for (var index = 0; index < tasks.Count; index++)
         {
             var task = tasks[index];
-            if (index % 2 == 0) content.Append($"0.94 0.98 1 rg 36 {y - 5} 540 20 re f\n");
-            PdfText(content, 42, y, 7.3, task.WbsNumber, true, "0.06 0.16 0.27");
-            PdfText(content, 95, y, 7.3, Truncate(task.Name, 48), false, "0.06 0.16 0.27");
-            PdfText(content, 345, y, 7.3, FormatDate(task.StartDate), false, "0.06 0.16 0.27");
-            PdfText(content, 410, y, 7.3, FormatDate(task.EndDate), false, "0.06 0.16 0.27");
-            PdfText(content, 475, y, 7.3, task.TotalFloatWorkingDays.ToString(CultureInfo.InvariantCulture), false, "0.06 0.16 0.27");
-            PdfText(content, 520, y, 7.3, task.IsCritical ? "Critical" : Truncate(task.Status, 10), task.IsCritical, task.IsCritical ? "0.71 0.14 0.09" : "0.06 0.16 0.27");
+            if (index % 2 == 0) content.Append($"0.94 0.98 1 rg 36 {y - 5} 936 20 re f\n");
+            PdfText(content, 42, y, 6.2, Truncate(task.Wbs, 7), true, "0.06 0.16 0.27");
+            PdfText(content, 78, y, 6.2, Truncate(task.TaskName, 29), false, "0.06 0.16 0.27");
+            PdfText(content, 220, y, 6.2, FormatDate(task.StartDate), false, "0.06 0.16 0.27");
+            PdfText(content, 278, y, 6.2, FormatDate(task.EndDate), false, "0.06 0.16 0.27");
+            PdfText(content, 336, y, 6.2, task.DurationInDays.ToString(CultureInfo.InvariantCulture), false, "0.06 0.16 0.27");
+            PdfText(content, 410, y, 6.2, $"{Math.Round(task.Progress, 0, MidpointRounding.AwayFromZero)}%", false, "0.06 0.16 0.27");
+            PdfText(content, 466, y, 6.2, Truncate(task.Predecessor, 12), false, "0.06 0.16 0.27");
+            PdfText(content, 536, y, 6.2, Truncate(task.DependencyType, 4), false, "0.06 0.16 0.27");
+            PdfText(content, 570, y, 6.2, Truncate(task.Comments, 22), false, "0.06 0.16 0.27");
+            PdfText(content, 690, y, 6.2, Truncate(task.Notes, 22), false, "0.06 0.16 0.27");
+            PdfText(content, 815, y, 6.2, Truncate(task.AssignedIdentity, 26), false, "0.06 0.16 0.27");
             y -= 20;
         }
 
-        content.Append("0.68 0.77 0.84 RG 36 53 m 576 53 l S\n");
+        content.Append("0.68 0.77 0.84 RG 36 53 m 972 53 l S\n");
         PdfText(content, 36, 35, 7, $"Logo SHA-256 {ProjectFlowHiveBrandAssets.LogoSha256}", false, "0.34 0.42 0.50");
-        PdfText(content, 495, 35, 7, $"Page {pageNumber} of {pageCount}", false, "0.34 0.42 0.50");
+        PdfText(content, 915, 35, 7, $"Page {pageNumber} of {pageCount}", false, "0.34 0.42 0.50");
         return content.ToString();
     }
 
@@ -192,7 +217,7 @@ internal static class ProjectFlowHiveArtifactRenderer
             var bytes = Ascii(pageContents[index]);
             objects[contentIds[index]] = StreamObject($"/Length {bytes.Length}", bytes);
             objects[pageIds[index]] = Ascii(
-                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " +
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1008 612] " +
                 $"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Im1 5 0 R >> >> " +
                 $"/Contents {contentIds[index]} 0 R >>");
         }
@@ -239,6 +264,52 @@ internal static class ProjectFlowHiveArtifactRenderer
         }
         worksheet.SheetView.FreezeRows(1);
         worksheet.Columns(1, columnCount).AdjustToContents(4d, 48d);
+    }
+
+    private static IReadOnlyList<ArtifactTaskRow> BuildArtifactTaskRows(
+        ProjectFlowHiveArtifactRequest request,
+        ProjectFlowHiveScheduleResult schedule)
+    {
+        var planTasks = (request.Plan?.Tasks ?? [])
+            .Where(task => !string.IsNullOrWhiteSpace(task.WbsNumber))
+            .GroupBy(task => task.WbsNumber!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var dependencies = (request.Plan?.Dependencies ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.SuccessorWbs))
+            .GroupBy(item => item.SuccessorWbs!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var assignments = (request.Plan?.Assignments ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.TaskWbs))
+            .GroupBy(item => item.TaskWbs!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        return schedule.Tasks.Select(scheduled =>
+        {
+            planTasks.TryGetValue(scheduled.WbsNumber, out var planTask);
+            dependencies.TryGetValue(scheduled.WbsNumber, out var dependency);
+            assignments.TryGetValue(scheduled.WbsNumber, out var assignment);
+            var assignedIdentity = scheduled.IsSummary
+                ? "Phase summary"
+                : !string.IsNullOrWhiteSpace(assignment?.ResourceDisplayName)
+                    ? assignment.ResourceDisplayName!.Trim()
+                    : assignment?.ResourceUserId is not null
+                        ? "Assigned identity"
+                        : "Unassigned";
+            return new ArtifactTaskRow(
+                scheduled.WbsNumber,
+                scheduled.Name,
+                scheduled.StartDate,
+                scheduled.EndDate,
+                scheduled.DurationWorkingDays,
+                scheduled.PercentComplete,
+                dependency?.PredecessorWbs?.Trim() ?? string.Empty,
+                string.IsNullOrWhiteSpace(dependency?.PredecessorWbs)
+                    ? string.Empty
+                    : string.IsNullOrWhiteSpace(dependency?.Type) ? "FS" : dependency.Type!.Trim().ToUpperInvariant(),
+                planTask?.Comments?.Trim() ?? string.Empty,
+                request.ExcludeNotes ? string.Empty : planTask?.Notes?.Trim() ?? string.Empty,
+                assignedIdentity);
+        }).ToArray();
     }
 
     private static void PdfText(StringBuilder builder, double x, double y, double size, string value, bool bold, string color)

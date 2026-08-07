@@ -1,11 +1,11 @@
-# Module 066D — Private-First Pulse AI Integration
+# Module 066D — Private-First Celar AI Integration
 
 ## Required dependency
 
 Module 066 is a consumer of Module 011 and Module 064. It is not an AI provider
 configuration module and contains no direct model client or provider secret.
 
-Pulse AI owns private document grounding and the detailed planning-reasoning
+Celar AI owns private document grounding and the detailed planning-reasoning
 contract. Module 064 remains the governed provider, health, usage, routing,
 circuit-breaker, and fallback boundary.
 
@@ -21,14 +21,35 @@ A complete FlowHive planning request must:
    acceptance criteria, constraints, quantities, risks, dependencies, and open
    questions;
 5. send the detailed context only to an approved private ProjectPulse model;
-6. return a structured WBS draft with citations, assumptions, conflicts, and
-   unresolved inputs; and
-7. delegate dates, critical path, float, working days, and dependency
-   calculations to FlowHive's deterministic schedule engine.
+6. return a structured WBS draft in which every supported SOW task line carries
+   its private citation IDs, estimated duration, estimated effort, and dependency
+   evidence;
+7. delegate each task's start date, finish date, critical path, float, and working-day
+   calculations to FlowHive's deterministic schedule engine; and
+8. auto-fill the editable FlowHive plan while requiring an explicit human save
+   before an immutable draft version is created.
+
+The save path recalculates and embeds each task's estimated start and finish dates
+in the immutable plan version, so edits made during review cannot persist stale
+preview dates.
+
+The approved SOW Scope of Services is the primary source for committed work.
+Deliverables, acceptance criteria, and explicitly in-scope statements are
+supporting authority. Exclusions, options, conflicts, and unanswered questions
+must remain visibly labeled and cannot be silently converted into commitments.
+
+The returned draft uses the exact phase order `Plan`, `Design`, `Implement`,
+`Validate`, and `Release`. Every executable task is assigned to one phase and
+must contain enough detail for PM and engineering review, including the work
+steps, required inputs, expected outputs, completion criteria, validation,
+responsibility split, prerequisites, risks, and unresolved questions. The PM's
+selected start and target end dates are constraints for deterministic
+scheduling; the model does not calculate or invent calendar dates.
 
 The private request uses feature `project_flowhive_plan`, a maximum output of
-2,600 tokens by default, temperature 0.1, and a governed local deterministic
-supplied-task fallback. Private model execution remains separately gated.
+2,600 tokens by default and temperature 0.1. A citation-ready private plan is
+required. If private SOW evidence or inference is unavailable, the request fails
+closed and no generic plan or template is represented as an AI result.
 
 ## Optional external reasoning
 
@@ -42,12 +63,20 @@ It cannot contain:
 - pricing, rate, revenue, cost, margin, or contract terms; or
 - sensitive authentication material.
 
-The external result is generic reasoning assistance only. Pulse AI must verify
+For the FlowHive planning capability, the external payload is a fixed,
+server-owned, identity-free blueprint. Sanitization means omission, not masking:
+the external provider receives no SOW text or excerpts, organization/customer/
+project/person data, document names, source citations, dates, locations, URLs,
+record identifiers, commercial terms, technical environment details, or copied
+source substrings. The private model uses the approved SOW to specialize the
+generic blueprint inside the ProjectPulse boundary.
+
+The external result is generic reasoning assistance only. Celar AI must verify
 it privately against the authoritative SOW, GSD, project records, and
 deterministic schedule calculations before any content is shown as a draft.
 
-A Claude or OpenAI safety refusal terminates routing with no fallback. The local
-template cannot be used to bypass a refusal.
+A Claude or OpenAI safety refusal terminates routing. Neither an external answer
+nor a local template can replace the required citation-grounded private plan.
 
 ## Human review sequence
 

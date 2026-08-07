@@ -672,8 +672,10 @@
 
 .flowhive-planner-toolbar select,
 .flowhive-plan-metadata input,
+.flowhive-plan-metadata select,
 .flowhive-planner-table input,
 .flowhive-planner-table select,
+.flowhive-planner-table textarea,
 .flowhive-ai-form textarea {
   width: 100%;
   padding: 0.55rem 0.62rem;
@@ -694,6 +696,10 @@
   background: #ffffff;
 }
 
+.flowhive-planner-metadata {
+  grid-template-columns: minmax(15rem, 1.5fr) minmax(14rem, 1.3fr) repeat(4, minmax(10rem, 1fr));
+}
+
 .flowhive-plan-metadata label,
 .flowhive-ai-form label {
   display: grid;
@@ -705,6 +711,465 @@
 
 .flowhive-planner-table {
   min-width: 1080px;
+}
+
+.flowhive-ai-planner-button {
+  position: relative;
+  padding-left: 2.15rem !important;
+  box-shadow: 0 6px 16px rgb(8 122 169 / 20%);
+}
+
+.flowhive-ai-planner-button::before {
+  position: absolute;
+  left: 0.78rem;
+  content: '✦';
+  font-size: 1rem;
+}
+
+.flowhive-ai-planner-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #8ccce2;
+  border-radius: 0.85rem;
+  background: linear-gradient(120deg, #f2fbff, #e7f7fc);
+}
+
+.flowhive-ai-planner-summary > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border-right: 1px solid #b9dce9;
+}
+
+.flowhive-ai-planner-summary > div:last-child {
+  border-right: 0;
+}
+
+.flowhive-ai-planner-summary span,
+.flowhive-ai-planner-summary small {
+  color: #4c6574;
+  font-size: 0.72rem;
+}
+
+.flowhive-ai-planner-summary span {
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flowhive-ai-planner-summary strong {
+  overflow: hidden;
+  color: #0b3659;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+}
+
+.flowhive-ai-planner-summary .privacy {
+  background: rgb(227 248 239 / 70%);
+}
+
+.flowhive-smartsheet-table {
+  min-width: 1940px;
+  table-layout: fixed;
+}
+
+.flowhive-smartsheet-table th,
+.flowhive-smartsheet-table td {
+  padding: 0.55rem 0.6rem;
+  vertical-align: middle;
+}
+
+.flowhive-smartsheet-table th:nth-child(1),
+.flowhive-smartsheet-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 5.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(2),
+.flowhive-smartsheet-table td:nth-child(2) {
+  position: sticky;
+  left: 5.5rem;
+  z-index: 2;
+  width: 23rem;
+  min-width: 23rem;
+  box-shadow: 6px 0 8px rgb(18 46 67 / 5%);
+}
+
+.flowhive-smartsheet-table th:nth-child(3),
+.flowhive-smartsheet-table td:nth-child(3) {
+  width: 8.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(4),
+.flowhive-smartsheet-table td:nth-child(4) {
+  width: 8.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(5),
+.flowhive-smartsheet-table td:nth-child(5) {
+  width: 8.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(6),
+.flowhive-smartsheet-table td:nth-child(6) {
+  width: 7.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(7),
+.flowhive-smartsheet-table td:nth-child(7) {
+  width: 8rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(8),
+.flowhive-smartsheet-table td:nth-child(8) {
+  width: 5.5rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(9),
+.flowhive-smartsheet-table td:nth-child(9) {
+  width: 18rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(10),
+.flowhive-smartsheet-table td:nth-child(10) {
+  width: 18rem;
+}
+
+.flowhive-smartsheet-table th:nth-child(11),
+.flowhive-smartsheet-table td:nth-child(11) {
+  width: 16rem;
+}
+
+.flowhive-smartsheet-table thead th {
+  z-index: 4;
+  height: 2.65rem;
+  border-right: 1px solid #d4e0e7;
+  background: #e9f2f6;
+}
+
+.flowhive-smartsheet-table thead th:nth-child(1),
+.flowhive-smartsheet-table thead th:nth-child(2) {
+  z-index: 6;
+  background: #e1edf2;
+}
+
+.flowhive-work-row td {
+  border-right: 1px solid #e3ebf0;
+  background: var(--flowhive-surface);
+}
+
+.flowhive-work-row:hover td {
+  background: #f4fbfe;
+}
+
+.flowhive-work-row td:nth-child(2) small,
+.flowhive-phase-row td:nth-child(2) small {
+  display: block;
+  margin-top: 0.18rem;
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  opacity: 0.78;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowhive-work-row td > span,
+.flowhive-phase-row td > span {
+  max-width: none !important;
+  margin: 0 !important;
+  color: inherit !important;
+  font-size: 0.77rem !important;
+  white-space: nowrap;
+}
+
+.flowhive-phase-row td {
+  border-right: 1px solid rgb(255 255 255 / 25%);
+  border-bottom: 2px solid rgb(0 0 0 / 12%);
+  color: #ffffff;
+  background: #116fa0;
+  font-weight: 750;
+}
+
+.flowhive-phase-row.phase-design td {
+  background: #16834b;
+}
+
+.flowhive-phase-row.phase-implement td {
+  background: #087c83;
+}
+
+.flowhive-phase-row.phase-validate td {
+  color: #352a08;
+  background: #e3b928;
+}
+
+.flowhive-phase-row.phase-release td {
+  background: #6750a4;
+}
+
+.flowhive-phase-toggle,
+.flowhive-row-action {
+  border: 1px solid #9bb5c5;
+  border-radius: 0.42rem;
+  color: var(--flowhive-navy);
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.flowhive-phase-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.45rem;
+  border-color: rgb(255 255 255 / 45%);
+  color: inherit;
+  background: rgb(0 0 0 / 14%);
+}
+
+.phase-validate .flowhive-phase-toggle {
+  border-color: rgb(53 42 8 / 30%);
+  color: #352a08;
+  background: rgb(255 255 255 / 25%);
+}
+
+.flowhive-row-action {
+  width: 100%;
+  padding: 0.42rem 0.5rem;
+}
+
+.flowhive-task-name-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.flowhive-inline-detail-button {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #91afbf;
+  border-radius: 0.45rem;
+  color: var(--flowhive-navy);
+  background: #f5fbfd;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.flowhive-sheet-textarea {
+  min-height: 3.4rem;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.flowhive-wbs-child {
+  display: inline-flex !important;
+  padding-left: 1.3rem;
+  color: #33556c !important;
+  font-weight: 800;
+}
+
+.flowhive-sheet-status {
+  display: inline-flex !important;
+  width: auto;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  color: #405465 !important;
+  background: #eaf0f4;
+  font-size: 0.68rem !important;
+  font-weight: 850;
+}
+
+.flowhive-sheet-status.in_progress {
+  color: #714f00 !important;
+  background: #fff0b8;
+}
+
+.flowhive-sheet-status.blocked {
+  color: #861f1f !important;
+  background: #ffe0e0;
+}
+
+.flowhive-sheet-status.complete {
+  color: #075b43 !important;
+  background: #dff7ed;
+}
+
+.flowhive-duration-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.flowhive-duration-cell input {
+  width: 3.8rem;
+}
+
+.flowhive-duration-cell span {
+  color: var(--flowhive-muted);
+  font-size: 0.7rem;
+}
+
+.flowhive-task-detail-row td {
+  padding: 0;
+  border-bottom: 2px solid #b8cad5;
+  background: #f5fafc;
+}
+
+.flowhive-task-detail-panel {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem 1.2rem 6rem;
+}
+
+.flowhive-task-detail-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.flowhive-task-detail-panel header > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.flowhive-task-detail-panel header span {
+  color: var(--flowhive-blue);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.flowhive-task-detail-panel h4 {
+  margin: 0.18rem 0 0;
+  color: var(--flowhive-navy);
+}
+
+.flowhive-task-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 14rem));
+  gap: 0.75rem;
+}
+
+.flowhive-task-control-grid label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--flowhive-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.flowhive-citation-chip {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #a9d4e4;
+  border-radius: 999px;
+  color: #075675 !important;
+  background: #e8f8fd;
+  font-size: 0.65rem !important;
+  text-transform: none !important;
+}
+
+.flowhive-task-description,
+.flowhive-task-detail-grid label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--flowhive-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.flowhive-task-detail-panel textarea {
+  width: 100%;
+  padding: 0.62rem 0.7rem;
+  border: 1px solid #b6c7d2;
+  border-radius: 0.5rem;
+  color: var(--flowhive-ink);
+  background: var(--flowhive-surface);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.flowhive-task-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+[data-theme='dark'] .flowhive-ai-planner-summary {
+  border-color: #3e7186;
+  background: linear-gradient(120deg, #102b3b, #143745);
+}
+
+[data-theme='dark'] .flowhive-ai-planner-summary > div {
+  border-color: #31586a;
+}
+
+[data-theme='dark'] .flowhive-ai-planner-summary span,
+[data-theme='dark'] .flowhive-ai-planner-summary small {
+  color: #b9cfda;
+}
+
+[data-theme='dark'] .flowhive-ai-planner-summary strong {
+  color: #f2f7fc;
+}
+
+[data-theme='dark'] .flowhive-ai-planner-summary .privacy {
+  background: rgb(16 74 57 / 45%);
+}
+
+[data-theme='dark'] .flowhive-smartsheet-table thead th,
+[data-theme='dark'] .flowhive-smartsheet-table thead th:nth-child(1),
+[data-theme='dark'] .flowhive-smartsheet-table thead th:nth-child(2) {
+  color: #d5e6f1;
+  background: #22394a;
+}
+
+[data-theme='dark'] .flowhive-work-row:hover td {
+  background: #182e3f;
+}
+
+[data-theme='dark'] .flowhive-task-detail-row td {
+  background: #132838;
+}
+
+@media (max-width: 1100px) {
+  .flowhive-ai-planner-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flowhive-ai-planner-summary > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .flowhive-ai-planner-summary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid #b9dce9;
+  }
+}
+
+@media (max-width: 800px) {
+  .flowhive-task-detail-panel {
+    padding-left: 1rem;
+  }
+
+  .flowhive-task-detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .flowhive-planner-table th:nth-child(2),

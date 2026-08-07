@@ -56,6 +56,23 @@ start/finish dates, total/free float, critical-task flags, project finish, and
 planned-hour summary. `calendarMode` explicitly states that Module 057 holiday
 authority is not applied.
 
+`ProjectFlowHivePlanRequest` accepts both `projectStartDate` and an optional
+`projectEndDate`. AI Planner execution requires both. If the calculated finish
+is later than the selected end date, validation returns
+`project_end_exceeded`. Phase summary tasks use `isSummary = true`, duration
+zero, no assignment, and no direct dependency. The schedule response rolls up
+summary dates and includes `projectTargetEndDate`. Task inputs also preserve
+editable `comments` and `notes` fields for review and artifact generation.
+
+### `POST /api/project-flowhive/ai/production-generate`
+
+Requires a PM-selected start and end date. The route retrieves approved private
+evidence, prioritizes the SOW Scope of Services, and returns an ordered editable
+WBS under `Plan`, `Design`, `Implement`, `Validate`, and `Release`. The response
+also reports private source coverage and a privacy-boundary declaration. Any
+optional Claude/OpenAI request is routed only through Module 064 with the fixed
+identity-free planning capsule; raw evidence is never included.
+
 ### `POST /api/project-flowhive/ai/request-preview`
 
 Returns a sanitized `project_flowhive_plan` request compatible with Module 064,
@@ -74,8 +91,10 @@ Both endpoints require:
 - a valid calculable plan.
 
 They return transient bytes only. The actual repository US Signal logo is
-embedded and verified. The result is marked as an internal draft. No artifact
-record, customer link, or delivery is created.
+embedded and verified. PDF and Excel both use the exact Planner column order:
+WBS, Task Name, Start Date, End Date, Duration in Days, Progress, Predecessor,
+Type, Comments, Notes, and Assigned Identity. The result is marked as an
+internal draft. No artifact record, customer link, or delivery is created.
 
 ## Explicit locked routes
 

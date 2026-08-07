@@ -16,6 +16,32 @@ workspace. This package combines the validated 066A.1 shared registration with
 the fullest safe 066B–066E source. Database persistence, AI-provider execution,
 and external customer delivery remain behind explicit authorization gates.
 
+## AI Planner enhancement
+
+The Planner workspace now provides an **AI Planner** action after the Project
+Manager selects both a project start date and a target end date. The private
+planning path treats the approved SOW **Scope of Services** as the primary work
+authority and produces an ordered, editable Smartsheet-style WBS under exactly
+these phase summaries:
+
+1. Plan
+2. Design
+3. Implement
+4. Validate
+5. Release
+
+Each phase expands into numbered child tasks such as `1.1` and `1.2`. Generated
+tasks preserve detailed steps, inputs, outputs, acceptance criteria, validation
+steps, customer and US Signal responsibilities, prerequisites, risks, open
+questions, priority, and private citation identifiers. Summary rows roll up
+their child dates, duration, status, progress, and effort; only executable child
+tasks participate in dependency and critical-path calculations.
+
+The generated draft remains human controlled. The PM can edit tasks,
+dependencies, assignments, and duration before validation, scheduling, saving,
+or baseline review. FlowHive rejects a calculated schedule that would finish
+after the selected target end date.
+
 ## Delivered source by phase
 
 | Phase | Source delivered | Still gated |
