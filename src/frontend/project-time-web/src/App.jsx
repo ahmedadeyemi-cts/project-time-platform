@@ -6256,10 +6256,6 @@ export default function App() {
     return (
       <main className="app-shell auth-shell phd-auth-shell">
         <section className="auth-landing-panel phd-auth-experience" aria-label="Project Health Dashboard sign in">
-          <div className="auth-brand-block phd-auth-story">
-            <ProjectHealthDashboardLoginHero />
-          </div>
-
           <div className="auth-card phd-auth-card">
             <div className="phd-celar-note">
               <span aria-hidden="true">✦</span>
@@ -6375,6 +6371,10 @@ export default function App() {
               <span className="phd-footer-separator" aria-hidden="true" />
               <span>Authorized US Signal users only</span>
             </footer>
+          </div>
+
+          <div className="auth-brand-block phd-auth-story">
+            <ProjectHealthDashboardLoginHero />
           </div>
         </section>
       </main>

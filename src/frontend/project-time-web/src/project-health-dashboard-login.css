@@ -57,6 +57,8 @@
 .phd-auth-story {
   position: relative;
   display: block;
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -531,6 +533,8 @@
 .phd-auth-card {
   position: relative;
   display: flex;
+  grid-column: 2;
+  grid-row: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 100%;
@@ -953,10 +957,14 @@
   }
 
   .phd-auth-story {
+    grid-column: 1;
+    grid-row: 2;
     min-height: 680px;
   }
 
   .phd-auth-card {
+    grid-column: 1;
+    grid-row: 1;
     min-height: 640px;
     padding: 3rem 2rem 1.75rem;
   }

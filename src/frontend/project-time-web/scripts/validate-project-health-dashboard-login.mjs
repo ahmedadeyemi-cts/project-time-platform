@@ -13,6 +13,8 @@ const app = fs.readFileSync(appPath, 'utf8');
 const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
 const officialLogo = fs.readFileSync(officialLogoPath);
 const failures = [];
+const authCardIndex = app.indexOf('<div className="auth-card phd-auth-card">');
+const authStoryIndex = app.indexOf('<div className="auth-brand-block phd-auth-story">', authCardIndex);
 
 function requireInvariant(name, condition) {
   console.log(`${name}=${condition ? 'PASSED' : 'FAILED'}`);
@@ -71,6 +73,19 @@ requireInvariant(
       '@media (prefers-reduced-motion: reduce)'
     ])
     && !/(^|\n)\s*(?:html|body|:root|#root|main|button|input)\s*[{,]/m.test(stylesheet)
+);
+
+requireInvariant(
+  'PROJECT_HEALTH_DASHBOARD_MOBILE_SIGN_IN_FIRST',
+  authCardIndex >= 0
+    && authStoryIndex > authCardIndex
+    && containsAll(stylesheet, [
+      '.phd-auth-story {',
+      'grid-column: 1;',
+      'grid-row: 2;',
+      '.phd-auth-card {',
+      'grid-row: 1;'
+    ])
 );
 
 console.log(`PROJECT_HEALTH_DASHBOARD_LOGIN_VALIDATION=${failures.length === 0 ? 'PASSED' : 'FAILED'}`);
