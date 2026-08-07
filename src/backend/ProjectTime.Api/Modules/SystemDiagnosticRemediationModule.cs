@@ -382,7 +382,7 @@ public static class SystemDiagnosticRemediationModule
                 if (executedBy.HasValue)
                 {
                     var existingClaim = ReadRestartExecutionClaim(existingResultJson);
-                    if (existingClaim?.LeaseExpiresAt is DateTimeOffset leaseExpiresAt && leaseExpiresAt > claimedAt)
+                    if (existingClaim?.LeaseExpiresAt is DateTimeOffset activeLeaseExpiresAt && activeLeaseExpiresAt > claimedAt)
                         return Results.Json(new
                         {
                             module = ModuleNumber,
@@ -391,7 +391,7 @@ public static class SystemDiagnosticRemediationModule
                             target,
                             existingClaim.ClaimId,
                             existingClaim.ClaimedAt,
-                            leaseExpiresAt,
+                            leaseExpiresAt = activeLeaseExpiresAt,
                             retryAllowed = false
                         }, statusCode: StatusCodes.Status409Conflict);
 
