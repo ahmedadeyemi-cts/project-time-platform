@@ -36,3 +36,9 @@ claim is moved to `failed` and returns `409 azure_restart_reconciliation_require
 automatic retry is forbidden. Verification requires retained accepted-revision
 evidence and confirms every revision is active, `Healthy`, and `Running` through
 the managed-identity Azure adapter before the request can become `verified`.
+
+Partial execution returns `remediation_reconciliation_required` during
+verification and is terminally `failed`; it cannot be closed as verified. A
+fully accepted restart whose revisions are not yet healthy returns
+`remediation_verification_pending`, remains `executed`, and may be verified
+again. Each retry retains the original execution and accepted-revision evidence.

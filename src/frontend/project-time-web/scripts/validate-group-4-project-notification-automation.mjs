@@ -250,11 +250,15 @@ if (fullRepositoryContext) {
   contains(snapshot, 'Module 005', 'current expense source');
   contains(processing, 'RunDueSchedulesAsync', 'due schedule processing');
   contains(processing, 'UpsertDispatchAsync', 'durable dispatch processing');
+  contains(processing, 'TryClaimDispatchDeliveryAsync', 'atomic delivery claim');
+  contains(processing, 'notification_delivery_in_progress', 'concurrent delivery suppression');
   contains(quietHours, 'IsQuietHours', 'quiet-hours enforcement');
   contains(quietHours, 'EndOfQuietHours', 'quiet-hours deferral');
   contains(repository, 'MigrationReadyAsync', 'migration readiness guard');
   contains(repository, 'TryAcquireSchedulerLockAsync', 'multi-replica scheduler lock');
   contains(repository, 'LoadDispatchesAsync', 'delivery monitor source');
+  contains(repository, "delivery_status IN ('sent','sending')", 'sent and in-flight dispatch upsert protection');
+  contains(repository, "delivery_status IN ('preview_ready','held','queued','failed','suppressed')", 'atomic eligible-state delivery claim');
   contains(scheduler, 'ApplicationStarted', 'bounded scheduler startup');
   contains(scheduler, 'TryAcquireSchedulerLockAsync', 'scheduler advisory lock usage');
 

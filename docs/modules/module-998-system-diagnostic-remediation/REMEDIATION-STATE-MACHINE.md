@@ -35,6 +35,13 @@ when every accepted revision is present, active, `Healthy`, and `Running`.
 Generic ProjectPulse checks remain supporting evidence and cannot substitute for
 this Azure state proof.
 
+A partial restart can never become verified: its retained failed revision moves
+the request to `failed` with manual reconciliation required. For a fully accepted
+restart, an unavailable adapter or a revision that is still activating leaves
+the request in `executed` and stores retryable verification evidence. A later
+Verify action reuses the original execution evidence rather than nesting or
+overwriting it.
+
 Scale, rollback, replay, configuration refresh, and database repair remain in
 their approved state until the named adapter is configured.
 

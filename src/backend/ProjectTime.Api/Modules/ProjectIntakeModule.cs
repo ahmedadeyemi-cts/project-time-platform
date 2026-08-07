@@ -402,12 +402,7 @@ public static class ProjectIntakeModule
     {
         var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
             context,
-            actor => !actor.IsViewAs && (
-                actor.IsAdministrator
-                || actor.IsCoordinator
-                || actor.Roles.Contains("SALES")
-                || actor.Roles.Contains("INSIDE_SALES")
-                || actor.Roles.Contains("SOLUTION_ARCHITECT")));
+            actor => !actor.IsViewAs && CanSubmitSignedHandoff(actor));
         if (authorized.Failure is not null) return authorized.Failure;
 
         await using var connection = authorized.Connection!;
@@ -1231,13 +1226,34 @@ public static class ProjectIntakeModule
         || actor.IsCoordinator
         || actor.Roles.Contains("SALES")
         || actor.Roles.Contains("INSIDE_SALES")
+        || actor.Roles.Contains("ACCOUNT_EXECUTIVE")
+        || actor.Roles.Contains("ACCOUNT_EXECUTIVES")
         || actor.Roles.Contains("SOLUTION_ARCHITECT")
+        || actor.Roles.Contains("SA")
+        || actor.Roles.Contains("SAA")
+        || actor.Roles.Contains("PROJECT_COORDINATOR")
         || actor.Roles.Contains("PROJECT_MANAGEMENT")
         || actor.Roles.Contains("PROJECT_MANAGER")
         || actor.Roles.Contains("PROJECT_MANAGEMENT_LEAD")
         || actor.Roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
         || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE")
         || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE_AGING")
+        || actor.Permissions.Contains("MANAGE_PROJECT_DOCUMENTS");
+
+    private static bool CanSubmitSignedHandoff(ProjectNotificationActor actor) =>
+        actor.IsAdministrator
+        || actor.IsCoordinator
+        || actor.Roles.Overlaps([
+            "SALES",
+            "INSIDE_SALES",
+            "ACCOUNT_EXECUTIVE",
+            "ACCOUNT_EXECUTIVES",
+            "SOLUTION_ARCHITECT",
+            "SA",
+            "SAA",
+            "PROJECT_COORDINATOR"
+        ])
+        || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE")
         || actor.Permissions.Contains("MANAGE_PROJECT_DOCUMENTS");
 
 

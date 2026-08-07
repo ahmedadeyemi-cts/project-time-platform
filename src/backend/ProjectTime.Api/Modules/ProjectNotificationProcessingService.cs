@@ -247,6 +247,45 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
+        var claimed = await ProjectNotificationRepository.TryClaimDispatchDeliveryAsync(
+            connection,
+            dispatchId,
+            releasedByUserId,
+            reason,
+            context?.TraceIdentifier ?? "scheduler",
+            cancellationToken);
+        if (!claimed)
+        {
+            var current = await ProjectNotificationRepository.LoadDispatchAsync(
+                connection,
+                dispatchId,
+                cancellationToken);
+            if (current?.DeliveryStatus == "sent")
+            {
+                return new(
+                    true,
+                    "notification_already_sent",
+                    current.ProviderSource,
+                    current.DeliveryBoundary,
+                    current.ProviderMessageId,
+                    string.Empty,
+                    "The notification was already delivered. Duplicate delivery was prevented.",
+                    current.DispatchId,
+                    current.AttemptCount);
+            }
+            return new(
+                false,
+                "notification_delivery_in_progress",
+                current?.ProviderSource ?? dispatch.ProviderSource,
+                current?.DeliveryBoundary ?? dispatch.DeliveryBoundary,
+                current?.ProviderMessageId ?? string.Empty,
+                "DELIVERY_IN_PROGRESS",
+                "Another worker has already claimed this dispatch. Duplicate delivery was prevented.",
+                dispatch.DispatchId,
+                current?.AttemptCount ?? dispatch.AttemptCount);
+        }
+        dispatch = dispatch with { DeliveryStatus = "sending" };
+
         var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(
             context,
             cancellationToken);

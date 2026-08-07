@@ -177,6 +177,9 @@ if (fullRepositoryContext) {
   const intakeBackend = read(files.intakeBackend);
   contains(intakeBackend, 'ORDER BY uploaded_at, original_file_name', 'signed-handoff document chronology');
   assert(!intakeBackend.includes('ORDER BY created_at, original_file_name'), 'The signed-handoff query must use the real project_intake_documents uploaded_at column.');
+  for (const marker of ['CanSubmitSignedHandoff', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT', '"SA"', '"SAA"', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_DOCUMENTS']) {
+    contains(intakeBackend, marker, 'Module 027 submitter authority');
+  }
   for (const moduleCode of Object.keys(targetModules)) {
     contains(documentation, `Module ${moduleCode}`, `Module ${moduleCode} documentation`);
   }
@@ -184,7 +187,7 @@ if (fullRepositoryContext) {
     'official US Signal logo',
     'More menu is excluded',
     'No migration',
-    'No permission change',
+    'No database permission or role-grant change',
     'No deployment'
   ]) {
     contains(documentation, marker, 'Group 6 scope documentation');
@@ -197,6 +200,10 @@ execFileSync(process.execPath, [files.injector], {
 });
 
 const generatedApp = read(files.app);
+const module027Navigation = generatedApp.match(/route: "signed-handoff"[\s\S]{0,1400}/)?.[0] ?? '';
+for (const marker of ['INSIDE_SALES', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'SOLUTION_ARCHITECT', '"SA"', '"SAA"', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_DOCUMENTS']) {
+  contains(module027Navigation, marker, 'Module 027 navigation authority');
+}
 assert(
   count(generatedApp, "import EnterpriseModulePresentation from './enterprise/EnterpriseModulePresentation.jsx';") === 1,
   'Generated App must import the Group 6 presentation exactly once.'

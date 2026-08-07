@@ -488,7 +488,7 @@ internal static class ProjectNotificationRepository
                     html_body=EXCLUDED.html_body,
                     delivery_boundary=EXCLUDED.delivery_boundary,
                     delivery_status=CASE
-                        WHEN project_notification_dispatches.delivery_status='sent'
+                        WHEN project_notification_dispatches.delivery_status IN ('sent','sending')
                             THEN project_notification_dispatches.delivery_status
                         ELSE EXCLUDED.delivery_status
                     END,
@@ -522,7 +522,7 @@ internal static class ProjectNotificationRepository
                     SELECT 1
                     FROM project_notification_dispatches dispatch
                     WHERE dispatch.project_notification_dispatch_id=@dispatch_id
-                      AND dispatch.delivery_status='sent'
+                      AND dispatch.delivery_status IN ('sent','sending')
                   );
                 """, connection, transaction))
             {
@@ -707,6 +707,57 @@ internal static class ProjectNotificationRepository
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) rows.Add(reader.GetGuid(0));
         return rows;
+    }
+
+    internal static async Task<bool> TryClaimDispatchDeliveryAsync(
+        NpgsqlConnection connection,
+        Guid dispatchId,
+        Guid? releasedBy,
+        string reason,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var command = new NpgsqlCommand("""
+                UPDATE project_notification_dispatches
+                SET delivery_status='sending',
+                    released_at=COALESCE(released_at,NOW()),
+                    released_by_user_id=COALESCE(@released_by,released_by_user_id),
+                    last_error_code='',
+                    last_error_message='',
+                    updated_at=NOW()
+                WHERE project_notification_dispatch_id=@dispatch_id
+                  AND delivery_status IN ('preview_ready','held','queued','failed','suppressed')
+                RETURNING delivery_status;
+                """, connection, transaction);
+            AddNullable(command, "released_by", NpgsqlDbType.Uuid, releasedBy);
+            command.Parameters.AddWithValue("dispatch_id", dispatchId);
+            var claimed = await command.ExecuteScalarAsync(cancellationToken) is string;
+            if (claimed)
+            {
+                await WriteAuditAsync(
+                    connection,
+                    transaction,
+                    "dispatch",
+                    dispatchId,
+                    "NOTIFICATION_DELIVERY_CLAIMED",
+                    releasedBy,
+                    reason,
+                    new { deliveryStatus = "eligible" },
+                    new { deliveryStatus = "sending", retryAllowed = false },
+                    correlationId,
+                    cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return claimed;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     internal static async Task RecordDeliveryAsync(

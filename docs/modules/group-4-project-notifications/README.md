@@ -120,6 +120,12 @@ Live delivery requires all of the following:
 
 A `test_only` or `locked` boundary records dispatch and attempt evidence without external mail. Group 4 never accepts credentials in a request and never returns secret values.
 
+Before Module 065 is invoked, the shared delivery service atomically moves one
+eligible dispatch to `sending`. Concurrent tabs, API retries, and scheduler
+workers observe that in-flight claim and do not call the provider. Event-key
+upserts preserve both `sending` and `sent`, so a repeated Module 027 handoff
+cannot reset an active claim or produce a duplicate PTC notification.
+
 ## Permissions
 
 Migration 050 adds:

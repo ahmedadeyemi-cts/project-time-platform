@@ -593,20 +593,42 @@ public static class SystemDiagnosticRemediationModule
             if (state != "executed") return Results.Json(new { module = ModuleNumber, status = "executed_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
             var checks = await ExecuteChecksAsync(connection, "platform", target, context.RequestAborted);
             AzureRestartVerificationResult? azureVerification = null;
+            var verificationRetryable = false;
+            var reconciliationRequired = false;
+            var failedRevision = string.Empty;
             if (action == "restart_service")
             {
                 var readiness = AzureOperationsReadiness();
                 var acceptedRevisions = ReadStringArray(executionResultJson, "acceptedRevisions");
-                if (!readiness.Ready)
+                var executionOutcome = ReadStringValue(executionResultJson, "outcome");
+                failedRevision = ReadStringValue(executionResultJson, "failedRevision");
+                var partialRestart = string.Equals(executionOutcome, "partial", StringComparison.OrdinalIgnoreCase)
+                    || !string.IsNullOrWhiteSpace(failedRevision);
+                if (partialRestart)
+                {
+                    reconciliationRequired = true;
+                    azureVerification = new(false, 409, "The restart was only partially accepted. Reconcile the failed revision before preparing a new approved remediation.", acceptedRevisions, [], [], []);
+                }
+                else if (!readiness.Ready)
+                {
+                    verificationRetryable = true;
                     azureVerification = new(false, 423, "Azure restart verification is unavailable because the managed-identity adapter is not ready.", acceptedRevisions, [], acceptedRevisions, []);
+                }
                 else if (!readiness.AllowedTargets.Contains(target, StringComparer.OrdinalIgnoreCase))
+                {
+                    verificationRetryable = true;
                     azureVerification = new(false, 403, "Azure restart verification rejected a target outside the current allowlist.", acceptedRevisions, [], acceptedRevisions, []);
+                }
                 else if (acceptedRevisions.Length == 0)
+                {
+                    reconciliationRequired = true;
                     azureVerification = new(false, 409, "No accepted Azure revision evidence was retained for verification.", acceptedRevisions, [], acceptedRevisions, []);
+                }
                 else
                 {
                     using var verificationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                     azureVerification = await VerifyContainerAppRestartAsync(readiness, target, acceptedRevisions, verificationTimeout.Token);
+                    verificationRetryable = !azureVerification.Success;
                 }
 
                 checks.Add(new DiagnosticFinding(
@@ -622,15 +644,32 @@ public static class SystemDiagnosticRemediationModule
                         expectedRevisions = azureVerification.ExpectedRevisions,
                         observedRevisions = azureVerification.ObservedRevisions,
                         missingRevisions = azureVerification.MissingRevisions,
-                        unhealthyRevisions = azureVerification.UnhealthyRevisions
+                        unhealthyRevisions = azureVerification.UnhealthyRevisions,
+                        failedRevision,
+                        verificationRetryable,
+                        reconciliationRequired
                     }));
             }
             var summary = Summarize(checks);
             var verified = (azureVerification?.Success ?? true) && !checks.Any(check => check.Status == "failed");
+            if (action == "restart_service" && !verified && !reconciliationRequired)
+                verificationRetryable = true;
+            var verificationStatus = verified
+                ? "remediation_verified"
+                : reconciliationRequired
+                    ? "remediation_reconciliation_required"
+                    : verificationRetryable
+                        ? "remediation_verification_pending"
+                        : "remediation_verification_failed";
+            var nextState = verified ? "verified" : verificationRetryable ? "executed" : "failed";
             var observedAt = DateTimeOffset.UtcNow;
             var verificationResult = new
             {
                 verified,
+                verificationStatus,
+                verificationRetryable,
+                reconciliationRequired,
+                failedRevision,
                 observedAt,
                 summary,
                 azure = azureVerification is null ? null : new
@@ -647,16 +686,16 @@ public static class SystemDiagnosticRemediationModule
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
             await using (var update = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = @state, verified_at = CASE WHEN @verified THEN now() ELSE verified_at END, result_json = CAST(@result AS jsonb) WHERE remediation_request_id = @request_id;", connection, transaction))
             {
-                update.Parameters.AddWithValue("state", verified ? "verified" : "failed");
+                update.Parameters.AddWithValue("state", nextState);
                 update.Parameters.AddWithValue("verified", verified);
-                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { execution = ReadJsonEvidence(executionResultJson), verification = verificationResult }));
+                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { execution = ReadExecutionEvidence(executionResultJson), verification = verificationResult }));
                 update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
                 await update.ExecuteNonQueryAsync(context.RequestAborted);
             }
             await ReplaceFindingsAsync(connection, transaction, sessionId, checks, context.RequestAborted);
-            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), verified ? "remediation_verified" : "remediation_verification_failed", access.UserId, new { sessionId, action, summary, azureVerification }, context.RequestAborted);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), verificationStatus, access.UserId, new { sessionId, action, summary, azureVerification, verificationRetryable, reconciliationRequired, failedRevision }, context.RequestAborted);
             await transaction.CommitAsync(context.RequestAborted);
-            return Results.Ok(new { module = ModuleNumber, status = verified ? "remediation_verified" : "remediation_verification_failed", request.RemediationRequestId, sessionId, summary, azureVerification, findings = checks });
+            return Results.Ok(new { module = ModuleNumber, status = verificationStatus, request.RemediationRequestId, sessionId, remediationState = nextState, verificationRetryable, reconciliationRequired, failedRevision, summary, azureVerification, findings = checks });
         }
     }
 
@@ -1059,7 +1098,10 @@ public static class SystemDiagnosticRemediationModule
         try
         {
             using var document = JsonDocument.Parse(json);
-            return document.RootElement.TryGetProperty(propertyName, out var values) && values.ValueKind == JsonValueKind.Array
+            var root = document.RootElement;
+            if (root.TryGetProperty("execution", out var execution) && execution.ValueKind == JsonValueKind.Object)
+                root = execution;
+            return root.TryGetProperty(propertyName, out var values) && values.ValueKind == JsonValueKind.Array
                 ? values.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString() ?? string.Empty).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                 : [];
         }
@@ -1069,9 +1111,34 @@ public static class SystemDiagnosticRemediationModule
         }
     }
 
-    private static JsonElement ReadJsonEvidence(string json)
+    private static string ReadStringValue(string json, string propertyName)
     {
-        try { return JsonSerializer.Deserialize<JsonElement>(json); }
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.TryGetProperty("execution", out var execution) && execution.ValueKind == JsonValueKind.Object)
+                root = execution;
+            return root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static JsonElement ReadExecutionEvidence(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return root.TryGetProperty("execution", out var execution) && execution.ValueKind == JsonValueKind.Object
+                ? execution.Clone()
+                : root.Clone();
+        }
         catch { return JsonSerializer.Deserialize<JsonElement>("{}"); }
     }
 
