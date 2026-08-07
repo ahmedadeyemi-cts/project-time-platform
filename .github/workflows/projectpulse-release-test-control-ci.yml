@@ -99,6 +99,7 @@ jobs:
           grep -Fq 'Module 082 authentication boundary returned unexpected' "$VERIFY"
           grep -Fq 'labCapabilities.status === 401 && lab.status === "session_required"' "$VERIFY"
           grep -Fq 'riskCapabilities.status === 401 && risk.status === "session_required"' "$VERIFY"
+          grep -Fq '.protectedRuntimeVerification' "$DEPLOY"
           grep -Fq 'Module 001A protected route returned unexpected' "$VERIFY"
           grep -Fq 'Celar AI private-runtime route returned unexpected' "$VERIFY"
           grep -Fq 'Served application bundle is missing' "$VERIFY"
@@ -117,6 +118,7 @@ jobs:
           assert manifest["modules081082001aIncluded"] is True
           assert manifest["celarAiPrivateRagUxIncluded"] is True
           assert manifest["legacyRiskTableReconciliation"] is True
+          assert manifest["protectedRuntimeVerification"] is True
           assert manifest["requiredPriorLedger"] == [
               "074_module_066_project_flowhive_production",
           ]
