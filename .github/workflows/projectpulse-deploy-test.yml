@@ -80,7 +80,7 @@ jobs:
           [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .modules081082001aIncluded "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .celarAiPrivateRagUxIncluded "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
+          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
               echo "Only the exact reviewed source SHA may deploy." >&2
@@ -124,10 +124,11 @@ jobs:
           mapfile -t PATHS < <(jq -r '.migrations[].path' "control/$RELEASE_MANIFEST")
           mapfile -t BLOBS < <(jq -r '.migrations[].blobSha' "control/$RELEASE_MANIFEST")
           mapfile -t HASHES < <(jq -r '.migrations[].sha256' "control/$RELEASE_MANIFEST")
-          for index in 0 1 2; do
+          for index in 0 1 2 3; do
             [[ "$(git -C release rev-parse "HEAD:${PATHS[$index]}")" == "${BLOBS[$index]}" ]]
             [[ "$(sha256sum "release/${PATHS[$index]}" | awk '{print $1}')" == "${HASHES[$index]}" ]]
           done
+          test -f release/database/rollback/075_pulse_product_rebrand_rollback.sql
           test -f release/database/rollback/076_module_081_lab_equipment_tracker_rollback.sql
           test -f release/database/rollback/077_module_082_enterprise_project_risk_register_rollback.sql
           test -f release/database/rollback/078_module_001a_engineer_request_closeout_rollback.sql
@@ -443,7 +444,7 @@ jobs:
             release/deployment/containers/release-test/api.Dockerfile
           install -d release/src/frontend/project-time-web/public
           cat > release/src/frontend/project-time-web/public/release.json <<JSON
-          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","modules":["081","082","001A"],"celarAiPrivateRagUxIncluded":true,"migrations":["076","077","078"]}
+          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","modules":["081","082","001A"],"celarAiPrivateRagUxIncluded":true,"migrations":["075","076","077","078"]}
           JSON
           API_REPO=project-health-dashboard-api
           WEB_REPO=project-health-dashboard-web
@@ -469,6 +470,7 @@ jobs:
           install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
           install -m 0755 control/scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh "$CONTEXT/apply-pr55-test-migrations.sh"
           for file in \
+            075_pulse_product_rebrand.sql \
             076_module_081_lab_equipment_tracker.sql \
             077_module_082_enterprise_project_risk_register.sql \
             078_module_001a_engineer_request_closeout.sql; do
@@ -484,7 +486,7 @@ jobs:
           echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-governance-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Apply or verify migrations 076 through 078 in the private Test network
+      - name: Apply or verify migrations 075 through 078 in the private Test network
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -499,11 +501,11 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr678-${{ github.run_id }}-${{ github.run_attempt }}-a
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr578-${{ github.run_id }}-${{ github.run_attempt }}-a
           MAIN_RELEASE_MIGRATION_MODE: apply
         run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
 
-      - name: Reverify migrations 076 through 078 without writes
+      - name: Reverify migrations 075 through 078 without writes
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -518,7 +520,7 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr678-${{ github.run_id }}-${{ github.run_attempt }}-v
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr578-${{ github.run_id }}-${{ github.run_attempt }}-v
           MAIN_RELEASE_MIGRATION_MODE: verify
         run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
 
@@ -969,7 +971,7 @@ jobs:
             "runAttempt": "${{ github.run_attempt }}",
             "modules": ["081", "082", "001A"],
             "celarAiPrivateRagUxIncluded": true,
-            "migrations": ["076_module_081_lab_equipment_tracker", "077_module_082_enterprise_project_risk_register", "078_module_001a_engineer_request_closeout"],
+            "migrations": ["075_pulse_product_rebrand", "076_module_081_lab_equipment_tracker", "077_module_082_enterprise_project_risk_register", "078_module_001a_engineer_request_closeout"],
             "migrationImage": "${{ steps.migration.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",

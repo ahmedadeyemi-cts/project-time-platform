@@ -10,10 +10,15 @@
   "modules081082001aIncluded": true,
   "celarAiPrivateRagUxIncluded": true,
   "requiredPriorLedger": [
-    "074_module_066_project_flowhive_production",
-    "075_pulse_product_rebrand"
+    "074_module_066_project_flowhive_production"
   ],
   "migrations": [
+    {
+      "id": "075_pulse_product_rebrand",
+      "path": "database/migrations/075_pulse_product_rebrand.sql",
+      "blobSha": "a345bc99234d63c1a207417d2669a9d3a7b12a0a",
+      "sha256": "524decbbf13c0aef05f16971b87797dbeec1b30d6fde552a18316bb1bdca0b5d"
+    },
     {
       "id": "076_module_081_lab_equipment_tracker",
       "path": "database/migrations/076_module_081_lab_equipment_tracker.sql",

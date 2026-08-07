@@ -60,7 +60,7 @@ const releaseJson = parseJson(release, "Release stamp");
 assert(releaseJson.sourceSha === sourceSha, "Release stamp source SHA is stale.");
 assert(releaseJson.environment === "test", "Release stamp environment is not Test.");
 assert(JSON.stringify(releaseJson.modules) === JSON.stringify(["081", "082", "001A"]), "Release stamp module list is incorrect.");
-assert(JSON.stringify(releaseJson.migrations) === JSON.stringify(["076", "077", "078"]), "Release stamp migration list is incorrect.");
+assert(JSON.stringify(releaseJson.migrations) === JSON.stringify(["075", "076", "077", "078"]), "Release stamp migration list is incorrect.");
 assert(releaseJson.celarAiPrivateRagUxIncluded === true, "Release stamp does not include the Celar AI private RAG UX release.");
 
 const health = await request("/health");
@@ -116,7 +116,7 @@ const evidence = {
   sourceSha,
   releaseStamp: "verified",
   apiHealth: "healthy",
-  migrations: ["076", "077", "078"],
+  migrations: ["075", "076", "077", "078"],
   modules: {
     "081": lab.contractVersion,
     "082": risk.contractVersion,
