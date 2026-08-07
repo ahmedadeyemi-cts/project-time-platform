@@ -11,7 +11,7 @@ on:
       release_commit:
         description: Exact verified Pulse login source commit
         required: true
-        default: 7d659f3d4520a29edecce5cd719e45e9fac868f3
+        default: baa33c32da6c5256b51bfc3af3f474fe2d3851d9
         type: string
       confirmation:
         description: Enter DEPLOY-PULSE-LOGIN-TO-TEST
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      EXPECTED_RELEASE_COMMIT: 7d659f3d4520a29edecce5cd719e45e9fac868f3
+      EXPECTED_RELEASE_COMMIT: baa33c32da6c5256b51bfc3af3f474fe2d3851d9
       EXPECTED_PUBLIC_URL: https://phd-west-test.onenecklab.com
       EXPECTED_WEB_APP: ca-phd-test-web-westus3
       EXPECTED_API_APP: ca-phd-test-api-westus3
@@ -48,7 +48,7 @@ jobs:
       - name: Check out exact Pulse login source
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || '7d659f3d4520a29edecce5cd719e45e9fac868f3' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'baa33c32da6c5256b51bfc3af3f474fe2d3851d9' }}
           path: release
           fetch-depth: 1
 
@@ -57,7 +57,7 @@ jobs:
         shell: bash
         env:
           DEPLOYMENT_EVENT: ${{ github.event_name }}
-          REQUESTED_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || '7d659f3d4520a29edecce5cd719e45e9fac868f3' }}
+          REQUESTED_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'baa33c32da6c5256b51bfc3af3f474fe2d3851d9' }}
           DEPLOYMENT_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'DEPLOY-PULSE-LOGIN-TO-TEST' }}
           WORKFLOW_SOURCE_REF: ${{ github.ref }}
           WORKFLOW_SOURCE_SHA: ${{ github.sha }}
@@ -125,8 +125,8 @@ jobs:
           APP='release/src/frontend/project-time-web/src/App.jsx'
           MAIN='release/src/frontend/project-time-web/src/main.jsx'
           AUTH_HELP='release/src/frontend/project-time-web/src/AuthenticatedHelpAssistant.jsx'
-          CSS='release/src/frontend/project-time-web/src/project-health-dashboard-login.css'
-          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-project-health-dashboard-login.mjs'
+          CSS='release/src/frontend/project-time-web/src/pulse-login.css'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-pulse-login.mjs'
           LOGO='release/src/frontend/project-time-web/brand/USSNavyStacked.png'
           MOTION='release/src/frontend/project-time-web/brand/pulse-secure-access.gif'
 
@@ -148,12 +148,12 @@ jobs:
           grep -Fq 'Welcome to Pulse' "$APP"
           grep -Fq 'Animated view of the Pulse operational ecosystem' "$APP"
           grep -Fq "import pulseSecureAccessMotionUrl from '../brand/pulse-secure-access.gif';" "$APP"
-          grep -Fq 'function ProjectHealthDashboardLoginHero({ showSecureMotion = false })' "$APP"
+          grep -Fq 'function PulseLoginHero({ showSecureMotion = false })' "$APP"
           grep -Fq '{!showSecureMotion ? (' "$APP"
           grep -Fq 'alt="Pulse animated secure operational network"' "$APP"
-          grep -Fq "<ProjectHealthDashboardLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />" "$APP"
+          grep -Fq "<PulseLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />" "$APP"
           ! grep -Fq 'ussignal.com/wp-content/uploads' "$APP"
-          ! grep -Fq 'phd-auth-motion-switcher' "$APP"
+          ! grep -Fq 'pulse-auth-motion-switcher' "$APP"
           ! grep -Fq 'setMotionMode' "$APP"
           [[ "$(stat -c '%s' "$MOTION")" == '223290' ]]
           [[ "$(sha256sum "$MOTION" | awk '{print $1}')" == '001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914' ]]
@@ -161,7 +161,7 @@ jobs:
           grep -Fq "import AuthenticatedHelpAssistant from './AuthenticatedHelpAssistant.jsx';" "$MAIN"
           grep -Fq '<AuthenticatedHelpAssistant />' "$MAIN"
           grep -Fq 'return hasAuthenticatedSession ? <HelpAssistant /> : null;' "$AUTH_HELP"
-          ! grep -Fq 'phd-celar-note' "$APP"
+          ! grep -Fq 'pulse-celar-note' "$APP"
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
           echo 'PULSE_LOGIN_RELEASE_GUARDS=PASS'
 
@@ -176,7 +176,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          node scripts/validate-project-health-dashboard-login.mjs
+          node scripts/validate-pulse-login.mjs
+          node scripts/validate-pulse-rebrand.mjs
           npm ci --no-audit --no-fund
           npm run build
           [[ "$(sha256sum dist/assets/*.png | awk '$1 == "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b" { count += 1 } END { print count + 0 }')" -eq 1 ]]
@@ -337,12 +338,12 @@ jobs:
                   && grep -Fq 'Pulse animated secure operational network' /tmp/pulse-app.js \
                   && ! grep -Fq 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif' /tmp/pulse-app.js \
                   && ! grep -Fq 'Your intelligent assistant is ready after sign-in.' /tmp/pulse-app.js \
-                  && grep -Fq '.phd-auth-experience' /tmp/pulse-app.compact.css \
-                  && grep -Fq '.phd-platform-motion' /tmp/pulse-app.compact.css \
-                  && grep -Fq '.phd-secure-motion' /tmp/pulse-app.compact.css \
-                  && grep -Eq '\.phd-secure-motion img\{[^}]*object-fit:contain' /tmp/pulse-app.compact.css \
-                  && ! grep -Eq '\.phd-secure-motion img\{[^}]*object-fit:cover' /tmp/pulse-app.compact.css \
-                  && grep -Fq '.phd-ai-core' /tmp/pulse-app.compact.css; then
+                  && grep -Fq '.pulse-auth-experience' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.pulse-platform-motion' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.pulse-secure-motion' /tmp/pulse-app.compact.css \
+                  && grep -Eq '\.pulse-secure-motion img\{[^}]*object-fit:contain' /tmp/pulse-app.compact.css \
+                  && ! grep -Eq '\.pulse-secure-motion img\{[^}]*object-fit:cover' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.pulse-ai-core' /tmp/pulse-app.compact.css; then
                   READY=true
                   echo "PULSE_LOGIN_SERVED_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH logo=$LOGO_PATH motion=$MOTION_PATH"
                   break
