@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "releaseName": "modules-081-082-001a-celar-ai-1892c6d-20260807",
+  "environment": "test",
+  "sourceSha": "1892c6d0187edc367a57b8cee2e868417dd9a01a",
+  "aiReleasePhase": "disabled",
+  "routingAuthority": "database_managed_active",
+  "allowSanitizedExternalEscalation": true,
+  "sanitizedExternalFallbackEnabled": true,
+  "modules081082001aIncluded": true,
+  "celarAiPrivateRagUxIncluded": true,
+  "requiredPriorLedger": [
+    "074_module_066_project_flowhive_production",
+    "075_pulse_product_rebrand"
+  ],
+  "migrations": [
+    {
+      "id": "076_module_081_lab_equipment_tracker",
+      "path": "database/migrations/076_module_081_lab_equipment_tracker.sql",
+      "blobSha": "df4d79de5f912fc7fcd4b5af70c5e084929b5c21",
+      "sha256": "0fd7addecfb43c8d7341c6882e02affd3b6c6f4eb8eea49c4b7aa086270ae47d"
+    },
+    {
+      "id": "077_module_082_enterprise_project_risk_register",
+      "path": "database/migrations/077_module_082_enterprise_project_risk_register.sql",
+      "blobSha": "37fb39bcdd9aaa7ce1b88ffd87559026096eed11",
+      "sha256": "22725eb63bb57d82f23f431d6a7c007740b758040c16b294590947901072dada"
+    },
+    {
+      "id": "078_module_001a_engineer_request_closeout",
+      "path": "database/migrations/078_module_001a_engineer_request_closeout.sql",
+      "blobSha": "fc95ebb7976209ba9e1f362cfdebf2897334a178",
+      "sha256": "de2e814fb3a96fc45bb9e15e7074b1b88b1c9d13b4b0b2cc9191379bcdc97162"
+    }
+  ],
+  "deployment": {
+    "database": "apply-then-verify-private-network-job",
+    "api": "immutable-acr-digest",
+    "web": "immutable-acr-digest",
+    "applicationRollbackOnFailure": true,
+    "databaseRollbackOnFailure": false
+  }
+}
