@@ -26,6 +26,11 @@ const signedOutEnd = app.indexOf("if (authSession?.loginMethod === 'local'", sig
 const signedOutExperience = signedOutStart >= 0 && signedOutEnd > signedOutStart
   ? app.slice(signedOutStart, signedOutEnd)
   : '';
+const secureMotionImageStart = stylesheet.indexOf('.phd-secure-motion img {');
+const secureMotionImageEnd = stylesheet.indexOf('}', secureMotionImageStart);
+const secureMotionImageStyles = secureMotionImageStart >= 0 && secureMotionImageEnd > secureMotionImageStart
+  ? stylesheet.slice(secureMotionImageStart, secureMotionImageEnd)
+  : '';
 const loginComponentsStart = app.indexOf('function SignalLogo()') >= 0
   ? app.indexOf('function SignalLogo()')
   : app.indexOf('function SignalLogo(');
@@ -85,6 +90,8 @@ requireInvariant(
     && brandedMotion.subarray(0, 6).toString('ascii') === 'GIF89a'
     && brandedMotion.length === 223_290
     && crypto.createHash('sha256').update(brandedMotion).digest('hex') === '001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914'
+    && secureMotionImageStyles.includes('object-fit: contain;')
+    && !secureMotionImageStyles.includes('object-fit: cover;')
     && !loginExperienceSource.includes('ussignal.com/wp-content/uploads')
     && !loginExperienceSource.includes('phd-auth-motion-switcher')
     && !loginExperienceSource.includes('setMotionMode')
