@@ -23,7 +23,7 @@ export default function CiCdPipelineCenter() {
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState('');
   const [message, setMessage] = useState('');
-  const [dispatchDraft, setDispatchDraft] = useState({ workflow: 'projectpulse-deploy-test.yml', ref: '', environment: 'test' });
+  const [dispatchDraft, setDispatchDraft] = useState({ workflow: 'projectpulse-ci.yml', ref: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,7 +39,7 @@ export default function CiCdPipelineCenter() {
 
       if (configurationResult.status === 'fulfilled') {
         setConfiguration(configurationResult.value);
-        setDispatchDraft((current) => ({ ...current, ref: current.ref || configurationResult.value?.sourceControl?.defaultBranch || 'main', environment: configurationResult.value?.deployment?.environment || current.environment }));
+        setDispatchDraft((current) => ({ ...current, ref: current.ref || configurationResult.value?.sourceControl?.defaultBranch || 'main' }));
       }
 
       if (statusResult.status === 'fulfilled') {
@@ -79,17 +79,17 @@ export default function CiCdPipelineCenter() {
     return repository ? `https://github.com/${repository}` : '';
   }, [configuration]);
 
-  const dispatch = async (workflow = dispatchDraft.workflow) => {
-    setAction(workflow);
+  const dispatch = async () => {
+    setAction(dispatchDraft.workflow);
     setMessage('');
     try {
       const body = await readJson('/api/cicd/dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workflow,
+          workflow: dispatchDraft.workflow,
           ref: dispatchDraft.ref || configuration?.sourceControl?.defaultBranch,
-          inputs: { environment: dispatchDraft.environment }
+          inputs: {}
         })
       });
       setMessage(body?.status || 'Workflow dispatch accepted.');
@@ -171,35 +171,34 @@ export default function CiCdPipelineCenter() {
         <div className="cicd-section-heading">
           <div>
             <p className="eyebrow">Administrative actions</p>
-            <h2>Build and deploy</h2>
+            <h2>Validate and release</h2>
           </div>
           {repoUrl ? <a href={`${repoUrl}/actions`} target="_blank" rel="noreferrer">Open workflows</a> : null}
         </div>
 
         <div className="cicd-actions">
-          <label>Workflow<select value={dispatchDraft.workflow} onChange={(event) => setDispatchDraft((current) => ({ ...current, workflow: event.target.value }))}>{(configuration?.workflows || ['projectpulse-ci.yml','projectpulse-deploy-test.yml','projectpulse-deploy-production.yml','projectpulse-rollback.yml']).filter((item) => !item.includes('rollback')).map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
           <label>Source ref<input value={dispatchDraft.ref} onChange={(event) => setDispatchDraft((current) => ({ ...current, ref: event.target.value }))} placeholder="main or approved commit SHA" /></label>
-          <label>Environment<select value={dispatchDraft.environment} onChange={(event) => setDispatchDraft((current) => ({ ...current, environment: event.target.value }))}><option value="test">Test</option><option value="production">Production (approval protected)</option></select></label>
           <button
             className="primary-action"
             disabled={!configuration?.sourceControl?.tokenConfigured || Boolean(action)}
-            onClick={() => dispatch()}
+            onClick={dispatch}
           >
-            {action ? 'Dispatching…' : 'Dispatch selected workflow'}
-          </button>
-          <button
-            disabled={!configuration?.sourceControl?.tokenConfigured || Boolean(action)}
-            onClick={() => dispatch('projectpulse-ci.yml')}
-          >
-            {action === 'projectpulse-ci.yml' ? 'Dispatching…' : 'Run validation'}
-          </button>
-          <button disabled title="Production requires GitHub environment approval.">
-            Deploy production
+            {action ? 'Dispatching…' : 'Run source validation'}
           </button>
         </div>
 
+        <div className="cicd-protected-workflows">
+          {(configuration?.protectedWorkflows || []).filter((workflow) => workflow.launch === 'github_actions_only').map((workflow) => (
+            <article key={workflow.name}>
+              <div><strong>{workflow.environment === 'production' ? 'Production deployment' : 'Test deployment'}</strong><span>{workflow.name}</span></div>
+              <small>Required evidence: {(workflow.requiredInputs || []).join(', ')}</small>
+              {repoUrl ? <a href={`${repoUrl}/actions/workflows/${workflow.name}`} target="_blank" rel="noreferrer">Open protected workflow</a> : null}
+            </article>
+          ))}
+        </div>
+
         {!configuration?.sourceControl?.tokenConfigured ? (
-          <div className="cicd-setup-guide"><strong>In-app dispatch setup</strong><span>The live pipeline remains available in GitHub. To dispatch from this page, store a fine-grained repository Actions token as <code>PROJECTPULSE_CICD_SCM_TOKEN</code>; never enter it in the browser. Azure deployment continues to use OIDC, environment approval, immutable images, health checks, and rollback.</span>{repoUrl ? <a href={`${repoUrl}/actions`} target="_blank" rel="noreferrer">Open GitHub Actions now</a> : null}</div>
+          <div className="cicd-setup-guide"><strong>In-app validation setup</strong><span>The live pipeline remains available in GitHub. To run source validation from this page, store a fine-grained repository Actions token as <code>PROJECTPULSE_CICD_SCM_TOKEN</code>; never enter it in the browser. Test and production deployment stay in GitHub so required release inputs, OIDC, environment approval, immutable images, health checks, and rollback cannot be bypassed.</span>{repoUrl ? <a href={`${repoUrl}/actions`} target="_blank" rel="noreferrer">Open GitHub Actions now</a> : null}</div>
         ) : null}
       </section>
 

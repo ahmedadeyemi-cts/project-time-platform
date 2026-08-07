@@ -137,6 +137,21 @@ for (const contract of [
   'Configured order:'
 ]) if (!flowHive.includes(contract)) fail(`flowhive_contract_missing_${contract}`);
 
+const cicdFrontend = text(join(frontendRoot, 'src/CiCdPipelineCenter.jsx'));
+const cicdBackend = text(join(backendRoot, 'Modules/CiCdPipelineModule.cs'));
+for (const contract of [
+  "workflow: 'projectpulse-ci.yml'",
+  'inputs: {}',
+  'Open protected workflow'
+]) if (!cicdFrontend.includes(contract)) fail(`module_058_frontend_boundary_missing_${contract}`);
+if (cicdFrontend.includes("workflow: 'projectpulse-deploy-test.yml'")) fail('module_058_frontend_defaults_to_protected_deployment');
+for (const contract of [
+  'protected_workflow_dispatch_required',
+  'validation_workflow_inputs_not_allowed',
+  'string.Equals(workflow, "projectpulse-ci.yml", StringComparison.Ordinal)',
+  'new Dictionary<string, string>()'
+]) if (!cicdBackend.includes(contract)) fail(`module_058_backend_boundary_missing_${contract}`);
+
 const migration = text(join(repositoryRoot, 'database/migrations/074_module_066_project_flowhive_production.sql'));
 for (const object of ['project_flowhive_plans', 'project_flowhive_plan_versions', 'project_flowhive_plan_reviews', 'project_flowhive_audit_events']) {
   if (!migration.includes(object)) fail(`migration_074_missing_${object}`);

@@ -96,6 +96,24 @@ public static class CiCdPipelineModule
             var access = await RequireAdminAsync(context);
             if (access is not null) return access;
 
+            var workflow = string.IsNullOrWhiteSpace(request.Workflow)
+                ? "projectpulse-ci.yml"
+                : request.Workflow.Trim();
+
+            if (!string.Equals(workflow, "projectpulse-ci.yml", StringComparison.Ordinal))
+                return Results.Json(new
+                {
+                    status = "protected_workflow_dispatch_required",
+                    message = "Test, production, and rollback workflows require their workflow-specific release inputs and GitHub environment protections. Open the protected workflow in GitHub Actions."
+                }, statusCode: StatusCodes.Status422UnprocessableEntity);
+
+            if (request.Inputs is { Count: > 0 })
+                return Results.BadRequest(new
+                {
+                    status = "validation_workflow_inputs_not_allowed",
+                    message = "The in-application source validation workflow does not accept deployment inputs."
+                });
+
             if (!ScmTokenConfigured())
                 return Results.Json(new
                 {
@@ -103,14 +121,10 @@ public static class CiCdPipelineModule
                     message = "Configure PROJECTPULSE_CICD_SCM_TOKEN before enabling in-application workflow dispatch."
                 }, statusCode: 409);
 
-            var workflow = string.IsNullOrWhiteSpace(request.Workflow)
-                ? "projectpulse-deploy-test.yml"
-                : request.Workflow.Trim();
-
             var result = await DispatchAsync(
                 workflow,
                 string.IsNullOrWhiteSpace(request.Ref) ? DefaultBranch() : request.Ref.Trim(),
-                request.Inputs ?? new Dictionary<string, string>());
+                new Dictionary<string, string>());
 
             return result.Success
                 ? Results.Accepted(value: new
@@ -203,10 +217,31 @@ public static class CiCdPipelineModule
         },
         workflows = new[]
         {
-            "projectpulse-ci.yml",
-            "projectpulse-deploy-test.yml",
-            "projectpulse-deploy-production.yml",
-            "projectpulse-rollback.yml"
+            "projectpulse-ci.yml"
+        },
+        protectedWorkflows = new object[]
+        {
+            new
+            {
+                name = "projectpulse-deploy-test.yml",
+                environment = "test",
+                requiredInputs = new[] { "release_commit", "confirmation" },
+                launch = "github_actions_only"
+            },
+            new
+            {
+                name = "projectpulse-deploy-production.yml",
+                environment = "production",
+                requiredInputs = new[] { "release_commit" },
+                launch = "github_actions_only"
+            },
+            new
+            {
+                name = "projectpulse-rollback.yml",
+                environment = "selected_environment",
+                requiredInputs = new[] { "environment", "api_image", "web_image", "reason" },
+                launch = "governed_rollback_endpoint"
+            }
         },
         safeguards = new[]
         {

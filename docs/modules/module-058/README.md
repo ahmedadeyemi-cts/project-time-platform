@@ -38,3 +38,12 @@ Permissions:
 - `PUBLIC_URL`
 
 Production uses the protected `production` GitHub environment.
+
+## Dispatch boundary
+
+Module 058 can dispatch only the input-free `projectpulse-ci.yml` source
+validation workflow from the application. Test and production deployments are
+listed with their required release evidence, but must be launched from their
+protected GitHub Actions pages. The API rejects attempts to send deployment or
+rollback workflows through the generic dispatch endpoint, so required commit,
+confirmation, environment-approval, and rollback inputs cannot be skipped.

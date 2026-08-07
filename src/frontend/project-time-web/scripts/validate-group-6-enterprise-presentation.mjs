@@ -19,6 +19,7 @@ const files = {
   injector: path.join(scriptDirectory, 'inject-group-6-enterprise-presentation.mjs'),
   package: path.join(webRoot, 'package.json'),
   app: path.join(sourceRoot, 'App.jsx'),
+  salesDelivery: path.join(enterpriseRoot, 'SalesDeliveryWorkflowCenter.jsx'),
   documentation: path.join(repositoryRoot, 'docs/modules/group-6-enterprise-presentation/README.md')
 };
 
@@ -63,6 +64,7 @@ const presentation = read(files.presentation);
 const systemCss = read(files.systemCss);
 const adoptionCss = read(files.adoptionCss);
 const injector = read(files.injector);
+const salesDelivery = read(files.salesDelivery);
 const packageJson = JSON.parse(read(files.package));
 
 contains(logo, "import { usSignalLogoDataUrl } from '../assets/usSignalLogoData.js';", 'official image asset');
@@ -141,6 +143,21 @@ contains(injector, 'GROUP_6_ENTERPRISE_PRESENTATION_START', 'idempotent start ma
 contains(injector, 'GROUP_6_ENTERPRISE_PRESENTATION_END', 'idempotent end marker');
 assert(!injector.includes('enterprise-more-navigation'), 'Group 6 must not modify the permission-aware More menu.');
 assert(!injector.includes('module-availability-registry.js'), 'Group 6 must not rewrite module identity or permission registries.');
+
+for (const marker of [
+  'draftPackage',
+  'uploadedFileKeys',
+  'retainDraft(workingPackage)',
+  'Retry resumes this package; it will not create another intake.',
+  '`/api/project-intake/requests/${workingPackage.id}/documents`',
+  '`/api/project-intake/requests/${workingPackage.id}/signed-handoff`'
+]) {
+  contains(salesDelivery, marker, 'resumable Module 024/027 intake handoff');
+}
+assert(
+  count(salesDelivery, "request('/api/project-intake/requests',") === 1,
+  'The intake uploader must have one guarded create call and reuse the retained package on retry.'
+);
 
 const predev = packageJson.scripts?.predev ?? '';
 const prebuild = packageJson.scripts?.prebuild ?? '';

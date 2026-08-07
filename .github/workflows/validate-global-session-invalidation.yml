@@ -72,7 +72,7 @@ jobs:
             fi
 
             echo 'MODULE_008_NATIVE_FALLBACK_THEME_SOURCE_ISOLATION=PASSED'
-          else
+          elif [[ "$BRANCH" == feature/enterprise-operations-ux-* ]]; then
             DIRECT_MODULE_008='^(\.github/workflows/validate-global-session-invalidation\.yml|src/frontend/project-time-web/scripts/(validate-global-session-invalidation|test-authoritative-session-transport-theme-runtime|validate-modules-008-009-admin-experience)\.mjs|src/frontend/project-time-web/src/(projectpulse-authoritative-api\.js|AuditHistoryPanel\.jsx|admin-experience-theme\.css))$'
             DIRECT_CHANGED="$(printf '%s\n' "${CHANGED[@]}" | grep -E "$DIRECT_MODULE_008" || true)"
             [[ -n "$DIRECT_CHANGED" ]] || {
@@ -84,6 +84,9 @@ jobs:
               exit 1
             fi
             echo "MODULE_008_NATIVE_FALLBACK_THEME_REGRESSION=PASSED branch=$BRANCH"
+          else
+            echo "Module 008's bounded multi-file regression mode is restricted to the reviewed enterprise operations branch family. Unexpected branch: $BRANCH" >&2
+            exit 1
           fi
 
       - uses: actions/setup-dotnet@v4

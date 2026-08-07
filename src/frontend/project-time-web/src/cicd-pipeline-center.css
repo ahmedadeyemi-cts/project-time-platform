@@ -121,6 +121,37 @@
   gap: 10px;
 }
 
+.cicd-protected-workflows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.cicd-protected-workflows article {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #dce5ef;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.cicd-protected-workflows article > div {
+  display: grid;
+  gap: 3px;
+}
+
+.cicd-protected-workflows article span,
+.cicd-protected-workflows article small {
+  color: #526a89;
+  overflow-wrap: anywhere;
+}
+
+.cicd-protected-workflows article a {
+  width: fit-content;
+  font-weight: 800;
+}
+
 .cicd-run-list > a {
   display: flex;
   justify-content: space-between;
@@ -187,6 +218,7 @@
 
   .cicd-summary-grid,
   .cicd-portability-grid,
+  .cicd-protected-workflows,
   .cicd-details {
     grid-template-columns: 1fr;
   }
