@@ -116,6 +116,21 @@ jobs:
               done
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=FLOWHIVE_PRODUCTION'
               ;;
+            feature/module-066-flowhive-ai-planner-*)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/079_coordinated_runtime_ai_document_rbac_repair\.sql|rollback/079_coordinated_runtime_ai_document_rbac_repair_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected numbered migration in the coordinated FlowHive planner package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql' \
+                'database/rollback/079_coordinated_runtime_ai_document_rbac_repair_rollback.sql' \
+                'tests/test-coordinated-document-bridge-migration-079.sh'; do
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=COORDINATED_FLOWHIVE_DOCUMENT_BRIDGE'
+              ;;
             *)
               if [[ -n "$CHANGED_MIGRATIONS" ]]; then
                 echo 'Celar AI production source may not alter numbered migrations outside the reviewed production-hardening branch family.' >&2
