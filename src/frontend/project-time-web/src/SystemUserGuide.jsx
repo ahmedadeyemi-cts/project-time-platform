@@ -829,6 +829,35 @@ const detailedModuleGuides = {
     ],
     steps: ['Review current primary/peer state.', 'Check synchronization and freshness.', 'Investigate warnings.', 'Follow the approved failover or recovery runbook when required.']
   },
+  'lab-equipment-tracker': {
+    category: 'Platform Operations',
+    audience: ['Engineer', 'Manager', 'Project Manager', 'Project Team Coordinator', 'Administrator'],
+    purpose: 'Maintain authoritative lab equipment, IP allocations, cabling, rack placement, reviewed imports, and operational evidence.',
+    functions: [
+      'Searches equipment by identifier, hostname, serial number, asset tag, team, location, pod, and status.',
+      'Manages IPv4 and IPv6 networks, addresses, VLANs, VRFs, equipment interfaces, purposes, and reservation state.',
+      'Records cabling endpoints and renders 42U rack occupancy with conflict detection.',
+      'Previews approved CSV/XLSX imports without changing operational data, then commits only reviewed rows.',
+      'Exports role-scoped US Signal-branded Excel and PDF evidence with formula neutralization and immutable provenance.'
+    ],
+    steps: ['Confirm the effective team/project scope.', 'Select Equipment, IP Address Management, Connections, Rack View, Imports, or History.', 'Apply filters and review conflicts.', 'Use an authorized add or import action.', 'Verify the saved record and immutable history event.'],
+    notes: ['View-As is read-only. Import approval is administrator-scoped. Never include credentials or secrets in a lab import.']
+  },
+  'project-risk-register': {
+    category: 'Project Delivery',
+    audience: ['Engineer', 'Manager', 'Project Manager', 'Project Team Coordinator', 'Accounting', 'Sales / Account Executive', 'Administrator'],
+    purpose: 'Identify, analyze, respond to, review, realize, close, and evidence project threats and opportunities.',
+    functions: [
+      'Uses authoritative project manager and project-assignment scope without department fallback.',
+      'Captures cause, uncertain event, impact, probability, nine impact dimensions, proximity, velocity, strategy, triggers, and contingency.',
+      'Computes inherent and residual exposure and renders project portfolio and 5×5 heatmap views.',
+      'Assigns governed response actions with due dates, completion evidence, and immutable versions.',
+      'Provides review calendar, overdue attention views, governed realization/closure decisions, audit history, and branded exports.'
+    ],
+    steps: ['Choose an authoritative project or portfolio view.', 'Select Identify risk and complete the cause–event–impact and scoring fields.', 'Assign response ownership and the next review date.', 'Review heatmap and overdue actions regularly.', 'Use Realize or Close only with decision evidence.'],
+    statuses: ['Proposed', 'Open', 'Monitoring', 'Response in progress', 'Accepted', 'Realized', 'Closed', 'Retired'],
+    notes: ['Closed and retired risks are immutable. Assigned action owners can update only their own actions unless broader risk-management authority applies.']
+  },
   'cicd-pipeline': {
     category: 'Platform Operations',
     audience: ['Administrator'],

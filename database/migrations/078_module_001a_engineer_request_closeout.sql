@@ -1,4 +1,4 @@
--- Pulse migration 076
+-- Pulse migration 078
 -- Module 001A Engineer Request Closeout
 --
 -- Engineers may close only their own assigned Service Request, Pre-Sales, and
@@ -11,7 +11,7 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DO $projectpulse076_prerequisites$
+DO $projectpulse078_prerequisites$
 BEGIN
     IF to_regclass('public.schema_migrations') IS NULL
        OR to_regclass('public.projects') IS NULL
@@ -24,10 +24,10 @@ BEGIN
        OR to_regclass('public.app_role_permissions') IS NULL
        OR to_regclass('public.project_notification_dispatches') IS NULL
        OR to_regclass('public.project_notification_dispatch_recipients') IS NULL THEN
-        RAISE EXCEPTION 'Migration 076 requires the Module 001, Module 055C, RBAC, and Module 065 notification foundations.';
+        RAISE EXCEPTION 'Migration 078 requires the Module 001, Module 055C, RBAC, and Module 065 notification foundations.';
     END IF;
 END;
-$projectpulse076_prerequisites$;
+$projectpulse078_prerequisites$;
 
 ALTER TABLE project_assignments
     ADD COLUMN IF NOT EXISTS module001a_closeout_status VARCHAR(32) NOT NULL DEFAULT 'active',
@@ -85,10 +85,10 @@ CREATE INDEX IF NOT EXISTS idx_module001a_events_engineer_occurred
 CREATE INDEX IF NOT EXISTS idx_module001a_events_closeout_occurred
     ON module001a_engineer_task_closeout_events(module001a_closeout_id, occurred_at DESC);
 
-CREATE OR REPLACE FUNCTION projectpulse076_touch_closeout()
+CREATE OR REPLACE FUNCTION projectpulse078_touch_closeout()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse076_touch$
+AS $projectpulse078_touch$
 BEGIN
     NEW.updated_at := NOW();
     IF ROW(NEW.closeout_status, NEW.completion_summary, NEW.reopen_reason, NEW.ptc_final_closed_at)
@@ -98,21 +98,21 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$projectpulse076_touch$;
+$projectpulse078_touch$;
 
-CREATE OR REPLACE FUNCTION projectpulse076_immutable_closeout_event()
+CREATE OR REPLACE FUNCTION projectpulse078_immutable_closeout_event()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse076_event_immutable$
+AS $projectpulse078_event_immutable$
 BEGIN
     RAISE EXCEPTION 'Module 001A closeout transition evidence is immutable.';
 END;
-$projectpulse076_event_immutable$;
+$projectpulse078_event_immutable$;
 
-CREATE OR REPLACE FUNCTION projectpulse076_block_closed_assignment_time()
+CREATE OR REPLACE FUNCTION projectpulse078_block_closed_assignment_time()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse076_time_guard$
+AS $projectpulse078_time_guard$
 DECLARE
     should_check BOOLEAN;
 BEGIN
@@ -142,12 +142,12 @@ BEGIN
 
     RETURN NEW;
 END;
-$projectpulse076_time_guard$;
+$projectpulse078_time_guard$;
 
-CREATE OR REPLACE FUNCTION projectpulse076_finalize_project_closeouts()
+CREATE OR REPLACE FUNCTION projectpulse078_finalize_project_closeouts()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse076_project_final$
+AS $projectpulse078_project_final$
 BEGIN
     IF lower(coalesce(NEW.status, '')) IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived')
        AND lower(coalesce(OLD.status, '')) NOT IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived') THEN
@@ -183,12 +183,12 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$projectpulse076_project_final$;
+$projectpulse078_project_final$;
 
-CREATE OR REPLACE FUNCTION projectpulse076_finalize_task_closeout()
+CREATE OR REPLACE FUNCTION projectpulse078_finalize_task_closeout()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $projectpulse076_task_final$
+AS $projectpulse078_task_final$
 BEGIN
     IF OLD.is_active = TRUE AND NEW.is_active = FALSE THEN
         UPDATE module001a_engineer_task_closeouts
@@ -223,40 +223,40 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$projectpulse076_task_final$;
+$projectpulse078_task_final$;
 
-DROP TRIGGER IF EXISTS trg_module001a_closeout_touch_076 ON module001a_engineer_task_closeouts;
-CREATE TRIGGER trg_module001a_closeout_touch_076
+DROP TRIGGER IF EXISTS trg_module001a_closeout_touch_078 ON module001a_engineer_task_closeouts;
+CREATE TRIGGER trg_module001a_closeout_touch_078
 BEFORE UPDATE ON module001a_engineer_task_closeouts
-FOR EACH ROW EXECUTE FUNCTION projectpulse076_touch_closeout();
+FOR EACH ROW EXECUTE FUNCTION projectpulse078_touch_closeout();
 
-DROP TRIGGER IF EXISTS trg_module001a_events_immutable_076 ON module001a_engineer_task_closeout_events;
-CREATE TRIGGER trg_module001a_events_immutable_076
+DROP TRIGGER IF EXISTS trg_module001a_events_immutable_078 ON module001a_engineer_task_closeout_events;
+CREATE TRIGGER trg_module001a_events_immutable_078
 BEFORE UPDATE OR DELETE ON module001a_engineer_task_closeout_events
-FOR EACH ROW EXECUTE FUNCTION projectpulse076_immutable_closeout_event();
+FOR EACH ROW EXECUTE FUNCTION projectpulse078_immutable_closeout_event();
 
-DROP TRIGGER IF EXISTS trg_module001a_time_guard_076 ON time_entries;
-CREATE TRIGGER trg_module001a_time_guard_076
+DROP TRIGGER IF EXISTS trg_module001a_time_guard_078 ON time_entries;
+CREATE TRIGGER trg_module001a_time_guard_078
 BEFORE INSERT OR UPDATE OF user_id, project_id, task_id, hours ON time_entries
-FOR EACH ROW EXECUTE FUNCTION projectpulse076_block_closed_assignment_time();
+FOR EACH ROW EXECUTE FUNCTION projectpulse078_block_closed_assignment_time();
 
-DROP TRIGGER IF EXISTS trg_module001a_project_final_076 ON projects;
-CREATE TRIGGER trg_module001a_project_final_076
+DROP TRIGGER IF EXISTS trg_module001a_project_final_078 ON projects;
+CREATE TRIGGER trg_module001a_project_final_078
 AFTER UPDATE OF status ON projects
-FOR EACH ROW EXECUTE FUNCTION projectpulse076_finalize_project_closeouts();
+FOR EACH ROW EXECUTE FUNCTION projectpulse078_finalize_project_closeouts();
 
-DROP TRIGGER IF EXISTS trg_module001a_task_final_076 ON project_tasks;
-CREATE TRIGGER trg_module001a_task_final_076
+DROP TRIGGER IF EXISTS trg_module001a_task_final_078 ON project_tasks;
+CREATE TRIGGER trg_module001a_task_final_078
 AFTER UPDATE OF is_active ON project_tasks
-FOR EACH ROW EXECUTE FUNCTION projectpulse076_finalize_task_closeout();
+FOR EACH ROW EXECUTE FUNCTION projectpulse078_finalize_task_closeout();
 
-CREATE TABLE IF NOT EXISTS module001a_076_permissions_created (
+CREATE TABLE IF NOT EXISTS module001a_078_permissions_created (
     app_permission_id UUID PRIMARY KEY REFERENCES app_permissions(app_permission_id) ON DELETE RESTRICT,
     permission_code VARCHAR(100) NOT NULL UNIQUE,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS module001a_076_role_grants (
+CREATE TABLE IF NOT EXISTS module001a_078_role_grants (
     app_role_id UUID NOT NULL REFERENCES app_roles(app_role_id) ON DELETE RESTRICT,
     app_permission_id UUID NOT NULL REFERENCES app_permissions(app_permission_id) ON DELETE RESTRICT,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -271,7 +271,7 @@ WITH inserted AS (
     ON CONFLICT(permission_code) DO NOTHING
     RETURNING app_permission_id, permission_code
 )
-INSERT INTO module001a_076_permissions_created(app_permission_id, permission_code)
+INSERT INTO module001a_078_permissions_created(app_permission_id, permission_code)
 SELECT app_permission_id, permission_code FROM inserted
 ON CONFLICT DO NOTHING;
 
@@ -304,7 +304,7 @@ WITH desired(role_code, permission_code) AS (
     ON CONFLICT(app_role_id, app_permission_id) DO NOTHING
     RETURNING app_role_id, app_permission_id
 )
-INSERT INTO module001a_076_role_grants(app_role_id, app_permission_id)
+INSERT INTO module001a_078_role_grants(app_role_id, app_permission_id)
 SELECT app_role_id, app_permission_id FROM inserted
 ON CONFLICT DO NOTHING;
 
@@ -331,7 +331,7 @@ SET feature_name = EXCLUDED.feature_name,
 
 INSERT INTO schema_migrations(migration_id, description, applied_at)
 VALUES(
-    '076_module_001a_engineer_request_closeout',
+    '078_module_001a_engineer_request_closeout',
     'Add Engineer-owned request-task closeout, billing lock, immutable history, guarded reopen, scoped RBAC, and Module 065 notification evidence',
     NOW())
 ON CONFLICT(migration_id) DO NOTHING;

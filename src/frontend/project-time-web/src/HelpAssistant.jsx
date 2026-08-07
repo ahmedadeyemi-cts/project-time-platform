@@ -5,6 +5,7 @@ import HelpGovernancePanel from './help/HelpGovernancePanel.jsx';
 import { applyHelpAnswerPreferences } from './help/help-answer-preferences.js';
 import './pulse-ai-system-chat.css';
 import './celar-ai-contextual-chat.css';
+import './celar-ai-enterprise-chat-context.css';
 
 const QUICK_QUESTIONS = Object.freeze([
   'What is my team working on right now, based on authorized Pulse records?',
@@ -80,6 +81,39 @@ function projectOptionName(project) {
 
 function projectOptionLabel(project) {
   return [projectOptionCode(project), projectOptionName(project)].filter(Boolean).join(' — ');
+}
+
+function contextDirectoryOptions(payload) {
+  const values = new Map();
+  const add = (kind, label, detail = '') => {
+    const cleanLabel = String(label ?? '').trim();
+    if (!cleanLabel) return;
+    const key = `${kind}:${cleanLabel.toLowerCase()}`;
+    if (!values.has(key)) values.set(key, { id: key, kind, label: cleanLabel, detail: String(detail ?? '').trim() });
+  };
+
+  asArray(payload?.assignments).forEach((assignment) => {
+    add('Person', assignment?.engineerName, [assignment?.engineerEmail, assignment?.projectCode].filter(Boolean).join(' · '));
+    add('Team', assignment?.engineerTeam, 'Authorized project-assignment scope');
+  });
+  asArray(payload?.projects).forEach((project) => {
+    add('Person', project?.projectManagerName, ['Project Manager', projectOptionCode(project)].filter(Boolean).join(' · '));
+    add('Person', project?.accountExecutiveName, ['Account Executive', projectOptionCode(project)].filter(Boolean).join(' · '));
+    add('Person', project?.solutionArchitectName, ['Solution Architect', projectOptionCode(project)].filter(Boolean).join(' · '));
+  });
+  add('Team', payload?.access?.teamName, 'Your authorized team scope');
+  add('Team', payload?.access?.departmentName, 'Your authorized department scope');
+
+  return [...values.values()].sort((left, right) =>
+    left.kind.localeCompare(right.kind) || left.label.localeCompare(right.label));
+}
+
+function AttachmentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M8.5 12.5 14.9 6a3.2 3.2 0 0 1 4.6 4.5l-8.2 8.3a5.1 5.1 0 0 1-7.2-7.2l8.1-8.1" />
+    </svg>
+  );
 }
 
 async function readJson(response) {
@@ -513,6 +547,9 @@ export default function HelpAssistant() {
   const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
   const [projectOptionsError, setProjectOptionsError] = useState('');
   const [projectSuggestionsOpen, setProjectSuggestionsOpen] = useState(false);
+  const [peopleTeamOptions, setPeopleTeamOptions] = useState([]);
+  const [peopleTeamLookup, setPeopleTeamLookup] = useState('');
+  const [peopleTeamSuggestionsOpen, setPeopleTeamSuggestionsOpen] = useState(false);
   const [chatPosition, setChatPosition] = useState({ x: 0, y: 0 });
   const [attachments, setAttachments] = useState([]);
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState([]);
@@ -618,6 +655,8 @@ export default function HelpAssistant() {
     setQuestionContext(EMPTY_QUESTION_CONTEXT);
     setProjectLookup('');
     setProjectSuggestionsOpen(false);
+    setPeopleTeamLookup('');
+    setPeopleTeamSuggestionsOpen(false);
     setAttachments([]);
     setSelectedAttachmentIds([]);
     setAttachmentError('');
@@ -645,6 +684,7 @@ export default function HelpAssistant() {
           .filter((project) => projectOptionCode(project) || projectOptionName(project))
           .sort((left, right) => projectOptionLabel(left).localeCompare(projectOptionLabel(right)));
         setProjectOptions(rows);
+        setPeopleTeamOptions(contextDirectoryOptions(payload));
         setProjectOptionsLoaded(true);
       })
       .catch((error) => {
@@ -658,8 +698,11 @@ export default function HelpAssistant() {
       .finally(() => {
         if (active) setProjectOptionsLoading(false);
       });
-    return () => { active = false; };
-  }, [contextOpen, isOpen, projectOptionsLoaded, projectOptionsLoading]);
+    return () => {
+      active = false;
+      setProjectOptionsLoading(false);
+    };
+  }, [contextOpen, isOpen, projectOptionsLoaded]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -712,6 +755,15 @@ export default function HelpAssistant() {
     return matches.slice(0, 12);
   }, [projectLookup, projectOptions]);
 
+  const peopleTeamSuggestions = useMemo(() => {
+    const query = peopleTeamLookup.trim().toLowerCase();
+    const matches = query.length === 0
+      ? peopleTeamOptions
+      : peopleTeamOptions.filter((option) => [option.label, option.kind, option.detail]
+        .some((value) => String(value ?? '').toLowerCase().includes(query)));
+    return matches.slice(0, 12);
+  }, [peopleTeamLookup, peopleTeamOptions]);
+
   function updateProjectLookup(value) {
     setProjectLookup(value);
     setQuestionContext((current) => ({ ...current, projectCode: '', projectName: value.trim() }));
@@ -726,10 +778,24 @@ export default function HelpAssistant() {
     setProjectSuggestionsOpen(false);
   }
 
+  function updatePeopleTeamLookup(value) {
+    setPeopleTeamLookup(value);
+    setQuestionContext((current) => ({ ...current, personOrTeam: value.trim() }));
+    setPeopleTeamSuggestionsOpen(true);
+  }
+
+  function selectPeopleTeamContext(option) {
+    setPeopleTeamLookup(option.label);
+    setQuestionContext((current) => ({ ...current, personOrTeam: option.label }));
+    setPeopleTeamSuggestionsOpen(false);
+  }
+
   function clearQuestionContext() {
     setQuestionContext(EMPTY_QUESTION_CONTEXT);
     setProjectLookup('');
     setProjectSuggestionsOpen(false);
+    setPeopleTeamLookup('');
+    setPeopleTeamSuggestionsOpen(false);
   }
 
   function beginChatDrag(event) {
@@ -1054,7 +1120,42 @@ export default function HelpAssistant() {
               {questionContext.projectCode ? <small>Selected: {questionContext.projectCode} · {questionContext.projectName}</small> : null}
               {projectOptionsError ? <small className="celar-ai-project-context-error">Suggestions unavailable; you can still enter a project name manually.</small> : null}
             </label>
-            <label>Person or team<input value={questionContext.personOrTeam} onChange={(event) => setQuestionContext((current) => ({ ...current, personOrTeam: event.target.value }))} placeholder="Authorized scope only" /></label>
+            <label className="celar-ai-people-team-context-picker">
+              Person or team
+              <div className="celar-ai-project-combobox">
+                <input
+                  type="search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={peopleTeamSuggestionsOpen && peopleTeamSuggestions.length > 0}
+                  aria-controls="celar-ai-people-team-suggestions"
+                  autoComplete="off"
+                  value={peopleTeamLookup}
+                  onFocus={() => setPeopleTeamSuggestionsOpen(true)}
+                  onBlur={() => window.setTimeout(() => setPeopleTeamSuggestionsOpen(false), 120)}
+                  onChange={(event) => updatePeopleTeamLookup(event.target.value)}
+                  placeholder={projectOptionsLoading ? 'Loading authorized people and teams…' : 'Search authorized people or teams'}
+                />
+                {peopleTeamSuggestionsOpen && peopleTeamSuggestions.length > 0 ? (
+                  <div id="celar-ai-people-team-suggestions" className="celar-ai-project-suggestions" role="listbox">
+                    {peopleTeamSuggestions.map((option) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={questionContext.personOrTeam === option.label}
+                        key={option.id}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectPeopleTeamContext(option)}
+                      >
+                        <strong>{option.label}</strong>
+                        <span>{[option.kind, option.detail].filter(Boolean).join(' · ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {projectOptionsError ? <small className="celar-ai-project-context-error">Directory suggestions are unavailable; manual context still works.</small> : null}
+            </label>
             <label>Date from<input type="date" value={questionContext.dateFrom} onChange={(event) => setQuestionContext((current) => ({ ...current, dateFrom: event.target.value }))} /></label>
             <label>Date to<input type="date" value={questionContext.dateTo} onChange={(event) => setQuestionContext((current) => ({ ...current, dateTo: event.target.value }))} /></label>
             <button type="button" onClick={clearQuestionContext}>Clear context</button>
@@ -1114,14 +1215,24 @@ export default function HelpAssistant() {
 
           <details className="celar-ai-chat-attachments">
             <summary className="celar-ai-chat-attachments-summary">
-              <span className="celar-ai-chat-attachments-icon" aria-hidden="true">+</span>
+              <span className="celar-ai-chat-attachments-icon" aria-hidden="true"><AttachmentIcon /></span>
               <span><strong>Documents for this conversation</strong><small>{attachments.length ? `${attachments.length} attached · ${selectedAttachmentIds.length} selected` : 'Optional · add private context only when needed'}</small></span>
               <span className="celar-ai-chat-attachments-toggle">Expand</span>
             </summary>
             <section className="celar-ai-chat-attachments-body" aria-label="Documents for this conversation">
               <div className="celar-ai-chat-attachments-heading">
-                <div><strong>Private document context</strong><span>Files are scanned, extracted, and authorized before Celar AI can use them. Raw contents are never stored in this browser.</span></div>
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentBusy}>{attachmentBusy ? 'Processing…' : 'Choose documents'}</button>
+                <div className="celar-ai-chat-attachments-title">
+                  <span className="celar-ai-chat-attachments-icon" aria-hidden="true"><AttachmentIcon /></span>
+                  <div><strong>Private document context</strong><span>Files are scanned, extracted, and authorized before Celar AI can use them. Raw contents are never stored in this browser.</span></div>
+                </div>
+                <button
+                  type="button"
+                  className="celar-ai-chat-attachment-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={attachmentBusy}
+                  aria-label={attachmentBusy ? 'Processing documents' : 'Attach documents'}
+                  title={attachmentBusy ? 'Processing documents' : 'Attach documents'}
+                ><AttachmentIcon /></button>
               </div>
               <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
               <div
@@ -1136,7 +1247,7 @@ export default function HelpAssistant() {
                 onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
                 onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
                 onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
-              ><span className="celar-ai-chat-upload-mark" aria-hidden="true">↑</span><strong>{attachmentBusy ? 'Processing documents…' : 'Choose files or drag them here'}</strong><span>PDF, Word, PowerPoint, Excel, text, CSV, JSON, XML, or HTML</span></div>
+              ><span className="celar-ai-chat-upload-mark" aria-hidden="true"><AttachmentIcon /></span><strong>{attachmentBusy ? 'Processing documents…' : 'Choose files or drag them here'}</strong><span>PDF, Word, PowerPoint, Excel, text, CSV, JSON, XML, or HTML</span></div>
               {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
               {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
                 const id = attachmentId(item);

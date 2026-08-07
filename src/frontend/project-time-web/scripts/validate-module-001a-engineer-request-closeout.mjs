@@ -13,8 +13,8 @@ function requirePattern(source, pattern, label) {
   if (!pattern.test(source)) failures.push(`${label}: missing pattern ${pattern}`);
 }
 
-const migration = read('database/migrations/076_module_001a_engineer_request_closeout.sql');
-const rollback = read('database/rollback/076_module_001a_engineer_request_closeout_rollback.sql');
+const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
+const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
 const backend = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
 const backendAvailability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
@@ -35,11 +35,11 @@ for (const table of [
 for (const status of ['engineer_closed', 'reopened', 'ptc_final_closed']) {
   requireText(migration, status, 'migration lifecycle');
 }
-requireText(migration, 'projectpulse076_block_closed_assignment_time', 'database billing lock');
+requireText(migration, 'projectpulse078_block_closed_assignment_time', 'database billing lock');
 requireText(migration, 'BEFORE INSERT OR UPDATE OF user_id, project_id, task_id, hours ON time_entries', 'database billing boundary');
-requireText(migration, 'projectpulse076_immutable_closeout_event', 'immutable evidence');
-requireText(migration, 'projectpulse076_finalize_project_closeouts', 'Module 055C project finalization');
-requireText(migration, 'projectpulse076_finalize_task_closeout', 'Module 055C task finalization');
+requireText(migration, 'projectpulse078_immutable_closeout_event', 'immutable evidence');
+requireText(migration, 'projectpulse078_finalize_project_closeouts', 'Module 055C project finalization');
+requireText(migration, 'projectpulse078_finalize_task_closeout', 'Module 055C task finalization');
 requireText(migration, 'VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'view permission');
 requireText(migration, 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'manage permission');
 requireText(migration, "'#engineer-task-closeout'", 'feature registration');

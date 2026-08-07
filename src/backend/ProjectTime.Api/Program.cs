@@ -37461,6 +37461,8 @@ ProjectTime.Api.Modules.OpportunitiesModule.MapOpportunityEndpoints(app);
 /* MODULE_001A_ENGINEER_REQUEST_CLOSEOUT_ENDPOINT_MAP_START */
 app.MapModule001AEngineerTaskCloseoutEndpoints();
 /* MODULE_001A_ENGINEER_REQUEST_CLOSEOUT_ENDPOINT_MAP_END */
+app.MapLabEquipmentTrackerEndpoints();
+app.MapProjectRiskRegisterEndpoints();
 
 app.Run();
 

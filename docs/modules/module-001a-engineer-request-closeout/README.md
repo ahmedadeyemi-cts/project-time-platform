@@ -16,7 +16,7 @@ the Project Team Coordinator retains final authority over the original request.
 - Module 055C remains the final request and task lifecycle authority for the
   Project Team Coordinator.
 
-The permissions introduced by migration 076 are:
+The permissions introduced by migration 078 are:
 
 - `VIEW_ENGINEER_TASK_CLOSEOUT_001A`
 - `MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A`
@@ -65,7 +65,7 @@ and creates a new immutable event plus a Module 065 email to the PTC with the
 Engineer CC'd. The reason is included in that email.
 
 When Module 055C closes the project or deactivates the original task, migration
-076 projects `ptc_final_closed` into Module 001A, writes final-close evidence,
+078 projects `ptc_final_closed` into Module 001A, writes final-close evidence,
 and permanently disables Engineer reopen for that closeout.
 
 ## API contract
@@ -82,7 +82,7 @@ email recipients.
 
 ## Data and rollback
 
-Migration `076_module_001a_engineer_request_closeout.sql` adds the assignment
+Migration `078_module_001a_engineer_request_closeout.sql` adds the assignment
 projection, closeout state, immutable event history, final-close projections,
 billing guard, RBAC permission grants, and feature-catalog registration.
 

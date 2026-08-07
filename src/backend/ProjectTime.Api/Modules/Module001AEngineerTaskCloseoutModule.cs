@@ -887,7 +887,7 @@ public static partial class ScopedRolePolicyModule
                AND to_regclass('public.module001a_engineer_task_closeout_events') IS NOT NULL
                AND EXISTS (
                     SELECT 1 FROM schema_migrations
-                    WHERE migration_id = '076_module_001a_engineer_request_closeout'
+                    WHERE migration_id = '078_module_001a_engineer_request_closeout'
                );
             """, connection);
         var ready = (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
@@ -897,7 +897,7 @@ public static partial class ScopedRolePolicyModule
             {
                 module = "001A",
                 status = "module001a_schema_not_ready",
-                message = "Migration 076 must be applied before Engineer Request Closeout can be used."
+                message = "Migration 078 must be applied before Engineer Request Closeout can be used."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
