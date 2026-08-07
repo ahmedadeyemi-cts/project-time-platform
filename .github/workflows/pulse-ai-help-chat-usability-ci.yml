@@ -197,7 +197,7 @@ jobs:
               ;;
             # The readiness/routing package may update the canonical HelpAssistant,
             # but it remains migration- and deployment-free under this boundary.
-            security/celar-ai-production-readiness-*|fix/celar-ai-readiness-routing-ui-*)
+            security/celar-ai-production-readiness-*|fix/celar-ai-readiness-routing-ui-*|feature/celar-ai-private-rag-context-ux-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
               if [[ -n "$UNAPPROVED_HELP" ]]; then
