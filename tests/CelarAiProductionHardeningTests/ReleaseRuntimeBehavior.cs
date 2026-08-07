@@ -383,6 +383,18 @@ internal static class ReleaseRuntimeBehavior
                 out var pluralNounOutcomeClaimDecision)
             && pluralNounOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
             "ordinary plural noun-form outcome claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented that the work was finished. Prepared follow-up review.",
+                [],
+                out var finishedOutcomeClaimDecision)
+            && finishedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "ordinary finished completion claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and finalized the change. Documented the result.",
+                [],
+                out var finalizedOutcomeClaimDecision)
+            && finalizedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "ordinary finalized completion claims remain fail-closed");
         Require(sanitizer.IsTimesheetExternalOutputSafe(
                 "Documented implementation steps and planned validation activities. Coordinated follow-up review.",
                 [],
