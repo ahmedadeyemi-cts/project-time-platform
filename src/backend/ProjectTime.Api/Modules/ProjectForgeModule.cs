@@ -19,10 +19,10 @@ public static partial class ProjectForgeModule
 
     public static WebApplication MapProjectForgeEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
+        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, PulseAiPrivateRetrievalAuthorizationService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
         app.MapPost("/api/project-forge/plans", (Func<ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)CreatePlanAsync);
         app.MapPut("/api/project-forge/plans/{planId:guid}", (Func<Guid, ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)UpdatePlanAsync);
-        app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
+        app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, PulseAiPrivateRetrievalAuthorizationService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
         app.MapPost("/api/project-forge/ai-drafts/{planId:guid}/assign-reviewer", (Func<Guid, ProjectForgeAssignReviewerRequest, HttpContext, CancellationToken, Task<IResult>>)AssignReviewerAsync);
         app.MapPatch("/api/project-forge/plan-tasks/{planTaskId:guid}/estimate", (Func<Guid, ProjectForgeEstimatePatchRequest, HttpContext, CancellationToken, Task<IResult>>)PatchEstimateAsync);
         app.MapPost("/api/project-forge/plans/{planId:guid}/adopt", (Func<Guid, ProjectForgeAdoptPlanRequest, HttpContext, CancellationToken, Task<IResult>>)AdoptPlanAsync);
@@ -48,6 +48,7 @@ public static partial class ProjectForgeModule
         Guid? planId,
         HttpContext context,
         CelarAiKnowledgeFabricService knowledgeFabricService,
+        PulseAiPrivateRetrievalAuthorizationService authorization,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -156,6 +157,14 @@ public static partial class ProjectForgeModule
                 AddNullableUuid(command, "project_filter", detailProjectFilter);
             }, cancellationToken);
             var holidays = await ReadJsonRowsAsync(connection, HolidaysSql, null, cancellationToken);
+            var projectEvidence = selectedProjectId.HasValue
+                ? await authorization.LoadProjectEvidenceReadinessAsync(
+                    connection,
+                    ToPrivateRagAccess(access),
+                    selectedProjectId.Value,
+                    PulseAiPrivateRagPolicy.FlowHiveCategories,
+                    cancellationToken)
+                : PulseAiPrivateProjectEvidenceReadiness.Empty;
             CelarAiKnowledgeFabricSnapshot? knowledgeFabric = null;
             CelarAiCapabilityConnectionStatus? forgeConnection = null;
             try
@@ -249,6 +258,14 @@ public static partial class ProjectForgeModule
                         activeChunkCount = knowledgeFabric?.ActiveChunkCount ?? 0,
                         embeddedChunkCount = knowledgeFabric?.EmbeddedChunkCount ?? 0,
                         lastIndexedAt = knowledgeFabric?.LastIndexedAt,
+                        projectId = selectedProjectId,
+                        projectEvidenceReady = projectEvidence.ReadyDocumentCount > 0,
+                        projectReadyDocumentCount = projectEvidence.ReadyDocumentCount,
+                        projectReadySowDocumentCount = projectEvidence.ReadySowDocumentCount,
+                        projectActiveVersionCount = projectEvidence.ActiveVersionCount,
+                        projectActiveChunkCount = projectEvidence.ActiveChunkCount,
+                        projectEmbeddedChunkCount = projectEvidence.EmbeddedChunkCount,
+                        projectLastIndexedAt = projectEvidence.LastIndexedAt,
                         blockers = knowledgeFabric?.Blockers.Take(8).ToArray() ?? ["knowledge_fabric_snapshot_unavailable"],
                         endpointValuesReturned = false,
                         secretValuesReturned = false
@@ -371,6 +388,7 @@ public static partial class ProjectForgeModule
         ProjectForgeAiDraftRequest request,
         HttpContext context,
         CelarAiEnterprisePlatformService enterprise,
+        PulseAiPrivateRetrievalAuthorizationService authorization,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -387,6 +405,28 @@ public static partial class ProjectForgeModule
         if (projectWriteError is not null) return projectWriteError;
         var project = await LoadProjectIdentityAsync(connection, projectId, cancellationToken);
         if (project is null) return Results.NotFound(new { status = "project_not_found" });
+
+        var projectEvidence = await authorization.LoadProjectEvidenceReadinessAsync(
+            connection,
+            ToPrivateRagAccess(access),
+            projectId,
+            PulseAiPrivateRagPolicy.FlowHiveCategories,
+            cancellationToken);
+        if (projectEvidence.ReadyDocumentCount == 0)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                status = "ai_plan_evidence_insufficient",
+                message = "This project has no citation-ready private document evidence. No AI target was called and no draft was saved.",
+                projectId,
+                projectEvidence.ReadyDocumentCount,
+                projectEvidence.ReadySowDocumentCount,
+                projectEvidence.ActiveVersionCount,
+                projectEvidence.ActiveChunkCount,
+                projectEvidence.EmbeddedChunkCount,
+                stateChanged = false
+            });
+        }
 
         var outcome = Clean(request.RequestedOutcome, 4000,
             "Create a comprehensive, reviewable project plan with WBS tasks, dependencies, roles, durations, and engineering estimates grounded in the authorized SOW, GSD, architecture, design, and other project documents.");
@@ -2123,6 +2163,9 @@ public static partial class ProjectForgeModule
             : (string.Empty, Results.Json(new { status = "configuration_missing", missing = config.Missing }, statusCode: StatusCodes.Status503ServiceUnavailable));
     }
 
+    private static PulseAiPrivateRagAccess ToPrivateRagAccess(ProjectForgeAccess access) =>
+        new(access.EffectiveUserId, access.IsActive, access.Roles, access.Permissions);
+
     private static async Task<(NpgsqlConnection? Connection, ProjectForgeAccess? Access, IResult? Error)> OpenForWriteAsync(HttpContext context, CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -2297,4 +2340,5 @@ public static partial class ProjectForgeModule
         decimal EstimatedHours,decimal HourlyRate,decimal MaterialUnits,decimal MaterialUnitCost,decimal FixedCost,decimal TravelCost,
         decimal EquipmentCost,decimal MiscCost,bool Important,bool Urgent,Guid? ReviewerUserId,string SourceKind,string? AiCorrelationId,string ReviewerName,
         string ParentWbs,int DisplayOrder,string BlockedReason);
+
 }

@@ -1114,17 +1114,32 @@ export default function HelpAssistant() {
 
           <section className="celar-ai-chat-attachments" aria-labelledby="celar-ai-chat-attachments-heading">
             <div className="celar-ai-chat-attachments-heading">
-              <div><strong id="celar-ai-chat-attachments-heading">Documents for this conversation</strong><span>Files are privately scanned, extracted, and authorized before Celar AI can use them. Raw file contents are never stored in this browser.</span></div>
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentBusy}>{attachmentBusy ? 'Processing…' : 'Attach documents'}</button>
+              <div className="celar-ai-chat-attachments-title">
+                <span className="celar-ai-chat-attachments-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M8.5 12.5 14.8 6.2a3 3 0 0 1 4.2 4.2l-8.1 8.1a5 5 0 0 1-7.1-7.1l8-8" /></svg>
+                </span>
+                <div><strong id="celar-ai-chat-attachments-heading">Add private documents</strong><span>Attach approved evidence to this conversation. Celar AI scans, extracts, and permission-checks every file before use.</span></div>
+              </div>
+              <span className="celar-ai-chat-private-badge">Private &amp; governed</span>
             </div>
             <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
             <div
               className={`celar-ai-chat-dropzone${draggingFiles ? ' is-dragging' : ''}`}
+              role="button"
+              tabIndex={attachmentBusy ? -1 : 0}
+              aria-disabled={attachmentBusy}
+              aria-label="Choose approved documents or drop them here"
+              onClick={() => { if (!attachmentBusy) fileInputRef.current?.click(); }}
+              onKeyDown={(event) => { if (!attachmentBusy && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); fileInputRef.current?.click(); } }}
               onDragEnter={(event) => { event.preventDefault(); setDraggingFiles(true); }}
               onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
               onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
               onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
-            >Drop approved documents here or use Attach documents.</div>
+            >
+              <span className="celar-ai-chat-upload-mark" aria-hidden="true">↑</span>
+              <strong>{attachmentBusy ? 'Processing documents…' : 'Choose files or drag them here'}</strong>
+              <span>PDF, Office, text, CSV, JSON, XML, and HTML</span>
+            </div>
             {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
             {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
               const id = attachmentId(item);

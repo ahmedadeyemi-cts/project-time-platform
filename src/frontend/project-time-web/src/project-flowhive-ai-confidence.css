@@ -1,0 +1,18 @@
+.flowhive-confidence-help {
+  display: grid;
+  gap: .3rem;
+  border: 1px solid color-mix(in srgb, var(--flowhive-blue) 38%, var(--flowhive-line));
+  border-radius: .75rem;
+  padding: .75rem .85rem;
+  background: color-mix(in srgb, var(--flowhive-surface) 88%, var(--flowhive-sky));
+}
+
+.flowhive-confidence-help strong {
+  color: var(--flowhive-ink);
+}
+
+.flowhive-confidence-help span {
+  color: var(--flowhive-muted);
+  font-size: .8rem;
+  line-height: 1.5;
+}

@@ -579,6 +579,7 @@ import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/USSNavyStacked.png';
 import './timesheet.css';
 import './mobile-readiness.css';
+import './project-health-dashboard-login.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
@@ -3168,7 +3169,134 @@ function SignalLogo() {
       <img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />
       <div>
         <strong>Project Health Dashboard</strong>
-        <small>Time • Approval • Utilization</small>
+        <small>Unified Business Operations</small>
+      </div>
+    </div>
+  );
+}
+
+const PROJECT_HEALTH_DASHBOARD_MOTION_URL = 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif';
+
+const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
+  'Sales',
+  'Opportunities',
+  'Projects',
+  'Time',
+  'Approvals',
+  'Billing',
+  'Invoicing',
+  'Analytics'
+]);
+
+function ProjectHealthDashboardLoginHero() {
+  const [motionMode, setMotionMode] = useState('dashboard');
+
+  return (
+    <div className="phd-auth-story-content">
+      <header className="phd-auth-story-header">
+        <SignalLogo />
+        <div className="phd-auth-motion-switcher" role="group" aria-label="Choose login animation">
+          <button
+            type="button"
+            className={motionMode === 'dashboard' ? 'is-active' : ''}
+            aria-pressed={motionMode === 'dashboard'}
+            onClick={() => setMotionMode('dashboard')}
+          >
+            Platform ecosystem
+          </button>
+          <button
+            type="button"
+            className={motionMode === 'signal' ? 'is-active' : ''}
+            aria-pressed={motionMode === 'signal'}
+            onClick={() => setMotionMode('signal')}
+          >
+            US Signal motion
+          </button>
+        </div>
+      </header>
+
+      <div className="phd-auth-story-copy">
+        <p className="phd-auth-eyebrow"><span aria-hidden="true" /> Unified business operations</p>
+        <h1>
+          Every stage of delivery.
+          <span>One intelligent workspace.</span>
+        </h1>
+        <p>
+          From the first opportunity through project delivery, invoicing, and insight—Project Health Dashboard keeps every team aligned and every decision informed.
+        </p>
+      </div>
+
+      <div className="phd-auth-motion-stage">
+        {motionMode === 'dashboard' ? (
+          <div className="phd-platform-motion" aria-label="Animated view of the Project Health Dashboard operational ecosystem">
+            <div className="phd-motion-grid" aria-hidden="true" />
+            <svg className="phd-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
+              <defs>
+                <linearGradient id="phd-flow-gradient" x1="0" x2="1">
+                  <stop offset="0%" stopColor="#63c8ff" stopOpacity="0.15" />
+                  <stop offset="50%" stopColor="#7be2d2" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="#63c8ff" stopOpacity="0.15" />
+                </linearGradient>
+              </defs>
+              <path className="phd-flow-path" d="M96 96 C208 78 228 158 320 170" />
+              <path className="phd-flow-path" d="M544 96 C432 78 412 158 320 170" />
+              <path className="phd-flow-path" d="M96 254 C206 276 224 190 320 170" />
+              <path className="phd-flow-path" d="M544 254 C434 276 416 190 320 170" />
+              <circle className="phd-flow-particle phd-flow-particle-a" r="4" />
+              <circle className="phd-flow-particle phd-flow-particle-b" r="4" />
+              <circle className="phd-flow-particle phd-flow-particle-c" r="4" />
+              <circle className="phd-flow-particle phd-flow-particle-d" r="4" />
+            </svg>
+
+            <div className="phd-system-node phd-node-sales">
+              <span className="phd-node-glyph" aria-hidden="true">SL</span>
+              <span><small>Pipeline</small>Sales</span>
+            </div>
+            <div className="phd-system-node phd-node-projects">
+              <span className="phd-node-glyph" aria-hidden="true">PJ</span>
+              <span><small>Delivery</small>Projects</span>
+            </div>
+            <div className="phd-system-node phd-node-billing">
+              <span className="phd-node-glyph" aria-hidden="true">BL</span>
+              <span><small>Revenue</small>Billing</span>
+            </div>
+            <div className="phd-system-node phd-node-time">
+              <span className="phd-node-glyph" aria-hidden="true">TM</span>
+              <span><small>Execution</small>Time</span>
+            </div>
+
+            <div className="phd-ai-core">
+              <span className="phd-ai-orbit phd-ai-orbit-one" aria-hidden="true" />
+              <span className="phd-ai-orbit phd-ai-orbit-two" aria-hidden="true" />
+              <span className="phd-ai-spark" aria-hidden="true">✦</span>
+              <strong>Celar AI</strong>
+              <small>Operational intelligence</small>
+            </div>
+
+            <div className="phd-insight-pill phd-insight-one"><span aria-hidden="true" />Opportunity qualified</div>
+            <div className="phd-insight-pill phd-insight-two"><span aria-hidden="true" />Invoice ready</div>
+            <div className="phd-insight-pill phd-insight-three"><span aria-hidden="true" />Risk identified</div>
+          </div>
+        ) : (
+          <div className="phd-signal-motion">
+            <img
+              src={PROJECT_HEALTH_DASHBOARD_MOTION_URL}
+              alt="US Signal animated connected infrastructure"
+              referrerPolicy="no-referrer"
+            />
+            <div className="phd-signal-motion-shade" aria-hidden="true" />
+            <div className="phd-signal-motion-caption">
+              <span className="phd-live-dot" aria-hidden="true" />
+              <span><small>Connected by US Signal</small>Secure operations. One intelligent platform.</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="phd-capability-rail" aria-label="Project Health Dashboard capabilities">
+        {PROJECT_HEALTH_DASHBOARD_CAPABILITIES.map((capability, index) => (
+          <span key={capability} style={{ '--phd-capability-index': index }}>{capability}</span>
+        ))}
       </div>
     </div>
   );
@@ -6126,39 +6254,55 @@ export default function App() {
 
   if (!authSession) {
     return (
-      <main className="app-shell auth-shell">
-        <section className="auth-landing-panel">
-          <div className="auth-brand-block">
-            <SignalLogo />
-            <p className="eyebrow">PHD Access</p>
-            <h1>Sign in to your role-based workspace</h1>
-            <p>
-              Use your approved Microsoft Entra email for SSO. Use the local administrator account only for break-glass access when SSO is unavailable.
-            </p>
-          </div>
+      <main className="app-shell auth-shell phd-auth-shell">
+        <section className="auth-landing-panel phd-auth-experience" aria-label="Project Health Dashboard sign in">
+          <div className="auth-card phd-auth-card">
+            <div className="phd-celar-note">
+              <span aria-hidden="true">✦</span>
+              <p><strong>Celar AI</strong><small>Your intelligent assistant is ready after sign-in.</small></p>
+            </div>
 
-          <div className="auth-card">
+            <div className="phd-auth-card-content">
+              <p className="phd-secure-label">
+                <span className="phd-secure-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><rect x="5" y="10" width="14" height="11" rx="3" /></svg>
+                </span>
+                Secure workspace
+              </p>
+              <h2>Welcome to Project Health Dashboard</h2>
+              <p className="phd-auth-intro">
+                Sign in to open the workspace tailored to your role, priorities, and active work.
+              </p>
+
             <form onSubmit={resolveLoginRoute}>
-              <label htmlFor="login-username">Email or local admin account</label>
-              <input
-                id="login-username"
-                type="text"
-                value={loginUsername}
-                placeholder="name@ussignal.com or admin@ussignal.local"
-                onChange={(event) => {
-                  setLoginUsername(event.target.value);
-                  setLoginRoute(null);
-                  setLoginStatus('');
-                  setPasswordResetStatus('');
-                }}
-              />
+              <label htmlFor="login-username">Work email or local administrator account</label>
+              <div className="phd-auth-input-wrap">
+                <span aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4V6Z" /><path d="m4 7 8 6 8-6" /></svg>
+                </span>
+                <input
+                  id="login-username"
+                  type="text"
+                  value={loginUsername}
+                  autoComplete="username"
+                  placeholder="name@ussignal.com or admin@ussignal.local"
+                  aria-describedby={loginStatus ? 'login-route-status' : 'login-security-help'}
+                  onChange={(event) => {
+                    setLoginUsername(event.target.value);
+                    setLoginRoute(null);
+                    setLoginStatus('');
+                    setPasswordResetStatus('');
+                  }}
+                />
+              </div>
 
-              <button className="primary-action" type="submit" disabled={isResolvingLogin}>
-                {isResolvingLogin ? 'Checking...' : 'Continue'}
+              <button className="primary-action phd-auth-continue" type="submit" disabled={isResolvingLogin}>
+                <span>{isResolvingLogin ? 'Checking access...' : 'Continue securely'}</span>
+                {!isResolvingLogin && <span aria-hidden="true">→</span>}
               </button>
             </form>
 
-            {loginStatus && <p className="auth-status">{loginStatus}</p>}
+            {loginStatus && <p id="login-route-status" className="auth-status" role="status">{loginStatus}</p>}
 
             {loginRoute?.loginMethod === 'sso' && (
               <div className="auth-route-box">
@@ -6207,6 +6351,30 @@ export default function App() {
                 </div>
               </div>
             )}
+
+              <div className="phd-auth-divider"><span>Protected by</span></div>
+
+              <div className="phd-auth-trust-grid" id="login-security-help">
+                <div>
+                  <span className="phd-trust-icon" aria-hidden="true">M</span>
+                  <span><strong>Microsoft Entra</strong><small>Single sign-on</small></span>
+                </div>
+                <div>
+                  <span className="phd-trust-icon" aria-hidden="true">✓</span>
+                  <span><strong>Role-based access</strong><small>Governed and auditable</small></span>
+                </div>
+              </div>
+            </div>
+
+            <footer className="phd-auth-footer">
+              <span className="phd-system-status"><span aria-hidden="true" /> Secure access ready</span>
+              <span className="phd-footer-separator" aria-hidden="true" />
+              <span>Authorized US Signal users only</span>
+            </footer>
+          </div>
+
+          <div className="auth-brand-block phd-auth-story">
+            <ProjectHealthDashboardLoginHero />
           </div>
         </section>
       </main>

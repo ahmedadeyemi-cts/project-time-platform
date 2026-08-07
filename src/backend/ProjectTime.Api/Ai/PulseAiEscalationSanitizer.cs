@@ -121,8 +121,13 @@ public sealed class PulseAiEscalationSanitizer
         RegexTimeout);
 
     private static readonly Regex LeadingNamedActor = new(
-        @"\b[A-Z][\p{L}\p{M}'’\-]+(?:[ \t]+[A-Z][\p{L}\p{M}'’\-]+){1,3}[ \t]+(?=(?:asked|approved|requested|confirmed|reported|provided|joined|emailed|called|reviewed|validated|assigned|submitted)\b)",
+        @"(?:^|(?<=[.!?][ \t]))[A-Z][\p{L}\p{M}'’\-]+(?:[ \t]+[A-Z][\p{L}\p{M}'’\-]+){0,3}[ \t]+(?=(?:asked|approved|requested|confirmed|reported|provided|joined|emailed|called|reviewed|validated|assigned|submitted|supported|coordinated|configured|tested|documented|investigated|implemented|updated|prepared|performed|verified|resolved|troubleshot)\b)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex UnsupportedOutcomeClaim = new(
+        @"\b(?:completed|resolved|fixed|closed|approved|accepted|delivered|finished|finali[sz]ed)\b|\b(?:approvals?|acceptances?|completions?|resolutions?|success(?:es)?|deliver(?:y|ies))\b(?![ \t]+(?:criteria|plan|planning|steps|procedure|procedures|checklist|requirements|approach|timeline)\b)|\b(?:issue|incident|problem|request|task|work|implementation|configuration|service|system|deployment|migration|testing|validation|remediation|rollout|change|result|outcome)[ \t]+(?:was|were|is|are|has[ \t]+been|have[ \t]+been)[ \t]+(?:implemented|validated|verified|successful)\b|\bsuccessful[ \t]+(?:implementation|configuration|deployment|migration|testing|validation|remediation|rollout|change|result|outcome)\b|\bsuccessfully[ \t]+(?:implemented|configured|deployed|migrated|remediated|validated|verified|rolled[ \t]+out)\b",
+        CommonOptions,
         RegexTimeout);
 
     private static readonly Regex PossessiveProperName = new(
@@ -158,17 +163,29 @@ public sealed class PulseAiEscalationSanitizer
     private static readonly HashSet<string> ApprovedCapitalizedWords = new(StringComparer.Ordinal)
     {
         "A", "AI", "API", "Active", "Additional", "After", "Alto", "Analyzed", "Ansible", "Assessed",
-        "Azure", "AWS", "BGP", "Category", "Cisco", "Completed", "Configured", "Coordinated", "Created",
+        "Azure", "AWS", "BGP", "Category", "Cisco", "Configured", "Coordinated", "Created",
         "Customer", "Developed", "DHCP", "DNS", "Docker", "Documented", "EDR", "Engineer", "Entra",
         "Evaluated", "Exchange", "Fortinet", "Google", "HPE", "HTTP", "HTTPS", "IAM", "If",
         "Implemented", "Implementation", "Installed", "Investigated", "I",
         "JSON", "Juniper", "Kubernetes", "LAN", "Linux", "Make", "Meraki", "MFA", "Microsoft",
         "MySQL", "Never", "No", "Open", "Oracle", "OSPF", "PaaS", "Palo", "PostgreSQL", "Prefer",
-        "Performed", "Prepared", "Primary", "Privacy", "Project", "PSA", "RDP", "Resolved", "REST",
+        "Performed", "Prepared", "Primary", "Privacy", "Project", "PSA", "RDP", "REST",
         "Return", "Reviewed", "Row", "Rules", "SaaS", "SharePoint", "SIEM", "SQL", "SSH", "SSO",
         "Supported", "Task", "TCP", "Teams", "Terraform", "Tested", "The", "This", "Time", "TLS",
         "Troubleshot", "UDP", "Updated", "Use", "Validated", "Verified",
         "VLAN", "VMware", "VPN", "WAN", "When", "Windows", "Work", "Write"
+    };
+
+    // Provider output often begins a sentence with an ordinary work verb. Keep
+    // that grammar valid without treating every first word as an approved name.
+    // The list is deliberately closed: an unknown leading token such as a
+    // person's or customer's name still fails the output privacy gate.
+    private static readonly HashSet<string> ApprovedSentenceStarters = new(StringComparer.Ordinal)
+    {
+        "Analyzed", "Assessed", "Assisted", "Configured", "Coordinated", "Created",
+        "Developed", "Documented", "Evaluated", "Implemented", "Installed", "Investigated",
+        "Monitored", "Performed", "Planned", "Prepared", "Provided", "Reviewed",
+        "Supported", "Tested", "Troubleshot", "Updated", "Validated", "Verified"
     };
 
     private static readonly HashSet<string> OutputBlockingCategories = new(StringComparer.OrdinalIgnoreCase)
@@ -253,6 +270,29 @@ public sealed class PulseAiEscalationSanitizer
         }
 
         decisionCode = "external_output_privacy_validated";
+        return true;
+    }
+
+    /// <summary>
+    /// Applies the stricter customer-facing Timesheet claim policy after the
+    /// common external-output privacy boundary. Other governed capabilities may
+    /// legitimately restate a server-supplied completion fact, including the
+    /// fixed Module 064 production readiness probe.
+    /// </summary>
+    public bool IsTimesheetExternalOutputSafe(
+        string? content,
+        IReadOnlyList<string>? sensitiveTerms,
+        out string decisionCode)
+    {
+        if (!IsExternalOutputSafe(content, sensitiveTerms, out decisionCode))
+            return false;
+
+        if (UnsupportedOutcomeClaim.IsMatch(content!))
+        {
+            decisionCode = "external_output_unsupported_outcome_claim";
+            return false;
+        }
+
         return true;
     }
 
@@ -544,7 +584,7 @@ public sealed class PulseAiEscalationSanitizer
         var count = 0;
         var result = PotentialProperNoun.Replace(source, match =>
         {
-            if (ApprovedCapitalizedWords.Contains(match.Value)) return match.Value;
+            if (IsApprovedCapitalizedWord(source, match)) return match.Value;
             count += 1;
             return "[REDACTED_UNAPPROVED_ENTITY]";
         });
@@ -559,6 +599,16 @@ public sealed class PulseAiEscalationSanitizer
         }
 
         return result;
+    }
+
+    private static bool IsApprovedCapitalizedWord(string source, Match match)
+    {
+        if (ApprovedCapitalizedWords.Contains(match.Value)) return true;
+        if (!ApprovedSentenceStarters.Contains(match.Value)) return false;
+        if (match.Index == 0) return true;
+
+        var prefix = source.AsSpan(0, match.Index).TrimEnd();
+        return prefix.Length > 0 && prefix[^1] is '.' or '!' or '?';
     }
 
     private static Regex SensitiveTermExpression(string term)
@@ -604,7 +654,7 @@ public sealed class PulseAiEscalationSanitizer
 
         if (PotentialProperNoun.Matches(content)
             .Cast<Match>()
-            .Any(match => !ApprovedCapitalizedWords.Contains(match.Value)))
+            .Any(match => !IsApprovedCapitalizedWord(content, match)))
         {
             return true;
         }

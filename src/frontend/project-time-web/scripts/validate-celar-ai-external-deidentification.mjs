@@ -152,6 +152,23 @@ check(
   'known and uncertain personal, customer, organization, and location entities are removed'
 );
 check(
+  'CELAR_EXTERNAL_TIMESHEET_OUTPUT_GRAMMAR',
+  containsAll(sanitizer, [
+    'ApprovedSentenceStarters',
+    'IsApprovedCapitalizedWord',
+    'LeadingNamedActor'
+  ])
+    && containsAll(externalCapsuleCatalog, [
+      'Begin every sentence',
+      'approved generic work verbs',
+      'Provided, Performed, Reviewed, Analyzed'
+    ])
+    && !externalCapsuleCatalog.includes('or Resolved')
+    && !sanitizer.includes('"Resolved"')
+    && !sanitizer.includes('"Completed"'),
+  'Claude/OpenAI Timesheet prose uses a closed generic sentence grammar while identities and unsupported outcome claims remain blocked'
+);
+check(
   'CELAR_EXTERNAL_DLP_NO_CROSS_LINE_IDENTITY_MATCH',
   sanitizer.includes('Identity labels never use \\s around separators')
     && sanitizer.includes('[ \\t]*[:=][ \\t]*')
@@ -503,16 +520,28 @@ check(
 check(
   'CELAR_EXTERNAL_OUTPUT_REVALIDATED',
   sanitizer.includes('public bool IsExternalOutputSafe(')
+    && sanitizer.includes('public bool IsTimesheetExternalOutputSafe(')
     && sanitizer.includes('public bool IsPublicExternalOutputSafe(')
     && sanitizer.includes('public bool TryPreparePublicQuestion(')
     && containsAll(externalSuccess, [
       '_sanitizer.IsExternalOutputSafe(',
+      '_sanitizer.IsTimesheetExternalOutputSafe(',
       '_sanitizer.IsPublicExternalOutputSafe(',
       'out outputDecisionCode',
       '_health.RecordFailure(target, outputDecisionCode',
       'continue;'
     ]),
   'untrusted Claude/OpenAI output is discarded if it reintroduces protected data; the isolated public-question path applies its separate credential and identifier boundary'
+);
+check(
+  'CELAR_EXTERNAL_OUTPUT_UNSUPPORTED_OUTCOME_BLOCKED',
+  containsAll(sanitizer, [
+    'UnsupportedOutcomeClaim',
+    'UnsupportedOutcomeClaim.IsMatch(',
+    'IsTimesheetExternalOutputSafe(',
+    'external_output_unsupported_outcome_claim'
+  ]),
+  'customer-facing Timesheet provider output cannot assert an unsupported completion, resolution, or terminal outcome while other routes may restate approved facts'
 );
 check(
   'CELAR_EXTERNAL_DEIDENTIFICATION_DIAGNOSTICS',
