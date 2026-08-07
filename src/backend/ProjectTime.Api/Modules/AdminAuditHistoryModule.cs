@@ -238,6 +238,20 @@ public static class AdminAuditHistoryModule
                 "pulse_ai_document_processing_event_id", "pulse_ai_document_processing_job_id",
                 "project_intake_document_id", "project_id", "actual_user_id", "effective_user_id",
                 "event_code", "event_status", "correlation_id", "diagnostic_code", "created_at"
+            ],
+            ["project_notification_dispatches"] =
+            [
+                "project_notification_dispatch_id", "project_id", "routing_rule_id", "schedule_id",
+                "notification_type", "alert_severity", "source_module", "source_status",
+                "delivery_boundary", "provider_source", "delivery_status", "scheduled_for",
+                "released_at", "released_by_user_id", "sent_at", "last_error_code",
+                "created_at", "updated_at"
+            ],
+            ["project_notification_delivery_attempts"] =
+            [
+                "project_notification_delivery_attempt_id", "project_notification_dispatch_id",
+                "attempt_number", "provider_source", "configured_provider", "recipient_boundary",
+                "attempt_status", "diagnostic_code", "attempted_at"
             ]
         };
 
@@ -594,6 +608,8 @@ public static class AdminAuditHistoryModule
             "pulse_ai_system_tool_event_id",
             "pulse_ai_retrieval_event_id",
             "pulse_ai_document_processing_event_id",
+            "project_notification_dispatch_id",
+            "project_notification_delivery_attempt_id",
             "id"
         ]);
         var hashInput = $"{tableName}|{sourceRecordId}|{eventTime:O}|{raw}|{rowIndex}";

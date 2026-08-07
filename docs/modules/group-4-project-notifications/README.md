@@ -134,6 +134,12 @@ first outcome closes the dispatch without resending; the second records immutabl
 reconciliation evidence and permits a separate deliberate retry. No timeout ever
 causes an automatic resend of an indeterminate provider call.
 
+Module 008 consumes dispatch and attempt history through explicit metadata-only
+projections. General audit viewers can see module, project ID, status, boundary,
+timestamps, and diagnostic codes, but not message subjects/bodies, document-link
+metadata, provider message IDs, or diagnostic messages. Project-scoped message
+content remains available only through the original notification authorization.
+
 ## Permissions
 
 Migration 050 adds:

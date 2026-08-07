@@ -187,6 +187,20 @@ if (backendAvailable) {
       .every((field) => auditBackend.includes(`"${field}"`)),
     'known private AI payload fields remain explicitly redacted if another source exposes them'
   );
+  const notificationDispatchProjection = metadataProjection.match(/\["project_notification_dispatches"\]\s*=\s*\[([\s\S]*?)\]\s*,/)?.[1] || '';
+  const notificationAttemptProjection = metadataProjection.match(/\["project_notification_delivery_attempts"\]\s*=\s*\[([\s\S]*?)\]\s*(?:,|\n\s*\})/)?.[1] || '';
+  check(
+    'BACKEND_NOTIFICATION_METADATA_ONLY',
+    ['project_notification_dispatch_id', 'project_id', 'notification_type', 'delivery_status', 'last_error_code', 'created_at']
+      .every((field) => notificationDispatchProjection.includes(`"${field}"`))
+      && ['subject', 'text_body', 'html_body', 'metadata_json', 'provider_message_id', 'last_error_message']
+        .every((field) => !notificationDispatchProjection.includes(`"${field}"`))
+      && ['project_notification_delivery_attempt_id', 'project_notification_dispatch_id', 'attempt_status', 'diagnostic_code', 'attempted_at']
+        .every((field) => notificationAttemptProjection.includes(`"${field}"`))
+      && ['provider_message_id', 'diagnostic_message']
+        .every((field) => !notificationAttemptProjection.includes(`"${field}"`)),
+    'notification audit sources expose operational metadata without bodies, document links, provider IDs, or diagnostic payloads'
+  );
   check('BACKEND_API_LIFECYCLE', auditBackend.includes('ApplicationStarted') && auditBackend.includes('ApplicationStopping') && auditBackend.includes('API_STARTED') && auditBackend.includes('API_STOPPING'), 'API start and stop evidence');
   check('BACKEND_MULTI_TEAM', teamBackend.includes('multipleTeamsPerManager = true') && teamBackend.includes('oneActiveManagerPerTeam = true'), 'manager scope contract');
   check('BACKEND_MEMBER_RECONCILIATION', teamBackend.includes('UPDATE app_users') && teamBackend.includes('manager_email = @manager_email') && teamBackend.includes('membersUpdated'), 'team members receive manager email');
