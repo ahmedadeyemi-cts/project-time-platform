@@ -42,6 +42,7 @@ public static class SecurityHardeningModule
         "quote",
         "proposal",
         "order_form",
+        "purchase_order",
         "architecture",
         "supporting_document",
         "other"

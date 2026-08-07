@@ -80,8 +80,12 @@ for (const api of [
   '/api/project-notifications/evaluate',
   '/api/project-notifications/dispatches',
   '/api/project-notifications/delivery-monitor',
+  '/api/project-notifications/dispatches/${dispatchId}/${endpointAction}',
   '/api/project-notifications/run-due'
 ]) contains(component, api, 'Group 4 frontend API');
+for (const marker of ['CONFIRM PROVIDER SENT', 'CONFIRM PROVIDER DID NOT SEND', 'reconcile-sent', 'reconcile-not-sent']) {
+  contains(component, marker, 'fail-closed delivery outcome reconciliation');
+}
 assert(!component.includes('GlobalMailConfigurationCenter'), 'Group 4 UI must not consume retired Module 067.');
 assert(!component.includes('CertifyIntegrationCenter'), 'Group 4 UI must not modify Module 038.');
 
@@ -207,6 +211,7 @@ if (fullRepositoryContext) {
     '/api/project-notifications/delivery-monitor',
     '/api/project-notifications/dispatches/{dispatchId:guid}/release',
     '/api/project-notifications/dispatches/{dispatchId:guid}/retry',
+    '/api/project-notifications/dispatches/{dispatchId:guid}/reconcile',
     '/api/project-notifications/run-due',
     '/api/project-notifications/closeout/queue'
   ];
@@ -223,6 +228,7 @@ if (fullRepositoryContext) {
     'EvaluateAsync',
     'ReleaseDispatchAsync',
     'RetryDispatchAsync',
+    'ReconcileDispatchAsync',
     'QueueCloseoutAsync'
   ]) contains(service, marker, 'Group 4 application service');
   for (const marker of [
@@ -230,6 +236,7 @@ if (fullRepositoryContext) {
     'ProjectNotificationScheduleUpdateRequest',
     'ProjectNotificationEvaluationRequest',
     'ProjectCloseoutNotificationRequest',
+    'ProjectNotificationReconciliationRequest',
     'ProjectNotificationDispatchRow'
   ]) contains(contracts, marker, 'Group 4 contracts');
   for (const marker of [
@@ -252,6 +259,7 @@ if (fullRepositoryContext) {
   contains(processing, 'UpsertDispatchAsync', 'durable dispatch processing');
   contains(processing, 'TryClaimDispatchDeliveryAsync', 'atomic delivery claim');
   contains(processing, 'notification_delivery_in_progress', 'concurrent delivery suppression');
+  contains(processing, 'notification_delivery_outcome_unknown', 'indeterminate provider outcome boundary');
   contains(quietHours, 'IsQuietHours', 'quiet-hours enforcement');
   contains(quietHours, 'EndOfQuietHours', 'quiet-hours deferral');
   contains(repository, 'MigrationReadyAsync', 'migration readiness guard');
@@ -259,6 +267,9 @@ if (fullRepositoryContext) {
   contains(repository, 'LoadDispatchesAsync', 'delivery monitor source');
   contains(repository, "delivery_status IN ('sent','sending')", 'sent and in-flight dispatch upsert protection');
   contains(repository, "delivery_status IN ('preview_ready','held','queued','failed','suppressed')", 'atomic eligible-state delivery claim');
+  for (const marker of ['DeliveryClaimReconciliationDelay', 'MarkDispatchDeliveryOutcomeUnknownAsync', 'ReconcileDispatchDeliveryAsync', 'DELIVERY_CONFIRMED_SENT', 'DELIVERY_CONFIRMED_NOT_SENT']) {
+    contains(repository, marker, 'recoverable delivery claim reconciliation');
+  }
   contains(scheduler, 'ApplicationStarted', 'bounded scheduler startup');
   contains(scheduler, 'TryAcquireSchedulerLockAsync', 'scheduler advisory lock usage');
 

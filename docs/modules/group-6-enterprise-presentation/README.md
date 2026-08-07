@@ -81,6 +81,10 @@ Account Executive, Solution Architect/SA/SAA, coordinator, and governed intake
 management authorities. All other modules continue to use their current server
 and frontend permission checks.
 
+Module 027's signed-package uploader and the central upload-security boundary use
+the same SOW, GSD, purchase-order, and supporting-document categories, so a
+purchase order offered by the workflow is accepted by the server-side allowlist.
+
 ### More menu
 
 The permission-aware More menu is excluded. Group 6 does not modify its routes, labels, grouping, filtering, or security behavior. That responsibility remains with Group 1.

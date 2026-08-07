@@ -6,6 +6,8 @@ namespace ProjectTime.Api.Modules;
 
 internal static class ProjectNotificationRepository
 {
+    internal static readonly TimeSpan DeliveryClaimReconciliationDelay = TimeSpan.FromMinutes(10);
+
     private static readonly string[] BroadRoles =
     [
         "SUPER_ADMINISTRATOR", "ADMINISTRATOR", "PROJECT_TEAM_COORDINATOR",
@@ -760,6 +762,222 @@ internal static class ProjectNotificationRepository
         }
     }
 
+    internal static async Task MarkDispatchDeliveryOutcomeUnknownAsync(
+        NpgsqlConnection connection,
+        Guid dispatchId,
+        Guid? releasedBy,
+        string reason,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using var command = new NpgsqlCommand("""
+                UPDATE project_notification_dispatches
+                SET last_error_code='DELIVERY_OUTCOME_UNKNOWN',
+                    last_error_message='The provider call finished, but its result could not be finalized. Review provider evidence before reconciling this dispatch.'
+                WHERE project_notification_dispatch_id=@dispatch_id
+                  AND delivery_status='sending';
+                """, connection, transaction);
+            command.Parameters.AddWithValue("dispatch_id", dispatchId);
+            var changed = await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+            if (changed)
+            {
+                await WriteAuditAsync(
+                    connection,
+                    transaction,
+                    "dispatch",
+                    dispatchId,
+                    "NOTIFICATION_DELIVERY_OUTCOME_UNKNOWN",
+                    releasedBy,
+                    reason,
+                    new { deliveryStatus = "sending" },
+                    new
+                    {
+                        deliveryStatus = "sending",
+                        diagnosticCode = "DELIVERY_OUTCOME_UNKNOWN",
+                        automaticRetryAllowed = false
+                    },
+                    correlationId,
+                    cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    internal static async Task<DispatchDeliveryReconciliationResult> ReconcileDispatchDeliveryAsync(
+        NpgsqlConnection connection,
+        Guid dispatchId,
+        Guid reconciledBy,
+        bool confirmedSent,
+        string reason,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            string? currentStatus = null;
+            var updatedAt = DateTimeOffset.MinValue;
+            var providerSource = "module_065";
+            var deliveryBoundary = "locked";
+            var providerMessageId = string.Empty;
+            await using (var read = new NpgsqlCommand("""
+                SELECT delivery_status,
+                       updated_at,
+                       provider_source,
+                       delivery_boundary,
+                       COALESCE(provider_message_id,'')
+                FROM project_notification_dispatches
+                WHERE project_notification_dispatch_id=@dispatch_id
+                FOR UPDATE;
+                """, connection, transaction))
+            {
+                read.Parameters.AddWithValue("dispatch_id", dispatchId);
+                await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    currentStatus = reader.GetString(0);
+                    updatedAt = ReadDateTimeOffset(reader, 1);
+                    providerSource = reader.GetString(2);
+                    deliveryBoundary = reader.GetString(3);
+                    providerMessageId = reader.GetString(4);
+                }
+            }
+
+            if (currentStatus is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return DispatchDeliveryReconciliationResult.NotFound(dispatchId);
+            }
+            if (!string.Equals(currentStatus, "sending", StringComparison.OrdinalIgnoreCase))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return DispatchDeliveryReconciliationResult.NotSending(dispatchId, currentStatus);
+            }
+
+            var availableAt = updatedAt.Add(DeliveryClaimReconciliationDelay);
+            if (DateTimeOffset.UtcNow < availableAt)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return DispatchDeliveryReconciliationResult.Waiting(dispatchId, availableAt);
+            }
+
+            var nextStatus = confirmedSent ? "sent" : "failed";
+            var diagnosticCode = confirmedSent
+                ? "DELIVERY_CONFIRMED_SENT"
+                : "DELIVERY_CONFIRMED_NOT_SENT";
+            var diagnosticMessage = confirmedSent
+                ? "An authorized operator confirmed delivery from provider evidence after the application result became indeterminate."
+                : "An authorized operator confirmed that the provider did not send the message. A separate explicit retry is now permitted.";
+
+            await using (var attempt = new NpgsqlCommand("""
+                INSERT INTO project_notification_delivery_attempts (
+                    project_notification_dispatch_id,
+                    attempt_number,
+                    provider_source,
+                    configured_provider,
+                    recipient_boundary,
+                    attempt_status,
+                    provider_message_id,
+                    diagnostic_code,
+                    diagnostic_message,
+                    attempted_at
+                )
+                SELECT @dispatch_id,
+                       COALESCE(MAX(existing.attempt_number),0) + 1,
+                       @provider_source,
+                       'manual_reconciliation',
+                       @boundary,
+                       @status,
+                       @message_id,
+                       @diagnostic_code,
+                       @diagnostic_message,
+                       NOW()
+                FROM project_notification_delivery_attempts existing
+                WHERE existing.project_notification_dispatch_id=@dispatch_id;
+                """, connection, transaction))
+            {
+                attempt.Parameters.AddWithValue("dispatch_id", dispatchId);
+                attempt.Parameters.AddWithValue("provider_source", providerSource);
+                attempt.Parameters.AddWithValue("boundary", deliveryBoundary);
+                attempt.Parameters.AddWithValue("status", nextStatus);
+                attempt.Parameters.AddWithValue("message_id", providerMessageId);
+                attempt.Parameters.AddWithValue("diagnostic_code", diagnosticCode);
+                attempt.Parameters.AddWithValue("diagnostic_message", diagnosticMessage);
+                await attempt.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var update = new NpgsqlCommand("""
+                UPDATE project_notification_dispatches
+                SET delivery_status=@status,
+                    sent_at=CASE WHEN @confirmed_sent THEN COALESCE(sent_at,NOW()) ELSE sent_at END,
+                    last_error_code=CASE WHEN @confirmed_sent THEN '' ELSE @diagnostic_code END,
+                    last_error_message=CASE WHEN @confirmed_sent THEN '' ELSE @diagnostic_message END,
+                    updated_at=NOW()
+                WHERE project_notification_dispatch_id=@dispatch_id
+                  AND delivery_status='sending';
+                """, connection, transaction))
+            {
+                update.Parameters.AddWithValue("status", nextStatus);
+                update.Parameters.AddWithValue("confirmed_sent", confirmedSent);
+                update.Parameters.AddWithValue("diagnostic_code", diagnosticCode);
+                update.Parameters.AddWithValue("diagnostic_message", diagnosticMessage);
+                update.Parameters.AddWithValue("dispatch_id", dispatchId);
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var recipients = new NpgsqlCommand("""
+                UPDATE project_notification_dispatch_recipients
+                SET delivery_status=@status
+                WHERE project_notification_dispatch_id=@dispatch_id;
+                """, connection, transaction))
+            {
+                recipients.Parameters.AddWithValue("status", confirmedSent ? "sent" : "failed");
+                recipients.Parameters.AddWithValue("dispatch_id", dispatchId);
+                await recipients.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await WriteAuditAsync(
+                connection,
+                transaction,
+                "dispatch",
+                dispatchId,
+                confirmedSent
+                    ? "NOTIFICATION_DELIVERY_RECONCILED_SENT"
+                    : "NOTIFICATION_DELIVERY_RECONCILED_NOT_SENT",
+                reconciledBy,
+                reason,
+                new { deliveryStatus = currentStatus, outcome = "unknown" },
+                new
+                {
+                    deliveryStatus = nextStatus,
+                    outcome = confirmedSent ? "confirmed_sent" : "confirmed_not_sent",
+                    automaticRetryAllowed = false,
+                    explicitRetryAllowed = !confirmedSent
+                },
+                correlationId,
+                cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            return DispatchDeliveryReconciliationResult.Reconciled(
+                dispatchId,
+                nextStatus,
+                confirmedSent);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     internal static async Task RecordDeliveryAsync(
         NpgsqlConnection connection,
         ProjectNotificationDispatchRow dispatch,
@@ -1357,6 +1575,30 @@ internal static class ProjectNotificationRepository
         string DiagnosticCode,
         string DiagnosticMessage,
         DateTimeOffset AttemptedAt);
+
+    internal sealed record DispatchDeliveryReconciliationResult(
+        Guid DispatchId,
+        bool Success,
+        bool Found,
+        string Status,
+        string Message,
+        DateTimeOffset? AvailableAt,
+        bool ConfirmedSent)
+    {
+        internal static DispatchDeliveryReconciliationResult NotFound(Guid dispatchId) =>
+            new(dispatchId, false, false, "notification_dispatch_not_found", "The notification dispatch was not found.", null, false);
+
+        internal static DispatchDeliveryReconciliationResult NotSending(Guid dispatchId, string status) =>
+            new(dispatchId, false, true, "notification_reconciliation_not_required", $"The dispatch is {status} and does not require outcome reconciliation.", null, false);
+
+        internal static DispatchDeliveryReconciliationResult Waiting(Guid dispatchId, DateTimeOffset availableAt) =>
+            new(dispatchId, false, true, "notification_reconciliation_waiting", "The delivery claim is still within its execution window. Wait for normal finalization before reconciling it.", availableAt, false);
+
+        internal static DispatchDeliveryReconciliationResult Reconciled(Guid dispatchId, string status, bool confirmedSent) =>
+            new(dispatchId, true, true, status, confirmedSent
+                ? "Provider evidence was reconciled as sent. No resend is permitted."
+                : "Provider evidence was reconciled as not sent. An authorized operator may now issue a separate retry.", null, confirmedSent);
+    }
 
     private sealed record DispatchBasic(
         Guid DispatchId,

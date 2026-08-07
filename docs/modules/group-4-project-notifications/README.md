@@ -126,6 +126,14 @@ workers observe that in-flight claim and do not call the provider. Event-key
 upserts preserve both `sending` and `sent`, so a repeated Module 027 handoff
 cannot reset an active claim or produce a duplicate PTC notification.
 
+If a provider call completes but the database cannot finalize its outcome, the
+dispatch remains `sending` and automatic retry stays blocked. After a ten-minute
+safety window, an authorized non-View-As operator must review Module 065/provider
+evidence in Module 032 and explicitly confirm either `sent` or `not sent`. The
+first outcome closes the dispatch without resending; the second records immutable
+reconciliation evidence and permits a separate deliberate retry. No timeout ever
+causes an automatic resend of an indeterminate provider call.
+
 ## Permissions
 
 Migration 050 adds:

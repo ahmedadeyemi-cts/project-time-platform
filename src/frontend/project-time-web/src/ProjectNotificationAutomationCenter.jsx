@@ -109,6 +109,16 @@ function dateTime(value) {
   return Number.isNaN(parsed.getTime()) ? 'Not recorded' : parsed.toLocaleString();
 }
 
+function deliveryReconciliationAvailableAt(updatedAt) {
+  const claimedAt = Date.parse(updatedAt || '');
+  return Number.isFinite(claimedAt) ? new Date(claimedAt + (10 * 60 * 1000)).toISOString() : null;
+}
+
+function deliveryReconciliationReady(updatedAt) {
+  const availableAt = deliveryReconciliationAvailableAt(updatedAt);
+  return Boolean(availableAt && Date.parse(availableAt) <= Date.now());
+}
+
 function tone(value) {
   const normalized = String(value ?? '').toLowerCase();
   if (['sent', 'healthy', 'ready', 'active', 'completed', 'production_governed'].some((item) => normalized.includes(item))) return 'healthy';
@@ -383,6 +393,7 @@ function DeliveryMonitor({ payload, onAction, busy }) {
         {[
           ['Dispatches', payload?.summary?.dispatchCount ?? dispatches.length, 'Current role scope'],
           ['Queued / held', Number(payload?.summary?.queued || 0) + Number(payload?.summary?.held || 0), 'Awaiting governed boundary'],
+          ['In flight', payload?.summary?.sending ?? 0, 'Fail-closed outcome reconciliation'],
           ['Sent', payload?.summary?.sent ?? 0, 'Module 065 delivery evidence'],
           ['Failed', payload?.summary?.failed ?? 0, 'Source-specific retry available'],
           ['Active rules', payload?.summary?.activeRules ?? 0, 'Module 022 configuration'],
@@ -391,7 +402,7 @@ function DeliveryMonitor({ payload, onAction, busy }) {
       </section>
       <section className="group4-card">
         <div className="group4-section-heading"><div><p className="group4-eyebrow">Operational inbox</p><h3>Dispatches and recipients</h3><p>Recipients show the exact project field or assignment used to derive each address.</p></div><div className="group4-monitor-actions"><Status value={canDeliver ? 'delivery_authorized' : 'view_only'} /><a href="#audit-history">Open consolidated Audit History</a></div></div>
-        <div className="group4-monitor-filters"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search subject, module, recipient…" aria-label="Search notification history" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter notification status"><option value="all">All statuses</option>{['queued', 'held', 'sent', 'failed', 'suppressed'].map((status) => <option key={status} value={status}>{label(status)}</option>)}</select><span>{filteredDispatches.length} shown · latest 100</span></div>
+        <div className="group4-monitor-filters"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search subject, module, recipient…" aria-label="Search notification history" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter notification status"><option value="all">All statuses</option>{['queued', 'held', 'sending', 'sent', 'failed', 'suppressed'].map((status) => <option key={status} value={status}>{label(status)}</option>)}</select><span>{filteredDispatches.length} shown · latest 100</span></div>
         <div className="group4-table-wrap">
           <table className="group4-table">
             <thead><tr><th>Created</th><th>Notification</th><th>Recipients</th><th>Boundary</th><th>Status</th><th>Sent</th><th>Diagnostic</th><th>Actions</th></tr></thead>
@@ -405,7 +416,7 @@ function DeliveryMonitor({ payload, onAction, busy }) {
                   <td><Status value={dispatch.deliveryStatus} /><small>{dispatch.attemptCount || 0} attempt(s)</small></td>
                   <td>{dateTime(dispatch.sentAt)}</td>
                   <td>{dispatch.lastErrorCode ? <><strong>{dispatch.lastErrorCode}</strong><span>{dispatch.lastErrorMessage}</span></> : 'None'}</td>
-                  <td>{canDeliver && dispatch.deliveryStatus !== 'sent' ? <div className="group4-row-actions"><button type="button" disabled={busy === dispatch.dispatchId} onClick={() => onAction(dispatch.dispatchId, 'release')}>Release</button>{dispatch.deliveryStatus === 'failed' ? <button type="button" disabled={busy === dispatch.dispatchId} onClick={() => onAction(dispatch.dispatchId, 'retry')}>Retry</button> : null}</div> : '—'}</td>
+                  <td>{canDeliver && dispatch.deliveryStatus === 'sending' ? <div className="group4-row-actions"><button type="button" disabled={busy === dispatch.dispatchId || !deliveryReconciliationReady(dispatch.updatedAt)} onClick={() => onAction(dispatch.dispatchId, 'reconcile-sent')}>Confirm sent</button><button type="button" disabled={busy === dispatch.dispatchId || !deliveryReconciliationReady(dispatch.updatedAt)} onClick={() => onAction(dispatch.dispatchId, 'reconcile-not-sent')}>Confirm not sent</button><small>Available {dateTime(deliveryReconciliationAvailableAt(dispatch.updatedAt))}. Review provider evidence first.</small></div> : canDeliver && dispatch.deliveryStatus !== 'sent' ? <div className="group4-row-actions"><button type="button" disabled={busy === dispatch.dispatchId} onClick={() => onAction(dispatch.dispatchId, 'release')}>Release</button>{dispatch.deliveryStatus === 'failed' ? <button type="button" disabled={busy === dispatch.dispatchId} onClick={() => onAction(dispatch.dispatchId, 'retry')}>Retry</button> : null}</div> : '—'}</td>
                 </tr>
               ))}
               {filteredDispatches.length === 0 ? <tr><td colSpan="8"><div className="group4-empty">No notification dispatches match the current filters.</div></td></tr> : null}
@@ -522,9 +533,32 @@ export default function ProjectNotificationAutomationCenter({ workspace = 'deliv
   }
 
   async function dispatchAction(dispatchId, action) {
+    const reconciliation = action === 'reconcile-sent' || action === 'reconcile-not-sent';
+    const confirmedSent = action === 'reconcile-sent';
+    const confirmation = confirmedSent ? 'CONFIRM PROVIDER SENT' : 'CONFIRM PROVIDER DID NOT SEND';
+    let body = { reason: `${label(action)} requested from Module 032 Notification Delivery Monitor.` };
+    let endpointAction = action;
+    if (reconciliation) {
+      const typed = window.prompt(`Review the Module 065/provider evidence first. Type ${confirmation} exactly.`, '');
+      if (typed !== confirmation) {
+        setNotice('Outcome reconciliation was cancelled. The fail-closed delivery claim remains unchanged.');
+        return;
+      }
+      const reason = window.prompt('Describe the provider evidence you reviewed (at least 10 characters).', '');
+      if (!reason || reason.trim().length < 10) {
+        setNotice('Outcome reconciliation was cancelled because an evidence reason was not recorded.');
+        return;
+      }
+      endpointAction = 'reconcile';
+      body = {
+        outcome: confirmedSent ? 'confirmed_sent' : 'confirmed_not_sent',
+        confirmation,
+        reason: reason.trim()
+      };
+    }
     setActionBusy(dispatchId);
     try {
-      const result = await requestJson(`/api/project-notifications/dispatches/${dispatchId}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: `${label(action)} requested from Module 032 Notification Delivery Monitor.` }) });
+      const result = await requestJson(`/api/project-notifications/dispatches/${dispatchId}/${endpointAction}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       setNotice(result.message || `Dispatch ${action} completed.`);
       await load();
     } catch (error) {

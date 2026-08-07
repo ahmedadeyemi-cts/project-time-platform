@@ -522,6 +522,7 @@ internal static class ProjectNotificationAutomationService
                     dispatchCount = dispatches.Count,
                     queued = dispatches.Count(item => item.DeliveryStatus == "queued"),
                     held = dispatches.Count(item => item.DeliveryStatus is "held" or "preview_ready"),
+                    sending = dispatches.Count(item => item.DeliveryStatus == "sending"),
                     sent = dispatches.Count(item => item.DeliveryStatus == "sent"),
                     failed = dispatches.Count(item => item.DeliveryStatus == "failed"),
                     suppressed = dispatches.Count(item => item.DeliveryStatus == "suppressed"),
@@ -567,6 +568,87 @@ internal static class ProjectNotificationAutomationService
             request,
             context,
             true);
+
+    internal static async Task<IResult> ReconcileDispatchAsync(
+        Guid dispatchId,
+        ProjectNotificationReconciliationRequest request,
+        HttpContext context)
+    {
+        var outcome = ProjectNotificationEvaluator.Clean(
+            request.Outcome ?? string.Empty,
+            40,
+            string.Empty).ToLowerInvariant();
+        var expectedConfirmation = outcome switch
+        {
+            "confirmed_sent" => "CONFIRM PROVIDER SENT",
+            "confirmed_not_sent" => "CONFIRM PROVIDER DID NOT SEND",
+            _ => string.Empty
+        };
+        if (expectedConfirmation.Length == 0)
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_outcome_required",
+                message = "Choose confirmed_sent or confirmed_not_sent after reviewing the provider evidence."
+            });
+        }
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                expectedConfirmation,
+                StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_confirmation_required",
+                message = $"Type {expectedConfirmation} exactly to reconcile this provider outcome."
+            });
+        }
+
+        var reason = ProjectNotificationEvaluator.Clean(
+            request.Reason ?? string.Empty,
+            1000,
+            string.Empty);
+        if (reason.Length < 10)
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_reason_required",
+                message = "Record at least 10 characters describing the provider evidence reviewed."
+            });
+        }
+
+        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => actor.CanDeliver);
+        if (access.Failure is not null) return access.Failure;
+        await using var connection = access.Connection!;
+        var result = await ProjectNotificationRepository.ReconcileDispatchDeliveryAsync(
+            connection,
+            dispatchId,
+            access.Actor!.ActualUserId,
+            outcome == "confirmed_sent",
+            reason,
+            context.TraceIdentifier,
+            context.RequestAborted);
+
+        return Results.Json(new
+        {
+            module = "032",
+            status = result.Status,
+            result.Success,
+            result.DispatchId,
+            result.ConfirmedSent,
+            result.AvailableAt,
+            result.Message
+        }, statusCode: result.Success
+            ? StatusCodes.Status200OK
+            : !result.Found
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status409Conflict);
+    }
 
     private static async Task<IResult> ReleaseOrRetryAsync(
         Guid dispatchId,

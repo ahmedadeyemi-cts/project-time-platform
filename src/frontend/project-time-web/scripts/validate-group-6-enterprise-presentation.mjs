@@ -21,6 +21,7 @@ const files = {
   app: path.join(sourceRoot, 'App.jsx'),
   salesDelivery: path.join(enterpriseRoot, 'SalesDeliveryWorkflowCenter.jsx'),
   intakeBackend: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'),
+  securityHardening: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs'),
   documentation: path.join(repositoryRoot, 'docs/modules/group-6-enterprise-presentation/README.md')
 };
 
@@ -175,11 +176,14 @@ assert(
 if (fullRepositoryContext) {
   const documentation = read(files.documentation);
   const intakeBackend = read(files.intakeBackend);
+  const securityHardening = read(files.securityHardening);
   contains(intakeBackend, 'ORDER BY uploaded_at, original_file_name', 'signed-handoff document chronology');
   assert(!intakeBackend.includes('ORDER BY created_at, original_file_name'), 'The signed-handoff query must use the real project_intake_documents uploaded_at column.');
   for (const marker of ['CanSubmitSignedHandoff', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT', '"SA"', '"SAA"', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_DOCUMENTS']) {
     contains(intakeBackend, marker, 'Module 027 submitter authority');
   }
+  contains(salesDelivery, "'purchase_order'", 'purchase-order upload category');
+  contains(securityHardening, '"purchase_order"', 'purchase-order upload security allowlist');
   for (const moduleCode of Object.keys(targetModules)) {
     contains(documentation, `Module ${moduleCode}`, `Module ${moduleCode} documentation`);
   }

@@ -293,3 +293,8 @@ internal sealed record ProjectCloseoutCcRecipient(string? Name, string? Email);
 internal sealed record ProjectNotificationReleaseRequest(
     string? Reason,
     bool? ForceRetry);
+
+internal sealed record ProjectNotificationReconciliationRequest(
+    string? Outcome,
+    string? Confirmation,
+    string? Reason);

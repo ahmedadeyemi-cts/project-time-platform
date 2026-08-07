@@ -322,16 +322,32 @@ internal static class ProjectNotificationProcessingService
                 context?.TraceIdentifier ?? "scheduler",
                 cancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
+            try
+            {
+                using var reconciliationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await ProjectNotificationRepository.MarkDispatchDeliveryOutcomeUnknownAsync(
+                    connection,
+                    dispatch.DispatchId,
+                    releasedByUserId,
+                    "Delivery result persistence failed after the provider boundary was invoked.",
+                    context?.TraceIdentifier ?? "scheduler",
+                    reconciliationTimeout.Token);
+            }
+            catch
+            {
+                // The durable sending claim remains the fail-closed recovery signal even
+                // when the same database outage prevents recording this diagnostic.
+            }
             return new(
                 false,
-                "failed",
+                "notification_delivery_outcome_unknown",
                 delivery.Provider,
                 delivery.RecipientBoundary,
                 delivery.ProviderMessageId,
-                ProjectNotificationRepository.Diagnostic(exception),
-                "The delivery result could not be recorded. Retry after the database source is restored.",
+                "DELIVERY_OUTCOME_UNKNOWN",
+                "The provider outcome could not be finalized. Do not resend. Review provider evidence and use Module 032 outcome reconciliation after the safety window.",
                 dispatch.DispatchId,
                 dispatch.AttemptCount);
         }

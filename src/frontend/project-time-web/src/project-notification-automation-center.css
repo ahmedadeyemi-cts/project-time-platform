@@ -686,6 +686,12 @@
   padding: 0.35rem 0.55rem;
 }
 
+.group4-row-actions small {
+  flex-basis: 100%;
+  color: var(--group4-slate-500);
+  line-height: 1.35;
+}
+
 .group4-attempt-list article {
   display: grid;
   grid-template-columns: minmax(160px, 0.35fr) auto 1fr;
