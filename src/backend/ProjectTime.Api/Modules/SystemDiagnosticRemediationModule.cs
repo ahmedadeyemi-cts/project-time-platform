@@ -14,7 +14,8 @@ namespace ProjectTime.Api.Modules;
 public static class SystemDiagnosticRemediationModule
 {
     private const string ModuleNumber = "998";
-    private const string ContractVersion = "2026-07-21.2";
+    private const string ContractVersion = "2026-08-07.1";
+    private static readonly TimeSpan RestartExecutionLease = TimeSpan.FromMinutes(3);
     private static readonly string[] ViewRoles = ["SUPER_ADMINISTRATOR", "ADMINISTRATOR", "SECURITY_ANALYST", "SECURITY_OPERATIONS"];
     private static readonly string[] ManageRoles = ["SUPER_ADMINISTRATOR", "ADMINISTRATOR"];
 
@@ -359,14 +360,16 @@ public static class SystemDiagnosticRemediationModule
         await using (connection)
         {
             await using var read = new NpgsqlCommand("""
-                SELECT diagnostic_session_id, action_code, target_reference, state, requested_by, approved_by
+                SELECT diagnostic_session_id, action_code, target_reference, state, requested_by, approved_by,
+                       executed_by, COALESCE(result_json::text, '{}')
                 FROM projectpulse_remediation_requests WHERE remediation_request_id = @request_id;
                 """, connection);
             read.Parameters.AddWithValue("request_id", request.RemediationRequestId);
             await using var reader = await read.ExecuteReaderAsync(context.RequestAborted);
             if (!await reader.ReadAsync(context.RequestAborted)) return Results.NotFound(new { module = ModuleNumber, status = "remediation_not_found" });
             var sessionId = reader.GetGuid(0); var action = reader.GetString(1); var target = reader.GetString(2); var state = reader.GetString(3);
-            var requestedBy = reader.GetGuid(4); var approvedBy = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5); await reader.DisposeAsync();
+            var requestedBy = reader.GetGuid(4); var approvedBy = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5);
+            var executedBy = reader.IsDBNull(6) ? (Guid?)null : reader.GetGuid(6); var existingResultJson = reader.GetString(7); await reader.DisposeAsync();
             if (approvedBy is null || requestedBy == approvedBy)
                 return Results.Json(new { module = ModuleNumber, status = "approved_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
             if (action == "restart_service")
@@ -375,12 +378,86 @@ public static class SystemDiagnosticRemediationModule
                     return Results.Json(new { module = ModuleNumber, status = "staged_remediation_required", message = "Restart execution requires the approved plan to complete target and rollback-readiness staging." }, statusCode: StatusCodes.Status409Conflict);
 
                 var readiness = AzureOperationsReadiness();
+                var claimedAt = DateTimeOffset.UtcNow;
+                if (executedBy.HasValue)
+                {
+                    var existingClaim = ReadRestartExecutionClaim(existingResultJson);
+                    if (existingClaim?.LeaseExpiresAt is DateTimeOffset leaseExpiresAt && leaseExpiresAt > claimedAt)
+                        return Results.Json(new
+                        {
+                            module = ModuleNumber,
+                            status = "remediation_execution_in_progress",
+                            action,
+                            target,
+                            existingClaim.ClaimId,
+                            existingClaim.ClaimedAt,
+                            leaseExpiresAt,
+                            retryAllowed = false
+                        }, statusCode: StatusCodes.Status409Conflict);
+
+                    var reconciledAt = DateTimeOffset.UtcNow;
+                    var recoveryResult = new
+                    {
+                        action,
+                        target,
+                        outcome = "indeterminate",
+                        manualReconciliationRequired = true,
+                        retryAllowed = false,
+                        reason = "restart_execution_lease_expired_before_final_evidence",
+                        priorClaimId = existingClaim?.ClaimId,
+                        priorClaimedAt = existingClaim?.ClaimedAt,
+                        priorLeaseExpiresAt = existingClaim?.LeaseExpiresAt,
+                        reconciledAt,
+                        provider = "azure_container_apps"
+                    };
+                    await using var recoveryTransaction = await connection.BeginTransactionAsync(context.RequestAborted);
+                    await using var recovery = new NpgsqlCommand("""
+                        UPDATE projectpulse_remediation_requests
+                        SET state = 'failed', executed_at = now(), result_json = CAST(@result AS jsonb)
+                        WHERE remediation_request_id = @request_id
+                          AND state = 'staged'
+                          AND executed_by = @executed_by
+                          AND result_json = CAST(@expected_result AS jsonb);
+                        """, connection, recoveryTransaction);
+                    recovery.Parameters.AddWithValue("result", JsonSerializer.Serialize(recoveryResult));
+                    recovery.Parameters.AddWithValue("request_id", request.RemediationRequestId);
+                    recovery.Parameters.AddWithValue("executed_by", executedBy.Value);
+                    recovery.Parameters.AddWithValue("expected_result", existingResultJson);
+                    if (await recovery.ExecuteNonQueryAsync(context.RequestAborted) != 1)
+                        return Results.Json(new { module = ModuleNumber, status = "remediation_execution_already_claimed", action, target, retryAllowed = false }, statusCode: StatusCodes.Status409Conflict);
+
+                    await SecurityDiagnosticsOperations.WriteAuditAsync(connection, recoveryTransaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "azure_container_app_restart_claim_expired", access.UserId, new
+                    {
+                        sessionId,
+                        target,
+                        priorExecutor = executedBy.Value,
+                        priorClaimId = existingClaim?.ClaimId,
+                        priorClaimedAt = existingClaim?.ClaimedAt,
+                        priorLeaseExpiresAt = existingClaim?.LeaseExpiresAt,
+                        reconciledAt,
+                        manualReconciliationRequired = true
+                    }, context.RequestAborted);
+                    await recoveryTransaction.CommitAsync(context.RequestAborted);
+                    return Results.Json(new
+                    {
+                        module = ModuleNumber,
+                        status = "azure_restart_reconciliation_required",
+                        action,
+                        target,
+                        remediationState = "failed",
+                        manualReconciliationRequired = true,
+                        retryAllowed = false,
+                        message = "The restart claim expired before final Azure evidence was stored. Review Azure state and prepare a new approved request only after reconciliation."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+
                 if (!readiness.Ready)
                     return Results.Json(new { module = ModuleNumber, status = "execution_adapter_required", action, target, configured = false, missing = readiness.Missing, requiredConfiguration = AdapterConfiguration(action) }, statusCode: StatusCodes.Status423Locked);
                 if (!readiness.AllowedTargets.Contains(target, StringComparer.OrdinalIgnoreCase))
                     return Results.Json(new { module = ModuleNumber, status = "restart_target_not_allowed", action, target, allowedTargets = readiness.AllowedTargets, message = "The target must exactly match an administrator-approved Container App." }, statusCode: StatusCodes.Status403Forbidden);
 
-                var claimedAt = DateTimeOffset.UtcNow;
+                var claimId = Guid.NewGuid();
+                var leaseExpiresAt = claimedAt.Add(RestartExecutionLease);
                 await using (var claimTransaction = await connection.BeginTransactionAsync(context.RequestAborted))
                 {
                     await using var claim = new NpgsqlCommand("""
@@ -392,13 +469,13 @@ public static class SystemDiagnosticRemediationModule
                         RETURNING remediation_request_id;
                         """, connection, claimTransaction);
                     claim.Parameters.AddWithValue("actor", access.UserId);
-                    claim.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { action, target, outcome = "in_progress", claimedAt, provider = "azure_container_apps" }));
+                    claim.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { action, target, outcome = "in_progress", claimId, claimedAt, leaseExpiresAt, provider = "azure_container_apps" }));
                     claim.Parameters.AddWithValue("request_id", request.RemediationRequestId);
                     var claimed = await claim.ExecuteScalarAsync(context.RequestAborted);
                     if (claimed is not Guid)
                         return Results.Json(new { module = ModuleNumber, status = "remediation_execution_already_claimed", action, target, retryAllowed = false }, statusCode: StatusCodes.Status409Conflict);
 
-                    await SecurityDiagnosticsOperations.WriteAuditAsync(connection, claimTransaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "azure_container_app_restart_claimed", access.UserId, new { sessionId, target, claimedAt }, context.RequestAborted);
+                    await SecurityDiagnosticsOperations.WriteAuditAsync(connection, claimTransaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), "azure_container_app_restart_claimed", access.UserId, new { sessionId, target, claimId, claimedAt, leaseExpiresAt }, context.RequestAborted);
                     await claimTransaction.CommitAsync(context.RequestAborted);
                 }
 
@@ -421,6 +498,9 @@ public static class SystemDiagnosticRemediationModule
                     action,
                     target,
                     outcome,
+                    claimId,
+                    claimedAt,
+                    leaseExpiresAt,
                     discoveredRevisions = restart.DiscoveredRevisions,
                     acceptedRevisions = restart.AcceptedRevisions,
                     restart.FailedRevision,
@@ -437,11 +517,13 @@ public static class SystemDiagnosticRemediationModule
                     SET state = @state, executed_at = now(), result_json = CAST(@result AS jsonb)
                     WHERE remediation_request_id = @request_id
                       AND state = 'staged'
-                      AND executed_by = @actor;
+                      AND executed_by = @actor
+                      AND result_json->>'claimId' = @claim_id;
                     """, connection, restartTransaction))
                 {
                     restartUpdate.Parameters.AddWithValue("state", finalState);
                     restartUpdate.Parameters.AddWithValue("actor", access.UserId);
+                    restartUpdate.Parameters.AddWithValue("claim_id", claimId.ToString());
                     restartUpdate.Parameters.AddWithValue("result", JsonSerializer.Serialize(result));
                     restartUpdate.Parameters.AddWithValue("request_id", request.RemediationRequestId);
                     if (await restartUpdate.ExecuteNonQueryAsync(persistenceTimeout.Token) != 1)
@@ -503,28 +585,78 @@ public static class SystemDiagnosticRemediationModule
         var (connection, access, request) = managed.Value!;
         await using (connection)
         {
-            await using var read = new NpgsqlCommand("SELECT diagnostic_session_id, target_reference, state FROM projectpulse_remediation_requests WHERE remediation_request_id = @request_id;", connection);
+            await using var read = new NpgsqlCommand("SELECT diagnostic_session_id, target_reference, state, action_code, COALESCE(result_json::text, '{}') FROM projectpulse_remediation_requests WHERE remediation_request_id = @request_id;", connection);
             read.Parameters.AddWithValue("request_id", request.RemediationRequestId);
             await using var reader = await read.ExecuteReaderAsync(context.RequestAborted);
             if (!await reader.ReadAsync(context.RequestAborted)) return Results.NotFound(new { module = ModuleNumber, status = "remediation_not_found" });
-            var sessionId = reader.GetGuid(0); var target = reader.GetString(1); var state = reader.GetString(2); await reader.DisposeAsync();
+            var sessionId = reader.GetGuid(0); var target = reader.GetString(1); var state = reader.GetString(2); var action = reader.GetString(3); var executionResultJson = reader.GetString(4); await reader.DisposeAsync();
             if (state != "executed") return Results.Json(new { module = ModuleNumber, status = "executed_remediation_required" }, statusCode: StatusCodes.Status409Conflict);
             var checks = await ExecuteChecksAsync(connection, "platform", target, context.RequestAborted);
+            AzureRestartVerificationResult? azureVerification = null;
+            if (action == "restart_service")
+            {
+                var readiness = AzureOperationsReadiness();
+                var acceptedRevisions = ReadStringArray(executionResultJson, "acceptedRevisions");
+                if (!readiness.Ready)
+                    azureVerification = new(false, 423, "Azure restart verification is unavailable because the managed-identity adapter is not ready.", acceptedRevisions, [], acceptedRevisions, []);
+                else if (!readiness.AllowedTargets.Contains(target, StringComparer.OrdinalIgnoreCase))
+                    azureVerification = new(false, 403, "Azure restart verification rejected a target outside the current allowlist.", acceptedRevisions, [], acceptedRevisions, []);
+                else if (acceptedRevisions.Length == 0)
+                    azureVerification = new(false, 409, "No accepted Azure revision evidence was retained for verification.", acceptedRevisions, [], acceptedRevisions, []);
+                else
+                {
+                    using var verificationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                    azureVerification = await VerifyContainerAppRestartAsync(readiness, target, acceptedRevisions, verificationTimeout.Token);
+                }
+
+                checks.Add(new DiagnosticFinding(
+                    "azure_restart_verification",
+                    "cloud_platform",
+                    azureVerification.Success ? "healthy" : "failed",
+                    azureVerification.Success ? "informational" : "high",
+                    azureVerification.Message,
+                    new
+                    {
+                        provider = "azure_container_apps",
+                        azureVerification.HttpStatus,
+                        expectedRevisions = azureVerification.ExpectedRevisions,
+                        observedRevisions = azureVerification.ObservedRevisions,
+                        missingRevisions = azureVerification.MissingRevisions,
+                        unhealthyRevisions = azureVerification.UnhealthyRevisions
+                    }));
+            }
             var summary = Summarize(checks);
-            var verified = !checks.Any(check => check.Status == "failed");
+            var verified = (azureVerification?.Success ?? true) && !checks.Any(check => check.Status == "failed");
+            var observedAt = DateTimeOffset.UtcNow;
+            var verificationResult = new
+            {
+                verified,
+                observedAt,
+                summary,
+                azure = azureVerification is null ? null : new
+                {
+                    azureVerification.Success,
+                    azureVerification.HttpStatus,
+                    azureVerification.Message,
+                    azureVerification.ExpectedRevisions,
+                    azureVerification.ObservedRevisions,
+                    azureVerification.MissingRevisions,
+                    azureVerification.UnhealthyRevisions
+                }
+            };
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
             await using (var update = new NpgsqlCommand("UPDATE projectpulse_remediation_requests SET state = @state, verified_at = CASE WHEN @verified THEN now() ELSE verified_at END, result_json = CAST(@result AS jsonb) WHERE remediation_request_id = @request_id;", connection, transaction))
             {
                 update.Parameters.AddWithValue("state", verified ? "verified" : "failed");
                 update.Parameters.AddWithValue("verified", verified);
-                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { verified, observedAt = DateTimeOffset.UtcNow, summary }));
+                update.Parameters.AddWithValue("result", JsonSerializer.Serialize(new { execution = ReadJsonEvidence(executionResultJson), verification = verificationResult }));
                 update.Parameters.AddWithValue("request_id", request.RemediationRequestId);
                 await update.ExecuteNonQueryAsync(context.RequestAborted);
             }
             await ReplaceFindingsAsync(connection, transaction, sessionId, checks, context.RequestAborted);
-            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), verified ? "remediation_verified" : "remediation_verification_failed", access.UserId, new { sessionId, summary }, context.RequestAborted);
+            await SecurityDiagnosticsOperations.WriteAuditAsync(connection, transaction, ModuleNumber, "remediation_request", request.RemediationRequestId.ToString(), verified ? "remediation_verified" : "remediation_verification_failed", access.UserId, new { sessionId, action, summary, azureVerification }, context.RequestAborted);
             await transaction.CommitAsync(context.RequestAborted);
-            return Results.Ok(new { module = ModuleNumber, status = verified ? "remediation_verified" : "remediation_verification_failed", request.RemediationRequestId, sessionId, summary, findings = checks });
+            return Results.Ok(new { module = ModuleNumber, status = verified ? "remediation_verified" : "remediation_verification_failed", request.RemediationRequestId, sessionId, summary, azureVerification, findings = checks });
         }
     }
 
@@ -831,8 +963,122 @@ public static class SystemDiagnosticRemediationModule
         catch { return new(false, 502, "The Azure operations adapter was unavailable.", discoveredRevisions, acceptedRevisions.ToArray(), failedRevision); }
     }
 
+    private static async Task<AzureRestartVerificationResult> VerifyContainerAppRestartAsync(
+        AzureOperationsAdapterReadiness readiness,
+        string target,
+        string[] expectedRevisions,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var identityUrl = $"{readiness.IdentityEndpoint}{(readiness.IdentityEndpoint.Contains('?') ? '&' : '?')}resource={Uri.EscapeDataString("https://management.azure.com/")}&api-version=2019-08-01{(string.IsNullOrWhiteSpace(readiness.ClientId) ? string.Empty : $"&client_id={Uri.EscapeDataString(readiness.ClientId)}")}";
+            using var tokenRequest = new HttpRequestMessage(HttpMethod.Get, identityUrl);
+            tokenRequest.Headers.TryAddWithoutValidation("X-IDENTITY-HEADER", readiness.IdentityHeader);
+            using var tokenResponse = await client.SendAsync(tokenRequest, cancellationToken);
+            if (!tokenResponse.IsSuccessStatusCode)
+                return new(false, (int)tokenResponse.StatusCode, "Managed identity token acquisition failed during restart verification.", expectedRevisions, [], expectedRevisions, []);
+
+            using var tokenDocument = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync(cancellationToken));
+            if (!tokenDocument.RootElement.TryGetProperty("access_token", out var tokenElement) || string.IsNullOrWhiteSpace(tokenElement.GetString()))
+                return new(false, 502, "Managed identity returned no access token during restart verification.", expectedRevisions, [], expectedRevisions, []);
+
+            var basePath = $"https://management.azure.com/subscriptions/{Uri.EscapeDataString(readiness.SubscriptionId)}/resourceGroups/{Uri.EscapeDataString(readiness.ResourceGroup)}/providers/Microsoft.App/containerApps/{Uri.EscapeDataString(target)}/revisions";
+            using var listRequest = new HttpRequestMessage(HttpMethod.Get, $"{basePath}?api-version=2026-01-01");
+            listRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tokenElement.GetString()!);
+            using var listResponse = await client.SendAsync(listRequest, cancellationToken);
+            if (!listResponse.IsSuccessStatusCode)
+                return new(false, (int)listResponse.StatusCode, "Azure could not read revision state after the restart.", expectedRevisions, [], expectedRevisions, []);
+
+            using var listDocument = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(cancellationToken));
+            var revisions = new Dictionary<string, (bool Active, string HealthState, string RunningState)>(StringComparer.OrdinalIgnoreCase);
+            if (listDocument.RootElement.TryGetProperty("value", out var values))
+            {
+                foreach (var item in values.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("name", out var nameElement) || string.IsNullOrWhiteSpace(nameElement.GetString()) || !item.TryGetProperty("properties", out var properties))
+                        continue;
+                    var name = nameElement.GetString()!;
+                    var active = properties.TryGetProperty("active", out var activeElement) && activeElement.ValueKind == JsonValueKind.True;
+                    var healthState = properties.TryGetProperty("healthState", out var healthElement) ? healthElement.GetString() ?? string.Empty : string.Empty;
+                    var runningState = properties.TryGetProperty("runningState", out var runningElement) ? runningElement.GetString() ?? string.Empty : string.Empty;
+                    revisions[name] = (active, healthState, runningState);
+                }
+            }
+
+            var observed = expectedRevisions.Where(revisions.ContainsKey).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var missing = expectedRevisions.Where(revision => !revisions.ContainsKey(revision)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var unhealthy = observed.Where(revision =>
+            {
+                var status = revisions[revision];
+                return !status.Active
+                    || !string.Equals(status.HealthState, "Healthy", StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(status.RunningState, "Running", StringComparison.OrdinalIgnoreCase);
+            }).ToArray();
+            var success = missing.Length == 0 && unhealthy.Length == 0;
+            return new(
+                success,
+                (int)listResponse.StatusCode,
+                success ? "Every Azure revision accepted for restart is active, healthy, and running." : "One or more Azure revisions accepted for restart are missing or not healthy and running.",
+                expectedRevisions,
+                observed,
+                missing,
+                unhealthy);
+        }
+        catch (OperationCanceledException)
+        {
+            return new(false, 504, "Azure restart verification timed out.", expectedRevisions, [], expectedRevisions, []);
+        }
+        catch
+        {
+            return new(false, 502, "The Azure restart verification adapter was unavailable.", expectedRevisions, [], expectedRevisions, []);
+        }
+    }
+
+    private static RestartExecutionClaim? ReadRestartExecutionClaim(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("outcome", out var outcome) || !string.Equals(outcome.GetString(), "in_progress", StringComparison.Ordinal))
+                return null;
+            var claimId = root.TryGetProperty("claimId", out var claimElement) && claimElement.TryGetGuid(out var parsedClaimId) ? parsedClaimId : (Guid?)null;
+            var claimedAt = root.TryGetProperty("claimedAt", out var claimedElement) && claimedElement.TryGetDateTimeOffset(out var parsedClaimedAt) ? parsedClaimedAt : (DateTimeOffset?)null;
+            var leaseExpiresAt = root.TryGetProperty("leaseExpiresAt", out var leaseElement) && leaseElement.TryGetDateTimeOffset(out var parsedLeaseExpiresAt) ? parsedLeaseExpiresAt : (DateTimeOffset?)null;
+            return new(claimId, claimedAt, leaseExpiresAt);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string[] ReadStringArray(string json, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty(propertyName, out var values) && values.ValueKind == JsonValueKind.Array
+                ? values.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString() ?? string.Empty).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                : [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static JsonElement ReadJsonEvidence(string json)
+    {
+        try { return JsonSerializer.Deserialize<JsonElement>(json); }
+        catch { return JsonSerializer.Deserialize<JsonElement>("{}"); }
+    }
+
     private sealed record AzureOperationsAdapterReadiness(bool Enabled, bool Ready, string SubscriptionId, string ResourceGroup, string IdentityEndpoint, string IdentityHeader, string ClientId, string[] AllowedTargets, string[] Missing);
     private sealed record AzureRestartResult(bool Success, int HttpStatus, string Message, string[] DiscoveredRevisions, string[] AcceptedRevisions, string? FailedRevision);
+    private sealed record AzureRestartVerificationResult(bool Success, int HttpStatus, string Message, string[] ExpectedRevisions, string[] ObservedRevisions, string[] MissingRevisions, string[] UnhealthyRevisions);
+    private sealed record RestartExecutionClaim(Guid? ClaimId, DateTimeOffset? ClaimedAt, DateTimeOffset? LeaseExpiresAt);
 
     private static object[] DiagnosticCategories() =>
     [

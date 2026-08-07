@@ -1,6 +1,6 @@
 # Module 998 API Contract
 
-Contract version: `2026-07-21.2`
+Contract version: `2026-08-07.1`
 
 ## Read endpoints
 
@@ -25,7 +25,14 @@ Contract version: `2026-07-21.2`
 | POST | `/api/system-diagnostics/remediation/approve` | Requires a separate eligible actor |
 | POST | `/api/system-diagnostics/remediation/stage` | Confirms target and rollback readiness |
 | POST | `/api/system-diagnostics/remediation/promote` | Executes native health refresh or returns `423 execution_adapter_required` |
-| POST | `/api/system-diagnostics/remediation/verify` | Reruns checks and stores before/after evidence |
+| POST | `/api/system-diagnostics/remediation/verify` | Reruns checks, verifies accepted Azure revisions when applicable, and stores execution plus verification evidence |
 | POST | `/api/system-diagnostics/remediation/close` | Closes verified or rolled-back work |
 
 `POST /analysis` and `POST /remediation/rollback` remain adapter-gated.
+
+For `restart_service`, promotion returns `409 remediation_execution_in_progress`
+while its three-minute claim lease is active. An expired or legacy incomplete
+claim is moved to `failed` and returns `409 azure_restart_reconciliation_required`;
+automatic retry is forbidden. Verification requires retained accepted-revision
+evidence and confirms every revision is active, `Healthy`, and `Running` through
+the managed-identity Azure adapter before the request can become `verified`.

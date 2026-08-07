@@ -20,6 +20,7 @@ const files = {
   package: path.join(webRoot, 'package.json'),
   app: path.join(sourceRoot, 'App.jsx'),
   salesDelivery: path.join(enterpriseRoot, 'SalesDeliveryWorkflowCenter.jsx'),
+  intakeBackend: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'),
   documentation: path.join(repositoryRoot, 'docs/modules/group-6-enterprise-presentation/README.md')
 };
 
@@ -173,6 +174,9 @@ assert(
 
 if (fullRepositoryContext) {
   const documentation = read(files.documentation);
+  const intakeBackend = read(files.intakeBackend);
+  contains(intakeBackend, 'ORDER BY uploaded_at, original_file_name', 'signed-handoff document chronology');
+  assert(!intakeBackend.includes('ORDER BY created_at, original_file_name'), 'The signed-handoff query must use the real project_intake_documents uploaded_at column.');
   for (const moduleCode of Object.keys(targetModules)) {
     contains(documentation, `Module ${moduleCode}`, `Module ${moduleCode} documentation`);
   }

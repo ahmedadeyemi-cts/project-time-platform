@@ -457,7 +457,7 @@ public static class ProjectIntakeModule
             WHERE project_intake_request_id = @request_id
               AND is_active = TRUE
               AND COALESCE(upload_source, '') <> 'celar_ai_chat_attachment'
-            ORDER BY created_at, original_file_name;
+            ORDER BY uploaded_at, original_file_name;
             """, connection))
         {
             command.Parameters.AddWithValue("request_id", requestId);

@@ -14,5 +14,14 @@ requires a staged request, atomically claims execution, and records complete,
 partial, or failed Azure acceptance before returning. Other production-changing
 actions remain adapter-gated and perform no command or network call.
 
+Restart claims use a bounded lease and exact claim identifier. An expired claim
+is terminally reconciled as `failed`/`indeterminate`, is audited, and cannot be
+retried automatically. This avoids both a permanently stranded request and a
+second restart when the first operation's Azure outcome is unknown. Verification
+uses the retained accepted-revision list and the managed identity revision-read
+permission to require each revision to be active, healthy, and running. Provider
+responses are reduced to bounded revision names and status evidence; tokens and
+raw response bodies are never persisted.
+
 All session and remediation changes write Module 998 audit evidence. Approval
 by the requester is rejected by both the API transition and database constraint.

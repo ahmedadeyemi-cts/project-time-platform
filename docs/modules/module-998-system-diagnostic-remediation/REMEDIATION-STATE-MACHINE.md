@@ -21,6 +21,20 @@ requires verification instead of presenting the operation as a total failure.
 After the claim commits, a bounded server-owned execution and evidence-finalizing
 transaction continue independently of the initiating HTTP connection.
 
+The restart claim carries a three-minute execution lease and a unique claim ID.
+Final evidence can be written only by that exact claim. If the server exits or
+cannot persist the Azure result before the lease expires, the next execution
+attempt atomically moves the request to `failed` with an `indeterminate` result
+and a manual-reconciliation requirement. It never retries Azure automatically;
+an operator must inspect the allowlisted app and prepare a newly approved request
+only after the infrastructure state is known.
+
+Verification reads the revisions retained in the execution evidence and queries
+Azure through the same managed identity. A restart can become `verified` only
+when every accepted revision is present, active, `Healthy`, and `Running`.
+Generic ProjectPulse checks remain supporting evidence and cannot substitute for
+this Azure state proof.
+
 Scale, rollback, replay, configuration refresh, and database repair remain in
 their approved state until the named adapter is configured.
 
