@@ -20,6 +20,41 @@
 .celar-production-ask-grid article button,
 .celar-production-ask-grid article a { margin-top: auto; align-self: flex-start; }
 
+.celar-production-rag-activation {
+  display: grid;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 1.1rem;
+  border: 1px solid #efc47d;
+  border-radius: 1.1rem;
+  background: linear-gradient(120deg, #fffaf0, #f7fbff);
+}
+.celar-production-rag-activation.is-ready { border-color: #8dceb2; background: linear-gradient(120deg, #f1fbf6, #f4fbff); }
+.celar-production-rag-activation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.celar-production-rag-activation-heading p { margin: 0; color: #0e92b8; font-size: .72rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.celar-production-rag-activation-heading h2 { margin: .18rem 0 .3rem; font-size: 1.35rem; }
+.celar-production-rag-activation-heading span { display: block; max-width: 65rem; color: #61748a; line-height: 1.5; }
+.celar-production-rag-activation-heading button { flex: 0 0 auto; min-height: 2.65rem; padding: .65rem .85rem; border: 0; border-radius: .72rem; background: #057aa5; color: #fff; cursor: pointer; font: inherit; font-weight: 900; }
+.celar-production-rag-gates { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .65rem; }
+.celar-production-rag-gates article { display: flex; gap: .55rem; min-width: 0; padding: .72rem; border: 1px solid #e8c88f; border-radius: .75rem; background: #fff; }
+.celar-production-rag-gates article.is-ready { border-color: #94ccb2; background: #f3fbf7; }
+.celar-production-rag-gates article > span { display: grid; flex: 0 0 auto; width: 1.35rem; height: 1.35rem; place-items: center; border-radius: 999px; background: #b36b00; color: #fff; font-size: .72rem; font-weight: 900; }
+.celar-production-rag-gates article.is-ready > span { background: #2f7a50; }
+.celar-production-rag-gates article div { display: grid; gap: .2rem; min-width: 0; }
+.celar-production-rag-gates small { color: #61748a; line-height: 1.35; overflow-wrap: anywhere; }
+.celar-production-rag-activation details { padding: .7rem .85rem; border: 1px solid #d6e2eb; border-radius: .75rem; background: #fff; }
+.celar-production-rag-activation summary { cursor: pointer; color: #164a70; font-weight: 900; }
+.celar-production-rag-activation li { margin: .35rem 0; color: #52677f; line-height: 1.45; }
+.celar-production-free-stack { display: flex; flex-wrap: wrap; gap: .35rem .7rem; padding: .75rem .85rem; border-radius: .75rem; background: #0f2d4a; color: #e7f4ff; }
+.celar-production-free-stack strong { color: #70d6ff; }
+.celar-production-free-stack span { line-height: 1.45; }
+
 @media (max-width: 900px) {
   .celar-production-ask-grid { grid-template-columns: 1fr; }
+  .celar-production-rag-gates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .celar-production-rag-activation-heading { flex-direction: column; }
+  .celar-production-rag-gates { grid-template-columns: 1fr; }
 }

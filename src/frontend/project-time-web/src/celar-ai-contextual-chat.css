@@ -256,6 +256,11 @@
   grid-column: span 2;
 }
 
+.celar-ai-people-team-context-picker {
+  position: relative;
+  grid-column: span 2;
+}
+
 .celar-ai-project-combobox {
   position: relative;
 }
@@ -300,7 +305,8 @@
 .celar-ai-project-suggestions strong { font-size: .74rem; }
 .celar-ai-project-suggestions span,
 .celar-ai-project-context-picker > small { color: var(--muted); font-size: .62rem; line-height: 1.3; }
-.celar-ai-project-context-picker > small.celar-ai-project-context-error { color: #a84b14; }
+.celar-ai-project-context-picker > small.celar-ai-project-context-error,
+.celar-ai-people-team-context-picker > small.celar-ai-project-context-error { color: #a84b14; }
 
 .help-panel.celar-ai-contextual-chat.is-size-fullscreen .celar-ai-chat-resize-note,
 .help-panel.celar-ai-contextual-chat.is-minimized .celar-ai-chat-resize-note {
@@ -387,8 +393,7 @@
 .celar-ai-chat-attachments-summary::-webkit-details-marker { display: none; }
 .celar-ai-chat-attachments-summary > span:nth-child(2) { display: grid; gap: .1rem; min-width: 0; flex: 1; }
 .celar-ai-chat-attachments-summary small { color: var(--text-muted, #5c6878); font-size: .72rem; }
-.celar-ai-chat-attachments-icon { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: .55rem; background: color-mix(in srgb, var(--accent, #0b6cb8) 13%, transparent); color: var(--accent, #0b6cb8); font-size: 1.25rem; transition: transform .18s ease; }
-.celar-ai-chat-attachments[open] .celar-ai-chat-attachments-icon { transform: rotate(45deg); }
+.celar-ai-chat-attachments-icon { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: .55rem; background: color-mix(in srgb, var(--accent, #0b6cb8) 13%, transparent); color: var(--accent, #0b6cb8); font-size: 1.25rem; }
 .celar-ai-chat-attachments-toggle { color: var(--accent, #0b6cb8); font-size: .75rem; font-weight: 700; }
 .celar-ai-chat-attachments[open] .celar-ai-chat-attachments-toggle { font-size: 0; }
 .celar-ai-chat-attachments[open] .celar-ai-chat-attachments-toggle::after { content: 'Collapse'; font-size: .75rem; }
@@ -405,8 +410,28 @@
 .celar-ai-chat-attachments-title > div { display: grid; gap: .2rem; min-width: 0; }
 .celar-ai-chat-attachments-heading .celar-ai-chat-attachments-icon { display: grid; flex: 0 0 auto; width: 2.15rem; height: 2.15rem; place-items: center; border-radius: .7rem; background: var(--brand-blue, #0b6cb8); color: #fff; }
 .celar-ai-chat-attachments-icon svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.celar-ai-chat-attachments-heading span { font-size: .75rem; line-height: 1.35; color: var(--text-muted, #5c6878); }
+.celar-ai-chat-attachments-title > div > span { font-size: .75rem; line-height: 1.35; color: var(--text-muted, #5c6878); }
 .celar-ai-chat-attachments-heading .celar-ai-chat-private-badge { flex: 0 0 auto; border: 1px solid color-mix(in srgb, #3f7f2d 35%, var(--border, #d8e0ea)); border-radius: 999px; padding: .28rem .5rem; background: color-mix(in srgb, var(--surface, #fff) 78%, #dcfce7); color: #315d22; font-size: .66rem; font-weight: 850; }
+.celar-ai-chat-attachment-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 3.2rem;
+  min-width: 3.2rem !important;
+  height: 3.2rem;
+  min-height: 3.2rem !important;
+  place-items: center;
+  border: 0;
+  border-radius: .78rem;
+  background: var(--brand-blue, #0b6cb8);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--brand-blue, #0b6cb8) 28%, transparent);
+  transition: transform .16s ease, filter .16s ease, box-shadow .16s ease;
+}
+.celar-ai-chat-attachment-button:hover:not(:disabled),
+.celar-ai-chat-attachment-button:focus-visible { filter: brightness(1.08); transform: translateY(-1px); outline: 3px solid color-mix(in srgb, var(--brand-blue, #0b6cb8) 22%, transparent); }
+.celar-ai-chat-attachment-button:disabled { cursor: progress; opacity: .58; }
+.celar-ai-chat-attachment-button svg { width: 1.45rem; height: 1.45rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .celar-ai-chat-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .celar-ai-chat-dropzone {
@@ -427,7 +452,8 @@
 
 .celar-ai-chat-dropzone strong { color: var(--text, #16243a); font-size: .8rem; }
 .celar-ai-chat-dropzone > span:last-child { font-size: .67rem; }
-.celar-ai-chat-upload-mark { display: grid; width: 1.7rem; height: 1.7rem; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--brand-blue, #0b6cb8) 12%, var(--surface, #fff)); color: var(--brand-blue, #0b6cb8); font-size: 1rem; font-weight: 900; }
+.celar-ai-chat-upload-mark { display: grid; width: 1.9rem; height: 1.9rem; place-items: center; border-radius: .55rem; background: var(--brand-blue, #0b6cb8); color: #fff; }
+.celar-ai-chat-upload-mark svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .celar-ai-chat-dropzone:hover,
 .celar-ai-chat-dropzone:focus-visible,
 .celar-ai-chat-dropzone.is-dragging { border-color: var(--accent, #0b6cb8); background: color-mix(in srgb, var(--accent, #0b6cb8) 9%, var(--surface, #fff)); outline: none; transform: translateY(-1px); }
