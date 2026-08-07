@@ -29,6 +29,24 @@ def forbid(name: str, relative: str, *tokens: str) -> None:
         raise AssertionError(f"{name}: {relative} still contains {present}")
 
 
+def forbid_tree(name: str, relative: str, *tokens: str) -> None:
+    root = ROOT / relative
+    if not root.is_dir():
+        raise AssertionError(f"required source directory is missing: {relative}")
+
+    matches = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in {".html", ".js", ".jsx"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for token in tokens:
+            if token in text:
+                matches.append(f"{path.relative_to(ROOT)}:{token}")
+
+    if matches:
+        raise AssertionError(f"{name}: unsafe notification rendering remains in {matches}")
+
+
 def check(identifier: str, title: str, callback) -> None:
     callback()
     print(f"PASS {identifier}: {title}")
@@ -87,13 +105,18 @@ checks = [
         "requested_by_user_id",
         "engineering_visible",
         "document_access_denied")),
-    ("2622862", "notification action URLs are validated on write and render", lambda: (
+    ("2622862", "notification action URLs are validated on write and legacy untrusted rendering is absent", lambda: (
         require("notification write URL", PROGRAM, "SECURITY_20260729_NOTIFICATION_URL_ALLOWLIST"),
-        require("notification renderer URL", INDEX,
-                "projectPulse022DSafeActionUrl",
-                "projectPulse022DTopbarSafeActionUrl",
-                "rel=\"noopener noreferrer\""),
-        forbid("notification renderer URL", INDEX, 'href="${escapeHtml(item.actionUrl)}"')
+        require("React-owned application shell", INDEX,
+                '<div id="root"></div>',
+                '<script type="module" src="/src/main.jsx"></script>',
+                "MODULE_026_NATIVE_REACT_ROUTE"),
+        forbid_tree("notification renderer URL", "src/frontend/project-time-web",
+                    'href="${escapeHtml(item.actionUrl)}"',
+                    "href={item.actionUrl}",
+                    "href={dispatch.actionUrl}",
+                    "window.open(item.actionUrl",
+                    "window.open(dispatch.actionUrl")
     )),
     ("2622749", "single, bulk, and local-user role writes protect Super Administrator", lambda: require(
         "role write parity", PROGRAM,
