@@ -2114,7 +2114,7 @@ public static partial class ProjectForgeModule
     private static ProjectFlowHivePlanRequest ToFlowHiveRequest(ProjectForgePlanSaveRequest request, string projectCode, string projectName)
     {
         return new ProjectFlowHivePlanRequest(
-            request.ProjectId, projectCode, projectName, null, request.PlanName, "Project Forge review draft", request.StartDate,
+            request.ProjectId, projectCode, projectName, null, request.PlanName, "Project Forge review draft", request.StartDate, null,
             (request.Tasks ?? []).Select(task => new ProjectFlowHivePlanTaskInput(
                 task.PlanTaskId, null, task.Wbs, task.ParentWbs, task.Name, task.Description,
                 Math.Max(0, task.DurationWorkingDays), string.Equals(task.TaskType, "milestone", StringComparison.OrdinalIgnoreCase),

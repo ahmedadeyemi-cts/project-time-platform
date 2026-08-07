@@ -1,5 +1,22 @@
 # Module 066 — Validation Evidence
 
+## AI Planner change validation — 2026-08-07
+
+- Branch: `feature/module-066-flowhive-ai-planner-20260807`
+- Base: `main@5f25116765a1f717f80b6f2760497be37b043886`
+- Module 066 source/privacy/UI validator: 105/105 checks passed.
+- Vite production bundle: passed with 358 transformed modules.
+- `git diff --check`: passed.
+- The validator asserts the exact Plan/Design/Implement/Validate/Release phase
+  contract, approved SOW Scope of Services prioritization, PM-selected date
+  window, expandable Smartsheet-style UI, private citations, and fixed
+  identity-free external reasoning capsule.
+- The executable .NET fixture now covers summary rollups and target-end
+  enforcement in addition to the existing dependency and artifact cases.
+- Local .NET execution remains unavailable because the workspace does not have
+  the `dotnet` command; the PR CI build is required for compiler/runtime proof.
+- Provider calls, customer sharing, deployment, and database changes: none.
+
 ## Source baseline
 
 - Workspace: `/workspace/scratch/467636bfa6c3/project-time-platform-module-066-complete-integrated`

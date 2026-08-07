@@ -15,6 +15,10 @@ const paths = {
   repository: path.join(backendDirectory, 'PostgresProjectFlowHivePlanRepository.cs'),
   schedule: path.join(backendDirectory, 'ProjectFlowHiveScheduleEngine.cs'),
   ai: path.join(backendDirectory, 'ProjectFlowHiveAiRequestFactory.cs'),
+  productionAi: path.join(backendDirectory, 'CelarAiProductionPlatformModule.cs'),
+  privateRag: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'),
+  privateRagRepository: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagRepository.cs'),
+  capabilityRouting: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'),
   brand: path.join(backendDirectory, 'ProjectFlowHiveBrandAssets.cs'),
   artifacts: path.join(backendDirectory, 'ProjectFlowHiveArtifactRenderer.cs'),
   frontend: path.join(repositoryRoot, 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'),
@@ -63,6 +67,10 @@ const contracts = readRequired('CONTRACTS', paths.contracts);
 const repository = readRequired('PRODUCTION_REPOSITORY', paths.repository);
 const schedule = readRequired('SCHEDULE_ENGINE', paths.schedule);
 const ai = readRequired('AI_REQUEST_FACTORY', paths.ai);
+const productionAi = readRequired('AI_PLANNER_PRODUCTION', paths.productionAi);
+const privateRag = readRequired('PRIVATE_RAG_PLANNER', paths.privateRag);
+const privateRagRepository = readRequired('PRIVATE_RAG_REPOSITORY', paths.privateRagRepository);
+const capabilityRouting = readRequired('CAPABILITY_ROUTING', paths.capabilityRouting);
 const brand = readRequired('BRAND_ASSETS', paths.brand);
 const artifacts = readRequired('ARTIFACT_RENDERER', paths.artifacts);
 const frontend = readRequired('FRONTEND', paths.frontend);
@@ -208,8 +216,45 @@ assertInvariant(
     schedule.includes('self_dependency') &&
     schedule.includes('duplicate_dependency') &&
     schedule.includes('dependency_cycle') &&
-    schedule.includes('assignment_identity_required'),
+  schedule.includes('assignment_identity_required'),
   'WBS, hierarchy, dependency, cycle, and identity validation'
+);
+
+assertInvariant(
+  'MODULE_066_AI_PLANNER_FIVE_PHASE_WBS',
+  contracts.includes('DateOnly? ProjectEndDate') &&
+    contracts.includes('bool IsSummary = false') &&
+    productionAi.includes('(\"1\", \"Plan\")') &&
+    productionAi.includes('(\"2\", \"Design\")') &&
+    productionAi.includes('(\"3\", \"Implement\")') &&
+    productionAi.includes('(\"4\", \"Validate\")') &&
+    productionAi.includes('(\"5\", \"Release\")') &&
+    schedule.includes('project_end_exceeded') &&
+    schedule.includes('summary_dependency_not_allowed'),
+  'PM date window, summary rows, executable children, and deterministic five-phase ordering'
+);
+
+assertInvariant(
+  'MODULE_066_AI_PLANNER_SOW_SCOPE_PRIORITY',
+  privateRag.includes('Scope of Services') &&
+    privateRag.includes('Plan, Design, Implement, Validate, Release') &&
+    privateRagRepository.includes('IsApprovedSowScopeCandidate') &&
+    privateRagRepository.includes('prioritizeSowScope'),
+  'approved SOW scope sections are the primary private planning authority'
+);
+
+assertInvariant(
+  'MODULE_066_AI_PLANNER_EXTERNAL_PRIVACY',
+  capabilityRouting.includes('fixed identity-free purpose capsule') &&
+    capabilityRouting.includes('Plan, Design, Implement, Validate, Release') &&
+    productionAi.includes('privateSowTextSentToExternalProvider = false') &&
+    productionAi.includes('organizationOrCustomerIdentitySentToExternalProvider = false') &&
+    productionAi.includes('peopleOrAssignmentDataSentToExternalProvider = false') &&
+    productionAi.includes('datesOrIdentifiersSentToExternalProvider = false') &&
+    productionAi.includes('fixed_backend_owned_identity_free_planning_blueprint_only') &&
+    capabilityRouting.includes('Do not request, reproduce, infer, or invent any organization, customer, project, person, document, source passage, identifier, location, date') &&
+    !capabilityRouting.includes('SowExcerpt'),
+  'external providers receive only a closed generic blueprint and no private SOW or identity payload'
 );
 
 assertInvariant(
@@ -228,6 +273,8 @@ assertInvariant(
     calculationProgram.includes('MODULE_066_TEST_SS') &&
     calculationProgram.includes('MODULE_066_TEST_FF') &&
     calculationProgram.includes('MODULE_066_TEST_SF') &&
+    calculationProgram.includes('MODULE_066_TEST_PHASE_SUMMARY') &&
+    calculationProgram.includes('MODULE_066_TEST_SELECTED_END_DATE') &&
     calculationProgram.includes('MODULE_066_TEST_PDF_LOGO') &&
     calculationProgram.includes('MODULE_066_TEST_XLSX_LOGO_HASH'),
   'calculation, cycle, calendar, AI-lock, and branded-artifact execution tests exist'
@@ -333,7 +380,7 @@ assertInvariant(
   'MODULE_066_FRONTEND_IDENTITY_DROPDOWN',
   frontend.includes('identityOptions') &&
     frontend.includes('resourceUserId') &&
-    frontend.includes('Assigned identity') &&
+    frontend.includes('Assigned to') &&
     frontend.includes('useIdentityProfile'),
   'assignments preserve Module 062-backed user IDs'
 );
@@ -349,11 +396,29 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_066_DETERMINISTIC_CONFIDENCE_EXPLANATION',
-  frontend.includes("String(aiPreview?.executionPath || '').toLowerCase() === 'deterministic_private_fallback'") &&
-    frontend.includes('Number(aiPreview?.confidence) === 0.35') &&
+  frontend.includes("String(aiPreview?.executionPath || '').toLowerCase().includes('deterministic')") &&
+    frontend.includes('Number(aiPreview?.confidence) <= 0.55') &&
     frontend.includes('{aiPreviewIsDeterministicFloor ?') &&
     !frontend.includes('Number(aiPreview.confidence || 0) <= .35'),
-  'the 35% explanation is limited to the exact deterministic fallback result'
+  'the low-confidence explanation is limited to deterministic fallback results'
+);
+
+assertInvariant(
+  'MODULE_066_FRONTEND_SMARTSHEET_AI_PLANNER',
+  (frontend.includes("'AI Planner'") || frontend.includes('AI Planner')) &&
+    frontend.includes('flowhive-smartsheet-table') &&
+    frontend.includes('flowhive-phase-toggle') &&
+    frontend.includes('projectEndDate') &&
+    frontend.includes('Approved SOW Scope of Services located') &&
+    frontend.includes('Ordered work steps') &&
+    frontend.includes('<th>Progress</th>') &&
+    frontend.includes('<th>Type</th>') &&
+    frontend.includes('<th>Lead/lag</th>') &&
+    frontend.includes("updateDependencyForTask(index, 'lagWorkingDays'") &&
+    stylesheet.includes('.flowhive-smartsheet-table') &&
+    stylesheet.includes('.flowhive-phase-row.phase-release') &&
+    stylesheet.includes('.flowhive-task-detail-grid'),
+  'expandable phase grid, PM start/end dates, SOW evidence, editable task details, and responsive styling'
 );
 
 assertInvariant(

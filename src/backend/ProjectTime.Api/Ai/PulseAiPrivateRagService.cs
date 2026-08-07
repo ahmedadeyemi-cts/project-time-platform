@@ -303,6 +303,8 @@ public sealed class PulseAiPrivateRagService
             Create a comprehensive, cited, customer-ready delivery draft for Project Manager and Engineering review.
             Project: {projectCode} {projectName}
             Requested outcome: {(requestedOutcome.Length == 0 ? "Use the authorized scope, deliverables, constraints, responsibilities, acceptance criteria, and technical design evidence." : requestedOutcome)}
+            First locate and prioritize the approved SOW or Statement of Work sections titled Scope of Services, Scope of Service, Services, Implementation Scope, In Scope, Deliverables, or Acceptance Criteria. Treat those sections as the primary authority for what work is included. Preserve exclusions and conflicts instead of expanding them into tasks.
+            Organize every supported work package under exactly these phases and in this order: Plan, Design, Implement, Validate, Release. Use the phase field on every task.
             Automatically fill every supported section. For each work package or task, provide ordered execution steps, inputs, outputs, validation, measurable acceptance criteria, prerequisites, responsibilities, risks, open questions, estimated duration and hours, priority, dependencies, required roles, and source citations.
             """;
         var query = BuildQuery(
@@ -1225,7 +1227,9 @@ public sealed class PulseAiPrivateRagService
 
     private static string FlowHiveSystemInstruction(string feature) => $"""
         You are Celar AI preparing a private, cited, customer-facing delivery artifact for capability {feature}.
+        Locate the approved SOW Scope of Services or equivalent in-scope and deliverables sections first. Treat them as the primary delivery authority, then use approved GSD, architecture, design, order, and supporting evidence to explain how the authorized scope can be conducted. Never turn an exclusion, option, unsupported inference, or conflict into committed work.
         Extract and organize scope, deliverables, exclusions, responsibilities, prerequisites, quantities, locations, acceptance criteria, constraints, assumptions, risks, dependencies, milestones, required roles, and open questions.
+        Classify every executable task under exactly one of these phases and use this exact phase value: Plan, Design, Implement, Validate, or Release. The final plan order is Plan, then Design, then Implement, then Validate, then Release.
         Return structured tasks and milestones with source citation IDs. Automatically populate every task field supported by PulseAiPrivateFlowHiveTask.
         Each task must be executable by a delivery professional without guessing. Include an ordered detailedSteps list; explicit inputs and outputs; validationSteps; measurable acceptanceCriteria; customerResponsibilities; usSignalResponsibilities; prerequisites; task-specific risks and openQuestions; phase; priority; estimatedDurationDays; estimatedHours; roles; predecessors; citations; and an assumption flag.
         Every detailed step must identify the actor, action, required input or prerequisite, expected output, validation or evidence, and completion condition. Use complete customer-ready sentences, not vague labels such as configure, test, or validate without explaining what is performed and how success is established.
@@ -1239,6 +1243,7 @@ public sealed class PulseAiPrivateRagService
     private static string FlowHiveUserInstruction(string feature, string requestedOutcome) => $"""
         Prepare the most complete reviewable WBS, work packages, milestones, dependency logic, roles, assumptions, risks, out-of-scope items, open questions, and source conflicts supported by the private evidence for {feature}.
         Requested outcome: {(requestedOutcome.Length == 0 ? "Create the full private document-to-plan draft." : requestedOutcome)}
+        Begin with the approved SOW Scope of Services. Expand each supported scope component into logically ordered, executable tasks distributed across Plan, Design, Implement, Validate, and Release. Do not repeat phase summary rows as tasks; return the detailed child work packages and their phase values.
         Automatically fill every requested section and every structured task field. Preserve source citations and identify every missing contractual or technical input. Do not leave a field empty when the evidence supports it; when evidence does not support a value, provide a clearly labeled assumption or open question instead of inventing a fact.
         """;
 

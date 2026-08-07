@@ -18,6 +18,20 @@ Milestones accept duration 0 but consume one schedule index so dates remain
 representable. Positive lag delays; negative lag is lead. Cycles, self-edges,
 duplicates, missing tasks, and out-of-range values are rejected.
 
+## Phase summary rows and target window
+
+AI Planner phase summaries are structural WBS rows, not executable tasks. They
+must be root rows with duration zero, cannot be milestones, cannot own direct
+dependencies or assignments, and must have at least one executable descendant.
+They are excluded from topology and critical-path calculations. After child
+tasks are scheduled, each summary rolls up its descendant start, finish,
+working-day duration, progress, planned effort, status, and critical flag.
+
+When `projectEndDate` is supplied, the engine treats it as the PM-selected
+target boundary. A schedule that finishes after that date fails with
+`project_end_exceeded`; FlowHive does not conceal the conflict by moving dates
+or shortening reviewed tasks during schedule calculation.
+
 ## Calendar boundary
 
 The current engine skips Saturday and Sunday only and labels every result
@@ -34,6 +48,8 @@ timezone policy, and working-time exceptions.
 - milestone predecessor/successor;
 - cycle and self-edge rejection;
 - parent hierarchy validation;
+- phase-summary validation and rollup;
+- PM target-end enforcement;
 - weekend project start normalization;
 - Module 057 holiday crossing after integration;
 - maximum-size performance and cancellation.

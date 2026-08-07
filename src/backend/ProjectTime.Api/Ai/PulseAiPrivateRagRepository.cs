@@ -525,7 +525,9 @@ public sealed class PulseAiPrivateRagRepository
             var selected = SelectDiverseChunks(
                 candidates,
                 query.MaximumChunks,
-                minimumScore: query.MinimumEvidenceScore);
+                minimumScore: query.MinimumEvidenceScore,
+                prioritizeSowScope: query.FeatureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan
+                    or CelarAiCapabilityCatalog.ProjectForgePlanEstimate);
             return new RetrievalRows(
                 CandidateCount: candidates.Count,
                 AuthorizedCandidateCount: authorizedCount,
@@ -1083,12 +1085,19 @@ public sealed class PulseAiPrivateRagRepository
     private static IReadOnlyList<PulseAiPrivateRetrievedChunk> SelectDiverseChunks(
         IReadOnlyList<PulseAiPrivateRetrievedChunk> candidates,
         int maximum,
-        decimal minimumScore)
+        decimal minimumScore,
+        bool prioritizeSowScope)
     {
         maximum = Math.Clamp(maximum, 1, 40);
         var selected = new List<PulseAiPrivateRetrievedChunk>();
         var perDocument = new Dictionary<Guid, int>();
-        foreach (var candidate in candidates)
+        var ordered = prioritizeSowScope
+            ? candidates
+                .OrderByDescending(IsApprovedSowScopeCandidate)
+                .ThenByDescending(candidate => candidate.CombinedScore)
+                .ThenByDescending(candidate => candidate.ProcessedAt)
+            : candidates.AsEnumerable();
+        foreach (var candidate in ordered)
         {
             if (candidate.CombinedScore < minimumScore) continue;
             perDocument.TryGetValue(candidate.DocumentId, out var used);
@@ -1098,6 +1107,18 @@ public sealed class PulseAiPrivateRagRepository
             if (selected.Count >= maximum) break;
         }
         return selected;
+    }
+
+    private static bool IsApprovedSowScopeCandidate(PulseAiPrivateRetrievedChunk candidate)
+    {
+        var isSow = candidate.DocumentCategory.Equals("sow", StringComparison.OrdinalIgnoreCase)
+            || candidate.DocumentCategory.Equals("statement_of_work", StringComparison.OrdinalIgnoreCase);
+        if (!isSow) return false;
+        var heading = $"{candidate.SectionTitle} {candidate.CitationAnchor}";
+        return heading.Contains("scope", StringComparison.OrdinalIgnoreCase)
+            || heading.Contains("service", StringComparison.OrdinalIgnoreCase)
+            || heading.Contains("deliverable", StringComparison.OrdinalIgnoreCase)
+            || heading.Contains("acceptance", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<IReadOnlyList<object>> LoadCitationAuditAsync(

@@ -56,6 +56,22 @@ start/finish dates, total/free float, critical-task flags, project finish, and
 planned-hour summary. `calendarMode` explicitly states that Module 057 holiday
 authority is not applied.
 
+`ProjectFlowHivePlanRequest` accepts both `projectStartDate` and an optional
+`projectEndDate`. AI Planner execution requires both. If the calculated finish
+is later than the selected end date, validation returns
+`project_end_exceeded`. Phase summary tasks use `isSummary = true`, duration
+zero, no assignment, and no direct dependency. The schedule response rolls up
+summary dates and includes `projectTargetEndDate`.
+
+### `POST /api/project-flowhive/ai/production-generate`
+
+Requires a PM-selected start and end date. The route retrieves approved private
+evidence, prioritizes the SOW Scope of Services, and returns an ordered editable
+WBS under `Plan`, `Design`, `Implement`, `Validate`, and `Release`. The response
+also reports private source coverage and a privacy-boundary declaration. Any
+optional Claude/OpenAI request is routed only through Module 064 with the fixed
+identity-free planning capsule; raw evidence is never included.
+
 ### `POST /api/project-flowhive/ai/request-preview`
 
 Returns a sanitized `project_flowhive_plan` request compatible with Module 064,

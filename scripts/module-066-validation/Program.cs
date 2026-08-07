@@ -22,7 +22,8 @@ ProjectFlowHivePlanTaskInput Task(
     string? parent = null,
     string? constraint = null,
     DateOnly? constraintDate = null,
-    bool milestone = false) =>
+    bool milestone = false,
+    bool summary = false) =>
     new(
         Guid.NewGuid(),
         null,
@@ -30,13 +31,15 @@ ProjectFlowHivePlanTaskInput Task(
         parent,
         $"Task {wbs}",
         null,
-        milestone ? 0 : duration,
+        milestone || summary ? 0 : duration,
         milestone,
         constraint ?? "ASAP",
         constraintDate,
         0m,
-        duration * 8m,
-        "not_started");
+        summary ? 0m : duration * 8m,
+        "not_started",
+        IsSummary: summary,
+        Phase: summary ? "Plan" : null);
 
 ProjectFlowHivePlanRequest Plan(
     IReadOnlyList<ProjectFlowHivePlanTaskInput> tasks,
@@ -50,6 +53,7 @@ ProjectFlowHivePlanRequest Plan(
         "Governed schedule validation",
         "Draft 1",
         monday,
+        new DateOnly(2026, 8, 31),
         tasks,
         dependencies ?? [],
         assignments ?? [],
@@ -84,6 +88,17 @@ Assert("MODULE_066_TEST_LINEAR_FINISH", linear.ProjectFinishDate == new DateOnly
 Assert("MODULE_066_TEST_LINEAR_DURATION", linear.ScheduledWorkingDays == 5, "linear chain spans five working days");
 Assert("MODULE_066_TEST_LINEAR_CRITICAL", linear.Tasks.Count == 2 && linear.Tasks.All(task => task.IsCritical), "both linear tasks are critical");
 Assert("MODULE_066_TEST_LINEAR_SUCCESSOR", linear.Tasks.Single(task => task.WbsNumber == "2").StartDate == new DateOnly(2026, 7, 22), "FS successor begins after predecessor finish");
+
+var summaryPlan = Plan(
+    [Task("1", 0, summary: true), Task("1.1", 2, parent: "1")]);
+var summarySchedule = ProjectFlowHiveScheduleEngine.Calculate(summaryPlan);
+var summaryRow = summarySchedule.Tasks.Single(task => task.WbsNumber == "1");
+Assert("MODULE_066_TEST_PHASE_SUMMARY", summarySchedule.Valid && summaryRow.IsSummary, "phase summary is retained as a schedule rollup row");
+Assert("MODULE_066_TEST_PHASE_ROLLUP_DATES", summaryRow.StartDate == monday && summaryRow.EndDate == new DateOnly(2026, 7, 21), "phase dates roll up from executable children");
+
+var windowExceeded = ProjectFlowHiveScheduleEngine.Calculate(
+    Plan([Task("1", 2)]) with { ProjectEndDate = monday });
+Assert("MODULE_066_TEST_SELECTED_END_DATE", !windowExceeded.Valid && windowExceeded.Issues.Any(issue => issue.Code == "project_end_exceeded"), "selected PM end date is enforced by the deterministic schedule");
 
 var fs = Relationship("FS");
 Assert("MODULE_066_TEST_FS", fs.Tasks.Single(task => task.WbsNumber == "2").StartDate == new DateOnly(2026, 7, 24), "FS offset uses predecessor duration");
@@ -161,7 +176,7 @@ var aiPreview = aiType
     .Invoke(null, [new ProjectFlowHiveAiDraftPreviewRequest(linearPlan, "GSD source", "SOW source", "Prepare a governed draft")])!;
 var aiJson = JsonSerializer.Serialize(aiPreview);
 Assert("MODULE_066_TEST_AI_ROUTE", aiJson.Contains("claude", StringComparison.Ordinal) && aiJson.Contains("openai", StringComparison.Ordinal) && aiJson.Contains("local_template", StringComparison.Ordinal), "AI preview records shared Module 064 provider order");
-Assert("MODULE_066_TEST_AI_LOCK", aiJson.Contains("module_064_execution_not_registered", StringComparison.Ordinal) && aiJson.Contains("\"executionEnabled\":false", StringComparison.Ordinal), "AI preview cannot execute a provider");
+Assert("MODULE_066_TEST_AI_LOCK", aiJson.Contains("private_model_execution_not_registered", StringComparison.Ordinal) && aiJson.Contains("\"executionEnabled\":false", StringComparison.Ordinal), "AI preview cannot execute a provider");
 
 Console.WriteLine();
 Console.WriteLine($"MODULE_066_EXECUTABLE_CHECKS={assertions}");

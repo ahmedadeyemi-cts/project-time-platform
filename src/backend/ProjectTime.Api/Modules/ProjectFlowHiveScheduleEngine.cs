@@ -9,7 +9,7 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static partial class ProjectFlowHiveScheduleEngine
 {
-    public const string ContractVersion = "066.1";
+    public const string ContractVersion = "066.2-ai-planner";
     private const int MaximumTasks = 500;
     private const int MaximumDependencies = 4000;
     private const int MaximumAssignments = 5000;
@@ -52,6 +52,7 @@ public static partial class ProjectFlowHiveScheduleEngine
                 false,
                 "validation_failed",
                 request?.ProjectStartDate,
+                request?.ProjectEndDate,
                 null,
                 0,
                 0,
@@ -89,7 +90,7 @@ public static partial class ProjectFlowHiveScheduleEngine
             }
         }
 
-        foreach (var pair in taskByWbs)
+        foreach (var pair in taskByWbs.Where(pair => !pair.Value.IsSummary))
         {
             var task = pair.Value;
             if (task.ConstraintDate is null) continue;
@@ -120,6 +121,7 @@ public static partial class ProjectFlowHiveScheduleEngine
                 false,
                 "validation_failed",
                 request.ProjectStartDate,
+                request.ProjectEndDate,
                 null,
                 0,
                 0,
@@ -130,8 +132,8 @@ public static partial class ProjectFlowHiveScheduleEngine
                 ContractVersion);
         }
 
-        var projectFinishIndex = taskByWbs.Keys.Max(wbs => earliest[wbs] + duration[wbs] - 1);
-        var latest = taskByWbs.Keys.ToDictionary(
+        var projectFinishIndex = order.Max(wbs => earliest[wbs] + duration[wbs] - 1);
+        var latest = order.ToDictionary(
             key => key,
             key => projectFinishIndex - duration[key] + 1,
             StringComparer.OrdinalIgnoreCase);
@@ -151,7 +153,7 @@ public static partial class ProjectFlowHiveScheduleEngine
             }
         }
 
-        var scheduled = order.Select(wbs =>
+        var scheduledDetails = order.Select(wbs =>
         {
             var task = taskByWbs[wbs];
             var outgoing = dependencies
@@ -186,16 +188,63 @@ public static partial class ProjectFlowHiveScheduleEngine
                 task.IsMilestone,
                 task.PercentComplete,
                 task.RemainingEffortHours,
-                Clean(task.Status) ?? "not_started");
+                Clean(task.Status) ?? "not_started",
+                false,
+                Clean(task.Phase) ?? string.Empty);
+        }).ToDictionary(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase);
+
+        var scheduled = (request.Tasks ?? []).Select(task =>
+        {
+            var wbs = Clean(task.WbsNumber)!;
+            if (!task.IsSummary) return scheduledDetails[wbs];
+
+            var descendants = scheduledDetails.Values
+                .Where(candidate => candidate.WbsNumber.StartsWith($"{wbs}.", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var startIndex = descendants.Min(candidate => candidate.EarliestStartIndex);
+            var endIndex = descendants.Max(candidate => candidate.EarliestStartIndex + Math.Max(1, candidate.DurationWorkingDays) - 1);
+            var completed = descendants.All(candidate => candidate.Status.Equals("complete", StringComparison.OrdinalIgnoreCase));
+            var started = descendants.Any(candidate => candidate.PercentComplete > 0m
+                || candidate.Status.Equals("in_progress", StringComparison.OrdinalIgnoreCase));
+            return new ProjectFlowHiveScheduledTask(
+                wbs,
+                Clean(task.ParentWbsNumber),
+                Clean(task.Name) ?? "Untitled phase",
+                AddWorkingDays(request.ProjectStartDate.Value, startIndex),
+                AddWorkingDays(request.ProjectStartDate.Value, endIndex),
+                endIndex - startIndex + 1,
+                startIndex,
+                descendants.Min(candidate => candidate.LatestStartIndex),
+                descendants.Min(candidate => candidate.TotalFloatWorkingDays),
+                descendants.Min(candidate => candidate.FreeFloatWorkingDays),
+                descendants.Any(candidate => candidate.IsCritical),
+                false,
+                descendants.Average(candidate => candidate.PercentComplete),
+                descendants.Sum(candidate => candidate.RemainingEffortHours),
+                completed ? "complete" : started ? "in_progress" : "not_started",
+                true,
+                Clean(task.Phase) ?? Clean(task.Name) ?? string.Empty);
         }).ToArray();
 
+        var projectFinishDate = AddWorkingDays(request.ProjectStartDate.Value, projectFinishIndex);
+        if (request.ProjectEndDate.HasValue && projectFinishDate > request.ProjectEndDate.Value)
+        {
+            Error(
+                issues,
+                "project_end_exceeded",
+                "projectEndDate",
+                $"The generated schedule finishes on {projectFinishDate:yyyy-MM-dd}, after the selected end date {request.ProjectEndDate.Value:yyyy-MM-dd}.");
+        }
+        var valid = !issues.Any(issue => issue.Severity == "error");
+
         return new ProjectFlowHiveScheduleResult(
-            true,
-            "calculated_preview",
+            valid,
+            valid ? "calculated_preview" : "selected_window_exceeded",
             request.ProjectStartDate,
-            AddWorkingDays(request.ProjectStartDate.Value, projectFinishIndex),
+            request.ProjectEndDate,
+            projectFinishDate,
             projectFinishIndex + 1,
-            scheduled.Count(task => task.IsCritical),
+            scheduled.Count(task => task.IsCritical && !task.IsSummary),
             request.Assignments?.Sum(row => Math.Max(0m, row.PlannedHours)) ?? 0m,
             scheduled,
             issues,
@@ -229,6 +278,12 @@ public static partial class ProjectFlowHiveScheduleEngine
         {
             Error(issues, "project_start_required", "projectStartDate", "Project start date is required.");
         }
+        if (request.ProjectStartDate.HasValue
+            && request.ProjectEndDate.HasValue
+            && request.ProjectEndDate.Value < request.ProjectStartDate.Value)
+        {
+            Error(issues, "project_end_before_start", "projectEndDate", "Project end date must be on or after the project start date.");
+        }
 
         var tasks = request.Tasks?.ToArray() ?? [];
         if (tasks.Length == 0)
@@ -259,13 +314,25 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "task_name_required", $"{path}.name", "Task name is required.");
             }
-            if (task.IsMilestone && task.DurationWorkingDays != 0)
+            if (task.IsSummary && task.DurationWorkingDays != 0)
+            {
+                Error(issues, "summary_duration", $"{path}.durationWorkingDays", "Phase summary rows must have zero duration; their dates roll up from child tasks.");
+            }
+            else if (task.IsMilestone && task.DurationWorkingDays != 0)
             {
                 Error(issues, "milestone_duration", $"{path}.durationWorkingDays", "Milestones must have zero duration.");
             }
-            if (!task.IsMilestone && (task.DurationWorkingDays < 1 || task.DurationWorkingDays > 730))
+            if (!task.IsSummary && !task.IsMilestone && (task.DurationWorkingDays < 1 || task.DurationWorkingDays > 730))
             {
                 Error(issues, "invalid_duration", $"{path}.durationWorkingDays", "Task duration must be between 1 and 730 working days.");
+            }
+            if (task.IsSummary && task.IsMilestone)
+            {
+                Error(issues, "summary_milestone_conflict", path, "A phase summary cannot also be a milestone.");
+            }
+            if (task.IsSummary && !string.IsNullOrWhiteSpace(task.ParentWbsNumber))
+            {
+                Error(issues, "summary_must_be_root", $"{path}.parentWbsNumber", "Plan, Design, Implement, Validate, and Release summaries must be root WBS rows.");
             }
             if (task.PercentComplete is < 0m or > 100m)
             {
@@ -308,6 +375,19 @@ public static partial class ProjectFlowHiveScheduleEngine
             }
         }
 
+        var executableTaskCount = taskByWbs.Count(pair => !pair.Value.IsSummary);
+        if (executableTaskCount == 0)
+        {
+            Error(issues, "executable_tasks_required", "tasks", "At least one executable task is required beneath the phase summary rows.");
+        }
+        foreach (var summary in taskByWbs.Where(pair => pair.Value.IsSummary))
+        {
+            if (!taskByWbs.Keys.Any(wbs => wbs.StartsWith($"{summary.Key}.", StringComparison.OrdinalIgnoreCase)))
+            {
+                Error(issues, "summary_children_required", $"tasks[{summary.Key}]", $"Phase WBS {summary.Key} requires at least one child task.");
+            }
+        }
+
         if (dependencies.Length > MaximumDependencies)
         {
             Error(issues, "dependency_limit", "dependencies", $"No more than {MaximumDependencies} dependencies can be validated at once.");
@@ -334,6 +414,18 @@ public static partial class ProjectFlowHiveScheduleEngine
                 && predecessor.Equals(successor, StringComparison.OrdinalIgnoreCase))
             {
                 Error(issues, "self_dependency", path, "A task cannot depend on itself.");
+            }
+            if (predecessor is not null
+                && taskByWbs.TryGetValue(predecessor, out var predecessorTask)
+                && predecessorTask.IsSummary)
+            {
+                Error(issues, "summary_dependency_not_allowed", $"{path}.predecessorWbs", "Phase summaries cannot be dependency endpoints; use executable child tasks.");
+            }
+            if (successor is not null
+                && taskByWbs.TryGetValue(successor, out var successorTask)
+                && successorTask.IsSummary)
+            {
+                Error(issues, "summary_dependency_not_allowed", $"{path}.successorWbs", "Phase summaries cannot be dependency endpoints; use executable child tasks.");
             }
             if (!DependencyTypes.Contains(type))
             {
@@ -364,6 +456,10 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "assignment_task_not_found", $"{path}.taskWbs", "Assignment task must reference an existing WBS.");
             }
+            else if (taskByWbs[wbs].IsSummary)
+            {
+                Error(issues, "summary_assignment_not_allowed", $"{path}.taskWbs", "Assignments belong to executable child tasks, not phase summary rows.");
+            }
             if (assignment.ResourceUserId is null || assignment.ResourceUserId == Guid.Empty)
             {
                 Error(issues, "assignment_identity_required", $"{path}.resourceUserId", "Assignments require a Module 062-backed ProjectPulse identity ID.");
@@ -380,7 +476,10 @@ public static partial class ProjectFlowHiveScheduleEngine
 
         if (!issues.Any(issue => issue.Severity == "error"))
         {
-            order = TopologicalOrder(taskByWbs.Keys, dependencies, issues);
+            order = TopologicalOrder(
+                taskByWbs.Where(pair => !pair.Value.IsSummary).Select(pair => pair.Key),
+                dependencies,
+                issues);
         }
 
         return issues;
