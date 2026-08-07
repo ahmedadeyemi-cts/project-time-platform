@@ -1,14 +1,15 @@
-name: ProjectPulse Deploy Runtime Data Stability Hotfix Test
+name: ProjectPulse Deploy PR 552 Coordinated Runtime and Migration 079 Test
 
 on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact merged hotfix commit on main
+        description: Exact merged PR 552 application commit
         required: true
+        default: e3d68ddcac51ba7f2eb46f71d7930daa2da38b58
         type: string
       confirmation:
-        description: Enter DEPLOY-MODULES-001-001A-081-082-HOTFIX-TO-TEST
+        description: Enter DEPLOY-PR552-COORDINATED-RUNTIME-MIGRATION-079-TO-TEST
         required: true
         type: string
   push:
@@ -21,6 +22,8 @@ on:
       - src/frontend/project-time-web/src/App.jsx
       - src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
       - src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
+      - scripts/release-test/apply-079.sh
+      - scripts/release-test/run-migration-job.sh
 
 permissions:
   id-token: write
@@ -32,11 +35,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Guarded forward-only runtime hotfix
+    name: Guarded PR 552 application and migration 079 release
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      EXPECTED_RELEASE_COMMIT: e3d68ddcac51ba7f2eb46f71d7930daa2da38b58
 
     steps:
       - name: Check out deployment controls
@@ -50,12 +55,12 @@ jobs:
       - name: Check out exact hotfix release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ inputs.release_commit || github.sha }}
+          ref: ${{ inputs.release_commit || 'e3d68ddcac51ba7f2eb46f71d7930daa2da38b58' }}
           path: release
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Guard exact source and forward-only boundary
+      - name: Guard exact source and coordinated release boundary
         id: release
         shell: bash
         env:
@@ -68,7 +73,7 @@ jobs:
           TARGET_COMMIT="$(git -C release rev-parse HEAD)"
           [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-MODULES-001-001A-081-082-HOTFIX-TO-TEST ]] || {
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-PR552-COORDINATED-RUNTIME-MIGRATION-079-TO-TEST ]] || {
               echo 'Confirmation text does not match.' >&2
               exit 1
             }
@@ -81,17 +86,26 @@ jobs:
             echo "Unsupported trigger: $EVENT_NAME" >&2
             exit 1
           fi
-          [[ "$TARGET_COMMIT" == "$CONTROL_COMMIT" ]] || {
-            echo 'Only the exact main commit containing this deployment control may deploy.' >&2
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the exact merged PR 552 application commit may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" "$CONTROL_COMMIT" || {
+            echo 'The reviewed PR 552 application commit is not an ancestor of the deployment controls.' >&2
             exit 1
           }
 
           test -f release/database/migrations/076_module_081_lab_equipment_tracker.sql
           test -f release/database/migrations/077_module_082_enterprise_project_risk_register.sql
           test -f release/database/migrations/078_module_001a_engineer_request_closeout.sql
+          test -f release/database/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql
           test -f release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
           test -f release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
           test -f release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+          test -f release/src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          test -f release/src/frontend/project-time-web/src/ProjectForgeCenter.jsx
+          test -f control/scripts/release-test/apply-079.sh
+          test -f control/scripts/release-test/run-migration-job.sh
 
           grep -Fq '<EngineerTaskCloseoutCenter authSession={authSession} />' release/src/frontend/project-time-web/src/App.jsx
           grep -Fq 'const results = await Promise.allSettled([' release/src/frontend/project-time-web/src/App.jsx
@@ -113,8 +127,12 @@ jobs:
           node release/src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
           node release/src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs
           node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          bash -n control/scripts/release-test/apply-079.sh
+          bash -n control/scripts/release-test/run-migration-job.sh
           echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
-          echo 'DATABASE_MUTATION=NONE_MIGRATIONS_076_078_PRESERVED'
+          echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'DATABASE_MUTATION=MIGRATION_079_APPLY_AND_VERIFY'
 
       - name: Sign in to the protected Test subscription
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
@@ -122,6 +140,139 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve protected Test database migration contract
+        id: migration_contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;; esac; }
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || {
+            echo 'Azure login is outside the protected Test subscription.' >&2
+            exit 1
+          }
+          API_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || {
+            echo 'The protected API resource is not tagged as Test.' >&2
+            exit 1
+          }
+          DATABASE_HOST="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_HOST") | .value // empty' <<<"$API_JSON")"
+          DATABASE_PORT="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_PORT") | .value // empty' <<<"$API_JSON")"
+          DATABASE_NAME="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_NAME") | .value // empty' <<<"$API_JSON")"
+          DATABASE_USER="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_USER") | .value // empty' <<<"$API_JSON")"
+          [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]]
+          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 ))
+          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
+          [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
+          PASSWORD_SECRET_REF="$(jq -r '
+            [.properties.template.containers[0].env[] |
+              select(.name == "PTP_DB_PASSWORD") | .secretRef // empty] |
+              map(select(length > 0)) | unique | if length == 1 then .[0] else empty end
+          ' <<<"$API_JSON")"
+          normalize "$PASSWORD_SECRET_REF" >/dev/null || {
+            echo 'The protected Test API has no single canonical database password secret.' >&2
+            exit 1
+          }
+          API_SECRETS_JSON="$(az containerapp secret list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
+            [.[] | select(.name == $name) | .keyVaultUrl // empty] |
+            if length == 1 then .[0] else empty end
+          ' <<<"$API_SECRETS_JSON")"
+          MIGRATOR_IDENTITY="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
+            [.[] | select(.name == $name) | .identity // empty] |
+            if length == 1 then .[0] else empty end
+          ' <<<"$API_SECRETS_JSON")"
+          [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]]
+          MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
+          [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]]
+          jq -e --arg identity "$MIGRATOR_IDENTITY" '
+            (.identity.userAssignedIdentities // {}) | keys |
+            map(ascii_downcase) | index($identity | ascii_downcase) != null
+          ' <<<"$API_JSON" >/dev/null
+          UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
+          UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
+          [[ "${UAMI_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]]
+          ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
+          [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]]
+          KEY_VAULT_URI="${KEY_VAULT_SECRET_URI%%/secrets/*}"
+          DATABASE_PASSWORD_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
+          echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "key_vault_uri=$KEY_VAULT_URI" >> "$GITHUB_OUTPUT"
+          echo "database_password_secret_name=$DATABASE_PASSWORD_SECRET_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_host=$DATABASE_HOST" >> "$GITHUB_OUTPUT"
+          echo "database_port=$DATABASE_PORT" >> "$GITHUB_OUTPUT"
+          echo "database_name=$DATABASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_user=$DATABASE_USER" >> "$GITHUB_OUTPUT"
+          echo 'COORDINATED_MIGRATION_079_PROTECTED_TEST_CONTRACT=PASSED'
+
+      - name: Build checksum-pinned migration 079 image
+        id: migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONTEXT="$RUNNER_TEMP/coordinated-migration-079-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT/migrations"
+          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
+          install -m 0755 control/scripts/release-test/apply-079.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql \
+            "$CONTEXT/migrations/079_coordinated_runtime_ai_document_rbac_repair.sql"
+          (
+            cd "$CONTEXT/migrations"
+            sha256sum 079_coordinated_runtime_ai_document_rbac_repair.sql > SHA256SUMS
+          )
+          printf '%s\n' '${{ steps.release.outputs.target_commit }}' > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh \
+            '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-coordinated-079-migrator:${{ steps.release.outputs.target_commit }}-${GITHUB_RUN_ID}" \
+            "$CONTEXT/Dockerfile" "$CONTEXT")"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-coordinated-079-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Apply migration 079 inside the private Test network
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.migration_contract.outputs.migrator_identity }}
+          AZURE_KEY_VAULT_URI: ${{ steps.migration_contract.outputs.key_vault_uri }}
+          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.migration_contract.outputs.database_password_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.migration_contract.outputs.database_host }}
+          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.migration_contract.outputs.database_port }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.migration_contract.outputs.database_name }}
+          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.migration_contract.outputs.database_user }}
+          MAIN_RELEASE_CONTROL_SHA: ${{ steps.release.outputs.control_commit }}
+          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: ${{ steps.release.outputs.target_commit }}
+          MAIN_RELEASE_MIGRATION_SCOPE: pr552-coordinated-runtime-079-test
+          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          MAIN_RELEASE_MIGRATION_JOB_NAME: m079-${{ github.run_id }}-${{ github.run_attempt }}-a
+          MAIN_RELEASE_MIGRATION_MODE: apply
+        run: bash control/scripts/release-test/run-migration-job.sh
+
+      - name: Reverify migration 079 without writes
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.migration_contract.outputs.migrator_identity }}
+          AZURE_KEY_VAULT_URI: ${{ steps.migration_contract.outputs.key_vault_uri }}
+          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.migration_contract.outputs.database_password_secret_name }}
+          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.migration_contract.outputs.database_host }}
+          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.migration_contract.outputs.database_port }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.migration_contract.outputs.database_name }}
+          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.migration_contract.outputs.database_user }}
+          MAIN_RELEASE_CONTROL_SHA: ${{ steps.release.outputs.control_commit }}
+          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: ${{ steps.release.outputs.target_commit }}
+          MAIN_RELEASE_MIGRATION_SCOPE: pr552-coordinated-runtime-079-test
+          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
+          MAIN_RELEASE_MIGRATION_JOB_NAME: m079-${{ github.run_id }}-${{ github.run_attempt }}-v
+          MAIN_RELEASE_MIGRATION_MODE: verify
+        run: bash control/scripts/release-test/run-migration-job.sh
 
       - name: Capture current immutable images
         id: before
@@ -217,6 +368,8 @@ jobs:
           wait_status /api/lab-equipment-tracker/summary 401,403
           wait_status /api/project-risk-register/summary 401,403
           wait_status /api/project-risk-register/actions 401,403
+          wait_status /api/project-flowhive/readiness 401,403
+          wait_status /api/project-forge/readiness 401,403,404
 
           if [[ -n "$UAT_SESSION" ]]; then
             auth_status() {
@@ -276,7 +429,10 @@ jobs:
                 && grep -Fq ' task pages' /tmp/hotfix-app.js \
                 && grep -Fq '/api/lab-equipment-tracker' /tmp/hotfix-app.js \
                 && grep -Fq 'CSV / XLSX' /tmp/hotfix-app.js \
-                && grep -Fq '/api/project-risk-register' /tmp/hotfix-app.js; then
+                && grep -Fq '/api/project-risk-register' /tmp/hotfix-app.js \
+                && grep -Fq '/api/project-flowhive/ai/production-generate' /tmp/hotfix-app.js \
+                && grep -Fq 'uncited generic template is never substituted' /tmp/hotfix-app.js \
+                && grep -Fq '/api/project-forge/projects/' /tmp/hotfix-app.js; then
                 READY=true
                 break
               fi
@@ -295,7 +451,7 @@ jobs:
         run: |
           mkdir -p evidence
           cat > evidence/modules-runtime-hotfix-test.json <<JSON
-          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","runId":"${{ github.run_id }}","modules":["001","001A","004","005","081","082"],"databaseMutation":false,"migrationsPreserved":["076","077","078"],"apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","apiRevision":"${{ steps.deploy_api.outputs.revision }}","webRevision":"${{ steps.deploy_web.outputs.revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","publicAndProtectedRoutes":"passed","servedAssets":"passed"}
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","controlCommit":"${{ steps.release.outputs.control_commit }}","runId":"${{ github.run_id }}","modules":["001","001A","004","005","006","019","033","055C","055D","064","066","081","082"],"databaseMutation":true,"migrationAppliedAndVerified":["079"],"migrationImage":"${{ steps.migration.outputs.image }}","apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","apiRevision":"${{ steps.deploy_api.outputs.revision }}","webRevision":"${{ steps.deploy_web.outputs.revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","publicAndProtectedRoutes":"passed","servedAssets":"passed"}
           JSON
 
       - name: Upload deployment evidence

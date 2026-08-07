@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-EXPECTED_RELEASE_COMMIT="e2ab37c93b565a4e1d5a94ef5e54efaf3d22e6a3"
+EXPECTED_RELEASE_COMMIT="${MAIN_RELEASE_EXPECTED_RELEASE_COMMIT:-e2ab37c93b565a4e1d5a94ef5e54efaf3d22e6a3}"
+MIGRATION_SCOPE="${MAIN_RELEASE_MIGRATION_SCOPE:-current-main-071-074-test}"
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
@@ -37,6 +38,8 @@ MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
 [[ "$EXPECTED_DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
 [[ "$EXPECTED_DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail "PROJECTPULSE_TEST_DATABASE_USER must be an exact PostgreSQL identifier."
 [[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_CONTROL_SHA must be an exact commit."
+[[ "$EXPECTED_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT must be an exact commit."
+[[ "$MIGRATION_SCOPE" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || fail "MAIN_RELEASE_MIGRATION_SCOPE is invalid."
 command -v az >/dev/null || fail "Azure CLI is required."
 command -v curl >/dev/null || fail "curl is required."
 command -v jq >/dev/null || fail "jq is required."
@@ -103,6 +106,7 @@ validate_job_ownership() {
     --arg passwordSecretUri "$PASSWORD_SECRET_URI" \
     --arg mode "$MODE" \
     --arg release "$EXPECTED_RELEASE_COMMIT" \
+    --arg scope "$MIGRATION_SCOPE" \
     --arg control "$CONTROL_SHA" \
     --arg runScope "$RUN_SCOPE" \
     --arg databaseHost "$EXPECTED_DATABASE_HOST" \
@@ -113,7 +117,7 @@ validate_job_ownership() {
       (.name == $jobName) and
       ((.location | ascii_downcase) == ($location | ascii_downcase)) and
       (.tags == {
-        "projectpulse-scope": "current-main-071-074-test",
+        "projectpulse-scope": $scope,
         "projectpulse-release": $release,
         "projectpulse-control": $control,
         "projectpulse-mode": $mode,
@@ -298,6 +302,7 @@ jq -n \
   --arg passwordSecretUri "$PASSWORD_SECRET_URI" \
   --arg mode "$MODE" \
   --arg release "$EXPECTED_RELEASE_COMMIT" \
+  --arg scope "$MIGRATION_SCOPE" \
   --arg control "$CONTROL_SHA" \
   --arg runScope "$RUN_SCOPE" \
   --arg databaseHost "$EXPECTED_DATABASE_HOST" \
@@ -311,7 +316,7 @@ jq -n \
       userAssignedIdentities: {($identity): {}}
     },
     tags: {
-      "projectpulse-scope": "current-main-071-074-test",
+      "projectpulse-scope": $scope,
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-mode": $mode,
