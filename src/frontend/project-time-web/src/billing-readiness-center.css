@@ -445,3 +445,4 @@
 .billing-readiness-handoff-panel nav { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; }
 .billing-readiness-handoff-panel a { border: 1px solid #aac9dd; border-radius: 999px; padding: .5rem .75rem; background: white; color: #064b78; font-weight: 800; text-decoration: none; }
 @media (max-width: 900px) { .billing-readiness-handoff-panel { flex-direction: column; } }
+.billing-blocker-list article a{display:inline-flex;width:fit-content;margin-top:.4rem;font-weight:800;color:#0077c8}

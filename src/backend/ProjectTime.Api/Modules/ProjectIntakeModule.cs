@@ -10,20 +10,17 @@ public static class ProjectIntakeModule
         app.MapPost("/api/project-intake/requests", CreateIntakeRequestAsync);
         app.MapPost("/api/project-intake/resource-requests", CreateResourceRequestAsync);
         app.MapPost("/api/project-intake/requests/{requestId:guid}/documents", UploadIntakeDocumentAsync).DisableAntiforgery();
-        app.MapGet("/api/project-intake/documents/{documentId:guid}/download", DownloadIntakeDocumentAsync);
+        app.MapPost("/api/project-intake/requests/{requestId:guid}/signed-handoff", SubmitSignedHandoffAsync);
         app.MapPost("/api/project-intake/resource-requests/{requestId:guid}/assign", AssignResourceRequestAsync);
 
         return app;
     }
 
-    private static async Task<IResult> GetOverviewAsync()
+    private static async Task<IResult> GetOverviewAsync(HttpContext context)
     {
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
-
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(context, CanViewIntake);
+        if (authorized.Failure is not null) return authorized.Failure;
+        await using var connection = authorized.Connection!;
 
         var intakes = await LoadIntakeRequestsAsync(connection);
         var projects = await LoadProjectsAsync(connection);
@@ -73,7 +70,7 @@ public static class ProjectIntakeModule
         });
     }
 
-    private static async Task<IResult> CreateIntakeRequestAsync(ProjectIntakeCreateRequest request)
+    private static async Task<IResult> CreateIntakeRequestAsync(ProjectIntakeCreateRequest request, HttpContext context)
     {
         if ((request.ClientId is null && string.IsNullOrWhiteSpace(request.ClientName)) || string.IsNullOrWhiteSpace(request.RequestTitle))
         {
@@ -84,12 +81,12 @@ public static class ProjectIntakeModule
             });
         }
 
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
-
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && CanManageIntake(actor));
+        if (authorized.Failure is not null) return authorized.Failure;
+        await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
 
         var resolvedClientName = request.ClientName?.Trim() ?? string.Empty;
 
@@ -215,7 +212,7 @@ public static class ProjectIntakeModule
 
         var id = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create intake request."));
 
-        await InsertAuditLogAsync(connection, "project_intake_request_created", "project_intake_request", id);
+        await InsertAuditLogAsync(connection, "project_intake_request_created", "project_intake_request", id, actor.ActualUserId);
 
         return Results.Ok(new
         {
@@ -227,11 +224,15 @@ public static class ProjectIntakeModule
     }
 
 
-    private static async Task<IResult> UploadIntakeDocumentAsync(Guid requestId, HttpRequest request)
+    private static async Task<IResult> UploadIntakeDocumentAsync(Guid requestId, HttpContext context)
     {
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && CanManageIntake(actor));
+        if (authorized.Failure is not null) return authorized.Failure;
+        await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
+        var request = context.Request;
 
         if (!request.HasFormContentType)
         {
@@ -254,6 +255,42 @@ public static class ProjectIntakeModule
             });
         }
 
+        var pipeline = ProjectTime.Api.Ai.PulseAiDocumentPipelineOptions.FromEnvironment();
+        var safeOriginalFileName = Path.GetFileName(file.FileName);
+        var extension = Path.GetExtension(safeOriginalFileName).ToLowerInvariant();
+        if (file.Length > pipeline.MaximumFileBytes)
+        {
+            return Results.BadRequest(new
+            {
+                status = "file_too_large",
+                message = $"Project intake documents are limited to {pipeline.MaximumFileBytes / (1024 * 1024)} MB."
+            });
+        }
+        if (!ProjectTime.Api.Ai.PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains(
+                extension,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                status = "unsupported_file_type",
+                message = "Upload an approved PDF, Office Open XML, text, CSV, JSON, XML, or HTML document."
+            });
+        }
+
+        await using (var intakeCommand = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM project_intake_requests WHERE project_intake_request_id = @request_id);", connection))
+        {
+            intakeCommand.Parameters.AddWithValue("request_id", requestId);
+            if ((bool?)await intakeCommand.ExecuteScalarAsync(context.RequestAborted) != true)
+            {
+                return Results.NotFound(new
+                {
+                    module = "024/027",
+                    status = "intake_not_found",
+                    message = "The selected intake no longer exists. Refresh and select an active intake before uploading."
+                });
+            }
+        }
+
         var uploadRoot = ProjectTime.Api.Ai.ProjectPulseUploadStorage.ResolveRoot();
 
         var documentType = string.IsNullOrWhiteSpace(form["documentType"])
@@ -267,6 +304,7 @@ public static class ProjectIntakeModule
             "quote" => "quote",
             "proposal" => "proposal",
             "order_form" => "order_form",
+            "purchase_order" => "purchase_order",
             "architecture" => "architecture",
             _ => "other"
         };
@@ -276,8 +314,7 @@ public static class ProjectIntakeModule
             string.Equals(form["aiTimesheetContextEnabled"], "true", StringComparison.OrdinalIgnoreCase) ||
             documentCategory is "sow" or "gsd";
 
-        var safeOriginalFileName = Path.GetFileName(file.FileName);
-        var storedFileName = $"{Guid.NewGuid():N}{Path.GetExtension(safeOriginalFileName)}";
+        var storedFileName = $"{Guid.NewGuid():N}{extension}";
         var requestFolder = Path.Combine(uploadRoot, "project-intake", requestId.ToString("N"));
         Directory.CreateDirectory(requestFolder);
 
@@ -287,9 +324,6 @@ public static class ProjectIntakeModule
         {
             await file.CopyToAsync(stream);
         }
-
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
 
         const string insertSql = """
             INSERT INTO project_intake_documents (
@@ -348,7 +382,7 @@ public static class ProjectIntakeModule
         updateCommand.Parameters.AddWithValue("project_intake_request_id", requestId);
         await updateCommand.ExecuteNonQueryAsync();
 
-        await InsertAuditLogAsync(connection, "project_intake_document_uploaded", "project_intake_request", requestId);
+        await InsertAuditLogAsync(connection, "project_intake_document_uploaded", "project_intake_request", requestId, actor.ActualUserId);
 
         return Results.Ok(new
         {
@@ -364,54 +398,246 @@ public static class ProjectIntakeModule
         });
     }
 
-    private static async Task<IResult> DownloadIntakeDocumentAsync(Guid documentId)
+    private static async Task<IResult> SubmitSignedHandoffAsync(Guid requestId, HttpContext context)
     {
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && CanSubmitSignedHandoff(actor));
+        if (authorized.Failure is not null) return authorized.Failure;
 
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
+        await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
+        var cancellationToken = context.RequestAborted;
 
-        const string sql = """
-            SELECT original_file_name, storage_path, content_type
+        string requestNumber;
+        string customerName;
+        string requestTitle;
+        string description;
+        await using (var command = new NpgsqlCommand("""
+            SELECT
+                request_number,
+                client_name,
+                request_title,
+                COALESCE(request_description, '')
+            FROM project_intake_requests
+            WHERE project_intake_request_id = @request_id;
+            """, connection))
+        {
+            command.Parameters.AddWithValue("request_id", requestId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return Results.NotFound(new
+                {
+                    module = "027",
+                    status = "intake_not_found",
+                    message = "The signed handoff intake was not found."
+                });
+            }
+
+            requestNumber = reader.GetString(0);
+            customerName = reader.GetString(1);
+            requestTitle = reader.GetString(2);
+            description = reader.GetString(3);
+        }
+
+        var documents = new List<SignedHandoffDocument>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT
+                project_intake_document_id,
+                document_category,
+                original_file_name,
+                size_bytes
             FROM project_intake_documents
-            WHERE project_intake_document_id = @document_id
+            WHERE project_intake_request_id = @request_id
               AND is_active = TRUE
-              AND COALESCE(upload_source, '') <> 'celar_ai_chat_attachment';
+              AND COALESCE(upload_source, '') <> 'celar_ai_chat_attachment'
+            ORDER BY uploaded_at, original_file_name;
+            """, connection))
+        {
+            command.Parameters.AddWithValue("request_id", requestId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                documents.Add(new(
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt64(3)));
+            }
+        }
+
+        if (documents.Count == 0 || !documents.Any(document => document.Category == "sow"))
+        {
+            return Results.BadRequest(new
+            {
+                module = "027",
+                status = "signed_sow_required",
+                message = "Upload and classify the signed SOW before routing this package to the Project Team Coordinator."
+            });
+        }
+
+        var recipients = await ProjectNotificationRepository.LoadUsersInRolesAsync(
+            connection,
+            ["PROJECT_TEAM_COORDINATOR"],
+            "project_team_coordinator",
+            cancellationToken);
+        recipients = recipients
+            .Where(recipient => !string.IsNullOrWhiteSpace(recipient.Email))
+            .GroupBy(recipient => recipient.Email, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First() with { RecipientType = "to" })
+            .ToArray();
+        if (recipients.Length == 0)
+        {
+            return Results.Json(new
+            {
+                module = "027",
+                status = "ptc_recipient_missing",
+                message = "The package is retained, but no active Project Team Coordinator has an email address. Assign an active PTC role and retry the handoff."
+            }, statusCode: StatusCodes.Status409Conflict);
+        }
+
+        var publicOrigin = ProjectPulsePublicOriginCompatibility.TryResolveProxyOrConfiguredOrigin(
+            context,
+            out var resolvedOrigin,
+            out _)
+                ? resolvedOrigin.GetLeftPart(UriPartial.Authority)
+                : $"{context.Request.Scheme}://{context.Request.Host}";
+        var platformUrl = $"{publicOrigin}{context.Request.PathBase}/#project-intake";
+        var documentLines = string.Join("\n", documents.Select(document =>
+            $"- {document.FileName} ({document.Category.Replace('_', ' ')}, {Math.Ceiling(document.SizeBytes / 1024m):N0} KB): {publicOrigin}{context.Request.PathBase}/api/project-workspace/documents/{document.Id:D}/download"));
+        var subject = $"Signed customer package ready — {customerName} / {requestTitle}";
+        var textBody = $"""
+            A signed customer package is ready for Project Team Coordinator review.
+
+            Intake: {requestNumber}
+            Customer: {customerName}
+            Package: {requestTitle}
+            Submitted by: {actor.DisplayName} ({actor.Email})
+
+            Documents retained in ProjectPulse:
+            {documentLines}
+
+            Sales context:
+            {description}
+
+            Review the package in ProjectPulse: {platformUrl}
+
+            Each document link requires ProjectPulse authentication, enforces the PTC/project access scope, and records governed download evidence. Raw customer files are not copied into automated email.
             """;
-
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("document_id", documentId);
-
-        await using var reader = await command.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync())
+        var documentHtml = string.Join(string.Empty, documents.Select(document =>
         {
-            return Results.NotFound(new
-            {
-                status = "not_found",
-                message = "Project intake document was not found."
-            });
+            var url = $"{publicOrigin}{context.Request.PathBase}/api/project-workspace/documents/{document.Id:D}/download";
+            return $"<li><a href=\"{System.Net.WebUtility.HtmlEncode(url)}\">{System.Net.WebUtility.HtmlEncode(document.FileName)}</a> "
+                + $"<span>({System.Net.WebUtility.HtmlEncode(document.Category.Replace('_', ' '))}, {Math.Ceiling(document.SizeBytes / 1024m):N0} KB)</span></li>";
+        }));
+        var htmlBody = $"""
+            <div style="font-family:Arial,sans-serif;line-height:1.5;color:#172033">
+              <h2 style="margin:0 0 12px">Signed customer package ready</h2>
+              <p><strong>Intake:</strong> {System.Net.WebUtility.HtmlEncode(requestNumber)}<br />
+              <strong>Customer:</strong> {System.Net.WebUtility.HtmlEncode(customerName)}<br />
+              <strong>Package:</strong> {System.Net.WebUtility.HtmlEncode(requestTitle)}<br />
+              <strong>Submitted by:</strong> {System.Net.WebUtility.HtmlEncode(actor.DisplayName)} ({System.Net.WebUtility.HtmlEncode(actor.Email)})</p>
+              <h3>Secure documents</h3>
+              <ul>{documentHtml}</ul>
+              <p><a href="{System.Net.WebUtility.HtmlEncode(platformUrl)}">Open the intake workspace in ProjectPulse</a></p>
+              <p style="font-size:12px;color:#526173">Links require ProjectPulse authentication, enforce the PTC/project access scope, and retain download evidence. Raw customer files are not copied into automated email.</p>
+            </div>
+            """;
+        var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(
+            context,
+            cancellationToken);
+
+        Guid dispatchId;
+        try
+        {
+            dispatchId = await ProjectNotificationRepository.UpsertDispatchAsync(
+                connection,
+                null,
+                null,
+                null,
+                $"signed-handoff:{requestId:D}",
+                "signed_customer_handoff",
+                "informational",
+                "027",
+                "signed_handoff_ready",
+                subject,
+                textBody,
+                htmlBody,
+                readiness.RecipientBoundary,
+                "queued",
+                recipients,
+                new
+                {
+                    projectIntakeRequestId = requestId,
+                    requestNumber,
+                    submittedByUserId = actor.ActualUserId,
+                    submittedByEmail = actor.Email,
+                    documentCount = documents.Count,
+                    documentIds = documents.Select(document => document.Id).ToArray(),
+                    documentDelivery = "secure_projectpulse_reference",
+                    serverDerivedRecipients = true
+                },
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return ProjectNotificationRepository.SourceFailure(
+                "027",
+                "signed_handoff_notification_dispatch",
+                exception,
+                "The package was retained, but its PTC notification could not be queued.");
         }
 
-        var originalFileName = reader.GetString(0);
-        var storagePath = reader.GetString(1);
-        var contentType = reader.IsDBNull(2) ? "application/octet-stream" : reader.GetString(2);
+        var delivery = await ProjectNotificationProcessingService.DeliverDispatchAsync(
+            connection,
+            dispatchId,
+            actor.ActualUserId,
+            "Module 027 signed customer package submitted.",
+            context,
+            cancellationToken);
 
-        if (!File.Exists(storagePath))
+        await using (var update = new NpgsqlCommand("""
+            UPDATE project_intake_requests
+            SET intake_status = CASE
+                    WHEN intake_status IN ('closed', 'cancelled', 'converted') THEN intake_status
+                    ELSE 'ptc_review'
+                END,
+                intake_source_notes = CONCAT_WS(E'\n', NULLIF(intake_source_notes, ''), @handoff_note),
+                updated_at = NOW()
+            WHERE project_intake_request_id = @request_id;
+            """, connection))
         {
-            return Results.NotFound(new
-            {
-                status = "file_missing",
-                message = "Document metadata exists, but the stored file was not found."
-            });
+            update.Parameters.AddWithValue("request_id", requestId);
+            update.Parameters.AddWithValue(
+                "handoff_note",
+                $"Module 027 dispatch {dispatchId:D}: {delivery.Status} via {delivery.Provider}.");
+            await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return Results.File(storagePath, contentType, originalFileName);
+        await InsertAuditLogAsync(connection, "signed_sow_handoff_submitted", "project_intake_request", requestId, actor.ActualUserId);
+
+        return Results.Json(new
+        {
+            module = "027",
+            status = delivery.Status,
+            sent = delivery.Sent,
+            message = delivery.Sent
+                ? $"The signed package was retained and Module 065 sent the PTC notification to {recipients.Length} recipient(s)."
+                : $"The signed package was retained and its PTC notification is {delivery.Status}. {delivery.Message}",
+            dispatchId,
+            recipientCount = recipients.Length,
+            documentCount = documents.Count,
+            provider = delivery.Provider,
+            recipientBoundary = delivery.RecipientBoundary,
+            auditPath = $"/api/project-notifications/dispatches?dispatchId={dispatchId:D}",
+            documentsIncludedAs = "secure_projectpulse_references"
+        }, statusCode: delivery.Sent ? StatusCodes.Status200OK : StatusCodes.Status202Accepted);
     }
 
-    private static async Task<IResult> CreateResourceRequestAsync(EngineeringResourceRequestCreateRequest request)
+    private static async Task<IResult> CreateResourceRequestAsync(
+        EngineeringResourceRequestCreateRequest request,
+        HttpContext context)
     {
         if (string.IsNullOrWhiteSpace(request.RequestedFunction) || request.RequestedHours <= 0)
         {
@@ -422,12 +648,12 @@ public static class ProjectIntakeModule
             });
         }
 
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
-
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && CanManageIntake(actor));
+        if (authorized.Failure is not null) return authorized.Failure;
+        await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
 
         var requestNumber = $"ERR-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
@@ -478,7 +704,7 @@ public static class ProjectIntakeModule
 
         var id = (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create resource request."));
 
-        await InsertAuditLogAsync(connection, "engineering_resource_request_created", "engineering_resource_request", id);
+        await InsertAuditLogAsync(connection, "engineering_resource_request_created", "engineering_resource_request", id, actor.ActualUserId);
 
         return Results.Ok(new
         {
@@ -489,14 +715,17 @@ public static class ProjectIntakeModule
         });
     }
 
-    private static async Task<IResult> AssignResourceRequestAsync(Guid requestId, EngineeringResourceAssignmentRequest request)
+    private static async Task<IResult> AssignResourceRequestAsync(
+        Guid requestId,
+        EngineeringResourceAssignmentRequest request,
+        HttpContext context)
     {
-        var config = ProjectIntakeDatabaseConfig.FromEnvironment();
-        var missingResult = ValidateConfig(config);
-        if (missingResult is not null) return missingResult;
-
-        await using var connection = new NpgsqlConnection(config.ConnectionString);
-        await connection.OpenAsync();
+        var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => !actor.IsViewAs && CanManageIntake(actor));
+        if (authorized.Failure is not null) return authorized.Failure;
+        await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
 
         const string sql = """
             UPDATE engineering_resource_requests
@@ -550,7 +779,7 @@ public static class ProjectIntakeModule
         assignmentCommand.Parameters.AddWithValue("assignment_notes", request.Notes ?? string.Empty);
         await assignmentCommand.ExecuteNonQueryAsync();
 
-        await InsertAuditLogAsync(connection, "engineering_resource_request_assigned", "engineering_resource_request", requestId);
+        await InsertAuditLogAsync(connection, "engineering_resource_request_assigned", "engineering_resource_request", requestId, actor.ActualUserId);
 
         return Results.Ok(new
         {
@@ -965,20 +1194,67 @@ public static class ProjectIntakeModule
         return rows;
     }
 
-    private static async Task InsertAuditLogAsync(NpgsqlConnection connection, string action, string entityType, Guid entityId)
+    private static async Task InsertAuditLogAsync(
+        NpgsqlConnection connection,
+        string action,
+        string entityType,
+        Guid entityId,
+        Guid? actorUserId = null)
     {
         const string sql = """
             INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id)
-            VALUES (NULL, @action, @entity_type, @entity_id);
+            VALUES (@actor_user_id, @action, @entity_type, @entity_id);
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("actor_user_id", actorUserId is null ? DBNull.Value : actorUserId.Value);
         command.Parameters.AddWithValue("action", action);
         command.Parameters.AddWithValue("entity_type", entityType);
         command.Parameters.AddWithValue("entity_id", entityId);
 
         await command.ExecuteNonQueryAsync();
     }
+
+    private static bool CanViewIntake(ProjectNotificationActor actor) =>
+        CanManageIntake(actor)
+        || actor.Permissions.Contains("VIEW_PROJECT_INTAKE")
+        || actor.Permissions.Contains("VIEW_PROJECT_INTAKE_AGING")
+        || actor.Permissions.Contains("VIEW_INTAKE_WORK_TASK_HANDOFF");
+
+    private static bool CanManageIntake(ProjectNotificationActor actor) =>
+        actor.IsAdministrator
+        || actor.IsCoordinator
+        || actor.Roles.Contains("SALES")
+        || actor.Roles.Contains("INSIDE_SALES")
+        || actor.Roles.Contains("ACCOUNT_EXECUTIVE")
+        || actor.Roles.Contains("ACCOUNT_EXECUTIVES")
+        || actor.Roles.Contains("SOLUTION_ARCHITECT")
+        || actor.Roles.Contains("SA")
+        || actor.Roles.Contains("SAA")
+        || actor.Roles.Contains("PROJECT_COORDINATOR")
+        || actor.Roles.Contains("PROJECT_MANAGEMENT")
+        || actor.Roles.Contains("PROJECT_MANAGER")
+        || actor.Roles.Contains("PROJECT_MANAGEMENT_LEAD")
+        || actor.Roles.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+        || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE")
+        || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE_AGING")
+        || actor.Permissions.Contains("MANAGE_PROJECT_DOCUMENTS");
+
+    private static bool CanSubmitSignedHandoff(ProjectNotificationActor actor) =>
+        actor.IsAdministrator
+        || actor.IsCoordinator
+        || actor.Roles.Overlaps([
+            "SALES",
+            "INSIDE_SALES",
+            "ACCOUNT_EXECUTIVE",
+            "ACCOUNT_EXECUTIVES",
+            "SOLUTION_ARCHITECT",
+            "SA",
+            "SAA",
+            "PROJECT_COORDINATOR"
+        ])
+        || actor.Permissions.Contains("MANAGE_PROJECT_INTAKE")
+        || actor.Permissions.Contains("MANAGE_PROJECT_DOCUMENTS");
 
 
     private static DateOnly? ReadDateOnlyOrNull(NpgsqlDataReader reader, int ordinal)
@@ -1019,16 +1295,6 @@ public static class ProjectIntakeModule
         };
     }
 
-    private static IResult? ValidateConfig(ProjectIntakeDatabaseConfig config)
-    {
-        if (config.Missing.Count == 0) return null;
-
-        return Results.BadRequest(new
-        {
-            status = "configuration_missing",
-            missing = config.Missing
-        });
-    }
 }
 
 internal sealed record ProjectIntakeCreateRequest(
@@ -1070,6 +1336,12 @@ internal sealed record EngineeringResourceRequestCreateRequest(
     string? Notes);
 
 internal sealed record EngineeringResourceAssignmentRequest(Guid UserId, string? Notes);
+
+internal sealed record SignedHandoffDocument(
+    Guid Id,
+    string Category,
+    string FileName,
+    long SizeBytes);
 
 internal sealed record IntakeSummary(
     Guid Id,
@@ -1155,52 +1427,3 @@ internal sealed record ResourceCapacitySummary(
     string Qualifications);
 
 internal sealed record UserOption(Guid UserId, string DisplayName, string Email, string JobTitle);
-
-internal sealed record ProjectIntakeDatabaseConfig(
-    string? Host,
-    string? Port,
-    string? Database,
-    string? Username,
-    string? Password,
-    IReadOnlyList<string> Missing)
-{
-    public string ConnectionString
-    {
-        get
-        {
-            var builder = new NpgsqlConnectionStringBuilder
-            {
-                Host = Host,
-                Port = int.TryParse(Port, out var parsedPort) ? parsedPort : 5432,
-                Database = Database,
-                Username = Username,
-                Password = Password,
-                IncludeErrorDetail = false,
-                Pooling = true,
-                MinPoolSize = 0,
-                MaxPoolSize = 5
-            };
-
-            return builder.ConnectionString;
-        }
-    }
-
-    public static ProjectIntakeDatabaseConfig FromEnvironment()
-    {
-        var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
-        var port = Environment.GetEnvironmentVariable("PTP_DB_PORT");
-        var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
-        var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
-        var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-
-        var missing = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(host)) missing.Add("PTP_DB_HOST");
-        if (string.IsNullOrWhiteSpace(port)) missing.Add("PTP_DB_PORT");
-        if (string.IsNullOrWhiteSpace(database)) missing.Add("PTP_DB_NAME");
-        if (string.IsNullOrWhiteSpace(username)) missing.Add("PTP_DB_USER");
-        if (string.IsNullOrWhiteSpace(password)) missing.Add("PTP_DB_PASSWORD");
-
-        return new ProjectIntakeDatabaseConfig(host, port, database, username, password, missing);
-    }
-}

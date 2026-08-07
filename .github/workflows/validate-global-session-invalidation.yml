@@ -29,10 +29,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce isolated source scope
+      - name: Enforce isolated source scope or bounded regression mode
         shell: bash
         run: |
           set -Eeuo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           git fetch origin main --no-tags
           mapfile -t CHANGED < <(git diff --name-only origin/main...HEAD)
           printf '%s\n' "${CHANGED[@]}"
@@ -52,24 +53,41 @@ jobs:
             exit 1
           }
 
-          for changed in "${CHANGED[@]}"; do
-            MATCH=false
-            for allowed in "${ALLOWED[@]}"; do
-              [[ "$changed" == "$allowed" ]] && MATCH=true
+          if [[ "$BRANCH" == hotfix/module-008-stable-route-authoritative-fallback-theme-dock-* ]]; then
+            for changed in "${CHANGED[@]}"; do
+              MATCH=false
+              for allowed in "${ALLOWED[@]}"; do
+                [[ "$changed" == "$allowed" ]] && MATCH=true
+              done
+              [[ "$MATCH" == true ]] || {
+                echo "Unexpected changed file: $changed" >&2
+                exit 1
+              }
             done
-            [[ "$MATCH" == true ]] || {
-              echo "Unexpected changed file: $changed" >&2
+
+            PROTECTED='^(src/frontend/project-time-web/src/(App|main|UserAdministrationPanel|MicrosoftIntegrationPortal)\.jsx|src/backend/|database/|\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'
+            if printf '%s\n' "${CHANGED[@]}" | grep -E "$PROTECTED"; then
+              echo 'Protected module, backend, migration, shared entry point, or deployment source changed.' >&2
+              exit 1
+            fi
+
+            echo 'MODULE_008_NATIVE_FALLBACK_THEME_SOURCE_ISOLATION=PASSED'
+          elif [[ "$BRANCH" == feature/enterprise-operations-ux-* ]]; then
+            DIRECT_MODULE_008='^(\.github/workflows/validate-global-session-invalidation\.yml|src/frontend/project-time-web/scripts/(validate-global-session-invalidation|test-authoritative-session-transport-theme-runtime|validate-modules-008-009-admin-experience)\.mjs|src/frontend/project-time-web/src/(projectpulse-authoritative-api\.js|AuditHistoryPanel\.jsx|admin-experience-theme\.css))$'
+            DIRECT_CHANGED="$(printf '%s\n' "${CHANGED[@]}" | grep -E "$DIRECT_MODULE_008" || true)"
+            [[ -n "$DIRECT_CHANGED" ]] || {
+              echo 'The Module 008 regression workflow requires at least one owned contract or runtime change.' >&2
               exit 1
             }
-          done
-
-          PROTECTED='^(src/frontend/project-time-web/src/(App|main|UserAdministrationPanel|MicrosoftIntegrationPortal)\.jsx|src/backend/|database/|\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'
-          if printf '%s\n' "${CHANGED[@]}" | grep -E "$PROTECTED"; then
-            echo 'Protected module, backend, migration, shared entry point, or deployment source changed.' >&2
+            if printf '%s\n' "${CHANGED[@]}" | grep -E '^(\.github/workflows/projectpulse-deploy-|scripts/validate-runtime-direct-timer-recovery-test-deployment\.sh)'; then
+              echo 'The Module 008 regression workflow cannot validate a deployment-control change.' >&2
+              exit 1
+            fi
+            echo "MODULE_008_NATIVE_FALLBACK_THEME_REGRESSION=PASSED branch=$BRANCH"
+          else
+            echo "Module 008's bounded multi-file regression mode is restricted to the reviewed enterprise operations branch family. Unexpected branch: $BRANCH" >&2
             exit 1
           fi
-
-          echo 'MODULE_008_NATIVE_FALLBACK_THEME_SOURCE_ISOLATION=PASSED'
 
       - uses: actions/setup-dotnet@v4
         with:

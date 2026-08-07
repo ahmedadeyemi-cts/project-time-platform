@@ -70,7 +70,7 @@ function installApp() {
       '      {/* GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE */}',
       `      {(activeRoute === 'notification-delivery-monitor' && canSeeAny(['VIEW_NOTIFICATION_DELIVERY_MONITOR', 'MANAGE_NOTIFICATION_DELIVERY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (`,
       '        <section id="notification-delivery-monitor" className="panel notification-delivery-monitor-route-panel">',
-      '          <ProjectNotificationAutomationCenter mode="delivery-monitor" authSession={authSession} />',
+      '          <ProjectNotificationAutomationCenter workspace="delivery" authSession={authSession} />',
       '        </section>',
       '      ) : null}',
       ''
@@ -84,7 +84,7 @@ function installApp() {
     source = source.replace(module022Anchor, [
       module022Anchor,
       '          {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}',
-      '          <ProjectNotificationAutomationCenter mode="routing-rules" authSession={authSession} />'
+      '          <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} />'
     ].join('\n'));
   }
 
@@ -94,7 +94,7 @@ function installApp() {
     source = source.replace(module023Anchor, [
       module023Anchor,
       '          {/* GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES */}',
-      '          <ProjectNotificationAutomationCenter mode="schedules" authSession={authSession} />'
+      '          <ProjectNotificationAutomationCenter workspace="scheduling" authSession={authSession} />'
     ].join('\n'));
   }
 

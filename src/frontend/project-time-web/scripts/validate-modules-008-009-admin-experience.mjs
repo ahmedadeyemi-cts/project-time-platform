@@ -161,6 +161,46 @@ if (backendAvailable) {
   check('BACKEND_ACTUAL_SESSION', common.includes('ProjectPulseActualUserId') && common.includes('ProjectPulseSessionUserId') && common.includes('ProjectPulseIsViewAs'), 'actual-session authority and View-As boundary');
   check('BACKEND_AUDIT_DISCOVERY', auditBackend.includes('information_schema.tables') && auditBackend.includes('(audit|history|event|log|outbox|sync_run|revision)'), 'existing history sources are dynamically discovered');
   check('BACKEND_AUDIT_REDACTION', auditBackend.includes('SensitiveKeys') && auditBackend.includes('[redacted]') && auditBackend.includes('connection_string'), 'sensitive evidence redaction');
+  const metadataProjectionStart = auditBackend.indexOf('private static readonly IReadOnlyDictionary<string, string[]> MetadataOnlySourceColumns');
+  const metadataProjectionEnd = auditBackend.indexOf('public static WebApplication MapAdminAuditHistoryEndpoints', metadataProjectionStart);
+  const metadataProjection = metadataProjectionStart >= 0 && metadataProjectionEnd > metadataProjectionStart
+    ? auditBackend.slice(metadataProjectionStart, metadataProjectionEnd)
+    : '';
+  check(
+    'BACKEND_PRIVATE_AI_METADATA_ONLY',
+    metadataProjection.includes('["pulse_ai_answer_runs"]')
+      && metadataProjection.includes('["pulse_ai_system_inquiry_runs"]')
+      && metadataProjection.includes('["pulse_ai_system_tool_events"]')
+      && metadataProjection.includes('["pulse_ai_retrieval_events"]')
+      && metadataProjection.includes('["pulse_ai_document_processing_events"]')
+      && !metadataProjection.includes('"question_text"')
+      && !metadataProjection.includes('"answer_json"')
+      && !metadataProjection.includes('"evidence_json"')
+      && auditBackend.includes('MetadataOnlySourceColumns.TryGetValue(tableName, out var metadataColumns)')
+      && auditBackend.includes('.Where(columns.ContainsKey)')
+      && auditBackend.includes('SELECT {projection}'),
+    'private Celar AI sources are projected to operational metadata before JSON serialization'
+  );
+  check(
+    'BACKEND_PRIVATE_AI_PAYLOAD_DENYLIST',
+    ['question_text', 'answer_json', 'request_filters_json', 'message_text', 'structured_response_json', 'corrected_answer_json']
+      .every((field) => auditBackend.includes(`"${field}"`)),
+    'known private AI payload fields remain explicitly redacted if another source exposes them'
+  );
+  const notificationDispatchProjection = metadataProjection.match(/\["project_notification_dispatches"\]\s*=\s*\[([\s\S]*?)\]\s*,/)?.[1] || '';
+  const notificationAttemptProjection = metadataProjection.match(/\["project_notification_delivery_attempts"\]\s*=\s*\[([\s\S]*?)\]\s*(?:,|\n\s*\})/)?.[1] || '';
+  check(
+    'BACKEND_NOTIFICATION_METADATA_ONLY',
+    ['project_notification_dispatch_id', 'project_id', 'notification_type', 'delivery_status', 'last_error_code', 'created_at']
+      .every((field) => notificationDispatchProjection.includes(`"${field}"`))
+      && ['subject', 'text_body', 'html_body', 'metadata_json', 'provider_message_id', 'last_error_message']
+        .every((field) => !notificationDispatchProjection.includes(`"${field}"`))
+      && ['project_notification_delivery_attempt_id', 'project_notification_dispatch_id', 'attempt_status', 'diagnostic_code', 'attempted_at']
+        .every((field) => notificationAttemptProjection.includes(`"${field}"`))
+      && ['provider_message_id', 'diagnostic_message']
+        .every((field) => !notificationAttemptProjection.includes(`"${field}"`)),
+    'notification audit sources expose operational metadata without bodies, document links, provider IDs, or diagnostic payloads'
+  );
   check('BACKEND_API_LIFECYCLE', auditBackend.includes('ApplicationStarted') && auditBackend.includes('ApplicationStopping') && auditBackend.includes('API_STARTED') && auditBackend.includes('API_STOPPING'), 'API start and stop evidence');
   check('BACKEND_MULTI_TEAM', teamBackend.includes('multipleTeamsPerManager = true') && teamBackend.includes('oneActiveManagerPerTeam = true'), 'manager scope contract');
   check('BACKEND_MEMBER_RECONCILIATION', teamBackend.includes('UPDATE app_users') && teamBackend.includes('manager_email = @manager_email') && teamBackend.includes('membersUpdated'), 'team members receive manager email');

@@ -462,6 +462,14 @@ function pr467FriendlyPrerequisite(value) {
   return labels[String(value || '').trim()] || String(value || '').replaceAll('_', ' ');
 }
 
+function blockerGuidance(issue) {
+  const normalized = String(issue ?? '').toLowerCase();
+  if (normalized.includes('contracted_value') || normalized.includes('contracted value')) return { text: 'Add the project list price or contracted value in Module 055C. Current project creation stores project_list_price, which Module 039 now recognizes.', route: '#work-register', action: 'Open project commercial fields' };
+  if (normalized.includes('expense_budget') || normalized.includes('expense budget')) return { text: 'Add the planned travel/expense budget in Module 055C. Current project creation stores planned_travel_cost, which Module 039 now recognizes.', route: '#work-register', action: 'Open project budget fields' };
+  if (normalized.includes('sell_association') || normalized.includes('sell association')) return { text: 'Associate the authoritative SELL quote through the CRM/ERP integration. Do not enter a fabricated quote ID.', route: '#crm-integration', action: 'Open SELL integration' };
+  return { text: 'Resolve or document this item before marking the package ready for billing.', route: '#work-register', action: 'Review project data' };
+}
+
 export default function BillingReadinessCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
   const [billingMode, setBillingMode] = useState('project');
@@ -1134,12 +1142,13 @@ export default function BillingReadinessCenter() {
                 <p>This billing package is ready for accounting review based on verified invoice candidates, mapped expenses, and checklist selections.</p>
               </article>
             ) : (
-              blockingIssues.map((issue) => (
+              blockingIssues.map((issue) => { const guidance = blockerGuidance(issue); return (
                 <article key={issue}>
-                  <strong>{issue}</strong>
-                  <p>Resolve or document this item before marking the package ready for billing.</p>
+                  <strong>{String(issue).replace(/Missing:\s*/i, '').split(',').map((item) => pr467FriendlyPrerequisite(item.trim())).join(', ')}</strong>
+                  <p>{guidance.text}</p>
+                  <a href={guidance.route}>{guidance.action}</a>
                 </article>
-              ))
+              ); })
             )}
           </div>
 

@@ -1,3 +1,5 @@
+using System.Net.Mail;
+
 namespace ProjectTime.Api.Modules;
 
 internal static class ProjectNotificationAutomationService
@@ -520,6 +522,7 @@ internal static class ProjectNotificationAutomationService
                     dispatchCount = dispatches.Count,
                     queued = dispatches.Count(item => item.DeliveryStatus == "queued"),
                     held = dispatches.Count(item => item.DeliveryStatus is "held" or "preview_ready"),
+                    sending = dispatches.Count(item => item.DeliveryStatus == "sending"),
                     sent = dispatches.Count(item => item.DeliveryStatus == "sent"),
                     failed = dispatches.Count(item => item.DeliveryStatus == "failed"),
                     suppressed = dispatches.Count(item => item.DeliveryStatus == "suppressed"),
@@ -565,6 +568,87 @@ internal static class ProjectNotificationAutomationService
             request,
             context,
             true);
+
+    internal static async Task<IResult> ReconcileDispatchAsync(
+        Guid dispatchId,
+        ProjectNotificationReconciliationRequest request,
+        HttpContext context)
+    {
+        var outcome = ProjectNotificationEvaluator.Clean(
+            request.Outcome ?? string.Empty,
+            40,
+            string.Empty).ToLowerInvariant();
+        var expectedConfirmation = outcome switch
+        {
+            "confirmed_sent" => "CONFIRM PROVIDER SENT",
+            "confirmed_not_sent" => "CONFIRM PROVIDER DID NOT SEND",
+            _ => string.Empty
+        };
+        if (expectedConfirmation.Length == 0)
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_outcome_required",
+                message = "Choose confirmed_sent or confirmed_not_sent after reviewing the provider evidence."
+            });
+        }
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                expectedConfirmation,
+                StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_confirmation_required",
+                message = $"Type {expectedConfirmation} exactly to reconcile this provider outcome."
+            });
+        }
+
+        var reason = ProjectNotificationEvaluator.Clean(
+            request.Reason ?? string.Empty,
+            1000,
+            string.Empty);
+        if (reason.Length < 10)
+        {
+            return Results.BadRequest(new
+            {
+                module = "032",
+                status = "notification_reconciliation_reason_required",
+                message = "Record at least 10 characters describing the provider evidence reviewed."
+            });
+        }
+
+        var access = await ProjectNotificationRepository.OpenAuthorizedAsync(
+            context,
+            actor => actor.CanDeliver);
+        if (access.Failure is not null) return access.Failure;
+        await using var connection = access.Connection!;
+        var result = await ProjectNotificationRepository.ReconcileDispatchDeliveryAsync(
+            connection,
+            dispatchId,
+            access.Actor!.ActualUserId,
+            outcome == "confirmed_sent",
+            reason,
+            context.TraceIdentifier,
+            context.RequestAborted);
+
+        return Results.Json(new
+        {
+            module = "032",
+            status = result.Status,
+            result.Success,
+            result.DispatchId,
+            result.ConfirmedSent,
+            result.AvailableAt,
+            result.Message
+        }, statusCode: result.Success
+            ? StatusCodes.Status200OK
+            : !result.Found
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status409Conflict);
+    }
 
     private static async Task<IResult> ReleaseOrRetryAsync(
         Guid dispatchId,
@@ -706,9 +790,22 @@ internal static class ProjectNotificationAutomationService
                 "account_executive",
                 "project_team_coordinator"
             ],
-            null);
+            null).ToList();
 
-        if (recipients.Length == 0)
+        var additionalCc = request.AdditionalCcRecipients ?? [];
+        if (additionalCc.Count > 25)
+            return Results.BadRequest(new { module = "041", status = "too_many_additional_cc_recipients", message = "No more than 25 additional CC recipients may be added." });
+
+        foreach (var candidate in additionalCc)
+        {
+            var email = candidate.Email?.Trim() ?? string.Empty;
+            if (!ValidEmail(email))
+                return Results.BadRequest(new { module = "041", status = "invalid_additional_cc_recipient", message = $"The additional CC address '{email}' is not valid." });
+            if (recipients.Any(item => item.Email.Equals(email, StringComparison.OrdinalIgnoreCase))) continue;
+            recipients.Add(new ProjectNotificationUser(null, string.IsNullOrWhiteSpace(candidate.Name) ? email : candidate.Name.Trim(), email, "additional_cc", "module_041_authorized_additional_cc", "cc"));
+        }
+
+        if (recipients.Count == 0)
         {
             return Results.BadRequest(new
             {
@@ -748,6 +845,7 @@ internal static class ProjectNotificationAutomationService
                     actorEmail = actor.Email,
                     serverDerivedRecipients = true,
                     clientRecipientListIgnored = true,
+                    authorizedAdditionalCcCount = additionalCc.Count,
                     sourceStates = snapshot.Sources
                 },
                 context.RequestAborted);
@@ -797,10 +895,18 @@ internal static class ProjectNotificationAutomationService
             auditPath = $"/api/project-notifications/dispatches?dispatchId={dispatchId:D}",
             outboxPath = $"/api/project-notifications/dispatches?dispatchId={dispatchId:D}",
             serverDerivedRecipients = true,
-            clientRecipientListIgnored = true
+            clientRecipientListIgnored = true,
+            authorizedAdditionalCcAccepted = true
         }, statusCode: delivery.Sent
             ? StatusCodes.Status200OK
             : StatusCodes.Status202Accepted);
+    }
+
+    private static bool ValidEmail(string email)
+    {
+        if (email.Length is < 3 or > 320 || email.Contains('\r') || email.Contains('\n')) return false;
+        try { return new MailAddress(email).Address.Equals(email, StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
     }
 
     private static async Task<ProjectNotificationSnapshotResult> LoadSnapshotSafelyAsync(

@@ -370,14 +370,29 @@
   .celar-ai-project-context-picker { grid-column: 1; }
 }
 .celar-ai-chat-attachments {
-  display: grid;
-  gap: .7rem;
-  margin: .2rem .75rem .35rem;
-  padding: .9rem;
-  border: 1px solid color-mix(in srgb, var(--brand-blue, #0b6cb8) 22%, var(--border, #d8e0ea));
-  border-radius: .85rem;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--surface, #fff) 94%, #e0f2fe), color-mix(in srgb, var(--surface, #fff) 97%, #dcfce7));
+  border-top: 1px solid var(--border, #d8e0ea);
+  background: color-mix(in srgb, var(--surface, #fff) 94%, var(--accent, #0b6cb8));
 }
+
+.celar-ai-chat-attachments-summary {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-height: 3.25rem;
+  padding: .65rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.celar-ai-chat-attachments-summary::-webkit-details-marker { display: none; }
+.celar-ai-chat-attachments-summary > span:nth-child(2) { display: grid; gap: .1rem; min-width: 0; flex: 1; }
+.celar-ai-chat-attachments-summary small { color: var(--text-muted, #5c6878); font-size: .72rem; }
+.celar-ai-chat-attachments-icon { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: .55rem; background: color-mix(in srgb, var(--accent, #0b6cb8) 13%, transparent); color: var(--accent, #0b6cb8); font-size: 1.25rem; transition: transform .18s ease; }
+.celar-ai-chat-attachments[open] .celar-ai-chat-attachments-icon { transform: rotate(45deg); }
+.celar-ai-chat-attachments-toggle { color: var(--accent, #0b6cb8); font-size: .75rem; font-weight: 700; }
+.celar-ai-chat-attachments[open] .celar-ai-chat-attachments-toggle { font-size: 0; }
+.celar-ai-chat-attachments[open] .celar-ai-chat-attachments-toggle::after { content: 'Collapse'; font-size: .75rem; }
+.celar-ai-chat-attachments-body { display: grid; gap: .55rem; padding: 0 1rem .85rem; }
 
 .celar-ai-chat-attachments-heading {
   display: flex;
@@ -408,6 +423,7 @@
   cursor: pointer;
   transition: border-color .16s ease, background .16s ease, transform .16s ease;
 }
+.celar-ai-chat-dropzone span { font-size: .7rem; }
 
 .celar-ai-chat-dropzone strong { color: var(--text, #16243a); font-size: .8rem; }
 .celar-ai-chat-dropzone > span:last-child { font-size: .67rem; }

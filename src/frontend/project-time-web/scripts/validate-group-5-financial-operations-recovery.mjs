@@ -136,10 +136,14 @@ assert(count(appAfter, "import FinancialOperationsRecoveryWorkspace from './Fina
 assert(count(appAfter, 'GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START') === 1, 'Group 5 route block must be unique.');
 assert(count(appAfter, '<FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />') === 1, 'Module 031 mount must be unique.');
 assert(
-  count(appAfter, '<FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />') === 1,
-  'Module 039 compact recovery mount must be unique.'
+  count(appAfter, '<FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />') === 0,
+  'Module 039 must not duplicate its canonical billing readiness surface.'
 );
-for (const moduleCode of ['041', '042']) {
+assert(
+  count(appAfter, '<FinancialOperationsRecoveryWorkspace moduleCode="041" authSession={authSession} />') === 0,
+  'Module 041 must not duplicate its canonical closeout notification surface.'
+);
+for (const moduleCode of ['042']) {
   assert(
     count(appAfter, `<FinancialOperationsRecoveryWorkspace moduleCode="${moduleCode}" authSession={authSession} />`) === 1,
     `Module ${moduleCode} recovery mount must be unique.`
@@ -161,7 +165,6 @@ ${appAfter}
 ${billingReadinessSource}`;
 for (const marker of [
   'PR467_COMPACT_SOURCE_HEALTH',
-  'billing-readiness-source-health',
   'PR467_BILLING_CLOSEOUT_HANDOFFS',
   'Complete project information — Module 055C',
   'Open Project Closeout — Module 040',

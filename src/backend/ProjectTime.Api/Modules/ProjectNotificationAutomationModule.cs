@@ -41,6 +41,9 @@ public static class ProjectNotificationAutomationModule
             "/api/project-notifications/dispatches/{dispatchId:guid}/retry",
             (Func<Guid, ProjectNotificationReleaseRequest, HttpContext, Task<IResult>>)ProjectNotificationAutomationService.RetryDispatchAsync);
         endpoints.MapPost(
+            "/api/project-notifications/dispatches/{dispatchId:guid}/reconcile",
+            (Func<Guid, ProjectNotificationReconciliationRequest, HttpContext, Task<IResult>>)ProjectNotificationAutomationService.ReconcileDispatchAsync);
+        endpoints.MapPost(
             "/api/project-notifications/run-due",
             (Func<HttpContext, Task<IResult>>)ProjectNotificationQuietHoursService.RunDueAsync);
         endpoints.MapPost(
@@ -91,7 +94,7 @@ public static class ProjectNotificationAutomationModule
             }
 
             var result = await ProjectNotificationAutomationService.QueueCloseoutAsync(
-                request ?? new(null, null, null, null, null, null, null, null),
+                request ?? new(null, null, null, null, null, null, null, null, null),
                 context);
             await result.ExecuteAsync(context);
         });

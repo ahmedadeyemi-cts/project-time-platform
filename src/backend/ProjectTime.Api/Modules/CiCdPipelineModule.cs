@@ -96,6 +96,24 @@ public static class CiCdPipelineModule
             var access = await RequireAdminAsync(context);
             if (access is not null) return access;
 
+            var workflow = string.IsNullOrWhiteSpace(request.Workflow)
+                ? "projectpulse-ci.yml"
+                : request.Workflow.Trim();
+
+            if (!string.Equals(workflow, "projectpulse-ci.yml", StringComparison.Ordinal))
+                return Results.Json(new
+                {
+                    status = "protected_workflow_dispatch_required",
+                    message = "Test, production, and rollback workflows require their workflow-specific release inputs and GitHub environment protections. Open the protected workflow in GitHub Actions."
+                }, statusCode: StatusCodes.Status422UnprocessableEntity);
+
+            if (request.Inputs is { Count: > 0 })
+                return Results.BadRequest(new
+                {
+                    status = "validation_workflow_inputs_not_allowed",
+                    message = "The in-application source validation workflow does not accept deployment inputs."
+                });
+
             if (!ScmTokenConfigured())
                 return Results.Json(new
                 {
@@ -103,14 +121,10 @@ public static class CiCdPipelineModule
                     message = "Configure PROJECTPULSE_CICD_SCM_TOKEN before enabling in-application workflow dispatch."
                 }, statusCode: 409);
 
-            var workflow = string.IsNullOrWhiteSpace(request.Workflow)
-                ? "projectpulse-deploy-test.yml"
-                : request.Workflow.Trim();
-
             var result = await DispatchAsync(
                 workflow,
                 string.IsNullOrWhiteSpace(request.Ref) ? DefaultBranch() : request.Ref.Trim(),
-                request.Inputs ?? new Dictionary<string, string>());
+                new Dictionary<string, string>());
 
             return result.Success
                 ? Results.Accepted(value: new
@@ -203,10 +217,31 @@ public static class CiCdPipelineModule
         },
         workflows = new[]
         {
-            "projectpulse-ci.yml",
-            "projectpulse-deploy-test.yml",
-            "projectpulse-deploy-production.yml",
-            "projectpulse-rollback.yml"
+            "projectpulse-ci.yml"
+        },
+        protectedWorkflows = new object[]
+        {
+            new
+            {
+                name = "projectpulse-deploy-test.yml",
+                environment = "test",
+                requiredInputs = new[] { "release_commit", "confirmation" },
+                launch = "github_actions_only"
+            },
+            new
+            {
+                name = "projectpulse-deploy-production.yml",
+                environment = "production",
+                requiredInputs = new[] { "release_commit" },
+                launch = "github_actions_only"
+            },
+            new
+            {
+                name = "projectpulse-rollback.yml",
+                environment = "selected_environment",
+                requiredInputs = new[] { "environment", "api_image", "web_image", "reason" },
+                launch = "governed_rollback_endpoint"
+            }
         },
         safeguards = new[]
         {
@@ -223,102 +258,14 @@ public static class CiCdPipelineModule
 
     private static async Task<IResult?> RequireAdminAsync(HttpContext context)
     {
-        var userId = SessionUserId(context);
-        if (userId is null)
-            return Results.Json(new
-            {
-                status = "session_required",
-                message = "A ProjectPulse session is required."
-            }, statusCode: 401);
+        if (context.Request.Method != HttpMethods.Get && GovernedOperationsReadModule.IsViewAs(context))
+            return Results.Json(new { module = "058", status = "view_as_read_only", message = "CI/CD mutations are blocked while View-As is active." }, statusCode: StatusCodes.Status403Forbidden);
 
-        await using var connection = new NpgsqlConnection(ConnectionString());
-        await connection.OpenAsync();
-
-        await using var command = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM app_user_role_assignments ura
-                JOIN app_roles r
-                  ON r.role_id = ura.role_id
-                WHERE ura.user_id = @user_id
-                  AND COALESCE(
-                        NULLIF(to_jsonb(ura)->>'is_active', '')::boolean,
-                        TRUE
-                      ) = TRUE
-                  AND (
-                        lower(COALESCE(
-                          NULLIF(to_jsonb(r)->>'name', ''),
-                          NULLIF(to_jsonb(r)->>'role_name', ''),
-                          NULLIF(to_jsonb(r)->>'code', ''),
-                          ''
-                        )) IN (
-                          'administrator',
-                          'admin',
-                          'super administrator',
-                          'system administrator'
-                        )
-                     OR EXISTS (
-                          SELECT 1
-                          FROM app_role_permissions rp
-                          JOIN app_permissions p
-                            ON p.permission_id = rp.permission_id
-                          WHERE rp.role_id = r.role_id
-                            AND upper(COALESCE(
-                              NULLIF(to_jsonb(p)->>'code', ''),
-                              NULLIF(to_jsonb(p)->>'permission_code', ''),
-                              NULLIF(to_jsonb(p)->>'name', ''),
-                              ''
-                            )) IN ('SYSTEM_ADMINISTRATION', 'MANAGE_ALL')
-                     )
-                  )
-            );
-            """, connection);
-
-        command.Parameters.AddWithValue("user_id", userId.Value);
-
-        try
-        {
-            var allowed = Convert.ToBoolean(await command.ExecuteScalarAsync());
-            return allowed
-                ? null
-                : Results.Json(new
-                {
-                    status = "administrator_access_required",
-                    message = "Module 058 is restricted to administrators."
-                }, statusCode: 403);
-        }
-        catch (PostgresException)
-        {
-            await using var fallback = new NpgsqlCommand("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM app_user_role_assignments ura
-                    JOIN app_roles r
-                      ON r.role_id = ura.role_id
-                    WHERE ura.user_id = @user_id
-                      AND lower(COALESCE(
-                        NULLIF(to_jsonb(r)->>'name', ''),
-                        NULLIF(to_jsonb(r)->>'role_name', ''),
-                        NULLIF(to_jsonb(r)->>'code', ''),
-                        ''
-                      )) IN (
-                        'administrator',
-                        'admin',
-                        'super administrator',
-                        'system administrator'
-                      )
-                );
-                """, connection);
-            fallback.Parameters.AddWithValue("user_id", userId.Value);
-            var allowed = Convert.ToBoolean(await fallback.ExecuteScalarAsync());
-            return allowed
-                ? null
-                : Results.Json(new
-                {
-                    status = "administrator_access_required",
-                    message = "Module 058 is restricted to administrators."
-                }, statusCode: 403);
-        }
+        return await GovernedOperationsReadModule.AuthorizeAsync(
+            context,
+            "058",
+            ["SUPER_ADMINISTRATOR", "ADMINISTRATOR"],
+            ["SYSTEM_ADMINISTRATION", "MANAGE_ALL"]);
     }
 
     private static async Task<object[]> ReadRecentRunsAsync()

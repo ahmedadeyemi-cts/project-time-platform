@@ -58,15 +58,24 @@ check('MODULE_998_997_HANDOFF',backend.includes('diagnostic_session_created')&&b
 check('MODULE_998_REMEDIATION_LIFECYCLE',['prepare','approve','stage','promote','verify','rollback','close'].every((x)=>backend.includes(`code = "${x}"`)));
 check('MODULE_998_NATIVE_EXECUTION',backend.includes('refresh_health_snapshot')&&backend.includes('native_health_refresh_executed')&&backend.includes('VerifyRemediationAsync'));
 check('MODULE_998_EXTERNAL_ACTIONS_GATED',backend.includes('StatusCodes.Status423Locked')&&backend.includes('execution_adapter_required')&&['restart_service','scale_service','rollback_deployment','replay_integration_event','refresh_configuration','database_repair'].every((x)=>backend.includes(x)));
+check('MODULE_998_RESTART_REQUIRES_STAGING',backend.includes('if (state != "staged")')&&backend.includes('staged_remediation_required'));
+check('MODULE_998_RESTART_ATOMIC_CLAIM',['executed_by IS NULL','remediation_execution_already_claimed','azure_container_app_restart_claimed','retryAllowed = false'].every((x)=>backend.includes(x)));
+check('MODULE_998_RESTART_RECOVERABLE_CLAIM',['RestartExecutionLease','claimId','leaseExpiresAt','azure_container_app_restart_claim_expired','azure_restart_reconciliation_required','manualReconciliationRequired = true',"result_json->>'claimId' = @claim_id"].every((x)=>backend.includes(x)));
+check('MODULE_998_RESTART_PARTIAL_EVIDENCE',['AcceptedRevisions','azure_container_app_revision_restart_partially_executed','azure_restart_partially_accepted','infrastructureStateChanged = restart.AcceptedRevisions.Length > 0'].every((x)=>backend.includes(x)));
+check('MODULE_998_RESTART_SERVER_OWNED_FINALIZATION',['executionTimeout.Token','persistenceTimeout.Token','accepted-revision evidence'].every((x)=>backend.includes(x))&&!backend.includes('RestartContainerAppAsync(readiness, target, context.RequestAborted)'));
+check('MODULE_998_RESTART_AZURE_VERIFICATION',['VerifyContainerAppRestartAsync','azure_restart_verification','healthState','runningState','acceptedRevisions.Length == 0'].every((x)=>backend.includes(x)));
+check('MODULE_998_VERIFICATION_PRESERVES_EXECUTION_EVIDENCE',backend.includes('execution = ReadExecutionEvidence(executionResultJson)')&&backend.includes('verification = verificationResult'));
+check('MODULE_998_PARTIAL_RESTART_RECONCILIATION',['partialRestart','remediation_reconciliation_required','reconciliationRequired = true','failedRevision'].every((x)=>backend.includes(x)));
+check('MODULE_998_TRANSIENT_VERIFICATION_RETRY',['remediation_verification_pending','verificationRetryable = true','var nextState = verified ? "verified" : verificationRetryable ? "executed" : "failed"'].every((x)=>backend.includes(x)));
 check('MODULE_998_STATUS_INTEGRITY',backend.includes('external_infrastructure')&&backend.includes('"unknown"')&&backend.includes('adapter = "azure_diagnostics"'));
 check('MODULE_998_EVIDENCE_BOUNDARY',backend.includes('rawLogAccessEnabled = false')&&backend.includes('secretAccessEnabled = false')&&backend.includes('connectionStringAccessEnabled = false'));
-check('MODULE_998_NO_EXTERNAL_CONNECTOR',!/(?:HttpClient|TcpClient|UdpClient|Process\.Start|GraphServiceClient|OpenAIClient|SmtpClient)/.test(backend));
+check('MODULE_998_NO_EXTERNAL_CONNECTOR',!/(?:TcpClient|UdpClient|Process\.Start|GraphServiceClient|OpenAIClient|SmtpClient)/.test(backend)&&['IDENTITY_ENDPOINT','PROJECTPULSE_AZURE_ALLOWED_CONTAINER_APPS','X-IDENTITY-HEADER','restart?api-version=2026-01-01'].every((x)=>backend.includes(x))&&!backend.includes('AZURE_CLIENT_SECRET'));
 
 check('MODULE_998_FRONTEND_MARKERS',frontend.includes('data-module="998"')&&frontend.includes('data-execution-mode="governed-native"')&&frontend.includes('data-contract-version'));
 check('MODULE_998_INDEPENDENT_LOADING',frontend.includes('Promise.allSettled')&&frontend.includes('Some diagnostic surfaces are unavailable'));
 for(const route of ['/api/system-diagnostics/overview','/api/system-diagnostics/checks','/api/system-diagnostics/issues','/api/system-diagnostics/sessions','/api/system-diagnostics/runbooks','/api/system-diagnostics/remediations']) check(`MODULE_998_FRONTEND_${route.replaceAll(/[^a-z0-9]/gi,'_').toUpperCase()}`,frontend.includes(`'${route}'`),route);
 check('MODULE_998_FRONTEND_MUTATIONS',frontend.includes("method: 'POST'")&&['Run diagnostics','Prepare remediation','Approve as separate actor','Stage','Execute','Verify','Close'].every((x)=>frontend.includes(x)));
-check('MODULE_998_ADAPTER_CONTROLS_VISIBLE',count(frontend,'<button type="button" disabled>')>=8&&['Restart service','Scale service','Rollback deployment','Replay integration event','Run database repair'].every((x)=>frontend.includes(x)));
+check('MODULE_998_ADAPTER_CONTROLS_VISIBLE',['Azure Container Apps restart control','Allowed targets','Prepare restart runbook','No Azure client secret is accepted by this page'].every((x)=>frontend.includes(x)));
 check('MODULE_998_US_SIGNAL_BRAND',frontend.includes('usSignalLogoDataUrl')&&frontend.includes('alt="US Signal"')&&css.includes('--diagnostic-blue: #005baa')&&css.includes('--diagnostic-navy: #002f5d'));
 check('MODULE_998_SCOPED_STYLES',css.includes('.system-diagnostic-center')&&!/(^|\n)\s*(?:html|body|:root|#root)\s*[{,]/m.test(css));
 

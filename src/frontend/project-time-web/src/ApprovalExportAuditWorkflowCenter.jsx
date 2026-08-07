@@ -225,7 +225,7 @@ export default function ApprovalExportAuditWorkflowCenter() {
     <section className="approval-export-center">
       <div className="approval-export-header">
         <div>
-          <p className="eyebrow">019M-AL</p>
+          <p className="eyebrow">Module 007</p>
           <h2>Approval / Export / Audit Workflow</h2>
           <p className="muted">
             Manage the post-manager approval workflow: PM validation, accounting readiness, reconciliation, lock, export preparation, and audit visibility.
@@ -239,6 +239,19 @@ export default function ApprovalExportAuditWorkflowCenter() {
           <button type="button" className="secondary-action" onClick={loadWorkflow}>Refresh</button>
         </div>
       </div>
+
+      <details className="approval-export-purpose">
+        <summary>What is Module 007 for, and when should I use it?</summary>
+        <div>
+          <p>Use this module after weekly time is submitted. It moves approved time through Project Manager validation, accounting review, reconciliation, period lock, export preparation, and retained audit evidence.</p>
+          <ol>
+            <li>Select the week and resolve manager or project approvals.</li>
+            <li>Run accounting preflight and reconcile exceptions before locking.</li>
+            <li>Prepare and download the governed export package; the download and actor are recorded for audit.</li>
+          </ol>
+          <p>Time entry belongs in Module 001 and searchable cross-module history belongs in Module 008.</p>
+        </div>
+      </details>
 
       {statusMessage ? <div className="approval-export-banner">{statusMessage}</div> : null}
       {summary.error ? <div className="approval-export-banner error">{summary.error}</div> : null}

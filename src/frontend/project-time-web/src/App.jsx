@@ -32,8 +32,9 @@ const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
 
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import SystemUserGuide from './SystemUserGuide.jsx';
-import PostIntakeAgingPanel from './PostIntakeAgingPanel.jsx';
+import WorkIntakeCreationCenter from './WorkIntakeCreationCenter.jsx';
 import EnterpriseModulePresentation from './enterprise/EnterpriseModulePresentation.jsx';
+import SalesDeliveryWorkflowCenter from './enterprise/SalesDeliveryWorkflowCenter.jsx';
 import AiProviderReadinessController from './ai/AiProviderReadinessController.jsx';
 
 
@@ -593,7 +594,6 @@ import ReplicationSyncStatusCenter from './ReplicationSyncStatusCenter.jsx';
 import RestoreValidationCenter from './RestoreValidationCenter.jsx';
 import BackupRetentionCenter from './BackupRetentionCenter.jsx';
 import TimeComplianceCenter from './TimeComplianceCenter.jsx';
-import ProjectIntakeCenter from './ProjectIntakeCenter.jsx';
 import SalesInsightsDashboard from './SalesInsightsDashboard.jsx';
 import CertifyIntegrationCenter from './CertifyIntegrationCenter.jsx';
 import BillingReadinessCenter from './BillingReadinessCenter.jsx';
@@ -636,8 +636,6 @@ import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizatio
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
 import RoleAdminDirectoryPanel from './RoleAdminDirectoryPanel.jsx';
 import RolesPermissionsMatrix from './RolesPermissionsMatrix.jsx';
-import IntakeWorkTaskHandoffPanel from './IntakeWorkTaskHandoffPanel.jsx';
-import ResourceAssignmentHandoffPanel from './ResourceAssignmentHandoffPanel.jsx';
 
 import './production-workflow-operations.css';
 import './local-admin-password-reset-clear-actions.css';
@@ -1925,8 +1923,8 @@ const roleWorkspaceModules = sortProjectPulseModules([
     title: "Signed SOW Handoff + Assignment Trigger",
     navLabel: "MODULE 027",
     description: "Prepare signed handoff, stakeholder notification, and PM and engineering assignment workflows.",
-    permissions: ["VIEW_PROJECT_INTAKE", "VIEW_PROJECT_WORKSPACE", "VIEW_RESOURCE_SCHEDULING", "MANAGE_RESOURCE_SCHEDULING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
-    roleCodes: ["SALES", "ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR", "PROJECT_COORDINATOR", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING"],
+    permissions: ["VIEW_PROJECT_INTAKE", "MANAGE_PROJECT_INTAKE", "MANAGE_PROJECT_DOCUMENTS", "VIEW_PROJECT_WORKSPACE", "VIEW_RESOURCE_SCHEDULING", "MANAGE_RESOURCE_SCHEDULING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL"],
+    roleCodes: ["SALES", "INSIDE_SALES", "ACCOUNT_EXECUTIVE", "ACCOUNT_EXECUTIVES", "SOLUTION_ARCHITECT", "SA", "SAA", "PROJECT_TEAM_COORDINATOR", "PROJECT_COORDINATOR", "PROJECT_MANAGER", "PROJECT_MANAGEMENT", "ENGINEER", "ENGINEERING"],
   },
   {
     route: "ai-time-entry",
@@ -6810,6 +6808,11 @@ Analytics - Variphy / Infortel`}
       {/* GROUP_6_ENTERPRISE_PRESENTATION_START */}
       <EnterpriseModulePresentation activeRoute={activeRoute} />
       {/* GROUP_6_ENTERPRISE_PRESENTATION_END */}
+      {activeRoute === 'sales-intake' ? <SalesDeliveryWorkflowCenter module="024" /> : null}
+      {activeRoute === 'sow-generator' ? <SalesDeliveryWorkflowCenter module="025" /> : null}
+      {activeRoute === 'signed-handoff' ? <SalesDeliveryWorkflowCenter module="027" /> : null}
+      {activeRoute === 'ai-time-entry' ? <SalesDeliveryWorkflowCenter module="028" /> : null}
+      {activeRoute === 'uat-validation' ? <SalesDeliveryWorkflowCenter module="029" /> : null}
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_START */}
       <AiProviderReadinessController authSession={authSession} />
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_END */}
@@ -7422,7 +7425,7 @@ Analytics - Variphy / Infortel`}
       {/* GROUP_4_NOTIFICATION_DELIVERY_MONITOR_ROUTE */}
       {(activeRoute === 'notification-delivery-monitor' && canSeeAny(['VIEW_NOTIFICATION_DELIVERY_MONITOR', 'MANAGE_NOTIFICATION_DELIVERY', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="notification-delivery-monitor" className="panel notification-delivery-monitor-route-panel">
-          <ProjectNotificationAutomationCenter mode="delivery-monitor" authSession={authSession} />
+          <ProjectNotificationAutomationCenter workspace="delivery" authSession={authSession} />
         </section>
       ) : null}
       {/* GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START */}
@@ -7446,8 +7449,6 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'closeout-email' && canSeeAny(['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="closeout-email" className="panel closeout-email-route-panel">
-          {/* GROUP_5_MODULE_041_RECOVERY_PANEL */}
-          <FinancialOperationsRecoveryWorkspace moduleCode="041" authSession={authSession} />
           <CloseoutEmailAutomationCenter />
         </section>
       ) : null}
@@ -8359,7 +8360,7 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'cost-alerts' && canSeeAny(['VIEW_COST_ALERTS', 'MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="cost-alerts" className="panel cost-alert-route-panel">
           {/* GROUP_4_MODULE_022_CONFIGURABLE_RULES */}
-          <ProjectNotificationAutomationCenter mode="routing-rules" authSession={authSession} />
+          <ProjectNotificationAutomationCenter workspace="routing" authSession={authSession} />
           <CostOverrunAlertCenter canManageCostAlerts={canSeeAny(['MANAGE_COST_ALERTS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])} />
         </section>
       ) : null}
@@ -8432,10 +8433,7 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'project-intake' && canSeeAny(['VIEW_PROJECT_INTAKE', 'MANAGE_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'MANAGE_RESOURCE_SCHEDULING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-intake" className="panel project-intake-route-panel">
-          <ProjectIntakeCenter />
-          <PostIntakeAgingPanel />
-        <IntakeWorkTaskHandoffPanel />
-        <ResourceAssignmentHandoffPanel />
+          <WorkIntakeCreationCenter />
         </section>
       ) : null}
 
@@ -8447,11 +8445,6 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'billing-readiness' && canSeeAny(['VIEW_ACCOUNT_RECONCILIATION', 'VIEW_APPROVAL_WORKFLOW', 'PROJECT_TIME_APPROVAL', 'VIEW_EXPENSES', 'EXPORT_TIME_EXCEL', 'EXPORT_TIME_PDF', 'DOWNLOAD_TIME_EXPORT_PACKAGE', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="billing-readiness" className="panel billing-readiness-route-panel">
-          {/* GROUP_5_MODULE_039_RECOVERY_PANEL */}
-          <details className="billing-readiness-source-health" open>
-            <summary>Source health & recovery</summary>
-            <FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />
-          </details>
           <BillingReadinessCenter />
         </section>
       ) : null}
@@ -8498,7 +8491,7 @@ Analytics - Variphy / Infortel`}
       {(activeRoute === 'time-compliance' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL', 'VIEW_TIME_COMPLIANCE', 'VIEW_AUDIT_HISTORY'])) ? (
         <section id="time-compliance" className="panel time-compliance-route-panel">
           {/* GROUP_4_MODULE_023_CONFIGURABLE_SCHEDULES */}
-          <ProjectNotificationAutomationCenter mode="schedules" authSession={authSession} />
+          <ProjectNotificationAutomationCenter workspace="scheduling" authSession={authSession} />
           <TimeComplianceCenter />
         </section>
       ) : null}

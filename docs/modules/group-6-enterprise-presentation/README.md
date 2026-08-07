@@ -75,7 +75,15 @@ The shared system provides:
 
 ### Permissions
 
-No permission change is included. Group 6 does not add roles, permissions, module visibility, route authority, or mutation authority. Each module continues to use its current server and frontend permission checks.
+No database permission or role-grant change is included. Module 027 navigation
+and server authorization now consistently recognize the existing Inside Sales,
+Account Executive, Solution Architect/SA/SAA, coordinator, and governed intake
+management authorities. All other modules continue to use their current server
+and frontend permission checks.
+
+Module 027's signed-package uploader and the central upload-security boundary use
+the same SOW, GSD, purchase-order, and supporting-document categories, so a
+purchase order offered by the workflow is accepted by the server-side allowlist.
 
 ### More menu
 

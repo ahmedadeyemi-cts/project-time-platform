@@ -48,8 +48,9 @@ if (nextApp !== app) {
 requireCount(app, "import FinancialOperationsRecoveryWorkspace from './FinancialOperationsRecoveryWorkspace.jsx';", 1, 'Group 5 App import');
 requireCount(app, 'GROUP_5_FINANCIAL_OPERATIONS_ROUTES_START', 1, 'Group 5 standalone routes');
 requireCount(app, '<FinancialOperationsRecoveryWorkspace mode="workbench" authSession={authSession} />', 1, 'Module 031 workbench mount');
-requireCount(app, '<FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />', 1, 'Module 039 compact recovery mount');
-for (const moduleCode of ['041', '042']) {
+requireCount(app, '<FinancialOperationsRecoveryWorkspace moduleCode="039" authSession={authSession} compact />', 0, 'Retired Module 039 duplicate recovery mount');
+requireCount(app, '<FinancialOperationsRecoveryWorkspace moduleCode="041" authSession={authSession} />', 0, 'Retired Module 041 duplicate recovery mount');
+for (const moduleCode of ['042']) {
   requireCount(
     app,
     `<FinancialOperationsRecoveryWorkspace moduleCode="${moduleCode}" authSession={authSession} />`,

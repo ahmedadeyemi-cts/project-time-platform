@@ -418,3 +418,4 @@
   visibility: visible !important;
   min-height: calc(100vh - 160px);
 }
+.audit-quick-filters{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin:.8rem 0}.audit-quick-filters>span{font-size:.75rem;font-weight:850;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted,#5c6878)}.audit-quick-filters button{padding:.42rem .65rem;border:1px solid var(--border-color,#d7e0ea);border-radius:999px;background:var(--surface,#fff);color:inherit;font-weight:750}.audit-quick-filters button.active{border-color:#0077c8;background:color-mix(in srgb,#0077c8 9%,transparent);color:#0067a9}

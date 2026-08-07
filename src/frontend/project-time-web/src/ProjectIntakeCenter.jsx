@@ -149,21 +149,21 @@ export default function ProjectIntakeCenter() {
 
   const [intakeForm, setIntakeForm] = useState({
     clientId: '',
-    clientName: 'Great Lakes Healthcare',
-    opportunityReference: 'OPP-NEW-REQUEST',
-    requestTitle: 'New Project Intake',
-    requestDescription: 'Intake request created from the ProjectPulse workflow.',
+    clientName: '',
+    opportunityReference: '',
+    requestTitle: '',
+    requestDescription: '',
     assignedPmUserId: '',
     /* 053I_INTAKE_AE_SA_UI_STATE_START */
     accountExecutiveUserId: '',
     solutionArchitectUserId: '',
     /* 053I_INTAKE_AE_SA_UI_STATE_END */
     priority: 'normal',
-    targetStartDate: '2026-08-03',
-    targetCompletionDate: '2026-09-25',
-    estimatedHours: '120',
-    plannedEngineeringCost: '48000',
-    plannedPmCost: '12000',
+    targetStartDate: '',
+    targetCompletionDate: '',
+    estimatedHours: '',
+    plannedEngineeringCost: '',
+    plannedPmCost: '',
     intakeSource: 'manual_entry',
     sourceSystem: '',
     externalReferenceId: '',
@@ -177,13 +177,13 @@ export default function ProjectIntakeCenter() {
     projectIntakeRequestId: '',
     projectId: '',
     assignedPmUserId: '',
-    requestedFunction: 'Collaboration Engineering',
-    skillRequirements: 'Cisco UC, contact center, implementation readiness',
-    requestedHours: '80',
-    targetStartDate: '2026-08-03',
-    targetEndDate: '2026-08-28',
+    requestedFunction: '',
+    skillRequirements: '',
+    requestedHours: '',
+    targetStartDate: '',
+    targetEndDate: '',
     priority: 'normal',
-    notes: 'Engineering resource request created from the ProjectPulse workflow.'
+    notes: ''
   });
 
   async function loadOverview() {
@@ -208,7 +208,7 @@ export default function ProjectIntakeCenter() {
       const result = await fetchJson('/api/customers/overview');
       setCustomerOverview({ loading: false, data: result, error: null });
 
-      const defaultCustomer = result.customers?.find((customer) => customer.clientName === 'Great Lakes Healthcare') ?? result.customers?.[0];
+      const defaultCustomer = result.customers?.[0];
 
       if (defaultCustomer) {
         setIntakeForm((current) => current.clientId

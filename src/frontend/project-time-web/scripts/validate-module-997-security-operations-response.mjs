@@ -74,7 +74,7 @@ check('MODULE_997_INDEPENDENT_LOADING', frontend.includes('Promise.allSettled') 
 for (const route of Object.values({ overview:SURFACE('/overview'), alerts:SURFACE('/alerts'), sessions:SURFACE('/sessions'), incidents:SURFACE('/incidents') }))
   check(`MODULE_997_FRONTEND_${route.replaceAll(/[^a-z0-9]/gi, '_').toUpperCase()}`, frontend.includes(`'${route}'`), route);
 check('MODULE_997_FRONTEND_MUTATIONS', frontend.includes("method: 'POST'") && ['Declare incident','Run diagnostics','Prepare containment','Approve as separate actor','Execute approved action'].every((x) => frontend.includes(x)));
-check('MODULE_997_EXTERNAL_CONTROLS_VISIBLE', count(frontend, '<button type="button" disabled>') >= 6 && ['Suspend Entra user','Block WAF indicator','Isolate endpoint'].every((x) => frontend.includes(x)));
+check('MODULE_997_EXTERNAL_CONTROLS_VISIBLE', ['Microsoft Entra / Graph','Azure WAF','Microsoft Defender','Execution remains locked until the tenant-scoped identity'].every((x) => frontend.includes(x)));
 check('MODULE_997_US_SIGNAL_BRAND', frontend.includes('usSignalLogoDataUrl') && frontend.includes('alt="US Signal"') && css.includes('--security-blue: #005baa') && css.includes('--security-navy: #002f5d'));
 check('MODULE_997_SCOPED_STYLES', css.includes('.security-operations-center') && !/(^|\n)\s*(?:html|body|:root|#root)\s*[{,]/m.test(css));
 

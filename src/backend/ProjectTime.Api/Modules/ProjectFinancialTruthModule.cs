@@ -848,11 +848,12 @@ public static class ProjectFinancialTruthModule
                 : null);
         var expenseBudget = JsonDecimal([seed.Json, metadata],
             "expense_budget", "project_expense_budget",
-            "travel_expense_budget", "expenses_budget");
+            "travel_expense_budget", "expenses_budget", "planned_travel_cost");
         var contractedValue = JsonDecimal([seed.Json, metadata],
             "contracted_value", "contract_value", "contract_value_amount",
             "customer_contract_value", "project_value", "sow_amount",
-            "total_sow_amount", "quote_amount", "quoted_amount", "sell_total_amount");
+            "total_sow_amount", "quote_amount", "quoted_amount", "sell_total_amount",
+            "project_list_price");
 
         var plannedHours = assignments.Sum(row => row.AssignedHours);
         var usedHours = time.Sum(row => row.UsedHours);

@@ -19,6 +19,9 @@ const files = {
   injector: path.join(scriptDirectory, 'inject-group-6-enterprise-presentation.mjs'),
   package: path.join(webRoot, 'package.json'),
   app: path.join(sourceRoot, 'App.jsx'),
+  salesDelivery: path.join(enterpriseRoot, 'SalesDeliveryWorkflowCenter.jsx'),
+  intakeBackend: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'),
+  securityHardening: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs'),
   documentation: path.join(repositoryRoot, 'docs/modules/group-6-enterprise-presentation/README.md')
 };
 
@@ -63,6 +66,7 @@ const presentation = read(files.presentation);
 const systemCss = read(files.systemCss);
 const adoptionCss = read(files.adoptionCss);
 const injector = read(files.injector);
+const salesDelivery = read(files.salesDelivery);
 const packageJson = JSON.parse(read(files.package));
 
 contains(logo, "import { usSignalLogoDataUrl } from '../assets/usSignalLogoData.js';", 'official image asset');
@@ -142,6 +146,21 @@ contains(injector, 'GROUP_6_ENTERPRISE_PRESENTATION_END', 'idempotent end marker
 assert(!injector.includes('enterprise-more-navigation'), 'Group 6 must not modify the permission-aware More menu.');
 assert(!injector.includes('module-availability-registry.js'), 'Group 6 must not rewrite module identity or permission registries.');
 
+for (const marker of [
+  'draftPackage',
+  'uploadedFileKeys',
+  'retainDraft(workingPackage)',
+  'Retry resumes this package; it will not create another intake.',
+  '`/api/project-intake/requests/${workingPackage.id}/documents`',
+  '`/api/project-intake/requests/${workingPackage.id}/signed-handoff`'
+]) {
+  contains(salesDelivery, marker, 'resumable Module 024/027 intake handoff');
+}
+assert(
+  count(salesDelivery, "request('/api/project-intake/requests',") === 1,
+  'The intake uploader must have one guarded create call and reuse the retained package on retry.'
+);
+
 const predev = packageJson.scripts?.predev ?? '';
 const prebuild = packageJson.scripts?.prebuild ?? '';
 const build = packageJson.scripts?.build ?? '';
@@ -156,6 +175,15 @@ assert(
 
 if (fullRepositoryContext) {
   const documentation = read(files.documentation);
+  const intakeBackend = read(files.intakeBackend);
+  const securityHardening = read(files.securityHardening);
+  contains(intakeBackend, 'ORDER BY uploaded_at, original_file_name', 'signed-handoff document chronology');
+  assert(!intakeBackend.includes('ORDER BY created_at, original_file_name'), 'The signed-handoff query must use the real project_intake_documents uploaded_at column.');
+  for (const marker of ['CanSubmitSignedHandoff', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'INSIDE_SALES', 'SOLUTION_ARCHITECT', '"SA"', '"SAA"', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_DOCUMENTS']) {
+    contains(intakeBackend, marker, 'Module 027 submitter authority');
+  }
+  contains(salesDelivery, "'purchase_order'", 'purchase-order upload category');
+  contains(securityHardening, '"purchase_order"', 'purchase-order upload security allowlist');
   for (const moduleCode of Object.keys(targetModules)) {
     contains(documentation, `Module ${moduleCode}`, `Module ${moduleCode} documentation`);
   }
@@ -163,7 +191,7 @@ if (fullRepositoryContext) {
     'official US Signal logo',
     'More menu is excluded',
     'No migration',
-    'No permission change',
+    'No database permission or role-grant change',
     'No deployment'
   ]) {
     contains(documentation, marker, 'Group 6 scope documentation');
@@ -176,6 +204,10 @@ execFileSync(process.execPath, [files.injector], {
 });
 
 const generatedApp = read(files.app);
+const module027Navigation = generatedApp.match(/route: "signed-handoff"[\s\S]{0,1400}/)?.[0] ?? '';
+for (const marker of ['INSIDE_SALES', 'ACCOUNT_EXECUTIVE', 'ACCOUNT_EXECUTIVES', 'SOLUTION_ARCHITECT', '"SA"', '"SAA"', 'MANAGE_PROJECT_INTAKE', 'MANAGE_PROJECT_DOCUMENTS']) {
+  contains(module027Navigation, marker, 'Module 027 navigation authority');
+}
 assert(
   count(generatedApp, "import EnterpriseModulePresentation from './enterprise/EnterpriseModulePresentation.jsx';") === 1,
   'Generated App must import the Group 6 presentation exactly once.'

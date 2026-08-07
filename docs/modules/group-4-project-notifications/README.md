@@ -120,6 +120,26 @@ Live delivery requires all of the following:
 
 A `test_only` or `locked` boundary records dispatch and attempt evidence without external mail. Group 4 never accepts credentials in a request and never returns secret values.
 
+Before Module 065 is invoked, the shared delivery service atomically moves one
+eligible dispatch to `sending`. Concurrent tabs, API retries, and scheduler
+workers observe that in-flight claim and do not call the provider. Event-key
+upserts preserve both `sending` and `sent`, so a repeated Module 027 handoff
+cannot reset an active claim or produce a duplicate PTC notification.
+
+If a provider call completes but the database cannot finalize its outcome, the
+dispatch remains `sending` and automatic retry stays blocked. After a ten-minute
+safety window, an authorized non-View-As operator must review Module 065/provider
+evidence in Module 032 and explicitly confirm either `sent` or `not sent`. The
+first outcome closes the dispatch without resending; the second records immutable
+reconciliation evidence and permits a separate deliberate retry. No timeout ever
+causes an automatic resend of an indeterminate provider call.
+
+Module 008 consumes dispatch and attempt history through explicit metadata-only
+projections. General audit viewers can see module, project ID, status, boundary,
+timestamps, and diagnostic codes, but not message subjects/bodies, document-link
+metadata, provider message IDs, or diagnostic messages. Project-scoped message
+content remains available only through the original notification authorization.
+
 ## Permissions
 
 Migration 050 adds:

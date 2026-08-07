@@ -703,7 +703,6 @@ function closeoutAuditShortText(value, maxLength = 180) {
 export default function CloseoutEmailAutomationCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, data: null });
   const [userDirectoryPayload, setUserDirectoryPayload] = useState({ loading: true, users: [], error: null });
-  const [recipientEmailOverrides, setRecipientEmailOverrides] = useState({});
   const [ccDraft, setCcDraft] = useState('');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [status, setStatus] = useState('');
@@ -849,9 +848,7 @@ export default function CloseoutEmailAutomationCenter() {
     return enrichRecipientsWithUserDirectory(rawRecipients, userDirectory);
   }, [payload.data, selectedProject, userDirectory]);
 
-  const recipients = useMemo(() => {
-    return applyCloseoutRecipientOverrides(detectedRecipients, recipientEmailOverrides);
-  }, [detectedRecipients, recipientEmailOverrides]);
+  const recipients = detectedRecipients;
 
   const ccRecipients = useMemo(() => parseCloseoutCcRecipients(ccDraft), [ccDraft]);
 
@@ -931,8 +928,7 @@ export default function CloseoutEmailAutomationCenter() {
         projectStatus: selectedProject.status,
         projectManagerName,
         projectManagerEmail: pmRecipient?.email || selectedProject.projectManagerEmail || '',
-        recipients,
-        ccRecipients,
+        additionalCcRecipients: ccRecipients.map((recipient) => ({ name: recipient.name, email: recipient.email })),
         subject: emailDraft.subject,
         body: emailDraft.body,
         triggeredBy: getCurrentSessionUser()
@@ -1118,25 +1114,14 @@ export default function CloseoutEmailAutomationCenter() {
                   <div className="closeout-email-empty">No recipients were detected for this project.</div>
                 ) : (
                   recipients.map((recipient) => {
-                    const overrideKey = closeoutRecipientOverrideKey(recipient);
                     const needsReview = closeoutRecipientNeedsReview(recipient);
 
                     return (
                       <div className={needsReview ? 'closeout-email-recipient review' : 'closeout-email-recipient ready'} key={`${recipient.role}-${recipient.email || recipient.name}`}>
                         <strong>{recipient.role}</strong>
                         <span>{recipient.name || 'Name not recorded'}</span>
-                        <label className="closeout-email-inline-editor">
-                          <small>Email</small>
-                          <input
-                            value={recipient.email || ''}
-                            placeholder="name@example.com"
-                            onChange={(event) => setRecipientEmailOverrides((current) => ({
-                              ...current,
-                              [overrideKey]: event.target.value
-                            }))}
-                          />
-                        </label>
-                        {needsReview ? <small className="closeout-email-review-text">Review or replace this email before sending.</small> : null}
+                        <small className="closeout-email-authoritative-address">{recipient.email || 'No authoritative email is assigned'}</small>
+                        {needsReview ? <small className="closeout-email-review-text">Update this project-team member in Module 055C; closeout recipients cannot be overridden here.</small> : <small>Authoritative project-team recipient</small>}
                       </div>
                     );
                   })
@@ -1146,7 +1131,7 @@ export default function CloseoutEmailAutomationCenter() {
               <div className="closeout-email-cc-editor">
                 <label>
                   <strong>Additional CC recipients</strong>
-                  <span>Enter comma, semicolon, or line-separated emails. You can use Name &lt;email@domain.com&gt; format.</span>
+                  <span>Add up to 25 comma, semicolon, or line-separated addresses. These are sent as CC; the authoritative project team remains locked.</span>
                   <textarea
                     value={ccDraft}
                     placeholder="example.person@company.com\nAnother Person <another.person@company.com>"

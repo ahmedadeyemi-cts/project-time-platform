@@ -247,6 +247,45 @@ internal static class ProjectNotificationProcessingService
                 dispatch.AttemptCount);
         }
 
+        var claimed = await ProjectNotificationRepository.TryClaimDispatchDeliveryAsync(
+            connection,
+            dispatchId,
+            releasedByUserId,
+            reason,
+            context?.TraceIdentifier ?? "scheduler",
+            cancellationToken);
+        if (!claimed)
+        {
+            var current = await ProjectNotificationRepository.LoadDispatchAsync(
+                connection,
+                dispatchId,
+                cancellationToken);
+            if (current?.DeliveryStatus == "sent")
+            {
+                return new(
+                    true,
+                    "notification_already_sent",
+                    current.ProviderSource,
+                    current.DeliveryBoundary,
+                    current.ProviderMessageId,
+                    string.Empty,
+                    "The notification was already delivered. Duplicate delivery was prevented.",
+                    current.DispatchId,
+                    current.AttemptCount);
+            }
+            return new(
+                false,
+                "notification_delivery_in_progress",
+                current?.ProviderSource ?? dispatch.ProviderSource,
+                current?.DeliveryBoundary ?? dispatch.DeliveryBoundary,
+                current?.ProviderMessageId ?? string.Empty,
+                "DELIVERY_IN_PROGRESS",
+                "Another worker has already claimed this dispatch. Duplicate delivery was prevented.",
+                dispatch.DispatchId,
+                current?.AttemptCount ?? dispatch.AttemptCount);
+        }
+        dispatch = dispatch with { DeliveryStatus = "sending" };
+
         var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(
             context,
             cancellationToken);
@@ -283,16 +322,32 @@ internal static class ProjectNotificationProcessingService
                 context?.TraceIdentifier ?? "scheduler",
                 cancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
+            try
+            {
+                using var reconciliationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await ProjectNotificationRepository.MarkDispatchDeliveryOutcomeUnknownAsync(
+                    connection,
+                    dispatch.DispatchId,
+                    releasedByUserId,
+                    "Delivery result persistence failed after the provider boundary was invoked.",
+                    context?.TraceIdentifier ?? "scheduler",
+                    reconciliationTimeout.Token);
+            }
+            catch
+            {
+                // The durable sending claim remains the fail-closed recovery signal even
+                // when the same database outage prevents recording this diagnostic.
+            }
             return new(
                 false,
-                "failed",
+                "notification_delivery_outcome_unknown",
                 delivery.Provider,
                 delivery.RecipientBoundary,
                 delivery.ProviderMessageId,
-                ProjectNotificationRepository.Diagnostic(exception),
-                "The delivery result could not be recorded. Retry after the database source is restored.",
+                "DELIVERY_OUTCOME_UNKNOWN",
+                "The provider outcome could not be finalized. Do not resend. Review provider evidence and use Module 032 outcome reconciliation after the safety window.",
                 dispatch.DispatchId,
                 dispatch.AttemptCount);
         }

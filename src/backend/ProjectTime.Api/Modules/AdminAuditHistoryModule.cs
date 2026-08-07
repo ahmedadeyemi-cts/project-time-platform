@@ -25,6 +25,8 @@ public static class AdminAuditHistoryModule
     [
         "audit_logs",
         "auth_login_attempts",
+        "auth_login_events",
+        "auth_sessions",
         "auth_password_reset_requests",
         "azure_sync_runs",
         "notification_log",
@@ -35,7 +37,26 @@ public static class AdminAuditHistoryModule
         "scoped_approval_stage_events",
         "scoped_time_correction_events",
         "projectpulse_native_admin_document_history",
-        "microsoft_integration_audit_events"
+        "microsoft_integration_audit_events",
+        "timesheet_day_statuses",
+        "scoped_time_management_events",
+        "scoped_time_correction_events",
+        "time_workflow_exports",
+        "module001_timer_audit_events",
+        "ai_capability_route_audit",
+        "ai_provider_probe_evidence",
+        "pulse_ai_answer_runs",
+        "pulse_ai_system_inquiry_runs",
+        "pulse_ai_system_tool_events",
+        "pulse_ai_retrieval_events",
+        "pulse_ai_document_processing_events",
+        "project_intake_change_history",
+        "work_register_change_history",
+        "project_notification_dispatches",
+        "project_notification_delivery_attempts",
+        "enterprise_notification_event_history",
+        "enterprise_notification_run_history",
+        "system_email_provider_test_events"
     ];
 
     private static readonly string[] TimestampCandidates =
@@ -45,6 +66,7 @@ public static class AdminAuditHistoryModule
         "logged_at",
         "attempted_at",
         "started_at",
+        "requested_at",
         "completed_at",
         "sent_at",
         "failed_at",
@@ -68,7 +90,9 @@ public static class AdminAuditHistoryModule
         "notification_type",
         "change_type",
         "request_type",
-        "approval_stage"
+        "approval_stage",
+        "feature_code",
+        "tool_code"
     ];
 
     private static readonly string[] StatusCandidates =
@@ -80,6 +104,8 @@ public static class AdminAuditHistoryModule
         "delivery_status",
         "notification_status",
         "state",
+        "answer_status",
+        "event_status",
         "success"
     ];
 
@@ -99,7 +125,9 @@ public static class AdminAuditHistoryModule
         "changed_by_user_id",
         "created_by_user_id",
         "updated_by_user_id",
-        "user_id"
+        "user_id",
+        "actual_user_id",
+        "effective_user_id"
     ];
 
     private static readonly string[] TargetCandidates =
@@ -152,9 +180,80 @@ public static class AdminAuditHistoryModule
             "ciphertext",
             "nonce",
             "authentication_tag",
-            "source_file_bytes"
+            "source_file_bytes",
+            "question_text",
+            "answer_json",
+            "request_filters_json",
+            "missing_evidence",
+            "conflicts_json",
+            "source_health_json",
+            "privacy_evidence_json",
+            "structured_response_json",
+            "message_text",
+            "corrected_answer_json",
+            "feedback_reason",
+            "tool_summary_json"
         },
         StringComparer.OrdinalIgnoreCase);
+
+    // General Audit permission intentionally receives only operational metadata
+    // for private Celar AI sources. Full questions, answers, filters, evidence,
+    // and tool payloads remain behind their original user/project authorization.
+    private static readonly IReadOnlyDictionary<string, string[]> MetadataOnlySourceColumns =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pulse_ai_answer_runs"] =
+            [
+                "pulse_ai_answer_run_id", "feature_code", "purpose_code", "answer_status",
+                "actual_user_id", "effective_user_id", "project_id", "project_code",
+                "detail_level", "retrieval_mode", "retrieved_chunk_count", "cited_source_count",
+                "source_document_count", "source_version_count", "input_character_count",
+                "output_character_count", "confidence_score", "coverage_score",
+                "citation_coverage_score", "correlation_id", "diagnostic_code", "data_as_of",
+                "requested_at", "completed_at", "created_at", "updated_at"
+            ],
+            ["pulse_ai_system_inquiry_runs"] =
+            [
+                "pulse_ai_system_inquiry_run_id", "pulse_ai_conversation_id", "actual_user_id",
+                "effective_user_id", "intent_code", "detail_level", "answer_status",
+                "registered_api_count", "successful_tool_count", "failed_tool_count", "confidence",
+                "diagnostic_code", "correlation_id", "started_at", "completed_at", "created_at",
+                "updated_at"
+            ],
+            ["pulse_ai_system_tool_events"] =
+            [
+                "pulse_ai_system_tool_event_id", "pulse_ai_system_inquiry_run_id", "tool_code",
+                "module_code", "method", "event_status", "status_code", "duration_ms",
+                "response_bytes", "diagnostic_code", "observed_at", "created_at"
+            ],
+            ["pulse_ai_retrieval_events"] =
+            [
+                "pulse_ai_retrieval_event_id", "pulse_ai_answer_run_id", "actual_user_id",
+                "effective_user_id", "project_id", "feature_code", "event_code", "event_status",
+                "retrieval_mode", "candidate_count", "authorized_candidate_count",
+                "returned_chunk_count", "correlation_id", "diagnostic_code", "created_at"
+            ],
+            ["pulse_ai_document_processing_events"] =
+            [
+                "pulse_ai_document_processing_event_id", "pulse_ai_document_processing_job_id",
+                "project_intake_document_id", "project_id", "actual_user_id", "effective_user_id",
+                "event_code", "event_status", "correlation_id", "diagnostic_code", "created_at"
+            ],
+            ["project_notification_dispatches"] =
+            [
+                "project_notification_dispatch_id", "project_id", "routing_rule_id", "schedule_id",
+                "notification_type", "alert_severity", "source_module", "source_status",
+                "delivery_boundary", "provider_source", "delivery_status", "scheduled_for",
+                "released_at", "released_by_user_id", "sent_at", "last_error_code",
+                "created_at", "updated_at"
+            ],
+            ["project_notification_delivery_attempts"] =
+            [
+                "project_notification_delivery_attempt_id", "project_notification_dispatch_id",
+                "attempt_number", "provider_source", "configured_provider", "recipient_boundary",
+                "attempt_status", "diagnostic_code", "attempted_at"
+            ]
+        };
 
     public static WebApplication MapAdminAuditHistoryEndpoints(this WebApplication app)
     {
@@ -402,12 +501,26 @@ public static class AdminAuditHistoryModule
             ? $"ORDER BY {timestampExpression} DESC NULLS LAST"
             : string.Empty;
 
+        var projection = "*";
+        if (MetadataOnlySourceColumns.TryGetValue(tableName, out var metadataColumns))
+        {
+            var availableMetadataColumns = metadataColumns
+                .Where(columns.ContainsKey)
+                .Select(QuoteIdentifier)
+                .ToArray();
+            if (availableMetadataColumns.Length == 0) return [];
+            projection = string.Join(", ", availableMetadataColumns);
+        }
+
         await using var command = new NpgsqlCommand($"""
             SELECT to_jsonb(source)::text
-            FROM {quotedTable} source
-            {whereClause}
-            {orderClause}
-            LIMIT @limit;
+            FROM (
+                SELECT {projection}
+                FROM {quotedTable}
+                {whereClause}
+                {orderClause}
+                LIMIT @limit
+            ) source;
             """, connection);
         if (timestampColumn is not null && canFilterTimestamp)
         {
@@ -490,6 +603,13 @@ public static class AdminAuditHistoryModule
             "operation_id",
             "notification_id",
             "sync_run_id",
+            "pulse_ai_answer_run_id",
+            "pulse_ai_system_inquiry_run_id",
+            "pulse_ai_system_tool_event_id",
+            "pulse_ai_retrieval_event_id",
+            "pulse_ai_document_processing_event_id",
+            "project_notification_dispatch_id",
+            "project_notification_delivery_attempt_id",
             "id"
         ]);
         var hashInput = $"{tableName}|{sourceRecordId}|{eventTime:O}|{raw}|{rowIndex}";
@@ -629,6 +749,7 @@ public static class AdminAuditHistoryModule
         var text = $"{tableName} {eventType}".ToLowerInvariant();
         if (text.Contains("password")) return "password_reset";
         if (text.Contains("auth") || text.Contains("login") || text.Contains("session")) return "authentication";
+        if (text.Contains("pulse_ai") || text.Contains("celar") || text.Contains("ai_provider") || text.Contains("ai_capability")) return "ai_usage";
         if (text.Contains("service") || text.Contains("restart")) return "service_control";
         if (text.Contains("deploy") || text.Contains("release") || text.Contains("container") || text.Contains("runtime")) return "platform";
         if (text.Contains("azure") || text.Contains("entra") || text.Contains("microsoft") || text.Contains("sync") || text.Contains("integration")) return "integration";
