@@ -1,4 +1,4 @@
-name: ProjectPulse Deploy Test
+name: ProjectPulse Deploy Modules 081 082 001A and Celar AI Test
 
 on:
   workflow_dispatch:
@@ -6,16 +6,16 @@ on:
       release_commit:
         description: Exact reviewed source commit
         required: true
-        default: 951c79e1bb12426c4f2aeaf10e0a3a875a4878e6
+        default: 1892c6d0187edc367a57b8cee2e868417dd9a01a
         type: string
       confirmation:
-        description: Enter DEPLOY-951C79E1-ENTERPRISE-OPERATIONS-TO-TEST
+        description: Enter DEPLOY-1892C6D-MODULES-081-082-001A-CELAR-AI-TO-TEST
         required: true
         type: string
   push:
     branches: [main]
     paths:
-      - deployment/releases/test/current-main-acae6fda-20260805.json
+      - deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
 
 permissions:
   id-token: write
@@ -28,14 +28,14 @@ concurrency:
 
 jobs:
   release:
-    name: Guarded current-main migrations 071-074 and application Test release
+    name: Guarded Modules 081, 082, 001A, and Celar AI Test release
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      RELEASE_MANIFEST: deployment/releases/test/current-main-acae6fda-20260805.json
-      EXPECTED_SOURCE_SHA: 951c79e1bb12426c4f2aeaf10e0a3a875a4878e6
+      RELEASE_MANIFEST: deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
+      EXPECTED_SOURCE_SHA: 1892c6d0187edc367a57b8cee2e868417dd9a01a
 
     steps:
       - name: Check out deployment controls
@@ -49,7 +49,7 @@ jobs:
       - name: Check out exact application source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 951c79e1bb12426c4f2aeaf10e0a3a875a4878e6
+          ref: 1892c6d0187edc367a57b8cee2e868417dd9a01a
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -78,15 +78,15 @@ jobs:
           [[ "$(jq -r .routingAuthority "control/$RELEASE_MANIFEST")" == database_managed_active ]]
           [[ "$(jq -r .allowSanitizedExternalEscalation "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .flowHiveIncluded "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .migration074Included "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
+          [[ "$(jq -r .modules081082001aIncluded "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r .celarAiPrivateRagUxIncluded "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 3 ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
               echo "Only the exact reviewed source SHA may deploy." >&2
               exit 1
             }
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-951C79E1-ENTERPRISE-OPERATIONS-TO-TEST ]] || {
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-1892C6D-MODULES-081-082-001A-CELAR-AI-TO-TEST ]] || {
               echo "Deployment confirmation does not match." >&2
               exit 1
             }
@@ -100,21 +100,20 @@ jobs:
             exit 1
           }
 
-          cat > /tmp/expected-control-paths <<'EOF'
-          .github/workflows/projectpulse-deploy-test.yml
-          .github/workflows/projectpulse-release-test-control-ci.yml
-          deployment/releases/test/current-main-acae6fda-20260805.json
+          cat > /tmp/expected-control-name-status <<'EOF'
+          M	.github/workflows/projectpulse-deploy-test.yml
+          M	.github/workflows/projectpulse-release-test-control-ci.yml
+          D	.github/workflows/projectpulse-deploy-pulse-login-test.yml
+          A	deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
+          A	scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh
+          A	scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
+          A	scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
           EOF
-          sed -i 's/^[[:space:]]*//' /tmp/expected-control-paths
-          LC_ALL=C sort -o /tmp/expected-control-paths /tmp/expected-control-paths
-          git -C control diff --name-status "$SOURCE_SHA...$CONTROL_SHA" > /tmp/control-name-status
-          awk '$1 !~ /^[AM]$/ { exit 1 }' /tmp/control-name-status || {
-            echo "Release control boundary contains a deletion, rename, copy, or type change." >&2
-            cat /tmp/control-name-status >&2
-            exit 1
-          }
-          cut -f2 /tmp/control-name-status | LC_ALL=C sort > /tmp/actual-control-paths
-          diff -u /tmp/expected-control-paths /tmp/actual-control-paths
+          sed -i 's/^[[:space:]]*//' /tmp/expected-control-name-status
+          LC_ALL=C sort -k2,2 -o /tmp/expected-control-name-status /tmp/expected-control-name-status
+          git -C control diff --name-status --no-renames "$SOURCE_SHA...$CONTROL_SHA" \
+            | LC_ALL=C sort -k2,2 > /tmp/actual-control-name-status
+          diff -u /tmp/expected-control-name-status /tmp/actual-control-name-status
           git -C control diff --check "$SOURCE_SHA...$CONTROL_SHA"
 
           [[ "$(git -C control rev-parse HEAD:scripts/build-pr55-acr-image.sh)" == db96de4c548a38761fb4dc79c8ac55babf17efca ]]
@@ -125,13 +124,26 @@ jobs:
           mapfile -t PATHS < <(jq -r '.migrations[].path' "control/$RELEASE_MANIFEST")
           mapfile -t BLOBS < <(jq -r '.migrations[].blobSha' "control/$RELEASE_MANIFEST")
           mapfile -t HASHES < <(jq -r '.migrations[].sha256' "control/$RELEASE_MANIFEST")
-          for index in 0 1 2 3; do
+          for index in 0 1 2; do
             [[ "$(git -C release rev-parse "HEAD:${PATHS[$index]}")" == "${BLOBS[$index]}" ]]
             [[ "$(sha256sum "release/${PATHS[$index]}" | awk '{print $1}')" == "${HASHES[$index]}" ]]
           done
-          test -f release/database/migrations/074_module_066_project_flowhive_production.sql
-          test -f release/database/rollback/074_module_066_project_flowhive_production_rollback.sql
-          [[ "$(sha256sum release/database/rollback/074_module_066_project_flowhive_production_rollback.sql | awk '{print $1}')" == "620f211bf0041dfb92d3c77398e5d56dbabe4522ecd39ffb2e511b2536e3a406" ]]
+          test -f release/database/rollback/076_module_081_lab_equipment_tracker_rollback.sql
+          test -f release/database/rollback/077_module_082_enterprise_project_risk_register_rollback.sql
+          test -f release/database/rollback/078_module_001a_engineer_request_closeout_rollback.sql
+          test -f release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          test -f release/src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          test -f release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          test -f release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+          test -f release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          test -f release/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          test -f release/src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
+          test -f release/src/frontend/project-time-web/src/HelpAssistant.jsx
+          grep -Fq 'ENGINEER_TASK_CLOSEOUT_001A' release/database/migrations/078_module_001a_engineer_request_closeout.sql
+          grep -Fq 'module = Module' release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          grep -Fq 'module = Module' release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          grep -Fq '/api/engineer-task-closeout/overview' release/src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
           OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b
           [[ "$(sha256sum release/src/frontend/project-time-web/brand/USSNavyStacked.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
           [[ "$(sha256sum release/src/frontend/project-time-web/brand/ussignal.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
@@ -431,7 +443,7 @@ jobs:
             release/deployment/containers/release-test/api.Dockerfile
           install -d release/src/frontend/project-time-web/public
           cat > release/src/frontend/project-time-web/public/release.json <<JSON
-          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","flowHiveIncluded":true,"migration074Included":true}
+          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","modules":["081","082","001A"],"celarAiPrivateRagUxIncluded":true,"migrations":["076","077","078"]}
           JSON
           API_REPO=project-health-dashboard-api
           WEB_REPO=project-health-dashboard-web
@@ -452,15 +464,14 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          CONTEXT="$RUNNER_TEMP/current-main-migrator-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CONTEXT="$RUNNER_TEMP/modules-081-082-001a-migrator-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           install -d -m 0700 "$CONTEXT/migrations"
           install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
-          install -m 0755 control/scripts/release-test/apply-071-073.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0755 control/scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh "$CONTEXT/apply-pr55-test-migrations.sh"
           for file in \
-            071_ai_runtime_production_hardening.sql \
-            072_celar_ai_conversation_attachments.sql \
-            073_module_033_project_forge_interactive.sql \
-            074_module_066_project_flowhive_production.sql; do
+            076_module_081_lab_equipment_tracker.sql \
+            077_module_082_enterprise_project_risk_register.sql \
+            078_module_001a_engineer_request_closeout.sql; do
             install -m 0644 "release/database/migrations/$file" "$CONTEXT/migrations/$file"
           done
           jq -r '.migrations[] | "\(.sha256)  \(.path | split("/")[-1])"' \
@@ -468,12 +479,12 @@ jobs:
           printf '%s\n' '${{ steps.guard.outputs.source_sha }}' > "$CONTEXT/release-commit"
           DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
             '${{ vars.AZURE_ACR_NAME }}' \
-            "project-health-dashboard-main-release-migrator:${{ steps.guard.outputs.source_sha }}-$GITHUB_RUN_ID" \
+            "project-health-dashboard-governance-release-migrator:${{ steps.guard.outputs.source_sha }}-$GITHUB_RUN_ID" \
             "$CONTEXT/Dockerfile" "$CONTEXT")"
-          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-main-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-governance-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Apply or verify migrations 071 through 074 in the private Test network
+      - name: Apply or verify migrations 076 through 078 in the private Test network
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -488,11 +499,11 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr714-${{ github.run_id }}-${{ github.run_attempt }}-a
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr678-${{ github.run_id }}-${{ github.run_attempt }}-a
           MAIN_RELEASE_MIGRATION_MODE: apply
-        run: bash control/scripts/release-test/run-migration-job.sh
+        run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
 
-      - name: Reverify migrations 071 through 074 without writes
+      - name: Reverify migrations 076 through 078 without writes
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -507,9 +518,9 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
           MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr714-${{ github.run_id }}-${{ github.run_attempt }}-v
+          MAIN_RELEASE_MIGRATION_JOB_NAME: mr678-${{ github.run_id }}-${{ github.run_attempt }}-v
           MAIN_RELEASE_MIGRATION_MODE: verify
-        run: bash control/scripts/release-test/run-migration-job.sh
+        run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
 
       - name: Deploy exact API digest
         id: deploy_api
@@ -668,15 +679,15 @@ jobs:
             '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' \
             "$NEW_REV" '${{ steps.build.outputs.web_image }}' 60 10
 
-      - name: Verify Celar AI, Module 064, attachments, and Project Forge runtime
+      - name: Verify Modules 081, 082, 001A, Celar AI, and served release runtime
         shell: bash
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_URL }}
           SOURCE_SHA: ${{ steps.guard.outputs.source_sha }}
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
           PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
-          EVIDENCE_PATH: /tmp/current-main-release-runtime-evidence.json
-        run: node control/scripts/release-test/verify-runtime.mjs
+          EVIDENCE_PATH: /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json
+        run: node control/scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
 
       - name: Roll back candidate application digests and release environment on failure
         if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
@@ -937,9 +948,9 @@ jobs:
           if [[ '${{ steps.contract.outputs.uat_enabled }}' == true ]]; then
             AUTHENTICATED_UAT_STATUS=executed
           fi
-          if [[ -f /tmp/current-main-release-runtime-evidence.json ]]; then
-            install -m 0600 /tmp/current-main-release-runtime-evidence.json \
-              control/evidence/current-main-runtime.json
+          if [[ -f /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json ]]; then
+            install -m 0600 /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json \
+              control/evidence/modules-081-082-001a-celar-ai-runtime.json
           fi
           if [[ -f /tmp/current-main-api-candidate-state.json ]]; then
             install -m 0600 /tmp/current-main-api-candidate-state.json \
@@ -949,16 +960,16 @@ jobs:
             install -m 0600 /tmp/current-main-api-candidate-startup.log \
               control/evidence/current-main-api-candidate-startup.log
           fi
-          cat > control/evidence/current-main-test-release.json <<JSON
+          cat > control/evidence/modules-081-082-001a-celar-ai-test-release.json <<JSON
           {
             "environment": "test",
             "sourceSha": "${{ steps.guard.outputs.source_sha }}",
             "controlSha": "${{ steps.guard.outputs.control_sha }}",
             "runId": "${{ github.run_id }}",
             "runAttempt": "${{ github.run_attempt }}",
-            "flowHiveIncluded": true,
-            "migration074Included": true,
-            "migrations": ["071_ai_runtime_production_hardening", "072_celar_ai_conversation_attachments", "073_module_033_project_forge_interactive", "074_module_066_project_flowhive_production"],
+            "modules": ["081", "082", "001A"],
+            "celarAiPrivateRagUxIncluded": true,
+            "migrations": ["076_module_081_lab_equipment_tracker", "077_module_082_enterprise_project_risk_register", "078_module_001a_engineer_request_closeout"],
             "migrationImage": "${{ steps.migration.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
             "webImage": "${{ steps.build.outputs.web_image }}",
@@ -976,7 +987,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: current-main-test-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: modules-081-082-001a-celar-ai-test-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: control/evidence
           if-no-files-found: error
           retention-days: 30
