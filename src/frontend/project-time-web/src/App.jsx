@@ -3186,31 +3186,11 @@ const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
   'Analytics'
 ]);
 
-function ProjectHealthDashboardLoginHero() {
-  const [motionMode, setMotionMode] = useState('dashboard');
-
+function ProjectHealthDashboardLoginHero({ showSignalMotion = false }) {
   return (
     <div className="phd-auth-story-content">
       <header className="phd-auth-story-header">
         <SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />
-        <div className="phd-auth-motion-switcher" role="group" aria-label="Choose login animation">
-          <button
-            type="button"
-            className={motionMode === 'dashboard' ? 'is-active' : ''}
-            aria-pressed={motionMode === 'dashboard'}
-            onClick={() => setMotionMode('dashboard')}
-          >
-            Pulse ecosystem
-          </button>
-          <button
-            type="button"
-            className={motionMode === 'signal' ? 'is-active' : ''}
-            aria-pressed={motionMode === 'signal'}
-            onClick={() => setMotionMode('signal')}
-          >
-            US Signal motion
-          </button>
-        </div>
       </header>
 
       <div className="phd-auth-story-copy">
@@ -3225,7 +3205,7 @@ function ProjectHealthDashboardLoginHero() {
       </div>
 
       <div className="phd-auth-motion-stage">
-        {motionMode === 'dashboard' ? (
+        {!showSignalMotion ? (
           <div className="phd-platform-motion" aria-label="Animated view of the Pulse operational ecosystem">
             <div className="phd-motion-grid" aria-hidden="true" />
             <svg className="phd-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
@@ -6372,7 +6352,7 @@ export default function App() {
           </div>
 
           <div className="auth-brand-block phd-auth-story">
-            <ProjectHealthDashboardLoginHero />
+            <ProjectHealthDashboardLoginHero showSignalMotion={loginRoute?.loginMethod === 'local'} />
           </div>
         </section>
       </main>

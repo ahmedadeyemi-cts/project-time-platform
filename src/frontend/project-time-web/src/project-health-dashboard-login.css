@@ -131,39 +131,6 @@
   text-transform: uppercase;
 }
 
-.phd-auth-motion-switcher {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px;
-  border: 1px solid rgba(183, 222, 244, 0.14);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.055);
-  backdrop-filter: blur(14px);
-}
-
-.phd-auth-motion-switcher button {
-  border: 0;
-  border-radius: 8px;
-  padding: 0.52rem 0.7rem;
-  color: rgba(220, 238, 248, 0.64);
-  background: transparent;
-  font-size: 0.68rem;
-  font-weight: 800;
-  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-}
-
-.phd-auth-motion-switcher button:hover {
-  color: #ffffff;
-}
-
-.phd-auth-motion-switcher button.is-active {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-.phd-auth-motion-switcher button:focus-visible,
 .phd-auth-continue:focus-visible,
 .phd-auth-input-wrap input:focus-visible {
   outline: 3px solid rgba(99, 200, 255, 0.45);

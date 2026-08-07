@@ -68,13 +68,15 @@ requireInvariant(
 );
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_MOTION_OPTIONS',
-  containsAll(app, [
+  'PULSE_US_SIGNAL_MOTION_PASSWORD_ONLY',
+  containsAll(loginExperienceSource, [
     "https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif",
-    'Pulse ecosystem',
-    'US Signal motion',
-    'ProjectHealthDashboardLoginHero'
+    'function ProjectHealthDashboardLoginHero({ showSignalMotion = false })',
+    '{!showSignalMotion ? (',
+    "<ProjectHealthDashboardLoginHero showSignalMotion={loginRoute?.loginMethod === 'local'} />"
   ])
+    && !loginExperienceSource.includes('phd-auth-motion-switcher')
+    && !loginExperienceSource.includes('setMotionMode')
 );
 
 requireInvariant(
