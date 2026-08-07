@@ -35,7 +35,7 @@ jobs:
           replica="$(az containerapp replica list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$revision" --query '[0].name' -o tsv --only-show-errors)"
           container="$(jq -r '.properties.template.containers[0].name // empty' <<<"$revision_json")"
           [[ -n "$revision" && -n "$replica" && -n "$container" ]]
-          az containerapp logs show             -g '${{ vars.AZURE_RESOURCE_GROUP }}'             -n '${{ vars.AZURE_API_APP }}'             --revision "$revision"             --replica "$replica"             --container "$container"             --type console --tail 1000 --format json             > /tmp/api-console.json
+          az containerapp logs show             -g '${{ vars.AZURE_RESOURCE_GROUP }}'             -n '${{ vars.AZURE_API_APP }}'             --revision "$revision"             --replica "$replica"             --container "$container"             --type console --tail 300 --format json             > /tmp/api-console.json
           ACTIVE_REVISION="$revision" python3 - <<'PY'
           import json
           import os
@@ -81,7 +81,7 @@ jobs:
                       lines.append(line[:4000])
           print("ACTIVE_API_REVISION=" + os.environ["ACTIVE_REVISION"])
           print("MATCHED_DIAGNOSTIC_LINES=" + str(len(lines)))
-          for line in lines[-500:]:
+          for line in lines[-300:]:
               print(line)
           if not lines:
               raise SystemExit("No diagnostic lines matched in the active API log tail.")
