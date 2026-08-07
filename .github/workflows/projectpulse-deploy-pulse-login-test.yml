@@ -315,22 +315,34 @@ jobs:
                     LOGO_SHA="$(sha256sum /tmp/pulse-logo.png | awk '{print $1}')"
                   fi
                 fi
-                LAST_STATUS="$LAST_STATUS,logo=$LOGO_STATUS"
+                MOTION_PATH="$(grep -oE '[/A-Za-z0-9._-]+\.gif' /tmp/pulse-app.js | grep -E '/assets/pulse-secure-access-[A-Za-z0-9_-]+\.gif$' | head -1 || true)"
+                MOTION_STATUS='not-resolved'
+                MOTION_SHA='not-resolved'
+                if [[ -n "$MOTION_PATH" ]]; then
+                  MOTION_URL="$(absolute_asset_url "$MOTION_PATH")"
+                  MOTION_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-motion.gif -w '%{http_code}' "$MOTION_URL?release_check=$BUSTER" || true)"
+                  if [[ "$MOTION_STATUS" == 200 ]]; then
+                    MOTION_SHA="$(sha256sum /tmp/pulse-motion.gif | awk '{print $1}')"
+                  fi
+                fi
+                LAST_STATUS="$LAST_STATUS,logo=$LOGO_STATUS,motion=$MOTION_STATUS"
 
-                if [[ "$JS_STATUS" == 200 && "$CSS_STATUS" == 200 && "$LOGO_STATUS" == 200 ]] \
+                if [[ "$JS_STATUS" == 200 && "$CSS_STATUS" == 200 && "$LOGO_STATUS" == 200 && "$MOTION_STATUS" == 200 ]] \
                   && [[ "$LOGO_SHA" == 'f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' ]] \
+                  && [[ "$MOTION_SHA" == '001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914' ]] \
                   && grep -Fq 'Welcome to Pulse' /tmp/pulse-app.js \
                   && grep -Fq 'Every stage of delivery.' /tmp/pulse-app.js \
                   && grep -Fq 'One intelligent workspace.' /tmp/pulse-app.js \
                   && grep -Fq 'Animated view of the Pulse operational ecosystem' /tmp/pulse-app.js \
-                  && grep -Fq 'US Signal animated connected infrastructure' /tmp/pulse-app.js \
-                  && grep -Fq 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif' /tmp/pulse-app.js \
+                  && grep -Fq 'Pulse animated secure operational network' /tmp/pulse-app.js \
+                  && ! grep -Fq 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif' /tmp/pulse-app.js \
+                  && ! grep -Fq 'Your intelligent assistant is ready after sign-in.' /tmp/pulse-app.js \
                   && grep -Fq '.phd-auth-experience' /tmp/pulse-app.compact.css \
                   && grep -Fq '.phd-platform-motion' /tmp/pulse-app.compact.css \
-                  && grep -Fq '.phd-signal-motion' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.phd-secure-motion' /tmp/pulse-app.compact.css \
                   && grep -Fq '.phd-ai-core' /tmp/pulse-app.compact.css; then
                   READY=true
-                  echo "PULSE_LOGIN_SERVED_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH logo=$LOGO_PATH"
+                  echo "PULSE_LOGIN_SERVED_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH logo=$LOGO_PATH motion=$MOTION_PATH"
                   break
                 fi
               fi
@@ -387,7 +399,9 @@ jobs:
             "secrets": "unchanged",
             "officialLogoSha256": "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b",
             "defaultMotion": "Pulse operational ecosystem",
-            "localPasswordMotion": "US Signal Comp-33_4.gif",
+            "localPasswordMotion": "Pulse enterprise operations fabric GIF",
+            "enterpriseMotionSha256": "001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914",
+            "askCelarLoginVisibility": "authenticated-only",
             "servedAssetValidation": "passed"
           }
           JSON
