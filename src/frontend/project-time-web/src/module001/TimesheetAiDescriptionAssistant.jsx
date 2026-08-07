@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { authoritativeApi } from '../projectpulse-authoritative-api.js';
+import './timesheet-ai-description-assistant.css';
 
 const PROVIDER_LABELS = Object.freeze({
   celar_ai: 'Celar AI',
@@ -8,6 +9,26 @@ const PROVIDER_LABELS = Object.freeze({
   local: 'Private ProjectPulse grounding',
   local_template: 'Governed local template fallback'
 });
+
+const ROUTE_REASON_LABELS = Object.freeze({
+  generation_succeeded: 'Completed',
+  private_model_completed: 'Completed with private evidence',
+  private_context_withheld_from_external_route: 'Private evidence stayed inside Celar AI',
+  celar_ai_private_model_not_configured: 'Private model is not configured',
+  celar_ai_private_model_disabled: 'Private model is disabled',
+  provider_not_registered: 'Provider is not configured',
+  provider_circuit_open: 'Provider is temporarily unavailable',
+  sanitized_external_policy_disabled: 'Sanitized fallback is disabled',
+  sanitized_external_request_blocked: 'The privacy gate blocked this route',
+  external_output_identity_validation_failed: 'The response failed identity-safety validation',
+  external_output_privacy_validation_failed: 'The response failed privacy validation',
+  local_fallback: 'Used the mandatory governed fallback'
+});
+
+function routeDecisionLabel(decision) {
+  return ROUTE_REASON_LABELS[decision?.reasonCode]
+    || String(decision?.reasonCode || decision?.outcome || 'not attempted').replaceAll('_', ' ');
+}
 
 function localIsoDate() {
   const now = new Date();
@@ -69,6 +90,7 @@ export default function TimesheetAiDescriptionAssistant({
     loading: false,
     suggestion: '',
     provider: '',
+    targetDecisions: [],
     warning: '',
     error: ''
   });
@@ -91,6 +113,7 @@ export default function TimesheetAiDescriptionAssistant({
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: targets.length === 0
           ? 'Select one project task, service request, or non-project activity before generating a suggestion.'
@@ -104,6 +127,7 @@ export default function TimesheetAiDescriptionAssistant({
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: 'Keep the rough work note at 4,000 characters or fewer before generating a suggestion.'
       });
@@ -115,13 +139,14 @@ export default function TimesheetAiDescriptionAssistant({
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: 'Type a short rough work note first so the suggestion remains grounded in work you actually performed.'
       });
       return;
     }
 
-    setState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
+    setState({ loading: true, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
     try {
       const nonProject = isNonProject(primaryTarget);
       const targetType = String(primaryTarget.targetType || '').trim().toLowerCase();
@@ -157,6 +182,7 @@ export default function TimesheetAiDescriptionAssistant({
         loading: false,
         suggestion: result.suggestion || '',
         provider: result.provider || '',
+        targetDecisions: Array.isArray(result.targetDecisions) ? result.targetDecisions : [],
         warning: result.warning || '',
         error: ''
       });
@@ -165,6 +191,7 @@ export default function TimesheetAiDescriptionAssistant({
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: error instanceof Error ? error.message : 'Unable to generate an AI description suggestion.'
       });
@@ -221,6 +248,19 @@ export default function TimesheetAiDescriptionAssistant({
           <strong>Suggested description</strong>
           <p>{state.suggestion}</p>
           <small>Provider: {PROVIDER_LABELS[state.provider] || 'Shared AI router'}</small>
+          {state.targetDecisions.length ? (
+            <details className="module001-ai-route-trace">
+              <summary>AI route details</summary>
+              <ol>
+                {state.targetDecisions.map((decision, index) => (
+                  <li key={`${decision.target || 'target'}-${index}`}>
+                    <strong>{PROVIDER_LABELS[decision.target] || decision.target || 'AI target'}</strong>
+                    <span>{routeDecisionLabel(decision)}</span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
         </div>
       ) : null}
     </section>

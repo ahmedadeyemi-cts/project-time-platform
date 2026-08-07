@@ -254,6 +254,68 @@
   font-size: 0.78rem;
 }
 
+.pulse-ai-doc-activation-guide {
+  display: grid;
+  gap: .8rem;
+  padding: 1rem;
+  border: 1px solid rgba(23, 105, 170, .28);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f5faff, #f3fbf0);
+}
+
+.pulse-ai-doc-activation-guide h5,
+.pulse-ai-doc-activation-guide p {
+  margin: .2rem 0 0;
+}
+
+.pulse-ai-doc-activation-guide > div:first-child > p:last-child,
+.pulse-ai-doc-activation-grid span,
+.pulse-ai-doc-training-note {
+  color: var(--doc-muted);
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.pulse-ai-doc-activation-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.pulse-ai-doc-activation-grid article {
+  display: grid;
+  align-content: start;
+  gap: .35rem;
+  min-width: 0;
+  border: 1px solid rgba(164, 90, 8, .28);
+  border-radius: 10px;
+  padding: .72rem;
+  background: #fff8eb;
+}
+
+.pulse-ai-doc-activation-grid article.is-ready {
+  border-color: rgba(79, 140, 56, .34);
+  background: #f0f9eb;
+}
+
+.pulse-ai-doc-activation-grid strong {
+  color: var(--doc-ink);
+  font-size: .76rem;
+}
+
+.pulse-ai-doc-training-note {
+  border-top: 1px solid var(--doc-line);
+  padding-top: .75rem;
+}
+
+@media (max-width: 1120px) {
+  .pulse-ai-doc-activation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .pulse-ai-doc-activation-grid { grid-template-columns: 1fr; }
+}
+
 .pulse-ai-doc-loading,
 .pulse-ai-doc-error,
 .pulse-ai-doc-empty {

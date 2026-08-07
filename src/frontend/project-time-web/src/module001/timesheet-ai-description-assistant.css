@@ -1,0 +1,32 @@
+.module001-ai-route-trace {
+  margin-top: .2rem;
+  border-top: 1px solid var(--border);
+  padding-top: .45rem;
+}
+
+.module001-ai-route-trace summary {
+  cursor: pointer;
+  color: var(--brand-blue-strong, #075985);
+  font-size: .73rem;
+  font-weight: 850;
+}
+
+.module001-ai-route-trace ol {
+  display: grid;
+  gap: .32rem;
+  margin: .5rem 0 0;
+  padding-left: 1.3rem;
+}
+
+.module001-ai-route-trace li {
+  padding-left: .15rem;
+  font-size: .72rem;
+}
+
+.module001-ai-route-trace li strong {
+  margin-right: .35rem;
+}
+
+.module001-ai-route-trace li span {
+  color: var(--muted);
+}

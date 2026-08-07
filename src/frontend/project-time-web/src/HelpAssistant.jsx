@@ -1126,11 +1126,17 @@ export default function HelpAssistant() {
               <input ref={fileInputRef} className="celar-ai-chat-file-input" type="file" multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.xml,.html,.htm" onChange={(event) => void uploadAttachments(event.target.files)} aria-label="Choose documents to attach to Celar AI" />
               <div
                 className={`celar-ai-chat-dropzone${draggingFiles ? ' is-dragging' : ''}`}
+                role="button"
+                tabIndex={attachmentBusy ? -1 : 0}
+                aria-disabled={attachmentBusy}
+                aria-label="Choose approved documents or drop them here"
+                onClick={() => { if (!attachmentBusy) fileInputRef.current?.click(); }}
+                onKeyDown={(event) => { if (!attachmentBusy && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); fileInputRef.current?.click(); } }}
                 onDragEnter={(event) => { event.preventDefault(); setDraggingFiles(true); }}
                 onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
                 onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDraggingFiles(false); }}
                 onDrop={(event) => { event.preventDefault(); setDraggingFiles(false); void uploadAttachments(event.dataTransfer.files); }}
-              ><strong>Drop approved documents here</strong><span>PDF, Word, PowerPoint, Excel, text, CSV, JSON, XML, or HTML</span></div>
+              ><span className="celar-ai-chat-upload-mark" aria-hidden="true">↑</span><strong>{attachmentBusy ? 'Processing documents…' : 'Choose files or drag them here'}</strong><span>PDF, Word, PowerPoint, Excel, text, CSV, JSON, XML, or HTML</span></div>
               {attachmentError ? <div className="celar-ai-chat-attachment-error" role="alert">{attachmentError}</div> : null}
               {attachments.length ? <ul className="celar-ai-chat-attachment-list">{attachments.map((item) => {
                 const id = attachmentId(item);

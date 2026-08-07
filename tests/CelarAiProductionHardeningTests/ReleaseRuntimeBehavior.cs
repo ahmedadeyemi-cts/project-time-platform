@@ -14,6 +14,7 @@ internal static class ReleaseRuntimeBehavior
     public static async Task RunAsync(string databaseConnectionString)
     {
         await VerifyImmutableSnapshotBehaviorAsync();
+        VerifyExternalOutputPrivacyBehavior();
         Require(!ProjectPulseAiReleaseRuntimePolicy.IsApprovedReleasePrivateInferenceDestination(
                 "https://celar.private.example/v1/chat/completions", string.Empty, out _),
             "empty private endpoint allowlist is rejected");
@@ -281,6 +282,137 @@ internal static class ReleaseRuntimeBehavior
         }
 
         Console.WriteLine("CELAR_AI_RELEASE_RUNTIME_BEHAVIOR=PASSED");
+    }
+
+    private static void VerifyExternalOutputPrivacyBehavior()
+    {
+        var sanitizer = new PulseAiEscalationSanitizer();
+        Require(sanitizer.IsExternalOutputSafe(
+                "Provided technical support and documented the result. Coordinated follow-up validation.",
+                [],
+                out var safeDecision)
+            && safeDecision == "external_output_privacy_validated",
+            "generic sentence-leading work verbs pass external-output validation");
+        Require(sanitizer.IsExternalOutputSafe(
+                "The configuration verification was completed. The result was documented for review.",
+                [],
+                out var supportedProbeDecision)
+            && supportedProbeDecision == "external_output_privacy_validated",
+            "a server-supplied completion fact remains valid for the Module 064 production probe");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Daniel supported the implementation and documented the result.",
+                [],
+                out var namedActorDecision)
+            && namedActorDecision == "external_output_identity_validation_failed",
+            "a sentence-leading named actor fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Provided technical support for Acme Corporation and documented the result.",
+                [],
+                out var customerDecision)
+            && customerDecision == "external_output_identity_validation_failed",
+            "a customer organization fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Provided technical support for restricted-project and documented the result.",
+                ["restricted-project"],
+                out var protectedTermDecision)
+            && protectedTermDecision == "external_output_identity_validation_failed",
+            "a server-resolved protected term fails external-output validation");
+        Require(!sanitizer.IsExternalOutputSafe(
+                "Ensured technical support was delivered and documented the result.",
+                [],
+                out var unknownStarterDecision)
+            && unknownStarterDecision == "external_output_identity_validation_failed",
+            "an unapproved sentence-leading token remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Resolved the issue and documented the result.",
+                [],
+                out var resolutionClaimDecision)
+            && resolutionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported resolution claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Completed the implementation and documented the result.",
+                [],
+                out var completionClaimDecision)
+            && completionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported completion claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support. The issue was resolved.",
+                [],
+                out var passiveResolutionClaimDecision)
+            && passiveResolutionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported passive resolution claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and resolved the issue. Documented the result.",
+                [],
+                out var activeConjunctResolutionClaimDecision)
+            && activeConjunctResolutionClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported active outcome appended after an approved starter remains fail-closed");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and documented the result. Coordinated follow-up validation.",
+                [],
+                out var safeTimesheetDecision)
+            && safeTimesheetDecision == "external_output_privacy_validated",
+            "ordinary work performed without a terminal outcome claim remains valid for Timesheet suggestions");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support with a successful implementation. Documented the result.",
+                [],
+                out var adjectivalSuccessClaimDecision)
+            && adjectivalSuccessClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported adjectival success claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and successfully implemented the change. Documented the result.",
+                [],
+                out var adverbialSuccessClaimDecision)
+            && adverbialSuccessClaimDecision == "external_output_unsupported_outcome_claim",
+            "an unsupported adverbial success claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented approval of the change. Prepared delivery confirmation.",
+                [],
+                out var nounOutcomeClaimDecision)
+            && nounOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "unsupported noun-form approval and delivery claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented completion of the work and resolution of the issue.",
+                [],
+                out var nounCompletionClaimDecision)
+            && nounCompletionClaimDecision == "external_output_unsupported_outcome_claim",
+            "unsupported noun-form completion and resolution claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented approvals for the changes. Prepared follow-up review.",
+                [],
+                out var pluralNounOutcomeClaimDecision)
+            && pluralNounOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "ordinary plural noun-form outcome claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented that the work was finished. Prepared follow-up review.",
+                [],
+                out var finishedOutcomeClaimDecision)
+            && finishedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "ordinary finished completion claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and finalized the change. Documented the result.",
+                [],
+                out var finalizedOutcomeClaimDecision)
+            && finalizedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "ordinary finalized completion claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Provided technical support and finalised the change. Documented the result.",
+                [],
+                out var finalisedOutcomeClaimDecision)
+            && finalisedOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "British-English finalised completion claims remain fail-closed");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented implementation steps and planned validation activities. Coordinated follow-up review.",
+                [],
+                out var plannedWorkDecision)
+            && plannedWorkDecision == "external_output_privacy_validated",
+            "implementation and validation planning without a claimed result remains valid");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented acceptance criteria and prepared the delivery plan. Coordinated follow-up review.",
+                [],
+                out var outcomePlanningDecision)
+            && outcomePlanningDecision == "external_output_privacy_validated",
+            "acceptance criteria and delivery planning remain valid non-outcome work");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()
