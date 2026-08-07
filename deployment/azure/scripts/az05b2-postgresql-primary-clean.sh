@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PRODUCT_NAME="Project Health Dashboard"
+PRODUCT_NAME="Pulse"
 ENVIRONMENT="test"
 PRIMARY_LOCATION="westus3"
 SECONDARY_LOCATION="eastus"
@@ -148,7 +148,7 @@ require_ci() {
 }
 
 {
-    section "AZ-05B2 - Project Health Dashboard PostgreSQL Primary"
+    section "AZ-05B2 - Pulse PostgreSQL Primary"
     echo "Product: $PRODUCT_NAME"
     echo "Environment: $ENVIRONMENT"
     echo "Primary server: $PRIMARY_SERVER"

@@ -1,6 +1,6 @@
-# Project Health Dashboard Azure Deployment
+# Pulse Azure Deployment
 
-This directory contains the version-controlled scripts used to build the Project Health Dashboard Azure environment.
+This directory contains the version-controlled scripts used to build the Pulse Azure environment.
 
 ## Execution environments
 
@@ -41,10 +41,10 @@ Generated files are deliberately outside the repository. Commit only sanitized s
 
 ## Naming standard
 
-- Full product name: `Project Health Dashboard`
+- Full product name: `Pulse`
 - Short Azure prefix: `phd`
 - Test environment suffix: `test`
 - Primary region: `westus3`
 - Secondary region: `eastus`
 
-Do not create new resources with the retired ProjectPulse name.
+Do not expose legacy technical identifiers as product branding.

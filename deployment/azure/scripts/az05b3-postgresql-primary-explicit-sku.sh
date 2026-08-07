@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PRODUCT_NAME="Project Health Dashboard"
+PRODUCT_NAME="Pulse"
 ENVIRONMENT="test"
 
 PRIMARY_LOCATION="westus3"
@@ -182,7 +182,7 @@ PY
 }
 
 {
-    section "AZ-05B3 - Project Health Dashboard PostgreSQL Primary"
+    section "AZ-05B3 - Pulse PostgreSQL Primary"
 
     echo "Product: $PRODUCT_NAME"
     echo "Environment: $ENVIRONMENT"

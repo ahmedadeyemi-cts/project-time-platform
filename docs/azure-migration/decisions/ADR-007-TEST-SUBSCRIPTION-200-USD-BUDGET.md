@@ -6,7 +6,7 @@ Accepted on 2026-07-11.
 
 ## Decision
 
-The Project Health Dashboard Azure **test** environment must be operated within a target ceiling of **USD 200 per month** because the current subscription includes a monthly Azure credit of that amount.
+The Pulse Azure **test** environment must be operated within a target ceiling of **USD 200 per month** because the current subscription includes a monthly Azure credit of that amount.
 
 Production will be deployed later into a separate paid subscription and may use the full production architecture and sizing.
 

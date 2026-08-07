@@ -380,7 +380,7 @@ PY
             --cpu 0.5 \
             --memory 1.0Gi \
             --env-vars "API_UPSTREAM=https://$API_FQDN" \
-            --tags application="Project Health Dashboard" environment=test region-role=primary source-commit="$SOURCE_COMMIT" \
+            --tags application="Pulse" environment=test region-role=primary source-commit="$SOURCE_COMMIT" \
             --only-show-errors \
             --output none
     fi

@@ -901,7 +901,7 @@ public static class Module006StandalonePipelineModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid Project Health Dashboard session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static IResult ViewAsReadOnly() => Results.Json(new

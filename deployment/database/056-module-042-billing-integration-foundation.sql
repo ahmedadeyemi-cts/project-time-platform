@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS billing_invoices (
     CONSTRAINT ck_billing_invoices_number_format
         CHECK (
             invoice_number
-            ~ '^PHD-[0-9]{6,}-[1-9][0-9]*$'
+            ~ '^PULSE-[0-9]{6,}-[1-9][0-9]*$'
         ),
 
     CONSTRAINT ck_billing_invoices_type
@@ -338,7 +338,7 @@ BEGIN
     SELECT
         v_series_number,
         v_installment_number,
-        'PHD-'
+        'PULSE-'
         || LPAD(v_series_number::TEXT, 6, '0')
         || '-'
         || v_installment_number::TEXT;

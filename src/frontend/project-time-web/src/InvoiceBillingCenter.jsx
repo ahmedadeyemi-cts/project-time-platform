@@ -637,7 +637,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         <b aria-hidden="true">→</b>
         <article><span>2</span><div><strong>Stored rate selection</strong><small>Ambiguous rates require an explicit user choice.</small></div></article>
         <b aria-hidden="true">→</b>
-        <article><span>3</span><div><strong>Immutable invoice</strong><small>Creates PHD-XXXXXX-N history without rewriting source time.</small></div></article>
+        <article><span>3</span><div><strong>Immutable invoice</strong><small>Creates PULSE-XXXXXX-N history without rewriting source time.</small></div></article>
       </section>
 
       <section className="m042-metrics" aria-label="Live billing summary">

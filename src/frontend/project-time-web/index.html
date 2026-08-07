@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#004b8d" />
-    <title>Project Health Dashboard</title>
+    <title>Pulse</title>
 
     <script>
       (function () {
@@ -1662,7 +1662,7 @@
         if (rect.top > 150 || rect.height < 48 || rect.height > 145 || rect.width < window.innerWidth * 0.65) return false;
 
         const text = compact(element.textContent);
-        return text.includes("Project Health Dashboard") && (text.includes("Dashboard") || text.includes("More"));
+        return text.includes("Pulse") && (text.includes("Dashboard") || text.includes("More"));
       })
       .sort((a, b) => {
         const ar = a.getBoundingClientRect();
@@ -3292,7 +3292,7 @@
     customerId: customers[0] ? customers[0].id : '',
     customerName: customers[0] ? customers[0].name : '',
     projectName: '',
-    crmSource: 'Manual / Existing PHD Customer',
+    crmSource: 'Manual / Existing Pulse Customer',
     opportunityRef: '',
     quoteRef: '',
     solutionArchitect: '',
@@ -3728,7 +3728,7 @@
       'Detected work type: ' + workType + '\n\n' +
       'Solution Architect description:\n' + description + '\n\n' +
       'Research-backed drafting approach:\n' +
-      'In the backend version, PHD should call the shared Claude provider with web/retrieval-enabled research. Claude should search official vendor/product documentation first, then trusted implementation references, and should return source-backed findings before drafting SOW language.\n\n' +
+      'In the backend version, Pulse should call the shared Claude provider with web/retrieval-enabled research. Claude should search official vendor/product documentation first, then trusted implementation references, and should return source-backed findings before drafting SOW language.\n\n' +
       'Recommended delivery process steps:\n' +
       steps.map(function (step, index) { return (index + 1) + '. ' + step; }).join('\n') +
       '\n\nItems requiring Solution Architect review:\n' +
@@ -3775,7 +3775,7 @@
         '1. Customer stakeholders will provide timely access, approvals, and required technical information.\n' +
         '2. The approved GSD represents the current technical design baseline.\n' +
         '3. Work outside the signed SOW requires review before assignment.\n' +
-        '4. PHD will use the canonical SOW/GSD document area as the source of truth.\n' +
+        '4. Pulse will use the canonical SOW/GSD document area as the source of truth.\n' +
         '5. Claude research output is draft-only and requires Solution Architect review.',
 
       exclusions:
@@ -3794,7 +3794,7 @@
         '- Project type: ' + state.projectType + '\n' +
         '- Detected work type: ' + workType + '\n' +
         '- Signed SOW and GSD remain in the existing Project Hours / SOW-GSD / Engineer Allocation document area.\n' +
-        '- Once Sales marks the SOW signed and uploads the signed SOW/GSD, PHD should notify PTC and Executive stakeholders.'
+        '- Once Sales marks the SOW signed and uploads the signed SOW/GSD, Pulse should notify PTC and Executive stakeholders.'
     };
 
     return map[key] || '';
@@ -3877,7 +3877,7 @@
 
   function wordHtml() {
     const title = 'SOW Draft - ' + (state.customerName || 'Customer') + ' - ' + (state.projectName || 'Project');
-    const template = state.templateFileName || state.templateName || 'Default PHD SOW Template';
+    const template = state.templateFileName || state.templateName || 'Default Pulse SOW Template';
     let sections = '';
 
     sections += '<h2>Process Research Brief</h2><p>' + escapeHtml(state.researchBrief || 'No research brief generated.').replace(/\n/g, '<br>') + '</p>';
@@ -3931,7 +3931,7 @@
     return 'Subject: Sales Process Completed - ' + (state.customerName || '[Customer]') + ' / ' + (state.projectName || '[Project]') + ' Ready for Project Assignment\n\n' +
       'Hello Project Team Coordinator and Executive Team,\n\n' +
       'Sales has completed the SOW process for ' + (state.customerName || '[Customer]') + ' - ' + (state.projectName || '[Project]') + '.\n\n' +
-      'The signed SOW and GSD have been captured in the existing PHD SOW/GSD project document area so PMs, Engineers, and Leads can access the approved scope from Project Workspace / Engineering Documents.\n\n' +
+      'The signed SOW and GSD have been captured in the existing Pulse SOW/GSD project document area so PMs, Engineers, and Leads can access the approved scope from Project Workspace / Engineering Documents.\n\n' +
       'Solution Architect: ' + (state.solutionArchitect || '[Solution Architect]') + '\n' +
       'Sales Owner: ' + (state.salesOwner || '[Sales Owner]') + '\n' +
       'Project Type: ' + (state.projectType || '[Project Type]') + '\n' +
@@ -3982,7 +3982,7 @@
           '<div>' +
             '<div class="projectpulse-025-eyebrow">MODULE 025 · Standalone Research-Backed SOW Generator</div>' +
             '<h2>SOW Generator Workspace</h2>' +
-            '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing PHD project document area.</p>' +
+            '<p>Create, research, review, and prepare a SOW draft while keeping SOW/GSD documents in the existing Pulse project document area.</p>' +
             '<div class="projectpulse-025-actions">' +
               '<span class="projectpulse-025-pill green">Research-backed scope</span>' +
               '<span class="projectpulse-025-pill blue">Onboarded customer dropdown</span>' +
@@ -4006,7 +4006,7 @@
                 '<div class="projectpulse-025-field"><label>Customer Name</label><select data-025-field="customerId"></select></div>' +
                 '<div class="projectpulse-025-field"><label>Project Type</label><select data-025-field="projectType"><option>Professional Services</option><option>Managed Services</option><option>Implementation</option><option>Consulting</option><option>Service Request</option></select></div>' +
               '</div>' +
-              '<div class="projectpulse-025-field"><label>CRM Source</label><select data-025-field="crmSource"><option>Manual / Existing PHD Customer</option><option>Salesforce Opportunity</option><option>Zendesk Sell Quote / Deal</option></select></div>' +
+              '<div class="projectpulse-025-field"><label>CRM Source</label><select data-025-field="crmSource"><option>Manual / Existing Pulse Customer</option><option>Salesforce Opportunity</option><option>Zendesk Sell Quote / Deal</option></select></div>' +
               '<div class="projectpulse-025-field"><label>Project / Engagement Name</label><input data-025-field="projectName" placeholder="Project or engagement name"></div>' +
               '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Opportunity Reference</label><input data-025-field="opportunityRef" placeholder="Salesforce opportunity ID"></div><div class="projectpulse-025-field"><label>Quote Reference</label><input data-025-field="quoteRef" placeholder="Zendesk Sell quote/deal reference"></div></div>' +
               '<div class="projectpulse-025-two-grid"><div class="projectpulse-025-field"><label>Solution Architect</label><input data-025-field="solutionArchitect" placeholder="Solution Architect name"></div><div class="projectpulse-025-field"><label>Sales Owner</label><input data-025-field="salesOwner" placeholder="Sales owner name"></div></div>' +
@@ -4099,7 +4099,7 @@
       setCheck(shell, key, state[key]);
     });
 
-    shell.querySelector('[data-025-template-name]').textContent = state.templateFileName || 'Default PHD SOW template';
+    shell.querySelector('[data-025-template-name]').textContent = state.templateFileName || 'Default Pulse SOW template';
     shell.querySelector('[data-025-sow-name]').textContent = state.signedSowFileName || 'Required before handoff email';
     shell.querySelector('[data-025-gsd-name]').textContent = state.gsdFileName || 'Required before PM/Engineer assignment email';
     shell.querySelector('[data-025-research-brief]').textContent = state.researchBrief || 'No research brief generated yet. Click Research Actual Delivery Process.';
@@ -4478,7 +4478,7 @@
   ];
 
   var mappings = [
-    ['Account / Company Name', 'PHD Customer', 'Customer match or onboarding candidate', 'Required'],
+    ['Account / Company Name', 'Pulse Customer', 'Customer match or onboarding candidate', 'Required'],
     ['Opportunity / Deal Name', 'SOW Project / Engagement Name', 'Prefill MODULE 025 SOW Generator', 'Required'],
     ['Opportunity / Deal ID', 'CRM Reference', 'Audit traceability', 'Required'],
     ['Quote / Deal Value', 'Estimated Revenue', 'Executive and intake visibility', 'Optional'],
@@ -4818,7 +4818,7 @@
 
   function mappingTableHtml() {
     return '<table class="projectpulse-026-table">' +
-      '<thead><tr><th>CRM Field</th><th>PHD Destination</th><th>Workflow Use</th><th>Promotion</th></tr></thead>' +
+      '<thead><tr><th>CRM Field</th><th>Pulse Destination</th><th>Workflow Use</th><th>Promotion</th></tr></thead>' +
       '<tbody>' +
       mappings.map(function (row) {
         return '<tr><td>' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td><td>' + escapeHtml(row[2]) + '</td><td>' + escapeHtml(row[3]) + '</td></tr>';
@@ -4841,7 +4841,7 @@
       '- Estimated Hours: ' + state.estimatedHours + '\n' +
       '- Estimated Revenue: $' + state.estimatedRevenue + '\n' +
       '- Services Summary: ' + state.serviceSummary + '\n\n' +
-      'PHD Output Preview:\n' +
+      'Pulse Output Preview:\n' +
       '- Customer match or onboarding candidate: ' + state.sampleAccount + '\n' +
       '- SOW Generator prefill: ' + state.sampleOpportunity + '\n' +
       '- Claude research seed: ' + state.serviceSummary + '\n' +
@@ -5035,7 +5035,7 @@
               '<p>Use this to close out the CRM Integration Framework phase before moving to MODULE 027.</p>' +
               '<div class="projectpulse-026-checklist">' +
                 '<label><input type="checkbox" data-026-check="providerRegistryReviewed"> Provider registry and placeholder statuses reviewed.</label>' +
-                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-PHD field mapping reviewed.</label>' +
+                '<label><input type="checkbox" data-026-check="fieldMappingReviewed"> CRM-to-Pulse field mapping reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="securityReviewed"> Server-side credential and security model reviewed.</label>' +
                 '<label><input type="checkbox" data-026-check="noSecretsReviewed"> Confirmed no CRM credentials or API keys are stored in the repository.</label>' +
                 '<label><input type="checkbox" data-026-check="sowMappingReviewed"> CRM-to-SOW Generator mapping reviewed.</label>' +
@@ -5049,7 +5049,7 @@
 
           '<div>' +
             '<div class="projectpulse-026-section white">' +
-              '<h3>CRM to PHD Field Mapping</h3>' +
+              '<h3>CRM to Pulse Field Mapping</h3>' +
               mappingTableHtml() +
             '</div>' +
 
@@ -5452,7 +5452,7 @@
 
   var state = {
     intakeReference: 'INTAKE-024-DEMO',
-    sourceSystem: 'Manual / PHD',
+    sourceSystem: 'Manual / Pulse',
     sourceRecordReference: 'CRM-OPP-026-DEMO',
     customerName: 'Great Lakes Healthcare',
     projectName: 'Cisco CUCM 11.5 to 15.0 Upgrade',
@@ -5963,7 +5963,7 @@
               '<p>This package can originate manually, from CRM Integration, or from a SOW Generator workflow.</p>' +
               '<div class="projectpulse-024-two-grid">' +
                 '<div class="projectpulse-024-field"><label>Intake Reference</label><input data-024-field="intakeReference"></div>' +
-                '<div class="projectpulse-024-field"><label>Source System</label><select data-024-field="sourceSystem"><option>Manual / PHD</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>CRM Integration Framework</option></select></div>' +
+                '<div class="projectpulse-024-field"><label>Source System</label><select data-024-field="sourceSystem"><option>Manual / Pulse</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>CRM Integration Framework</option></select></div>' +
               '</div>' +
               '<div class="projectpulse-024-field"><label>Source Record Reference</label><input data-024-field="sourceRecordReference"></div>' +
               '<div class="projectpulse-024-two-grid">' +
@@ -6909,7 +6909,7 @@
       'Intake Reference: ' + state.intakeReference + '\n' +
       'Customer: ' + state.customerName + '\n' +
       'Project: ' + state.projectName + '\n' +
-      'Actor: Current PHD user\n' +
+      'Actor: Current Pulse user\n' +
       'Timestamp: ' + new Date().toISOString() + '\n\n' +
       'Audit storage target:\n' +
       '- signed_sow_handoff_notification_events\n' +
@@ -7043,7 +7043,7 @@
                 '<div class="projectpulse-027-field"><label>Intake Reference</label><input data-027-field="intakeReference"></div>' +
               '</div>' +
               '<div class="projectpulse-027-two-grid">' +
-                '<div class="projectpulse-027-field"><label>CRM Source</label><select data-027-field="crmSource"><option>Manual / PHD</option><option>CRM Integration Framework</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>Sales-to-Delivery Intake</option></select></div>' +
+                '<div class="projectpulse-027-field"><label>CRM Source</label><select data-027-field="crmSource"><option>Manual / Pulse</option><option>CRM Integration Framework</option><option>Salesforce</option><option>Zendesk Sell</option><option>SOW Generator</option><option>Sales-to-Delivery Intake</option></select></div>' +
                 '<div class="projectpulse-027-field"><label>CRM Record Reference</label><input data-027-field="crmRecordReference"></div>' +
               '</div>' +
               '<div class="projectpulse-027-two-grid">' +

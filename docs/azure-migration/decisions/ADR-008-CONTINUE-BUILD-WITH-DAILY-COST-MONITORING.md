@@ -6,7 +6,7 @@ Accepted on 2026-07-12.
 
 ## Context
 
-The Project Health Dashboard test subscription includes a monthly Azure credit of USD 200. A subscription budget named `project-health-dashboard-test-monthly-200` is active and sends email notifications to `Ahmed.Adeyemi@ussignal.com`.
+The Pulse test subscription includes a monthly Azure credit of USD 200. A subscription budget named `project-health-dashboard-test-monthly-200` is active and sends email notifications to `Ahmed.Adeyemi@ussignal.com`.
 
 The prior temporary hold was introduced because Azure Cost Management had not yet posted actual-cost or forecast rows. The project owner has clarified that infrastructure development should continue while cost is reviewed every day and managed reasonably.
 

@@ -1,4 +1,4 @@
--- Project Health Dashboard migration 069
+-- Pulse migration 069
 -- Expand Module 006 from the reviewed Toyota/Hyundai baseline to governed customer pipelines.
 -- Existing Toyota and Hyundai records and append-only history remain unchanged.
 

@@ -6,7 +6,7 @@ Ready to execute in Azure Cloud Shell.
 
 ## Purpose
 
-Create or update a subscription-scoped Azure Cost Management budget for the Project Health Dashboard test subscription.
+Create or update a subscription-scoped Azure Cost Management budget for the Pulse test subscription.
 
 ## Configuration
 

@@ -758,7 +758,7 @@ public static class SecurityOperationsResponseModule
 
     private static object[] IncidentLifecycle() =>
     [
-        new { step = 1, code = "detect", state = "active", purpose = "Review ProjectPulse-native signals and persisted alerts." },
+        new { step = 1, code = "detect", state = "active", purpose = "Review Pulse-native signals and persisted alerts." },
         new { step = 2, code = "triage", state = "active", purpose = "Validate severity, confidence, scope, and owner." },
         new { step = 3, code = "declare", state = "active", purpose = "Create a durable governed incident." },
         new { step = 4, code = "contain", state = "approval_controlled", purpose = "Prepare, separately approve, and execute an available containment action." },

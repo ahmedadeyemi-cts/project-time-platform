@@ -34,4 +34,4 @@
 - One JavaScript asset and two stylesheets were verified from the served Test revision.
 - ProjectPulse CI, repository security, and the Test release controller all completed successfully.
 
-Test URL: [Project Health Dashboard — Test](https://phd-west-test.onenecklab.com)
+Test URL: [Pulse — Test](https://phd-west-test.onenecklab.com)

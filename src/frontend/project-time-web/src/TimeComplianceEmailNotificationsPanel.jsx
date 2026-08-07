@@ -169,7 +169,7 @@ export default function TimeComplianceEmailNotificationsPanel() {
 
     const confirmed = window.confirm(
       deliveryMode === 'brevo_api' || deliveryMode === 'provider'
-        ? 'Send automatic time-compliance email notifications through the shared PHD email provider now?'
+        ? 'Send automatic time-compliance email notifications through the shared Pulse email provider now?'
         : deliveryMode === 'sendmail'
           ? 'Send automatic time-compliance email notifications through local sendmail now?'
           : 'Record an outbox-only notification run now? No email will be sent.'

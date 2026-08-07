@@ -1,4 +1,4 @@
--- Project Health Dashboard migration 068 rollback
+-- Pulse migration 068 rollback
 -- Removes only the standalone Module 006 persistence introduced by migration 068.
 
 BEGIN;

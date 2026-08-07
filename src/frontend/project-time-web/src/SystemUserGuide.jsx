@@ -71,7 +71,7 @@ const globalGuide = [
   {
     id: 'global-search',
     category: 'Getting Started',
-    title: 'PHD Search',
+    title: 'Pulse Search',
     audience: ['Everyone'],
     summary: 'Search modules, projects, customers, documents, assignments, people, teams, and reports.',
     functions: [
@@ -81,7 +81,7 @@ const globalGuide = [
       'Selecting a result opens the relevant ProjectPulse page.'
     ],
     steps: [
-      'Open PHD Search.',
+      'Open Pulse Search.',
       'Enter at least two characters.',
       'Use the arrow keys or pointer to select a result.',
       'Press Enter or select the result to navigate.'

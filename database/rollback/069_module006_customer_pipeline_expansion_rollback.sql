@@ -1,4 +1,4 @@
--- Project Health Dashboard migration 069 rollback
+-- Pulse migration 069 rollback
 -- Reinstates the Migration 068 Toyota/Hyundai-only customer constraint.
 -- The rollback refuses to proceed after additional-customer data has been saved.
 

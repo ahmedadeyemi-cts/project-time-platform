@@ -221,7 +221,7 @@ print(json.dumps({
     "content": sys.argv[2],
     "ttl": 120,
     "proxied": False,
-    "comment": "Project Health Dashboard West Application Gateway"
+    "comment": "Pulse West Application Gateway"
 }))
 PY
 
@@ -340,7 +340,7 @@ PY
             -g "$RG_NETWORK" \
             -n "$APPGW_IDENTITY" \
             -l "$LOCATION" \
-            --tags application="Project Health Dashboard" environment=test purpose=application-gateway-keyvault \
+            --tags application="Pulse" environment=test purpose=application-gateway-keyvault \
             --only-show-errors \
             --output none
         IDENTITY_ACTION="created"

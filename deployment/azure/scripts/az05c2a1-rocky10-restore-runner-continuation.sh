@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PRODUCT_NAME="Project Health Dashboard"
+PRODUCT_NAME="Pulse"
 ENVIRONMENT="test"
 LOCATION="westus3"
 RG_NETWORK="rg-project-health-dashboard-test-network-westus3"

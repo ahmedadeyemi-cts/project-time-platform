@@ -286,7 +286,7 @@ EOF
         --logs-workspace-id "$WORKSPACE_ID" \
         --logs-workspace-key "$WORKSPACE_KEY" \
         --tags \
-            "application=Project Health Dashboard" \
+            "application=Pulse" \
             "environment=test" \
             "resource-function=container-apps-environment" \
             "region-role=primary" \

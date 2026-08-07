@@ -137,7 +137,7 @@ PY
             --resource-group "$RG_SHARED" \
             --name "$DEFAULT_DOMAIN" \
             --tags \
-                "application=Project Health Dashboard" \
+                "application=Pulse" \
                 "environment=test" \
                 "resource-function=container-apps-private-dns" \
                 "region-role=primary" \

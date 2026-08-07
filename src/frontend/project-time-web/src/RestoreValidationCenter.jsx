@@ -207,7 +207,7 @@ export default function RestoreValidationCenter({ authSession }) {
           <p className="restore-validation-eyebrow">System Operations</p>
           <h1>Restore Validation</h1>
           <p>
-            Confirm that PHD backups are usable before a disaster recovery event.
+            Confirm that Pulse backups are usable before a disaster recovery event.
             This validation does not restore over production.
           </p>
         </div>
@@ -240,7 +240,7 @@ export default function RestoreValidationCenter({ authSession }) {
               <span>Safe validation mode</span>
               <h2>Backup inspected without touching production</h2>
               <p>
-                PHD checks the backup bundle, checksum, database dump, configuration archive,
+                Pulse checks the backup bundle, checksum, database dump, configuration archive,
                 application snapshot, and DR runbook. No production restore is performed.
               </p>
             </div>

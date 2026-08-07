@@ -1517,7 +1517,7 @@ public static class InvoiceBillingModule
         return new InvoiceBillingIdentity(
             seriesNumber.Value,
             installmentNumber,
-            $"PHD-{seriesNumber.Value:000000}-{installmentNumber}");
+            $"PULSE-{seriesNumber.Value:000000}-{installmentNumber}");
     }
 
     private static async Task InsertInvoiceHeaderAsync(

@@ -226,7 +226,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
           <p className="replication-sync-eyebrow">System Operations</p>
           <h1>Replication & Sync Status</h1>
           <p>
-            Validate whether this PHD node is ready for future failover,
+            Validate whether this Pulse node is ready for future failover,
             peer synchronization, and disaster recovery operations.
           </p>
         </div>
@@ -321,7 +321,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
                     type="text"
                     value={settings.peerName}
                     onChange={(event) => updateSetting('peerName', event.target.value)}
-                    placeholder="Example: PHD DR Node"
+                    placeholder="Example: Pulse DR Node"
                   />
                 </label>
 
@@ -336,7 +336,7 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
                 </label>
 
                 <label>
-                  <span>Peer PHD URL</span>
+                  <span>Peer Pulse URL</span>
                   <input
                     type="url"
                     value={settings.peerUrl}

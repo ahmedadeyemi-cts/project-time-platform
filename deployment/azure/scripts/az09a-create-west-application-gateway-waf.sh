@@ -176,7 +176,7 @@ wait_for_public_http() {
             --type OWASP \
             --version 3.2 \
             --tags \
-                application="Project Health Dashboard" \
+                application="Pulse" \
                 environment=test \
                 region-role=primary \
                 security-control=waf \
@@ -225,7 +225,7 @@ wait_for_public_http() {
             --servers "$WEB_FQDN" \
             --waf-policy "$WAF_POLICY_ID" \
             --tags \
-                application="Project Health Dashboard" \
+                application="Pulse" \
                 environment=test \
                 region-role=primary \
                 network-purpose=regional-ingress \

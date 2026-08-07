@@ -468,7 +468,7 @@ function installProjectPulseGlobalViewAsTopbarMount() {
         if (element.id === slotId || element.closest(`#${slotId}`)) return false;
 
         const text = cleanText(element.textContent);
-        if (!text.includes('Project Health Dashboard')) return false;
+        if (!text.includes('Pulse')) return false;
         if (!text.includes('Dashboard')) return false;
         if (!text.includes('More')) return false;
 
@@ -581,7 +581,7 @@ import usSignalLogoUrl from '../brand/USSNavyStacked.png';
 import pulseSecureAccessMotionUrl from '../brand/pulse-secure-access.gif';
 import './timesheet.css';
 import './mobile-readiness.css';
-import './project-health-dashboard-login.css';
+import './pulse-login.css';
 import UserAdministrationPanel from './UserAdministrationPanel.jsx';
 import YearlyUtilizationPanel from './YearlyUtilizationPanel.jsx';
 import ProjectAllocationInfoPanel from './ProjectAllocationInfoPanel.jsx';
@@ -1649,7 +1649,7 @@ function saveStoredUserPreferences(session, preferences) {
 }
 
 function getInitials(value) {
-  const cleanValue = String(value || 'Project Health Dashboard').replace(/@.*/, '').replace(/[._-]/g, ' ');
+  const cleanValue = String(value || 'Pulse').replace(/@.*/, '').replace(/[._-]/g, ' ');
   const parts = cleanValue.split(' ').filter(Boolean);
 
   if (parts.length === 0) return 'PP';
@@ -2320,7 +2320,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
     href: '#backup-dr',
     title: 'Backup / DR Center',
     navLabel: 'MODULE 014',
-    description: 'Create and validate full PHD backup bundles.',
+    description: 'Create and validate full Pulse backup bundles.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -2939,13 +2939,13 @@ function ProjectPulseGlobalSearch() {
     const headers = getProjectPulseGlobalSearchHeaders();
 
     if (!headers['X-ProjectPulse-Session']) {
-      setStatus('Sign in is required before PHD Search can load.');
+      setStatus('Sign in is required before Pulse Search can load.');
       setHasLoaded(false);
       return;
     }
 
     setIsLoading(true);
-    setStatus('Loading PHD Search...');
+    setStatus('Loading Pulse Search...');
 
     try {
       const [workspace, filters, dashboard] = await Promise.all([
@@ -2960,7 +2960,7 @@ function ProjectPulseGlobalSearch() {
       setHasLoaded(true);
       setStatus(`${searchItems.length} searchable records loaded`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'PHD Search could not load.');
+      setStatus(error instanceof Error ? error.message : 'Pulse Search could not load.');
       setHasLoaded(false);
     } finally {
       setIsLoading(false);
@@ -3067,15 +3067,15 @@ function ProjectPulseGlobalSearch() {
         <div className="projectpulse-global-search-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeSearch();
         }}>
-          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="PHD Search">
+          <section className="projectpulse-global-search-modal" role="dialog" aria-modal="true" aria-label="Pulse Search">
             <div className="projectpulse-global-search-header">
               <div className="projectpulse-global-search-icon" aria-hidden="true">⌕</div>
               <input
                 ref={inputRef}
                 type="search"
                 value={query}
-                placeholder="Search everything in Project Health Dashboard..."
-                aria-label="Search everything in Project Health Dashboard"
+                placeholder="Search everything in Pulse..."
+                aria-label="Search everything in Pulse"
                 autoComplete="off"
                 spellCheck="false"
                 onChange={(event) => setQuery(event.target.value)}
@@ -3087,7 +3087,7 @@ function ProjectPulseGlobalSearch() {
             </div>
 
             <div className="projectpulse-global-search-meta">
-              <span>PHD Search</span>
+              <span>Pulse Search</span>
               <span>{isLoading ? 'Loading...' : status || 'Type at least two characters'}</span>
             </div>
 
@@ -3162,7 +3162,7 @@ function buildRoleNavigationModel(user, navigationItems) {
 }
 
 
-function SignalLogo({ productName = 'Project Health Dashboard', ariaLabel = productName } = {}) {
+function SignalLogo({ productName = 'Pulse', ariaLabel = productName } = {}) {
 
   return (
     <div className="brand-lockup" aria-label={ariaLabel}>
@@ -3175,7 +3175,7 @@ function SignalLogo({ productName = 'Project Health Dashboard', ariaLabel = prod
   );
 }
 
-const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
+const PULSE_CAPABILITIES = Object.freeze([
   'Sales',
   'Opportunities',
   'Projects',
@@ -3186,15 +3186,15 @@ const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
   'Analytics'
 ]);
 
-function ProjectHealthDashboardLoginHero({ showSecureMotion = false }) {
+function PulseLoginHero({ showSecureMotion = false }) {
   return (
-    <div className="phd-auth-story-content">
-      <header className="phd-auth-story-header">
+    <div className="pulse-auth-story-content">
+      <header className="pulse-auth-story-header">
         <SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />
       </header>
 
-      <div className="phd-auth-story-copy">
-        <p className="phd-auth-eyebrow"><span aria-hidden="true" /> Unified business operations</p>
+      <div className="pulse-auth-story-copy">
+        <p className="pulse-auth-eyebrow"><span aria-hidden="true" /> Unified business operations</p>
         <h1>
           Every stage of delivery.
           <span>One intelligent workspace.</span>
@@ -3204,75 +3204,75 @@ function ProjectHealthDashboardLoginHero({ showSecureMotion = false }) {
         </p>
       </div>
 
-      <div className="phd-auth-motion-stage">
+      <div className="pulse-auth-motion-stage">
         {!showSecureMotion ? (
-          <div className="phd-platform-motion" aria-label="Animated view of the Pulse operational ecosystem">
-            <div className="phd-motion-grid" aria-hidden="true" />
-            <svg className="phd-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
+          <div className="pulse-platform-motion" aria-label="Animated view of the Pulse operational ecosystem">
+            <div className="pulse-motion-grid" aria-hidden="true" />
+            <svg className="pulse-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
               <defs>
-                <linearGradient id="phd-flow-gradient" x1="0" x2="1">
+                <linearGradient id="pulse-flow-gradient" x1="0" x2="1">
                   <stop offset="0%" stopColor="#63c8ff" stopOpacity="0.15" />
                   <stop offset="50%" stopColor="#7be2d2" stopOpacity="0.9" />
                   <stop offset="100%" stopColor="#63c8ff" stopOpacity="0.15" />
                 </linearGradient>
               </defs>
-              <path className="phd-flow-path" d="M96 96 C208 78 228 158 320 170" />
-              <path className="phd-flow-path" d="M544 96 C432 78 412 158 320 170" />
-              <path className="phd-flow-path" d="M96 254 C206 276 224 190 320 170" />
-              <path className="phd-flow-path" d="M544 254 C434 276 416 190 320 170" />
-              <circle className="phd-flow-particle phd-flow-particle-a" r="4" />
-              <circle className="phd-flow-particle phd-flow-particle-b" r="4" />
-              <circle className="phd-flow-particle phd-flow-particle-c" r="4" />
-              <circle className="phd-flow-particle phd-flow-particle-d" r="4" />
+              <path className="pulse-flow-path" d="M96 96 C208 78 228 158 320 170" />
+              <path className="pulse-flow-path" d="M544 96 C432 78 412 158 320 170" />
+              <path className="pulse-flow-path" d="M96 254 C206 276 224 190 320 170" />
+              <path className="pulse-flow-path" d="M544 254 C434 276 416 190 320 170" />
+              <circle className="pulse-flow-particle pulse-flow-particle-a" r="4" />
+              <circle className="pulse-flow-particle pulse-flow-particle-b" r="4" />
+              <circle className="pulse-flow-particle pulse-flow-particle-c" r="4" />
+              <circle className="pulse-flow-particle pulse-flow-particle-d" r="4" />
             </svg>
 
-            <div className="phd-system-node phd-node-sales">
-              <span className="phd-node-glyph" aria-hidden="true">SL</span>
+            <div className="pulse-system-node pulse-node-sales">
+              <span className="pulse-node-glyph" aria-hidden="true">SL</span>
               <span><small>Pipeline</small>Sales</span>
             </div>
-            <div className="phd-system-node phd-node-projects">
-              <span className="phd-node-glyph" aria-hidden="true">PJ</span>
+            <div className="pulse-system-node pulse-node-projects">
+              <span className="pulse-node-glyph" aria-hidden="true">PJ</span>
               <span><small>Delivery</small>Projects</span>
             </div>
-            <div className="phd-system-node phd-node-billing">
-              <span className="phd-node-glyph" aria-hidden="true">BL</span>
+            <div className="pulse-system-node pulse-node-billing">
+              <span className="pulse-node-glyph" aria-hidden="true">BL</span>
               <span><small>Revenue</small>Billing</span>
             </div>
-            <div className="phd-system-node phd-node-time">
-              <span className="phd-node-glyph" aria-hidden="true">TM</span>
+            <div className="pulse-system-node pulse-node-time">
+              <span className="pulse-node-glyph" aria-hidden="true">TM</span>
               <span><small>Execution</small>Time</span>
             </div>
 
-            <div className="phd-ai-core">
-              <span className="phd-ai-orbit phd-ai-orbit-one" aria-hidden="true" />
-              <span className="phd-ai-orbit phd-ai-orbit-two" aria-hidden="true" />
-              <span className="phd-ai-spark" aria-hidden="true">✦</span>
+            <div className="pulse-ai-core">
+              <span className="pulse-ai-orbit pulse-ai-orbit-one" aria-hidden="true" />
+              <span className="pulse-ai-orbit pulse-ai-orbit-two" aria-hidden="true" />
+              <span className="pulse-ai-spark" aria-hidden="true">✦</span>
               <strong>Celar AI</strong>
               <small>Operational intelligence</small>
             </div>
 
-            <div className="phd-insight-pill phd-insight-one"><span aria-hidden="true" />Opportunity qualified</div>
-            <div className="phd-insight-pill phd-insight-two"><span aria-hidden="true" />Invoice ready</div>
-            <div className="phd-insight-pill phd-insight-three"><span aria-hidden="true" />Risk identified</div>
+            <div className="pulse-insight-pill pulse-insight-one"><span aria-hidden="true" />Opportunity qualified</div>
+            <div className="pulse-insight-pill pulse-insight-two"><span aria-hidden="true" />Invoice ready</div>
+            <div className="pulse-insight-pill pulse-insight-three"><span aria-hidden="true" />Risk identified</div>
           </div>
         ) : (
-          <div className="phd-secure-motion">
+          <div className="pulse-secure-motion">
             <img
               src={pulseSecureAccessMotionUrl}
               alt="Pulse animated secure operational network"
             />
-            <div className="phd-secure-motion-shade" aria-hidden="true" />
-            <div className="phd-secure-motion-caption">
-              <span className="phd-live-dot" aria-hidden="true" />
+            <div className="pulse-secure-motion-shade" aria-hidden="true" />
+            <div className="pulse-secure-motion-caption">
+              <span className="pulse-live-dot" aria-hidden="true" />
               <span><small>Protected Pulse workspace</small>Secure access. Connected operations.</span>
             </div>
           </div>
         )}
       </div>
 
-      <div className="phd-capability-rail" aria-label="Pulse capabilities">
-        {PROJECT_HEALTH_DASHBOARD_CAPABILITIES.map((capability, index) => (
-          <span key={capability} style={{ '--phd-capability-index': index }}>{capability}</span>
+      <div className="pulse-capability-rail" aria-label="Pulse capabilities">
+        {PULSE_CAPABILITIES.map((capability, index) => (
+          <span key={capability} style={{ '--pulse-capability-index': index }}>{capability}</span>
         ))}
       </div>
     </div>
@@ -3955,7 +3955,7 @@ function getInstalledModuleDescription(module) {
     'security-operations': 'Shows sanitized security readiness, alert and incident contracts, threat-intelligence policy, control ownership, and fail-closed incident-response governance.',
     'time-compliance': 'Previews missing time, reminder scenarios, manager/PTC visibility, compliance notification readiness, and month-end time controls.',
     'holiday-admin': 'Manages company holidays, holiday upload, holiday visibility, and holiday-related timesheet automation.',
-    'user-admin': 'Manages Project Health Dashboard users, roles, active status, local account status, and administrator-controlled access settings.',
+    'user-admin': 'Manages Pulse users, roles, active status, local account status, and administrator-controlled access settings.',
     'azure-admin': 'Manages Azure/Entra import, reconciliation, sync settings, and identity-readiness checks.',
     'ai-provider-configuration': 'Shows sanitized shared AI configuration, provider health, feature routing, circuit state, and locked secret lifecycle controls.',
     'entra-secret-administration': 'Shows privileged application-credential readiness and fail-closed rotation workflow contracts without exposing secret values.',
@@ -3979,7 +3979,7 @@ function getInstalledModuleDescription(module) {
     'psa-modules': 'Displays PSA workflow modules such as expense, invoice, project, and billing readiness areas as they are connected.'
   };
 
-  return module?.description || descriptions[route] || 'Installed Project Health Dashboard module available to this role. Review the module for workflow details, operational status, and next actions.';
+  return module?.description || descriptions[route] || 'Installed Pulse module available to this role. Review the module for workflow details, operational status, and next actions.';
 }
 
 
@@ -6096,7 +6096,7 @@ export default function App() {
       await postJson('/api/admin/users/roles', {
         email,
         roleCodes: [roleCode],
-        reason: 'Updated from PHD role administration screen'
+        reason: 'Updated from Pulse role administration screen'
       });
       setRoleAdminStatus(`Updated ${email} to ${roleCode}`);
       await loadRoleAdminData();
@@ -6231,24 +6231,24 @@ export default function App() {
 
   if (!authSession) {
     return (
-      <main className="app-shell auth-shell phd-auth-shell">
-        <section className="auth-landing-panel phd-auth-experience" aria-label="Pulse sign in">
-          <div className="auth-card phd-auth-card">
-            <div className="phd-auth-card-content">
-              <p className="phd-secure-label">
-                <span className="phd-secure-icon" aria-hidden="true">
+      <main className="app-shell auth-shell pulse-auth-shell">
+        <section className="auth-landing-panel pulse-auth-experience" aria-label="Pulse sign in">
+          <div className="auth-card pulse-auth-card">
+            <div className="pulse-auth-card-content">
+              <p className="pulse-secure-label">
+                <span className="pulse-secure-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><rect x="5" y="10" width="14" height="11" rx="3" /></svg>
                 </span>
                 Secure workspace
               </p>
               <h2>Welcome to Pulse</h2>
-              <p className="phd-auth-intro">
+              <p className="pulse-auth-intro">
                 Sign in to open the workspace tailored to your role, priorities, and active work.
               </p>
 
             <form onSubmit={resolveLoginRoute}>
               <label htmlFor="login-username">Work email or local administrator account</label>
-              <div className="phd-auth-input-wrap">
+              <div className="pulse-auth-input-wrap">
                 <span aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4V6Z" /><path d="m4 7 8 6 8-6" /></svg>
                 </span>
@@ -6268,7 +6268,7 @@ export default function App() {
                 />
               </div>
 
-              <button className="primary-action phd-auth-continue" type="submit" disabled={isResolvingLogin}>
+              <button className="primary-action pulse-auth-continue" type="submit" disabled={isResolvingLogin}>
                 <span>{isResolvingLogin ? 'Checking access...' : 'Continue securely'}</span>
                 {!isResolvingLogin && <span aria-hidden="true">→</span>}
               </button>
@@ -6324,29 +6324,29 @@ export default function App() {
               </div>
             )}
 
-              <div className="phd-auth-divider"><span>Protected by</span></div>
+              <div className="pulse-auth-divider"><span>Protected by</span></div>
 
-              <div className="phd-auth-trust-grid" id="login-security-help">
+              <div className="pulse-auth-trust-grid" id="login-security-help">
                 <div>
-                  <span className="phd-trust-icon" aria-hidden="true">M</span>
+                  <span className="pulse-trust-icon" aria-hidden="true">M</span>
                   <span><strong>Microsoft Entra</strong><small>Single sign-on</small></span>
                 </div>
                 <div>
-                  <span className="phd-trust-icon" aria-hidden="true">✓</span>
+                  <span className="pulse-trust-icon" aria-hidden="true">✓</span>
                   <span><strong>Role-based access</strong><small>Governed and auditable</small></span>
                 </div>
               </div>
             </div>
 
-            <footer className="phd-auth-footer">
-              <span className="phd-system-status"><span aria-hidden="true" /> Secure access ready</span>
-              <span className="phd-footer-separator" aria-hidden="true" />
+            <footer className="pulse-auth-footer">
+              <span className="pulse-system-status"><span aria-hidden="true" /> Secure access ready</span>
+              <span className="pulse-footer-separator" aria-hidden="true" />
               <span>Authorized US Signal users only</span>
             </footer>
           </div>
 
-          <div className="auth-brand-block phd-auth-story">
-            <ProjectHealthDashboardLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />
+          <div className="auth-brand-block pulse-auth-story">
+            <PulseLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />
           </div>
         </section>
       </main>
@@ -6429,7 +6429,7 @@ export default function App() {
         <div className="session-timeout-backdrop">
           <section className="session-timeout-modal" role="dialog" aria-modal="true" aria-label="Session timeout warning">
             <p className="eyebrow">Session timeout</p>
-            <h2>Your PHD session is about to expire</h2>
+            <h2>Your Pulse session is about to expire</h2>
             <p>
               For security, each session is limited to two hours. Extend your session now to continue working, or you will be signed out when the timer reaches zero.
             </p>
@@ -6553,7 +6553,7 @@ Analytics - Variphy / Infortel`}
                   <div className="settings-section-card">
                     <p className="eyebrow">Appearance</p>
                     <h3>Theme preference</h3>
-                    <p>Select how PHD should appear for your account on this browser.</p>
+                    <p>Select how Pulse should appear for your account on this browser.</p>
 
                     <div className="theme-choice-grid">
                       <label className={profileDraft.theme === 'light' ? 'theme-choice active' : 'theme-choice'}>
@@ -6722,7 +6722,7 @@ Analytics - Variphy / Infortel`}
       <aside className="enterprise-sidebar enterprise-sidebar-legacy" aria-label="Workspace navigation">
         <div className="enterprise-sidebar-header">
           <div>
-            <p className="eyebrow">Project Health Dashboard</p>
+            <p className="eyebrow">Pulse</p>
             <h2>{workspaceRoleName}</h2>
           </div>
         </div>
@@ -7534,10 +7534,10 @@ Analytics - Variphy / Infortel`}
 
       <section id="dashboard" className="hero hero-polished">
         <div className="hero-content-block">
-          <p className="eyebrow">Project Health Dashboard</p>
+          <p className="eyebrow">Pulse</p>
           <h1>Operational command center for time, approvals, utilization, and billing readiness.</h1>
           <p className="hero-copy">
-            PHD brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
+            Pulse brings weekly time entry, task-based project assignment, manager approval, project validation, accounting reconciliation, and utilization reporting into one internal workflow.
           </p>
           <div className="hero-pill-row">
             <span>Time entry</span>
@@ -7556,7 +7556,7 @@ Analytics - Variphy / Infortel`}
         <article className="status-card">
           <span className="status-label">API</span>
           <strong>{apiHealth.loading ? 'Checking...' : apiHealth.error ? 'Unavailable' : apiHealth.data?.status}</strong>
-          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'PHD API'}</small>
+          <small>{apiHealth.data?.service ?? apiHealth.error ?? 'Pulse API'}</small>
         </article>
 
         <article className="status-card">
@@ -8440,7 +8440,7 @@ Analytics - Variphy / Infortel`}
                     <p className="eyebrow">Installed Modules</p>
                     <h2>Role-based module dashboard</h2>
                     <p className="muted">
-                      These are the PHD modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
+                      These are the Pulse modules available to your current role. Each card explains what the module is intended to do so new workflow areas are visible from the dashboard.
                     </p>
                   </div>
                   <span className="installed-modules-count">{installedModules.length} available</span>
@@ -8476,7 +8476,7 @@ Analytics - Variphy / Infortel`}
           <div>
             <p className="eyebrow">PSA platform modules</p>
             <h2>Remaining sections foundation</h2>
-            <p className="muted">These sections prepare the rest of Project Health Dashboard beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
+            <p className="muted">These sections prepare the rest of Pulse beyond time entry: intake, project management, resource scheduling, expenses, invoicing, reporting, and administrative workflow.</p>
           </div>
           <span className="pill">Foundation ready</span>
         </div>

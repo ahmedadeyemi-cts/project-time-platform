@@ -811,7 +811,7 @@ export default function BillingReadinessCenter() {
     ]);
 
     const content = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
-    downloadTextFile('phd-billing-readiness-financial-report.csv', content, 'text/csv');
+    downloadTextFile('pulse-billing-readiness-financial-report.csv', content, 'text/csv');
     setStatusMessage('Billing readiness financial report exported as CSV.');
   }
 
@@ -834,14 +834,14 @@ export default function BillingReadinessCenter() {
     ]);
 
     const content = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
-    downloadTextFile('phd-month-end-billing-run-summary.csv', content, 'text/csv');
+    downloadTextFile('pulse-month-end-billing-run-summary.csv', content, 'text/csv');
     setStatusMessage('Month-end billing run summary exported as CSV.');
   }
 
   async function copyBillingSummary() {
     const modeLabel = billingModes.find((mode) => mode.key === billingMode)?.label ?? billingMode;
     const content = [
-      'PHD Module 039 - Billing Readiness Center',
+      'Pulse Module 039 - Billing Readiness Center',
       '',
       `Billing mode: ${modeLabel}`,
       `Package type: ${packageType}`,

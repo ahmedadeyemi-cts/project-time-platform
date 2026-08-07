@@ -13,8 +13,8 @@ The existing modules remain valuable operational surfaces, but they were built a
 | Module | Existing operational responsibility | Assumptions that needed an abstraction boundary |
 |---|---|---|
 | Module 014 | Backup and disaster-recovery settings, backup execution, status, and run history | Local/server backup bundles, SFTP targets, Azure Blob targets, and server-managed schedules |
-| Module 015 | Restore-point selection and non-production restore validation | PHD/server wording, local bundle paths, PostgreSQL `pg_restore` inspection, and a server-side restore runbook |
-| Module 017 | Replication and synchronization readiness | A named peer server, peer host/IP, peer URL, and a future second or third PHD server |
+| Module 015 | Restore-point selection and non-production restore validation | Pulse/server wording, local bundle paths, PostgreSQL `pg_restore` inspection, and a server-side restore runbook |
+| Module 017 | Replication and synchronization readiness | A named peer server, peer host/IP, peer URL, and a future second or third Pulse server |
 
 No Oracle-only contract was found in these three current web experiences. The provider-specific assumptions are primarily local-server, Azure, PostgreSQL, and peer-node concepts. Group 2B keeps those operational controls intact while placing provider-neutral production planning above them.
 

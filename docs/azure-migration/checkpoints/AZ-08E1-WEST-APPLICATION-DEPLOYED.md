@@ -4,7 +4,7 @@ Date: 2026-07-13
 
 ## Result
 
-The Project Health Dashboard application was deployed successfully to the West US 3 Azure Container Apps environment.
+The Pulse application was deployed successfully to the West US 3 Azure Container Apps environment.
 
 ### API
 

@@ -8,7 +8,7 @@ const webRoot = path.resolve(scriptDirectory, '..');
 const appPath = path.join(webRoot, 'src', 'App.jsx');
 const authenticatedHelpAssistantPath = path.join(webRoot, 'src', 'AuthenticatedHelpAssistant.jsx');
 const mainPath = path.join(webRoot, 'src', 'main.jsx');
-const stylesheetPath = path.join(webRoot, 'src', 'project-health-dashboard-login.css');
+const stylesheetPath = path.join(webRoot, 'src', 'pulse-login.css');
 const officialLogoPath = path.join(webRoot, 'brand', 'USSNavyStacked.png');
 const brandedMotionPath = path.join(webRoot, 'brand', 'pulse-secure-access.gif');
 
@@ -19,14 +19,14 @@ const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
 const officialLogo = fs.readFileSync(officialLogoPath);
 const brandedMotion = fs.readFileSync(brandedMotionPath);
 const failures = [];
-const authCardIndex = app.indexOf('<div className="auth-card phd-auth-card">');
-const authStoryIndex = app.indexOf('<div className="auth-brand-block phd-auth-story">', authCardIndex);
+const authCardIndex = app.indexOf('<div className="auth-card pulse-auth-card">');
+const authStoryIndex = app.indexOf('<div className="auth-brand-block pulse-auth-story">', authCardIndex);
 const signedOutStart = app.indexOf('if (!authSession) {');
 const signedOutEnd = app.indexOf("if (authSession?.loginMethod === 'local'", signedOutStart);
 const signedOutExperience = signedOutStart >= 0 && signedOutEnd > signedOutStart
   ? app.slice(signedOutStart, signedOutEnd)
   : '';
-const secureMotionImageStart = stylesheet.indexOf('.phd-secure-motion img {');
+const secureMotionImageStart = stylesheet.indexOf('.pulse-secure-motion img {');
 const secureMotionImageEnd = stylesheet.indexOf('}', secureMotionImageStart);
 const secureMotionImageStyles = secureMotionImageStart >= 0 && secureMotionImageEnd > secureMotionImageStart
   ? stylesheet.slice(secureMotionImageStart, secureMotionImageEnd)
@@ -49,7 +49,7 @@ function containsAll(source, values) {
 }
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_OFFICIAL_US_SIGNAL_LOGO',
+  'PULSE_OFFICIAL_US_SIGNAL_LOGO',
   app.includes("import usSignalLogoUrl from '../brand/USSNavyStacked.png';")
     && app.includes('<img className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal" />')
     && loginExperienceSource.includes('<SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />')
@@ -68,12 +68,11 @@ requireInvariant(
     'Welcome to Pulse',
     'Continue securely'
   ])
-    && !loginExperienceSource.includes('Welcome to Project Health Dashboard')
     && !loginExperienceSource.includes('Time • Approval • Utilization')
 );
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_PLATFORM_SCOPE',
+  'PULSE_PLATFORM_SCOPE',
   ['Sales', 'Opportunities', 'Projects', 'Time', 'Approvals', 'Billing', 'Invoicing', 'Analytics']
     .every((capability) => app.includes(`'${capability}'`))
 );
@@ -82,10 +81,10 @@ requireInvariant(
   'PULSE_BRANDED_MOTION_PASSWORD_ONLY',
   app.includes("import pulseSecureAccessMotionUrl from '../brand/pulse-secure-access.gif';")
     && containsAll(loginExperienceSource, [
-    'function ProjectHealthDashboardLoginHero({ showSecureMotion = false })',
+    'function PulseLoginHero({ showSecureMotion = false })',
     '{!showSecureMotion ? (',
     'alt="Pulse animated secure operational network"',
-    "<ProjectHealthDashboardLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />"
+    "<PulseLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />"
   ])
     && brandedMotion.subarray(0, 6).toString('ascii') === 'GIF89a'
     && brandedMotion.length === 223_290
@@ -93,13 +92,13 @@ requireInvariant(
     && secureMotionImageStyles.includes('object-fit: contain;')
     && !secureMotionImageStyles.includes('object-fit: cover;')
     && !loginExperienceSource.includes('ussignal.com/wp-content/uploads')
-    && !loginExperienceSource.includes('phd-auth-motion-switcher')
+    && !loginExperienceSource.includes('pulse-auth-motion-switcher')
     && !loginExperienceSource.includes('setMotionMode')
 );
 
 requireInvariant(
   'PULSE_CELAR_AI_AUTHENTICATED_ONLY',
-  !signedOutExperience.includes('phd-celar-note')
+  !signedOutExperience.includes('pulse-celar-note')
     && !signedOutExperience.includes('Your intelligent assistant is ready after sign-in.')
     && containsAll(authenticatedHelpAssistant, [
       "const AUTH_SESSION_STORAGE_KEY = 'projectPulseAuthSession';",
@@ -115,12 +114,12 @@ requireInvariant(
 );
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_SCOPED_RESPONSIVE_STYLES',
-  app.includes("import './project-health-dashboard-login.css';")
+  'PULSE_SCOPED_RESPONSIVE_STYLES',
+  app.includes("import './pulse-login.css';")
     && containsAll(stylesheet, [
-      '.phd-auth-shell',
-      '.phd-auth-experience',
-      '.phd-platform-motion',
+      '.pulse-auth-shell',
+      '.pulse-auth-experience',
+      '.pulse-platform-motion',
       '@media (max-width: 820px)',
       '@media (prefers-reduced-motion: reduce)'
     ])
@@ -128,20 +127,20 @@ requireInvariant(
 );
 
 requireInvariant(
-  'PROJECT_HEALTH_DASHBOARD_MOBILE_SIGN_IN_FIRST',
+  'PULSE_MOBILE_SIGN_IN_FIRST',
   authCardIndex >= 0
     && authStoryIndex > authCardIndex
     && containsAll(stylesheet, [
-      '.phd-auth-story {',
+      '.pulse-auth-story {',
       'grid-column: 1;',
       'grid-row: 2;',
-      '.phd-auth-card {',
+      '.pulse-auth-card {',
       'grid-row: 1;'
     ])
 );
 
-console.log(`PROJECT_HEALTH_DASHBOARD_LOGIN_VALIDATION=${failures.length === 0 ? 'PASSED' : 'FAILED'}`);
+console.log(`PULSE_LOGIN_VALIDATION=${failures.length === 0 ? 'PASSED' : 'FAILED'}`);
 if (failures.length > 0) {
-  console.error(`PROJECT_HEALTH_DASHBOARD_LOGIN_FAILURES=${failures.join(',')}`);
+  console.error(`PULSE_LOGIN_FAILURES=${failures.join(',')}`);
   process.exitCode = 1;
 }

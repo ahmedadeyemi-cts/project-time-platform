@@ -34,7 +34,7 @@ No resources were created.
 
 Created:
 
-- Eight Project Health Dashboard resource groups
+- Eight Pulse resource groups
 - West US 3 VNet `10.30.0.0/16`
 - East US VNet `10.40.0.0/16`
 - Container Apps, PostgreSQL, private endpoint, management, Azure Firewall-reserved, and Gateway-reserved subnets

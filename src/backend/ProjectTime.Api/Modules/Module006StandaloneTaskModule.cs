@@ -580,7 +580,7 @@ public static class Module006StandaloneTaskModule
         {
             var missing = settings.Where(pair => string.IsNullOrWhiteSpace(pair.Value)).Select(pair => pair.Key).ToArray();
             if (missing.Length > 0)
-                throw new InvalidOperationException($"Project Health Dashboard database configuration is incomplete: {string.Join(", ", missing)}.");
+                throw new InvalidOperationException($"Pulse database configuration is incomplete: {string.Join(", ", missing)}.");
             connectionString = new NpgsqlConnectionStringBuilder
             {
                 Host = settings["PTP_DB_HOST"],
@@ -602,7 +602,7 @@ public static class Module006StandaloneTaskModule
                 "PROJECTTIME_DATABASE_CONNECTION"
             }.Select(Environment.GetEnvironmentVariable)
              .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-             ?? throw new InvalidOperationException("Project Health Dashboard database connection is not configured.");
+             ?? throw new InvalidOperationException("Pulse database connection is not configured.");
         }
 
         var connection = new NpgsqlConnection(connectionString);
@@ -613,7 +613,7 @@ public static class Module006StandaloneTaskModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid Project Health Dashboard session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static IResult AccessDenied() => Results.Json(new

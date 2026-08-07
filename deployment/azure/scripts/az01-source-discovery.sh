@@ -34,7 +34,7 @@ section() {
 }
 
 {
-  section "AZ-01 - Project Health Dashboard Source Discovery"
+  section "AZ-01 - Pulse Source Discovery"
   echo "UTC: $(date -u -Is)"
   echo "Hostname: $(hostname -f 2>/dev/null || hostname)"
   echo "Application path: $APP"

@@ -17,11 +17,11 @@ function getProjectPulseAuthHeaders() {
 function getCurrentSessionUser() {
   try {
     const rawSession = window.localStorage.getItem('projectPulseAuthSession');
-    if (!rawSession) return 'Unknown PHD user';
+    if (!rawSession) return 'Unknown Pulse user';
     const session = JSON.parse(rawSession);
-    return session?.username || session?.email || session?.displayName || 'Unknown PHD user';
+    return session?.username || session?.email || session?.displayName || 'Unknown Pulse user';
   } catch {
-    return 'Unknown PHD user';
+    return 'Unknown Pulse user';
   }
 }
 
@@ -540,7 +540,7 @@ function buildCloseoutEmail(project, recipients, auditFacts) {
 
   const body = `Hello Project Team,
 
-Project ${project.projectCode} for ${customerName} has been closed out by the Project Manager in Project Health Dashboard. This automatic notice is being sent to the full project closeout team so everyone is aware the project is moving into closure.
+Project ${project.projectCode} for ${customerName} has been closed out by the Project Manager in Pulse. This automatic notice is being sent to the full project closeout team so everyone is aware the project is moving into closure.
 
 Project: ${project.projectName}
 Customer: ${customerName}
@@ -1023,7 +1023,7 @@ export default function CloseoutEmailAutomationCenter() {
       <section className="closeout-email-guardrail">
         <strong>Automation guardrail</strong>
         <span>
-          This workflow sends the automatic PHD closeout email and records audit evidence. It does not finalize accounting,
+          This workflow sends the automatic Pulse closeout email and records audit evidence. It does not finalize accounting,
           send an invoice, close the project in PSA/accounting, or replace customer acceptance evidence.
         </span>
       </section>

@@ -5,7 +5,7 @@ Status: Accepted
 
 ## Decision
 
-Temporary Azure migration and restore hosts for Project Health Dashboard will use Rocky Linux 9 x86-64.
+Temporary Azure migration and restore hosts for Pulse will use Rocky Linux 9 x86-64.
 
 Ubuntu must not be used for the restore runner or other migration helper virtual machines unless this decision is explicitly superseded in a later architecture decision record.
 

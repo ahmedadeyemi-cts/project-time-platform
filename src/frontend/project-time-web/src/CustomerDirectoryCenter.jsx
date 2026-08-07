@@ -675,7 +675,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
               <div className="customer-local-enrichment-banner">
                 <strong>Local enrichment</strong>
-                <span>Contacts, titles, relationships, phone numbers, and addresses added below remain ProjectPulse-owned and are preserved when the customer is refreshed from SELL.</span>
+                <span>Contacts, titles, relationships, phone numbers, and addresses added below remain Pulse-owned and are preserved when the customer is refreshed from SELL.</span>
               </div>
 
               <div className="customer-cost-grid">

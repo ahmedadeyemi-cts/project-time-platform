@@ -786,7 +786,7 @@ public static class ApprovalCenterModule
         IReadOnlyList<EntryDetail> entries,
         string reason)
     {
-        var subject = $"ProjectPulse: Time returned for correction — {request.WorkDate:MMMM d, yyyy}";
+        var subject = $"Pulse: Time returned for correction — {request.WorkDate:MMMM d, yyyy}";
         var body = new StringBuilder()
             .AppendLine($"Hello {target.DisplayName},")
             .AppendLine()
@@ -828,7 +828,7 @@ public static class ApprovalCenterModule
             .AppendLine("Required action:")
             .AppendLine("Open ProjectPulse, correct the returned time, and resubmit it for approval.")
             .AppendLine()
-            .AppendLine("ProjectPulse: https://phd-west-test.onenecklab.com/#timesheet");
+            .AppendLine("Pulse: https://phd-west-test.onenecklab.com/#timesheet");
 
         await using (var notifyCommand = new NpgsqlCommand("""
             INSERT INTO notification_outbox (

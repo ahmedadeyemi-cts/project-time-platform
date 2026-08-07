@@ -515,13 +515,13 @@ public static class ProjectIntakeModule
             Package: {requestTitle}
             Submitted by: {actor.DisplayName} ({actor.Email})
 
-            Documents retained in ProjectPulse:
+            Documents retained in Pulse:
             {documentLines}
 
             Sales context:
             {description}
 
-            Review the package in ProjectPulse: {platformUrl}
+            Review the package in Pulse: {platformUrl}
 
             Each document link requires ProjectPulse authentication, enforces the PTC/project access scope, and records governed download evidence. Raw customer files are not copied into automated email.
             """;

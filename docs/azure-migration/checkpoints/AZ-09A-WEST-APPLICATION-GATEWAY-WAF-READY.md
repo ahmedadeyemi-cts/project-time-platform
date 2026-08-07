@@ -4,7 +4,7 @@ Date completed: 2026-07-13
 
 ## Result
 
-The West public entry point for Project Health Dashboard is operational.
+The West public entry point for Pulse is operational.
 
 - Application Gateway: `agw-phd-test-westus3`
 - SKU: `WAF_v2`

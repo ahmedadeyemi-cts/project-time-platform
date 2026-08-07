@@ -55,7 +55,7 @@ function buildRemediationPlan(items, state) {
   const remaining = items.filter((item) => !state.checked[item.key]);
 
   return [
-    'Project Health Dashboard - Production Data Remediation Plan',
+    'Pulse - Production Data Remediation Plan',
     `Generated: ${new Date().toLocaleString()}`,
     '',
     `Completed: ${completed.length} of ${items.length}`,

@@ -14,7 +14,7 @@ public static class Pr467UatRepairModule
     {
         var actualUserId = ReadGuid(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
         if (actualUserId is null)
-            return Results.Json(new { status = "session_required", message = "A valid Project Health Dashboard session is required." }, statusCode: 401);
+            return Results.Json(new { status = "session_required", message = "A valid Pulse session is required." }, statusCode: 401);
         var effectiveUserId = ReadGuid(context, "ProjectPulseEffectiveUserId") ?? actualUserId.Value;
 
         await using var connection = await OpenConnectionAsync();

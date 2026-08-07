@@ -24,7 +24,7 @@ Validated live results:
 - `DATABASE_SCHEMA_MODIFIED=YES`
 - Module 042 table count: `9`
 - Live task foreign key: `project_tasks.task_id`
-- Invoice identity format: `PHD-XXXXXX-N`
+- Invoice identity format: `PULSE-XXXXXX-N`
 - Invoice sequence consumed during migration: `NO`
 - Connector definitions seeded as `not_configured`: `3`
 - No operational invoice was created by migration or smoke testing.

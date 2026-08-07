@@ -26,7 +26,7 @@ PROVIDERS=(
 
 {
   echo "============================================================"
-  echo "AZ-02A - Project Health Dashboard Subscription Discovery"
+  echo "AZ-02A - Pulse Subscription Discovery"
   echo "============================================================"
   echo "TIME=$(date -u -Is)"
 

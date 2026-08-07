@@ -60,7 +60,7 @@ internal static partial class EnterpriseNotificationTemplateRenderer
         var subject = Replace(policy.SubjectTemplate, tokens);
         var textBody = Replace(policy.TextTemplate, tokens);
         if (string.IsNullOrWhiteSpace(subject))
-            subject = $"ProjectPulse: {policy.PolicyName}";
+            subject = $"Pulse: {policy.PolicyName}";
         if (string.IsNullOrWhiteSpace(textBody))
             textBody = $"A ProjectPulse {policy.PolicyName} event occurred at {notificationEvent.OccurredAt:O}.";
 

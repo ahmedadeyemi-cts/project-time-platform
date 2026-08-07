@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # 041J_ACTIVE_DEPLOY_STANDARD_START
-# Project Health Dashboard / ProjectPulse active deployment script.
+# Pulse active deployment script.
 # This publishes backend changes to the actual systemd API path:
 # /opt/project-time-platform/app/published/api
 #
@@ -272,7 +272,7 @@ if [ -n "${API_PUBLISHED:-}" ] && [ -d "${API_PUBLISHED:-}" ]; then
 
   cat > "$RELEASE_MANIFEST" <<JSON
 {
-  "product": "Project Health Dashboard (PHD)",
+  "product": "Pulse",
   "internalProject": "ProjectPulse",
   "module": "050 critical launch blocker release manifest",
   "gitCommit": "$RELEASE_GIT_COMMIT",

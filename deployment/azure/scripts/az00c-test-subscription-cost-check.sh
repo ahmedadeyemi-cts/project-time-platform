@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Read-only daily Azure Cost Management review for the Project Health Dashboard
+# Read-only daily Azure Cost Management review for the Pulse
 # test subscription. This script creates, updates, and deletes no Azure resources.
 
 BUDGET_USD=200

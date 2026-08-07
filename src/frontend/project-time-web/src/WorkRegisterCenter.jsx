@@ -4985,7 +4985,7 @@ async function createWorkRegisterFromReviewedIntake() {
         <div className="work-register-identifier-card" data-pr467-work-identifier="true">
           <span>{pr467IdentifierLabel(selectedWorkItem)}</span>
           <strong>{selectedWorkItem.projectCode}</strong>
-          <small>Immutable Project Health Dashboard identifier</small>
+          <small>Immutable Pulse identifier</small>
         </div>
       ) : null}
       {selectedWorkItem ? (

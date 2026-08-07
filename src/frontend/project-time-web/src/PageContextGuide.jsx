@@ -23,7 +23,7 @@ const routeContext = {
     page: 'Invoice & Billing Center — Module 042',
     purpose: 'Live invoice operations using approved uninvoiced time, explicit effective stored-rate selection, purchase-order readiness, and immutable partial or final invoice snapshots. Fixed Price dollars remain blocked until stored milestone billing is implemented.',
     backend: '/api/billing/candidates, /api/billing/projects/{projectId}/invoices, and /api/billing/invoices/{invoiceId}',
-    check: 'Confirm approved source lines, select only effective stored rates, resolve required purchase orders, create a partial or final invoice, and verify its PHD-XXXXXX-N number and immutable history. Missing values remain visibly unconfigured.'
+    check: 'Confirm approved source lines, select only effective stored rates, resolve required purchase orders, create a partial or final invoice, and verify its PULSE-XXXXXX-N number and immutable history. Missing values remain visibly unconfigured.'
   },
   /* 039_042_BILLING_CONTEXT_GUIDE_END */
 

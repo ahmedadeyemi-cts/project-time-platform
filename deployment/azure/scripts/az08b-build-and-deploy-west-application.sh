@@ -263,7 +263,7 @@ ensure_role() {
             "postgres-connection-string=keyvaultref:$CONNECTION_SECRET_URI,identityref:$IDENTITY_ID" \
         --env-vars "${API_ENV_VARS[@]}" \
         --tags \
-            application="Project Health Dashboard" \
+            application="Pulse" \
             environment=test \
             region-role=primary \
             source-commit="$EXPECTED_SOURCE_COMMIT" \
@@ -299,7 +299,7 @@ ensure_role() {
         --memory 1.0Gi \
         --env-vars "API_UPSTREAM=https://$API_FQDN" \
         --tags \
-            application="Project Health Dashboard" \
+            application="Pulse" \
             environment=test \
             region-role=primary \
             source-commit="$EXPECTED_SOURCE_COMMIT" \

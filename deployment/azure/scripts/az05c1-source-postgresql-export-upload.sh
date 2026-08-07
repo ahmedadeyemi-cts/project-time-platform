@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # It creates an initial PostgreSQL 13 migration seed and uploads it to
 # the private Azure Blob container by using Microsoft Entra authentication.
 
-PRODUCT_NAME="Project Health Dashboard"
+PRODUCT_NAME="Pulse"
 MIGRATION_PURPOSE="initial-test-seed"
 
 TENANT_ID="535941da-da72-4a8b-8378-983a54bec342"

@@ -1,10 +1,10 @@
-# Project Health Dashboard Azure Migration
+# Pulse Azure Migration
 
-This directory is the authoritative runbook for migrating the Project Health Dashboard from its current Oracle Linux host to a redundant, autoscaling Azure architecture.
+This directory is the authoritative runbook for migrating Pulse from its current Oracle Linux host to a redundant, autoscaling Azure architecture.
 
 ## Naming
 
-The product name is **Project Health Dashboard**. New Azure resources use the short prefix `phd`. The retired ProjectPulse name must not be used for new Azure resources, scripts, documentation, DNS names, or deployment outputs.
+The product name is **Pulse**. Existing Azure resources, DNS names, API headers, and deployment artifacts retain legacy technical identifiers until a separately controlled infrastructure migration is approved. New user-facing names must use Pulse.
 
 ## Target architecture
 

@@ -286,12 +286,12 @@ export default function TimeComplianceCenter() {
         <div className="time-compliance-template-grid">
           <div>
             <strong>Weekly reminder</strong>
-            <span>Reminder: Submit PHD time for week of {weekStart}</span>
+            <span>Reminder: Submit Pulse time for week of {weekStart}</span>
             <p>Engineer receives the reminder. Manager and Project Team Coordinator are copied when configured.</p>
           </div>
           <div>
             <strong>Weekly escalation</strong>
-            <span>Escalation: Missing PHD time for week of {weekStart}</span>
+            <span>Escalation: Missing Pulse time for week of {weekStart}</span>
             <p>Escalation preview uses the same trusted recipient model and does not send email.</p>
           </div>
           <div>
