@@ -4362,25 +4362,7 @@ export default function App() {
       setRemainingModules((current) => ({ ...current, loading: true, error: null }));
 
       try {
-        const [
-          healthResult,
-          dbResult,
-          schemaResult,
-          timesheetResult,
-          groupResult,
-          locationsResult,
-          policyResult,
-          targetsResult,
-          openTasksResult,
-          preferencesResult,
-          holidaysResult,
-          projectIntakeResult,
-          projectManagementResult,
-          resourceCapacityResult,
-          expenseSummaryResult,
-          invoicingSummaryResult,
-          executiveDashboardResult
-        ] = await Promise.all([
+        const results = await Promise.allSettled([
           fetchJson('/health', authSession),
           fetchJson('/api/db-health', authSession),
           fetchJson('/api/schema/tables', authSession),
@@ -4401,27 +4383,42 @@ export default function App() {
         ]);
 
         if (!cancelled) {
-          setApiHealth({ loading: false, data: healthResult, error: null });
-          setDbHealth({ loading: false, data: dbResult, error: null });
-          setSchema({ loading: false, data: schemaResult, error: null });
-          setTimesheet({ loading: false, data: timesheetResult, error: null });
-          setLocationGroups({ loading: false, data: groupResult, error: null });
-          setLocations({ loading: false, data: locationsResult, error: null });
-          setUtilizationPolicies({ loading: false, data: policyResult, error: null });
-          setUtilizationTargets({ loading: false, data: targetsResult, error: null });
-          setOpenTasks({ loading: false, data: openTasksResult, error: null });
-          setTimesheetPreferences({ loading: false, data: preferencesResult, error: null });
-          setCompanyHolidays({ loading: false, data: holidaysResult, error: null });
+          const stateFor = (result) => result.status === 'fulfilled'
+            ? { loading: false, data: result.value, error: null }
+            : {
+                loading: false,
+                data: null,
+                error: result.reason instanceof Error ? result.reason.message : 'Unknown error'
+              };
+          const valueFor = (result) => result.status === 'fulfilled' ? result.value : null;
+          const failureFor = (result) => result.status === 'rejected'
+            ? (result.reason instanceof Error ? result.reason.message : 'Unknown error')
+            : null;
+
+          setApiHealth(stateFor(results[0]));
+          setDbHealth(stateFor(results[1]));
+          setSchema(stateFor(results[2]));
+          setTimesheet(stateFor(results[3]));
+          setLocationGroups(stateFor(results[4]));
+          setLocations(stateFor(results[5]));
+          setUtilizationPolicies(stateFor(results[6]));
+          setUtilizationTargets(stateFor(results[7]));
+          setOpenTasks(stateFor(results[8]));
+          setTimesheetPreferences(stateFor(results[9]));
+          setCompanyHolidays(stateFor(results[10]));
+          const remainingFailures = results.slice(11)
+            .map(failureFor)
+            .filter(Boolean);
           setRemainingModules({
             loading: false,
-            error: null,
+            error: remainingFailures.length ? remainingFailures.join(' · ') : null,
             data: {
-              projectIntake: projectIntakeResult,
-              projectManagement: projectManagementResult,
-              resourceCapacity: resourceCapacityResult,
-              expenses: expenseSummaryResult,
-              invoicing: invoicingSummaryResult,
-              executiveDashboard: executiveDashboardResult
+              projectIntake: valueFor(results[11]),
+              projectManagement: valueFor(results[12]),
+              resourceCapacity: valueFor(results[13]),
+              expenses: valueFor(results[14]),
+              invoicing: valueFor(results[15]),
+              executiveDashboard: valueFor(results[16])
             }
           });
         }
@@ -7615,6 +7612,7 @@ Analytics - Variphy / Infortel`}
         'observability-slo-health',
         'data-governance-retention',
         'customer-delivery-acceptance',
+        'engineer-task-closeout',
         'lab-equipment-tracker',
         'project-risk-register',
         'security-operations',

@@ -16,6 +16,7 @@ function requirePattern(source, pattern, label) {
 const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
 const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
 const backend = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
+const notificationRepository = read('src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs');
 const backendAvailability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
 const program = read('src/backend/ProjectTime.Api/Program.cs');
 const timesheetData = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetData.cs');
@@ -91,6 +92,13 @@ requireText(app, "import EngineerTaskCloseoutCenter from './EngineerTaskCloseout
 requireText(app, "route: 'engineer-task-closeout'", 'role navigation');
 requireText(app, '<EngineerTaskCloseoutCenter authSession={authSession} />', 'authenticated route mount');
 requireText(app, "window.addEventListener('projectpulse:timesheet-work-queue-changed'", 'timesheet live refresh');
+requireText(app, 'const results = await Promise.allSettled([', 'independent core data loading');
+requireText(app, "'customer-delivery-acceptance',\n        'engineer-task-closeout',\n        'lab-equipment-tracker'", 'standalone Module 001A route boundary');
+requirePattern(
+  notificationRepository,
+  /await using \(var reader = await command\.ExecuteReaderAsync\(cancellationToken\)\)[\s\S]*?while \(await reader\.ReadAsync\(cancellationToken\)\)[\s\S]*?\}\s*await transaction\.CommitAsync/,
+  'notification reader closes before transaction commit'
+);
 requireText(registry, "moduleNumber: '001A'", 'availability registry');
 requireText(catalog, '| 001A | Engineer Request Closeout |', 'module catalog');
 requireText(docs, 'Module 055C remains the final request and task lifecycle authority', 'workflow documentation');
