@@ -145,6 +145,21 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=CONSOLIDATED_RELEASE' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_CONSOLIDATED_RELEASE=PASSED'
               ;;
+            feature/enterprise-operations-ux-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The enterprise operations package changed Help-chat runtime source outside the reviewed HelpAssistant boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              if grep -E '^(database/|deployment/|scripts/.*deploy|\.github/workflows/projectpulse-deploy-)' <<<"$CHANGED"; then
+                echo 'The enterprise operations Help-chat validation cannot include a migration or deployment operation.' >&2
+                exit 1
+              fi
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=ENTERPRISE_OPERATIONS' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_ENTERPRISE_OPERATIONS=PASSED'
+              ;;
             security/repository-posture-*)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"

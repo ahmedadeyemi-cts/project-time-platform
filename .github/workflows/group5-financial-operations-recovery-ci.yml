@@ -63,8 +63,11 @@ jobs:
           PR467_UAT='false'
           UAT_FOLLOWUP='false'
           UAT_COMPLETION='false'
+          ENTERPRISE_OPERATIONS='false'
           if [[ "$HEAD_BRANCH" == feature/group-5-financial-reports-closeout-billing-recovery-* ]]; then
             OWNED_BRANCH='true'
+          elif [[ "$HEAD_BRANCH" == feature/enterprise-operations-ux-* ]]; then
+            ENTERPRISE_OPERATIONS='true'
           elif [[ "$HEAD_BRANCH" == security/repository-posture-* ]]; then
             CENTRAL_SECURITY_BRANCH='true'
           elif [[ "$HEAD_BRANCH" == fix/uat-modules-005-006-039-work-identifiers-* ]]; then
@@ -85,6 +88,7 @@ jobs:
           UAT_FOLLOWUP_ALLOWED='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
           UAT_ALLOWED='^src/frontend/project-time-web/scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs$'
           CENTRAL_GROUP5_CONVERGENCE='^src/frontend/project-time-web/src/FinancialOperationsRecoveryWorkspace\.jsx$'
+          ENTERPRISE_OPERATIONS_ALLOWED='^src/frontend/project-time-web/(scripts/(inject-group-5-financial-operations-recovery|validate-group-5-financial-operations-recovery)\.mjs|src/(FinancialOperationsRecoveryWorkspace\.jsx|financial-operations-recovery-workspace\.css))$'
 
           if [[ "$OWNED_BRANCH" == 'true' ]]; then
             UNEXPECTED="$(grep -Ev "$OWNED_ALLOWED" <<<"$CHANGED" || true)"
@@ -95,6 +99,16 @@ jobs:
             }
             echo 'GROUP_5_VALIDATION_MODE=OWNED_SOURCE' >> "$GITHUB_ENV"
             echo 'GROUP_5_SOURCE_ISOLATION=PASSED'
+          elif [[ "$ENTERPRISE_OPERATIONS" == 'true' ]]; then
+            DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
+            UNAPPROVED="$(grep -Ev "$ENTERPRISE_OPERATIONS_ALLOWED" <<<"$DIRECT_GROUP5" || true)"
+            [[ -z "$UNAPPROVED" ]] || {
+              echo 'The enterprise operations package changed Group 5 source outside the reviewed Module 039 presentation boundary:' >&2
+              printf '%s\n' "$UNAPPROVED" >&2
+              exit 1
+            }
+            echo 'GROUP_5_VALIDATION_MODE=ENTERPRISE_OPERATIONS' >> "$GITHUB_ENV"
+            echo 'GROUP_5_ENTERPRISE_OPERATIONS=PASSED'
           elif [[ "$CENTRAL_SECURITY_BRANCH" == 'true' ]]; then
             DIRECT_GROUP5="$(grep -E "$GROUP5_RUNTIME" <<<"$CHANGED" || true)"
             UNAPPROVED_GROUP5="$(grep -Ev "$CENTRAL_GROUP5_CONVERGENCE" <<<"$DIRECT_GROUP5" || true)"
