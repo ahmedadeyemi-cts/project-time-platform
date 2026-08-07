@@ -80,6 +80,7 @@ jobs:
           [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .modules081082001aIncluded "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r .celarAiPrivateRagUxIncluded "control/$RELEASE_MANIFEST")" == true ]]
+          [[ "$(jq -r .legacyRiskTableReconciliation "control/$RELEASE_MANIFEST")" == true ]]
           [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
@@ -971,6 +972,7 @@ jobs:
             "runAttempt": "${{ github.run_attempt }}",
             "modules": ["081", "082", "001A"],
             "celarAiPrivateRagUxIncluded": true,
+            "legacyRiskTableReconciliation": true,
             "migrations": ["075_pulse_product_rebrand", "076_module_081_lab_equipment_tracker", "077_module_082_enterprise_project_risk_register", "078_module_001a_engineer_request_closeout"],
             "migrationImage": "${{ steps.migration.outputs.image }}",
             "apiImage": "${{ steps.build.outputs.api_image }}",
