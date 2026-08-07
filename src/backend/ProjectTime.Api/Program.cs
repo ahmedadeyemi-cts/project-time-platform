@@ -37456,6 +37456,9 @@ app.MapContractsPrepaidManagementModule();
 
 ProjectTime.Api.Modules.OpportunitiesModule.MapOpportunityEndpoints(app);
 
+app.MapLabEquipmentTrackerEndpoints();
+app.MapProjectRiskRegisterEndpoints();
+
 app.Run();
 
 

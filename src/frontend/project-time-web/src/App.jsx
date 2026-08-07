@@ -632,6 +632,8 @@ import ReleaseDeploymentControlCenter from './ReleaseDeploymentControlCenter.jsx
 import ObservabilitySloHealthCenter from './ObservabilitySloHealthCenter.jsx';
 import DataGovernanceRetentionCenter from './DataGovernanceRetentionCenter.jsx';
 import CustomerDeliveryAcceptanceCenter from './CustomerDeliveryAcceptanceCenter.jsx';
+import LabEquipmentTrackerCenter from './LabEquipmentTrackerCenter.jsx';
+import ProjectRiskRegisterCenter from './ProjectRiskRegisterCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -2294,6 +2296,24 @@ const roleWorkspaceModules = sortProjectPulseModules([
     description: 'Review delivery engagements, milestones, artifacts, reviews, acceptance policy, and sharing boundaries.',
     permissions: []
   },
+  {
+    route: 'lab-equipment-tracker',
+    href: '#lab-equipment-tracker',
+    title: 'Lab Equipment Tracker',
+    navLabel: 'MODULE 081',
+    description: 'Manage role-scoped lab equipment, IP allocations, connections, rack occupancy, reviewed imports, provenance, and evidence exports.',
+    permissions: ['VIEW_LAB_EQUIPMENT_081', 'MANAGE_LAB_EQUIPMENT_081', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'NETWORK_ENGINEER', 'SYSTEMS_ENGINEER']
+  },
+  {
+    route: 'project-risk-register',
+    href: '#project-risk-register',
+    title: 'Enterprise Project Risk Register',
+    navLabel: 'MODULE 082',
+    description: 'Identify, analyze, respond to, review, realize, close, and export project risks and opportunities within authoritative project scope.',
+    permissions: ['VIEW_PROJECT_RISKS_082', 'MANAGE_PROJECT_RISKS_082', 'UPDATE_ASSIGNED_RISK_ACTIONS_082', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEER', 'ENGINEERING']
+  },
   /* MODULES_075_080_RUNTIME_NAV_END */
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
@@ -2531,7 +2551,10 @@ function getNavigationGroup(item) {
     case 'project-workspace':
     case 'project-forge':
     case 'project-flowhive':
+    case 'project-risk-register':
       return 'Project Workspace';
+    case 'lab-equipment-tracker':
+      return 'Work Management';
     case 'user-guide':
     case 'defect-tracker':
       return 'Help & Documentation';
@@ -3500,6 +3523,24 @@ function getInstalledProjectPulseModuleRegistry() {
     group: 'Project Operations',
     permissions: [],
     description: 'Provides governed delivery, milestone, artifact, review, acceptance, and sharing-policy read surfaces while external actions remain locked.'
+  },
+  {
+    route: 'lab-equipment-tracker',
+    title: 'Lab Equipment Tracker',
+    navLabel: 'MODULE 081',
+    status: 'Enterprise operational release',
+    group: 'Platform Operations',
+    permissions: ['VIEW_LAB_EQUIPMENT_081', 'MANAGE_LAB_EQUIPMENT_081', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides authoritative equipment, IPAM, cabling, rack occupancy, reviewed import, immutable provenance, and branded export workflows.'
+  },
+  {
+    route: 'project-risk-register',
+    title: 'Enterprise Project Risk Register',
+    navLabel: 'MODULE 082',
+    status: 'Enterprise operational release',
+    group: 'Project Delivery',
+    permissions: ['VIEW_PROJECT_RISKS_082', 'MANAGE_PROJECT_RISKS_082', 'UPDATE_ASSIGNED_RISK_ACTIONS_082', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides PMI-aligned risk identification, analysis, response actions, heatmaps, review governance, decisions, versions, audit, and evidence exports.'
   },
   /* MODULES_075_080_RUNTIME_REGISTRY_END */
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
@@ -5480,6 +5521,8 @@ export default function App() {
   const visibleRoleModules = useMemo(() => getVisibleRoleModules(currentUser.data), [currentUser.data]);
   const canViewProjectForge = visibleRoleModules.some((module) => module.route === 'project-forge');
   const canViewProjectFlowHive = visibleRoleModules.some((module) => module.route === 'project-flowhive');
+  const canViewLabEquipmentTracker = visibleRoleModules.some((module) => module.route === 'lab-equipment-tracker');
+  const canViewProjectRiskRegister = visibleRoleModules.some((module) => module.route === 'project-risk-register');
 
   useEffect(() => {
     if (authSession?.sessionToken) {
@@ -7383,6 +7426,16 @@ Analytics - Variphy / Infortel`}
           <CustomerDeliveryAcceptanceCenter authSession={authSession} />
         </section>
       ) : null}
+      {(activeRoute === 'lab-equipment-tracker' && canViewLabEquipmentTracker) ? (
+        <section id="lab-equipment-tracker" className="panel lab-equipment-tracker-route-panel">
+          <LabEquipmentTrackerCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {(activeRoute === 'project-risk-register' && canViewProjectRiskRegister) ? (
+        <section id="project-risk-register" className="panel project-risk-register-route-panel">
+          <ProjectRiskRegisterCenter authSession={authSession} />
+        </section>
+      ) : null}
       {/* MODULES_075_080_RUNTIME_ROUTES_END */}
 
 
@@ -7507,6 +7560,8 @@ Analytics - Variphy / Infortel`}
         'observability-slo-health',
         'data-governance-retention',
         'customer-delivery-acceptance',
+        'lab-equipment-tracker',
+        'project-risk-register',
         'security-operations',
         'calendar-capacity',
         'cicd-pipeline',

@@ -47,6 +47,8 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'contracts',
     'project-forge',
     'project-flowhive',
+    'lab-equipment-tracker',
+    'project-risk-register',
     'qualifications-certifications',
     'user-guide'
   ]),
@@ -63,6 +65,7 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'closeout-email',
     'invoice-billing-center',
     'contracts',
+    'project-risk-register',
     'user-guide'
   ]),
   billing: Object.freeze([
@@ -92,6 +95,7 @@ export const ROLE_WORKSPACE_BASELINES = Object.freeze({
     'reporting',
     'sales-coverage-alignment',
     'oem-vendor-directory',
+    'project-risk-register',
     'user-guide'
   ]),
   coordinator: Object.freeze([
