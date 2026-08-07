@@ -98,6 +98,7 @@ public static partial class ScopedRolePolicyModule
             WHERE pa.user_id = @user_id
               AND pa.effective_start_date <= @week_end
               AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
+              AND COALESCE(NULLIF(to_jsonb(pa)->>'module001a_closeout_status', ''), 'active') = 'active'
               AND p.status IN ('active','on_hold')
               AND pt.is_active = TRUE
             ORDER BY COALESCE(NULLIF(to_jsonb(pt)->>'due_date', ''), '9999-12-31'),
