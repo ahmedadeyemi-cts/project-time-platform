@@ -2156,6 +2156,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
         WHERE pa.user_id = @user_id
           AND pa.effective_start_date <= @week_end
           AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= @week_start)
+          /* 001A_ENGINEER_CLOSEOUT_BILLING_LOCK */
+          AND COALESCE(NULLIF(to_jsonb(pa)->>'module001a_closeout_status', ''), 'active') = 'active'
           AND pt.is_active = TRUE
           /* 053G_HIDE_CLOSED_PROJECTS_FROM_AVAILABLE_TASKS */
           AND lower(COALESCE(p.status, 'active')) NOT IN ('closed', 'complete', 'completed', 'done', 'cancelled', 'canceled', 'archived')
@@ -37455,6 +37457,10 @@ app.MapContractsPrepaidModule();
 app.MapContractsPrepaidManagementModule();
 
 ProjectTime.Api.Modules.OpportunitiesModule.MapOpportunityEndpoints(app);
+
+/* MODULE_001A_ENGINEER_REQUEST_CLOSEOUT_ENDPOINT_MAP_START */
+app.MapModule001AEngineerTaskCloseoutEndpoints();
+/* MODULE_001A_ENGINEER_REQUEST_CLOSEOUT_ENDPOINT_MAP_END */
 
 app.Run();
 
