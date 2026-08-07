@@ -1,0 +1,88 @@
+name: Diagnose Test Authenticated Module Runtime
+
+on:
+  push:
+    branches:
+      - diagnostic/test-runtime-errors-20260807
+    paths:
+      - .github/workflows/projectpulse-diagnose-test-runtime.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    name: Read-only active API diagnostics
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Sign in to Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture and sanitize active API failures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          revision="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          revision_json="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$revision" -o json --only-show-errors)"
+          replica="$(az containerapp replica list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$revision" --query '[0].name' -o tsv --only-show-errors)"
+          container="$(jq -r '.properties.template.containers[0].name // empty' <<<"$revision_json")"
+          [[ -n "$revision" && -n "$replica" && -n "$container" ]]
+          az containerapp logs show             -g '${{ vars.AZURE_RESOURCE_GROUP }}'             -n '${{ vars.AZURE_API_APP }}'             --revision "$revision"             --replica "$replica"             --container "$container"             --type console --tail 1000 --format json             > /tmp/api-console.json
+          ACTIVE_REVISION="$revision" python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          raw = Path("/tmp/api-console.json").read_text(errors="replace")
+          try:
+              payload = json.loads(raw)
+          except Exception:
+              payload = raw
+
+          def strings(value):
+              if isinstance(value, str):
+                  yield value
+              elif isinstance(value, list):
+                  for item in value:
+                      yield from strings(item)
+              elif isinstance(value, dict):
+                  for item in value.values():
+                      yield from strings(item)
+
+          sensitive = [
+              (re.compile(r"(?i)(password|secret|token|api[-_ ]?key|authorization|cookie|session)(\s*[:=]\s*)[^\s,;]+"), r"\1\2[REDACTED]"),
+              (re.compile(r"(?i)(Host|Server|Data Source|Database|Username|User ID)\s*=\s*[^;\s]+"), r"\1=[REDACTED]"),
+              (re.compile(r"https?://[^\s\"']+"), "[REDACTED_URL]"),
+              (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
+              (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[REDACTED_IP]"),
+              (re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"), "[REDACTED_ID]"),
+              (re.compile(r"\b[A-Za-z0-9_+/=-]{80,}\b"), "[REDACTED_LONG_VALUE]"),
+          ]
+          interesting = re.compile(
+              r"ModuleAvailability|EnterpriseGovernance|ProjectRisk|LabEquipment|Holiday|Timesheet|EngineerTask|"
+              r"Npgsql|Postgres|undefined|does not exist|permission denied|exception|fail|error|warn",
+              re.IGNORECASE,
+          )
+          lines = []
+          for value in strings(payload):
+              for line in value.splitlines():
+                  if interesting.search(line):
+                      for pattern, replacement in sensitive:
+                          line = pattern.sub(replacement, line)
+                      lines.append(line[:4000])
+          print("ACTIVE_API_REVISION=" + os.environ["ACTIVE_REVISION"])
+          print("MATCHED_DIAGNOSTIC_LINES=" + str(len(lines)))
+          for line in lines[-500:]:
+              print(line)
+          if not lines:
+              raise SystemExit("No diagnostic lines matched in the active API log tail.")
+          PY
