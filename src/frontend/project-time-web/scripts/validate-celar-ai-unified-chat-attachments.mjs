@@ -22,6 +22,7 @@ const section = (source, start, end) => {
 const main = read('src/frontend/project-time-web/src/main.jsx');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const help = read('src/frontend/project-time-web/src/HelpAssistant.jsx');
+const authenticatedHelp = read('src/frontend/project-time-web/src/AuthenticatedHelpAssistant.jsx');
 const platform = read('src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx');
 const module011Mount = read('src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx');
 const brandModule = read('src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs');
@@ -88,7 +89,9 @@ const systemAnswerPresentation = section(
 
 check(
   'ONE_CHAT_OWNER',
-  (main.match(/<HelpAssistant\s*\/>/g) || []).length === 1
+  (main.match(/<AuthenticatedHelpAssistant\s*\/>/g) || []).length === 1
+    && (authenticatedHelp.match(/<HelpAssistant\s*\/>/g) || []).length === 1
+    && !main.includes('<HelpAssistant />')
     && !app.includes('<HelpAssistant />')
     && app.includes("'celar-ai': 'work-task-builder'")
     && app.includes("href: '#celar-ai'")

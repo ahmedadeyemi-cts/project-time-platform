@@ -16,7 +16,7 @@ import './pulse-ai-help-chat-usability.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
-import HelpAssistant from './HelpAssistant.jsx';
+import AuthenticatedHelpAssistant from './AuthenticatedHelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
 import DashboardPersonalCalendarPortal from './DashboardPersonalCalendarPortal.jsx';
@@ -52,6 +52,6 @@ createRoot(document.getElementById('root')).render(
     <Module005ExperienceCompatibility />
     <MicrosoftIntegrationDualConnectionPortal />
     <MicrosoftMailTransportReadinessPanel />
-    <HelpAssistant />
+    <AuthenticatedHelpAssistant />
   </React.StrictMode>
 );

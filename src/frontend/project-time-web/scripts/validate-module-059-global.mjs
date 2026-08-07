@@ -5,11 +5,13 @@ import process from 'node:process';
 const frontendRoot = process.cwd();
 const appPath = path.join(frontendRoot, 'src', 'App.jsx');
 const mainPath = path.join(frontendRoot, 'src', 'main.jsx');
+const authenticatedHelpPath = path.join(frontendRoot, 'src', 'AuthenticatedHelpAssistant.jsx');
 const drawerPath = path.join(frontendRoot, 'src', 'SessionIntelligenceDrawer.jsx');
 const cssPath = path.join(frontendRoot, 'src', 'session-intelligence-drawer.css');
 
 const app = fs.readFileSync(appPath, 'utf8');
 const main = fs.readFileSync(mainPath, 'utf8');
+const authenticatedHelp = fs.readFileSync(authenticatedHelpPath, 'utf8');
 const drawer = fs.readFileSync(drawerPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
 
@@ -20,6 +22,7 @@ const hostClassNeedle = 'module059-global-route-host';
 const scopeNeedle = 'data-route-scope="all-authenticated-pages"';
 const globalBoundaryNeedle = 'MODULE_060_NON_CONTRACT_ROUTE_CONTENT_END';
 const helpNeedle = '<HelpAssistant />';
+const authenticatedHelpNeedle = '<AuthenticatedHelpAssistant />';
 
 const count = (text, needle) => text.split(needle).length - 1;
 const assertions = [];
@@ -62,7 +65,7 @@ assertInvariant(
 const boundaryIndex = app.indexOf(globalBoundaryNeedle);
 const markerIndex = app.indexOf(markerNeedle);
 const mountIndex = app.indexOf(mountNeedle);
-const helpIndex = main.indexOf(helpNeedle);
+const helpIndex = main.indexOf(authenticatedHelpNeedle);
 
 assertInvariant(
   'MODULE_059_AFTER_ALL_ROUTE_CONTENT',
@@ -78,8 +81,10 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_059_SINGLE_GLOBAL_HELP_MOUNT',
-  count(app, helpNeedle) === 0 && count(main, helpNeedle) === 1,
-  `app=${count(app, helpNeedle)}, main=${count(main, helpNeedle)}`
+  count(app, helpNeedle) === 0
+    && count(main, authenticatedHelpNeedle) === 1
+    && count(authenticatedHelp, helpNeedle) === 1,
+  `app=${count(app, helpNeedle)}, mainWrapper=${count(main, authenticatedHelpNeedle)}, authenticatedOwner=${count(authenticatedHelp, helpNeedle)}`
 );
 
 const globalHostSlice =

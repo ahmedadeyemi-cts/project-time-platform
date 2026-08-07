@@ -6,12 +6,18 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDirectory, '..');
 const appPath = path.join(webRoot, 'src', 'App.jsx');
+const authenticatedHelpAssistantPath = path.join(webRoot, 'src', 'AuthenticatedHelpAssistant.jsx');
+const mainPath = path.join(webRoot, 'src', 'main.jsx');
 const stylesheetPath = path.join(webRoot, 'src', 'project-health-dashboard-login.css');
 const officialLogoPath = path.join(webRoot, 'brand', 'USSNavyStacked.png');
+const brandedMotionPath = path.join(webRoot, 'brand', 'pulse-secure-access.gif');
 
 const app = fs.readFileSync(appPath, 'utf8');
+const authenticatedHelpAssistant = fs.readFileSync(authenticatedHelpAssistantPath, 'utf8');
+const main = fs.readFileSync(mainPath, 'utf8');
 const stylesheet = fs.readFileSync(stylesheetPath, 'utf8');
 const officialLogo = fs.readFileSync(officialLogoPath);
+const brandedMotion = fs.readFileSync(brandedMotionPath);
 const failures = [];
 const authCardIndex = app.indexOf('<div className="auth-card phd-auth-card">');
 const authStoryIndex = app.indexOf('<div className="auth-brand-block phd-auth-story">', authCardIndex);
@@ -68,15 +74,37 @@ requireInvariant(
 );
 
 requireInvariant(
-  'PULSE_US_SIGNAL_MOTION_PASSWORD_ONLY',
-  containsAll(loginExperienceSource, [
-    "https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif",
-    'function ProjectHealthDashboardLoginHero({ showSignalMotion = false })',
-    '{!showSignalMotion ? (',
-    "<ProjectHealthDashboardLoginHero showSignalMotion={loginRoute?.loginMethod === 'local'} />"
+  'PULSE_BRANDED_MOTION_PASSWORD_ONLY',
+  app.includes("import pulseSecureAccessMotionUrl from '../brand/pulse-secure-access.gif';")
+    && containsAll(loginExperienceSource, [
+    'function ProjectHealthDashboardLoginHero({ showSecureMotion = false })',
+    '{!showSecureMotion ? (',
+    'alt="Pulse animated secure operational network"',
+    "<ProjectHealthDashboardLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />"
   ])
+    && brandedMotion.subarray(0, 6).toString('ascii') === 'GIF89a'
+    && brandedMotion.length === 223_290
+    && crypto.createHash('sha256').update(brandedMotion).digest('hex') === '001fe1a6a17c49afcef0639cd765d862026ea043b8fea0f0af2feb89d52b7914'
+    && !loginExperienceSource.includes('ussignal.com/wp-content/uploads')
     && !loginExperienceSource.includes('phd-auth-motion-switcher')
     && !loginExperienceSource.includes('setMotionMode')
+);
+
+requireInvariant(
+  'PULSE_CELAR_AI_AUTHENTICATED_ONLY',
+  !signedOutExperience.includes('phd-celar-note')
+    && !signedOutExperience.includes('Your intelligent assistant is ready after sign-in.')
+    && containsAll(authenticatedHelpAssistant, [
+      "const AUTH_SESSION_STORAGE_KEY = 'projectPulseAuthSession';",
+      'function hasUsableAuthSession()',
+      "window.addEventListener('projectpulse:auth-session-ready', refreshAuthVisibility);",
+      "window.addEventListener('projectpulse:auth-session-cleared', refreshAuthVisibility);",
+      'return hasAuthenticatedSession ? <HelpAssistant /> : null;'
+    ])
+    && main.includes("import AuthenticatedHelpAssistant from './AuthenticatedHelpAssistant.jsx';")
+    && main.includes('<AuthenticatedHelpAssistant />')
+    && !main.includes('<HelpAssistant />')
+    && app.includes("window.dispatchEvent(new CustomEvent('projectpulse:auth-session-cleared'));")
 );
 
 requireInvariant(

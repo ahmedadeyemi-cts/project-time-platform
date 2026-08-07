@@ -578,6 +578,7 @@ import EntraSecretExpirationGlobalWarning from './EntraSecretExpirationGlobalWar
 import { applyRoleWorkspaceGovernance, getRoleWorkspaceName } from './role-workspace-governance.js';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import usSignalLogoUrl from '../brand/USSNavyStacked.png';
+import pulseSecureAccessMotionUrl from '../brand/pulse-secure-access.gif';
 import './timesheet.css';
 import './mobile-readiness.css';
 import './project-health-dashboard-login.css';
@@ -1554,6 +1555,7 @@ function saveAuthSession(session) {
 
 function clearAuthSession() {
   window.localStorage.removeItem('projectPulseAuthSession');
+  window.dispatchEvent(new CustomEvent('projectpulse:auth-session-cleared'));
 }
 
 
@@ -3173,8 +3175,6 @@ function SignalLogo({ productName = 'Project Health Dashboard', ariaLabel = prod
   );
 }
 
-const PROJECT_HEALTH_DASHBOARD_MOTION_URL = 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif';
-
 const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
   'Sales',
   'Opportunities',
@@ -3186,7 +3186,7 @@ const PROJECT_HEALTH_DASHBOARD_CAPABILITIES = Object.freeze([
   'Analytics'
 ]);
 
-function ProjectHealthDashboardLoginHero({ showSignalMotion = false }) {
+function ProjectHealthDashboardLoginHero({ showSecureMotion = false }) {
   return (
     <div className="phd-auth-story-content">
       <header className="phd-auth-story-header">
@@ -3205,7 +3205,7 @@ function ProjectHealthDashboardLoginHero({ showSignalMotion = false }) {
       </div>
 
       <div className="phd-auth-motion-stage">
-        {!showSignalMotion ? (
+        {!showSecureMotion ? (
           <div className="phd-platform-motion" aria-label="Animated view of the Pulse operational ecosystem">
             <div className="phd-motion-grid" aria-hidden="true" />
             <svg className="phd-flow-lines" viewBox="0 0 640 340" aria-hidden="true">
@@ -3256,16 +3256,15 @@ function ProjectHealthDashboardLoginHero({ showSignalMotion = false }) {
             <div className="phd-insight-pill phd-insight-three"><span aria-hidden="true" />Risk identified</div>
           </div>
         ) : (
-          <div className="phd-signal-motion">
+          <div className="phd-secure-motion">
             <img
-              src={PROJECT_HEALTH_DASHBOARD_MOTION_URL}
-              alt="US Signal animated connected infrastructure"
-              referrerPolicy="no-referrer"
+              src={pulseSecureAccessMotionUrl}
+              alt="Pulse animated secure operational network"
             />
-            <div className="phd-signal-motion-shade" aria-hidden="true" />
-            <div className="phd-signal-motion-caption">
+            <div className="phd-secure-motion-shade" aria-hidden="true" />
+            <div className="phd-secure-motion-caption">
               <span className="phd-live-dot" aria-hidden="true" />
-              <span><small>Connected by US Signal</small>Secure operations. One intelligent platform.</span>
+              <span><small>Protected Pulse workspace</small>Secure access. Connected operations.</span>
             </div>
           </div>
         )}
@@ -6235,11 +6234,6 @@ export default function App() {
       <main className="app-shell auth-shell phd-auth-shell">
         <section className="auth-landing-panel phd-auth-experience" aria-label="Pulse sign in">
           <div className="auth-card phd-auth-card">
-            <div className="phd-celar-note">
-              <span aria-hidden="true">✦</span>
-              <p><strong>Celar AI</strong><small>Your intelligent assistant is ready after sign-in.</small></p>
-            </div>
-
             <div className="phd-auth-card-content">
               <p className="phd-secure-label">
                 <span className="phd-secure-icon" aria-hidden="true">
@@ -6352,7 +6346,7 @@ export default function App() {
           </div>
 
           <div className="auth-brand-block phd-auth-story">
-            <ProjectHealthDashboardLoginHero showSignalMotion={loginRoute?.loginMethod === 'local'} />
+            <ProjectHealthDashboardLoginHero showSecureMotion={loginRoute?.loginMethod === 'local'} />
           </div>
         </section>
       </main>
