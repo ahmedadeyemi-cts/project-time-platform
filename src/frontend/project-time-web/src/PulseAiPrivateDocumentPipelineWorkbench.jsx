@@ -173,6 +173,30 @@ function ReadinessView({ payload }) {
             <span>{Number(readiness.extractionReadyDocumentCount || 0) > 0 ? `${readiness.extractionReadyDocumentCount} document(s) are ready.` : 'Upload an active, engineering-visible SOW or GSD to an authorized project, enable its AI context, process it, and approve the resulting version.'}</span>
           </article>
         </div>
+        <section className="pulse-ai-doc-free-stack" aria-labelledby="pulse-ai-doc-free-stack-heading">
+          <div><p className="pulse-ai-doc-eyebrow">No license fee · private deployment</p><h5 id="pulse-ai-doc-free-stack-heading">Free self-hosted service path</h5><span>The software is free and open source; private compute, TLS, storage, monitoring, backups, security review, and operations are still your responsibility.</span></div>
+          <div className="pulse-ai-doc-free-stack-grid">
+            <article className={readiness.malwareScanAttested ? 'is-ready' : ''}>
+              <strong>ClamAV · malware</strong>
+              <span>Run the official <code>clamav/clamav</code> image on a private network and expose clamd TCP 3310 only to the API.</span>
+              <code>PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE=clamav_tcp</code>
+              <a href="https://docs.clamav.net/manual/Installing.html" target="_blank" rel="noreferrer">Official ClamAV installation</a>
+            </article>
+            <article className={readiness.ocrEndpointConfigured ? 'is-ready' : ''}>
+              <strong>Tesseract 5 · OCR</strong>
+              <span>Place Tesseract behind the existing private multipart OCR adapter, internal HTTPS, and bearer authentication.</span>
+              <code>PROJECTPULSE_PRIVATE_OCR_MODEL=tesseract-5-eng</code>
+              <a href="https://tesseract-ocr.github.io/tessdoc/Installation.html" target="_blank" rel="noreferrer">Official Tesseract installation</a>
+            </article>
+            <article className={readiness.privateEmbeddingEndpointConfigured && readiness.privateVectorIndexConfigured ? 'is-ready' : ''}>
+              <strong>Ollama + PostgreSQL · retrieval</strong>
+              <span>Use Ollama's OpenAI-compatible embeddings endpoint and the existing permission-scoped PostgreSQL hybrid index.</span>
+              <code>PROJECTPULSE_PRIVATE_VECTOR_INDEX=projectpulse_postgresql_hybrid</code>
+              <a href="https://docs.ollama.com/api/openai-compatibility" target="_blank" rel="noreferrer">Official Ollama compatibility API</a>
+            </article>
+          </div>
+          <a className="pulse-ai-doc-runbook-link" href="https://github.com/ahmedadeyemi-cts/project-time-platform/blob/main/docs/modules/module-011-pulse-ai/FREE-PRIVATE-RAG-ACTIVATION.md" target="_blank" rel="noreferrer">Open the complete staged activation runbook</a>
+        </section>
         <p className="pulse-ai-doc-training-note"><strong>Automatic learning:</strong> eligible approved documents may be auto-queued for indexing after the worker and service principal are enabled. Model training remains a separate reviewed dataset, evaluation, and promotion workflow; conversations never train or promote the model automatically.</p>
       </section>
 

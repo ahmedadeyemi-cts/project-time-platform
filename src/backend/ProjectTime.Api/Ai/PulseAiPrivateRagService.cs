@@ -52,24 +52,35 @@ public sealed class PulseAiPrivateRagService
             : new PulseAiPrivateEndpointPolicy.ResolutionResult(false, null, "private_embedding_not_configured", 0);
         var embeddingReason = embeddingResolution.Reason;
         var embeddingPrivate = embeddingResolution.Approved;
+        var inferenceAuthenticationConfigured = !string.IsNullOrWhiteSpace(options.InferenceBearerToken);
+        var vectorIndexConfigured = !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_VECTOR_INDEX"));
+        var hybridRetrievalReady = embeddingPrivate && vectorIndexConfigured;
+        var lexicalOnlyRetrievalApproved = runtimeOptions.LexicalOnlyCompletionApproved;
+        var retrievalReady = hybridRetrievalReady || lexicalOnlyRetrievalApproved;
         var blockers = new List<string>();
         if (!schemaReady) blockers.Add("Migrations 052 and 053 and their private retrieval tables are not available.");
         if (!options.Enabled) blockers.Add("Private RAG execution is disabled by configuration.");
         if (!options.InferenceConfigured) blockers.Add("A private inference endpoint and model are not configured.");
-        if (string.IsNullOrWhiteSpace(options.InferenceBearerToken)) blockers.Add("Private inference bearer authentication is not configured.");
+        if (!inferenceAuthenticationConfigured) blockers.Add("Private inference bearer authentication is not configured.");
         if (!options.RequirePrivateModelForDocumentAnswers) blockers.Add("Document-grounded answers are not configured to require private inference.");
         if (options.InferenceConfigured && !inferencePrivate)
             blockers.Add($"The inference endpoint was rejected by private endpoint policy ({inferenceReason}).");
         if (runtimeOptions.EmbeddingConfigured && !embeddingPrivate)
             blockers.Add($"The embedding endpoint was rejected by private endpoint policy ({embeddingReason}).");
+        if (!runtimeOptions.EmbeddingConfigured && !lexicalOnlyRetrievalApproved)
+            blockers.Add("A private embedding endpoint is required unless lexical-only retrieval has an explicit approval reference.");
+        if (embeddingPrivate && !vectorIndexConfigured)
+            blockers.Add("The private permission-scoped vector index is not configured.");
 
         return new
         {
             status = schemaReady
                 && options.Enabled
                 && inferencePrivate
-                && !string.IsNullOrWhiteSpace(options.InferenceBearerToken)
+                && inferenceAuthenticationConfigured
                 && options.RequirePrivateModelForDocumentAnswers
+                && retrievalReady
                 ? "private_rag_ready"
                 : schemaReady
                     ? "private_rag_partially_ready"
@@ -81,8 +92,13 @@ public sealed class PulseAiPrivateRagService
             enabled = options.Enabled,
             inferenceConfigured = options.InferenceConfigured,
             inferenceEndpointPrivate = inferencePrivate,
+            inferenceAuthenticationConfigured,
             embeddingConfigured = runtimeOptions.EmbeddingConfigured,
             embeddingEndpointPrivate = embeddingPrivate,
+            vectorIndexConfigured,
+            hybridRetrievalReady,
+            lexicalOnlyRetrievalApproved,
+            retrievalReady,
             maximumRetrievedChunks = options.MaximumRetrievedChunks,
             maximumContextCharacters = options.MaximumContextCharacters,
             minimumEvidenceScore = options.MinimumEvidenceScore,
