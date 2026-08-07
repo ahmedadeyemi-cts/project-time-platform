@@ -38,11 +38,13 @@ fi
 [[ "$ACTUAL_RELEASE_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || fail "Unexpected release commit: $ACTUAL_RELEASE_COMMIT"
 
 FILES=(
+  075_pulse_product_rebrand.sql
   076_module_081_lab_equipment_tracker.sql
   077_module_082_enterprise_project_risk_register.sql
   078_module_001a_engineer_request_closeout.sql
 )
 HASHES=(
+  524decbbf13c0aef05f16971b87797dbeec1b30d6fde552a18316bb1bdca0b5d
   0fd7addecfb43c8d7341c6882e02affd3b6c6f4eb8eea49c4b7aa086270ae47d
   22725eb63bb57d82f23f431d6a7c007740b758040c16b294590947901072dada
   de2e814fb3a96fc45bb9e15e7074b1b88b1c9d13b4b0b2cc9191379bcdc97162
@@ -55,22 +57,22 @@ mapfile -t ACTUAL_FILES < <(
   done | LC_ALL=C sort
 )
 diff -u <(printf '%s\n' "${FILES[@]}" | LC_ALL=C sort) <(printf '%s\n' "${ACTUAL_FILES[@]}") ||
-  fail "Migration image must contain exactly migrations 076, 077, and 078."
-[[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == 3 ]] ||
-  fail "SHA256SUMS must contain exactly three entries."
+  fail "Migration image must contain exactly migrations 075, 076, 077, and 078."
+[[ "$(wc -l < "$MIGRATION_ROOT/SHA256SUMS" | tr -d ' ')" == 4 ]] ||
+  fail "SHA256SUMS must contain exactly four entries."
 (
   cd "$MIGRATION_ROOT"
   sha256sum --check --strict SHA256SUMS
 ) || fail "Migration checksum validation failed."
 
-for index in 0 1 2; do
+for index in "${!FILES[@]}"; do
   file="${FILES[$index]}"
   actual="$(sha256sum "$MIGRATION_ROOT/$file" | awk '{print $1}')"
   [[ "$actual" == "${HASHES[$index]}" ]] || fail "Unexpected source bytes for $file."
   [[ "$(grep -c '^BEGIN;$' "$MIGRATION_ROOT/$file")" == 1 ]] || fail "$file must contain one top-level BEGIN."
   [[ "$(grep -c '^COMMIT;$' "$MIGRATION_ROOT/$file")" == 1 ]] || fail "$file must contain one top-level COMMIT."
 done
-echo "MODULES_081_082_001A_MIGRATION_SOURCE=VERIFIED"
+echo "MODULES_081_082_001A_MIGRATION_SOURCE_075_078=VERIFIED"
 
 BODY_ROOT="$(mktemp -d)"
 cleanup() {
@@ -93,9 +95,10 @@ psql "${PSQL_TARGET[@]}" \
   --set=ON_ERROR_STOP=1 \
   --set=release_apply="$APPLY_BOOL" \
   --set=expected_database_name="$EXPECTED_DATABASE_NAME" \
-  --set=body076="$BODY_ROOT/${FILES[0]}" \
-  --set=body077="$BODY_ROOT/${FILES[1]}" \
-  --set=body078="$BODY_ROOT/${FILES[2]}" <<'SQL'
+  --set=body075="$BODY_ROOT/${FILES[0]}" \
+  --set=body076="$BODY_ROOT/${FILES[1]}" \
+  --set=body077="$BODY_ROOT/${FILES[2]}" \
+  --set=body078="$BODY_ROOT/${FILES[3]}" <<'SQL'
 \set ON_ERROR_STOP on
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -116,15 +119,14 @@ END
 $release_database_identity$;
 \echo DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED
 
-SELECT pg_advisory_xact_lock(76077078);
+SELECT pg_advisory_xact_lock(75076078);
 
 DO $release_prerequisites$
 DECLARE
   required_id text;
 BEGIN
   FOREACH required_id IN ARRAY ARRAY[
-    '074_module_066_project_flowhive_production',
-    '075_pulse_product_rebrand'
+    '074_module_066_project_flowhive_production'
   ] LOOP
     IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id=required_id) <> 1 THEN
       RAISE EXCEPTION 'Required prerequisite migration is missing or duplicated: %', required_id;
@@ -141,24 +143,36 @@ $release_prerequisites$;
 
 SELECT
   COUNT(*) = 0 AS absent,
-  COUNT(*) = 1 AND COUNT(*) FILTER (WHERE migration_id='076_module_081_lab_equipment_tracker') = 1 AS prefix076,
+  COUNT(*) = 1 AND COUNT(*) FILTER (WHERE migration_id='075_pulse_product_rebrand') = 1 AS prefix075,
   COUNT(*) = 2
     AND COUNT(*) FILTER (WHERE migration_id IN (
+      '075_pulse_product_rebrand',
+      '076_module_081_lab_equipment_tracker'
+    )) = 2 AS prefix076,
+  COUNT(*) = 3
+    AND COUNT(*) FILTER (WHERE migration_id IN (
+      '075_pulse_product_rebrand',
       '076_module_081_lab_equipment_tracker',
       '077_module_082_enterprise_project_risk_register'
-    )) = 2 AS prefix077,
-  COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3 AS complete,
+    )) = 3 AS prefix077,
+  COUNT(*) = 4 AND COUNT(DISTINCT migration_id) = 4 AS complete,
   NOT (
     COUNT(*) = 0
-    OR (COUNT(*) = 1 AND COUNT(*) FILTER (WHERE migration_id='076_module_081_lab_equipment_tracker') = 1)
+    OR (COUNT(*) = 1 AND COUNT(*) FILTER (WHERE migration_id='075_pulse_product_rebrand') = 1)
     OR (COUNT(*) = 2 AND COUNT(*) FILTER (WHERE migration_id IN (
+      '075_pulse_product_rebrand',
+      '076_module_081_lab_equipment_tracker'
+    )) = 2)
+    OR (COUNT(*) = 3 AND COUNT(*) FILTER (WHERE migration_id IN (
+      '075_pulse_product_rebrand',
       '076_module_081_lab_equipment_tracker',
       '077_module_082_enterprise_project_risk_register'
-    )) = 2)
-    OR (COUNT(*) = 3 AND COUNT(DISTINCT migration_id) = 3)
+    )) = 3)
+    OR (COUNT(*) = 4 AND COUNT(DISTINCT migration_id) = 4)
   ) AS inconsistent
 FROM schema_migrations
 WHERE migration_id IN (
+  '075_pulse_product_rebrand',
   '076_module_081_lab_equipment_tracker',
   '077_module_082_enterprise_project_risk_register',
   '078_module_001a_engineer_request_closeout'
@@ -166,7 +180,7 @@ WHERE migration_id IN (
 \gset release_target_
 
 \if :release_target_inconsistent
-  \echo ERROR: Refusing partial, duplicate, or out-of-order 076-078 migration state.
+  \echo ERROR: Refusing partial, duplicate, or out-of-order 075-078 migration state.
   \quit 3
 \endif
 \if :release_apply
@@ -179,7 +193,7 @@ WHERE migration_id IN (
   \if :release_target_complete
     \echo MODULES_081_082_001A_LEDGER=COMPLETE_VERIFYING
   \else
-    \echo ERROR: Migrations 076-078 are incomplete in verify mode.
+    \echo ERROR: Migrations 075-078 are incomplete in verify mode.
     \quit 3
   \endif
 \endif
@@ -191,6 +205,18 @@ SELECT
   (SELECT COUNT(*) FROM project_assignments) AS project_assignments,
   (SELECT COUNT(*) FROM project_tasks) AS project_tasks,
   (SELECT COUNT(*) FROM time_entries) AS time_entries;
+
+SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='075_pulse_product_rebrand') AS present \gset m075_
+\if :m075_present
+  \echo MIGRATION_075=ALREADY_PRESENT_VERIFYING
+\else
+  \if :release_apply
+    \echo MIGRATION_075=APPLYING
+    \i :body075
+  \else
+    \quit 3
+  \endif
+\endif
 
 SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='076_module_081_lab_equipment_tracker') AS present \gset m076_
 \if :m076_present
@@ -234,10 +260,32 @@ DECLARE
   required_permission text;
   required_feature text;
 BEGIN
-  IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='076_module_081_lab_equipment_tracker') <> 1
+  IF (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='075_pulse_product_rebrand') <> 1
+     OR (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='076_module_081_lab_equipment_tracker') <> 1
      OR (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='077_module_082_enterprise_project_risk_register') <> 1
      OR (SELECT COUNT(*) FROM schema_migrations WHERE migration_id='078_module_001a_engineer_request_closeout') <> 1 THEN
-    RAISE EXCEPTION 'Migration 076-078 ledger evidence is incomplete.';
+    RAISE EXCEPTION 'Migration 075-078 ledger evidence is incomplete.';
+  END IF;
+
+  IF (
+    SELECT COUNT(*)
+    FROM pg_constraint
+    WHERE conrelid='public.billing_invoices'::regclass
+      AND conname='ck_billing_invoices_number_format'
+      AND contype='c'
+      AND pg_get_constraintdef(oid) LIKE '%PHD|PULSE%'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Migration 075 invoice compatibility constraint is unavailable.';
+  END IF;
+
+  IF to_regprocedure('public.reserve_project_invoice_number(uuid)') IS NULL
+     OR POSITION(
+       '''PULSE-''' IN pg_get_functiondef(to_regprocedure('public.reserve_project_invoice_number(uuid)'))
+     ) = 0
+     OR POSITION(
+       '''PHD-''' IN pg_get_functiondef(to_regprocedure('public.reserve_project_invoice_number(uuid)'))
+     ) > 0 THEN
+    RAISE EXCEPTION 'Migration 075 Pulse invoice generator is unavailable.';
   END IF;
 
   FOREACH required_table IN ARRAY ARRAY[
@@ -298,13 +346,13 @@ BEGIN
        OR before.project_tasks <> (SELECT COUNT(*) FROM project_tasks)
        OR before.time_entries <> (SELECT COUNT(*) FROM time_entries)
   ) THEN
-    RAISE EXCEPTION 'Core business row counts changed while applying structural migrations 076-078.';
+    RAISE EXCEPTION 'Core business row counts changed while applying migrations 075-078.';
   END IF;
 END
 $release_postconditions$;
 
 COMMIT;
-\echo MODULES_081_082_001A_MIGRATIONS_076_078=VERIFIED
+\echo MODULES_081_082_001A_MIGRATIONS_075_078=VERIFIED
 SQL
 
 echo "MODULES_081_082_001A_MIGRATION_MODE=$MODE"

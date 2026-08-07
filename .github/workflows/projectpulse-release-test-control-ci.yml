@@ -53,6 +53,7 @@ jobs:
           grep -Fq 'DATABASE_ROLLBACK=NOT_EXECUTED_SCHEMA_STAYS_FORWARD' "$DEPLOY"
           grep -Fq 'applicationRollbackAttempted' "$DEPLOY"
           grep -Fq 'modules-081-082-001a-celar-ai-1892c6d-20260807.json' "$DEPLOY"
+          grep -Fq '075_pulse_product_rebrand.sql' "$DEPLOY"
           grep -Fq '076_module_081_lab_equipment_tracker.sql' "$DEPLOY"
           grep -Fq '077_module_082_enterprise_project_risk_register.sql' "$DEPLOY"
           grep -Fq '078_module_001a_engineer_request_closeout.sql' "$DEPLOY"
@@ -63,10 +64,14 @@ jobs:
 
           grep -Fq "EXPECTED_RELEASE_COMMIT=\"$SOURCE\"" "$APPLY"
           grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' "$APPLY"
-          grep -Fq 'Refusing partial, duplicate, or out-of-order 076-078 migration state.' "$APPLY"
+          grep -Fq 'Refusing partial, duplicate, or out-of-order 075-078 migration state.' "$APPLY"
           grep -Fq 'A superseded migration 076 identity is present' "$APPLY"
+          grep -Fq 'MIGRATION_075=APPLYING' "$APPLY"
+          grep -Fq -- '--set=body075=' "$APPLY"
           grep -Fq 'Core business row counts changed' "$APPLY"
-          grep -Fq 'MODULES_081_082_001A_MIGRATIONS_076_078=VERIFIED' "$APPLY"
+          grep -Fq 'MODULES_081_082_001A_MIGRATIONS_075_078=VERIFIED' "$APPLY"
+          grep -Fq 'Migration 075 invoice compatibility constraint is unavailable.' "$APPLY"
+          grep -Fq 'Migration 075 Pulse invoice generator is unavailable.' "$APPLY"
           grep -Fq 'PSQL_TARGET=()' "$APPLY"
           grep -Fq 'psql "${PSQL_TARGET[@]}"' "$APPLY"
           grep -Fq 'PGDATABASE does not match the protected Test database name' "$APPLY"
@@ -104,26 +109,28 @@ jobs:
           assert manifest["celarAiPrivateRagUxIncluded"] is True
           assert manifest["requiredPriorLedger"] == [
               "074_module_066_project_flowhive_production",
-              "075_pulse_product_rebrand",
           ]
           assert [item["id"] for item in manifest["migrations"]] == [
+              "075_pulse_product_rebrand",
               "076_module_081_lab_equipment_tracker",
               "077_module_082_enterprise_project_risk_register",
               "078_module_001a_engineer_request_closeout",
           ]
-          assert len({item["path"] for item in manifest["migrations"]}) == 3
-          assert len({item["blobSha"] for item in manifest["migrations"]}) == 3
-          assert len({item["sha256"] for item in manifest["migrations"]}) == 3
+          assert len({item["path"] for item in manifest["migrations"]}) == 4
+          assert len({item["blobSha"] for item in manifest["migrations"]}) == 4
+          assert len({item["sha256"] for item in manifest["migrations"]}) == 4
           assert manifest["deployment"]["applicationRollbackOnFailure"] is True
           assert manifest["deployment"]["databaseRollbackOnFailure"] is False
           PY
 
           printf '%s  %s\n' \
+            524decbbf13c0aef05f16971b87797dbeec1b30d6fde552a18316bb1bdca0b5d database/migrations/075_pulse_product_rebrand.sql \
             0fd7addecfb43c8d7341c6882e02affd3b6c6f4eb8eea49c4b7aa086270ae47d database/migrations/076_module_081_lab_equipment_tracker.sql \
             22725eb63bb57d82f23f431d6a7c007740b758040c16b294590947901072dada database/migrations/077_module_082_enterprise_project_risk_register.sql \
             de2e814fb3a96fc45bb9e15e7074b1b88b1c9d13b4b0b2cc9191379bcdc97162 database/migrations/078_module_001a_engineer_request_closeout.sql \
             | sha256sum --check --strict
 
+          test "$(git rev-parse HEAD:database/migrations/075_pulse_product_rebrand.sql)" = a345bc99234d63c1a207417d2669a9d3a7b12a0a
           test "$(git rev-parse HEAD:database/migrations/076_module_081_lab_equipment_tracker.sql)" = df4d79de5f912fc7fcd4b5af70c5e084929b5c21
           test "$(git rev-parse HEAD:database/migrations/077_module_082_enterprise_project_risk_register.sql)" = 37fb39bcdd9aaa7ce1b88ffd87559026096eed11
           test "$(git rev-parse HEAD:database/migrations/078_module_001a_engineer_request_closeout.sql)" = fc95ebb7976209ba9e1f362cfdebf2897334a178
