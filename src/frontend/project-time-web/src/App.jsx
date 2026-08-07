@@ -8438,7 +8438,7 @@ Analytics - Variphy / Infortel`}
 
       {(activeRoute === 'engineer-task-closeout' && canSeeAny(['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
-          <EngineerTaskCloseoutCenter />
+          <EngineerTaskCloseoutCenter authSession={authSession} />
         </section>
       ) : null}
 

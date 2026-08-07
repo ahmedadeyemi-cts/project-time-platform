@@ -1,0 +1,305 @@
+name: ProjectPulse Deploy Modules 001 001A 081 082 Runtime Hotfix Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact merged hotfix commit on main
+        required: true
+        type: string
+      confirmation:
+        description: Enter DEPLOY-MODULES-001-001A-081-082-HOTFIX-TO-TEST
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Guarded forward-only runtime hotfix
+    if: github.ref == 'refs/heads/main'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out exact hotfix release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.release_commit || github.sha }}
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard exact source and forward-only boundary
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-MODULES-001-001A-081-082-HOTFIX-TO-TEST ]] || {
+              echo 'Confirmation text does not match.' >&2
+              exit 1
+            }
+            [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+              echo 'release_commit must be a complete lowercase SHA.' >&2
+              exit 1
+            }
+            [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]]
+          elif [[ "$EVENT_NAME" != push ]]; then
+            echo "Unsupported trigger: $EVENT_NAME" >&2
+            exit 1
+          fi
+          [[ "$TARGET_COMMIT" == "$CONTROL_COMMIT" ]] || {
+            echo 'Only the exact main commit containing this deployment control may deploy.' >&2
+            exit 1
+          }
+
+          test -f release/database/migrations/076_module_081_lab_equipment_tracker.sql
+          test -f release/database/migrations/077_module_082_enterprise_project_risk_register.sql
+          test -f release/database/migrations/078_module_001a_engineer_request_closeout.sql
+          test -f release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          test -f release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          test -f release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+
+          grep -Fq '<EngineerTaskCloseoutCenter authSession={authSession} />' release/src/frontend/project-time-web/src/App.jsx
+          grep -Fq "'X-Project-Pulse-Session': token" release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          grep -Fq 'const PAGE_SIZE = 20;' release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          grep -Fq 'Promise.allSettled' release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          grep -Fq "queryPath('/actions',projectScope)" release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+          ! grep -Fq '`/actions?projectId=${filters.projectId}`' release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
+
+          node release/src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs
+          node release/src/frontend/project-time-web/scripts/validate-module-001-timesheet-timer-mobile.mjs
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'DATABASE_MUTATION=NONE_MIGRATIONS_076_078_PRESERVED'
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current immutable images
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          RAW_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv --only-show-errors)"
+          API_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv --only-show-errors)"
+          [[ -n "$RAW_API" && -n "$RAW_WEB" && "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]]
+          OLD_API_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          OLD_WEB_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
+          [[ -n "$OLD_API_REVISION" && -n "$OLD_WEB_REVISION" ]]
+
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          echo "old_api_image=$(resolve_digest "$RAW_API")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB")" >> "$GITHUB_OUTPUT"
+          echo "old_api_revision=$OLD_API_REVISION" >> "$GITHUB_OUTPUT"
+          echo "old_web_revision=$OLD_WEB_REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable API and web images
+        id: build
+        working-directory: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          API_REPO=project-health-dashboard-api
+          WEB_REPO=project-health-dashboard-web
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:modules-runtime-hotfix-$SHA" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:modules-runtime-hotfix-$SHA" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy hotfix API
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_ENVIRONMENT=test PROJECTPULSE_SOURCE_COMMIT='${{ steps.release.outputs.target_commit }}' \
+            --revision-suffix "mrhapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          REVISION=''
+          for attempt in $(seq 1 30); do
+            REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            [[ -n "$REVISION" && "$REVISION" != '${{ steps.before.outputs.old_api_revision }}' ]] && break
+            sleep 2
+          done
+          [[ -n "$REVISION" && "$REVISION" != '${{ steps.before.outputs.old_api_revision }}' ]]
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 45 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify database-backed and protected API routes
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          wait_status() {
+            local path="$1" expected="$2" status=''
+            for attempt in $(seq 1 24); do
+              status="$(curl -sS --max-time 25 -H 'Cache-Control: no-cache' -o /tmp/hotfix-api-body -w '%{http_code}' "$BASE$path" || true)"
+              if [[ ",$expected," == *",$status,"* ]]; then return 0; fi
+              sleep 5
+            done
+            echo "$path returned $status; expected $expected" >&2
+            cat /tmp/hotfix-api-body >&2 || true
+            return 1
+          }
+          wait_status /health 200
+          wait_status /api/version 200
+          wait_status '/api/holidays?year=2026' 200
+          wait_status '/api/assignments/available-tasks?weekStart=2026-08-02' 401,403
+          wait_status /api/engineer-task-closeout/overview 401,403
+          wait_status /api/lab-equipment-tracker/summary 401,403
+          wait_status /api/project-risk-register/summary 401,403
+          wait_status /api/project-risk-register/actions 401,403
+
+          if [[ -n "$UAT_SESSION" ]]; then
+            auth_status() {
+              local path="$1" status
+              status="$(curl -sS --max-time 30 -o /tmp/hotfix-uat-body -w '%{http_code}' \
+                -H "Authorization: Bearer $UAT_SESSION" \
+                -H "X-ProjectPulse-Session: $UAT_SESSION" \
+                -H "X-Project-Pulse-Session: $UAT_SESSION" \
+                -H "X-Session-Token: $UAT_SESSION" "$BASE$path")"
+              [[ "$status" == 200 ]] || { echo "Authenticated $path returned $status" >&2; cat /tmp/hotfix-uat-body >&2; return 1; }
+            }
+            auth_status '/api/assignments/available-tasks?weekStart=2026-08-02'
+            auth_status /api/engineer-task-closeout/overview
+            auth_status /api/lab-equipment-tracker/summary
+            auth_status /api/project-risk-register/summary
+            auth_status /api/project-risk-register/actions
+            echo 'AUTHENTICATED_MODULE_UAT=PASSED'
+          else
+            echo '::warning::PROJECTPULSE_TEST_UAT_SESSION is not configured; authenticated module UAT remains required.'
+          fi
+
+      - name: Deploy hotfix web
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "mrhweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          REVISION=''
+          for attempt in $(seq 1 30); do
+            REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            [[ -n "$REVISION" && "$REVISION" != '${{ steps.before.outputs.old_web_revision }}' ]] && break
+            sleep 2
+          done
+          [[ -n "$REVISION" && "$REVISION" != '${{ steps.before.outputs.old_web_revision }}' ]]
+          bash control/scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 45 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify served hotfix assets and exact images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"; READY=false
+          for attempt in $(seq 1 24); do
+            BUSTER="modules-runtime-hotfix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$attempt"
+            STATUS="$(curl -sSL --max-time 25 -H 'Cache-Control: no-cache' -o /tmp/hotfix-index -w '%{http_code}' "$BASE/?release_check=$BUSTER" || true)"
+            JS="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/hotfix-index | head -1)"
+            if [[ "$STATUS" == 200 && -n "$JS" ]]; then
+              case "$JS" in http*) URL="$JS";; /*) URL="$BASE$JS";; *) URL="$BASE/$JS";; esac
+              curl -sSL --max-time 30 -H 'Cache-Control: no-cache' -o /tmp/hotfix-app.js "$URL?release_check=$BUSTER" || true
+              if grep -Fq '/api/engineer-task-closeout/overview' /tmp/hotfix-app.js \
+                && grep -Fq 'X-Project-Pulse-Session' /tmp/hotfix-app.js \
+                && grep -Fq ' task pages' /tmp/hotfix-app.js \
+                && grep -Fq '/api/lab-equipment-tracker' /tmp/hotfix-app.js \
+                && grep -Fq 'CSV / XLSX' /tmp/hotfix-app.js \
+                && grep -Fq '/api/project-risk-register' /tmp/hotfix-app.js; then
+                READY=true
+                break
+              fi
+            fi
+            sleep 5
+          done
+          [[ "$READY" == true ]] || { echo 'Corrected module assets were not served.' >&2; exit 1; }
+          ACTIVE_API="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
+          ACTIVE_WEB="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
+          [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]
+          [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]
+
+      - name: Write deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/modules-runtime-hotfix-test.json <<JSON
+          {"environment":"test","releaseCommit":"${{ steps.release.outputs.target_commit }}","runId":"${{ github.run_id }}","modules":["001","001A","081","082"],"databaseMutation":false,"migrationsPreserved":["076","077","078"],"apiImage":"${{ steps.build.outputs.api_image }}","webImage":"${{ steps.build.outputs.web_image }}","apiRevision":"${{ steps.deploy_api.outputs.revision }}","webRevision":"${{ steps.deploy_web.outputs.revision }}","previousApiImage":"${{ steps.before.outputs.old_api_image }}","previousWebImage":"${{ steps.before.outputs.old_web_image }}","publicAndProtectedRoutes":"passed","servedAssets":"passed"}
+          JSON
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: modules-runtime-hotfix-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/modules-runtime-hotfix-test.json
+          retention-days: 30
+
+      - name: Restore previous application images on failure
+        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          if [[ '${{ steps.deploy_api.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.before.outputs.old_api_image }}' --revision-suffix "mrhapirb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' --revision-suffix "mrhwebrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none
+          fi

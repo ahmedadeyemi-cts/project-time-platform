@@ -79,12 +79,17 @@ requireText(ui, 'Reopen and notify', 'reopen interaction');
 requireText(ui, 'Required reopen reason', 'reopen reason UX');
 requireText(ui, 'Project Team Coordinator', 'PTC handoff UX');
 requireText(ui, "projectpulse:timesheet-work-queue-changed", 'Module 001 refresh event');
+requireText(ui, 'function sessionHeaders(authSession', 'authenticated API requests');
+requireText(ui, "'X-ProjectPulse-Session': token", 'session token header');
+requireText(ui, 'const PAGE_SIZE = 20', 'bounded task pagination');
+requireText(ui, 'visibleItems.map', 'paginated task rendering');
 requirePattern(css, /@media \(max-width: 720px\)/, 'responsive UI');
 requireText(css, '.engineer-closeout-dialog-backdrop', 'accessible transition dialog presentation');
+requireText(css, '.engineer-closeout-pagination', 'bounded task navigation styling');
 
 requireText(app, "import EngineerTaskCloseoutCenter from './EngineerTaskCloseoutCenter.jsx';", 'App UI import');
 requireText(app, "route: 'engineer-task-closeout'", 'role navigation');
-requireText(app, '<EngineerTaskCloseoutCenter />', 'route mount');
+requireText(app, '<EngineerTaskCloseoutCenter authSession={authSession} />', 'authenticated route mount');
 requireText(app, "window.addEventListener('projectpulse:timesheet-work-queue-changed'", 'timesheet live refresh');
 requireText(registry, "moduleNumber: '001A'", 'availability registry');
 requireText(catalog, '| 001A | Engineer Request Closeout |', 'module catalog');
