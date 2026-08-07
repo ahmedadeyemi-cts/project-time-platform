@@ -48,16 +48,38 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
     setBusy(true); setError('');
     const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '')).toString();
     try {
-      const [summaryBody, equipmentBody, ipBody, connectionBody, rackBody, historyBody] = await Promise.all([
-        request('/summary'), request(`/equipment?${query}`), request(`/ip-addresses?${query}`),
-        request(`/connections?location=${encodeURIComponent(filters.location)}&pod=${encodeURIComponent(filters.pod)}`),
-        request(`/rack-view?location=${encodeURIComponent(filters.location)}`), request('/history?limit=250')
-      ]);
+      const summaryBody = await request('/summary');
       setSummary(summaryBody);
-      setData((current) => ({ ...current, equipment: equipmentBody.equipment || [], allocations: ipBody.allocations || [], connections: connectionBody.connections || [], racks: rackBody.racks || [], history: historyBody.history || [] }));
-      if (summaryBody.permissions?.canImport) {
-        const importsBody = await request('/imports?limit=100');
-        setData((current) => ({ ...current, imports: importsBody.imports || [] }));
+      const connectionQuery = new URLSearchParams(Object.entries({ location: filters.location, pod: filters.pod }).filter(([, value]) => value !== '')).toString();
+      const rackQuery = new URLSearchParams(Object.entries({ location: filters.location }).filter(([, value]) => value !== '')).toString();
+      const surfaces = [
+        ['equipment', request(query ? `/equipment?${query}` : '/equipment')],
+        ['allocations', request(query ? `/ip-addresses?${query}` : '/ip-addresses')],
+        ['connections', request(connectionQuery ? `/connections?${connectionQuery}` : '/connections')],
+        ['racks', request(rackQuery ? `/rack-view?${rackQuery}` : '/rack-view')],
+        ['history', request('/history?limit=250')],
+        ...(summaryBody.permissions?.canImport ? [['imports', request('/imports?limit=100')]] : [])
+      ];
+      const results = await Promise.allSettled(surfaces.map(([, pending]) => pending));
+      const failures = [];
+      const loaded = {};
+      results.forEach((result, index) => {
+        const [surface] = surfaces[index];
+        if (result.status === 'rejected') {
+          failures.push(`${surface}: ${result.reason?.message || 'unavailable'}`);
+          return;
+        }
+        const payload = result.value || {};
+        if (surface === 'equipment') loaded.equipment = payload.equipment || [];
+        if (surface === 'allocations') loaded.allocations = payload.allocations || [];
+        if (surface === 'connections') loaded.connections = payload.connections || [];
+        if (surface === 'racks') loaded.racks = payload.racks || [];
+        if (surface === 'history') loaded.history = payload.history || [];
+        if (surface === 'imports') loaded.imports = payload.imports || [];
+      });
+      setData((current) => ({ ...current, ...loaded }));
+      if (failures.length) {
+        setError(`Some Module 081 views are temporarily unavailable. ${failures.join(' · ')}`);
       }
     } catch (caught) { setError(caught.message); }
     finally { setBusy(false); }

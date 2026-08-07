@@ -13,6 +13,21 @@ const EMPTY_OVERVIEW = Object.freeze({
     billingLockedCount: 0
   }
 });
+const PAGE_SIZE = 20;
+
+function sessionHeaders(authSession, json = false) {
+  const token = authSession?.sessionToken || authSession?.token || authSession?.accessToken || '';
+  return {
+    Accept: 'application/json',
+    ...(token ? {
+      Authorization: `Bearer ${token}`,
+      'X-ProjectPulse-Session': token,
+      'X-Project-Pulse-Session': token,
+      'X-Session-Token': token
+    } : {}),
+    ...(json ? { 'Content-Type': 'application/json' } : {})
+  };
+}
 
 function formatDate(value) {
   if (!value) return 'Not recorded';
@@ -208,7 +223,7 @@ function TransitionDialog({ transition, busy, error, onDismiss, onSubmit }) {
   );
 }
 
-export default function EngineerTaskCloseoutCenter() {
+export default function EngineerTaskCloseoutCenter({ authSession }) {
   const [overview, setOverview] = useState(EMPTY_OVERVIEW);
   const [tab, setTab] = useState('active');
   const [requestType, setRequestType] = useState('All');
@@ -219,12 +234,16 @@ export default function EngineerTaskCloseoutCenter() {
   const [transition, setTransition] = useState(null);
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [transitionError, setTransitionError] = useState('');
+  const [page, setPage] = useState(1);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/engineer-task-closeout/overview', { headers: { Accept: 'application/json' } });
+      const response = await fetch('/api/engineer-task-closeout/overview', {
+        credentials: 'include',
+        headers: sessionHeaders(authSession)
+      });
       const result = await readResponse(response);
       setOverview({ ...EMPTY_OVERVIEW, ...result });
     } catch (loadError) {
@@ -232,7 +251,7 @@ export default function EngineerTaskCloseoutCenter() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authSession]);
 
   useEffect(() => {
     void loadOverview();
@@ -248,6 +267,19 @@ export default function EngineerTaskCloseoutCenter() {
         .some((value) => String(value || '').toLowerCase().includes(needle));
     });
   }, [query, requestType, sourceItems]);
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const visibleItems = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredItems.slice(start, start + PAGE_SIZE);
+  }, [filteredItems, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tab, requestType, query]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
 
   const submitTransition = async (reason) => {
     if (!transition) return;
@@ -260,7 +292,8 @@ export default function EngineerTaskCloseoutCenter() {
         `/api/engineer-task-closeout/assignments/${transition.item.assignmentId}/${reopening ? 'reopen' : 'close'}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'include',
+          headers: sessionHeaders(authSession, true),
           body: JSON.stringify(reopening ? { reason } : { completionSummary: reason })
         }
       );
@@ -354,7 +387,7 @@ export default function EngineerTaskCloseoutCenter() {
           </div>
         ) : (
           <div className="engineer-closeout-task-list">
-            {filteredItems.map((item) => (
+            {visibleItems.map((item) => (
               <TaskCard
                 key={item.assignmentId}
                 item={item}
@@ -365,6 +398,18 @@ export default function EngineerTaskCloseoutCenter() {
             ))}
           </div>
         )}
+        {!loading && filteredItems.length > PAGE_SIZE ? (
+          <nav className="engineer-closeout-pagination" aria-label={`${tab} task pages`}>
+            <span>
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+            </span>
+            <div>
+              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>Previous</button>
+              <strong>Page {page} of {pageCount}</strong>
+              <button type="button" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page === pageCount}>Next</button>
+            </div>
+          </nav>
+        ) : null}
       </section>
 
       {tab === 'history' && overview.events?.length > 0 ? (
