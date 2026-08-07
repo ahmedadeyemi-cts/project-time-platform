@@ -214,7 +214,24 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
         }
 
         var nextVersion = currentVersion + 1;
-        var persistedRequest = request with { PlanId = planId };
+        var scheduledByWbs = schedule.Tasks
+            .GroupBy(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var persistedRequest = request with
+        {
+            PlanId = planId,
+            Tasks = (request.Tasks ?? []).Select(task =>
+            {
+                var wbs = task.WbsNumber?.Trim() ?? string.Empty;
+                return scheduledByWbs.TryGetValue(wbs, out var scheduledTask)
+                    ? task with
+                    {
+                        EstimatedStartDate = scheduledTask.StartDate,
+                        EstimatedFinishDate = scheduledTask.EndDate
+                    }
+                    : task;
+            }).ToArray()
+        };
         const string insertVersion = """
             INSERT INTO project_flowhive_plan_versions(
                 plan_id,project_id,version_number,revision_label,source_kind,

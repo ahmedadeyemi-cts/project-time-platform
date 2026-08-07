@@ -6,12 +6,16 @@ The source package can produce transient PDF and XLSX bytes for a validated
 browser-local plan. Both formats use the exact repository US Signal logo and
 carry the logo SHA-256 in artifact-control evidence.
 
-- PDF: logo, internal-draft banner, plan/project/customer metadata, paginated
-  schedule rows, critical indicator, float, and checksum footer.
+- PDF: landscape US Signal-branded schedule with plan/project/customer metadata,
+  paginated task rows, and the exact Planner columns: WBS, Task Name, Start Date,
+  End Date, Duration in Days, Progress, Predecessor, Type, Comments, Notes, and
+  Assigned Identity.
 - XLSX: logo, Plan Summary, Schedule, Dependencies, and Artifact Control sheets.
+  The Schedule worksheet uses that same exact column order.
 
-Every artifact is marked `INTERNAL DRAFT — NOT A CUSTOMER BASELINE`. Notes are
-excluded by the current UI request. Nothing is stored or delivered.
+Comments, notes, and the Module 062-backed assigned identity are included in
+both export formats. Every artifact is marked
+`INTERNAL DRAFT — NOT A CUSTOMER BASELINE`. Nothing is stored or delivered.
 
 ## Locked customer capability
 

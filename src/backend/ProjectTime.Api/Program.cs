@@ -2834,7 +2834,7 @@ app.MapPost("/api/timesheets/ai-description-suggestions", async (
             CelarAiCapabilityTargets.CelarAi when !string.IsNullOrWhiteSpace(result.Suggestion) =>
                 "Celar AI generated a privately grounded time-entry description suggestion.",
             ProjectPulseAiProviders.Local =>
-                "The governed local template generated a time-entry description suggestion.",
+                "No configured AI target completed this request. No template was presented as an AI suggestion.",
             _ => "The selected provider declined this request under its safety controls."
         }
     });

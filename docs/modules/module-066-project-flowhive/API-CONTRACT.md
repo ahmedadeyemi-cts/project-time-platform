@@ -61,7 +61,8 @@ authority is not applied.
 is later than the selected end date, validation returns
 `project_end_exceeded`. Phase summary tasks use `isSummary = true`, duration
 zero, no assignment, and no direct dependency. The schedule response rolls up
-summary dates and includes `projectTargetEndDate`.
+summary dates and includes `projectTargetEndDate`. Task inputs also preserve
+editable `comments` and `notes` fields for review and artifact generation.
 
 ### `POST /api/project-flowhive/ai/production-generate`
 
@@ -90,8 +91,10 @@ Both endpoints require:
 - a valid calculable plan.
 
 They return transient bytes only. The actual repository US Signal logo is
-embedded and verified. The result is marked as an internal draft. No artifact
-record, customer link, or delivery is created.
+embedded and verified. PDF and Excel both use the exact Planner column order:
+WBS, Task Name, Start Date, End Date, Duration in Days, Progress, Predecessor,
+Type, Comments, Notes, and Assigned Identity. The result is marked as an
+internal draft. No artifact record, customer link, or delivery is created.
 
 ## Explicit locked routes
 

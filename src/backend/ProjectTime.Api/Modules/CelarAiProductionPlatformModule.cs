@@ -389,13 +389,7 @@ public static partial class CelarAiProductionPlatformModule
             context,
             cancellationToken);
 
-        var privatePlanAvailable = composition.FlowHivePlan?.Tasks.Count > 0;
-        var configuredRoute = await routing.LoadRouteAsync(
-            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
-            cancellationToken);
-        var generated = BuildPlan(request.Plan, composition.FlowHivePlan);
-        var validation = ProjectFlowHiveScheduleEngine.Validate(generated);
-        var schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
+        var privateFlowHivePlan = composition.FlowHivePlan;
         var sowCitations = composition.Citations.Where(citation =>
             citation.DocumentCategory.Equals("sow", StringComparison.OrdinalIgnoreCase)
             || citation.DocumentCategory.Equals("statement_of_work", StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -403,12 +397,67 @@ public static partial class CelarAiProductionPlatformModule
             citation.SectionTitle.Contains("scope", StringComparison.OrdinalIgnoreCase)
             || citation.CitationAnchor.Contains("scope", StringComparison.OrdinalIgnoreCase)
             || citation.SectionTitle.Contains("service", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var availableCitationIds = composition.Citations
+            .Select(citation => citation.CitationId)
+            .ToHashSet();
+        var privatePlanAvailable = privateFlowHivePlan is not null
+            && privateFlowHivePlan.Tasks.Count > 0
+            && sowCitations.Length > 0
+            && scopeCitations.Length > 0
+            && privateFlowHivePlan.CitationIds.Count > 0
+            && privateFlowHivePlan.CitationIds.All(availableCitationIds.Contains)
+            && privateFlowHivePlan.Tasks.All(task =>
+                task.CitationIds.Count > 0
+                && task.CitationIds.All(availableCitationIds.Contains));
+        if (!privatePlanAvailable)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                module = "066",
+                feature = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+                status = "flowhive_sow_evidence_not_ready",
+                message = "FlowHive could not create a SOW-grounded project plan because citation-ready private evidence was unavailable. No generic plan was substituted and no plan was saved.",
+                composition.MissingEvidence,
+                composition.Warnings,
+                composition.CorrelationId,
+                composition.SelectedTarget,
+                composition.AttemptedTargets,
+                composition.SkippedTargets,
+                composition.TargetDecisions,
+                stateChanged = false
+            });
+        }
+        var configuredRoute = await routing.LoadRouteAsync(
+            CelarAiCapabilityCatalog.ProjectFlowHivePlan,
+            cancellationToken);
+        var generated = BuildPlan(request.Plan, composition.FlowHivePlan);
+        var validation = ProjectFlowHiveScheduleEngine.Validate(generated);
+        var schedule = ProjectFlowHiveScheduleEngine.Calculate(generated);
+        if (schedule.Valid)
+        {
+            var scheduledByWbs = schedule.Tasks
+                .GroupBy(task => task.WbsNumber, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            generated = generated with
+            {
+                Tasks = generated.Tasks.Select(task =>
+                {
+                    var wbs = task.WbsNumber?.Trim() ?? string.Empty;
+                    return scheduledByWbs.TryGetValue(wbs, out var scheduledTask)
+                        ? task with
+                        {
+                            EstimatedStartDate = scheduledTask.StartDate,
+                            EstimatedFinishDate = scheduledTask.EndDate
+                        }
+                        : task;
+                }).ToArray()
+            };
+        }
         var warnings = new List<string>(composition.Warnings)
         {
             "This is a PM and Engineering review draft, not a baseline, assignment, approval, capacity reservation, or customer date commitment.",
             "Schedule dates are deterministic weekday previews until approved Module 057 calendars, holidays, capacity, and customer constraints are applied."
         };
-        if (!privatePlanAvailable) warnings.Add("Private model planning was unavailable or evidence-limited; the authorized current draft and governed deterministic structure were retained.");
         if (!validation.Valid) warnings.Add("Validation issues must be corrected before baseline review.");
 
         return Results.Ok(new
@@ -417,11 +466,7 @@ public static partial class CelarAiProductionPlatformModule
             feature = CelarAiCapabilityCatalog.ProjectFlowHivePlan,
             status = schedule.Valid ? "celar_ai_flowhive_review_draft_completed" : "celar_ai_flowhive_review_draft_requires_correction",
             executionEnabled = true,
-            executionPath = privatePlanAvailable
-                ? composition.PrimaryExecutionPath
-                : composition.PrimaryExecutionPath.Contains("sanitized", StringComparison.OrdinalIgnoreCase)
-                    ? "sanitized_generic_module064_blueprint_with_private_deterministic_flowhive_composer"
-                    : "deterministic_private_flowhive_scaffold",
+            executionPath = composition.PrimaryExecutionPath,
             providerOrder = configuredRoute.Targets,
             providerConfiguration = configuredRoute.ToPublicResponse(),
             project = new { request.Plan.ProjectId, request.Plan.ProjectCode, request.Plan.ProjectName, request.Plan.CustomerName },
@@ -436,8 +481,8 @@ public static partial class CelarAiProductionPlatformModule
             missingEvidence = composition.MissingEvidence,
             conflicts = composition.Conflicts,
             warnings,
-            confidence = privatePlanAvailable ? composition.Confidence : Math.Min(.55m, Math.Max(.35m, composition.Confidence)),
-            confidenceExplanation = privatePlanAvailable ? composition.ConfidenceExplanation : "Confidence is limited because deterministic fallback cannot replace private-model interpretation of approved documents.",
+            confidence = composition.Confidence,
+            confidenceExplanation = composition.ConfidenceExplanation,
             externalAssistance = composition.ExternalAssistance,
             planningEvidence = new
             {
@@ -857,6 +902,7 @@ public static partial class CelarAiProductionPlatformModule
     {
         var sourceTasks = privatePlan?.Tasks.Take(450).ToArray() ?? [];
         var generated = new List<ProjectFlowHivePlanTaskInput>();
+        var generatedWbsBySourceWbs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var phase in FlowHivePlannerPhases)
         {
@@ -871,13 +917,16 @@ public static partial class CelarAiProductionPlatformModule
             var phaseTasks = sourceTasks
                 .Where(task => string.Equals(PlannerPhase(task), phase.Name, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-            if (phaseTasks.Length == 0) phaseTasks = DefaultPlannerTasks(phase.Name);
 
             for (var index = 0; index < phaseTasks.Length; index++)
             {
                 var task = phaseTasks[index];
                 var wbs = $"{phase.Wbs}.{index + 1}";
+                if (!string.IsNullOrWhiteSpace(task.Wbs)) generatedWbsBySourceWbs[task.Wbs.Trim()] = wbs;
                 var days = Math.Clamp((int)Math.Ceiling(Math.Max(.25m, task.EstimatedDurationDays)), 1, 730);
+                var citationText = task.CitationIds.Count > 0
+                    ? $"\nPrivate evidence citations: {string.Join(", ", task.CitationIds.Select(id => $"[{id}]"))}."
+                    : string.Empty;
                 var detailedSteps = TakePlanningList(task.DetailedSteps, 20, 1200);
                 if (detailedSteps.Length == 0)
                 {
@@ -896,7 +945,7 @@ public static partial class CelarAiProductionPlatformModule
                     wbs,
                     phase.Wbs,
                     Limit(task.Name, 300, $"{phase.Name} work package {index + 1}"),
-                    Limit(task.Description, 4000, "Complete the cited scope work package and retain objective completion evidence."),
+                    Limit($"{task.Description}{citationText}", 4000, "Complete the cited scope work package and retain objective completion evidence."),
                     days,
                     false,
                     "ASAP",
@@ -926,18 +975,28 @@ public static partial class CelarAiProductionPlatformModule
             source.ProjectStartDate,
             source.ProjectEndDate);
         var executionTasks = generated.Where(task => !task.IsSummary).ToArray();
-        var dependencies = executionTasks
-            .Skip(1)
-            .Select((task, index) => new ProjectFlowHiveDependencyInput(
-                executionTasks[index].WbsNumber,
-                task.WbsNumber,
-                "FS",
-                0))
-            .ToArray();
-        var privateSourceUsed = sourceTasks.Length > 0;
-        var notes = privateSourceUsed
-            ? $"Objective: {privatePlan!.Objective}\nAssumptions: {string.Join(" | ", privatePlan.Assumptions)}\nRisks: {string.Join(" | ", privatePlan.Risks)}\nOut of scope: {string.Join(" | ", privatePlan.OutOfScopeItems)}\nOpen questions: {string.Join(" | ", privatePlan.OpenQuestions)}"
-            : "Celar AI returned the governed five-phase planning scaffold because a source-grounded private-model plan was unavailable. Every task remains an assumption until the PM and Engineering team validate it against the approved SOW Scope of Services.";
+        var dependencies = new List<ProjectFlowHiveDependencyInput>();
+        foreach (var sourceTask in sourceTasks)
+        {
+            if (!generatedWbsBySourceWbs.TryGetValue(sourceTask.Wbs?.Trim() ?? string.Empty, out var successor)) continue;
+            foreach (var predecessorSourceWbs in sourceTask.Predecessors)
+            {
+                if (generatedWbsBySourceWbs.TryGetValue(predecessorSourceWbs?.Trim() ?? string.Empty, out var predecessor)
+                    && !predecessor.Equals(successor, StringComparison.OrdinalIgnoreCase))
+                    dependencies.Add(new ProjectFlowHiveDependencyInput(predecessor, successor, "FS", 0));
+            }
+        }
+        if (dependencies.Count == 0)
+        {
+            dependencies.AddRange(executionTasks
+                .Skip(1)
+                .Select((task, index) => new ProjectFlowHiveDependencyInput(
+                    executionTasks[index].WbsNumber,
+                    task.WbsNumber,
+                    "FS",
+                    0)));
+        }
+        var notes = $"Objective: {privatePlan!.Objective}\nPrivate evidence citations: {string.Join(", ", privatePlan.CitationIds.Select(id => $"[{id}]"))}\nAssumptions: {string.Join(" | ", privatePlan.Assumptions)}\nRisks: {string.Join(" | ", privatePlan.Risks)}\nOut of scope: {string.Join(" | ", privatePlan.OutOfScopeItems)}\nOpen questions: {string.Join(" | ", privatePlan.OpenQuestions)}";
 
         return source with
         {
@@ -945,9 +1004,14 @@ public static partial class CelarAiProductionPlatformModule
             RevisionLabel = $"Celar AI Planner review {DateTimeOffset.UtcNow:yyyyMMdd-HHmm}",
             ProjectStartDate = source.ProjectStartDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
             Tasks = generated,
-            Dependencies = dependencies,
+            Dependencies = dependencies
+                .GroupBy(item => $"{item.PredecessorWbs}|{item.SuccessorWbs}|{item.Type}|{item.LagWorkingDays}")
+                .Select(group => group.First())
+                .Take(4000)
+                .ToArray(),
             Assignments = [],
-            Notes = Limit(notes, 12000, string.Empty)
+            Notes = Limit(notes, 12000, string.Empty),
+            CelarAiCitationIds = privatePlan.CitationIds
         };
     }
 

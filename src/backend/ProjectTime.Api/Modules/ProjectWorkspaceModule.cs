@@ -512,7 +512,9 @@ public static class ProjectWorkspaceModule
 
             rows.Add(new ProjectWorkspaceDocument(
                 documentId,
-                reader.GetGuid(O("project_intake_request_id")),
+                reader.IsDBNull(O("project_intake_request_id"))
+                    ? null
+                    : reader.GetGuid(O("project_intake_request_id")),
                 reader.IsDBNull(O("project_id")) ? null : reader.GetGuid(O("project_id")),
                 reader.GetString(O("project_code")),
                 reader.GetString(O("project_or_intake_name")),
@@ -990,7 +992,7 @@ internal sealed record ProjectWorkspaceProject(
 
 internal sealed record ProjectWorkspaceDocument(
     Guid Id,
-    Guid ProjectIntakeRequestId,
+    Guid? ProjectIntakeRequestId,
     Guid? ProjectId,
     string ProjectCode,
     string ProjectOrIntakeName,

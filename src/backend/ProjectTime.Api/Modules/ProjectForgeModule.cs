@@ -2245,6 +2245,10 @@ public static partial class ProjectForgeModule
         AppendPlanningSection(value, "Prerequisites", task.Prerequisites);
         AppendPlanningSection(value, "Risks", task.Risks);
         AppendPlanningSection(value, "Open questions", task.OpenQuestions);
+        if (task.CitationIds.Count > 0)
+            value.AppendLine().Append("Private evidence citations: ")
+                .Append(string.Join(", ", task.CitationIds.Select(id => $"[{id}]")))
+                .Append('.');
         if (task.IsAssumption) value.AppendLine().Append("Assumption: One or more planning values require Project Manager, Engineering, or customer validation before adoption.");
         return Clean(value.ToString(), 4_000, task.Description);
     }

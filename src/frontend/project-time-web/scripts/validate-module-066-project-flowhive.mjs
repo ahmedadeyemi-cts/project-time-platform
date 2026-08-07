@@ -21,6 +21,7 @@ const paths = {
   capabilityRouting: path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'),
   brand: path.join(backendDirectory, 'ProjectFlowHiveBrandAssets.cs'),
   artifacts: path.join(backendDirectory, 'ProjectFlowHiveArtifactRenderer.cs'),
+  celarProduction: path.join(backendDirectory, 'CelarAiProductionPlatformModule.cs'),
   frontend: path.join(repositoryRoot, 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'),
   stylesheet: path.join(repositoryRoot, 'src/frontend/project-time-web/src/project-flowhive-center.css'),
   logoJpeg: path.join(repositoryRoot, 'src/frontend/project-time-web/brand/ussignal.jpg'),
@@ -73,6 +74,7 @@ const privateRagRepository = readRequired('PRIVATE_RAG_REPOSITORY', paths.privat
 const capabilityRouting = readRequired('CAPABILITY_ROUTING', paths.capabilityRouting);
 const brand = readRequired('BRAND_ASSETS', paths.brand);
 const artifacts = readRequired('ARTIFACT_RENDERER', paths.artifacts);
+const celarProduction = readRequired('CELAR_PRODUCTION', paths.celarProduction);
 const frontend = readRequired('FRONTEND', paths.frontend);
 const stylesheet = readRequired('STYLESHEET', paths.stylesheet);
 const logoJpeg = fs.existsSync(paths.logoJpeg) ? fs.readFileSync(paths.logoJpeg) : Buffer.alloc(0);
@@ -340,10 +342,19 @@ assertInvariant(
   'MODULE_066_BRANDED_ARTIFACTS',
   artifacts.includes('BuildPdf') &&
     artifacts.includes('BuildExcel') &&
+    artifacts.includes('"WBS", "Task Name", "Start Date", "End Date", "Duration in Days"') &&
+    artifacts.includes('"Progress", "Predecessor", "Type", "Comments", "Notes", "Assigned Identity"') &&
+    artifacts.includes('planTask?.Comments') &&
+    artifacts.includes('planTask?.Notes') &&
+    artifacts.includes('assignment?.ResourceDisplayName') &&
+    artifacts.includes('DURATION IN DAYS') &&
+    artifacts.includes('/MediaBox [0 0 1008 612]') &&
+    contracts.includes('string? Comments = null') &&
+    contracts.includes('string? Notes = null') &&
     artifacts.includes('ProjectFlowHiveBrandAssets.LogoJpeg') &&
     artifacts.includes('INTERNAL DRAFT — NOT A CUSTOMER BASELINE') &&
     backend.includes('customer_export_locked'),
-  'US Signal branded internal PDF/XLSX source and customer lock'
+  'US Signal branded internal PDF/XLSX source, exact Planner columns, and customer lock'
 );
 
 assertInvariant(
@@ -380,7 +391,7 @@ assertInvariant(
   'MODULE_066_FRONTEND_IDENTITY_DROPDOWN',
   frontend.includes('identityOptions') &&
     frontend.includes('resourceUserId') &&
-    frontend.includes('Assigned to') &&
+    frontend.includes('Assigned Identity') &&
     frontend.includes('useIdentityProfile'),
   'assignments preserve Module 062-backed user IDs'
 );
@@ -395,12 +406,21 @@ assertInvariant(
 );
 
 assertInvariant(
-  'MODULE_066_DETERMINISTIC_CONFIDENCE_EXPLANATION',
-  frontend.includes("String(aiPreview?.executionPath || '').toLowerCase().includes('deterministic')") &&
-    frontend.includes('Number(aiPreview?.confidence) <= 0.55') &&
-    frontend.includes('{aiPreviewIsDeterministicFloor ?') &&
-    !frontend.includes('Number(aiPreview.confidence || 0) <= .35'),
-  'the low-confidence explanation is limited to deterministic fallback results'
+  'MODULE_066_SOW_GROUNDED_PER_TASK_TIMELINE',
+    celarProduction.includes('status = "flowhive_sow_evidence_not_ready"') &&
+    celarProduction.includes('No generic plan was substituted') &&
+    celarProduction.includes('Private evidence citations:') &&
+    celarProduction.includes('CitationIds: task.CitationIds') &&
+    celarProduction.includes('privateFlowHivePlan.Tasks.All(task =>') &&
+    celarProduction.includes('EstimatedStartDate = scheduledTask.StartDate') &&
+    celarProduction.includes('EstimatedFinishDate = scheduledTask.EndDate') &&
+    repository.includes('EstimatedStartDate = scheduledTask.StartDate') &&
+    repository.includes('EstimatedFinishDate = scheduledTask.EndDate') &&
+    repository.includes('AddJson(insert, "plan_payload", persistedRequest)') &&
+    frontend.includes('an uncited generic template is never substituted') &&
+    frontend.includes('task.estimatedStartDate || scheduled?.startDate') &&
+    frontend.includes('task.estimatedFinishDate || scheduled?.endDate'),
+  'citation-ready private SOW evidence produces visible and immutably persisted per-task durations, starts, finishes, and citations without a generic plan substitute'
 );
 
 assertInvariant(
@@ -411,14 +431,18 @@ assertInvariant(
     frontend.includes('projectEndDate') &&
     frontend.includes('Approved SOW Scope of Services located') &&
     frontend.includes('Ordered work steps') &&
+    frontend.includes('<th>WBS</th><th>Task Name</th><th>Start Date</th><th>End Date</th><th>Duration in Days</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Comments</th><th>Notes</th><th>Assigned Identity</th>') &&
+    frontend.includes("updateTask(index, 'comments'") &&
+    frontend.includes("updateTask(index, 'notes'") &&
+    frontend.includes('excludeNotes: false') &&
     frontend.includes('<th>Progress</th>') &&
     frontend.includes('<th>Type</th>') &&
-    frontend.includes('<th>Lead/lag</th>') &&
     frontend.includes("updateDependencyForTask(index, 'lagWorkingDays'") &&
     stylesheet.includes('.flowhive-smartsheet-table') &&
     stylesheet.includes('.flowhive-phase-row.phase-release') &&
-    stylesheet.includes('.flowhive-task-detail-grid'),
-  'expandable phase grid, PM start/end dates, SOW evidence, editable task details, and responsive styling'
+    stylesheet.includes('.flowhive-task-detail-grid') &&
+    stylesheet.includes('.flowhive-sheet-textarea'),
+  'exact Planner grid, PM start/end dates, SOW evidence, editable comments/notes/details, and responsive styling'
 );
 
 assertInvariant(

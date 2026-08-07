@@ -73,25 +73,44 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             : null;
         var hasReadyPrivateDocuments = grounding?.Authorized == true
             && grounding.HasReadyPrivateContext;
+        var hasAssociatedDocuments = grounding?.Documents.Count > 0
+            || string.Equals(
+                grounding?.Status,
+                "documents_found_context_not_ready",
+                StringComparison.OrdinalIgnoreCase);
+        var hasEngineerNote = HasFactualEngineerNote(request.CurrentDescription);
         var externalFactCodes = BuildPurposeBuiltExternalFactCodes(request);
-        var hasExternalActivityFacts = HasPurposeBuiltExternalActivityFacts(request.CurrentDescription);
+        if (hasAssociatedDocuments && !hasReadyPrivateDocuments)
+        {
+            return new ProjectPulseAiTimeEntrySuggestionResult(
+                string.Empty,
+                CelarAiCapabilityTargets.CelarAi,
+                "Authorized project documents are associated with this work item, but private scanning, extraction, embedding, or inference is not ready. The note and document content were not sent to Claude or OpenAI. Process the documents through the private pipeline and try again.",
+                [new ProjectPulseAiTargetDecision(
+                    CelarAiCapabilityTargets.CelarAi,
+                    "blocked",
+                    "private_document_pipeline_not_ready")]);
+        }
         var execution = new CelarAiCapabilityExecutionContext(
             Feature: capability,
-            ContainsPrivateDocuments: hasReadyPrivateDocuments,
+            ContainsPrivateDocuments: hasAssociatedDocuments,
             ContainsCustomerIdentity: !string.IsNullOrWhiteSpace(request.CustomerName),
             ContainsPeopleRecords: false,
             ContainsFinancialValues: false,
-            AllowSanitizedExternalAssistance: hasExternalActivityFacts,
+            AllowSanitizedExternalAssistance: !hasAssociatedDocuments && hasEngineerNote,
             SensitiveTerms: SensitiveTerms(request),
             ConsumerModule: "001",
             CorrelationId: _httpContextAccessor.HttpContext?.TraceIdentifier
                 ?? Guid.NewGuid().ToString("N"),
             IdentityTerms: IdentityTerms(request),
             PurposeBuiltDeidentifiedInput: true,
-            DeidentifiedFactsAvailable: hasExternalActivityFacts,
+            DeidentifiedFactsAvailable: hasEngineerNote,
             ExternalCapsulePurpose: CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
             PrivateTargetAllowed: true,
-            ExternalFactCodes: externalFactCodes);
+            ExternalFactCodes: externalFactCodes,
+            ExternalProblemStatement: !hasAssociatedDocuments
+                ? BoundedEngineerNote(request.CurrentDescription)
+                : null);
         var privateRequest = new ProjectPulseAiGenerationRequest(
             capability,
             "You write detailed, accurate, evidence-based, customer-facing professional services timesheet descriptions in complete sentences. Use only authorized private context and the Engineer's factual note. Never invent activity or outcomes, and never change hours, submit time, create tasks, or alter allocations.",
@@ -111,7 +130,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
                     privateRag = await GeneratePrivateRagAsync(request, privateCancellationToken);
                     return PrivateRagTargetResult(privateRag);
                 },
-                localFallback: () => BuildLocalSuggestion(request),
+                localFallback: () => string.Empty,
                 cancellationToken);
         }
         else
@@ -123,13 +142,29 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
             routed = await _router.GenerateAsync(
                 privateRequest,
                 execution,
-                () => BuildLocalSuggestion(request),
+                () => string.Empty,
                 cancellationToken);
         }
 
+        var noAiTargetCompleted = string.Equals(
+            routed.Provider,
+            CelarAiCapabilityTargets.Local,
+            StringComparison.OrdinalIgnoreCase);
+        var privateDocumentRouteNotCompleted = hasAssociatedDocuments
+            && !string.Equals(
+                routed.Provider,
+                CelarAiCapabilityTargets.CelarAi,
+                StringComparison.OrdinalIgnoreCase);
         var suggestion = routed.Outcome == ProjectPulseAiOutcomes.Refusal
+            || noAiTargetCompleted
+            || privateDocumentRouteNotCompleted
             ? string.Empty
             : FinalizeCustomerSuggestion(routed.Content, request);
+        var routeWarning = privateDocumentRouteNotCompleted
+            ? "Private project documents were available, but the private Celar AI target did not complete. No external-provider or governed-template result was presented as a document-grounded AI suggestion."
+            : noAiTargetCompleted
+            ? "No configured AI target completed this request. The governed template was not presented as an AI suggestion. Review the route details, provider configuration, and privacy readiness, then try again."
+            : routed.Warning;
         var privateContextWarning = privateRag is not null
             ? BuildPrivateRagWarning(privateRag)
             : hasReadyPrivateDocuments && grounding is not null
@@ -138,7 +173,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         return new ProjectPulseAiTimeEntrySuggestionResult(
             suggestion,
             routed.Provider,
-            MergeWarnings(routed.Warning, privateContextWarning),
+            MergeWarnings(routeWarning, privateContextWarning),
             routed.TargetDecisions);
     }
 
@@ -431,10 +466,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         ProjectPulseAiTimeEntrySuggestionRequest request)
     {
         var cleaned = CleanSuggestion(value);
-        if (cleaned.Length == 0)
-        {
-            cleaned = BuildLocalSuggestion(request);
-        }
+        if (cleaned.Length == 0) return string.Empty;
 
         var sentences = Regex.Split(cleaned, "(?<=[.!?])\\s+")
             .Where(sentence => !string.IsNullOrWhiteSpace(sentence))
@@ -495,12 +527,12 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
 
         if (grounding.Status == "documents_found_context_not_ready")
         {
-            return "Authorized project documents were found, but private extraction or approved AI context summaries are not ready. No raw document content, Engineer note, or structured customer or row identifier was sent to an external provider. An eligible external target receives only the central router's closed activity, domain, and work-classification fact codes; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
+            return "Authorized project documents were found, but private scanning, extraction, embedding, or inference is not ready. The request remains private and no external-provider or template result is presented as document-grounded AI.";
         }
 
         if (grounding.Status == "authorized_project_no_eligible_documents")
         {
-            return "No authorized engineering-visible document was enabled for timesheet grounding. No Engineer note or structured customer or row identifier was sent to an external provider. An eligible external target receives only the central router's closed activity, domain, and work-classification fact codes; governed local fallback may use the Engineer note and selected row context inside ProjectPulse.";
+            return "No authorized engineering-visible document was enabled for Timesheet grounding. The configured route may use a separately bounded and de-identified Engineer note, but it never receives customer, project, task, row identifiers, or private document content.";
         }
 
         if (grounding.Status is "project_not_resolved" or "project_outside_effective_user_scope" or "task_or_assignment_not_resolved")
@@ -510,7 +542,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
 
         if (grounding.Status is "document_grounding_unavailable" or "database_configuration_missing")
         {
-            return "Private document grounding was temporarily unavailable. The existing non-document suggestion path was used without exposing database or document details.";
+            return "Private document grounding was temporarily unavailable. If this work item has no associated private document, only a bounded and de-identified Engineer note may use the configured non-document AI route; database and document details remain private.";
         }
 
         return null;
@@ -579,20 +611,20 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         ProjectPulseAiTimeEntrySuggestionRequest request)
     {
         var note = BoundedEngineerNote(request.CurrentDescription);
-        return ExternalActivitySignals
+        var signals = ExternalActivitySignals
             .Where(signal => signal.Pattern.IsMatch(note))
             .Select(signal => signal.Code)
             .Distinct(StringComparer.Ordinal)
             .Take(10)
-            .Append(ExternalWorkClassificationCode(request))
-            .ToArray();
+            .ToList();
+        if (signals.Count == 0 && HasFactualEngineerNote(note))
+            signals.Add(CelarAiExternalCapsuleCatalog.TimesheetActivityUserProvidedWork);
+        signals.Add(ExternalWorkClassificationCode(request));
+        return signals.ToArray();
     }
 
-    private static bool HasPurposeBuiltExternalActivityFacts(string? value)
-    {
-        var note = BoundedEngineerNote(value);
-        return ExternalActivitySignals.Any(signal => signal.Pattern.IsMatch(note));
-    }
+    private static bool HasFactualEngineerNote(string? value) =>
+        BoundedEngineerNote(value).Count(char.IsLetterOrDigit) >= 8;
 
     private static string ExternalWorkClassificationCode(ProjectPulseAiTimeEntrySuggestionRequest request)
     {

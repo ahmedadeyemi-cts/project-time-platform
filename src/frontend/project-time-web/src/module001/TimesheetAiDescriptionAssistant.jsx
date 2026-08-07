@@ -20,6 +20,9 @@ const ROUTE_REASON_LABELS = Object.freeze({
   provider_circuit_open: 'Provider is temporarily unavailable',
   sanitized_external_policy_disabled: 'Sanitized fallback is disabled',
   sanitized_external_request_blocked: 'The privacy gate blocked this route',
+  sanitized_external_problem_ready: 'Completed with a sanitized work note',
+  sanitized_external_problem_ready_after_deidentification: 'Completed after de-identifying the work note',
+  private_document_pipeline_not_ready: 'Private document processing is not ready',
   external_output_identity_validation_failed: 'The response failed identity-safety validation',
   external_output_privacy_validation_failed: 'The response failed privacy validation',
   local_fallback: 'Used the mandatory governed fallback'
@@ -184,7 +187,9 @@ export default function TimesheetAiDescriptionAssistant({
         provider: result.provider || '',
         targetDecisions: Array.isArray(result.targetDecisions) ? result.targetDecisions : [],
         warning: result.warning || '',
-        error: ''
+        error: result.suggestion
+          ? ''
+          : (result.message || 'No configured AI target completed this request. Review the route details and try again.')
       });
     } catch (error) {
       setState({

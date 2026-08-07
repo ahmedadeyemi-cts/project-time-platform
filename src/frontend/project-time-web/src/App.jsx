@@ -1761,7 +1761,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
     navLabel: 'MODULE 001A',
     description: 'Close assigned Service Request, Pre-Sales, and Internal tasks, lock additional billing, review history, and reopen before Module 055C final closure.',
     permissions: ['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
-    roleCodes: ['ENGINEER', 'ENGINEERING', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER']
+    roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'ENGINEERING_MANAGER', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER']
   },
   {
     route: 'project-workload',
@@ -5999,7 +5999,9 @@ export default function App() {
         suggestion: result.suggestion ?? '',
         provider: result.provider ?? '',
         warning: result.warning ?? '',
-        error: ''
+        error: result.suggestion
+          ? ''
+          : (result.message || 'No configured AI target completed this request. Review the AI route and private-document readiness, then try again.')
       });
     } catch (error) {
       setAiSuggestionState({
@@ -6248,6 +6250,21 @@ export default function App() {
     return actualSessionHasPermanentFullControl
       || permissionCodes.some((permissionCode) => hasPermission(permissionCode));
   }
+  const canUseEngineerTaskCloseout = canSeeAny([
+    'VIEW_ENGINEER_TASK_CLOSEOUT_001A',
+    'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A',
+    'SYSTEM_ADMINISTRATION',
+    'MANAGE_ALL'
+  ]) || currentRoleCodes.some((roleCode) => [
+    'ENGINEER',
+    'ENGINEERING',
+    'ENGINEERING_LEAD',
+    'ENGINEERING_TEAM_LEAD',
+    'ENGINEERING_MANAGER',
+    'SYSTEMS_ENGINEER',
+    'NETWORK_ENGINEER',
+    'ENTERPRISE_NETWORK_ENGINEER'
+  ].includes(roleCode));
   /* LIVE_AUTHENTICATED_ROUTE_AUTHORITY_END */
 
   const roleNames = securityContext.data?.roles?.map((role) => role.roleName).join(', ') || 'No role assigned';
@@ -8434,7 +8451,7 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(activeRoute === 'engineer-task-closeout' && canSeeAny(['VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+      {(activeRoute === 'engineer-task-closeout' && canUseEngineerTaskCloseout) ? (
         <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
           <EngineerTaskCloseoutCenter authSession={authSession} />
         </section>

@@ -23,7 +23,8 @@ public sealed record ProjectFlowHivePlanRequest(
     string? SourceKind = "manual",
     string? CelarAiProviderCode = null,
     string? CelarAiCorrelationId = null,
-    decimal? CelarAiConfidence = null);
+    decimal? CelarAiConfidence = null,
+    IReadOnlyList<int>? CelarAiCitationIds = null);
 
 public sealed record ProjectFlowHivePlanTaskInput(
     Guid? ClientTaskId,
@@ -52,7 +53,11 @@ public sealed record ProjectFlowHivePlanTaskInput(
     IReadOnlyList<string>? Risks = null,
     IReadOnlyList<string>? OpenQuestions = null,
     string? Priority = "normal",
-    IReadOnlyList<int>? CitationIds = null);
+    IReadOnlyList<int>? CitationIds = null,
+    DateOnly? EstimatedStartDate = null,
+    DateOnly? EstimatedFinishDate = null,
+    string? Comments = null,
+    string? Notes = null);
 
 public sealed record ProjectFlowHiveDependencyInput(
     string? PredecessorWbs,

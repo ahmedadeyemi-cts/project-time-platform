@@ -276,7 +276,9 @@ function normalizeRoute(hash) {
   title: 'Toyota & Hyundai Pipelines',
   navLabel: 'MODULE 006',
   description: 'Track the reviewed Toyota and Hyundai workbook baseline plus additional customer pipeline records, active and archived work, ownership, SELL references, estimates, notes, and historical update evidence.',
-  permissions: ['VIEW_PROJECT_WORKSPACE', 'VIEW_PROJECT_INTAKE', 'VIEW_RESOURCE_SCHEDULING', 'VIEW_EXPENSES', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
+  permissions: ['MANAGE_ALL'],
+  strictRoleCodes: ['SUPER_ADMINISTRATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'],
+  roleCodes: ['SUPER_ADMINISTRATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']
 },`;
   if (!oldDefinition.test(source) || !source.includes("title: 'PSA Modules'")) throw new Error('Module 006 legacy registry block is missing.');
   source = source.replace(oldDefinition, newDefinition);
@@ -301,9 +303,18 @@ function normalizeRoute(hash) {
   if (!source.includes(routeBoundaryAnchor)) throw new Error('Module 006 route boundary anchor is missing.');
   const exclusiveRoute = `      {/* PR467_MODULE_006_EXCLUSIVE_ROUTE_START */}
       {activeRoute === 'toyota-hyundai-pipelines' ? (
-        <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
-          <ProjectRegisterCenter legacyRoute={false} />
-        </section>
+        currentRoleCodes.some((roleCode) => ['SUPER_ADMINISTRATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'].includes(roleCode)) ? (
+          <section id="toyota-hyundai-pipelines" className="panel project-register-route-panel" data-module="006">
+            <ProjectRegisterCenter legacyRoute={false} />
+          </section>
+        ) : (
+          <section className="panel" role="alert">
+            <p className="eyebrow">Module 006</p>
+            <h2>Project Management access required</h2>
+            <p>This module is available only to Project Management roles and permanent Super Administrators.</p>
+            <a className="primary-action" href="#dashboard">Return to dashboard</a>
+          </section>
+        )
       ) : (
         <>
 ${routeBoundaryAnchor}`;

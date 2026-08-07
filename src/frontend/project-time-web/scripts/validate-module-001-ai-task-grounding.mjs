@@ -274,7 +274,8 @@ check(
   suggestionEndpoint.includes('roughNote.Length > 4_000')
     && suggestionEndpoint.includes('cannot exceed 4,000 characters')
     && timesheetSuggestion.includes('MaximumEngineerNoteCharacters = 4_000')
-    && timesheetSuggestion.includes('var note = BoundedEngineerNote(value)')
+    && timesheetSuggestion.includes('private static string BoundedEngineerNote(string? value)')
+    && timesheetSuggestion.includes('note[..MaximumEngineerNoteCharacters]')
     && app.includes('maxLength={4000}')
     && timerView.includes('maxLength={4000}'),
   'direct callers cannot send an unbounded note through sanitization or provider routing'
@@ -444,17 +445,20 @@ check(
 check(
   'MODULE001_AI_EXTERNAL_SANITIZER_BOUNDARY',
   containsAll(timesheetSuggestion, [
-    'ContainsPrivateDocuments: hasReadyPrivateDocuments',
+    'ContainsPrivateDocuments: hasAssociatedDocuments',
     'ContainsCustomerIdentity: !string.IsNullOrWhiteSpace(request.CustomerName)',
-    'AllowSanitizedExternalAssistance: hasExternalActivityFacts',
+    'AllowSanitizedExternalAssistance: !hasAssociatedDocuments && hasEngineerNote',
     'SensitiveTerms: SensitiveTerms(request)',
     'IdentityTerms: IdentityTerms(request)',
     'PurposeBuiltDeidentifiedInput: true',
-    'DeidentifiedFactsAvailable: hasExternalActivityFacts'
+    'DeidentifiedFactsAvailable: hasEngineerNote',
+    'ExternalProblemStatement: !hasAssociatedDocuments',
+    'BoundedEngineerNote(request.CurrentDescription)'
   ])
     && containsAll(capabilityRouting, [
       'PrepareExternalRequest(',
       '_sanitizer.SanitizeForExecution(',
+      'Content: execution.ExternalProblemStatement',
       'UserPrompt = sanitized.SanitizedCapsule'
     ]),
   'external targets receive a sanitizer-produced capsule, never the private evidence payload'
@@ -465,7 +469,9 @@ check(
       'private static readonly (string Code, Regex Pattern)[] ExternalActivitySignals',
       '.Select(signal => signal.Code)',
       '.Take(10)',
-      '.Append(ExternalWorkClassificationCode(request))'
+      'TimesheetActivityUserProvidedWork',
+      'ExternalWorkClassificationCode(request)',
+      'ExternalProblemStatement: !hasAssociatedDocuments'
     ])
     && !timesheetSuggestion.includes('BuildRemotePromptWithoutPrivateDocuments(')
     && !timesheetSuggestion.includes('ContainsPrivateDocumentMarkers(')

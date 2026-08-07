@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using ClosedXML.Excel;
 using ProjectTime.Api.Modules;
 
 const string ExpectedLogoHash = "c4fc4b33f744d065deeec531f393aa39996273e51eb946a452b1319e6e529183";
@@ -141,11 +142,21 @@ var moduleAssembly = typeof(ProjectFlowHiveScheduleEngine).Assembly;
 var artifactType = moduleAssembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveArtifactRenderer", throwOnError: true)!;
 var brandType = moduleAssembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveBrandAssets", throwOnError: true)!;
 var aiType = moduleAssembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveAiRequestFactory", throwOnError: true)!;
-var artifactRequest = new ProjectFlowHiveArtifactRequest(linearPlan, "Project FlowHive validation", "internal", true, true);
+var artifactPlan = linearPlan with
+{
+    Tasks = linearPlan.Tasks!.Select((task, index) => task with
+    {
+        Comments = index == 0 ? "Review comment" : "Confirm dependency",
+        Notes = index == 0 ? "Execution note" : "Validation note"
+    }).ToArray(),
+    Assignments = [new ProjectFlowHivePlanAssignmentInput("1", Guid.NewGuid(), "Engineer One", 100m, 16m)]
+};
+var artifactSchedule = ProjectFlowHiveScheduleEngine.Calculate(artifactPlan);
+var artifactRequest = new ProjectFlowHiveArtifactRequest(artifactPlan, "Project FlowHive validation", "internal", false, true);
 
 byte[] InvokeArtifact(string methodName) => (byte[])artifactType
     .GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!
-    .Invoke(null, [artifactRequest, linear])!;
+    .Invoke(null, [artifactRequest, artifactSchedule])!;
 
 var logo = (byte[])brandType
     .GetProperty("LogoJpeg", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!
@@ -156,6 +167,9 @@ Assert("MODULE_066_TEST_LOGO_HASH", logoHash == ExpectedLogoHash, "embedded US S
 var pdf = InvokeArtifact("BuildPdf");
 Assert("MODULE_066_TEST_PDF_HEADER", Encoding.ASCII.GetString(pdf, 0, Math.Min(pdf.Length, 32)).StartsWith("%PDF-1.7", StringComparison.Ordinal), "PDF preview has a valid governed header");
 Assert("MODULE_066_TEST_PDF_LOGO", Contains(pdf, logo), "PDF embeds the exact governed US Signal logo bytes");
+var pdfText = Encoding.ASCII.GetString(pdf);
+Assert("MODULE_066_TEST_PDF_PLANNER_COLUMNS", pdfText.Contains("TASK NAME", StringComparison.Ordinal) && pdfText.Contains("DURATION IN DAYS", StringComparison.Ordinal) && pdfText.Contains("PROGRESS", StringComparison.Ordinal) && pdfText.Contains("PREDECESSOR", StringComparison.Ordinal) && pdfText.Contains("COMMENTS", StringComparison.Ordinal) && pdfText.Contains("NOTES", StringComparison.Ordinal) && pdfText.Contains("ASSIGNED IDENTITY", StringComparison.Ordinal), "PDF contains the approved Planner columns");
+Assert("MODULE_066_TEST_PDF_COMMENTS_NOTES_IDENTITY", pdfText.Contains("Review comment", StringComparison.Ordinal) && pdfText.Contains("Execution note", StringComparison.Ordinal) && pdfText.Contains("Engineer One", StringComparison.Ordinal), "PDF exports task comments, notes, and assigned identity");
 
 var excel = InvokeArtifact("BuildExcel");
 Assert("MODULE_066_TEST_XLSX_HEADER", excel.Length > 4 && excel[0] == (byte)'P' && excel[1] == (byte)'K', "Excel preview is an Open XML ZIP package");
@@ -169,6 +183,14 @@ using (var archive = new ZipArchive(workbookStream, ZipArchiveMode.Read, leaveOp
     imageStream.CopyTo(imageBytes);
     var imageHash = Convert.ToHexString(SHA256.HashData(imageBytes.ToArray())).ToLowerInvariant();
     Assert("MODULE_066_TEST_XLSX_LOGO_HASH", imageHash == ExpectedLogoHash, "Excel embeds the exact governed US Signal logo bytes");
+}
+using (var workbookStream = new MemoryStream(excel, writable: false))
+using (var workbook = new XLWorkbook(workbookStream))
+{
+    var worksheet = workbook.Worksheet("Schedule");
+    var headers = string.Join("|", Enumerable.Range(1, 11).Select(column => worksheet.Cell(1, column).GetString()));
+    Assert("MODULE_066_TEST_XLSX_PLANNER_COLUMNS", headers == "WBS|Task Name|Start Date|End Date|Duration in Days|Progress|Predecessor|Type|Comments|Notes|Assigned Identity", "Excel Schedule uses the exact approved Planner column order");
+    Assert("MODULE_066_TEST_XLSX_COMMENTS_NOTES_IDENTITY", worksheet.Cell(2, 9).GetString() == "Review comment" && worksheet.Cell(2, 10).GetString() == "Execution note" && worksheet.Cell(2, 11).GetString() == "Engineer One", "Excel exports task comments, notes, and assigned identity");
 }
 
 var aiPreview = aiType

@@ -9,15 +9,14 @@ public static class Module006StandalonePipelineModule
     private const int CustomerNameMaxLength = 120;
     private const string CustomerExpansionMigrationId = "069_module006_customer_pipeline_expansion";
 
-    private static readonly HashSet<string> EditorRoles = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> AuthorizedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "SUPER_ADMINISTRATOR",
-        "ADMINISTRATOR",
-        "PROJECT_TEAM_COORDINATOR",
+        "PROJECT_MANAGER",
         "PROJECT_MANAGEMENT",
         "PROJECT_MANAGEMENT_LEAD",
-        "SALES",
-        "SALES_LEAD"
+        "PROJECT_MANAGEMENT_TEAM_LEAD",
+        "PM_TEAM_LEAD"
     };
 
     private static readonly Regex ProjectCodePattern = new(
@@ -82,7 +81,8 @@ public static class Module006StandalonePipelineModule
         string[] RoleCodes,
         bool IsViewAs)
     {
-        public bool CanEdit => !IsViewAs && RoleCodes.Any(role => EditorRoles.Contains(role));
+        public bool CanAccess => RoleCodes.Any(role => AuthorizedRoles.Contains(role));
+        public bool CanEdit => !IsViewAs && CanAccess;
     }
 
     private static async Task<IResult> GetPipelineAsync(HttpContext context)
@@ -92,6 +92,7 @@ public static class Module006StandalonePipelineModule
             await using var connection = await OpenConnectionAsync();
             var actor = await LoadActorAsync(connection, context);
             if (actor is null) return SessionRequired();
+            if (!actor.CanAccess) return AccessDenied();
 
             if (!await RuntimeReadyAsync(connection))
             {
@@ -912,8 +913,8 @@ public static class Module006StandalonePipelineModule
 
     private static IResult AccessDenied() => Results.Json(new
     {
-        status = "module006_edit_access_required",
-        message = "Your current role can view Module 006 but cannot create or change its pipeline records."
+        status = "module006_project_manager_access_required",
+        message = "Module 006 is restricted to Project Management and permanent Super Administrators."
     }, statusCode: StatusCodes.Status403Forbidden);
 
     private static IResult MigrationRequired() => Results.Json(new

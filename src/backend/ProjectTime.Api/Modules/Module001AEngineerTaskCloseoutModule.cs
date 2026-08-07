@@ -10,6 +10,9 @@ public static partial class ScopedRolePolicyModule
     {
         "ENGINEERING",
         "ENGINEER",
+        "ENGINEERING_LEAD",
+        "ENGINEERING_TEAM_LEAD",
+        "ENGINEERING_MANAGER",
         "SYSTEMS_ENGINEER",
         "NETWORK_ENGINEER",
         "ENTERPRISE_NETWORK_ENGINEER"

@@ -152,7 +152,9 @@ function localTask(wbsNumber, parentWbsNumber, name, description, canonicalTaskI
     risks: [],
     openQuestions: [],
     priority: 'normal',
-    citationIds: []
+    citationIds: [],
+    comments: '',
+    notes: ''
   };
 }
 
@@ -306,9 +308,6 @@ export default function ProjectFlowHiveCenter() {
   const assignments = portfolio?.assignments ?? [];
   const capabilities = capabilityResponse?.capabilities ?? [];
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
-  const aiPreviewIsDeterministicFloor =
-    String(aiPreview?.executionPath || '').toLowerCase().includes('deterministic')
-    && Number(aiPreview?.confidence) <= 0.55;
   const scheduleByWbs = useMemo(() => new Map(
     (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
   ), [schedule]);
@@ -634,7 +633,7 @@ export default function ProjectFlowHiveCenter() {
           plan: draftPlan,
           artifactTitle: `${draftPlan.planName} — internal preview`,
           audience: 'internal',
-          excludeNotes: true,
+          excludeNotes: false,
           acknowledgeInternalDraft: true
         })
       }), path);
@@ -769,7 +768,7 @@ export default function ProjectFlowHiveCenter() {
               <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for the complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Save creates an immutable FlowHive version without modifying canonical tasks.</p></div><button type="button" onClick={addTask}>Add implementation task</button></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
-                  <thead><tr><th>WBS</th><th>Task name</th><th>Status</th><th>Assigned to</th><th>Start</th><th>End</th><th>Duration</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Lead/lag</th><th>Details</th></tr></thead>
+                  <thead><tr><th>WBS</th><th>Task Name</th><th>Start Date</th><th>End Date</th><th>Duration in Days</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Comments</th><th>Notes</th><th>Assigned Identity</th></tr></thead>
                   <tbody>{draftPlan.tasks.filter((task) => task.isSummary || !collapsedPhases.has(task.parentWbsNumber)).map((task) => {
                     const index = draftPlan.tasks.indexOf(task);
                     const dependency = draftPlan.dependencies.find((item) => item.successorWbs === task.wbsNumber);
@@ -780,8 +779,6 @@ export default function ProjectFlowHiveCenter() {
                       return <tr key={task.clientTaskId || task.wbsNumber} className={`flowhive-phase-row phase-${String(task.phase || task.name).toLowerCase()}`}>
                         <td><button type="button" className="flowhive-phase-toggle" onClick={() => togglePhase(task.wbsNumber)} aria-expanded={!collapsedPhases.has(task.wbsNumber)}><span aria-hidden="true">{collapsedPhases.has(task.wbsNumber) ? '▸' : '▾'}</span>{task.wbsNumber}</button></td>
                         <td><strong>{task.name}</strong><small>{draftPlan.tasks.filter((candidate) => candidate.parentWbsNumber === task.wbsNumber).length} detailed task(s)</small></td>
-                        <td><span className={`flowhive-sheet-status ${scheduledTask?.status || task.status || 'not_started'}`}>{labelFrom(scheduledTask?.status || task.status)}</span></td>
-                        <td><span>Phase summary</span></td>
                         <td><span>{formatDate(scheduledTask?.startDate)}</span></td>
                         <td><span>{formatDate(scheduledTask?.endDate)}</span></td>
                         <td><strong>{scheduledTask?.durationWorkingDays ?? '—'}{scheduledTask ? 'd' : ''}</strong></td>
@@ -789,27 +786,31 @@ export default function ProjectFlowHiveCenter() {
                         <td><span>—</span></td>
                         <td><span>—</span></td>
                         <td><span>—</span></td>
-                        <td><button type="button" className="flowhive-row-action" onClick={() => togglePhase(task.wbsNumber)}>{collapsedPhases.has(task.wbsNumber) ? 'Expand' : 'Collapse'}</button></td>
+                        <td><span>{draftPlan.tasks.filter((candidate) => candidate.parentWbsNumber === task.wbsNumber).length} detailed task(s)</span></td>
+                        <td><span>Phase summary</span></td>
                       </tr>;
                     }
                     return (
                       <Fragment key={task.clientTaskId || `${task.wbsNumber}-${index}`}>
                         <tr className={`flowhive-work-row phase-${String(task.phase || '').toLowerCase()}`}>
                           <td><span className="flowhive-wbs-child">{task.wbsNumber}</span></td>
-                          <td><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><small>{task.description}</small></td>
-                          <td><select aria-label={`Status for ${task.name}`} value={task.status || 'not_started'} onChange={(event) => updateTask(index, 'status', event.target.value)}>{plannerStatuses.map((status) => <option key={status} value={status}>{labelFrom(status)}</option>)}</select></td>
-                          <td><select value={assignment?.resourceUserId || ''} onChange={(event) => updateTaskResource(task.wbsNumber, event.target.value)}><option value="">Unassigned</option>{identityOptions.map((identity) => <option key={identity.userId} value={identity.userId}>{identity.displayName}{identity.email ? ` — ${identity.email}` : ''}</option>)}</select></td>
+                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button></div><small>{task.description}</small></td>
                           <td><span>{formatDate(scheduledTask?.startDate)}</span></td>
                           <td><span>{formatDate(scheduledTask?.endDate)}</span></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Duration for ${task.name}`} type="number" min="1" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /><span>day(s)</span></div></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Progress for ${task.name}`} type="number" min="0" max="100" value={task.percentComplete || 0} onChange={(event) => updateTask(index, 'percentComplete', Number(event.target.value))} /><span>%</span></div></td>
                           <td><select value={dependency?.predecessorWbs || ''} onChange={(event) => updateDependencyForTask(index, 'predecessorWbs', event.target.value)}><option value="">Start</option>{draftPlan.tasks.filter((option) => !option.isSummary && option.wbsNumber !== task.wbsNumber).map((option) => <option key={option.wbsNumber} value={option.wbsNumber}>{option.wbsNumber}</option>)}</select></td>
                           <td><select aria-label={`Dependency type for ${task.name}`} value={dependency?.type || 'FS'} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'type', event.target.value)}>{['FS', 'SS', 'FF', 'SF'].map((type) => <option key={type} value={type}>{type}</option>)}</select></td>
-                          <td><input aria-label={`Lead or lag for ${task.name}`} type="number" min="-365" max="365" value={dependency?.lagWorkingDays || 0} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'lagWorkingDays', Number(event.target.value))} /></td>
-                          <td><button type="button" className="flowhive-row-action" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close' : 'View task'}</button></td>
+                          <td><textarea className="flowhive-sheet-textarea" aria-label={`Comments for ${task.name}`} value={task.comments || ''} onChange={(event) => updateTask(index, 'comments', event.target.value)} rows="2" placeholder="Review comments" /></td>
+                          <td><textarea className="flowhive-sheet-textarea" aria-label={`Notes for ${task.name}`} value={task.notes || ''} onChange={(event) => updateTask(index, 'notes', event.target.value)} rows="2" placeholder="Task notes" /></td>
+                          <td><select aria-label={`Assigned identity for ${task.name}`} value={assignment?.resourceUserId || ''} onChange={(event) => updateTaskResource(task.wbsNumber, event.target.value)}><option value="">Unassigned</option>{identityOptions.map((identity) => <option key={identity.userId} value={identity.userId}>{identity.displayName}{identity.email ? ` — ${identity.email}` : ''}</option>)}</select></td>
                         </tr>
-                        {detailOpen ? <tr className="flowhive-task-detail-row"><td colSpan="12"><div className="flowhive-task-detail-panel">
+                        {detailOpen ? <tr className="flowhive-task-detail-row"><td colSpan="11"><div className="flowhive-task-detail-panel">
                           <header><div><span>{task.phase} · WBS {task.wbsNumber}</span><h4>{task.name}</h4></div><div>{(task.citationIds || []).map((citationId) => <span key={citationId} className="flowhive-citation-chip">Private source [{citationId}]</span>)}</div></header>
+                          <div className="flowhive-task-control-grid">
+                            <label>Status<select aria-label={`Status for ${task.name}`} value={task.status || 'not_started'} onChange={(event) => updateTask(index, 'status', event.target.value)}>{plannerStatuses.map((status) => <option key={status} value={status}>{labelFrom(status)}</option>)}</select></label>
+                            <label>Lead / lag working days<input aria-label={`Lead or lag for ${task.name}`} type="number" min="-365" max="365" value={dependency?.lagWorkingDays || 0} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'lagWorkingDays', Number(event.target.value))} /></label>
+                          </div>
                           <label className="flowhive-task-description">Task description<textarea value={task.description || ''} onChange={(event) => updateTask(index, 'description', event.target.value)} rows="3" /></label>
                           <div className="flowhive-task-detail-grid">{taskDetailSections(task).map(([label, field, values]) => <label key={field}>{label}<textarea value={(values || []).join('\n')} onChange={(event) => updateTask(index, field, event.target.value.split('\n').map((value) => value.trim()).filter(Boolean))} placeholder={`Add ${label.toLowerCase()}, one per line`} rows={field === 'detailedSteps' ? 6 : 4} /></label>)}</div>
                         </div></td></tr> : null}
@@ -847,8 +848,8 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel flowhive-ai-layout">
           <div className="flowhive-ai-copy">
             <h3>Celar AI governed Project FlowHive generation</h3>
-            <p>Celar AI retrieves authorized private project evidence, auto-fills a detailed customer-ready delivery plan, validates the WBS and dependency network, and calculates the deterministic schedule.</p>
-            <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>Any eligible external fallback receives only a backend-owned identity-free capsule.</li><li>The local governed target remains the mandatory final fallback.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
+            <p>Celar AI retrieves the authorized private SOW and related project evidence, converts each supported scope line into a cited WBS task, estimates its working-day duration, and calculates a deterministic review timeline.</p>
+            <ol><li>The exact stored Module 064 order is followed for this capability.</li><li>Private SOW, GSD, design, task, and assignment evidence stays inside the governed boundary.</li><li>A citation-ready private plan is required; an uncited generic template is never substituted.</li><li>Each task keeps its evidence citations, duration, estimated hours, dependencies, start date, and finish date in the review plan.</li><li>Every output requires PM and Engineering review before baseline approval or customer delivery.</li></ol>
           </div>
           {!draftPlan ? <EmptyState>Create or load a plan draft first.</EmptyState> : <div className="flowhive-ai-form">
             <label>Requested outcome<textarea value={requestedOutcome} onChange={(event) => setRequestedOutcome(event.target.value)} rows={5} /></label>
@@ -859,8 +860,10 @@ export default function ProjectFlowHiveCenter() {
               <header><div><span>Celar AI result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
               <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
               <p>{aiPreview.confidenceExplanation}</p>
-              {aiPreviewIsDeterministicFloor ? <aside className="flowhive-confidence-help"><strong>Why confidence is 35%</strong><span>This is the governed deterministic fallback score: the approved private model did not produce an eligible source-grounded plan, so Celar AI returned the limited deterministic draft. Improve approved FlowHive-category evidence in Module 011, then generate again. Confidence rises from evidence coverage and validation—not from changing the displayed score.</span></aside> : null}
-              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description</th><th>Duration</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{labelFrom(task.status)}</td></tr>)}</tbody></table></div> : null}
+              {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description &amp; citations</th><th>Duration</th><th>Start</th><th>Finish</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => {
+                const scheduled = aiPreview.schedule?.tasks?.find((row) => row.wbsNumber === task.wbsNumber);
+                return <tr key={task.clientTaskId || `${task.wbsNumber}-${index}`}><td><code>{task.wbsNumber}</code></td><td><strong>{task.name}</strong></td><td>{task.description}</td><td>{task.durationWorkingDays} day(s)</td><td>{formatDate(task.estimatedStartDate || scheduled?.startDate)}</td><td>{formatDate(task.estimatedFinishDate || scheduled?.endDate)}</td><td>{labelFrom(task.status)}</td></tr>;
+              })}</tbody></table></div> : null}
               {aiPreview.citations?.length ? <details open><summary>Private source citations ({aiPreview.citations.length})</summary><ul>{aiPreview.citations.map((citation) => <li key={citation.citationId}><strong>[{citation.citationId}] {citation.originalFileName}</strong> · {citation.documentVersion} · {citation.citationAnchor}</li>)}</ul></details> : null}
               {aiPreview.missingEvidence?.length ? <details open><summary>Missing evidence</summary><ul>{aiPreview.missingEvidence.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
               {aiPreview.conflicts?.length ? <details open><summary>Conflicts</summary><ul>{aiPreview.conflicts.map((value, index) => <li key={index}>{value}</li>)}</ul></details> : null}
@@ -874,7 +877,7 @@ export default function ProjectFlowHiveCenter() {
       {activeView === 'exports' ? (
         <div className="flowhive-view-panel">
           <div className="flowhive-export-hero"><img src={usSignalLogoUrl} alt="US Signal" /><div><h3>US Signal branded internal artifacts</h3><p>PDF and Excel source embeds the governed logo. Every artifact is watermarked as an internal draft and creates no customer link.</p><code>Logo SHA-256: {artifactReadiness?.branding?.sha256 || 'Loading governed checksum…'}</code></div></div>
-          <div className="flowhive-export-grid"><article><h4>Project schedule PDF</h4><p>Branded summary, paginated task schedule, critical indicators, date range, and artifact-control footer.</p><button type="button" onClick={() => downloadArtifact('pdf')} disabled={!draftPlan || busy}>{busy === 'pdf' ? 'Generating…' : 'Download internal PDF draft'}</button></article><article><h4>Planning workbook</h4><p>Branded summary, schedule, dependencies, and artifact-control sheets with logo checksum evidence.</p><button type="button" onClick={() => downloadArtifact('excel')} disabled={!draftPlan || busy}>{busy === 'excel' ? 'Generating…' : 'Download internal Excel draft'}</button></article><article className="locked"><h4>Customer sharing link</h4><p>Expiration, customer isolation, delivery, and access auditing require a separately authorized external-sharing phase.</p><button type="button" disabled>Create customer link — locked</button></article></div>
+          <div className="flowhive-export-grid"><article><h4>Project schedule PDF</h4><p>US Signal-branded landscape schedule with the Planner columns, comments, notes, assigned identity, date range, and artifact-control footer.</p><button type="button" onClick={() => downloadArtifact('pdf')} disabled={!draftPlan || busy}>{busy === 'pdf' ? 'Generating…' : 'Download internal PDF draft'}</button></article><article><h4>Planning workbook</h4><p>US Signal-branded workbook with the exact Planner column order plus summary, dependencies, and artifact-control sheets.</p><button type="button" onClick={() => downloadArtifact('excel')} disabled={!draftPlan || busy}>{busy === 'excel' ? 'Generating…' : 'Download internal Excel draft'}</button></article><article className="locked"><h4>Customer sharing link</h4><p>Expiration, customer isolation, delivery, and access auditing require a separately authorized external-sharing phase.</p><button type="button" disabled>Create customer link — locked</button></article></div>
         </div>
       ) : null}
 
