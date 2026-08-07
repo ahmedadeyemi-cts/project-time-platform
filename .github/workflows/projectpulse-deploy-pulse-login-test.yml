@@ -1,0 +1,407 @@
+name: ProjectPulse Deploy Pulse Login Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact verified Pulse login source commit
+        required: true
+        default: fbc819d2860dafc8e33dd879f177d2c9c494148a
+        type: string
+      confirmation:
+        description: Enter DEPLOY-PULSE-LOGIN-TO-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Guarded Pulse login web-only test deployment
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EXPECTED_RELEASE_COMMIT: fbc819d2860dafc8e33dd879f177d2c9c494148a
+      EXPECTED_PUBLIC_URL: https://phd-west-test.onenecklab.com
+      EXPECTED_WEB_APP: ca-phd-test-web-westus3
+      EXPECTED_API_APP: ca-phd-test-api-westus3
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@v5
+        with:
+          path: control
+          fetch-depth: 0
+
+      - name: Check out exact Pulse login source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: release
+          fetch-depth: 1
+
+      - name: Guard workflow source, target, and exact release
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          WORKFLOW_SOURCE_REF: ${{ github.ref }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          WEB_APP: ${{ vars.AZURE_WEB_APP }}
+          API_APP: ${{ vars.AZURE_API_APP }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
+            echo 'Dispatch this workflow from main.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-PULSE-LOGIN-TO-TEST' ]] || {
+            echo 'The deployment confirmation text does not match.' >&2
+            exit 1
+          }
+          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'release_commit must be a complete 40-character SHA.' >&2
+            exit 1
+          }
+          [[ "${PUBLIC_URL%/}" == "$EXPECTED_PUBLIC_URL" ]] || {
+            echo "The protected Test URL does not match: $PUBLIC_URL" >&2
+            exit 1
+          }
+          [[ "$WEB_APP" == "$EXPECTED_WEB_APP" ]] || {
+            echo "The protected Test web app does not match: $WEB_APP" >&2
+            exit 1
+          }
+          [[ "$API_APP" == "$EXPECTED_API_APP" ]] || {
+            echo "The protected Test API app does not match: $API_APP" >&2
+            exit 1
+          }
+
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          TARGET_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$WORKFLOW_SOURCE_SHA" ]] || {
+            echo 'The deployment-control checkout does not match this workflow run.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]] || {
+            echo 'The release checkout does not match the requested commit.' >&2
+            exit 1
+          }
+          [[ "$TARGET_COMMIT" == "$EXPECTED_RELEASE_COMMIT" ]] || {
+            echo 'Only the verified Pulse login release may deploy.' >&2
+            exit 1
+          }
+          git -C control merge-base --is-ancestor "$TARGET_COMMIT" HEAD || {
+            echo 'The Pulse login release is not an ancestor of the deployment controls.' >&2
+            exit 1
+          }
+
+          mapfile -t CONTROL_DELTA < <(git -C control diff --name-only "$TARGET_COMMIT" HEAD)
+          [[ "${#CONTROL_DELTA[@]}" -eq 1 ]] \
+            && [[ "${CONTROL_DELTA[0]}" == '.github/workflows/projectpulse-deploy-pulse-login-test.yml' ]] || {
+            printf 'Unexpected files exist between the release and deployment-control commit:\n' >&2
+            printf '  %s\n' "${CONTROL_DELTA[@]}" >&2
+            exit 1
+          }
+
+          APP='release/src/frontend/project-time-web/src/App.jsx'
+          CSS='release/src/frontend/project-time-web/src/project-health-dashboard-login.css'
+          VALIDATOR='release/src/frontend/project-time-web/scripts/validate-project-health-dashboard-login.mjs'
+          LOGO='release/src/frontend/project-time-web/brand/USSNavyStacked.png'
+
+          for required in \
+            "$APP" "$CSS" "$VALIDATOR" "$LOGO" \
+            release/src/frontend/project-time-web/package-lock.json \
+            release/deployment/containers/web/Dockerfile \
+            control/scripts/build-pr55-acr-image.sh \
+            control/scripts/wait-containerapp-ready-revision.sh; do
+            test -f "$required"
+          done
+
+          [[ "$(sha256sum "$LOGO" | awk '{print $1}')" == 'f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' ]]
+          [[ "$(stat -c '%s' "$LOGO")" == '31117' ]]
+          grep -Fq "import usSignalLogoUrl from '../brand/USSNavyStacked.png';" "$APP"
+          grep -Fq '<SignalLogo productName="Pulse" ariaLabel="US Signal Pulse" />' "$APP"
+          grep -Fq 'Every stage of delivery.' "$APP"
+          grep -Fq 'One intelligent workspace.' "$APP"
+          grep -Fq 'Welcome to Pulse' "$APP"
+          grep -Fq 'Animated view of the Pulse operational ecosystem' "$APP"
+          grep -Fq 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif' "$APP"
+          grep -Fq 'function ProjectHealthDashboardLoginHero({ showSignalMotion = false })' "$APP"
+          grep -Fq '{!showSignalMotion ? (' "$APP"
+          grep -Fq "<ProjectHealthDashboardLoginHero showSignalMotion={loginRoute?.loginMethod === 'local'} />" "$APP"
+          ! grep -Fq 'phd-auth-motion-switcher' "$APP"
+          ! grep -Fq 'setMotionMode' "$APP"
+          grep -Fq "'PULSE_US_SIGNAL_MOTION_PASSWORD_ONLY'" "$VALIDATOR"
+          echo "target_commit=$TARGET_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'PULSE_LOGIN_RELEASE_GUARDS=PASS'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
+
+      - name: Validate and build exact Pulse frontend source
+        working-directory: release/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/validate-project-health-dashboard-login.mjs
+          npm ci --no-audit --no-fund
+          npm run build
+          [[ "$(sha256sum dist/assets/*.png | awk '$1 == "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b" { count += 1 } END { print count + 0 }')" -eq 1 ]]
+          echo 'PULSE_LOGIN_SOURCE_VALIDATION=PASS'
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture immutable rollback web image and unchanged API image
+        id: before
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RAW_WEB_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          RAW_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          WEB_MODE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.configuration.activeRevisionsMode' -o tsv)"
+          [[ -n "$RAW_WEB_IMAGE" && -n "$RAW_API_IMAGE" ]] || {
+            echo 'Current API or web image could not be captured.' >&2
+            exit 1
+          }
+          [[ "${WEB_MODE,,}" == single ]] || {
+            echo 'The web Container App must use single-revision mode.' >&2
+            exit 1
+          }
+
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) echo "Rollback image is outside the approved ACR: $image" >&2; return 1 ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv)"
+            [[ "$digest" == sha256:* ]]
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "api_image=$RAW_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "CAPTURED_PULSE_LOGIN_ROLLBACK_IMAGE=$OLD_WEB_IMAGE"
+          echo "CAPTURED_UNCHANGED_API_IMAGE=$RAW_API_IMAGE"
+
+      - name: Build exact immutable Pulse login web image
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          SHA='${{ steps.release.outputs.target_commit }}'
+          WEB_REPOSITORY='project-health-dashboard-web'
+          WEB_DIGEST="$(
+            ../control/scripts/build-pr55-acr-image.sh \
+              '${{ vars.AZURE_ACR_NAME }}' \
+              "$WEB_REPOSITORY:pulse-login-$SHA" \
+              deployment/containers/web/Dockerfile \
+              .
+          )"
+          [[ "$WEB_DIGEST" == sha256:* ]]
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'"$WEB_REPOSITORY@$WEB_DIGEST"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "PULSE_LOGIN_IMMUTABLE_WEB_IMAGE=$WEB_IMAGE"
+
+      - name: Deploy exact Pulse login web candidate
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SUFFIX="pulselogin-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          az containerapp update \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "$SUFFIX" \
+            --output none
+
+      - name: Wait for exact Pulse login web revision
+        shell: bash
+        run: >-
+          bash control/scripts/wait-containerapp-ready-revision.sh
+          '${{ vars.AZURE_RESOURCE_GROUP }}'
+          '${{ vars.AZURE_WEB_APP }}'
+          '${{ steps.deploy_web.outputs.revision }}'
+          '${{ steps.build.outputs.web_image }}'
+          60
+          10
+
+      - name: Validate served Pulse assets, official logo, and unchanged API
+        id: validate_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE_URL='${{ vars.PUBLIC_URL }}'; BASE_URL="${BASE_URL%/}"
+          [[ "$BASE_URL" == "$EXPECTED_PUBLIC_URL" ]]
+          READY=false
+          LAST_STATUS='not-requested'
+
+          absolute_asset_url() {
+            local asset="$1"
+            case "$asset" in
+              http://*|https://*) printf '%s\n' "$asset" ;;
+              /*) printf '%s%s\n' "$BASE_URL" "$asset" ;;
+              *) printf '%s/%s\n' "$BASE_URL" "$asset" ;;
+            esac
+          }
+
+          for attempt in $(seq 1 36); do
+            BUSTER="pulse-login-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            HTML_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/pulse-index.html -w '%{http_code}' "$BASE_URL/?release_check=$BUSTER" || true)"
+            LAST_STATUS="html=$HTML_STATUS"
+            if [[ "$HTML_STATUS" == 200 ]]; then
+              JS_PATH="$(sed -nE 's/.*src="([^"]+\.js)".*/\1/p' /tmp/pulse-index.html | head -1)"
+              CSS_PATH="$(sed -nE 's/.*href="([^"]+\.css)".*/\1/p' /tmp/pulse-index.html | head -1)"
+              if [[ -n "$JS_PATH" && -n "$CSS_PATH" ]]; then
+                JS_URL="$(absolute_asset_url "$JS_PATH")"
+                CSS_URL="$(absolute_asset_url "$CSS_PATH")"
+                JS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-app.js -w '%{http_code}' "$JS_URL?release_check=$BUSTER" || true)"
+                CSS_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-app.css -w '%{http_code}' "$CSS_URL?release_check=$BUSTER" || true)"
+                LAST_STATUS="html=$HTML_STATUS,js=$JS_STATUS,css=$CSS_STATUS"
+                tr -d '[:space:]' < /tmp/pulse-app.css > /tmp/pulse-app.compact.css
+                LOGO_PATH="$(grep -oE '[/A-Za-z0-9._-]+\.png' /tmp/pulse-app.js | grep -E '/assets/ussignal-[A-Za-z0-9_-]+\.png$' | head -1 || true)"
+                LOGO_STATUS='not-resolved'
+                LOGO_SHA='not-resolved'
+                if [[ -n "$LOGO_PATH" ]]; then
+                  LOGO_URL="$(absolute_asset_url "$LOGO_PATH")"
+                  LOGO_STATUS="$(curl -sS -L -H 'Cache-Control: no-cache, no-store' -o /tmp/pulse-logo.png -w '%{http_code}' "$LOGO_URL?release_check=$BUSTER" || true)"
+                  if [[ "$LOGO_STATUS" == 200 ]]; then
+                    LOGO_SHA="$(sha256sum /tmp/pulse-logo.png | awk '{print $1}')"
+                  fi
+                fi
+                LAST_STATUS="$LAST_STATUS,logo=$LOGO_STATUS"
+
+                if [[ "$JS_STATUS" == 200 && "$CSS_STATUS" == 200 && "$LOGO_STATUS" == 200 ]] \
+                  && [[ "$LOGO_SHA" == 'f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b' ]] \
+                  && grep -Fq 'Welcome to Pulse' /tmp/pulse-app.js \
+                  && grep -Fq 'Every stage of delivery.' /tmp/pulse-app.js \
+                  && grep -Fq 'One intelligent workspace.' /tmp/pulse-app.js \
+                  && grep -Fq 'Animated view of the Pulse operational ecosystem' /tmp/pulse-app.js \
+                  && grep -Fq 'US Signal animated connected infrastructure' /tmp/pulse-app.js \
+                  && grep -Fq 'https://ussignal.com/wp-content/uploads/2025/01/Comp-33_4.gif' /tmp/pulse-app.js \
+                  && grep -Fq '.phd-auth-experience' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.phd-platform-motion' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.phd-signal-motion' /tmp/pulse-app.compact.css \
+                  && grep -Fq '.phd-ai-core' /tmp/pulse-app.compact.css; then
+                  READY=true
+                  echo "PULSE_LOGIN_SERVED_ASSETS_READY attempt=$attempt js=$JS_PATH css=$CSS_PATH logo=$LOGO_PATH"
+                  break
+                fi
+              fi
+            fi
+            sleep 10
+          done
+
+          [[ "$READY" == true ]] || {
+            echo "The served web bundle did not expose the verified Pulse login contract: $LAST_STATUS" >&2
+            exit 1
+          }
+
+          READY_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.latestReadyRevisionName' -o tsv)"
+          [[ "$READY_REVISION" == '${{ steps.deploy_web.outputs.revision }}' ]]
+          ACTIVE_WEB_IMAGE="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$READY_REVISION" --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]]
+          CURRENT_API_IMAGE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query 'properties.template.containers[0].image' -o tsv)"
+          [[ "$CURRENT_API_IMAGE" == '${{ steps.before.outputs.api_image }}' ]] || {
+            echo 'The API image changed during a web-only deployment.' >&2
+            exit 1
+          }
+
+          HEALTH_STATUS="$(curl -sS -L -o /dev/null -w '%{http_code}' "$BASE_URL/health?release_check=${GITHUB_RUN_ID}" || true)"
+          VERSION_STATUS="$(curl -sS -L -o /dev/null -w '%{http_code}' "$BASE_URL/api/version?release_check=${GITHUB_RUN_ID}" || true)"
+          [[ "$HEALTH_STATUS" == 200 && "$VERSION_STATUS" == 200 ]] || {
+            echo "Health validation failed: health=$HEALTH_STATUS version=$VERSION_STATUS" >&2
+            exit 1
+          }
+
+          echo "ready_revision=$READY_REVISION" >> "$GITHUB_OUTPUT"
+          echo 'PULSE_LOGIN_WEB_VALIDATION=PASS'
+          echo 'PULSE_LOGIN_OFFICIAL_LOGO_CHECKSUM=PASS'
+          echo 'PULSE_LOGIN_API_IMAGE=UNCHANGED'
+
+      - name: Write Pulse login deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/pulse-login-test-deployment.json <<JSON
+          {
+            "environment": "test",
+            "publicUrl": "${{ vars.PUBLIC_URL }}",
+            "releaseCommit": "${{ steps.release.outputs.target_commit }}",
+            "workflowCommit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "webImage": "${{ steps.build.outputs.web_image }}",
+            "previousWebImage": "${{ steps.before.outputs.old_web_image }}",
+            "webRevision": "${{ steps.validate_web.outputs.ready_revision }}",
+            "apiImage": "${{ steps.before.outputs.api_image }}",
+            "apiDeployment": "unchanged",
+            "database": "unchanged",
+            "migrations": "unchanged",
+            "secrets": "unchanged",
+            "officialLogoSha256": "f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b",
+            "defaultMotion": "Pulse operational ecosystem",
+            "localPasswordMotion": "US Signal Comp-33_4.gif",
+            "servedAssetValidation": "passed"
+          }
+          JSON
+
+      - name: Upload Pulse login deployment evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-login-test-${{ github.run_id }}
+          path: evidence/pulse-login-test-deployment.json
+          retention-days: 30
+
+      - name: Restore captured web image on failure
+        if: ${{ failure() && steps.deploy_web.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          ACTIVE="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query 'properties.template.containers[0].image' -o tsv 2>/dev/null)"
+          if [[ "$ACTIVE" == '${{ steps.build.outputs.web_image }}' ]]; then
+            SUFFIX="pulseloginrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            REVISION='${{ vars.AZURE_WEB_APP }}'"--$SUFFIX"
+            az containerapp update \
+              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.before.outputs.old_web_image }}' \
+              --revision-suffix "$SUFFIX" \
+              --output none
+            bash control/scripts/wait-containerapp-ready-revision.sh \
+              '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              '${{ vars.AZURE_WEB_APP }}' \
+              "$REVISION" \
+              '${{ steps.before.outputs.old_web_image }}' \
+              60 \
+              10
+            echo 'PULSE_LOGIN_WEB_ROLLBACK=COMPLETE'
+          else
+            echo "Web rollback skipped because another image is active: $ACTIVE" >&2
+          fi
