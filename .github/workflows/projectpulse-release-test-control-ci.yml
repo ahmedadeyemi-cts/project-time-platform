@@ -146,7 +146,7 @@ jobs:
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'DEPLOY-E2AB37C9-MIGRATIONS-071-074-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'DEPLOY-951C79E1-ENTERPRISE-OPERATIONS-TO-TEST' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'MIXED_DATABASE_DECLARATION_SHAPE=VERIFIED' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'module011DatabaseConfiguration' scripts/release-test/verify-runtime.mjs
           grep -Fq 'module011PrivatePipeline' scripts/release-test/verify-runtime.mjs
@@ -159,13 +159,13 @@ jobs:
 
           manifest = json.loads(Path("deployment/releases/test/current-main-acae6fda-20260805.json").read_text())
           assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "current-main-e2ab37c9-20260806"
+          assert manifest["releaseName"] == "current-main-951c79e1-20260807"
           assert manifest["environment"] == "test"
           assert manifest["aiReleasePhase"] == "disabled"
           assert manifest["routingAuthority"] == "database_managed_active"
           assert manifest["allowSanitizedExternalEscalation"] is True
           assert manifest["sanitizedExternalFallbackEnabled"] is True
-          assert manifest["sourceSha"] == "e2ab37c93b565a4e1d5a94ef5e54efaf3d22e6a3"
+          assert manifest["sourceSha"] == "951c79e1bb12426c4f2aeaf10e0a3a875a4878e6"
           assert manifest["flowHiveIncluded"] is True
           assert manifest["migration074Included"] is True
           assert [item["id"] for item in manifest["migrations"]] == [
