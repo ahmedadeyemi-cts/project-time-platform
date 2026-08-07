@@ -138,7 +138,7 @@ assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id=
 assert_eq "$first_applied" "$(value "SELECT applied_at FROM schema_migrations WHERE migration_id='079_coordinated_runtime_ai_document_rbac_repair'")" migration_timestamp_immutable
 assert_eq 1 "$(value "SELECT COUNT(*) FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" local_file_bridged_once
 assert_eq 0 "$(value "SELECT COUNT(*) FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000002'")" link_only_not_ingested
-assert_eq 'sow|work_register_bridge|t|t|active|not_started|not_requested' "$(value "SELECT document_category||'|'||upload_source||'|'||engineering_visible||'|'||ai_timesheet_context_enabled||'|'||document_status||'|'||extraction_status||'|'||pulse_ai_processing_status FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" sow_private_pipeline_contract
+assert_eq 'sow|work_register_bridge|true|true|active|not_started|not_requested' "$(value "SELECT document_category||'|'||upload_source||'|'||engineering_visible||'|'||ai_timesheet_context_enabled||'|'||document_status||'|'||extraction_status||'|'||pulse_ai_processing_status FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" sow_private_pipeline_contract
 assert_eq 6 "$(value "SELECT COUNT(*) FROM module079_role_grants")" role_grants_recorded
 
 psql_exec -qc "UPDATE project_intake_documents SET extraction_status='ready',pulse_ai_processing_status='ready',pulse_ai_active_version_id='40000000-0000-0000-0000-000000000001' WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'"
@@ -146,9 +146,9 @@ psql_exec -qc "UPDATE work_register_documents SET stored_file_path='/private/upl
 assert_eq 'not_started|not_requested|' "$(value "SELECT extraction_status||'|'||pulse_ai_processing_status||'|'||COALESCE(pulse_ai_active_version_id::text,'') FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" changed_file_requeued
 
 psql_exec -qc "UPDATE work_register_documents SET status='archived' WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'"
-assert_eq 'archived|f' "$(value "SELECT document_status||'|'||is_active FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" archived_source_retired
+assert_eq 'archived|false' "$(value "SELECT document_status||'|'||is_active FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" archived_source_retired
 psql_exec -qc "DELETE FROM work_register_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'"
-assert_eq 'archived|f' "$(value "SELECT document_status||'|'||is_active FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" deleted_source_preserves_archived_evidence
+assert_eq 'archived|false' "$(value "SELECT document_status||'|'||is_active FROM project_intake_documents WHERE work_register_document_id='10000000-0000-0000-0000-000000000001'")" deleted_source_preserves_archived_evidence
 
 expect_failure guarded_rollback 'Rollback 079 refused' psql_exec -f "$ROLLBACK"
 assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='079_coordinated_runtime_ai_document_rbac_repair'")" guarded_rollback_preserves_migration
