@@ -28,6 +28,7 @@ const enterpriseContracts = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterpri
 const enterpriseService = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
 const privateRagContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
 const privateRagService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+const privateRetrievalAuthorization = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRetrievalAuthorizationService.cs');
 const knowledgeFabric = read('src/backend/ProjectTime.Api/Ai/CelarAiKnowledgeFabricService.cs');
 const externalReasoning = read('src/backend/ProjectTime.Api/Ai/CelarAiExternalReasoningService.cs');
 const compileTargets = read('src/backend/ProjectTime.Api/Directory.Build.targets');
@@ -236,7 +237,7 @@ if (saveEstimateStart < 0 || /startDate|dueDate|plannedStartDate|plannedEndDate/
 
 const refusalGate = backend.indexOf('var compositionRefused = string.Equals(');
 const evidenceGate = backend.indexOf('var groundedStatus = composition.Status is');
-const projectEvidencePreflight = backend.indexOf('var projectEvidence = await LoadProjectEvidenceReadinessAsync(connection, projectId, cancellationToken);');
+const projectEvidencePreflight = backend.indexOf('var projectEvidence = await authorization.LoadProjectEvidenceReadinessAsync(');
 const compositionCall = backend.indexOf('var composition = await enterprise.ComposeAsync(');
 const taskProjection = backend.indexOf('var generatedTasks = (composition.FlowHivePlan?.Tasks ?? [])');
 if (refusalGate < 0 || evidenceGate < 0 || taskProjection < 0 || refusalGate > taskProjection || evidenceGate > taskProjection) {
@@ -262,10 +263,23 @@ for (const token of [
   'projectReadyDocumentCount = projectEvidence.ReadyDocumentCount',
   'projectActiveChunkCount = projectEvidence.ActiveChunkCount',
   'projectEvidence.ReadyDocumentCount == 0',
+  'PulseAiPrivateRetrievalAuthorizationService authorization',
+  'ToPrivateRagAccess(access)',
   'PulseAiPrivateRagPolicy.FlowHiveCategories',
-  'ANY(@flowhive_categories)',
   'No AI target was called and no draft was saved.'
 ]) requireText(backend, token, 'Project Forge selected-project evidence preflight');
+for (const token of [
+  'ProjectDocumentAuthorizationPredicate',
+  'LoadProjectEvidenceReadinessAsync(',
+  '@is_pm_lead = TRUE',
+  'reporting_relationships',
+  'projectpulse_team_scope_assignments',
+  'AddProjectAuthorizationParameters(command, access)'
+]) requireText(
+  privateRetrievalAuthorization,
+  token,
+  'Project Forge prompt-assembly authorization parity'
+);
 for (const token of [
   'const projectEvidenceMissing = Boolean(',
   'aiConnection.projectReadyDocumentCount',

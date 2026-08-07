@@ -19,10 +19,10 @@ public static partial class ProjectForgeModule
 
     public static WebApplication MapProjectForgeEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
+        app.MapGet("/api/project-forge/bootstrap", (Func<Guid?, Guid?, string?, Guid?, HttpContext, CelarAiKnowledgeFabricService, PulseAiPrivateRetrievalAuthorizationService, ILoggerFactory, CancellationToken, Task<IResult>>)GetBootstrapAsync);
         app.MapPost("/api/project-forge/plans", (Func<ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)CreatePlanAsync);
         app.MapPut("/api/project-forge/plans/{planId:guid}", (Func<Guid, ProjectForgePlanSaveRequest, HttpContext, CancellationToken, Task<IResult>>)UpdatePlanAsync);
-        app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
+        app.MapPost("/api/project-forge/projects/{projectId:guid}/ai-drafts", (Func<Guid, ProjectForgeAiDraftRequest, HttpContext, CelarAiEnterprisePlatformService, PulseAiPrivateRetrievalAuthorizationService, CancellationToken, Task<IResult>>)GenerateAiDraftAsync);
         app.MapPost("/api/project-forge/ai-drafts/{planId:guid}/assign-reviewer", (Func<Guid, ProjectForgeAssignReviewerRequest, HttpContext, CancellationToken, Task<IResult>>)AssignReviewerAsync);
         app.MapPatch("/api/project-forge/plan-tasks/{planTaskId:guid}/estimate", (Func<Guid, ProjectForgeEstimatePatchRequest, HttpContext, CancellationToken, Task<IResult>>)PatchEstimateAsync);
         app.MapPost("/api/project-forge/plans/{planId:guid}/adopt", (Func<Guid, ProjectForgeAdoptPlanRequest, HttpContext, CancellationToken, Task<IResult>>)AdoptPlanAsync);
@@ -48,6 +48,7 @@ public static partial class ProjectForgeModule
         Guid? planId,
         HttpContext context,
         CelarAiKnowledgeFabricService knowledgeFabricService,
+        PulseAiPrivateRetrievalAuthorizationService authorization,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -157,8 +158,13 @@ public static partial class ProjectForgeModule
             }, cancellationToken);
             var holidays = await ReadJsonRowsAsync(connection, HolidaysSql, null, cancellationToken);
             var projectEvidence = selectedProjectId.HasValue
-                ? await LoadProjectEvidenceReadinessAsync(connection, selectedProjectId.Value, cancellationToken)
-                : ProjectForgeProjectEvidenceReadiness.Empty;
+                ? await authorization.LoadProjectEvidenceReadinessAsync(
+                    connection,
+                    ToPrivateRagAccess(access),
+                    selectedProjectId.Value,
+                    PulseAiPrivateRagPolicy.FlowHiveCategories,
+                    cancellationToken)
+                : PulseAiPrivateProjectEvidenceReadiness.Empty;
             CelarAiKnowledgeFabricSnapshot? knowledgeFabric = null;
             CelarAiCapabilityConnectionStatus? forgeConnection = null;
             try
@@ -382,6 +388,7 @@ public static partial class ProjectForgeModule
         ProjectForgeAiDraftRequest request,
         HttpContext context,
         CelarAiEnterprisePlatformService enterprise,
+        PulseAiPrivateRetrievalAuthorizationService authorization,
         CancellationToken cancellationToken)
     {
         var identity = Identities(context);
@@ -399,7 +406,12 @@ public static partial class ProjectForgeModule
         var project = await LoadProjectIdentityAsync(connection, projectId, cancellationToken);
         if (project is null) return Results.NotFound(new { status = "project_not_found" });
 
-        var projectEvidence = await LoadProjectEvidenceReadinessAsync(connection, projectId, cancellationToken);
+        var projectEvidence = await authorization.LoadProjectEvidenceReadinessAsync(
+            connection,
+            ToPrivateRagAccess(access),
+            projectId,
+            PulseAiPrivateRagPolicy.FlowHiveCategories,
+            cancellationToken);
         if (projectEvidence.ReadyDocumentCount == 0)
         {
             return Results.UnprocessableEntity(new
@@ -2151,56 +2163,8 @@ public static partial class ProjectForgeModule
             : (string.Empty, Results.Json(new { status = "configuration_missing", missing = config.Missing }, statusCode: StatusCodes.Status503ServiceUnavailable));
     }
 
-    private static async Task<ProjectForgeProjectEvidenceReadiness> LoadProjectEvidenceReadinessAsync(
-        NpgsqlConnection connection,
-        Guid projectId,
-        CancellationToken cancellationToken)
-    {
-        const string sql = """
-            SELECT
-                COUNT(DISTINCT document.project_intake_document_id)::bigint,
-                COUNT(DISTINCT document.project_intake_document_id) FILTER (
-                    WHERE LOWER(COALESCE(document.document_category, document.document_type, '')) IN (
-                        'sow','statement_of_work','gsd','global_solution_design'
-                    )
-                )::bigint,
-                COUNT(DISTINCT version.pulse_ai_document_version_id)::bigint,
-                COUNT(DISTINCT chunk.chunk_id)::bigint,
-                COUNT(DISTINCT chunk.chunk_id) FILTER (WHERE chunk.embedding_status = 'ready')::bigint,
-                MAX(chunk.processed_at)
-            FROM project_intake_documents document
-            JOIN pulse_ai_document_versions version
-              ON version.pulse_ai_document_version_id = document.pulse_ai_active_version_id
-             AND version.project_intake_document_id = document.project_intake_document_id
-             AND version.authority_status IN ('approved','canonical')
-            JOIN pulse_ai_document_chunks chunk
-              ON chunk.pulse_ai_document_version_id = version.pulse_ai_document_version_id
-             AND chunk.project_intake_document_id = document.project_intake_document_id
-             AND chunk.project_id = document.project_id
-             AND chunk.is_active = TRUE
-             AND chunk.index_status IN ('lexical_ready','embedding_ready','ready')
-            WHERE document.project_id = @project_id
-              AND document.is_active = TRUE
-              AND COALESCE(document.engineering_visible, FALSE) = TRUE
-              AND LOWER(COALESCE(document.document_category, document.document_type, '')) = ANY(@flowhive_categories)
-              AND COALESCE(document.pulse_ai_processing_status, '') = 'ready';
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("project_id", projectId);
-        command.Parameters.AddWithValue(
-            "flowhive_categories",
-            NpgsqlDbType.Array | NpgsqlDbType.Text,
-            PulseAiPrivateRagPolicy.FlowHiveCategories);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return ProjectForgeProjectEvidenceReadiness.Empty;
-        return new ProjectForgeProjectEvidenceReadiness(
-            reader.GetInt64(0),
-            reader.GetInt64(1),
-            reader.GetInt64(2),
-            reader.GetInt64(3),
-            reader.GetInt64(4),
-            reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5));
-    }
+    private static PulseAiPrivateRagAccess ToPrivateRagAccess(ProjectForgeAccess access) =>
+        new(access.EffectiveUserId, access.IsActive, access.Roles, access.Permissions);
 
     private static async Task<(NpgsqlConnection? Connection, ProjectForgeAccess? Access, IResult? Error)> OpenForWriteAsync(HttpContext context, CancellationToken cancellationToken)
     {
@@ -2377,14 +2341,4 @@ public static partial class ProjectForgeModule
         decimal EquipmentCost,decimal MiscCost,bool Important,bool Urgent,Guid? ReviewerUserId,string SourceKind,string? AiCorrelationId,string ReviewerName,
         string ParentWbs,int DisplayOrder,string BlockedReason);
 
-    private sealed record ProjectForgeProjectEvidenceReadiness(
-        long ReadyDocumentCount,
-        long ReadySowDocumentCount,
-        long ActiveVersionCount,
-        long ActiveChunkCount,
-        long EmbeddedChunkCount,
-        DateTimeOffset? LastIndexedAt)
-    {
-        public static ProjectForgeProjectEvidenceReadiness Empty { get; } = new(0, 0, 0, 0, 0, null);
-    }
 }

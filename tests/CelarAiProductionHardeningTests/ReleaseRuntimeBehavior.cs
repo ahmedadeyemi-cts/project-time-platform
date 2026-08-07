@@ -365,12 +365,30 @@ internal static class ReleaseRuntimeBehavior
                 out var adverbialSuccessClaimDecision)
             && adverbialSuccessClaimDecision == "external_output_unsupported_outcome_claim",
             "an unsupported adverbial success claim remains fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented approval of the change. Prepared delivery confirmation.",
+                [],
+                out var nounOutcomeClaimDecision)
+            && nounOutcomeClaimDecision == "external_output_unsupported_outcome_claim",
+            "unsupported noun-form approval and delivery claims remain fail-closed");
+        Require(!sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented completion of the work and resolution of the issue.",
+                [],
+                out var nounCompletionClaimDecision)
+            && nounCompletionClaimDecision == "external_output_unsupported_outcome_claim",
+            "unsupported noun-form completion and resolution claims remain fail-closed");
         Require(sanitizer.IsTimesheetExternalOutputSafe(
                 "Documented implementation steps and planned validation activities. Coordinated follow-up review.",
                 [],
                 out var plannedWorkDecision)
             && plannedWorkDecision == "external_output_privacy_validated",
             "implementation and validation planning without a claimed result remains valid");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Documented acceptance criteria and prepared the delivery plan. Coordinated follow-up review.",
+                [],
+                out var outcomePlanningDecision)
+            && outcomePlanningDecision == "external_output_privacy_validated",
+            "acceptance criteria and delivery planning remain valid non-outcome work");
     }
 
     private static async Task VerifyImmutableSnapshotBehaviorAsync()
