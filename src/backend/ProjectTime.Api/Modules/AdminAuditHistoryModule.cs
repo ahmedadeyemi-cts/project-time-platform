@@ -66,6 +66,7 @@ public static class AdminAuditHistoryModule
         "logged_at",
         "attempted_at",
         "started_at",
+        "requested_at",
         "completed_at",
         "sent_at",
         "failed_at",
@@ -89,7 +90,9 @@ public static class AdminAuditHistoryModule
         "notification_type",
         "change_type",
         "request_type",
-        "approval_stage"
+        "approval_stage",
+        "feature_code",
+        "tool_code"
     ];
 
     private static readonly string[] StatusCandidates =
@@ -101,6 +104,8 @@ public static class AdminAuditHistoryModule
         "delivery_status",
         "notification_status",
         "state",
+        "answer_status",
+        "event_status",
         "success"
     ];
 
@@ -120,7 +125,9 @@ public static class AdminAuditHistoryModule
         "changed_by_user_id",
         "created_by_user_id",
         "updated_by_user_id",
-        "user_id"
+        "user_id",
+        "actual_user_id",
+        "effective_user_id"
     ];
 
     private static readonly string[] TargetCandidates =
@@ -173,9 +180,66 @@ public static class AdminAuditHistoryModule
             "ciphertext",
             "nonce",
             "authentication_tag",
-            "source_file_bytes"
+            "source_file_bytes",
+            "question_text",
+            "answer_json",
+            "request_filters_json",
+            "missing_evidence",
+            "conflicts_json",
+            "source_health_json",
+            "privacy_evidence_json",
+            "structured_response_json",
+            "message_text",
+            "corrected_answer_json",
+            "feedback_reason",
+            "tool_summary_json"
         },
         StringComparer.OrdinalIgnoreCase);
+
+    // General Audit permission intentionally receives only operational metadata
+    // for private Celar AI sources. Full questions, answers, filters, evidence,
+    // and tool payloads remain behind their original user/project authorization.
+    private static readonly IReadOnlyDictionary<string, string[]> MetadataOnlySourceColumns =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pulse_ai_answer_runs"] =
+            [
+                "pulse_ai_answer_run_id", "feature_code", "purpose_code", "answer_status",
+                "actual_user_id", "effective_user_id", "project_id", "project_code",
+                "detail_level", "retrieval_mode", "retrieved_chunk_count", "cited_source_count",
+                "source_document_count", "source_version_count", "input_character_count",
+                "output_character_count", "confidence_score", "coverage_score",
+                "citation_coverage_score", "correlation_id", "diagnostic_code", "data_as_of",
+                "requested_at", "completed_at", "created_at", "updated_at"
+            ],
+            ["pulse_ai_system_inquiry_runs"] =
+            [
+                "pulse_ai_system_inquiry_run_id", "pulse_ai_conversation_id", "actual_user_id",
+                "effective_user_id", "intent_code", "detail_level", "answer_status",
+                "registered_api_count", "successful_tool_count", "failed_tool_count", "confidence",
+                "diagnostic_code", "correlation_id", "started_at", "completed_at", "created_at",
+                "updated_at"
+            ],
+            ["pulse_ai_system_tool_events"] =
+            [
+                "pulse_ai_system_tool_event_id", "pulse_ai_system_inquiry_run_id", "tool_code",
+                "module_code", "method", "event_status", "status_code", "duration_ms",
+                "response_bytes", "diagnostic_code", "observed_at", "created_at"
+            ],
+            ["pulse_ai_retrieval_events"] =
+            [
+                "pulse_ai_retrieval_event_id", "pulse_ai_answer_run_id", "actual_user_id",
+                "effective_user_id", "project_id", "feature_code", "event_code", "event_status",
+                "retrieval_mode", "candidate_count", "authorized_candidate_count",
+                "returned_chunk_count", "correlation_id", "diagnostic_code", "created_at"
+            ],
+            ["pulse_ai_document_processing_events"] =
+            [
+                "pulse_ai_document_processing_event_id", "pulse_ai_document_processing_job_id",
+                "project_intake_document_id", "project_id", "actual_user_id", "effective_user_id",
+                "event_code", "event_status", "correlation_id", "diagnostic_code", "created_at"
+            ]
+        };
 
     public static WebApplication MapAdminAuditHistoryEndpoints(this WebApplication app)
     {
@@ -423,12 +487,26 @@ public static class AdminAuditHistoryModule
             ? $"ORDER BY {timestampExpression} DESC NULLS LAST"
             : string.Empty;
 
+        var projection = "*";
+        if (MetadataOnlySourceColumns.TryGetValue(tableName, out var metadataColumns))
+        {
+            var availableMetadataColumns = metadataColumns
+                .Where(columns.ContainsKey)
+                .Select(QuoteIdentifier)
+                .ToArray();
+            if (availableMetadataColumns.Length == 0) return [];
+            projection = string.Join(", ", availableMetadataColumns);
+        }
+
         await using var command = new NpgsqlCommand($"""
             SELECT to_jsonb(source)::text
-            FROM {quotedTable} source
-            {whereClause}
-            {orderClause}
-            LIMIT @limit;
+            FROM (
+                SELECT {projection}
+                FROM {quotedTable}
+                {whereClause}
+                {orderClause}
+                LIMIT @limit
+            ) source;
             """, connection);
         if (timestampColumn is not null && canFilterTimestamp)
         {
@@ -511,6 +589,11 @@ public static class AdminAuditHistoryModule
             "operation_id",
             "notification_id",
             "sync_run_id",
+            "pulse_ai_answer_run_id",
+            "pulse_ai_system_inquiry_run_id",
+            "pulse_ai_system_tool_event_id",
+            "pulse_ai_retrieval_event_id",
+            "pulse_ai_document_processing_event_id",
             "id"
         ]);
         var hashInput = $"{tableName}|{sourceRecordId}|{eventTime:O}|{raw}|{rowIndex}";
