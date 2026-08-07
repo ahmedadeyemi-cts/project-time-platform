@@ -1,6 +1,11 @@
 name: ProjectPulse Deploy Pulse Login Test
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/projectpulse-deploy-pulse-login-test.yml
   workflow_dispatch:
     inputs:
       release_commit:
@@ -43,7 +48,7 @@ jobs:
       - name: Check out exact Pulse login source
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.release_commit }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'fbc819d2860dafc8e33dd879f177d2c9c494148a' }}
           path: release
           fetch-depth: 1
 
@@ -51,8 +56,9 @@ jobs:
         id: release
         shell: bash
         env:
-          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
-          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          DEPLOYMENT_EVENT: ${{ github.event_name }}
+          REQUESTED_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || 'fbc819d2860dafc8e33dd879f177d2c9c494148a' }}
+          DEPLOYMENT_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'DEPLOY-PULSE-LOGIN-TO-TEST' }}
           WORKFLOW_SOURCE_REF: ${{ github.ref }}
           WORKFLOW_SOURCE_SHA: ${{ github.sha }}
           PUBLIC_URL: ${{ vars.PUBLIC_URL }}
@@ -60,15 +66,19 @@ jobs:
           API_APP: ${{ vars.AZURE_API_APP }}
         run: |
           set -Eeuo pipefail
+          [[ "$DEPLOYMENT_EVENT" == 'push' || "$DEPLOYMENT_EVENT" == 'workflow_dispatch' ]] || {
+            echo "Unsupported deployment event: $DEPLOYMENT_EVENT" >&2
+            exit 1
+          }
           [[ "$WORKFLOW_SOURCE_REF" == 'refs/heads/main' ]] || {
             echo 'Dispatch this workflow from main.' >&2
             exit 1
           }
-          [[ "$DISPATCH_CONFIRMATION" == 'DEPLOY-PULSE-LOGIN-TO-TEST' ]] || {
+          [[ "$DEPLOYMENT_CONFIRMATION" == 'DEPLOY-PULSE-LOGIN-TO-TEST' ]] || {
             echo 'The deployment confirmation text does not match.' >&2
             exit 1
           }
-          [[ "$DISPATCH_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+          [[ "$REQUESTED_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
             echo 'release_commit must be a complete 40-character SHA.' >&2
             exit 1
           }
@@ -91,7 +101,7 @@ jobs:
             echo 'The deployment-control checkout does not match this workflow run.' >&2
             exit 1
           }
-          [[ "$TARGET_COMMIT" == "$DISPATCH_RELEASE_COMMIT" ]] || {
+          [[ "$TARGET_COMMIT" == "$REQUESTED_RELEASE_COMMIT" ]] || {
             echo 'The release checkout does not match the requested commit.' >&2
             exit 1
           }
