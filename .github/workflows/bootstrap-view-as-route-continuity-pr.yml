@@ -124,7 +124,6 @@ jobs:
             src/frontend/project-time-web/package-lock.json \
             src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs \
             database/migrations/082_view_as_route_authority_catalog.sql \
-            database/rollback/082_view_as_route-authority-catalog_rollback.sql \
             database/rollback/082_view_as_route_authority_catalog_rollback.sql \
             tests/test-view-as-route-authority-migration-082.sh \
             docs/security/VIEW-AS-ROUTE-CONTINUITY.md \
