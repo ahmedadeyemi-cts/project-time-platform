@@ -169,6 +169,10 @@ assert(
 assert(
   'ARCHITECTURE_MANAGED_COMPONENT_CATALOG',
   architecture.includes('<CelarAiArchitectureCatalog />')
+    && architecture.includes('ClamAV · malware scanning')
+    && architecture.includes('Tesseract 5 · OCR')
+    && architecture.includes('Ollama · private inference + embeddings')
+    && architecture.includes('Planned / OpenCloud deferred · not operational · migration 081 not applied')
     && architectureCatalog.includes("'/api/native-administration/011/document'")
     && architectureCatalog.includes('No private-runtime activation performed')
     && ['ollama', 'tesseract-5', 'clamav'].every((component) => architectureCatalog.includes(`'${component}'`))

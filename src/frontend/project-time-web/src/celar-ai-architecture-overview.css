@@ -186,6 +186,17 @@
   stroke: #dc863d;
 }
 
+.celar-ai-architecture-canvas .diagram-chip.is-planned {
+  fill: #f1f8f4;
+  stroke: #3a8b65;
+  stroke-dasharray: 5 3;
+}
+
+.celar-ai-architecture-canvas .diagram-node-subtitle.is-planned-status {
+  fill: #21744b;
+  font-weight: 800;
+}
+
 .celar-ai-architecture-canvas .diagram-chip-text {
   fill: var(--celar-navy);
   font-size: 11px;
@@ -273,6 +284,7 @@
 
 .celar-ai-architecture-glance.is-private { color: #1769aa; }
 .celar-ai-architecture-glance.is-permission { color: #1a8a61; }
+.celar-ai-architecture-glance.is-planned { color: #25865f; }
 .celar-ai-architecture-glance.is-external { color: #b76012; }
 .celar-ai-architecture-glance.is-review { color: #7454bc; }
 

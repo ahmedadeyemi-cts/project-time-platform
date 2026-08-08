@@ -119,6 +119,15 @@ check(
   'existing accessible logical diagram is paired with the managed deployment view'
 );
 check(
+  'OVERVIEW_NAMES_DEFERRED_PRIVATE_SERVICES',
+  overview.includes('ClamAV · malware scanning')
+    && overview.includes('Tesseract 5 · OCR')
+    && overview.includes('Ollama · private inference + embeddings')
+    && overview.includes('Planned / OpenCloud deferred · not operational · migration 081 not applied')
+    && overview.includes('All three remain deferred until validated.'),
+  'the primary Celar AI Architecture Overview explicitly names ClamAV, Tesseract 5, and Ollama without representing them as operational'
+);
+check(
   'RESPONSIVE_ENTERPRISE_STYLES',
   catalogCss.includes('.celar-ai-runtime-flow__vm')
     && catalogCss.includes('.celar-ai-component-grid')
