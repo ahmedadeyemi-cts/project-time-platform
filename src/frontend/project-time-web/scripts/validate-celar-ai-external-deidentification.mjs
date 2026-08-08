@@ -415,13 +415,17 @@ check(
     'IsPrivateSafetyRefusal(answer)',
     'ProjectPulseAiOutcomes.Refusal',
     'externalAssistance = Limit(',
-    'BuildExternalProblemStatement(',
+    'const string externalProblemStatement = "";',
     'ExternalProblemStatement: externalProblemStatement',
+    'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+    'PublicQuestion: plan.IntentCode == "general_knowledge"',
+    '? CelarAiExternalCapsuleCatalog.GeneralKnowledge',
     'SafetyRefusalAnswer(plan, correlationId, routed.Provider)',
     'routeOutcome == ProjectPulseAiOutcomes.Refusal',
     'No later AI target or governed local answer was used.',
     "it did not receive the user's question, private documents, attachment text, tool results, customer/project context, people records, financial values, or identifiers"
   ])
+    && !helpService.includes('BuildExternalProblemStatement(')
     && !section(
       helpService,
       'else if ((routed.Provider is CelarAiCapabilityTargets.Claude',

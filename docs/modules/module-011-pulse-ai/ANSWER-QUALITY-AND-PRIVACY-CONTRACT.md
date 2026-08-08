@@ -208,6 +208,13 @@ save state, submission, or approval.
 
 ## Help and Search response contract
 
+Help and Search is internal-first. A question about Pulse records, people,
+customers, projects, tasks, assignments, documents, metrics, workflows, or
+platform state must be answered through permission-scoped internal tools or
+private RAG. Missing internal evidence must be reported as missing; the
+question or a generated substitute must not be sent to Claude or OpenAI.
+External routing is reserved for clearly public general knowledge.
+
 A product Help answer should contain:
 
 - a direct explanation;

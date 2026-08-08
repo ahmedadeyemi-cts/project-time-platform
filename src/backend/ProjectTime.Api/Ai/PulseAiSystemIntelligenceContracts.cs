@@ -5,7 +5,7 @@ namespace ProjectTime.Api.Ai;
 
 public static class PulseAiSystemIntelligencePolicy
 {
-    public const string ContractVersion = "celar-ai-system-intelligence-v2-20260806";
+    public const string ContractVersion = "celar-ai-system-intelligence-v3-20260807";
     public const string ApiCatalogVersion = "celar-ai-live-api-catalog-v2-20260806";
     public const string TroubleshootingVersion = "celar-ai-troubleshooting-v2-20260806";
     public const string EnhancementVersion = "celar-ai-enhancement-advisor-v2-20260806";
@@ -51,6 +51,7 @@ public static class PulseAiSystemIntelligencePolicy
         "documents_and_rag",
         "product_help",
         "platform_identity",
+        "internal_data",
         "general_knowledge",
         "general_system"
     ];

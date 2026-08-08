@@ -127,7 +127,7 @@ check(
 check(
   'PUBLIC_GENERAL_KNOWLEDGE_ROUTING',
   all(systemKnowledge, [
-    'var pulseScoped = IsPulseScopedQuestion(normalized);',
+    'var pulseScoped = IsPulseScopedQuestion(question);',
     '? "general_knowledge"',
     'public static bool IsPulseScopedQuestion(string? question)',
     'if (intent == "general_knowledge") return [];',
@@ -226,12 +226,15 @@ check(
     ])
     && !externalPreparation.includes('request.UserPrompt')
     && all(systemService, [
-      'BuildExternalProblemStatement(',
+      'const string externalProblemStatement = "";',
+      'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+      'PublicQuestion: plan.IntentCode == "general_knowledge"',
       'ContainsPrivateDocuments: privateDocumentContextRequested',
       'ContainsPeopleRecords: ContainsPeopleContext(plan)',
       'ContainsFinancialValues:',
       'external guidance is supplementary and unverified'
     ])
+    && !systemService.includes('BuildExternalProblemStatement(')
     && help.includes('Supplementary external guidance (unverified)'),
   'public fallback can address a closed server-owned topic but stays separate and receives no enterprise evidence'
 );

@@ -66,6 +66,15 @@ const mount = read(paths.mount);
 const doc = read(paths.doc);
 
 assert(
+  'READINESS_OBJECT_RENDERING',
+  workbench.includes('function displayValue(value)')
+    && workbench.includes("typeof value === 'object'")
+    && workbench.includes('`${title(key)}: ${displayValue(item)}`')
+    && !workbench.includes("String(value ?? 'Not recorded')"),
+  'nested private-boundary readiness evidence is rendered as readable fields instead of [object Object]'
+);
+
+assert(
   'MIGRATION_ID',
   migration.includes("'053_pulse_ai_private_rag_orchestration'")
     && rollback.includes("'053_pulse_ai_private_rag_orchestration'")

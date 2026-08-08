@@ -13,6 +13,10 @@ health, feature routing, usage visibility, circuit breaking, and safe fallback.
 Pulse AI prepares and governs model lifecycle work; approved inference endpoints
 must still be registered and routed through Module 064.
 
+The current internal-first question-routing and deterministic live-data
+resolver contract is documented in
+`CELAR-AI-INTERNAL-DATA-INTELLIGENCE.md`.
+
 ## Source checkpoint
 
 | Field | Value |

@@ -76,6 +76,14 @@ assert(
 );
 
 assert(
+  'EXPLICIT_TEST_DEPLOYMENT_AUTHORITY',
+  routing.includes('PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED')
+    && routing.includes('EnvironmentProfile(allowDefaultAllowlist: false) with')
+    && routing.includes('Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT")'),
+  'an explicit deployment authority can activate verified Test private-model settings without an incomplete database form row shadowing them',
+);
+
+assert(
   'EXPLICIT_PRIVATE_DESTINATION_BINDING',
   policy.includes('RequireNonEmpty("PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST"')
     && policy.includes('IsApprovedReleasePrivateInferenceDestination')

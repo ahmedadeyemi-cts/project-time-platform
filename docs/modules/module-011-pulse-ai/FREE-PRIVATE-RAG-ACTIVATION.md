@@ -97,7 +97,7 @@ PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE=<change or risk approval>
 
 All of these must pass:
 
-1. Apply and verify migrations 052, 053, 061, 071, and 072 through the normal migration workflow.
+1. Apply and verify migrations 052, 053, 061, 071, 072, 079, and 081 through the normal migration workflow. Migration 081 creates only the least-privilege document-admission identity and repairs a Work Register filename extension only when the durable stored path proves the supported type.
 2. Set `PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED=true`.
 3. Configure a private HTTPS inference endpoint and exact model.
 4. Store a write-only bearer secret and its pinned secret reference.
@@ -116,6 +116,15 @@ PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS=true
 PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID=<dedicated application user UUID>
 PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED=true
 ```
+
+For Test, `.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml`
+binds the protected private-service endpoints and bearer-secret references,
+verifies the upload root is backed by an AzureFile mount, applies migrations 080
+and 081 inside the private network, probes private inference, verifies private
+DNS for ClamAV/OCR/embeddings, processes and approves the exact SOW version via
+the audited API, and requires a citation-grounded FlowHive response. The
+workflow restores the previous images and touched Container App settings when
+application activation or UAT fails.
 
 ## Acceptance evidence
 
