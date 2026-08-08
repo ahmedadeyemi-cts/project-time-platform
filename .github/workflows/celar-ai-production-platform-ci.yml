@@ -67,6 +67,28 @@ jobs:
               '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml' \
               <<<"$UNAUTHORIZED_CONTROL" || true)"
             test -f .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+          elif [[ "$HEAD_BRANCH" == fix/timesheet-ai-opencloud-deferred-release-* ]]; then
+            UNAUTHORIZED_CONTROL="$(grep -Fvx \
+              -e '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml' \
+              -e 'deployment/environments/opencloud-template.yml' \
+              -e 'deployment/podman/README.md' \
+              -e 'deployment/podman/compose.yml' \
+              -e 'deployment/podman/private-runtime.env.example' \
+              <<<"$UNAUTHORIZED_CONTROL" || true)"
+            for required in \
+              '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml' \
+              'deployment/environments/opencloud-template.yml' \
+              'deployment/podman/README.md' \
+              'deployment/podman/compose.yml' \
+              'deployment/podman/private-runtime.env.example' \
+              'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'; do
+              test -f "$required"
+              grep -Fxq "$required" <<<"$CHANGED"
+            done
+            grep -Fq 'workflow_dispatch:' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+            grep -Fq 'DEPLOY-CELAR-AI-OPENCLOUD-RUNTIME-TO-TEST' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+            ! grep -Eq '^[[:space:]]{2}push:' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+            grep -Fq 'status: deferred-until-opencloud' deployment/environments/opencloud-template.yml
           fi
           if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
             echo 'Celar AI production source may not alter protected deployment controls.' >&2

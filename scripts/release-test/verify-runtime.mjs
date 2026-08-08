@@ -716,8 +716,11 @@ async function run() {
     authenticated: true,
   });
   assert(categories.status === 200, "Timesheet non-project categories returned HTTP " + categories.status + ".");
-  const category = (categories.json?.categories || []).find((item) => uuidPattern.test(String(item?.id || "")));
-  assert(category, "No active non-project Timesheet category is available for AI suggestion UAT.");
+  const category = (categories.json?.categories || []).find((item) =>
+    uuidPattern.test(String(item?.id || ""))
+      && /\btraining\b/i.test([item?.name, item?.code].filter(Boolean).join(" ")),
+  );
+  assert(category, "The active Training non-project category is unavailable for exact Timesheet AI UAT.");
   const timesheetSuggestion = await request("/api/timesheets/ai-description-suggestions", {
     method: "POST",
     moduleNumber: "001",
@@ -740,15 +743,23 @@ async function run() {
       taskCode: null,
       categoryCode: category.code,
       hours: 0.5,
-      currentDescription: "Reviewed and tested the deployment configuration, validated expected system behavior, and documented the results.",
+      currentDescription: "Working on training",
     },
   });
   assert(timesheetSuggestion.status === 200, "Timesheet AI suggestion returned HTTP " + timesheetSuggestion.status + ".");
   assert(timesheetSuggestion.json?.status === "ai_suggestion_generated", "Timesheet AI suggestion was not generated.");
   assert(["celar_ai", "claude", "openai"].includes(String(timesheetSuggestion.json?.provider || "").toLowerCase()), "Timesheet AI suggestion fell through to the governed local template.");
-  assert(String(timesheetSuggestion.json?.suggestion || "").trim().length >= 160, "Timesheet AI suggestion was not comprehensive enough for review.");
+  assert(String(timesheetSuggestion.json?.suggestion || "").trim().length >= 90, "Timesheet AI training suggestion was not detailed enough for review.");
   assert(sentenceCount(timesheetSuggestion.json?.suggestion) >= 2, "Timesheet AI suggestion did not contain a comprehensive multi-sentence response.");
-  evidence.authenticatedChecks.timesheetComprehensiveAiSuggestion = "passed";
+  assert(!String(timesheetSuggestion.json?.suggestion || "").includes("[REDACTED_"), "Timesheet AI suggestion exposed a redaction marker.");
+  assert(
+    Array.isArray(timesheetSuggestion.json?.targetDecisions)
+      && timesheetSuggestion.json.targetDecisions.some((decision) =>
+        String(decision?.target || "").toLowerCase() === String(timesheetSuggestion.json?.provider || "").toLowerCase()
+          && String(decision?.outcome || "").toLowerCase() === "used"),
+    "Timesheet AI suggestion did not include a matching successful target decision.",
+  );
+  evidence.authenticatedChecks.timesheetWorkingOnTrainingSuggestion = "passed";
 
   const closeoutDraft = await request("/api/project-closeout/ai/communication", {
     method: "POST",

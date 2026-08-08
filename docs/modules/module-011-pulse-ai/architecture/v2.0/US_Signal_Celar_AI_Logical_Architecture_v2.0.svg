@@ -19,7 +19,7 @@
 <rect x="985" y="735" width="580" height="250" rx="16" fill="#FFF8EE" stroke="#9BB2C6" stroke-width="1.5"/>
 <text x="1003" y="763" class="zone">CONTROLLED EGRESS / EXTERNAL PROVIDER ZONE</text>
 <g filter="url(#shadow)"><rect x="75" y="200" width="250" height="90" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
-<rect x="87" y="212" width="70" height="22" rx="11" fill="#1769AA"/><text x="97" y="228" font-size="11" font-weight="700" fill="#FFFFFF">ENTRY</text>
+<rect x="87" y="212" width="84" height="22" rx="11" fill="#1769AA"/><text x="97" y="228" font-size="11" font-weight="700" fill="#FFFFFF">ENTRY</text>
 <text x="91" y="254" class="box-title">Pulse User Experience</text>
 <text x="91" y="277" class="box-copy">Timesheet • Ask Celar AI • Search</text>
 <text x="91" y="294" class="box-copy">FlowHive • Reports • Financials</text>
@@ -39,25 +39,25 @@
 <line x1="690" y1="245" x2="760" y2="245" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)"/>
 <line x1="1060" y1="245" x2="1130" y2="245" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
 <g filter="url(#shadow)"><rect x="75" y="385" width="300" height="120" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
-<rect x="87" y="397" width="70" height="22" rx="11" fill="#1769AA"/><text x="97" y="413" font-size="11" font-weight="700" fill="#FFFFFF">RAG</text>
+<rect x="87" y="397" width="84" height="22" rx="11" fill="#1769AA"/><text x="97" y="413" font-size="11" font-weight="700" fill="#FFFFFF">RAG</text>
 <text x="91" y="439" class="box-title">Private Document Retrieval</text>
 <text x="91" y="462" class="box-copy">SOW • GSD • design • contract</text>
 <text x="91" y="479" class="box-copy">versioned extraction and citations</text>
 <text x="91" y="496" class="box-copy">permission-filtered hybrid/vector search</text>
 <g filter="url(#shadow)"><rect x="425" y="385" width="300" height="120" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
-<rect x="437" y="397" width="70" height="22" rx="11" fill="#1769AA"/><text x="447" y="413" font-size="11" font-weight="700" fill="#FFFFFF">TOOLS</text>
+<rect x="437" y="397" width="84" height="22" rx="11" fill="#1769AA"/><text x="447" y="413" font-size="11" font-weight="700" fill="#FFFFFF">TOOLS</text>
 <text x="441" y="439" class="box-title">Governed Live-Data Tools</text>
 <text x="441" y="462" class="box-copy">projects • tasks • time • approvals</text>
 <text x="441" y="479" class="box-copy">capacity • reports • finance</text>
 <text x="441" y="496" class="box-copy">allowlisted read-only semantic contracts</text>
 <g filter="url(#shadow)"><rect x="785" y="385" width="300" height="120" rx="12" fill="#EDF8FE" stroke="#009FE3" stroke-width="2"/></g>
-<rect x="797" y="397" width="70" height="22" rx="11" fill="#009FE3"/><text x="807" y="413" font-size="11" font-weight="700" fill="#FFFFFF">PRIMARY</text>
+<rect x="797" y="397" width="84" height="22" rx="11" fill="#009FE3"/><text x="807" y="413" font-size="11" font-weight="700" fill="#FFFFFF">PRIMARY</text>
 <text x="801" y="439" class="box-title">Private Celar AI Model</text>
 <text x="801" y="462" class="box-copy">open-weight private endpoint</text>
 <text x="801" y="479" class="box-copy">structured deep-response schemas</text>
 <text x="801" y="496" class="box-copy">no public inbound access</text>
 <g filter="url(#shadow)"><rect x="1145" y="385" width="345" height="120" rx="12" fill="#F1F8ED" stroke="#67B446" stroke-width="2"/></g>
-<rect x="1157" y="397" width="70" height="22" rx="11" fill="#67B446"/><text x="1167" y="413" font-size="11" font-weight="700" fill="#FFFFFF">GATE</text>
+<rect x="1157" y="397" width="84" height="22" rx="11" fill="#67B446"/><text x="1167" y="413" font-size="11" font-weight="700" fill="#FFFFFF">GATE</text>
 <text x="1161" y="439" class="box-title">Confidence Assessment</text>
 <text x="1161" y="462" class="box-copy">coverage • freshness • conflicts</text>
 <text x="1161" y="479" class="box-copy">calculation validity • unsupported claims</text>
@@ -93,13 +93,13 @@
 <line x1="935" y1="505" x2="935" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
 <line x1="1318" y1="505" x2="1318" y2="565" stroke="#1769AA" stroke-width="3" marker-end="url(#arrow)" stroke-dasharray="8 6"/>
 <g filter="url(#shadow)"><rect x="75" y="790" width="300" height="125" rx="12" fill="#F1F8ED" stroke="#67B446" stroke-width="2"/></g>
-<rect x="87" y="802" width="70" height="22" rx="11" fill="#67B446"/><text x="97" y="818" font-size="11" font-weight="700" fill="#FFFFFF">PASS</text>
+<rect x="87" y="802" width="84" height="22" rx="11" fill="#67B446"/><text x="97" y="818" font-size="11" font-weight="700" fill="#FFFFFF">PASS</text>
 <text x="91" y="844" class="box-title">Sufficient Evidence</text>
 <text x="91" y="867" class="box-copy">complete private answer path</text>
 <text x="91" y="884" class="box-copy">no external provider required</text>
 <text x="91" y="901" class="box-copy">preserve sources and uncertainty</text>
 <g filter="url(#shadow)"><rect x="425" y="790" width="300" height="125" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
-<rect x="437" y="802" width="70" height="22" rx="11" fill="#1769AA"/><text x="447" y="818" font-size="11" font-weight="700" fill="#FFFFFF">VERIFY</text>
+<rect x="437" y="802" width="84" height="22" rx="11" fill="#1769AA"/><text x="447" y="818" font-size="11" font-weight="700" fill="#FFFFFF">VERIFY</text>
 <text x="441" y="844" class="box-title">Private Evidence Verification</text>
 <text x="441" y="867" class="box-copy">re-ground claims and calculations</text>
 <text x="441" y="884" class="box-copy">remove unsupported statements</text>
@@ -113,7 +113,7 @@
 <line x1="375" y1="852" x2="425" y2="852" stroke="#67B446" stroke-width="3" marker-end="url(#arrow-green)"/>
 <line x1="725" y1="852" x2="785" y2="852" stroke="#67B446" stroke-width="3" marker-end="url(#arrow-green)"/>
 <g filter="url(#shadow)"><rect x="1025" y="790" width="220" height="125" rx="12" fill="#FFFDF8" stroke="#D9992E" stroke-width="2"/></g>
-<rect x="1037" y="802" width="70" height="22" rx="11" fill="#D9992E"/><text x="1047" y="818" font-size="11" font-weight="700" fill="#FFFFFF">OPTIONAL</text>
+<rect x="1037" y="802" width="86.0" height="22" rx="11" fill="#D9992E"/><text x="1047" y="818" font-size="11" font-weight="700" fill="#FFFFFF">OPTIONAL</text>
 <text x="1041" y="844" class="box-title">Sanitization / DLP</text>
 <text x="1041" y="867" class="box-copy">minimal generic problem</text>
 <text x="1041" y="884" class="box-copy">no raw documents, IDs,</text>

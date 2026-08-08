@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the canonical US Signal Celar AI Architecture Package v2.0.
 
-Outputs a Word document, two PDFs, two SVG diagrams, two PNG diagrams, and
+Outputs a Word document, two PDFs, three SVG diagrams, three PNG diagrams, and
 SHA256SUMS.txt. The generator uses only the supplied US Signal logo.
 """
 from __future__ import annotations
@@ -9,7 +9,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import os
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -27,7 +30,10 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import BaseDocTemplate, Frame, Image as RLImage, PageBreak, PageTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.pdfgen import canvas
-import cairosvg
+try:
+    import cairosvg
+except ModuleNotFoundError:
+    cairosvg = None
 
 VERSION = "2.0"
 DOC_TITLE = "Celar AI Private Intelligence Architecture"
@@ -57,6 +63,8 @@ FILES = {
     "logical_svg": "US_Signal_Celar_AI_Logical_Architecture_v2.0.svg",
     "deployment_png": "US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.png",
     "deployment_svg": "US_Signal_Celar_AI_Deployment_Network_Architecture_v2.0.svg",
+    "opencloud_png": "US_Signal_Celar_AI_OpenCloud_Private_Runtime_Architecture_v2.0.png",
+    "opencloud_svg": "US_Signal_Celar_AI_OpenCloud_Private_Runtime_Architecture_v2.0.svg",
 }
 
 SECTIONS = [
@@ -156,6 +164,10 @@ SECTIONS = [
         "Private endpoints, network security groups, service identities, DNS controls, certificate management, and outbound allowlists enforce the trust boundaries.",
         "The private model and vector index do not require public inbound access. Only Pulse orchestration and approved administrative services may reach them.",
         "External provider traffic originates from the controlled egress gateway and Module 064, not from browsers, documents, or arbitrary application components.",
+        "Current interim state: the additional Azure private-runtime deployment is deferred to avoid temporary infrastructure cost before the planned OpenCloud migration. Pulse structured internal-data intelligence remains independent of the document runtime and continues to use permission-scoped PostgreSQL and governed APIs.",
+        "OpenCloud Test/UAT target: one private Linux VM hosts Ollama, the Tesseract OCR adapter, and ClamAV as three isolated Podman or OCI containers. The VM has no public service ingress; Pulse reaches it only through approved private routing, authenticated service endpoints, and explicit host allowlists.",
+        "The shared runtime VM does not need to host the Pulse web/API application or the Pulse PostgreSQL database. Persistent volumes isolate Ollama models, ClamAV signatures, OCR working files, and service configuration from the containers.",
+        "Production scale boundary: Ollama may move to dedicated GPU-capable compute when latency or concurrency requires it, while Tesseract and ClamAV may remain together on CPU compute. This split changes placement, not the private contracts used by Pulse.",
     ]),
     ("15. Availability, Performance, and Resilience", [
         "Use health checks, timeouts, retry limits, circuit breakers, bulkheads, and bounded queues for private and external model services.",
@@ -183,7 +195,7 @@ SECTIONS = [
     ]),
     ("19. Implementation Roadmap", [
         "Phase 1 — Foundation: Module 011 governance, Module 064 provider boundary, answer contract, privacy policy, and architecture approval.",
-        "Phase 2 — Private document pipeline: scanning, extraction, OCR, classification, versioning, citations, private embeddings, and permission-filtered retrieval.",
+        "Phase 2 — OpenCloud private document runtime: provision the shared Test/UAT VM, deploy Ollama, Tesseract, and ClamAV containers, configure private routing and secrets, then enable scanning, extraction, OCR, classification, citations, private embeddings, and permission-filtered retrieval.",
         "Phase 3 — Timesheet and Help/Search: document-grounded suggestions, detailed product Help, and governed read-tool planning.",
         "Phase 4 — FlowHive and financial insight: private document-to-plan generation, deterministic scheduling, semantic financial tools, and cited analysis.",
         "Phase 5 — Private model lifecycle: evaluation, LoRA/QLoRA training, model registry, canary, rollback, and continuous quality operations.",
@@ -234,6 +246,7 @@ ADRS = [
     ["ADR-003", "Module 064 controls external providers", "One provider, secret, health, and routing boundary prevents bypass."],
     ["ADR-004", "Deterministic calculations", "Models explain financial and schedule results but do not invent them."],
     ["ADR-005", "Human-approved learning", "Feedback may become training data only after review and version approval."],
+    ["ADR-006", "OpenCloud shared Test/UAT runtime", "Ollama, Tesseract, and ClamAV share one private VM as isolated containers until scale justifies separate compute."],
 ]
 
 GLOSSARY = [
@@ -246,6 +259,7 @@ GLOSSARY = [
     ["Reasoning capsule", "Minimal sanitized problem statement eligible for optional external reasoning."],
     ["Effective user", "The identity whose permissions and data scope apply, including read-only View-As."],
     ["Private verifier", "Service that re-grounds model output against documents, tools, calculations, and policy."],
+    ["OpenCloud runtime VM", "Private Test/UAT Linux host for separate Ollama, Tesseract OCR, and ClamAV containers; Pulse application and database placement remains independent."],
 ]
 
 
@@ -276,7 +290,8 @@ def svg_header(width: int, height: int, title: str) -> list[str]:
 def svg_box(x, y, w, h, title, lines: Sequence[str], fill=WHITE, stroke=MID_BLUE, radius=12, tag=None):
     out = [f'<g filter="url(#shadow)"><rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{radius}" fill="{fill}" stroke="{stroke}" stroke-width="2"/></g>']
     if tag:
-        out.append(f'<rect x="{x+12}" y="{y+12}" width="{max(70, len(tag)*7)}" height="22" rx="11" fill="{stroke}"/><text x="{x+22}" y="{y+28}" font-size="11" font-weight="700" fill="#FFFFFF">{esc(tag)}</text>')
+        tag_width = max(84, len(tag) * 8.5 + 18)
+        out.append(f'<rect x="{x+12}" y="{y+12}" width="{tag_width}" height="22" rx="11" fill="{stroke}"/><text x="{x+22}" y="{y+28}" font-size="11" font-weight="700" fill="#FFFFFF">{esc(tag)}</text>')
         title_y = y + 54
     else:
         title_y = y + 30
@@ -343,13 +358,98 @@ def build_deployment_svg() -> str:
     return "\n".join(s)
 
 
+def build_opencloud_svg() -> str:
+    w, h = 1800, 1100
+    s = svg_header(w, h, "Celar AI OpenCloud Private Runtime Architecture")
+    s += [
+        '<rect x="35" y="150" width="1730" height="155" rx="16" fill="#FFF8EE" stroke="#D9992E" stroke-width="1.5"/>',
+        '<text x="55" y="180" class="zone">CURRENT INTERIM STATE — NO ADDITIONAL AZURE PRIVATE-RUNTIME RESOURCES</text>',
+    ]
+    s += svg_box(70,205,360,70,"Existing Pulse Test",["Web/API • PostgreSQL • Azure Files"],fill="#FFFFFF",stroke=MID_BLUE)
+    s += svg_box(490,205,390,70,"Internal Data Intelligence",["Permission-scoped tools and deterministic queries"],fill="#F1F8ED",stroke=GREEN,tag="CONTINUES")
+    s += svg_box(940,205,390,70,"Document Runtime",["OCR • malware • embeddings • inference deferred"],fill="#FFFDF8",stroke="#D9992E",tag="PAUSED")
+    s += svg_box(1390,205,320,70,"FlowHive Guard",["No SOW plan until citations are ready"],fill="#FFFDF8",stroke="#D9992E")
+
+    zones = [
+        (35,330,410,700,"PULSE APPLICATION AND DATA","#EAF5FB"),
+        (465,330,195,700,"PRIVATE LINK","#F7FAFC"),
+        (680,330,805,700,"OPENCLOUD SHARED TEST/UAT RUNTIME VM","#F4F9F1"),
+        (1505,330,260,700,"PRODUCTION EVOLUTION","#F7FAFC"),
+    ]
+    for x, y, zw, zh, label, fill in zones:
+        s += [f'<rect x="{x}" y="{y}" width="{zw}" height="{zh}" rx="16" fill="{fill}" stroke="#9BB2C6" stroke-width="1.5"/>', f'<text x="{x+18}" y="{y+28}" class="zone">{esc(label)}</text>']
+
+    s += svg_box(70,390,340,95,"Pulse Web and API",["identity • RBAC • orchestration","governed internal-data tools"],tag="APP")
+    s += svg_box(70,530,340,105,"PostgreSQL and Documents",["authoritative records • citations","SOW/GSD files • versions • audit"],tag="DATA")
+    s += svg_box(70,685,340,110,"Document Pipeline",["scan → extract/OCR → chunk","retrieve → approve → cite"],fill="#EDF8FE",stroke=BLUE)
+    s += svg_box(70,845,340,110,"FlowHive",["SOW-grounded WBS and schedule","fail closed when evidence is unavailable"],fill="#F1F8ED",stroke=GREEN)
+    s += arrow(240,485,240,530)+arrow(240,635,240,685)+arrow(240,795,240,845,green=True)
+
+    s += svg_box(490,430,145,115,"Private Route",["DNS • TLS","host allowlist","firewall rules"],stroke=MID_BLUE)
+    s += svg_box(490,620,145,125,"Service Auth",["secrets","least privilege","rotation"],stroke=MID_BLUE)
+    s += svg_box(490,820,145,105,"No Public",["service ingress","or browser path"],fill="#FFFDF8",stroke="#D9992E")
+
+    s += [
+        '<rect x="710" y="385" width="745" height="580" rx="18" fill="#FFFFFF" stroke="#67B446" stroke-width="2.5"/>',
+        '<text x="735" y="418" class="zone">ONE PRIVATE LINUX VM • PODMAN / OCI • TEST/UAT</text>',
+    ]
+    s += svg_box(735,455,210,145,"Ollama",["private inference","private embeddings","CPU first • GPU optional"],fill="#F1F8ED",stroke=GREEN,tag="CONTAINER")
+    s += svg_box(980,455,210,145,"Tesseract Adapter",["OCR for scanned files","native extraction bypass","bounded worker queue"],fill="#F1F8ED",stroke=GREEN,tag="CONTAINER")
+    s += svg_box(1225,455,205,145,"ClamAV",["malware scanning","signature updates","private TCP/API path"],fill="#F1F8ED",stroke=GREEN,tag="CONTAINER")
+    s += svg_box(735,655,695,105,"Persistent Volumes",["Ollama models • ClamAV signatures • OCR work files • service configuration","containers remain replaceable; evidence remains in governed Pulse storage"],stroke=MID_BLUE)
+    s += svg_box(735,810,695,110,"Runtime Controls",["health probes • resource limits • one-document processing concurrency","service identities • audit correlation • backup and rollback runbook"],stroke=MID_BLUE)
+    s += arrow(562,487,735,520,"private HTTPS",green=True)+arrow(562,680,980,550,"authenticated OCR",green=True)+arrow(562,680,1225,550,"private scan",green=True)
+    s += arrow(840,600,840,655,dashed=True)+arrow(1085,600,1085,655,dashed=True)+arrow(1328,600,1328,655,dashed=True)
+    s += arrow(1085,760,1085,810,dashed=True)
+
+    s += svg_box(1530,420,210,150,"Ollama Scale-Out",["move to dedicated","GPU-capable compute","when load requires"],fill="#F1F8ED",stroke=GREEN)
+    s += svg_box(1530,640,210,145,"CPU Services",["Tesseract + ClamAV","may remain together","scale by queue depth"],stroke=MID_BLUE)
+    s += svg_box(1530,855,210,95,"Stable Contract",["same private APIs","placement can change"],fill="#EDF8FE",stroke=BLUE)
+    s += arrow(1455,525,1530,590,dashed=True)+arrow(1455,695,1530,805,dashed=True)
+
+    s += [
+        f'<text x="40" y="1068" class="small">{CLASSIFICATION} • Shared-VM placement is the approved Test/UAT starting point. Pulse application and PostgreSQL placement remain independent. Enable FlowHive only after live scan, extraction, retrieval, approval, and citation checks pass.</text>',
+        '</svg>',
+    ]
+    return "\n".join(s)
+
+
 def write_diagrams():
     logical = OUT / FILES["logical_svg"]
     deployment = OUT / FILES["deployment_svg"]
+    opencloud = OUT / FILES["opencloud_svg"]
     logical.write_text(build_logical_svg(), encoding="utf-8")
     deployment.write_text(build_deployment_svg(), encoding="utf-8")
-    cairosvg.svg2png(bytestring=logical.read_bytes(), write_to=str(OUT / FILES["logical_png"]), output_width=2400)
-    cairosvg.svg2png(bytestring=deployment.read_bytes(), write_to=str(OUT / FILES["deployment_png"]), output_width=2700)
+    opencloud.write_text(build_opencloud_svg(), encoding="utf-8")
+    svg_to_png(logical, OUT / FILES["logical_png"], 2400)
+    svg_to_png(deployment, OUT / FILES["deployment_png"], 2700)
+    svg_to_png(opencloud, OUT / FILES["opencloud_png"], 2700)
+
+
+def svg_to_png(source: Path, destination: Path, width: int):
+    if cairosvg is not None:
+        cairosvg.svg2png(bytestring=source.read_bytes(), write_to=str(destination), output_width=width)
+        return
+    with tempfile.TemporaryDirectory(prefix="celar-ai-svg-") as runtime_home:
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": runtime_home,
+                "XDG_CACHE_HOME": f"{runtime_home}/cache",
+                "XDG_CONFIG_HOME": f"{runtime_home}/config",
+                "XDG_DATA_HOME": f"{runtime_home}/data",
+            }
+        )
+        subprocess.run(
+            [
+                "inkscape",
+                str(source),
+                f"--export-filename={destination}",
+                f"--export-width={width}",
+            ],
+            check=True,
+            env=env,
+        )
 
 
 def set_cell_shading(cell, fill: str):
@@ -400,7 +500,7 @@ def build_docx():
     doc.add_paragraph(); add_docx_table(doc,[["Document owner","Product","Version","Classification"],[OWNER,PRODUCT,VERSION,CLASSIFICATION],["Architecture status","Module","Prepared for","Canonical name"],["Review baseline","011 — Celar AI","US Signal architecture review","Pulse"]])
     p=doc.add_paragraph("This architecture package is created and owned by US Signal. It uses the exact US Signal logo supplied for the package and refers to the application as Pulse."); p.alignment=WD_ALIGN_PARAGRAPH.CENTER; doc.add_page_break()
     doc.add_heading("Document Control",level=1); add_docx_table(doc,[["Field","Value"],["Title",DOC_TITLE],["Owner",OWNER],["Product",PRODUCT],["Module","011 — Celar AI"],["Version",VERSION],["Status","Review baseline"],["Classification",CLASSIFICATION],["Purpose","Explain the private-first Celar AI architecture to systems engineering, security, application, data, AI, project, financial, and leadership stakeholders."]])
-    doc.add_heading("Revision History",level=2); add_docx_table(doc,[["Version","Date","Description"],["1.0","2026-07-29","Initial architecture package."],["1.1","2026-07-29","Corrected to the supplied US Signal logo, US Signal ownership, Pulse naming, and US Signal visual direction."]]); doc.add_heading("Naming Convention",level=2); doc.add_paragraph("Pulse is the business platform. Celar AI is the private intelligence capability in Module 011. Module 064 is the governed external-provider configuration, health, routing, circuit-breaker, and fallback gateway."); doc.add_page_break()
+    doc.add_heading("Revision History",level=2); add_docx_table(doc,[["Version","Date","Description"],["1.0","2026-07-29","Initial architecture package."],["1.1","2026-07-29","Corrected to the supplied US Signal logo, US Signal ownership, Pulse naming, and US Signal visual direction."],["2.0","2026-08-08","Added the cost-controlled OpenCloud shared-VM runtime target for Ollama, Tesseract, and ClamAV, including the production scale boundary."]]); doc.add_heading("Naming Convention",level=2); doc.add_paragraph("Pulse is the business platform. Celar AI is the private intelligence capability in Module 011. Module 064 is the governed external-provider configuration, health, routing, circuit-breaker, and fallback gateway."); doc.add_page_break()
     doc.add_heading("Contents",level=1)
     for title,_ in SECTIONS: doc.add_paragraph(title)
     for appendix in ["Appendix A. Feature Routing Matrix","Appendix B. Architecture Decision Records","Appendix C. Glossary"]: doc.add_paragraph(appendix)
@@ -408,13 +508,17 @@ def build_docx():
     for title,paragraphs in SECTIONS:
         doc.add_heading(title,level=1)
         if title.startswith("4."): doc.add_paragraph("Figure 1. Celar AI private-first logical architecture and confidence-driven external escalation path."); doc.add_picture(str(OUT/FILES["logical_png"]),width=Inches(7.0))
-        if title.startswith("14."): doc.add_paragraph("Figure 2. Celar AI deployment zones, private data paths, governed tools, controlled egress, and audit integration."); doc.add_picture(str(OUT/FILES["deployment_png"]),width=Inches(7.0))
+        if title.startswith("14."):
+            doc.add_paragraph("Figure 2. Celar AI deployment zones, private data paths, governed tools, controlled egress, and audit integration.")
+            doc.add_picture(str(OUT/FILES["deployment_png"]),width=Inches(7.0))
+            doc.add_paragraph("Figure 3. Cost-controlled OpenCloud Test/UAT target with Ollama, Tesseract, and ClamAV isolated on one private runtime VM.")
+            doc.add_picture(str(OUT/FILES["opencloud_png"]),width=Inches(7.0))
         for text in paragraphs: doc.add_paragraph(text,style="List Bullet" if text.startswith(("Private first:","Authorization before","Facts from","Progressive","External models","Human control:")) else "Normal")
         if title.startswith("5."): add_docx_table(doc,[["Layer","Key components","Authority"],["Experience","Timesheet, Ask Celar AI, Search, FlowHive, Reports","Owning Pulse modules"],["Policy","Identity, RBAC, scope, classification","Pulse backend"],["Knowledge","Storage, extraction, embeddings, search","Private data services"],["Tools","Read-only APIs and semantic metrics","Owning modules"],["Reasoning","Private model, confidence, verifier","Module 011"],["Egress","DLP, Module 064, external providers","Security policy + Module 064"]])
         if title.startswith("6."): add_docx_table(doc,[["Data class","Private model","External provider"],["Public operating guidance","Allowed","Allowed when routed"],["Internal module documentation","Allowed","Sanitized generic question only"],["SOW, GSD, architecture and customer documents","Allowed","Raw content prohibited"],["Rates, contracts and financial data","Allowed","Disabled by default"],["Credentials and secrets","Prohibited in prompts","Prohibited"]])
         if title.startswith("10."): add_docx_table(doc,[["Semantic element","Example"],["Metrics","planned cost, actual cost, forecast, variance, margin"],["Dimensions","project, customer, project manager, period"],["Filters","effective user, authorized workspace, date range, status"],["Rules","read-only, deterministic values, unknowns preserved, row limit"]])
         if title.startswith("13."): add_docx_table(doc,[["Threat","Required mitigation"],["Prompt injection","Instruction isolation, content labels, tool allowlists, output validation"],["Data leakage","Authorization-first retrieval, DLP, private model, outbound allowlists"],["Hallucination","Citations, deterministic tools, confidence gates, private verification"],["Privilege escalation","Actual/effective identity, server-side scope, View-As read-only"],["Model drift","Frozen evaluations, canary, monitoring, rollback"]])
-        if title.startswith("19."): add_docx_table(doc,[["Phase","Deliverable","Gate"],["1","Foundation and architecture","Security and architecture approval"],["2","Private extraction and RAG","Privacy and retrieval tests"],["3","Timesheet and Help/Search","User acceptance and grounding quality"],["4","FlowHive and financial insight","Deterministic tool integration"],["5","Training and model lifecycle","Evaluation and production approval"]])
+        if title.startswith("19."): add_docx_table(doc,[["Phase","Deliverable","Gate"],["1","Foundation and architecture","Security and architecture approval"],["2","OpenCloud shared private runtime and RAG","Private network, service probes, privacy and retrieval tests"],["3","Timesheet and Help/Search","User acceptance and grounding quality"],["4","FlowHive and financial insight","Cited SOW evidence and deterministic tool integration"],["5","Training and model lifecycle","Evaluation and production approval"]])
         doc.add_page_break()
     doc.add_heading("Appendix A. Feature Routing Matrix",level=1); add_docx_table(doc,FEATURE_ROUTES); doc.add_page_break(); doc.add_heading("Appendix B. Architecture Decision Records",level=1); add_docx_table(doc,ADRS); doc.add_page_break(); doc.add_heading("Appendix C. Glossary",level=1); add_docx_table(doc,GLOSSARY)
     doc.save(OUT/FILES["docx"])
@@ -449,13 +553,13 @@ def build_pdf():
     for title,paragraphs in SECTIONS:
         story.append(Paragraph(esc(title),st["h1"]))
         if title.startswith("4."): story += [RLImage(str(OUT/FILES["logical_png"]),width=7*inch,height=3.05*inch),Paragraph("Figure 1. Celar AI private-first logical architecture.",st["caption"])]
-        if title.startswith("14."): story += [RLImage(str(OUT/FILES["deployment_png"]),width=7*inch,height=3.15*inch),Paragraph("Figure 2. Celar AI deployment and network architecture.",st["caption"])]
+        if title.startswith("14."): story += [RLImage(str(OUT/FILES["deployment_png"]),width=7*inch,height=3.15*inch),Paragraph("Figure 2. Celar AI deployment and network architecture.",st["caption"]),RLImage(str(OUT/FILES["opencloud_png"]),width=7*inch,height=4.28*inch),Paragraph("Figure 3. OpenCloud shared private-runtime VM for Ollama, Tesseract, and ClamAV in Test/UAT.",st["caption"])]
         for p in paragraphs: story.append(Paragraph(esc(p),st["bullet"] if p.startswith(("Private first:","Authorization before","Facts from","Progressive","External models","Human control:")) else st["body"],bulletText="•" if p.startswith(("Private first:","Authorization before","Facts from","Progressive","External models","Human control:")) else None))
         if title.startswith("5."): story.append(rl_table([["Layer","Key components","Authority"],["Experience","Timesheet, Ask Celar AI, Search, FlowHive, Reports","Owning modules"],["Policy","Identity, RBAC, scope, classification","Pulse backend"],["Knowledge","Storage, extraction, embeddings, search","Private data services"],["Tools","Read-only APIs and metrics","Owning modules"],["Reasoning","Private model, confidence, verifier","Module 011"],["Egress","DLP, Module 064, external providers","Security + Module 064"]],[1*inch,3.3*inch,2.9*inch]))
         if title.startswith("6."): story.append(rl_table([["Data class","Private model","External provider"],["Public guidance","Allowed","Allowed when routed"],["Internal documentation","Allowed","Sanitized question only"],["SOW/GSD/customer documents","Allowed","Raw content prohibited"],["Rates and financial data","Allowed","Disabled by default"],["Credentials and secrets","Prohibited in prompts","Prohibited"]],[2.4*inch,1.9*inch,2.9*inch]))
         if title.startswith("10."): story.append(rl_table([["Semantic element","Example"],["Metrics","planned cost, actual cost, forecast, variance, margin"],["Dimensions","project, customer, project manager, period"],["Filters","effective user, workspace, date range, status"],["Rules","read-only, deterministic, unknowns preserved, row limit"]],[1.6*inch,5.6*inch]))
         if title.startswith("13."): story.append(rl_table([["Threat","Required mitigation"],["Prompt injection","Instruction isolation, labels, tool allowlists, output validation"],["Data leakage","Authorization-first retrieval, DLP, private model, outbound allowlists"],["Hallucination","Citations, tools, confidence gates, private verification"],["Privilege escalation","Server-side actual/effective identity and scope"],["Model drift","Frozen evaluations, canary, monitoring, rollback"]],[1.6*inch,5.6*inch]))
-        if title.startswith("19."): story.append(rl_table([["Phase","Deliverable","Gate"],["1","Foundation and architecture","Security and architecture approval"],["2","Private extraction and RAG","Privacy and retrieval tests"],["3","Timesheet and Help/Search","Grounding quality and UAT"],["4","FlowHive and financial insight","Deterministic tool integration"],["5","Training and model lifecycle","Evaluation and production approval"]],[.65*inch,3.3*inch,3.25*inch]))
+        if title.startswith("19."): story.append(rl_table([["Phase","Deliverable","Gate"],["1","Foundation and architecture","Security and architecture approval"],["2","OpenCloud shared private runtime and RAG","Private network, probes, privacy and retrieval tests"],["3","Timesheet and Help/Search","Grounding quality and UAT"],["4","FlowHive and financial insight","Cited SOW evidence and deterministic tools"],["5","Training and model lifecycle","Evaluation and production approval"]],[.65*inch,3.3*inch,3.25*inch]))
         story.append(PageBreak())
     story += [Paragraph("Appendix A. Feature Routing Matrix",st["h1"]),rl_table(FEATURE_ROUTES,[1.45*inch,1.8*inch,2.2*inch,1.75*inch]),PageBreak(),Paragraph("Appendix B. Architecture Decision Records",st["h1"]),rl_table(ADRS,[.75*inch,2*inch,4.45*inch]),PageBreak(),Paragraph("Appendix C. Glossary",st["h1"]),rl_table(GLOSSARY,[1.45*inch,5.75*inch])]
     doc.build(story)
@@ -463,7 +567,7 @@ def build_pdf():
 
 def build_diagram_pdf():
     page=landscape(A3); c=canvas.Canvas(str(OUT/FILES["diagrams_pdf"]),pagesize=page)
-    for title,filename in [("Celar AI Private-First Logical Architecture — Speed of Delivery",FILES["logical_png"]),("Celar AI Deployment and Network Architecture",FILES["deployment_png"])]:
+    for title,filename in [("Celar AI Private-First Logical Architecture — Speed of Delivery",FILES["logical_png"]),("Celar AI Deployment and Network Architecture",FILES["deployment_png"]),("Celar AI OpenCloud Private Runtime Architecture",FILES["opencloud_png"])]:
         c.setFillColor(colors.white); c.rect(0,0,page[0],page[1],fill=1,stroke=0); c.setFillColor(colors.HexColor(NAVY)); c.setFont("Helvetica-Bold",17); c.drawString(.45*inch,page[1]-.42*inch,title); c.setFillColor(colors.HexColor(DARK_GRAY)); c.setFont("Helvetica",8); c.drawRightString(page[0]-.45*inch,page[1]-.40*inch,f"US Signal • Pulse • v{VERSION}")
         img=Image.open(OUT/filename); iw,ih=img.size; scale=min((page[0]-.7*inch)/iw,(page[1]-.9*inch)/ih); w,h=iw*scale,ih*scale; c.drawImage(str(OUT/filename),(page[0]-w)/2,(page[1]-h)/2-.08*inch,width=w,height=h,preserveAspectRatio=True,mask='auto'); c.setFont("Helvetica",7); c.drawString(.45*inch,.25*inch,CLASSIFICATION); c.showPage()
     c.save()

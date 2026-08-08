@@ -1,0 +1,68 @@
+services:
+  gateway:
+    image: ${PRIVATE_RUNTIME_GATEWAY_IMAGE:?Pin the reviewed gateway OCI image}
+    restart: unless-stopped
+    ports:
+      - "${PRIVATE_RUNTIME_BIND_IP:?Set the private bind address}:${PRIVATE_RUNTIME_GATEWAY_PORT:-443}:8443"
+    volumes:
+      - ${GATEWAY_CONFIG_VOLUME:-celar-ai-gateway-config}:/etc/celar-ai/gateway:ro
+      - ${TLS_CERTIFICATE_PATH:?Set the TLS certificate path}:/run/tls/tls.crt:ro
+      - ${TLS_PRIVATE_KEY_PATH:?Set the TLS private key path}:/run/tls/tls.key:ro
+      - ${RUNTIME_BEARER_TOKEN_FILE:?Set the bearer-token file}:/run/secrets/runtime-token:ro
+    networks:
+      - private-runtime
+    depends_on:
+      - ollama
+      - tesseract
+    security_opt:
+      - no-new-privileges:true
+
+  ollama:
+    image: ${OLLAMA_IMAGE:?Pin the reviewed Ollama OCI image}
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?Set the inference model}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:?Set the embedding model}
+    volumes:
+      - ${OLLAMA_MODELS_VOLUME:-celar-ai-ollama-models}:/root/.ollama
+    networks:
+      - private-runtime
+    security_opt:
+      - no-new-privileges:true
+
+  tesseract:
+    image: ${TESSERACT_ADAPTER_IMAGE:?Pin the reviewed Tesseract adapter OCI image}
+    restart: unless-stopped
+    environment:
+      TESSERACT_MODEL: ${TESSERACT_MODEL:-tesseract-5-eng}
+      MAX_CONCURRENT_DOCUMENTS: "1"
+    volumes:
+      - ${TESSERACT_WORK_VOLUME:-celar-ai-tesseract-work}:/var/lib/celar-ai/ocr
+    networks:
+      - private-runtime
+    security_opt:
+      - no-new-privileges:true
+
+  clamav:
+    image: ${CLAMAV_IMAGE:?Pin the reviewed ClamAV OCI image}
+    restart: unless-stopped
+    ports:
+      - "${PRIVATE_RUNTIME_BIND_IP:?Set the private bind address}:${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - ${CLAMAV_SIGNATURES_VOLUME:-celar-ai-clamav-signatures}:/var/lib/clamav
+    networks:
+      - private-runtime
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  private-runtime:
+    driver: bridge
+    internal: true
+
+volumes:
+  celar-ai-ollama-models:
+  celar-ai-tesseract-work:
+  celar-ai-clamav-signatures:
+  celar-ai-gateway-config:

@@ -18,6 +18,7 @@ on:
       - 'tests/validate-celar-ai-internal-data-intelligence.mjs'
       - 'tests/test-celar-ai-internal-data-migration-080.sh'
       - 'tests/test-celar-ai-private-runtime-activation-migration-081.sh'
+      - 'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
       - 'docs/modules/module-011-pulse-ai/CELAR-AI-INTERNAL-DATA-INTELLIGENCE.md'
       - 'docs/modules/module-011-pulse-ai/ANSWER-QUALITY-AND-PRIVACY-CONTRACT.md'
       - 'scripts/release-test/verify-runtime.mjs'
@@ -53,5 +54,7 @@ jobs:
         run: bash tests/test-celar-ai-internal-data-migration-080.sh
       - name: Test private-runtime activation migration and guarded rollback
         run: bash tests/test-celar-ai-private-runtime-activation-migration-081.sh
+      - name: Verify OpenCloud runtime remains manual and deferred
+        run: node tests/validate-celar-ai-opencloud-deferred-runtime.mjs
       - name: Verify clean diff
         run: git diff --check && git diff --exit-code

@@ -287,6 +287,24 @@ internal static class ReleaseRuntimeBehavior
     private static void VerifyExternalOutputPrivacyBehavior()
     {
         var sanitizer = new PulseAiEscalationSanitizer();
+        Require(CelarAiExternalCapsuleCatalog.TryResolve(
+                CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
+                [
+                    CelarAiExternalCapsuleCatalog.TimesheetActivityTrainingProfessionalDevelopment,
+                    CelarAiExternalCapsuleCatalog.TimesheetClassificationNonProject
+                ],
+                out var trainingCapsule)
+            && trainingCapsule.Capsule.Contains(
+                "training or professional development",
+                StringComparison.Ordinal)
+            && !trainingCapsule.Capsule.Contains("[REDACTED_", StringComparison.Ordinal),
+            "the exact Working on training scenario resolves to a clean identity-free Timesheet capsule");
+        Require(sanitizer.IsTimesheetExternalOutputSafe(
+                "Performed training and professional development activities. Documented learning topics for continued skill development.",
+                [],
+                out var trainingOutputDecision)
+            && trainingOutputDecision == "external_output_privacy_validated",
+            "the exact Working on training scenario accepts identity-free customer-facing output");
         Require(sanitizer.IsExternalOutputSafe(
                 "Provided technical support and documented the result. Coordinated follow-up validation.",
                 [],

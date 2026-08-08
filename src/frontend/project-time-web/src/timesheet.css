@@ -3850,6 +3850,38 @@ textarea:focus {
   color: var(--pulse-muted);
 }
 
+.ai-suggestion-route-trace {
+  border-top: 1px solid var(--pulse-card-border);
+  padding-top: 10px;
+}
+
+.ai-suggestion-route-trace summary {
+  cursor: pointer;
+  color: var(--pulse-link, #075985);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.ai-suggestion-route-trace ol {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.ai-suggestion-route-trace li {
+  color: var(--pulse-text);
+  font-size: 0.8rem;
+}
+
+.ai-suggestion-route-trace li strong {
+  margin-right: 6px;
+}
+
+.ai-suggestion-route-trace li span {
+  color: var(--pulse-muted);
+}
+
 /* 019M-E day-level submit guidance */
 .day-submit-guidance-card {
   display: grid;

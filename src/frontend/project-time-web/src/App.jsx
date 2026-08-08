@@ -30,6 +30,40 @@ const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
   'PROJECT_MANAGEMENT'
 ]);
 
+const TIMESHEET_AI_PROVIDER_LABELS = Object.freeze({
+  celar_ai: 'Celar AI',
+  claude: 'Claude',
+  openai: 'OpenAI',
+  local_template: 'Governed local template fallback'
+});
+
+const TIMESHEET_AI_ROUTE_REASON_LABELS = Object.freeze({
+  generation_succeeded: 'Completed',
+  private_model_completed: 'Completed with private evidence',
+  celar_ai_private_model_not_configured: 'Private model is not configured',
+  celar_ai_private_model_disabled: 'Private model is disabled',
+  provider_not_registered: 'Provider is not configured',
+  provider_not_configured: 'Provider credentials are not configured',
+  provider_disabled: 'Provider is disabled',
+  provider_circuit_open: 'Provider is temporarily unavailable',
+  model_not_approved: 'The configured model is not approved',
+  sanitized_external_policy_disabled: 'Sanitized external routing is disabled',
+  sanitized_external_closed_purpose_required: 'The governed request capsule was unavailable',
+  sanitized_external_request_ready_after_deidentification: 'Used only approved identity-free activity facts',
+  sanitized_external_problem_ready: 'Completed with a sanitized work note',
+  private_document_pipeline_not_ready: 'Private document processing is not ready',
+  external_output_identity_validation_failed: 'The response failed identity-safety validation',
+  external_output_privacy_validation_failed: 'The response failed privacy validation',
+  external_output_unsupported_outcome_claim: 'The response made an unsupported completion or outcome claim',
+  provider_unhandled_failure: 'The provider request failed',
+  local_fallback: 'No configured AI target completed'
+});
+
+function timesheetAiRouteReason(decision) {
+  return TIMESHEET_AI_ROUTE_REASON_LABELS[decision?.reasonCode]
+    || String(decision?.reasonCode || decision?.outcome || 'not attempted').replaceAll('_', ' ');
+}
+
 import OpportunitiesCenter from './OpportunitiesCenter.jsx';
 import SystemUserGuide from './SystemUserGuide.jsx';
 import WorkIntakeCreationCenter from './WorkIntakeCreationCenter.jsx';
@@ -4212,7 +4246,7 @@ export default function App() {
   const [activeRows, setActiveRows] = useState([]);
   const [entries, setEntries] = useState({});
   const [selectedCell, setSelectedCell] = useState(null);
-  const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
+  const [aiSuggestionState, setAiSuggestionState] = useState({ loading: false, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
   const [submissionStatus, setSubmissionStatus] = useState('Draft');
   const [saveStatus, setSaveStatus] = useState('Not saved yet');
   const [isSaving, setIsSaving] = useState(false);
@@ -5857,14 +5891,14 @@ export default function App() {
   const selectedEntryIsEditable = Boolean(selectedCell && isDayEditable(selectedCell.date));
 
   function openEntryDetails(rowId, date, type) {
-    setAiSuggestionState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
+    setAiSuggestionState({ loading: false, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
     setSelectedCell({ rowId, date, type });
   }
 
   async function closeEntryDetails({ autoSave = true } = {}) {
     const shouldAutoSave = autoSave && selectedCell && selectedEntryIsEditable && Object.keys(entries).length > 0;
     setSelectedCell(null);
-    setAiSuggestionState({ loading: false, suggestion: '', provider: '', warning: '', error: '' });
+    setAiSuggestionState({ loading: false, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
 
     if (shouldAutoSave) {
       await autoSaveDraft('Auto-saving draft...');
@@ -5935,6 +5969,7 @@ export default function App() {
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: 'This day is locked or submitted. Unlock the day before generating a new suggestion.'
       });
@@ -5949,6 +5984,7 @@ export default function App() {
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: 'Keep the rough work note at 4,000 characters or fewer before generating a suggestion.'
       });
@@ -5959,13 +5995,14 @@ export default function App() {
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: 'Add a brief factual note about the work performed before generating a customer-facing description.'
       });
       return;
     }
 
-    setAiSuggestionState({ loading: true, suggestion: '', provider: '', warning: '', error: '' });
+    setAiSuggestionState({ loading: true, suggestion: '', provider: '', targetDecisions: [], warning: '', error: '' });
 
     try {
       const hours = Number.parseFloat(selectedEntry.hours);
@@ -5998,6 +6035,7 @@ export default function App() {
         loading: false,
         suggestion: result.suggestion ?? '',
         provider: result.provider ?? '',
+        targetDecisions: Array.isArray(result.targetDecisions) ? result.targetDecisions : [],
         warning: result.warning ?? '',
         error: result.suggestion
           ? ''
@@ -6008,6 +6046,7 @@ export default function App() {
         loading: false,
         suggestion: '',
         provider: '',
+        targetDecisions: [],
         warning: '',
         error: error instanceof Error ? error.message : 'Unable to generate AI suggestion.'
       });
@@ -8294,17 +8333,26 @@ Analytics - Variphy / Infortel`}
                     <p className="ai-suggestion-warning">{aiSuggestionState.warning}</p>
                   )}
 
+                  {!aiSuggestionState.suggestion && aiSuggestionState.targetDecisions?.length > 0 && (
+                    <details className="ai-suggestion-route-trace">
+                      <summary>Why the AI suggestion did not complete</summary>
+                      <ol>
+                        {aiSuggestionState.targetDecisions.map((decision, index) => (
+                          <li key={`${decision.target || 'target'}-${index}`}>
+                            <strong>{TIMESHEET_AI_PROVIDER_LABELS[decision.target] || decision.target || 'AI target'}</strong>
+                            <span>{timesheetAiRouteReason(decision)}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
+
                   {aiSuggestionState.suggestion && (
                     <div className="ai-suggestion-preview">
                       <strong>Suggested description</strong>
                       <p>{aiSuggestionState.suggestion}</p>
                       <small>
-                        Provider: {{
-                          celar_ai: 'Celar AI',
-                          claude: 'Claude',
-                          openai: 'OpenAI',
-                          local_template: 'Governed local template fallback'
-                        }[aiSuggestionState.provider] || 'Shared AI router'}
+                        Provider: {TIMESHEET_AI_PROVIDER_LABELS[aiSuggestionState.provider] || 'Shared AI router'}
                       </small>
                     </div>
                   )}
