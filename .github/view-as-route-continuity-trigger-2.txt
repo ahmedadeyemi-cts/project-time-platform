@@ -1,2 +1,0 @@
-Temporary trigger for the corrected branch-local View-As route continuity publisher.
-This file is deleted by the validated source commit.
