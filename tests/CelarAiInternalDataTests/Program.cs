@@ -85,6 +85,25 @@ Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Outside Pulse, who is Kevin Damisch?"),
     "explicit outside-Pulse override is external eligible");
 
+Require(
+    ExternalLooksLikeNonAnswer("I don't have access to real-time information, so I cannot determine who currently holds that office."),
+    "current-information access disclaimer is a semantic non-answer");
+Require(
+    ExternalLooksLikeNonAnswer("I'm sorry, but I can't access current officeholder information."),
+    "apologetic current-officeholder disclaimer is a semantic non-answer");
+Require(
+    ExternalLooksLikeNonAnswer("As an AI language model, I do not have access to live information."),
+    "model live-information disclaimer is a semantic non-answer");
+Require(
+    !ExternalLooksLikeNonAnswer("In C#, code cannot access a private member from an unrelated type because access modifiers enforce encapsulation."),
+    "substantive access-control explanation remains an answer");
+Require(
+    !ExternalLooksLikeNonAnswer("I cannot access a private member from an unrelated type because C# access modifiers enforce encapsulation."),
+    "first-person substantive access-control explanation remains an answer");
+Require(
+    !ExternalLooksLikeNonAnswer("The current officeholder is Example Person. I cannot access private Pulse records, but no such context was needed."),
+    "substantive officeholder answer with a later limitation remains an answer");
+
 var integrationConnectionString = Environment.GetEnvironmentVariable("CELAR_AI_TEST_CONNECTION_STRING");
 if (!string.IsNullOrWhiteSpace(integrationConnectionString))
 {
@@ -110,6 +129,19 @@ static void Require(bool condition, string evidence)
 {
     if (!condition)
         throw new InvalidOperationException($"Celar AI internal-data assertion failed: {evidence}.");
+}
+
+static bool ExternalLooksLikeNonAnswer(string content)
+{
+    var qualityType = typeof(CelarAiInternalDataService).Assembly.GetType(
+        "ProjectTime.Api.Ai.CelarAiExternalAnswerQuality")
+        ?? throw new InvalidOperationException("Celar AI external answer-quality type was not found.");
+    var method = qualityType.GetMethod(
+        "LooksLikeNonAnswer",
+        BindingFlags.Public | BindingFlags.Static)
+        ?? throw new InvalidOperationException("Celar AI external answer-quality method was not found.");
+    return (bool)(method.Invoke(null, [content])
+        ?? throw new InvalidOperationException("Celar AI external answer-quality method returned no result."));
 }
 
 static async Task AssertDatabaseResolverAsync(string connectionString)
