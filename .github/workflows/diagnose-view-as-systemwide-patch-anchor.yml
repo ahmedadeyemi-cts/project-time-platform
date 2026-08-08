@@ -1,0 +1,45 @@
+name: Diagnose View-As systemwide patch anchor
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'fix/view-as-module-navigation-continuity-20260808'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/view-as-module-navigation-continuity-20260808
+          fetch-depth: 0
+      - name: Run reviewed patch with diagnostic anchors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/augment-view-as-module-navigation-systemwide.yml').read_text()
+          start_marker = "      - name: Apply complete systemwide repair\n        shell: bash\n        run: |\n"
+          end_marker = "\n      - name: Validate focused systemwide contracts"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          block = workflow[start:end]
+          lines = [line[10:] if line.startswith('          ') else line for line in block.splitlines()]
+          script = '\n'.join(lines) + '\n'
+          script = script.replace(
+              'raise SystemExit(f"{relative}: expected one replacement target, found {count}")',
+              'raise SystemExit(f"{relative}: expected one replacement target, found {count}; marker={old.splitlines()[0]!r}")'
+          )
+          script = script.replace(
+              'raise SystemExit(f"{relative}: expected one insertion marker, found {count}")',
+              'raise SystemExit(f"{relative}: expected one insertion marker, found {count}; marker={marker.splitlines()[0]!r}")'
+          )
+          Path('/tmp/apply-view-as-systemwide.sh').write_text(script)
+          PY
+          bash /tmp/apply-view-as-systemwide.sh
