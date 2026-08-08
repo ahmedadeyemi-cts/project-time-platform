@@ -1,21 +1,23 @@
-name: Validate Modules 081 082 001A and Celar AI Test Deployment
+name: Validate Test-Only Timesheet AI Release b1335bd2
 
 on:
   pull_request:
     paths:
-      - .github/workflows/projectpulse-deploy-test.yml
-      - .github/workflows/projectpulse-release-test-control-ci.yml
-      - deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
-      - scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh
-      - scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
-      - scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
+      - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+      - '.github/workflows/celar-ai-production-platform-ci.yml'
+      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+      - '.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
+      - 'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Validate exact guarded Test release controls
+    name: Validate exact b1335bd2 Test release controls
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
@@ -25,127 +27,83 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate source pins, migration safety, and runtime evidence contract
+      - name: Validate source pin, migration boundary, UAT, and deferral contract
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -Eeuo pipefail
-          DEPLOY=.github/workflows/projectpulse-deploy-test.yml
-          VALIDATE=.github/workflows/projectpulse-release-test-control-ci.yml
-          MANIFEST=deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
-          APPLY=scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh
-          RUNNER=scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
-          VERIFY=scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
-          SOURCE=1892c6d0187edc367a57b8cee2e868417dd9a01a
+          CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+          VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
+          PRIVATE_RUNTIME='.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+          HISTORICAL_HOTFIX='.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
+          MIGRATOR='scripts/release-test/apply-celar-ai-internal-data-080.sh'
+          DEFERRAL_TEST='tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
+          SOURCE='b1335bd2426d061f85498ace7c7b2a70c3b5bdc6'
 
-          bash -n "$APPLY"
-          bash -n "$RUNNER"
-          node --check "$VERIFY"
+          git fetch origin "$BASE_REF" --no-tags
+          cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
+          .github/workflows/celar-ai-enterprise-platform-ci.yml
+          .github/workflows/celar-ai-production-platform-ci.yml
+          .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+          .github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/release-test/apply-celar-ai-internal-data-080.sh
+          tests/validate-celar-ai-opencloud-deferred-runtime.mjs
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
+          git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
+          LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
+          diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
 
-          grep -Fq "EXPECTED_SOURCE_SHA: $SOURCE" "$DEPLOY"
-          grep -Fq "ref: $SOURCE" "$DEPLOY"
-          grep -Fq 'DEPLOY-1892C6D-MODULES-081-082-001A-CELAR-AI-TO-TEST' "$DEPLOY"
-          grep -Fq 'group: projectpulse-deploy-test' "$DEPLOY"
-          grep -Fq 'cancel-in-progress: false' "$DEPLOY"
-          grep -Fq 'environment: test' "$DEPLOY"
-          grep -Fq 'QUIESCENT_TEST_BASELINE=VERIFIED' "$DEPLOY"
-          grep -Fq 'API_PREDEPLOY_CAS=PASSED' "$DEPLOY"
-          grep -Fq 'WEB_PREDEPLOY_CAS=PASSED' "$DEPLOY"
-          grep -Fq 'DATABASE_ROLLBACK=NOT_EXECUTED_SCHEMA_STAYS_FORWARD' "$DEPLOY"
-          grep -Fq 'applicationRollbackAttempted' "$DEPLOY"
-          grep -Fq 'modules-081-082-001a-celar-ai-1892c6d-20260807.json' "$DEPLOY"
-          grep -Fq '075_pulse_product_rebrand.sql' "$DEPLOY"
-          grep -Fq '076_module_081_lab_equipment_tracker.sql' "$DEPLOY"
-          grep -Fq '077_module_082_enterprise_project_risk_register.sql' "$DEPLOY"
-          grep -Fq '078_module_001a_engineer_request_closeout.sql' "$DEPLOY"
-          ! grep -Eq 'psql.*database/rollback|\\i .*database/rollback' "$DEPLOY"
-          ! grep -Fq 'az keyvault secret show' "$DEPLOY"
-          ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$DEPLOY"
-          test ! -e .github/workflows/projectpulse-deploy-pulse-login-test.yml
+          bash -n "$MIGRATOR"
+          bash -n scripts/release-test/run-migration-job.sh
+          node --check "$DEFERRAL_TEST"
+          node "$DEFERRAL_TEST"
+          node tests/validate-celar-ai-internal-data-intelligence.mjs
+          node src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs
 
-          grep -Fq "EXPECTED_RELEASE_COMMIT=\"$SOURCE\"" "$APPLY"
-          grep -Fq 'DATABASE_IDENTITY=TEST_SENTINEL_VERIFIED' "$APPLY"
-          grep -Fq 'Refusing partial, duplicate, or out-of-order 075-078 migration state.' "$APPLY"
-          grep -Fq 'A superseded migration 076 identity is present' "$APPLY"
-          grep -Fq 'MIGRATION_075=APPLYING' "$APPLY"
-          grep -Fq -- '--set=body075=' "$APPLY"
-          grep -Fq 'Core business row counts changed' "$APPLY"
-          grep -Fq 'MODULES_081_082_001A_MIGRATIONS_075_078=VERIFIED' "$APPLY"
-          grep -Fq 'Migration 075 invoice compatibility constraint is unavailable.' "$APPLY"
-          grep -Fq 'Migration 075 Pulse invoice generator is unavailable.' "$APPLY"
-          grep -Fq 'The existing project risk table is neither the exact Module 011 legacy shape nor the Module 082 enterprise shape.' "$APPLY"
-          grep -Fq 'MIGRATION_077_LEGACY_RISK_DATA=CONVERGED' "$APPLY"
-          grep -Fq 'Module 011 project risk data did not reconcile completely into Module 082.' "$APPLY"
-          grep -Fq 'PSQL_TARGET=()' "$APPLY"
-          grep -Fq 'psql "${PSQL_TARGET[@]}"' "$APPLY"
-          grep -Fq 'PGDATABASE does not match the protected Test database name' "$APPLY"
+          grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
+          grep -Fq "ref: $SOURCE" "$CONTROLLER"
+          grep -Fq 'branches: [main]' "$CONTROLLER"
+          grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
+          grep -Fq 'queue: max' "$CONTROLLER"
+          grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
+          grep -Fq 'environment: test' "$CONTROLLER"
+          grep -Fq '080_celar_ai_internal_data_intelligence.sql' "$CONTROLLER"
+          grep -Fq 'MIGRATION_SCOPE=080_ONLY' "$CONTROLLER"
+          grep -Fq 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED' "$CONTROLLER"
+          grep -Fq 'currentDescription:"Working on training"' "$CONTROLLER"
+          grep -Fq 'timesheet-working-on-training.json' "$CONTROLLER"
+          grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
+          grep -Fq 'privateRuntimeConfigurationChanged:false' "$CONTROLLER"
+          grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
+          ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+          ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
+          ! grep -Fq 'az keyvault secret show' "$CONTROLLER"
 
-          grep -Fq "EXPECTED_RELEASE_COMMIT=\"$SOURCE\"" "$RUNNER"
-          grep -Fq 'modules-081-082-001a-celar-ai-test' "$RUNNER"
-          grep -Fq 'keyVaultUrl' "$RUNNER"
-          grep -Fq 'validate_job_ownership' "$RUNNER"
-          grep -Fq 'PREFLIGHT_CONFIRMED_404=1' "$RUNNER"
-          grep -Fq '{name: "PGPASSWORD", secretRef: "main-release-db-password"}' "$RUNNER"
-          grep -Fq '{name: "PGSSLMODE", value: "verify-full"}' "$RUNNER"
-          ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$RUNNER"
-
-          grep -Fq "const expectedSource = \"$SOURCE\"" "$VERIFY"
-          grep -Fq 'const expectedBase = "https://phd-west-test.onenecklab.com"' "$VERIFY"
-          grep -Fq 'releaseJson.sourceSha === sourceSha' "$VERIFY"
-          grep -Fq 'Module 081 capability contract is incorrect.' "$VERIFY"
-          grep -Fq 'Module 082 capability contract is incorrect.' "$VERIFY"
-          grep -Fq 'const authenticatedUatEnabled = session.length >= 20' "$VERIFY"
-          grep -Fq 'headers["X-ProjectPulse-Session"] = session' "$VERIFY"
-          grep -Fq 'Module 081 authentication boundary returned unexpected' "$VERIFY"
-          grep -Fq 'Module 082 authentication boundary returned unexpected' "$VERIFY"
-          grep -Fq 'labCapabilities.status === 401 && lab.status === "session_required"' "$VERIFY"
-          grep -Fq 'riskCapabilities.status === 401 && risk.status === "session_required"' "$VERIFY"
-          grep -Fq '.protectedRuntimeVerification' "$DEPLOY"
-          grep -Fq 'Module 001A protected route returned unexpected' "$VERIFY"
-          grep -Fq 'Celar AI private-runtime route returned unexpected' "$VERIFY"
-          grep -Fq 'Served application bundle is missing' "$VERIFY"
-          grep -Fq 'pending_user_session_validation' "$VERIFY"
-          grep -Fq 'redirect: "manual"' "$VERIFY"
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          manifest = json.loads(Path("deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json").read_text())
-          assert manifest["schemaVersion"] == 1
-          assert manifest["releaseName"] == "modules-081-082-001a-celar-ai-1892c6d-20260807"
-          assert manifest["environment"] == "test"
-          assert manifest["sourceSha"] == "1892c6d0187edc367a57b8cee2e868417dd9a01a"
-          assert manifest["modules081082001aIncluded"] is True
-          assert manifest["celarAiPrivateRagUxIncluded"] is True
-          assert manifest["legacyRiskTableReconciliation"] is True
-          assert manifest["protectedRuntimeVerification"] is True
-          assert manifest["requiredPriorLedger"] == [
-              "074_module_066_project_flowhive_production",
-          ]
-          assert [item["id"] for item in manifest["migrations"]] == [
-              "075_pulse_product_rebrand",
-              "076_module_081_lab_equipment_tracker",
-              "077_module_082_enterprise_project_risk_register",
-              "078_module_001a_engineer_request_closeout",
-          ]
-          assert len({item["path"] for item in manifest["migrations"]}) == 4
-          assert len({item["blobSha"] for item in manifest["migrations"]}) == 4
-          assert len({item["sha256"] for item in manifest["migrations"]}) == 4
-          assert manifest["deployment"]["applicationRollbackOnFailure"] is True
-          assert manifest["deployment"]["databaseRollbackOnFailure"] is False
-          PY
-
+          grep -Fq 'MIGRATION_NAME="080_celar_ai_internal_data_intelligence.sql"' "$MIGRATOR"
+          grep -Fq 'Migration 080 requires the core identity' database/migrations/080_celar_ai_internal_data_intelligence.sql
+          grep -Fq 'PRIVATE_RUNTIME_MIGRATION_081=ABSENT' "$MIGRATOR"
+          grep -Fq 'The migration image must contain exactly migration 080.' "$MIGRATOR"
+          grep -Fq 'PGDATABASE does not match the protected Test database.' "$MIGRATOR"
           printf '%s  %s\n' \
-            524decbbf13c0aef05f16971b87797dbeec1b30d6fde552a18316bb1bdca0b5d database/migrations/075_pulse_product_rebrand.sql \
-            0fd7addecfb43c8d7341c6882e02affd3b6c6f4eb8eea49c4b7aa086270ae47d database/migrations/076_module_081_lab_equipment_tracker.sql \
-            22725eb63bb57d82f23f431d6a7c007740b758040c16b294590947901072dada database/migrations/077_module_082_enterprise_project_risk_register.sql \
-            de2e814fb3a96fc45bb9e15e7074b1b88b1c9d13b4b0b2cc9191379bcdc97162 database/migrations/078_module_001a_engineer_request_closeout.sql \
+            5751d0a27552a3bf0c90ec4ef82eccebc1485e839e89c498bec2f5c04e0914b4 database/migrations/080_celar_ai_internal_data_intelligence.sql \
             | sha256sum --check --strict
+          test "$(git rev-parse "$SOURCE:database/migrations/080_celar_ai_internal_data_intelligence.sql")" = f64f3b8778355351175addb353fe57d06a9a32e6
 
-          test "$(git rev-parse HEAD:database/migrations/075_pulse_product_rebrand.sql)" = a345bc99234d63c1a207417d2669a9d3a7b12a0a
-          test "$(git rev-parse HEAD:database/migrations/076_module_081_lab_equipment_tracker.sql)" = df4d79de5f912fc7fcd4b5af70c5e084929b5c21
-          test "$(git rev-parse HEAD:database/migrations/077_module_082_enterprise_project_risk_register.sql)" = 37fb39bcdd9aaa7ce1b88ffd87559026096eed11
-          test "$(git rev-parse HEAD:database/migrations/078_module_001a_engineer_request_closeout.sql)" = fc95ebb7976209ba9e1f362cfdebf2897334a178
+          for deferred in "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX"; do
+            grep -Fq 'workflow_dispatch:' "$deferred"
+            ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
+            ! grep -Fq 'environment: test' "$deferred"
+            ! grep -Eq 'id-token:[[:space:]]+write' "$deferred"
+            ! grep -Eq 'azure/[l]ogin@' "$deferred"
+            ! grep -Eq 'az (containerapp|acr)' "$deferred"
+          done
+
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
-          git diff --check
-          echo "MODULES_081_082_001A_CELAR_AI_TEST_DEPLOYMENT_CONTROL=PASSED"
+          node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
+          git diff --check "origin/$BASE_REF...HEAD"
+          echo 'TIMESHEET_AI_B1335BD2_TEST_RELEASE_CONTROL=PASSED'

@@ -187,16 +187,18 @@ jobs:
             grep -Fq 'status: deferred-until-opencloud' deployment/environments/opencloud-template.yml
           elif [[ "$HEAD_BRANCH" == release/test-b1335bd2-timesheet-ai-* ]]; then
             CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+            CONTROLLER_VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
             PRIVATE_RUNTIME='.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
             HISTORICAL_HOTFIX='.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
             MIGRATOR='scripts/release-test/apply-celar-ai-internal-data-080.sh'
             DEFERRAL_TEST='tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
             PROHIBITED="$(grep -Fvx \
               -e "$CONTROLLER" \
+              -e "$CONTROLLER_VALIDATOR" \
               -e "$PRIVATE_RUNTIME" \
               -e "$HISTORICAL_HOTFIX" \
               <<<"$PROHIBITED" || true)"
-            for required in "$CONTROLLER" "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX" "$MIGRATOR" "$DEFERRAL_TEST"; do
+            for required in "$CONTROLLER" "$CONTROLLER_VALIDATOR" "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX" "$MIGRATOR" "$DEFERRAL_TEST"; do
               test -f "$required"
               grep -Fxq "$required" <<<"$CHANGED"
             done
