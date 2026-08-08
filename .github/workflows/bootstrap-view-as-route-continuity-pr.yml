@@ -2,7 +2,7 @@ name: Publish systemwide View-As route continuity repair from PR
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, edited]
     branches: [main]
 
 permissions:
@@ -134,6 +134,9 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
               'docs/security/VIEW-AS-ROUTE-CONTINUITY.md',
               '.github/workflows/bootstrap-view-as-route-continuity-systemwide.yml',
               '.github/workflows/bootstrap-view-as-route-continuity-pr.yml',
+              '.github/workflows/bootstrap-view-as-route-continuity-final.yml',
+              '.github/view-as-route-continuity-trigger.txt',
+              '.github/view-as-route-continuity-trigger-2.txt',
           }
           changed = {
               line[3:]
@@ -143,20 +146,31 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
           unexpected = changed - allowed
           if unexpected:
               raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
-          required = allowed - {
-              '.github/workflows/bootstrap-view-as-route-continuity-systemwide.yml',
-              '.github/workflows/bootstrap-view-as-route-continuity-pr.yml',
+          required = {
+              'src/frontend/project-time-web/src/module-availability-bridge.js',
+              'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
+              'src/frontend/project-time-web/src/module-availability.css',
+              'src/frontend/project-time-web/package.json',
+              'src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs',
+              'database/migrations/082_view_as_route_authority_catalog.sql',
+              'database/rollback/082_view_as_route_authority_catalog_rollback.sql',
+              'tests/test-view-as-route-authority-migration-082.sh',
+              'docs/security/VIEW-AS-ROUTE-CONTINUITY.md',
           }
           missing = required - changed
           if missing:
               raise SystemExit(f'Expected files were not changed: {sorted(missing)}')
           PY
 
-      - name: Commit validated repair and remove temporary publishers
+      - name: Commit validated repair and remove temporary controls
         shell: bash
         run: |
-          rm .github/workflows/bootstrap-view-as-route-continuity-systemwide.yml
-          rm .github/workflows/bootstrap-view-as-route-continuity-pr.yml
+          rm -f \
+            .github/workflows/bootstrap-view-as-route-continuity-systemwide.yml \
+            .github/workflows/bootstrap-view-as-route-continuity-pr.yml \
+            .github/workflows/bootstrap-view-as-route-continuity-final.yml \
+            .github/view-as-route-continuity-trigger.txt \
+            .github/view-as-route-continuity-trigger-2.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -170,6 +184,9 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
             tests/test-view-as-route-authority-migration-082.sh \
             docs/security/VIEW-AS-ROUTE-CONTINUITY.md \
             .github/workflows/bootstrap-view-as-route-continuity-systemwide.yml \
-            .github/workflows/bootstrap-view-as-route-continuity-pr.yml
+            .github/workflows/bootstrap-view-as-route-continuity-pr.yml \
+            .github/workflows/bootstrap-view-as-route-continuity-final.yml \
+            .github/view-as-route-continuity-trigger.txt \
+            .github/view-as-route-continuity-trigger-2.txt
           git commit -m "Fix systemwide View-As route continuity"
           git push origin HEAD:fix/view-as-route-continuity-systemwide-20260808
