@@ -1,4 +1,4 @@
-name: ProjectPulse Test-Only Unified Celar Routing Release 9c34c6c3
+name: ProjectPulse Test-Only Combined Release d9b5c6c3
 
 on:
   push:
@@ -17,13 +17,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy 9c34c6c3 and validate unified Celar routing
+    name: Deploy d9b5c6c3 and validate the combined release
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TARGET_RELEASE_COMMIT: 9c34c6c3a6151a04e2b9b76840c95dc10a9f438e
+      TARGET_RELEASE_COMMIT: d9b5c6c3acf26348c15d97c800605453413f9819
 
     steps:
       - name: Check out deployment controls
@@ -37,7 +37,7 @@ jobs:
       - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 9c34c6c3a6151a04e2b9b76840c95dc10a9f438e
+          ref: d9b5c6c3acf26348c15d97c800605453413f9819
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -57,11 +57,15 @@ jobs:
           CATALOG='release/src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
           PRIVATE_RAG='release/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
           INTERNAL_TESTS='release/tests/CelarAiInternalDataTests/Program.cs'
+          ARCHITECTURE_TEST='release/src/frontend/project-time-web/scripts/validate-module-011-managed-architecture.mjs'
+          VIEW_AS_TEST='release/src/frontend/project-time-web/scripts/validate-view-as-module-navigation.mjs'
           FLOWHIVE_TEST='release/src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
           FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
           test -f "$CATALOG"
           test -f "$PRIVATE_RAG"
           test -f "$INTERNAL_TESTS"
+          test -f "$ARCHITECTURE_TEST"
+          test -f "$VIEW_AS_TEST"
           test -f "$FLOWHIVE_TEST"
           test -f "$FORGE_TEST"
           test -f control/scripts/build-pr55-acr-image.sh
@@ -69,6 +73,8 @@ jobs:
 
           grep -Fq 'LooksLikeClearlyPublicOfficeholderQuestion(normalized)' "$CATALOG"
           grep -Fq 'Who is the president of Acme Corp?' "$INTERNAL_TESTS"
+          node "$ARCHITECTURE_TEST"
+          node "$VIEW_AS_TEST"
           grep -Fq 'AllowsDeterministicCitedPlanningFallback(query.FeatureCode)' "$PRIVATE_RAG"
           grep -Fq 'CelarAiCapabilityCatalog.ProjectFlowHivePlan' "$PRIVATE_RAG"
           grep -Fq 'CelarAiCapabilityCatalog.ProjectForgePlanEstimate' "$PRIVATE_RAG"
@@ -138,14 +144,14 @@ jobs:
           echo "old_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable API and web images from 9c34c6c3
+      - name: Build immutable API and web images from d9b5c6c3
         id: build
         shell: bash
         working-directory: release
         run: |
           set -Eeuo pipefail
-          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:unified-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
-          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:unified-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:combined-release-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:combined-release-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
           echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
@@ -164,7 +170,7 @@ jobs:
           bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
           AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
           SOURCE_COMMIT_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
-          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned unified-routing release.' >&2; exit 1; }
+          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned combined release.' >&2; exit 1; }
           jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$RUNNER_TEMP/private-runtime-after.json"
           diff -u "$RUNNER_TEMP/private-runtime-before.json" "$RUNNER_TEMP/private-runtime-after.json"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -242,6 +248,10 @@ jobs:
             ((.result.modelProvider // "") | ascii_downcase) as $provider |
             ($provider == "claude" or $provider == "openai") and
             any(.result.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used") and
+            ($provider == "claude" or any(.result.targetDecisions[]?;
+              ((.target // "") | ascii_downcase) == "claude" and
+              ((.outcome // "") | ascii_downcase) == "failed" and
+              ((.reasonCode // "") | ascii_downcase) == "public_general_question_semantic_non_answer")) and
             .rawPrivateContextSentToExternalProvider == false
           ' "$PUBLIC_FILE" >/dev/null || fail 'The President question did not use the governed public-provider route.'
 
@@ -289,7 +299,7 @@ jobs:
               break
             fi
           done
-          [[ -n "$SELECTED_BOOTSTRAP" && -n "$SELECTED_TASK_ROW" ]] || fail 'No active assigned task has citation-ready SOW evidence for unified-routing UAT.'
+          [[ -n "$SELECTED_BOOTSTRAP" && -n "$SELECTED_TASK_ROW" ]] || fail 'No active assigned task has citation-ready SOW evidence for combined-release UAT.'
 
           ASSIGNMENT_ID="$(jq -r .assignmentId <<<"$SELECTED_TASK_ROW")"
           PROJECT_ID="$(jq -r .projectId <<<"$SELECTED_TASK_ROW")"
@@ -366,14 +376,14 @@ jobs:
             --argjson flowHive "$(cat "$RUNNER_TEMP/flowhive-summary.json")" \
             --argjson projectForge "$(cat "$RUNNER_TEMP/forge-summary.json")" \
             '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:$projectId,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
-            > evidence/unified-celar-routing-9c34c6c3-test-deployment.json
+            > evidence/combined-release-d9b5c6c3-test-deployment.json
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: unified-celar-routing-9c34c6c3-test-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/unified-celar-routing-9c34c6c3-test-deployment.json
+          name: combined-release-d9b5c6c3-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/combined-release-d9b5c6c3-test-deployment.json
           retention-days: 30
 
       - name: Restore prior images and source marker on failure

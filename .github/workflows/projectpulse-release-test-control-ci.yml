@@ -1,4 +1,4 @@
-name: Validate Test-Only Unified Celar Routing Release 9c34c6c3
+name: Validate Test-Only Combined Release d9b5c6c3
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate exact 9c34c6c3 Test release controller
+    name: Validate exact d9b5c6c3 Test release controller
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
@@ -29,7 +29,7 @@ jobs:
           set -Eeuo pipefail
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='9c34c6c3a6151a04e2b9b76840c95dc10a9f438e'
+          SOURCE='d9b5c6c3acf26348c15d97c800605453413f9819'
 
           git fetch origin "$BASE_REF" --no-tags
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
@@ -61,6 +61,9 @@ jobs:
           grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
           grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
           grep -Fq 'public-president-summary.json' "$CONTROLLER"
+          grep -Fq 'public_general_question_semantic_non_answer' "$CONTROLLER"
+          grep -Fq 'validate-module-011-managed-architecture.mjs' "$CONTROLLER"
+          grep -Fq 'validate-view-as-module-navigation.mjs' "$CONTROLLER"
           grep -Fq '"usePrivateModelWhenAvailable":false' "$CONTROLLER"
           grep -Fq 'Who is the US President?' "$CONTROLLER"
           grep -Fq 'Who is the president of Acme Corp?' "$CONTROLLER"
@@ -72,7 +75,7 @@ jobs:
           grep -Fq 'rawPrivateContextSentToExternalProvider == false' "$CONTROLLER"
           grep -Fq 'externalProviderReceivesPrivateDocumentText == false' "$CONTROLLER"
           grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned unified-routing release.' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned combined release.' "$CONTROLLER"
 
           ! grep -Eq 'run-migration-job|apply-celar-ai|psql|database/migrations|\.sql' "$CONTROLLER"
           ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
@@ -87,4 +90,4 @@ jobs:
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
           git diff --check "origin/$BASE_REF...HEAD"
-          echo 'UNIFIED_CELAR_ROUTING_9C34C6C3_TEST_RELEASE_CONTROL=PASSED'
+          echo 'COMBINED_RELEASE_D9B5C6C3_TEST_CONTROL=PASSED'
