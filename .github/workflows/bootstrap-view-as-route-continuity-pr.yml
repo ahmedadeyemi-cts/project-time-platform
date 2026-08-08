@@ -100,11 +100,23 @@ jobs:
           }
           allowed = production_files | temporary_publishers
           required = production_files - {'src/frontend/project-time-web/package-lock.json'}
+
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only', '--relative', 'HEAD'],
+              text=True,
+          ).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
+              text=True,
+          ).splitlines()
           changed = {
-              line[3:]
-              for line in subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
-              if len(line) >= 4
+              path.strip()
+              for path in [*tracked, *untracked]
+              if path.strip()
           }
+
+          print(f'VIEW_AS_ROUTE_CHANGED_FILES={sorted(changed)}')
+          print(f'VIEW_AS_ROUTE_ALLOWED_FILES={sorted(allowed)}')
           unexpected = changed - allowed
           if unexpected:
               raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
