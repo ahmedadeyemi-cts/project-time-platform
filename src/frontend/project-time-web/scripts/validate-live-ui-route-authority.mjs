@@ -19,7 +19,8 @@ const files = {
   microsoftPortal: 'src/MicrosoftIntegrationDualConnectionPortal.jsx',
   mailPanel: 'src/MicrosoftMailTransportReadinessPanel.jsx',
   pageContext: 'src/PageContextGuide.jsx',
-  moduleAvailabilityBridge: 'src/module-availability-bridge.js'
+  moduleAvailabilityBridge: 'src/module-availability-bridge.js',
+  moduleNavigationAccessPolicy: 'src/module-navigation-access-policy.js'
 };
 
 let checks = 0;
@@ -46,6 +47,7 @@ const microsoftPortal = read(files.microsoftPortal);
 const mailPanel = read(files.mailPanel);
 const pageContext = read(files.pageContext);
 const moduleAvailabilityBridge = read(files.moduleAvailabilityBridge);
+const moduleNavigationAccessPolicy = read(files.moduleNavigationAccessPolicy);
 
 const requiredAliases = [
   "'celar-ai': 'work-task-builder'",
@@ -120,7 +122,8 @@ test('MODULE_NAVIGATION_AUTHORITY_CONVERGED',
     && moduleAvailabilityBridge.includes("'GLOBAL_ADMINISTRATOR'")
     && moduleAvailabilityBridge.includes('isViewAs: effectiveViewAs')
     && moduleAvailabilityBridge.includes("authoritySource: effectiveActor.authoritySource || ''")
-    && moduleAvailabilityBridge.includes('roleSet.has(canonicalRoleCode(grant.roleCode))'),
+    && moduleAvailabilityBridge.includes('resolveModuleNavigationAccess')
+    && moduleNavigationAccessPolicy.includes('roleSet.has(roleCodeOf(grant))'),
   'Module directory links share actual-session authority with route mounting');
 test('GUIDED_CLOSEOUT_ONLY', generated.includes('<ProjectCloseoutCenter />')
   && !generated.includes('<FinancialOperationsRecoveryWorkspace moduleCode="040"'));
