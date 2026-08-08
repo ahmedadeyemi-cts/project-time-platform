@@ -1,4 +1,4 @@
-name: Bootstrap unified Celar context routing repair from PR
+name: Build unified Celar context routing repair
 
 on:
   pull_request:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: bootstrap-unified-celar-context-routing-pr-${{ github.event.pull_request.number }}
+  group: build-unified-celar-context-routing-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  apply:
+  build-and-publish:
     if: github.event.pull_request.head.ref == 'fix/unified-celar-context-routing-20260808'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -30,86 +30,35 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Extract and apply the reviewed source patch
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+      - name: Apply direct source patch
+        run: python3 scripts/temporary/apply_unified_celar_context_routing.py
 
-          workflow = Path('.github/workflows/bootstrap-unified-celar-context-routing.yml').read_text()
-          start_marker = "      - name: Apply source repair and regression coverage\n        shell: bash\n        run: |\n"
-          end_marker = "\n      - name: Validate internal/public classification"
-          start = workflow.index(start_marker) + len(start_marker)
-          end = workflow.index(end_marker, start)
-          block = workflow[start:end]
-          lines = []
-          for line in block.splitlines():
-              if line.startswith('          '):
-                  lines.append(line[10:])
-              else:
-                  lines.append(line)
-          script = '\n'.join(lines) + '\n'
-
-          # The carrier is nested inside YAML and then Python. Continuation
-          # lines of embedded triple-quoted source blocks therefore retain the
-          # four-space Python argument indent after the YAML indent is removed.
-          # Normalize that carrier-only indent once for every source block and
-          # remove the whitespace-only line before each closing delimiter.
-          def normalize_triple_literal(match):
-              content = match.group(1)
-              literal_lines = content.splitlines(keepends=True)
-              for index in range(1, len(literal_lines)):
-                  if literal_lines[index].startswith('    '):
-                      literal_lines[index] = literal_lines[index][4:]
-              if literal_lines and literal_lines[-1].strip() == '':
-                  literal_lines[-1] = ''
-              return "'''" + ''.join(literal_lines) + "'''"
-
-          script = re.sub(r"'''(.*?)'''", normalize_triple_literal, script, flags=re.DOTALL)
-
-          marker_pattern = re.compile(
-              r"'''Require\(\n\s+!PulseAiSystemKnowledgeCatalog\.IsPulseScopedQuestion\(\"What is the capital of France\?\"\),\n\s+\"clearly public capital question is external eligible\"\);\n\s*'''"
-          )
-          script, replacements = marker_pattern.subn(
-              "'''Require(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion(\"What is the capital of France?\"),\n    \"clearly public capital question is external eligible\");\n'''",
-              script,
-              count=1,
-          )
-          if replacements != 1:
-              raise SystemExit(f'Could not normalize the public-question test insertion marker: {replacements}')
-
-          competency_pattern = re.compile(
-              r"'''\s*\(\"general_knowledge\",\s*\"What is the capital of France\?\",\s*\"general_knowledge\",\s*\"general_knowledge\",\s*false,\s*false,\s*false,\s*false\),\n\s*'''"
-          )
-          script, replacements = competency_pattern.subn(
-              "'''        (\"general_knowledge\", \"What is the capital of France?\", \"general_knowledge\", \"general_knowledge\"),\n'''",
-              script,
-              count=1,
-          )
-          if replacements != 1:
-              raise SystemExit(f'Could not normalize the public competency insertion marker: {replacements}')
-
-          Path('/tmp/apply-unified-celar-routing.sh').write_text(script)
-          PY
-          bash /tmp/apply-unified-celar-routing.sh
-
-      - name: Validate internal and public classification
+      - name: Validate Ask Celar public and internal classification
         run: |
           node tests/validate-celar-ai-internal-data-intelligence.mjs
-          dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+          dotnet run \
+            --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj \
+            --configuration Release \
+            -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
 
-      - name: Validate FlowHive and Project Forge contracts
+      - name: Validate shared routing and privacy contracts
         run: |
           node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
           (
             cd src/frontend/project-time-web
             node scripts/validate-module-033-project-forge.mjs
             node scripts/validate-celar-ai-enterprise-platform.mjs
+            node scripts/validate-celar-ai-external-deidentification.mjs
+            node scripts/validate-celar-ai-unified-chat-attachments.mjs
+            node scripts/validate-module-001-ai-task-grounding.mjs
           )
 
-      - name: Build API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+      - name: Build API Release
+        run: |
+          dotnet build \
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release \
+            -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
 
       - name: Validate exact source boundary
         shell: bash
@@ -128,6 +77,7 @@ jobs:
               'docs/modules/module-011-pulse-ai/UNIFIED-CELAR-CONTEXT-ROUTING.md',
               '.github/workflows/bootstrap-unified-celar-context-routing.yml',
               '.github/workflows/bootstrap-unified-celar-context-routing-pr.yml',
+              'scripts/temporary/apply_unified_celar_context_routing.py',
           }
           changed = {
               line[3:]
@@ -137,25 +87,18 @@ jobs:
           unexpected = changed - allowed
           if unexpected:
               raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
+          print('UNIFIED_CELAR_CONTEXT_ROUTING_SOURCE_BOUNDARY=PASS')
           PY
 
-      - name: Commit validated repair and remove temporary workflows
+      - name: Commit validated source and remove temporary publisher
         shell: bash
         run: |
           rm .github/workflows/bootstrap-unified-celar-context-routing.yml
           rm .github/workflows/bootstrap-unified-celar-context-routing-pr.yml
+          rm scripts/temporary/apply_unified_celar_context_routing.py
+          rmdir scripts/temporary 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs \
-            tests/CelarAiInternalDataTests/Program.cs \
-            src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs \
-            src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs \
-            tests/validate-celar-ai-internal-data-intelligence.mjs \
-            src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs \
-            src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs \
-            docs/modules/module-011-pulse-ai/UNIFIED-CELAR-CONTEXT-ROUTING.md \
-            .github/workflows/bootstrap-unified-celar-context-routing.yml \
-            .github/workflows/bootstrap-unified-celar-context-routing-pr.yml
+          git add -A
           git commit -m "Fix unified Celar context routing"
           git push origin HEAD:fix/unified-celar-context-routing-20260808
