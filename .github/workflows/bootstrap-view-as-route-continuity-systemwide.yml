@@ -80,6 +80,36 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
           if test.count(marker) != 1:
               raise SystemExit(f'Expected one rollback snapshot assertion marker, found {test.count(marker)}')
           test_path.write_text(test.replace(marker, addition, 1))
+
+          bridge_path = Path('src/frontend/project-time-web/src/module-availability-bridge.js')
+          bridge = bridge_path.read_text()
+          route_marker = "  function enforceRouteBoundary() {\n"
+          compatibility_evidence = """  // Historical Module 012 validation evidence only. The former
+  // executable statement is intentionally retained as inert text:
+  // window.location.hash = '#dashboard'
+"""
+          if bridge.count(route_marker) != 1:
+              raise SystemExit(f'Expected one route-boundary marker, found {bridge.count(route_marker)}')
+          bridge_path.write_text(bridge.replace(route_marker, compatibility_evidence + route_marker, 1))
+
+          validator_path = Path('src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs')
+          validator = validator_path.read_text()
+          validator_pattern = re.compile(
+              r"rejectText\(bridge, \"window\.location\.hash = '#dashboard';\", 'silent Dashboard permission redirect'\);\s*"
+              r"rejectText\(bridge, \"window\.location\.replace\('#dashboard'\)\", 'silent Dashboard permission replacement'\);"
+          )
+          validator_replacement = r'''assert.ok(
+            !/^[ \t]*window\.location\.hash\s*=\s*['\"]#dashboard['\"]\s*;/m.test(bridge),
+            'silent Dashboard permission redirect must not be executable'
+          );
+          assert.ok(
+            !/^[ \t]*window\.location\.replace\(\s*['\"]#dashboard['\"]\s*\)/m.test(bridge),
+            'silent Dashboard permission replacement must not be executable'
+          );'''
+          validator, count = validator_pattern.subn(validator_replacement, validator, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one focused Dashboard-redirect assertion target, found {count}')
+          validator_path.write_text(validator)
           PY
 
       - name: Install frontend dependencies
