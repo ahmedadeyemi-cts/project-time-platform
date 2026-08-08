@@ -65,6 +65,7 @@ public static class CelarAiExternalCapsuleCatalog
     public const string TimesheetActivityDesignPlanning = "activity_design_planning";
     public const string TimesheetActivityMigrationUpgradePatching = "activity_migration_upgrade_patching";
     public const string TimesheetActivityRemediationRepair = "activity_remediation_repair";
+    public const string TimesheetActivityTrainingProfessionalDevelopment = "activity_training_professional_development";
     public const string TimesheetActivityUserProvidedWork = "activity_user_provided_work";
     public const string TimesheetDomainNetworkConnectivity = "domain_network_connectivity";
     public const string TimesheetDomainSecurity = "domain_security";
@@ -102,6 +103,7 @@ public static class CelarAiExternalCapsuleCatalog
             [TimesheetActivityDesignPlanning] = "Activity performed: design or planning.",
             [TimesheetActivityMigrationUpgradePatching] = "Activity performed: migration, upgrade, or patching work.",
             [TimesheetActivityRemediationRepair] = "Activity performed: remediation or repair work; no successful outcome is implied.",
+            [TimesheetActivityTrainingProfessionalDevelopment] = "Activity performed: training or professional development.",
             [TimesheetActivityUserProvidedWork] = "Activity performed: factual work details are supplied in the separately de-identified Engineer note.",
             [TimesheetDomainNetworkConnectivity] = "Technical domain: network or connectivity.",
             [TimesheetDomainSecurity] = "Technical domain: security.",
@@ -2456,8 +2458,21 @@ public sealed class CelarAiCapabilityRouter
 
             if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Content))
             {
+                var timesheetExternalOutput = string.Equals(
+                    execution.ExternalCapsulePurpose,
+                    CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
+                    StringComparison.Ordinal);
+                // Timesheet category, task, and row labels can be ordinary work
+                // terms (for example, "Training"). They are used to scrub the
+                // inbound note but must not reject an output that restates the
+                // equivalent approved fact code. Customer identity remains an
+                // explicit output block, and the common output gate still blocks
+                // unknown proper nouns, identifiers, credentials, and locations.
+                IEnumerable<string> outputTerms = timesheetExternalOutput
+                    ? execution.IdentityTerms ?? []
+                    : execution.SensitiveTerms.Concat(execution.IdentityTerms ?? []);
                 var outputSensitiveTerms = NormalizeSensitiveTerms(
-                    execution.SensitiveTerms.Concat(execution.IdentityTerms ?? []),
+                    outputTerms,
                     out _);
                 string outputDecisionCode;
                 var outputSafe = execution.PublicGeneralQuestion
@@ -2465,10 +2480,7 @@ public sealed class CelarAiCapabilityRouter
                         result.Content,
                         outputSensitiveTerms,
                         out outputDecisionCode)
-                    : string.Equals(
-                        execution.ExternalCapsulePurpose,
-                        CelarAiExternalCapsuleCatalog.TimesheetCustomerDescription,
-                        StringComparison.Ordinal)
+                    : timesheetExternalOutput
                         ? _sanitizer.IsTimesheetExternalOutputSafe(
                             result.Content,
                             outputSensitiveTerms,
@@ -2685,18 +2697,12 @@ public sealed class CelarAiCapabilityRouter
             && !execution.ContainsPeopleRecords
             && !execution.ContainsFinancialValues
             && !string.IsNullOrWhiteSpace(execution.ExternalProblemStatement);
-        var sanitized = _sanitizer.SanitizeForExecution(new PulseAiSanitizationRequest(
-            Purpose: $"module064_{execution.Feature}",
-            Content: fixedCapsule.Capsule,
-            Classification: "internal_generic",
-            SensitiveTerms: sensitiveTerms.ToArray(),
-            AcknowledgePreviewOnly: true));
-        if (!sanitized.ExternalExecutionAuthorized)
-        {
-            decisionCode = SanitizerDecisionCode(sanitized);
-            return null;
-        }
-        var externalPrompt = sanitized.SanitizedCapsule;
+        // The fixed capsule is compiled server-owned policy selected from a
+        // closed catalog. Running it through the user-data sanitizer corrupts
+        // its instruction grammar with redaction markers and can make every
+        // otherwise-safe Timesheet response fail the output privacy boundary.
+        // Only the optional user-derived problem statement is sanitized.
+        var externalPrompt = fixedCapsule.Capsule;
         var problemRedacted = false;
         if (genericProblemIncluded || timesheetProblemIncluded)
         {
@@ -2712,41 +2718,45 @@ public sealed class CelarAiCapabilityRouter
                 return null;
             }
             problemRedacted = sanitizedProblem.Redactions.Count > 0;
-            externalPrompt = timesheetProblemIncluded
-                ? $"""
-                    {sanitized.SanitizedCapsule}
+            // Never pass redaction markers to a provider. When the note loses
+            // any protected term, the already de-identified fact-code capsule
+            // remains the sole provider input. This is both more private and
+            // more reliable than asking a model to interpret placeholder text.
+            if (!problemRedacted)
+            {
+                externalPrompt = timesheetProblemIncluded
+                    ? $"""
+                        {fixedCapsule.Capsule}
 
-                    De-identified factual Engineer work note:
-                    {sanitizedProblem.SanitizedCapsule}
+                        De-identified factual Engineer work note:
+                        {sanitizedProblem.SanitizedCapsule}
 
-                    Rewrite only the facts in that note. Do not infer completion, success, resolution,
-                    approval, acceptance, delivery, a measured outcome, or omitted protected context.
-                    """
-                : $"""
-                    {sanitized.SanitizedCapsule}
+                        Rewrite only the facts in that note. Do not infer completion, success, resolution,
+                        approval, acceptance, delivery, a measured outcome, or omitted protected context.
+                        """
+                    : $"""
+                        {fixedCapsule.Capsule}
 
-                    Closed server-owned topic to address:
-                    {sanitizedProblem.SanitizedCapsule}
+                        Closed server-owned topic to address:
+                        {sanitizedProblem.SanitizedCapsule}
 
-                    Answer only as general, unverified guidance. Do not claim access to enterprise records,
-                    current runtime state, private sources, or a completed action.
-                    """;
+                        Answer only as general, unverified guidance. Do not claim access to enterprise records,
+                        current runtime state, private sources, or a completed action.
+                        """;
+            }
         }
         decisionCode = (genericProblemIncluded || timesheetProblemIncluded)
-            && externalPrompt.Length > sanitized.SanitizedCapsule.Length
             ? problemRedacted
-                ? "sanitized_external_problem_ready_after_deidentification"
+                ? "sanitized_external_request_ready_after_deidentification"
                 : "sanitized_external_problem_ready"
-            : sanitized.Redactions.Count > 0
-            ? "sanitized_external_request_ready_after_deidentification"
             : "sanitized_external_request_ready";
         var sanitizedRequest = request with
         {
             Feature = CelarAiCapabilityCatalog.NormalizeFeature(request.Feature),
             SystemPrompt = fixedCapsule.SystemPrompt,
-            UserPrompt = sanitized.SanitizedCapsule
+            UserPrompt = fixedCapsule.Capsule
         };
-        return externalPrompt.Length == sanitized.SanitizedCapsule.Length
+        return externalPrompt.Length == fixedCapsule.Capsule.Length
             ? sanitizedRequest
             : sanitizedRequest with { UserPrompt = externalPrompt };
     }

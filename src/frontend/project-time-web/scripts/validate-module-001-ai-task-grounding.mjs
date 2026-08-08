@@ -36,6 +36,7 @@ const brandModule = readBackend('Modules', 'CelarAiBrandModule.cs');
 const secretStore = readBackend('Ai', 'ProjectPulseAiSecretStore.cs');
 const aiDatabaseConnection = readBackend('Ai', 'ProjectPulseAiDatabaseConnection.cs');
 const buildTransforms = readBackend('Directory.Build.targets');
+const releaseRuntimeVerifier = readRepository('scripts', 'release-test', 'verify-runtime.mjs');
 
 const checks = [];
 
@@ -437,9 +438,10 @@ check(
     && containsAll(externalPreparation, [
       'execution.ExternalCapsulePurpose,',
       'execution.ExternalFactCodes,',
-      'Content: fixedCapsule.Capsule',
-      'UserPrompt = sanitized.SanitizedCapsule'
-    ]),
+      'var externalPrompt = fixedCapsule.Capsule',
+      'UserPrompt = fixedCapsule.Capsule'
+    ])
+    && !externalPreparation.includes('Content: fixedCapsule.Capsule'),
   'Claude/OpenAI receive only the router-owned closed fact-code capsule'
 );
 check(
@@ -459,9 +461,12 @@ check(
       'PrepareExternalRequest(',
       '_sanitizer.SanitizeForExecution(',
       'Content: execution.ExternalProblemStatement',
-      'UserPrompt = sanitized.SanitizedCapsule'
-    ]),
-  'external targets receive a sanitizer-produced capsule, never the private evidence payload'
+      'sanitizedProblem.SanitizedCapsule',
+      'if (!problemRedacted)',
+      'UserPrompt = fixedCapsule.Capsule'
+    ])
+    && !externalPreparation.includes('UserPrompt = sanitized.SanitizedCapsule'),
+  'external targets receive the closed fact-code capsule and only a marker-free sanitized note, never private evidence'
 );
 check(
   'MODULE001_AI_EXTERNAL_FREE_TEXT_GUARD',
@@ -469,6 +474,7 @@ check(
       'private static readonly (string Code, Regex Pattern)[] ExternalActivitySignals',
       '.Select(signal => signal.Code)',
       '.Take(10)',
+      'TimesheetActivityTrainingProfessionalDevelopment',
       'TimesheetActivityUserProvidedWork',
       'ExternalWorkClassificationCode(request)',
       'ExternalProblemStatement: !hasAssociatedDocuments'
@@ -514,6 +520,42 @@ check(
     'generation_succeeded'
   ]),
   'configuration, health, privacy, success, and fallback paths have stable diagnostics'
+);
+check(
+  'MODULE001_AI_FAILURE_ROUTE_VISIBLE',
+  containsAll(app, [
+    'TIMESHEET_AI_ROUTE_REASON_LABELS',
+    'targetDecisions: Array.isArray(result.targetDecisions) ? result.targetDecisions : []',
+    'Why the AI suggestion did not complete',
+    'external_output_unsupported_outcome_claim'
+  ])
+    && containsAll(timerAssistant, [
+      'targetDecisions: Array.isArray(result.targetDecisions) ? result.targetDecisions : []',
+      'Why the AI suggestion did not complete',
+      'external_output_unsupported_outcome_claim'
+    ]),
+  'both Timesheet entry surfaces show the exact provider and governed reason when no suggestion completes'
+);
+check(
+  'MODULE001_AI_OUTPUT_TERMS_MATCH_APPROVED_FACTS',
+  containsAll(centralRoute, [
+    'var timesheetExternalOutput = string.Equals(',
+    'IEnumerable<string> outputTerms = timesheetExternalOutput',
+    '? execution.IdentityTerms ?? []',
+    ': execution.SensitiveTerms.Concat(execution.IdentityTerms ?? [])',
+    '_sanitizer.IsTimesheetExternalOutputSafe('
+  ]),
+  'generic row labels scrub inbound notes but cannot reject the equivalent approved identity-free fact in provider output'
+);
+check(
+  'MODULE001_AI_EXACT_TRAINING_RELEASE_UAT',
+  containsAll(releaseRuntimeVerifier, [
+    '/\\btraining\\b/i.test',
+    'currentDescription: "Working on training"',
+    'timesheetWorkingOnTrainingSuggestion',
+    'timesheetSuggestion.json.targetDecisions.some'
+  ]),
+  'the protected release verifier reproduces the reported Training-row failure and requires a real AI target to complete'
 );
 check(
   'MODULE001_AI_PRIVATE_PROVIDER_ATTRIBUTION',

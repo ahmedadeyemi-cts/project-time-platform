@@ -206,7 +206,9 @@ check(
     'if (execution.ContainsFinancialValues && !isolatedServerOwnedCapsule)',
     'financial_context_external_blocked'
   ])
-    && externalPreparation.includes('Content: fixedCapsule.Capsule')
+    && externalPreparation.includes('var externalPrompt = fixedCapsule.Capsule')
+    && externalPreparation.includes('UserPrompt = fixedCapsule.Capsule')
+    && !externalPreparation.includes('Content: fixedCapsule.Capsule')
     && !externalPreparation.includes('request.UserPrompt')
     && containsAll(executionSanitizer, [
       'PrivateDocumentOrCommercialMarker.IsMatch(original)',
@@ -243,8 +245,9 @@ check(
     'ExternalFactCodes: externalFactCodes',
     'ExternalProblemStatement: !hasAssociatedDocuments',
     'BoundedEngineerNote(request.CurrentDescription)',
-    '.Select(signal => signal.Code)',
-    'TimesheetActivityUserProvidedWork',
+      '.Select(signal => signal.Code)',
+      'TimesheetActivityTrainingProfessionalDevelopment',
+      'TimesheetActivityUserProvidedWork',
     'ExternalWorkClassificationCode(request)'
   ])
     && containsAll(externalCapsuleCatalog, [
@@ -259,7 +262,9 @@ check(
       'timesheetProblemIncluded',
       'Content: execution.ExternalProblemStatement',
       '_sanitizer.SanitizeForExecution(',
-      'sanitizedProblem.SanitizedCapsule'
+      'sanitizedProblem.SanitizedCapsule',
+      'if (!problemRedacted)',
+      'var externalPrompt = fixedCapsule.Capsule'
     ])
     && !externalCapsuleCatalog.includes('request.CurrentDescription')
     && !externalCapsuleCatalog.includes('request.CustomerName')
@@ -300,7 +305,7 @@ check(
       'execution.ExternalCapsulePurpose',
       'execution.ExternalFactCodes',
       'sanitized_external_closed_purpose_required',
-      'Content: fixedCapsule.Capsule',
+      'UserPrompt = fixedCapsule.Capsule',
       'SystemPrompt = fixedCapsule.SystemPrompt'
     ])
     && !routing.includes('PurposeBuiltExternalCapsule')
@@ -518,19 +523,23 @@ check(
   'Timesheet, SOW, FlowHive, Project Forge, closeout, and Ask Celar preserve comprehensive governed outputs while leading with the useful answer'
 );
 check(
-  'CELAR_EXTERNAL_SANITIZED_CAPSULE_ONLY',
+  'CELAR_EXTERNAL_SERVER_OWNED_CAPSULE_AND_SANITIZED_NOTE_ONLY',
   containsAll(externalPreparation, [
     '_sanitizer.SanitizeForExecution(',
     'if (!fixedCapsuleReady)',
     'sanitized_external_closed_purpose_required',
     'Classification: "internal_generic"',
-    'UserPrompt = sanitized.SanitizedCapsule',
-    'Content: fixedCapsule.Capsule',
+    'Content: execution.ExternalProblemStatement',
+    'var externalPrompt = fixedCapsule.Capsule',
+    'UserPrompt = fixedCapsule.Capsule',
+    'if (!problemRedacted)',
     'SystemPrompt = fixedCapsule.SystemPrompt'
   ])
+    && !externalPreparation.includes('Content: fixedCapsule.Capsule')
+    && !externalPreparation.includes('UserPrompt = sanitized.SanitizedCapsule')
     && !externalPreparation.includes('request.UserPrompt')
     && !externalPreparation.includes('request.SystemPrompt'),
-  'the original system prompt and user prompt are replaced at the public-provider boundary'
+  'the original prompts are replaced by a closed server-owned capsule, and only an independently sanitized marker-free note may be appended'
 );
 check(
   'CELAR_EXTERNAL_OUTPUT_REVALIDATED',

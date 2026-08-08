@@ -222,8 +222,11 @@ check(
       'execution.ExternalProblemStatement',
       'sanitizedProblem.ExternalExecutionAuthorized',
       'Answer only as general, unverified guidance.',
-      'Content: fixedCapsule.Capsule'
+      'var externalPrompt = fixedCapsule.Capsule',
+      'Content: execution.ExternalProblemStatement',
+      'UserPrompt = fixedCapsule.Capsule'
     ])
+    && !externalPreparation.includes('Content: fixedCapsule.Capsule')
     && !externalPreparation.includes('request.UserPrompt')
     && all(systemService, [
       'const string externalProblemStatement = "";',

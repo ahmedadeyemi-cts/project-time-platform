@@ -25,6 +25,7 @@ sealed class ProjectPulseAiTimeEntrySuggestionService
         Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityDesignPlanning, @"\b(?:design(?:ed|ing)?|architect(?:ed|ing|ure)?|plan(?:ned|ning)?|discovery|requirements?)\b"),
         Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityMigrationUpgradePatching, @"\b(?:migrat(?:e|ed|ing|ion)|upgrad(?:e|ed|ing)|patch(?:ed|ing)?)\b"),
         Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityRemediationRepair, @"\b(?:remediat(?:e|ed|ing|ion)|resolv(?:e|ed|ing)|repair(?:ed|ing)?|fix(?:ed|ing)?)\b"),
+        Signal(CelarAiExternalCapsuleCatalog.TimesheetActivityTrainingProfessionalDevelopment, @"\b(?:train(?:ed|ing)?|learn(?:ed|ing)?|education(?:al)?|coursework|professional[ \t]+development|skill[ \t]+development|certification[ \t]+preparation)\b"),
         Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainNetworkConnectivity, @"\b(?:network(?:ing)?|connectivity|routing|switching|router|switch|dns|dhcp|bgp|ospf|vlan|wan|lan)\b"),
         Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainSecurity, @"\b(?:security|firewall|vpn|mfa|encryption|certificate|vulnerabilit(?:y|ies)|threat|incident)\b"),
         Signal(CelarAiExternalCapsuleCatalog.TimesheetDomainIdentityAccess, @"\b(?:identity|authentication|authorization|access[ \t]+control|directory|sso|entra)\b"),

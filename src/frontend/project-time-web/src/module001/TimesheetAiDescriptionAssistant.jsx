@@ -17,14 +17,21 @@ const ROUTE_REASON_LABELS = Object.freeze({
   celar_ai_private_model_not_configured: 'Private model is not configured',
   celar_ai_private_model_disabled: 'Private model is disabled',
   provider_not_registered: 'Provider is not configured',
+  provider_not_configured: 'Provider credentials are not configured',
+  provider_disabled: 'Provider is disabled',
   provider_circuit_open: 'Provider is temporarily unavailable',
+  model_not_approved: 'The configured model is not approved',
   sanitized_external_policy_disabled: 'Sanitized fallback is disabled',
   sanitized_external_request_blocked: 'The privacy gate blocked this route',
+  sanitized_external_closed_purpose_required: 'The governed request capsule was unavailable',
+  sanitized_external_request_ready_after_deidentification: 'Used only approved identity-free activity facts',
   sanitized_external_problem_ready: 'Completed with a sanitized work note',
   sanitized_external_problem_ready_after_deidentification: 'Completed after de-identifying the work note',
   private_document_pipeline_not_ready: 'Private document processing is not ready',
   external_output_identity_validation_failed: 'The response failed identity-safety validation',
   external_output_privacy_validation_failed: 'The response failed privacy validation',
+  external_output_unsupported_outcome_claim: 'The response made an unsupported completion or outcome claim',
+  provider_unhandled_failure: 'The provider request failed',
   local_fallback: 'Used the mandatory governed fallback'
 });
 
@@ -248,6 +255,19 @@ export default function TimesheetAiDescriptionAssistant({
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
       {state.warning ? <p className="module001-ai-description-warning">{state.warning}</p> : null}
+      {!state.suggestion && state.targetDecisions.length ? (
+        <details className="module001-ai-route-trace">
+          <summary>Why the AI suggestion did not complete</summary>
+          <ol>
+            {state.targetDecisions.map((decision, index) => (
+              <li key={`${decision.target || 'target'}-${index}`}>
+                <strong>{PROVIDER_LABELS[decision.target] || decision.target || 'AI target'}</strong>
+                <span>{routeDecisionLabel(decision)}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
       {state.suggestion ? (
         <div className="module001-ai-description-preview">
           <strong>Suggested description</strong>
