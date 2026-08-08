@@ -1,0 +1,137 @@
+name: Run normalized systemwide View-As navigation repair
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalized-view-as-module-navigation-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    if: github.event.pull_request.head.ref == 'fix/view-as-module-navigation-continuity-20260808'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Apply normalized reviewed source repair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          workflow = Path('.github/workflows/augment-view-as-module-navigation-systemwide.yml').read_text()
+          start_marker = "      - name: Apply complete systemwide repair\n        shell: bash\n        run: |\n"
+          end_marker = "\n      - name: Validate focused systemwide contracts"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          block = workflow[start:end]
+          lines = [line[10:] if line.startswith('          ') else line for line in block.splitlines()]
+          script = '\n'.join(lines) + '\n'
+
+          # The reviewed source carrier is nested inside YAML and Python. Each
+          # continuation line of an embedded triple-quoted source block retains
+          # four carrier-only spaces after the YAML indentation is removed.
+          # Normalize those spaces without changing the first source line.
+          def normalize_triple_literal(match):
+              content = match.group(1)
+              literal_lines = content.splitlines(keepends=True)
+              for index in range(1, len(literal_lines)):
+                  if literal_lines[index].startswith('    '):
+                      literal_lines[index] = literal_lines[index][4:]
+              if literal_lines and literal_lines[-1].strip() == '':
+                  literal_lines[-1] = ''
+              return "'''" + ''.join(literal_lines) + "'''"
+
+          script = re.sub(r"'''(.*?)'''", normalize_triple_literal, script, flags=re.DOTALL)
+          Path('/tmp/apply-view-as-systemwide.sh').write_text(script)
+          PY
+          bash /tmp/apply-view-as-systemwide.sh
+
+      - name: Validate focused systemwide contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          node --check src/module-navigation-access-policy.js
+          node --check src/module-availability-bridge.js
+          node --check scripts/validate-view-as-module-navigation.mjs
+          node scripts/validate-view-as-module-navigation.mjs
+          node scripts/validate-dynamic-rbac-administration.mjs
+          node scripts/validate-module-012-scoped-role-admin.mjs
+          node scripts/validate-group-1-navigation-work-consolidation.mjs
+          node scripts/validate-modules-directory-page.mjs
+
+      - name: Build API Release
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Validate exact source boundary
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              'src/frontend/project-time-web/src/module-availability-bridge.js',
+              'src/frontend/project-time-web/src/module-navigation-access-policy.js',
+              'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
+              'src/frontend/project-time-web/src/module-availability.css',
+              'src/frontend/project-time-web/scripts/validate-view-as-module-navigation.mjs',
+              'src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs',
+              'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs',
+              'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs',
+              'docs/security/VIEW-AS-MODULE-NAVIGATION-CONTINUITY.md',
+          }
+          changed = {
+              line[3:]
+              for line in subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
+              if len(line) >= 4
+          }
+          unexpected = changed - allowed
+          missing = allowed - changed
+          if unexpected:
+              raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
+          if missing:
+              raise SystemExit(f'Expected repair files were not changed: {sorted(missing)}')
+          PY
+
+      - name: Commit validated source and remove temporary publishers
+        shell: bash
+        run: |
+          rm .github/workflows/augment-view-as-module-navigation-systemwide.yml
+          rm .github/workflows/diagnose-view-as-systemwide-patch-anchor.yml
+          rm .github/workflows/run-normalized-view-as-systemwide-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Complete systemwide View-As module navigation repair"
+          git push origin HEAD:fix/view-as-module-navigation-continuity-20260808
