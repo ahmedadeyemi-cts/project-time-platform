@@ -3,7 +3,8 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Runs the idempotent stale-expense readiness reconciliation only for an
 /// authenticated, non-View-As billing read. Unauthenticated deployment probes
-/// and View-As previews never mutate billing readiness.
+/// and View-As previews never mutate billing readiness. The same authenticated
+/// boundary also serves the read-only unified billing-journey projection.
 /// </summary>
 public static partial class Module005ProjectExpenseUploadModule
 {
@@ -12,6 +13,8 @@ public static partial class Module005ProjectExpenseUploadModule
     {
         app.Use(async (context, next) =>
         {
+            if (await TryHandleBillingJourneyRequestAsync(context)) return;
+
             var path = context.Request.Path.Value ?? string.Empty;
             var isCandidateRead = HttpMethods.IsGet(context.Request.Method)
                 && (path.Equals("/api/billing/candidates", StringComparison.OrdinalIgnoreCase)
