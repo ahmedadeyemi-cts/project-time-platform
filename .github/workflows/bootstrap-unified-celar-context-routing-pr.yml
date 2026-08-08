@@ -50,6 +50,7 @@ jobs:
               else:
                   lines.append(line)
           script = '\n'.join(lines) + '\n'
+
           marker_pattern = re.compile(
               r"'''Require\(\n\s+!PulseAiSystemKnowledgeCatalog\.IsPulseScopedQuestion\(\"What is the capital of France\?\"\),\n\s+\"clearly public capital question is external eligible\"\);\n\s+'''"
           )
@@ -60,6 +61,18 @@ jobs:
           )
           if replacements != 1:
               raise SystemExit(f'Could not normalize the public-question test insertion marker: {replacements}')
+
+          competency_pattern = re.compile(
+              r"'''\s*\(\"general_knowledge\",\s*\"What is the capital of France\?\",\s*\"general_knowledge\",\s*\"general_knowledge\",\s*false,\s*false,\s*false,\s*false\),\n\s*'''"
+          )
+          script, replacements = competency_pattern.subn(
+              "'''        (\"general_knowledge\", \"What is the capital of France?\", \"general_knowledge\", \"general_knowledge\"),\n'''",
+              script,
+              count=1,
+          )
+          if replacements != 1:
+              raise SystemExit(f'Could not normalize the public competency insertion marker: {replacements}')
+
           Path('/tmp/apply-unified-celar-routing.sh').write_text(script)
           PY
           bash /tmp/apply-unified-celar-routing.sh
