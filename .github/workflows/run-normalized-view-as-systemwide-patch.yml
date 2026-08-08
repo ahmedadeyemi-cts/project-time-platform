@@ -53,30 +53,33 @@ jobs:
           script = '\n'.join(lines) + '\n'
 
           # The policy and all other reviewed blocks already match the validated
-          # branch. Only this one function literal was carried with two spaces
-          # too little indentation on continuation lines. Replace that one
-          # carrier call with a source-structure update and leave the rest intact.
+          # branch. Only this function literal was carried with malformed source
+          # indentation. Replace that one call with exact line-encoded source.
           malformed_start = "replace_once(\n    bridge,\n    '''  function restoreModulesDirectoryAction(element) {"
           following_marker = "path = root / bridge"
           call_start = script.index(malformed_start)
           call_end = script.index(following_marker, call_start)
           targeted = '''bridge_path = root / bridge
           bridge_text = bridge_path.read_text()
-          restore_old = """  function restoreModulesDirectoryAction(element) {
-            if (!isModulesDirectoryOwned(element)) return false;
-            element.hidden = false;
-            element.removeAttribute('hidden');
-            element.removeAttribute('aria-hidden');
-            element.removeAttribute(HIDDEN_ATTRIBUTE);
-            element.removeAttribute('data-module-availability-hidden');
-            return true;
-          }"""
-          restore_new = """  function leaveModulesDirectoryToReact(element) {
-            // The directory consumes the published effective-user navigation state
-            // and owns its card/action DOM. The bridge must never force an Open
-            // action visible after React has classified it as denied or pending.
-            return isModulesDirectoryOwned(element);
-          }"""
+          restore_old = "\\n".join([
+              "  function restoreModulesDirectoryAction(element) {",
+              "    if (!isModulesDirectoryOwned(element)) return false;",
+              "    element.hidden = false;",
+              "    element.removeAttribute('hidden');",
+              "    element.removeAttribute('aria-hidden');",
+              "    element.removeAttribute(HIDDEN_ATTRIBUTE);",
+              "    element.removeAttribute('data-module-availability-hidden');",
+              "    return true;",
+              "  }",
+          ])
+          restore_new = "\\n".join([
+              "  function leaveModulesDirectoryToReact(element) {",
+              "    // The directory consumes the published effective-user navigation state",
+              "    // and owns its card/action DOM. The bridge must never force an Open",
+              "    // action visible after React has classified it as denied or pending.",
+              "    return isModulesDirectoryOwned(element);",
+              "  }",
+          ])
           restore_count = bridge_text.count(restore_old)
           if restore_count != 1:
               raise SystemExit(f'module-availability-bridge.js: restore function count={restore_count}')
