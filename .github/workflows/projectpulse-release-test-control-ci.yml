@@ -60,6 +60,8 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
           grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
           grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
+          grep -Fq 'public-president-summary.json' "$CONTROLLER"
+          grep -Fq '"usePrivateModelWhenAvailable":false' "$CONTROLLER"
           grep -Fq 'Who is the US President?' "$CONTROLLER"
           grep -Fq 'Who is the president of Acme Corp?' "$CONTROLLER"
           grep -Fq 'Working on training' "$CONTROLLER"
