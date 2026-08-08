@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           workflow = Path('.github/workflows/bootstrap-unified-celar-context-routing.yml').read_text()
           start_marker = "      - name: Apply source repair and regression coverage\n        shell: bash\n        run: |\n"
@@ -48,7 +49,18 @@ jobs:
                   lines.append(line[10:])
               else:
                   lines.append(line)
-          Path('/tmp/apply-unified-celar-routing.sh').write_text('\n'.join(lines) + '\n')
+          script = '\n'.join(lines) + '\n'
+          marker_pattern = re.compile(
+              r"'''Require\(\n\s+!PulseAiSystemKnowledgeCatalog\.IsPulseScopedQuestion\(\"What is the capital of France\?\"\),\n\s+\"clearly public capital question is external eligible\"\);\n\s+'''"
+          )
+          script, replacements = marker_pattern.subn(
+              "'''Require(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion(\"What is the capital of France?\"),\n    \"clearly public capital question is external eligible\");\n'''",
+              script,
+              count=1,
+          )
+          if replacements != 1:
+              raise SystemExit(f'Could not normalize the public-question test insertion marker: {replacements}')
+          Path('/tmp/apply-unified-celar-routing.sh').write_text(script)
           PY
           bash /tmp/apply-unified-celar-routing.sh
 
