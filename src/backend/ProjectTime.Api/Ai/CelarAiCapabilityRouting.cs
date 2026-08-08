@@ -1803,22 +1803,77 @@ public sealed record CelarAiExternalFallbackProductionProbeResult(
 
 internal static class CelarAiExternalAnswerQuality
 {
-    private static readonly string[] NonAnswerSignals =
+    private static readonly string[] DirectNonAnswerPreambles =
     [
-        "i don't have access", "i do not have access", "cannot access", "can't access",
-        "no access to", "no way to look up", "unable to look up", "cannot look up",
-        "unable to determine", "cannot determine", "can't determine", "i cannot answer",
-        "i can't answer", "i am unable to answer", "contact your administrator",
-        "check your organization's", "check your organisation's"
+        "i have no way to look up", "i do not have a way to look up",
+        "i don't have a way to look up", "i am unable to look up", "i'm unable to look up",
+        "i cannot look up", "i can't look up", "i am unable to determine",
+        "i'm unable to determine", "i cannot determine", "i can't determine",
+        "i cannot answer", "i can't answer", "i am unable to answer", "i'm unable to answer",
+        "my knowledge cutoff"
+    ];
+
+    private static readonly string[] AccessLimitationPreambles =
+    [
+        "i don't have access", "i do not have access", "i cannot access", "i can't access",
+        "i have no access"
+    ];
+
+    private static readonly string[] ExternalInformationScopeCues =
+    [
+        "real-time", "real time", "current information", "current data", "live information",
+        "live data", "latest information", "up-to-date", "browse the web", "internet access",
+        "web access", "knowledge cutoff", "that information", "the information",
+        "your organization", "your organisation", "external sources", "current officeholder"
     ];
 
     public static bool LooksLikeNonAnswer(string? content)
     {
         var normalized = Regex.Replace(content ?? string.Empty, @"\s+", " ").Trim();
-        return normalized.Length == 0
-            || NonAnswerSignals.Any(signal => normalized.Contains(
-                signal,
-                StringComparison.OrdinalIgnoreCase));
+        if (normalized.Length == 0) return true;
+
+        // A substantive answer may legitimately contain wording such as
+        // "cannot access". Only a bounded response whose opening is dominated
+        // by a first-person/model limitation tied to external/current information,
+        // or a direct deflection, is treated as a semantic non-answer.
+        var wordCount = Regex.Matches(normalized, @"\S+").Count;
+        if (wordCount > 120) return false;
+        var opening = Regex.Replace(
+                normalized,
+                @"^(?:(?:i(?:'m| am)\s+sorry|sorry|unfortunately)(?:\s*,?\s*but)?\s*[,.:;!\-]?\s*)+",
+                string.Empty,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            .TrimStart();
+        if (DirectNonAnswerPreambles.Any(preamble => opening.StartsWith(
+                preamble,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var hasExternalInformationScope = ExternalInformationScopeCues.Any(cue => opening.Contains(
+            cue,
+            StringComparison.OrdinalIgnoreCase));
+        if (hasExternalInformationScope
+            && AccessLimitationPreambles.Any(preamble => opening.StartsWith(
+                preamble,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return opening.StartsWith("as an ai", StringComparison.OrdinalIgnoreCase)
+                && (hasExternalInformationScope
+                    || DirectNonAnswerPreambles.Any(preamble => opening.Contains(
+                        preamble,
+                        StringComparison.OrdinalIgnoreCase))
+                    || AccessLimitationPreambles.Any(preamble => opening.Contains(
+                        preamble,
+                        StringComparison.OrdinalIgnoreCase)))
+            || opening.StartsWith("contact your administrator", StringComparison.OrdinalIgnoreCase)
+            || opening.StartsWith("please contact your administrator", StringComparison.OrdinalIgnoreCase)
+            || opening.StartsWith("check your organization's", StringComparison.OrdinalIgnoreCase)
+            || opening.StartsWith("check your organisation's", StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -2533,7 +2588,16 @@ public sealed class CelarAiCapabilityRouter
                     && CelarAiExternalAnswerQuality.LooksLikeNonAnswer(result.Content))
                 {
                     const string nonAnswerCode = "public_general_question_semantic_non_answer";
-                    _health.RecordFailure(target, nonAnswerCode, result.RequestId);
+                    // The provider transport and privacy boundary succeeded, so
+                    // keep provider health available and reset any stale circuit
+                    // failures. Consumer assurance separately records that this
+                    // target did not answer the question.
+                    _health.RecordSuccess(
+                        target,
+                        result.Usage,
+                        result.RequestId,
+                        nonAnswerCode,
+                        result.RateLimits);
                     _assurance.Record(
                         feature,
                         target,
