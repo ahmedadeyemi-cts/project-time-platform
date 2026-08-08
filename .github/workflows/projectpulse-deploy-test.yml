@@ -282,10 +282,22 @@ jobs:
             any(.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used")
           ' "$NO_SOW_FILE" >/dev/null || fail 'The no-SOW Timesheet route did not return a reviewable suggestion.'
 
-          AVAILABLE_FILE="$RUNNER_TEMP/available-timesheet-tasks.json"
-          curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/assignments/available-tasks" > "$AVAILABLE_FILE"
-          mapfile -t TASK_ROWS < <(jq -c '.tasks[]?' "$AVAILABLE_FILE" | head -50)
-          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No active assigned Test task is available for SOW-grounded Timesheet UAT.'
+          TASK_CANDIDATES_FILE="$RUNNER_TEMP/available-timesheet-task-candidates.jsonl"
+          : > "$TASK_CANDIDATES_FILE"
+          TODAY_UTC="$(date -u +%F)"
+          DAY_OF_WEEK="$(date -u +%u)"
+          CURRENT_WEEK_START="$(date -u -d "$TODAY_UTC - $((DAY_OF_WEEK - 1)) days" +%F)"
+          for week_offset in 0 1 -1 2 -2 3 -3 4 -4 5 -5 6 -6; do
+            WEEK_START="$(date -u -d "$CURRENT_WEEK_START $week_offset week" +%F)"
+            AVAILABLE_FILE="$RUNNER_TEMP/available-timesheet-tasks-$week_offset.json"
+            curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/assignments/available-tasks?weekStart=$WEEK_START" > "$AVAILABLE_FILE"
+            WEEK_TASK_COUNT="$(jq -r '(.tasks // []) | length' "$AVAILABLE_FILE")"
+            [[ "$WEEK_TASK_COUNT" =~ ^[0-9]+$ ]] || fail 'The assigned-task response did not expose a valid task count.'
+            jq -nc --arg weekStart "$WEEK_START" --argjson taskCount "$WEEK_TASK_COUNT" '{weekStart:$weekStart,taskCount:$taskCount}'
+            jq -c --arg weekStart "$WEEK_START" '.tasks[]? | . + {uatWeekStart:$weekStart}' "$AVAILABLE_FILE" >> "$TASK_CANDIDATES_FILE"
+          done
+          mapfile -t TASK_ROWS < <(jq -sc 'unique_by([.assignmentId,.projectId,.taskId])[]' "$TASK_CANDIDATES_FILE" | head -200)
+          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No active assigned Test task is available in the current plus/minus six-week Test window for SOW-grounded Timesheet UAT.'
           SELECTED_BOOTSTRAP=''
           SELECTED_TASK_ROW=''
           for task_row in "${TASK_ROWS[@]}"; do
@@ -308,9 +320,10 @@ jobs:
           TASK_ID="$(jq -r .taskId <<<"$SELECTED_TASK_ROW")"
           TASK_CODE="$(jq -r '.taskCode // ""' <<<"$SELECTED_TASK_ROW")"
           TASK_NAME="$(jq -r .taskName <<<"$SELECTED_TASK_ROW")"
-          [[ "$ASSIGNMENT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$TASK_ID" =~ ^[0-9a-fA-F-]{36}$ && -n "$PROJECT_CODE" && -n "$PROJECT_NAME" && -n "$TASK_NAME" ]] || fail 'The selected UAT assignment identity is incomplete.'
+          SELECTED_WEEK_START="$(jq -r .uatWeekStart <<<"$SELECTED_TASK_ROW")"
+          [[ "$ASSIGNMENT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$TASK_ID" =~ ^[0-9a-fA-F-]{36}$ && "$SELECTED_WEEK_START" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && -n "$PROJECT_CODE" && -n "$PROJECT_NAME" && -n "$TASK_NAME" ]] || fail 'The selected UAT assignment identity is incomplete.'
 
-          START_DATE="$(date -u +%F)"
+          START_DATE="$SELECTED_WEEK_START"
           PLAN_BASE="$(jq -nc --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" --arg startDate "$START_DATE" '{mode:"project_plan",projectId:$projectId,projectCode:$projectCode,projectName:$projectName,startDate:$startDate,requestedOutcome:"Create a comprehensive cited delivery plan with detailed tasks, dependencies, validation, acceptance criteria, responsibilities, risks, and review controls.",detailLevel:"comprehensive",diagramType:"gantt",allowSanitizedExternalFallback:true}')"
 
           FLOWHIVE_PAYLOAD="$(jq '. + {capabilityCode:"project_flowhive_plan"}' <<<"$PLAN_BASE")"
@@ -339,7 +352,8 @@ jobs:
             --arg assignmentId "$ASSIGNMENT_ID" \
             --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" \
             --arg taskId "$TASK_ID" --arg taskCode "$TASK_CODE" --arg taskName "$TASK_NAME" \
-            '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:$assignmentId,projectId:$projectId,taskId:$taskId,nonProjectTimeCategoryId:null,timeType:"regular",rowType:"project_task",rowLabel:($projectCode+" "+$taskCode),customerName:null,projectName:$projectName,projectCode:$projectCode,taskName:$taskName,taskCode:$taskCode,categoryCode:"",hours:0.5,currentDescription:"Reviewed the assigned implementation task, validated the current requirements, and documented the next engineering steps."}')"
+            --arg workDate "$SELECTED_WEEK_START" \
+            '{workDate:$workDate,timeEntryId:null,assignmentId:$assignmentId,projectId:$projectId,taskId:$taskId,nonProjectTimeCategoryId:null,timeType:"regular",rowType:"project_task",rowLabel:($projectCode+" "+$taskCode),customerName:null,projectName:$projectName,projectCode:$projectCode,taskName:$taskName,taskCode:$taskCode,categoryCode:"",hours:0.5,currentDescription:"Reviewed the assigned implementation task, validated the current requirements, and documented the next engineering steps."}')"
           SOW_TIMESHEET_FILE="$RUNNER_TEMP/timesheet-sow-private-boundary.json"
           SOW_TIMESHEET_STATUS="$(curl -sS --max-time 240 -o "$SOW_TIMESHEET_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$SOW_TIMESHEET_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
           [[ "$SOW_TIMESHEET_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$SOW_TIMESHEET_FILE" >&2 || true; fail 'The SOW-grounded Timesheet privacy test failed.'; }
