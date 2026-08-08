@@ -19,6 +19,11 @@ permissions:
 jobs:
   validate:
     name: Validate exact b1335bd2 Test release controls
+    if: >-
+      github.head_ref == 'release/test-b1335bd2-timesheet-ai-20260808' ||
+      startsWith(github.head_ref, 'fix/test-controller-migration-080-release-env-') ||
+      startsWith(github.head_ref, 'fix/test-controller-migration-080-trigger-') ||
+      startsWith(github.head_ref, 'fix/test-controller-runtime-source-uat-')
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
