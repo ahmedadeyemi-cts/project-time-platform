@@ -51,6 +51,47 @@ jobs:
           PY
           bash /tmp/apply-view-as-route-continuity.sh
 
+      - name: Tighten migration provenance and rollback coverage
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          migration_path = Path('database/migrations/082_view_as_route_authority_catalog.sql')
+          migration = migration_path.read_text()
+          pattern = re.compile(
+              r"SELECT\s+module_code,\s+FALSE\s+"
+              r"FROM\s+unnest\(ARRAY\['001A','031','032','033','081','082'\]\)\s+AS\s+module_code\s+"
+              r"WHERE\s+NOT\s+EXISTS\s*\(\s*"
+              r"SELECT\s+1\s+FROM\s+scoped_role_policy_modules\s+existing\s+"
+              r"WHERE\s+existing\.module_code\s*=\s*module_code\s*\)",
+              re.DOTALL,
+          )
+          replacement = """SELECT desired.module_code, FALSE
+          FROM unnest(ARRAY['001A','031','032','033','081','082']) AS desired(module_code)
+          WHERE NOT EXISTS (
+              SELECT 1 FROM scoped_role_policy_modules existing
+              WHERE existing.module_code = desired.module_code
+          )"""
+          migration, count = pattern.subn(replacement, migration, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one migration snapshot alias target, found {count}')
+          migration_path.write_text(migration)
+
+          test_path = Path('tests/test-view-as-route-authority-migration-082.sh')
+          test = test_path.read_text()
+          marker = '''assert_eq 6 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous")" rollback_snapshot_complete
+'''
+          addition = marker + '''assert_eq 5 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous WHERE existed_before=FALSE")" introduced_snapshot_count
+assert_eq t "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='033'")" existing_snapshot_identity
+assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='031'")" introduced_snapshot_identity
+'''
+          if test.count(marker) != 1:
+              raise SystemExit(f'Expected one rollback snapshot assertion marker, found {test.count(marker)}')
+          test_path.write_text(test.replace(marker, addition, 1))
+          PY
+
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
