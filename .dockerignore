@@ -7,6 +7,8 @@
 !.github/workflows
 .github/workflows/*
 !.github/workflows/celar-ai-production-hardening-ci.yml
+!.github/workflows/projectpulse-deploy-test.yml
+!.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
 
 **/bin
 **/obj
