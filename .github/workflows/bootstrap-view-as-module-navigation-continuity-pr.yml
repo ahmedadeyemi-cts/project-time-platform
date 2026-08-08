@@ -56,7 +56,7 @@ jobs:
           PY
           bash /tmp/apply-view-as-navigation.sh
 
-      - name: Align Module 012 validation with shared navigation policy
+      - name: Align consolidated validation with shared navigation policy
         shell: bash
         run: |
           python3 - <<'PY'
@@ -104,6 +104,28 @@ jobs:
               raise SystemExit('Module 012 compatibility assertion marker was not unique.')
           text = text.replace(marker, shared_policy_contract + marker, 1)
           path.write_text(text)
+
+          group_path = Path('src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs')
+          group = group_path.read_text()
+          old = """assert('DYNAMIC_RBAC_EVIDENCE', bridge.includes(\"nativeFetch('/api/rbac/v1/bootstrap'\")
+            && bridge.includes(\"nativeFetch('/api/rbac/v1/matrix'\")
+            && bridge.includes(\"actionCode || '').toUpperCase() === 'MODULE_ACCESS'\")
+            && bridge.includes(\"grantEffect || '').toUpperCase() === 'DENY'\")
+            && bridge.includes(\"evidenceContract: 'projectpulse-rbac-v1'\"),
+          'More menu consumes the same dynamic RBAC contract as Modules 012 and 037');
+          """
+          new = """assert('DYNAMIC_RBAC_EVIDENCE', bridge.includes(\"nativeFetch('/api/rbac/v1/bootstrap'\")
+            && bridge.includes(\"nativeFetch('/api/rbac/v1/matrix'\")
+            && bridge.includes(\"nativeFetch('/api/rbac/v1/modules?includeInactive=true'\")
+            && bridge.includes('resolveModuleNavigationAccess')
+            && bridge.includes('legacyFallback: matrix.legacyFallback')
+            && bridge.includes('explicitDeniedModuleNumbers')
+            && bridge.includes(\"evidenceContract: 'projectpulse-rbac-v1'\"),
+          'More menu consumes role grants, explicit denials, lifecycle state, and legacy fallback from the shared dynamic RBAC contract');
+          """
+          if group.count(old) != 1:
+              raise SystemExit('Group 1 dynamic RBAC evidence assertion was not unique.')
+          group_path.write_text(group.replace(old, new, 1))
           PY
 
       - name: Validate focused View-As and RBAC contracts
