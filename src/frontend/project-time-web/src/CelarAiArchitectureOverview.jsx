@@ -11,6 +11,59 @@ function AtAGlance({ icon, title, children, tone }) {
   );
 }
 
+function DiagramText({ className, id, x, y, lines, lineHeight = 17, textAnchor = 'middle' }) {
+  return (
+    <text className={className} id={id} x={x} y={y} textAnchor={textAnchor}>
+      {lines.map((line, index) => (
+        <tspan x={x} dy={index === 0 ? 0 : lineHeight} key={`${line}-${index}`}>{line}</tspan>
+      ))}
+    </text>
+  );
+}
+
+function ComponentNode({
+  componentId,
+  x,
+  y,
+  width,
+  height,
+  tone = 'current',
+  state,
+  title,
+  subtitle = [],
+  compact = false
+}) {
+  const titleLines = Array.isArray(title) ? title : [title];
+  const subtitleLines = Array.isArray(subtitle) ? subtitle : [subtitle];
+  const titleY = y + (compact ? 43 : 47);
+  const subtitleY = y + height - 18 - ((subtitleLines.length - 1) * 14);
+
+  return (
+    <g data-component-id={componentId} filter="url(#celar-ai-shadow)">
+      <rect className={`diagram-node is-${tone}`} id={`box-${componentId}`} x={x} y={y} width={width} height={height} rx="12" />
+      <text className={`diagram-node-state is-${tone}`} id={`state-${componentId}`} x={x + 18} y={y + 22}>{state}</text>
+      <DiagramText
+        className={`diagram-node-title${compact ? ' is-compact' : ''}`}
+        id={`title-${componentId}`}
+        x={x + (width / 2)}
+        y={titleY}
+        lines={titleLines}
+        lineHeight={19}
+      />
+      {subtitleLines.filter(Boolean).length > 0 ? (
+        <DiagramText
+          className="diagram-node-subtitle"
+          id={`subtitle-${componentId}`}
+          x={x + (width / 2)}
+          y={subtitleY}
+          lines={subtitleLines.filter(Boolean)}
+          lineHeight={14}
+        />
+      ) : null}
+    </g>
+  );
+}
+
 export default function CelarAiArchitectureOverview() {
   return (
     <section className="celar-ai-architecture-overview" aria-labelledby="celar-ai-architecture-title">
@@ -27,105 +80,320 @@ export default function CelarAiArchitectureOverview() {
       </div>
 
       <div className="celar-ai-architecture-layout">
-        <div className="celar-ai-architecture-canvas" tabIndex={0} aria-label="Scrollable Celar AI architecture diagram">
+        <div className="celar-ai-architecture-canvas" tabIndex={0} aria-label="Scrollable Celar AI component architecture diagram">
           <svg
-            viewBox="0 0 1200 820"
+            viewBox="0 0 1200 1770"
             role="img"
             aria-labelledby="celar-ai-svg-title celar-ai-svg-description"
             preserveAspectRatio="xMidYMid meet"
           >
             <title id="celar-ai-svg-title">Celar AI private-first enterprise architecture</title>
             <desc id="celar-ai-svg-description">
-              Pulse users authenticate and receive role and record scope. Authorized private documents and governed live-data tools feed the Celar AI context fabric. The target OpenCloud private runtime explicitly includes ClamAV for malware scanning, Tesseract 5 for OCR, and Ollama for private inference and embeddings; all three remain planned and deferred until runtime validation, and migration 081 is not applied. Confidence and freshness assessment follows the saved Module 064 order among eligible targets. Private source content never enters a public route; an eligible external provider can receive only a fixed identity-free capsule. Returned output passes privacy and source checks applicable to its route and remains subject to human review.
+              The diagram shows all thirteen managed Module 011 architecture components and their connections. Pulse users authenticate into the Celar AI Module 011 Workspace. Current internal-data intelligence uses the Pulse PostgreSQL data and evidence plane. Governed document storage connects to the deferred private document worker, which will use an OpenCloud virtual machine containing ClamAV malware scanning, Tesseract 5 OCR, and Ollama private inference and embeddings. Ollama may later scale to dedicated GPU-capable private compute. The Celar AI context fabric evaluates confidence, freshness, and policy. Private evidence can produce a local answer; eligible identity-free assistance routes through Module 064 to optional Claude or OpenAI reasoning. Every result passes source, privacy, citation, and human-review checks.
             </desc>
             <defs>
-              <marker id="celar-ai-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L9,3 z" />
+              <marker id="celar-ai-arrow-current" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path className="arrow-current" d="M0,0 L0,6 L9,3 z" />
+              </marker>
+              <marker id="celar-ai-arrow-planned" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path className="arrow-planned" d="M0,0 L0,6 L9,3 z" />
+              </marker>
+              <marker id="celar-ai-arrow-optional" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path className="arrow-optional" d="M0,0 L0,6 L9,3 z" />
+              </marker>
+              <marker id="celar-ai-arrow-future" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path className="arrow-future" d="M0,0 L0,6 L9,3 z" />
               </marker>
               <filter id="celar-ai-shadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow dx="0" dy="3" stdDeviation="4" floodOpacity="0.14" />
               </filter>
             </defs>
 
-            <rect className="diagram-surface" x="8" y="8" width="1184" height="804" rx="24" />
-            <image href={usSignalLogoDataUrl} x="415" y="24" width="125" height="68" preserveAspectRatio="xMidYMid meet" />
-            <text className="diagram-brand" x="555" y="62">Pulse Platform</text>
+            <rect className="diagram-surface" x="8" y="8" width="1184" height="1754" rx="24" />
+            <image href={usSignalLogoDataUrl} x="414" y="20" width="120" height="62" preserveAspectRatio="xMidYMid meet" />
+            <text className="diagram-brand" x="550" y="57">Pulse Platform</text>
             <text className="diagram-created" x="1120" y="36" textAnchor="end">Created by Dr. Ahmed Adeyemi</text>
 
-            <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-auth" x="250" y="105" width="700" height="55" rx="10" />
-              <text className="diagram-node-title" x="600" y="138" textAnchor="middle">Authentication · Roles · Permissions · Project / Customer / Record Scope</text>
-            </g>
-
-            <path className="diagram-line" d="M600 160 L600 190 M600 190 L300 190 L300 215 M600 190 L900 190 L900 215" />
-
-            <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-private" x="95" y="215" width="410" height="58" rx="10" />
-              <text className="diagram-node-title" x="300" y="249" textAnchor="middle">Private content graph and retrieval</text>
-              <rect className="diagram-chip is-private" x="115" y="292" width="105" height="42" rx="8" />
-              <rect className="diagram-chip is-private" x="247" y="292" width="105" height="42" rx="8" />
-              <rect className="diagram-chip is-private" x="379" y="292" width="105" height="42" rx="8" />
-              <text className="diagram-chip-text" x="167" y="318" textAnchor="middle">SOW</text>
-              <text className="diagram-chip-text" x="299" y="318" textAnchor="middle">GSD</text>
-              <text className="diagram-chip-text" x="431" y="318" textAnchor="middle">Versions</text>
+            <g className="diagram-legend" aria-label="Architecture lifecycle legend">
+              <line className="diagram-legend-line is-current" x1="88" y1="92" x2="128" y2="92" />
+              <text x="138" y="97">Current / deployed</text>
+              <line className="diagram-legend-line is-governed" x1="330" y1="92" x2="370" y2="92" />
+              <text x="380" y="97">Current / governed</text>
+              <line className="diagram-legend-line is-planned" x1="574" y1="92" x2="614" y2="92" />
+              <text x="624" y="97">Planned / deferred</text>
+              <line className="diagram-legend-line is-optional" x1="818" y1="92" x2="858" y2="92" />
+              <text x="868" y="97">Optional external</text>
+              <line className="diagram-legend-line is-future" x1="1015" y1="92" x2="1055" y2="92" />
+              <text x="1065" y="97">Future scale</text>
             </g>
 
             <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-tools" x="695" y="215" width="410" height="58" rx="10" />
-              <text className="diagram-node-title" x="900" y="249" textAnchor="middle">Governed live-data tools</text>
-              {['Projects', 'Time', 'Finance', 'APIs', 'Diagnostics'].map((label, index) => {
-                const x = 710 + (index * 78);
-                return <g key={label}><rect className="diagram-chip is-tools" x={x} y="292" width="68" height="42" rx="8" /><text className="diagram-chip-text" x={x + 34} y="318" textAnchor="middle">{label}</text></g>;
-              })}
+              <rect className="diagram-node is-auth" id="box-auth-boundary" x="170" y="125" width="860" height="84" rx="12" />
+              <text className="diagram-node-state is-current" id="state-auth-boundary" x="190" y="149">CURRENT SECURITY BOUNDARY</text>
+              <DiagramText
+                className="diagram-node-title"
+                id="title-auth-boundary"
+                x={600}
+                y={170}
+                lines={['Authentication · roles · permissions', 'Project · customer · team · record scope']}
+                lineHeight={18}
+              />
             </g>
 
-            <path className="diagram-line" d="M300 273 L300 355 L600 355 M900 273 L900 355 L600 355" />
+            <path className="diagram-line is-current" d="M600 209 L600 235" />
+            <ComponentNode
+              componentId="module-011-workspace"
+              x={260}
+              y={235}
+              width={680}
+              height={105}
+              state="CURRENT · DEPLOYED"
+              title="Celar AI Module 011 Workspace"
+              subtitle={['Governed intelligence experience and architecture control plane']}
+            />
+
+            <path className="diagram-line is-current no-arrow" d="M600 340 L600 355" />
+            <circle className="diagram-junction is-current" cx="600" cy="355" r="6" />
+            <path className="diagram-line is-current" d="M600 355 L310 355 L310 385" />
+            <path className="diagram-line is-governed" d="M600 355 L890 355 L890 385" />
+
+            <ComponentNode
+              componentId="internal-data-intelligence"
+              x={60}
+              y={385}
+              width={500}
+              height={130}
+              state="CURRENT · DEPLOYED · MIGRATION 080"
+              title={['Permission-Scoped Internal', 'Data Intelligence']}
+              subtitle={['Projects · people · time · finance', 'APIs · diagnostics · governed resolvers']}
+            />
+            <ComponentNode
+              componentId="governed-document-storage"
+              x={640}
+              y={385}
+              width={500}
+              height={130}
+              tone="governed"
+              state="CURRENT · GOVERNED STORAGE"
+              title={['Governed Private', 'Document Storage']}
+              subtitle={['SOW · GSD · approved versions', 'Durable private processing evidence']}
+            />
+
+            <path className="diagram-line is-current" d="M310 515 L310 565" />
+            <path className="diagram-line is-planned" d="M890 515 L890 565" />
+            <ComponentNode
+              componentId="pulse-postgresql"
+              x={60}
+              y={565}
+              width={500}
+              height={115}
+              state="CURRENT · DEPLOYED"
+              title={['Pulse PostgreSQL Data', 'and Evidence Plane']}
+              subtitle={['Authoritative business data · audit · conversations', 'Routing and retrieval metadata']}
+            />
+            <ComponentNode
+              componentId="private-document-worker"
+              x={640}
+              y={565}
+              width={500}
+              height={115}
+              tone="deferred"
+              state="DEFERRED · MIGRATION 081 NOT APPLIED"
+              title="Celar AI Private Document Worker"
+              subtitle={['Scan · extract/OCR · chunk · index · cite']}
+            />
+
+            <path className="diagram-line is-current" d="M310 680 L310 705 L38 705 L38 995 L360 995 L360 1010" />
+
+            <g data-component-id="opencloud-runtime-vm">
+              <rect className="diagram-boundary is-opencloud" id="box-opencloud-runtime-vm" x="70" y="735" width="820" height="220" rx="18" />
+              <text className="diagram-boundary-title" id="title-opencloud-runtime-vm" x="95" y="764">OpenCloud Shared Private Runtime VM</text>
+              <text className="diagram-boundary-status is-planned" id="state-opencloud-runtime-vm" x="865" y="764" textAnchor="end">PLANNED · NOT OPERATIONAL</text>
+              <text className="diagram-boundary-copy" id="subtitle-opencloud-runtime-vm" x="95" y="788">One Linux VM · three isolated Podman / OCI containers · private network only</text>
+            </g>
+
+            <path className="diagram-line is-planned" d="M890 680 L890 710 L210 710 L210 805" />
+
+            <ComponentNode
+              componentId="clamav"
+              x={100}
+              y={805}
+              width={220}
+              height={105}
+              tone="planned"
+              state="PLANNED · OPENCLOUD"
+              title={['ClamAV', 'Malware Scanning']}
+              subtitle={['Pre-extraction safety gate']}
+              compact
+            />
+            <ComponentNode
+              componentId="tesseract-5"
+              x={365}
+              y={805}
+              width={220}
+              height={105}
+              tone="planned"
+              state="PLANNED · OPENCLOUD"
+              title={['Tesseract 5', 'OCR Adapter']}
+              subtitle={['Image-only text extraction']}
+              compact
+            />
+            <ComponentNode
+              componentId="ollama"
+              x={630}
+              y={805}
+              width={230}
+              height={105}
+              tone="planned"
+              state="PLANNED · OPENCLOUD"
+              title={['Ollama Private Inference', 'and Embeddings']}
+              subtitle={['Model to be selected']}
+              compact
+            />
+
+            <path className="diagram-line is-planned" d="M320 857 L365 857" />
+            <path className="diagram-line is-planned" d="M585 857 L630 857" />
+
+            <ComponentNode
+              componentId="ollama-gpu-scale"
+              x={940}
+              y={785}
+              width={200}
+              height={145}
+              tone="future"
+              state="FUTURE SCALE"
+              title={['Ollama Production', 'GPU Scale-Out']}
+              subtitle={['Dedicated private compute', 'Capacity-driven', 'future state']}
+              compact
+            />
+            <path className="diagram-line is-future" d="M860 857 L940 857" />
+
+            <path className="diagram-line is-planned" d="M745 910 L745 980 L800 980 L800 1010" />
+            <g filter="url(#celar-ai-shadow)">
+              <rect className="diagram-node is-context" id="box-context-fabric" x="180" y="1010" width="840" height="100" rx="14" />
+              <text className="diagram-node-state is-current" id="state-context-fabric" x="202" y="1035">CURRENT GOVERNED ORCHESTRATION</text>
+              <DiagramText
+                className="diagram-node-title"
+                id="title-context-fabric"
+                x={600}
+                y={1063}
+                lines={['Celar AI intelligence and context fabric']}
+              />
+              <DiagramText
+                className="diagram-node-subtitle"
+                id="subtitle-context-fabric"
+                x={600}
+                y={1088}
+                lines={['Scoped evidence · authoritative versions · freshness · policy · deterministic tools']}
+              />
+            </g>
+
+            <path className="diagram-line is-current" d="M600 1110 L600 1160" />
+            <g filter="url(#celar-ai-shadow)">
+              <rect className="diagram-node is-confidence" id="box-route-decision" x="260" y="1160" width="680" height="85" rx="12" />
+              <text className="diagram-node-state is-current" id="state-route-decision" x="282" y="1185">LIVE ROUTE DECISION</text>
+              <DiagramText
+                className="diagram-node-title"
+                id="title-route-decision"
+                x={600}
+                y={1213}
+                lines={['Confidence · freshness · policy · source eligibility']}
+              />
+              <DiagramText
+                className="diagram-node-subtitle"
+                id="subtitle-route-decision"
+                x={600}
+                y={1234}
+                lines={['Only eligible targets follow the saved Module 064 order']}
+              />
+            </g>
+
+            <path className="diagram-line is-current no-arrow" d="M600 1245 L600 1268" />
+            <circle className="diagram-junction is-current" cx="600" cy="1268" r="6" />
+            <path className="diagram-line is-governed" d="M600 1268 L290 1268 L290 1310" />
+            <path className="diagram-line is-optional" d="M600 1268 L890 1268 L890 1285" />
 
             <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-intelligence" x="175" y="350" width="850" height="115" rx="12" />
-              <text className="diagram-node-title" x="600" y="377" textAnchor="middle">Celar AI private intelligence and context fabric</text>
-              <text className="diagram-node-subtitle" x="600" y="397" textAnchor="middle">Managed component states · live readiness gates · authoritative versions · governed lifecycle</text>
-              <rect className="diagram-chip is-planned" x="205" y="407" width="230" height="32" rx="8" />
-              <rect className="diagram-chip is-planned" x="485" y="407" width="230" height="32" rx="8" />
-              <rect className="diagram-chip is-planned" x="765" y="407" width="230" height="32" rx="8" />
-              <text className="diagram-chip-text" x="320" y="427" textAnchor="middle">ClamAV · malware scanning</text>
-              <text className="diagram-chip-text" x="600" y="427" textAnchor="middle">Tesseract 5 · OCR</text>
-              <text className="diagram-chip-text" x="880" y="427" textAnchor="middle">Ollama · private inference + embeddings</text>
-              <text className="diagram-node-subtitle is-planned-status" x="600" y="456" textAnchor="middle">Planned / OpenCloud deferred · not operational · migration 081 not applied</text>
+              <rect className="diagram-node is-sufficient" id="box-private-outcome" x="60" y="1310" width="460" height="90" rx="12" />
+              <text className="diagram-node-state is-governed" id="state-private-outcome" x="82" y="1335">PRIVATE EVIDENCE SUFFICIENT</text>
+              <DiagramText
+                className="diagram-node-title"
+                id="title-private-outcome"
+                x={290}
+                y={1364}
+                lines={['Answer locally · no public call']}
+              />
+              <DiagramText
+                className="diagram-node-subtitle"
+                id="subtitle-private-outcome"
+                x={290}
+                y={1385}
+                lines={['Private content never leaves the governed boundary']}
+              />
             </g>
 
-            <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 465 L600 482" />
+            <ComponentNode
+              componentId="module-064-router"
+              x={640}
+              y={1285}
+              width={500}
+              height={115}
+              tone="optional"
+              state="CURRENT · GOVERNED ROUTER"
+              title={['Module 064 Governed', 'Provider Router']}
+              subtitle={['Identity-free capsule · saved order · health · circuit breakers']}
+            />
+
+            <path className="diagram-line is-optional no-arrow" d="M890 1400 L890 1420" />
+            <circle className="diagram-junction is-optional" cx="890" cy="1420" r="6" />
+            <path className="diagram-line is-optional" d="M890 1420 L755 1420 L755 1445" />
+            <path className="diagram-line is-optional" d="M890 1420 L1025 1420 L1025 1445" />
+
+            <ComponentNode
+              componentId="claude-external"
+              x={640}
+              y={1445}
+              width={230}
+              height={90}
+              tone="optional"
+              state="OPTIONAL · GOVERNED"
+              title="Claude"
+              subtitle={['External reasoning', 'Module 064 managed']}
+              compact
+            />
+            <ComponentNode
+              componentId="openai-external"
+              x={910}
+              y={1445}
+              width={230}
+              height={90}
+              tone="optional"
+              state="OPTIONAL · GOVERNED"
+              title="OpenAI"
+              subtitle={['External reasoning', 'Module 064 managed']}
+              compact
+            />
+
+            <path className="diagram-line is-governed no-arrow" d="M290 1400 L290 1560 L600 1560" />
+            <path className="diagram-line is-optional no-arrow" d="M755 1535 L755 1560 L600 1560" />
+            <path className="diagram-line is-optional no-arrow" d="M1025 1535 L1025 1560 L600 1560" />
+            <circle className="diagram-junction is-current" cx="600" cy="1560" r="6" />
+            <path className="diagram-line is-current" d="M600 1560 L600 1580" />
             <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-confidence" x="335" y="482" width="530" height="56" rx="10" />
-              <text className="diagram-node-title" x="600" y="516" textAnchor="middle">Confidence · freshness · policy · live decision trace</text>
+              <rect className="diagram-node is-verification" id="box-output-gate" x="240" y="1580" width="720" height="75" rx="12" />
+              <text className="diagram-node-state is-current" id="state-output-gate" x="262" y="1605">GOVERNED OUTPUT GATE</text>
+              <DiagramText
+                className="diagram-node-title"
+                id="title-output-gate"
+                x={600}
+                y={1634}
+                lines={['Privacy · source checks · citations · human review']}
+              />
             </g>
-
-            <path className="diagram-line" d="M600 538 L600 562 M600 562 L295 562 L295 588 M600 562 L905 562 L905 588" />
-
-            <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-sufficient" x="105" y="588" width="380" height="54" rx="10" />
-              <text className="diagram-node-title" x="295" y="621" textAnchor="middle">Private evidence sufficient · no public call</text>
-            </g>
-
-            <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-external" x="715" y="588" width="380" height="54" rx="10" />
-              <text className="diagram-node-title" x="905" y="621" textAnchor="middle">Eligible route may use identity-free assistance</text>
-              <rect className="diagram-chip is-external" x="715" y="659" width="115" height="40" rx="8" />
-              <rect className="diagram-chip is-external" x="848" y="659" width="115" height="40" rx="8" />
-              <rect className="diagram-chip is-external" x="981" y="659" width="115" height="40" rx="8" />
-              <text className="diagram-chip-text" x="772" y="684" textAnchor="middle">Fixed capsule</text>
-              <text className="diagram-chip-text" x="905" y="684" textAnchor="middle">Module 064</text>
-              <text className="diagram-chip-text" x="1038" y="684" textAnchor="middle">Claude / OpenAI</text>
-            </g>
-
-            <path className="diagram-line" d="M295 642 L295 720 L600 720 M905 699 L905 720 L600 720" />
-            <g filter="url(#celar-ai-shadow)">
-              <rect className="diagram-node is-verification" x="330" y="720" width="540" height="48" rx="10" />
-              <text className="diagram-node-title" x="600" y="750" textAnchor="middle">Output safety · applicable source checks · citations · human review</text>
-            </g>
-            <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 768 L600 784" />
-            <rect className="diagram-result" x="345" y="780" width="510" height="28" rx="8" />
-            <text className="diagram-result-text" x="600" y="800" textAnchor="middle">Detailed cited answer · Timesheet · SOW · Plan · Timeline · Diagram</text>
+            <path className="diagram-line is-current" d="M600 1655 L600 1685" />
+            <rect className="diagram-result" id="box-result" x="230" y="1685" width="740" height="44" rx="10" />
+            <text className="diagram-result-text" id="title-result" x="600" y="1713" textAnchor="middle">Cited answer · Timesheet · SOW · Plan · Timeline · Diagram</text>
+            <text className="diagram-footer-note" x="600" y="1747" textAnchor="middle">13 managed components shown · architecture state is not runtime health evidence</text>
           </svg>
         </div>
 

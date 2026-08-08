@@ -15,6 +15,7 @@ function check(name, condition, evidence) {
 const files = {
   backend: 'src/backend/ProjectTime.Api/Modules/Module064074NativeAdministration.cs',
   overview: 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx',
+  overviewCss: 'src/frontend/project-time-web/src/celar-ai-architecture-overview.css',
   catalog: 'src/frontend/project-time-web/src/CelarAiArchitectureCatalog.jsx',
   catalogCss: 'src/frontend/project-time-web/src/celar-ai-architecture-catalog.css',
   nativePanel: 'src/frontend/project-time-web/src/NativeModuleAdministrationPanel.jsx',
@@ -34,6 +35,7 @@ if (checks.some((value) => !value)) process.exit(1);
 
 const backend = read(files.backend);
 const overview = read(files.overview);
+const overviewCss = read(files.overviewCss);
 const catalog = read(files.catalog);
 const catalogCss = read(files.catalogCss);
 const nativePanel = read(files.nativePanel);
@@ -120,12 +122,49 @@ check(
 );
 check(
   'OVERVIEW_NAMES_DEFERRED_PRIVATE_SERVICES',
-  overview.includes('ClamAV · malware scanning')
-    && overview.includes('Tesseract 5 · OCR')
-    && overview.includes('Ollama · private inference + embeddings')
-    && overview.includes('Planned / OpenCloud deferred · not operational · migration 081 not applied')
+  overview.includes("componentId=\"clamav\"")
+    && overview.includes("componentId=\"tesseract-5\"")
+    && overview.includes("componentId=\"ollama\"")
+    && overview.includes('ClamAV')
+    && overview.includes('Tesseract 5')
+    && overview.includes('Ollama Private Inference')
+    && overview.includes('DEFERRED · MIGRATION 081 NOT APPLIED')
     && overview.includes('All three remain deferred until validated.'),
   'the primary Celar AI Architecture Overview explicitly names ClamAV, Tesseract 5, and Ollama without representing them as operational'
+);
+check(
+  'OVERVIEW_SHOWS_ALL_MANAGED_COMPONENTS',
+  [
+    'module-011-workspace',
+    'internal-data-intelligence',
+    'module-064-router',
+    'pulse-postgresql',
+    'governed-document-storage',
+    'private-document-worker',
+    'opencloud-runtime-vm',
+    'ollama',
+    'tesseract-5',
+    'clamav',
+    'openai-external',
+    'claude-external',
+    'ollama-gpu-scale'
+  ].every((component) => overview.includes(`data-component-id=\"${component}\"`) || overview.includes(`componentId=\"${component}\"`))
+    && overview.includes('13 managed components shown'),
+  'the primary diagram visibly represents every component in the managed Module 011 catalog'
+);
+check(
+  'OVERVIEW_CONNECTIONS_AND_WRAPPING',
+  ['celar-ai-arrow-current', 'celar-ai-arrow-planned', 'celar-ai-arrow-optional', 'celar-ai-arrow-future']
+    .every((marker) => overview.includes(marker))
+    && overview.includes('function DiagramText(')
+    && overview.includes('<tspan')
+    && overview.includes('diagram-junction')
+    && overview.includes('no-arrow')
+    && overviewCss.includes('.diagram-line.is-planned')
+    && overviewCss.includes('.diagram-line.no-arrow')
+    && overviewCss.includes('stroke-linejoin: round')
+    && overviewCss.includes('grid-template-columns: minmax(0, 1fr)'),
+  'explicit lifecycle connectors, split/merge junctions, wrapped SVG labels, and a full-width canvas keep the topology readable'
 );
 check(
   'RESPONSIVE_ENTERPRISE_STYLES',

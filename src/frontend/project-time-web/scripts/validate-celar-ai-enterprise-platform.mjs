@@ -155,24 +155,26 @@ assert('MODULE_064_ROUTER', external.includes('CelarAiCapabilityRouter') && exte
 assert('ENDPOINTS', moduleSource.includes('/api/celar-ai/v1/architecture') && contracts.includes('/api/celar-ai/v1/platform/readiness') && contracts.includes('/api/celar-ai/v1/compose'), 'enterprise readiness, architecture, and composer endpoints are present');
 assert('SERVICES_REGISTERED', services.includes('CelarAiPeopleAndGuidanceService') && services.includes('CelarAiExternalReasoningService') && services.includes('CelarAiEnterprisePlatformService'), 'all enterprise services are registered');
 assert('COMPILE_COMPATIBILITY', targets.includes('MapCelarAiEnterprisePlatformEndpoints') && targets.includes('persistence.EffectiveUserId') && targets.includes('CelarAiEnterprisePlatformService.g.cs'), 'endpoint mapping and durable-user persistence compile copies are generated');
-assert('ARCHITECTURE_US_SIGNAL', architecture.includes('usSignalLogoDataUrl') && architecture.includes('Created by Dr. Ahmed Adeyemi') && architecture.includes('Module 064') && architecture.includes('Claude / OpenAI'), 'the page contains the US Signal private-first architecture and creator attribution');
+assert('ARCHITECTURE_US_SIGNAL', architecture.includes('usSignalLogoDataUrl') && architecture.includes('Created by Dr. Ahmed Adeyemi') && architecture.includes('Module 064') && architecture.includes('title="Claude"') && architecture.includes('title="OpenAI"'), 'the page contains the US Signal private-first architecture, governed external providers, and creator attribution');
 assert('ARCHITECTURE_ACCESSIBLE', architecture.includes('role="img"') && architecture.includes('<title id="celar-ai-svg-title">') && architecture.includes('<desc id="celar-ai-svg-description">'), 'architecture diagram is accessible');
 assert(
   'ARCHITECTURE_CONTEXT_FABRIC',
   moduleSource.includes('celar-ai-private-first-architecture-v5-context-fabric')
-    && architecture.includes('Private content graph and retrieval')
-    && architecture.includes('Managed component states · live readiness gates · authoritative versions · governed lifecycle')
-    && architecture.includes('Confidence · freshness · policy · live decision trace')
+    && architecture.includes('Governed Private')
+    && architecture.includes('Celar AI intelligence and context fabric')
+    && architecture.includes('Scoped evidence · authoritative versions · freshness · policy · deterministic tools')
+    && architecture.includes('Confidence · freshness · policy · source eligibility')
     && architecture.includes('Self-monitoring adapters'),
   'Module 011 shows the current content, temporal, policy, decision-trace, private-adapter, and fine-tuning architecture'
 );
 assert(
   'ARCHITECTURE_MANAGED_COMPONENT_CATALOG',
   architecture.includes('<CelarAiArchitectureCatalog />')
-    && architecture.includes('ClamAV · malware scanning')
-    && architecture.includes('Tesseract 5 · OCR')
-    && architecture.includes('Ollama · private inference + embeddings')
-    && architecture.includes('Planned / OpenCloud deferred · not operational · migration 081 not applied')
+    && architecture.includes("componentId=\"clamav\"")
+    && architecture.includes("componentId=\"tesseract-5\"")
+    && architecture.includes("componentId=\"ollama\"")
+    && architecture.includes('DEFERRED · MIGRATION 081 NOT APPLIED')
+    && architecture.includes('13 managed components shown')
     && architectureCatalog.includes("'/api/native-administration/011/document'")
     && architectureCatalog.includes('No private-runtime activation performed')
     && ['ollama', 'tesseract-5', 'clamav'].every((component) => architectureCatalog.includes(`'${component}'`))
