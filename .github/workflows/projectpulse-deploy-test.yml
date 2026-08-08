@@ -1,21 +1,13 @@
-name: ProjectPulse Deploy Modules 081 082 001A and Celar AI Test
+name: ProjectPulse Test-Only Timesheet AI Release b1335bd2
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_commit:
-        description: Exact reviewed source commit
-        required: true
-        default: 1892c6d0187edc367a57b8cee2e868417dd9a01a
-        type: string
-      confirmation:
-        description: Enter DEPLOY-1892C6D-MODULES-081-082-001A-CELAR-AI-TO-TEST
-        required: true
-        type: string
   push:
     branches: [main]
     paths:
-      - deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+      - '.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
+      - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
 
 permissions:
   id-token: write
@@ -27,15 +19,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Guarded Modules 081, 082, 001A, and Celar AI Test release
+  deploy:
+    name: Deploy b1335bd2 with migration 080 and Timesheet AI UAT
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 120
     env:
-      RELEASE_MANIFEST: deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
-      EXPECTED_SOURCE_SHA: 1892c6d0187edc367a57b8cee2e868417dd9a01a
+      TARGET_RELEASE_COMMIT: b1335bd2426d061f85498ace7c7b2a70c3b5bdc6
 
     steps:
       - name: Check out deployment controls
@@ -46,115 +37,46 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out exact application source
+      - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 1892c6d0187edc367a57b8cee2e868417dd9a01a
+          ref: b1335bd2426d061f85498ace7c7b2a70c3b5bdc6
           path: release
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Set up Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-
-      - name: Guard exact source, manifest, and control boundary
-        id: guard
+      - name: Guard the exact application and migration boundary
+        id: release
         shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_RELEASE_COMMIT: ${{ inputs.release_commit }}
-          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
-          CONTROL_SHA="$(git -C control rev-parse HEAD)"
-          SOURCE_SHA="$(git -C release rev-parse HEAD)"
-          [[ "$CONTROL_SHA" == "$GITHUB_SHA" ]]
-          [[ "$SOURCE_SHA" == "$EXPECTED_SOURCE_SHA" ]]
-          [[ "$(jq -r .sourceSha "control/$RELEASE_MANIFEST")" == "$EXPECTED_SOURCE_SHA" ]]
-          [[ "$(jq -r .environment "control/$RELEASE_MANIFEST")" == test ]]
-          [[ "$(jq -r .aiReleasePhase "control/$RELEASE_MANIFEST")" == disabled ]]
-          [[ "$(jq -r .routingAuthority "control/$RELEASE_MANIFEST")" == database_managed_active ]]
-          [[ "$(jq -r .allowSanitizedExternalEscalation "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .sanitizedExternalFallbackEnabled "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .modules081082001aIncluded "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .celarAiPrivateRagUxIncluded "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .legacyRiskTableReconciliation "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r .protectedRuntimeVerification "control/$RELEASE_MANIFEST")" == true ]]
-          [[ "$(jq -r '.migrations | length' "control/$RELEASE_MANIFEST")" == 4 ]]
-          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$DISPATCH_RELEASE_COMMIT" == "$EXPECTED_SOURCE_SHA" ]] || {
-              echo "Only the exact reviewed source SHA may deploy." >&2
-              exit 1
-            }
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-1892C6D-MODULES-081-082-001A-CELAR-AI-TO-TEST ]] || {
-              echo "Deployment confirmation does not match." >&2
-              exit 1
-            }
-          elif [[ "$EVENT_NAME" != push ]]; then
-            echo "Unsupported release trigger: $EVENT_NAME" >&2
-            exit 1
-          fi
+          [[ '${{ github.event_name }}' == push ]]
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          RELEASE_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]]
+          git -C control merge-base --is-ancestor "$RELEASE_COMMIT" "$CONTROL_COMMIT"
 
-          git -C control merge-base --is-ancestor "$SOURCE_SHA" "$CONTROL_SHA" || {
-            echo "The reviewed source is not an ancestor of the release controls." >&2
-            exit 1
-          }
+          test -f release/database/migrations/080_celar_ai_internal_data_intelligence.sql
+          test -f release/src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
+          test -f release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          test -f release/src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
+          test -f control/scripts/release-test/apply-celar-ai-internal-data-080.sh
+          test -f control/scripts/release-test/run-migration-job.sh
+          test -f control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
 
-          cat > /tmp/expected-control-name-status <<'EOF'
-          M	.github/workflows/projectpulse-deploy-test.yml
-          M	.github/workflows/projectpulse-release-test-control-ci.yml
-          D	.github/workflows/projectpulse-deploy-pulse-login-test.yml
-          A	deployment/releases/test/modules-081-082-001a-celar-ai-1892c6d-20260807.json
-          A	scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh
-          A	scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
-          A	scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
-          EOF
-          sed -i 's/^[[:space:]]*//' /tmp/expected-control-name-status
-          LC_ALL=C sort -k2,2 -o /tmp/expected-control-name-status /tmp/expected-control-name-status
-          git -C control diff --name-status --no-renames "$SOURCE_SHA...$CONTROL_SHA" \
-            | LC_ALL=C sort -k2,2 > /tmp/actual-control-name-status
-          diff -u /tmp/expected-control-name-status /tmp/actual-control-name-status
-          git -C control diff --check "$SOURCE_SHA...$CONTROL_SHA"
+          bash -n control/scripts/release-test/apply-celar-ai-internal-data-080.sh
+          bash -n control/scripts/release-test/run-migration-job.sh
+          grep -Fq 'TimesheetActivityTrainingProfessionalDevelopment' release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'var externalPrompt = fixedCapsule.Capsule' release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'Why the AI suggestion did not complete' release/src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
+          node release/src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs
 
-          [[ "$(git -C control rev-parse HEAD:scripts/build-pr55-acr-image.sh)" == db96de4c548a38761fb4dc79c8ac55babf17efca ]]
-          [[ "$(git -C control rev-parse HEAD:scripts/export-pr55-test-database-url.sh)" == 598526dd59d2fa47ea2263e28f13ea8bf49ff3cb ]]
-          [[ "$(git -C control rev-parse HEAD:scripts/wait-containerapp-ready-revision.sh)" == 7f959e2b53ba68db28202ac111994cb3a406b859 ]]
-          [[ "$(git -C control rev-parse HEAD:deployment/containers/pr55-migrator/Dockerfile)" == 90f3ba7cab22caa9f39a27746f169bf699a8fb3c ]]
-
-          mapfile -t PATHS < <(jq -r '.migrations[].path' "control/$RELEASE_MANIFEST")
-          mapfile -t BLOBS < <(jq -r '.migrations[].blobSha' "control/$RELEASE_MANIFEST")
-          mapfile -t HASHES < <(jq -r '.migrations[].sha256' "control/$RELEASE_MANIFEST")
-          for index in 0 1 2 3; do
-            [[ "$(git -C release rev-parse "HEAD:${PATHS[$index]}")" == "${BLOBS[$index]}" ]]
-            [[ "$(sha256sum "release/${PATHS[$index]}" | awk '{print $1}')" == "${HASHES[$index]}" ]]
-          done
-          test -f release/database/rollback/075_pulse_product_rebrand_rollback.sql
-          test -f release/database/rollback/076_module_081_lab_equipment_tracker_rollback.sql
-          test -f release/database/rollback/077_module_082_enterprise_project_risk_register_rollback.sql
-          test -f release/database/rollback/078_module_001a_engineer_request_closeout_rollback.sql
-          test -f release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          test -f release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
-          test -f release/src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
-          test -f release/src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
-          test -f release/src/frontend/project-time-web/src/ProjectRiskRegisterCenter.jsx
-          test -f release/src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
-          test -f release/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
-          test -f release/src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx
-          test -f release/src/frontend/project-time-web/src/HelpAssistant.jsx
-          grep -Fq 'ENGINEER_TASK_CLOSEOUT_001A' release/database/migrations/078_module_001a_engineer_request_closeout.sql
-          grep -Fq 'module = Module' release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          grep -Fq 'module = Module' release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
-          grep -Fq '/api/engineer-task-closeout/overview' release/src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
-          OFFICIAL_LOGO_SHA=f28a48b72d16d5a2d0377d559ba0a549f4486309cc6e09a285a32840e0df806b
-          [[ "$(sha256sum release/src/frontend/project-time-web/brand/USSNavyStacked.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
-          [[ "$(sha256sum release/src/frontend/project-time-web/brand/ussignal.png | awk '{print $1}')" == "$OFFICIAL_LOGO_SHA" ]]
-          grep -Fq "import usSignalLogoUrl from '../brand/USSNavyStacked.png';" release/src/frontend/project-time-web/src/App.jsx
-          grep -Fq 'className="brand-logo-image" src={usSignalLogoUrl} alt="US Signal"' release/src/frontend/project-time-web/src/App.jsx
-          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "control_sha=$CONTROL_SHA" >> "$GITHUB_OUTPUT"
-          echo "CURRENT_MAIN_TEST_RELEASE_BOUNDARY=PASSED"
+          echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'MIGRATION_SCOPE=080_ONLY'
+          echo 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED'
 
       - name: Sign in to the protected Test subscription
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
@@ -163,332 +85,100 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Pin Azure Container Apps CLI extension
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          REQUIRED_AZURE_CLI_VERSION=2.79.0
-          REQUIRED_CONTAINERAPP_EXTENSION_VERSION=1.3.0b4
-          ACTUAL_AZURE_CLI_VERSION="$(az version --query '"azure-cli"' -o tsv)"
-          [[ "$(printf '%s\n' "$REQUIRED_AZURE_CLI_VERSION" "$ACTUAL_AZURE_CLI_VERSION" | sort -V | head -n1)" == "$REQUIRED_AZURE_CLI_VERSION" ]] || {
-            echo "Azure CLI $REQUIRED_AZURE_CLI_VERSION or newer is required." >&2
-            exit 1
-          }
-          az config set extension.use_dynamic_install=no --only-show-errors
-          if az extension show --name containerapp --output none --only-show-errors 2>/dev/null; then
-            az extension remove --name containerapp --only-show-errors
-          fi
-          az extension add \
-            --name containerapp \
-            --version "$REQUIRED_CONTAINERAPP_EXTENSION_VERSION" \
-            --yes --only-show-errors
-          [[ "$(az extension show --name containerapp --query version -o tsv --only-show-errors)" == "$REQUIRED_CONTAINERAPP_EXTENSION_VERSION" ]]
-          echo "AZURE_CONTAINERAPP_EXTENSION=PINNED"
-
-      - name: Validate protected Test resource contract
+      - name: Resolve protected Test contracts and prove UAT session
         id: contract
         shell: bash
         env:
           UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
-          FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
         run: |
           set -Eeuo pipefail
-          normalize() { case "${1:-}" in ""|None|null) return 1 ;; *) printf '%s\n' "$1" ;; esac; }
-          BASE='${{ vars.PUBLIC_URL }}'
-          BASE="${BASE%/}"
-          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || {
-            echo "PUBLIC_URL is not the exact protected Test origin." >&2
-            exit 1
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          current_env() {
+            jq -r --arg name "$1" '[.properties.template.containers[0].env[]? | select(.name == $name) | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON"
           }
-          UAT_ENABLED=false
-          if [[ -n "$UAT_SESSION" || -n "$FORGE_PROJECT_ID" ]]; then
-            [[ "${#UAT_SESSION}" -ge 20 ]] || {
-              echo "PROJECTPULSE_TEST_UAT_SESSION and PROJECTPULSE_TEST_FORGE_PROJECT_ID must be configured together for automated authenticated UAT." >&2
-              exit 1
-            }
-            [[ "$FORGE_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
-              echo "PROJECTPULSE_TEST_UAT_SESSION and PROJECTPULSE_TEST_FORGE_PROJECT_ID must be configured together for automated authenticated UAT." >&2
-              exit 1
-            }
-            UAT_ENABLED=true
-          fi
-          for value in \
-            '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            '${{ vars.AZURE_ACR_NAME }}' \
-            '${{ vars.AZURE_API_APP }}' \
-            '${{ vars.AZURE_WEB_APP }}'; do
-            [[ -n "$value" && "$value" != None && "$value" != null ]]
-          done
+          current_secret_ref() {
+            jq -r --arg name "$1" '[.properties.template.containers[0].env[]? | select(.name == $name) | .secretRef // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON"
+          }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Rollback image is outside the approved ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail "Could not resolve rollback digest for $image."
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
           CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
-          [[ "${CURRENT_SUBSCRIPTION,,}" == "${AZURE_SUBSCRIPTION_ID,,}" ]] || {
-            echo "Azure login is not bound to the protected Test subscription." >&2
-            exit 1
-          }
-          API_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || {
-            echo "The protected API resource is not tagged as Test." >&2
-            exit 1
-          }
-          mapfile -t ENV_NAMES < <(jq -r '.properties.template.containers[0].env[].name' <<<"$API_JSON")
-          printf '%s\n' "${ENV_NAMES[@]}" | sort -u > /tmp/main-release-api-env-names
-          for name in PTP_DB_HOST PTP_DB_PORT PTP_DB_NAME PTP_DB_USER PTP_DB_PASSWORD; do
-            grep -Fxq "$name" /tmp/main-release-api-env-names || {
-              echo "Missing required Test API database variable: $name" >&2
-              exit 1
-            }
-          done
-          DIRECT_DATABASE_ALIAS_PRESENT=false
-          for name in \
-            ConnectionStrings__DefaultConnection \
-            ConnectionStrings__ProjectPulse \
-            ConnectionStrings__ProjectTime \
-            PROJECTPULSE_CONNECTION_STRING \
-            PROJECTTIME_DATABASE_CONNECTION \
-            PROJECTPULSE_DB_CONNECTION \
-            PROJECTTIME_DB_CONNECTION; do
-            if grep -Fxq "$name" /tmp/main-release-api-env-names; then
-              DIRECT_DATABASE_ALIAS_PRESENT=true
-              break
-            fi
-          done
-          [[ "$DIRECT_DATABASE_ALIAS_PRESENT" == true ]] || {
-            echo "The protected Test API no longer has the reviewed mixed database declaration shape." >&2
-            exit 1
-          }
-          echo "MIXED_DATABASE_DECLARATION_SHAPE=VERIFIED"
-          DATABASE_HOST="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_HOST") | .value // empty' <<<"$API_JSON")"
-          DATABASE_PORT="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_PORT") | .value // empty' <<<"$API_JSON")"
-          DATABASE_NAME="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_NAME") | .value // empty' <<<"$API_JSON")"
-          DATABASE_USER="$(jq -r '.properties.template.containers[0].env[] | select(.name == "PTP_DB_USER") | .value // empty' <<<"$API_JSON")"
-          [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]] || {
-            echo "The protected Test API must expose PTP_DB_HOST as an exact database host." >&2
-            exit 1
-          }
-          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 )) || {
-            echo "The protected Test API must expose PTP_DB_PORT as an exact database port." >&2
-            exit 1
-          }
-          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
-            echo "The protected Test API must expose PTP_DB_NAME as an exact PostgreSQL identifier." >&2
-            exit 1
-          }
-          [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
-            echo "The protected Test API must expose PTP_DB_USER as an exact PostgreSQL identifier." >&2
-            exit 1
-          }
-          PASSWORD_SECRET_REF="$(jq -r '
-            [.properties.template.containers[0].env[] |
-              select(.name == "PTP_DB_PASSWORD") | .secretRef // empty] |
-              map(select(length > 0)) | unique | if length == 1 then .[0] else empty end
-          ' <<<"$API_JSON")"
-          normalize "$PASSWORD_SECRET_REF" >/dev/null || {
-            echo "The protected Test API does not expose one canonical database password secret reference." >&2
-            exit 1
-          }
-          API_SECRETS_JSON="$(az containerapp secret list \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
-            [.[] | select(.name == $name) | .keyVaultUrl // empty] |
-            if length == 1 then .[0] else empty end
-          ' <<<"$API_SECRETS_JSON")"
-          MIGRATOR_IDENTITY="$(jq -r --arg name "$PASSWORD_SECRET_REF" '
-            [.[] | select(.name == $name) | .identity // empty] |
-            if length == 1 then .[0] else empty end
-          ' <<<"$API_SECRETS_JSON")"
-          [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || {
-            echo "The canonical Test database password is not backed by an approved Azure Key Vault URI." >&2
-            exit 1
-          }
-          MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
-          [[ "$MIGRATOR_IDENTITY_LOWER" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || {
-            echo "The canonical Test database password does not use an exact UAMI resource ID." >&2
-            exit 1
-          }
-          jq -e --arg identity "$MIGRATOR_IDENTITY" '
-            (.identity.userAssignedIdentities // {}) | keys |
-            map(ascii_downcase) | index($identity | ascii_downcase) != null
-          ' <<<"$API_JSON" >/dev/null || {
-            echo "The canonical Test database UAMI is not assigned to the protected API app." >&2
-            exit 1
-          }
-          UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
-          UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
-          [[ "${UAMI_SUBSCRIPTION,,}" == "${CURRENT_SUBSCRIPTION,,}" ]] || {
-            echo "The canonical Test database UAMI is outside the logged-in Test subscription." >&2
-            exit 1
-          }
-          ACTUAL_UAMI_ID="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
-          [[ "${ACTUAL_UAMI_ID,,}" == "${MIGRATOR_IDENTITY,,}" ]] || {
-            echo "The protected Test database UAMI could not be resolved exactly." >&2
-            exit 1
-          }
-          KEY_VAULT_URI="${KEY_VAULT_SECRET_URI%%/secrets/*}"
-          DATABASE_PASSWORD_SECRET_NAME="${KEY_VAULT_SECRET_URI#*/secrets/}"
-          echo "phase=disabled" >> "$GITHUB_OUTPUT"
-          echo "uat_enabled=$UAT_ENABLED" >> "$GITHUB_OUTPUT"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || fail 'Azure login is outside Test.'
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'The API is not tagged as Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_JSON")" == test ]] || fail 'The web app is not tagged as Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The API is not in single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The web app is not in single-revision mode.'
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not the protected Test site.'
+          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' -H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001' "$BASE/api/non-project-time-categories")" || fail 'The Test UAT session is expired or unauthorized.'
+          jq -e 'any(.categories[]?; ((.name // "") + " " + (.code // "")) | test("training"; "i"))' <<<"$CATEGORIES" >/dev/null || fail 'The active Training category is unavailable.'
+
+          DATABASE_HOST="$(current_env PTP_DB_HOST)"
+          DATABASE_PORT="$(current_env PTP_DB_PORT)"
+          DATABASE_NAME="$(current_env PTP_DB_NAME)"
+          DATABASE_USER="$(current_env PTP_DB_USER)"
+          PASSWORD_SECRET_REF="$(current_secret_ref PTP_DB_PASSWORD)"
+          [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]]
+          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 ))
+          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
+          [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
+          [[ -n "$PASSWORD_SECRET_REF" ]] || fail 'The database password secret reference is absent.'
+
+          SECRET_JSON="$(az containerapp secret list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$PASSWORD_SECRET_REF" '[.[] | select(.name == $name) | .keyVaultUrl // empty] | if length == 1 then .[0] else empty end' <<<"$SECRET_JSON")"
+          MIGRATOR_IDENTITY="$(jq -r --arg name "$PASSWORD_SECRET_REF" '[.[] | select(.name == $name) | .identity // empty] | if length == 1 then .[0] else empty end' <<<"$SECRET_JSON")"
+          [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || fail 'The database password is not an exact Key Vault reference.'
+          [[ "${MIGRATOR_IDENTITY,,}" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || fail 'The migrator identity is invalid.'
+          jq -e --arg identity "$MIGRATOR_IDENTITY" '(.identity.userAssignedIdentities // {}) | keys | map(ascii_downcase) | index($identity | ascii_downcase) != null' <<<"$API_JSON" >/dev/null || fail 'The migrator identity is not assigned to the Test API.'
+
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$API_JSON" > "$RUNNER_TEMP/private-runtime-before.json"
+          jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON" > "$RUNNER_TEMP/source-commit-before.json"
+
+          RAW_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")"
+          RAW_WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_JSON")"
+          OLD_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"
+          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
+          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
           echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
-          echo "key_vault_uri=$KEY_VAULT_URI" >> "$GITHUB_OUTPUT"
-          echo "database_password_secret_name=$DATABASE_PASSWORD_SECRET_NAME" >> "$GITHUB_OUTPUT"
+          echo "key_vault_uri=${KEY_VAULT_SECRET_URI%%/secrets/*}" >> "$GITHUB_OUTPUT"
+          echo "database_password_secret_name=${KEY_VAULT_SECRET_URI#*/secrets/}" >> "$GITHUB_OUTPUT"
           echo "database_host=$DATABASE_HOST" >> "$GITHUB_OUTPUT"
           echo "database_port=$DATABASE_PORT" >> "$GITHUB_OUTPUT"
           echo "database_name=$DATABASE_NAME" >> "$GITHUB_OUTPUT"
           echo "database_user=$DATABASE_USER" >> "$GITHUB_OUTPUT"
-          echo "PROTECTED_TEST_RESOURCE_CONTRACT=PASSED"
 
-
-      - name: Capture quiescent immutable API and web baseline
-        id: before
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          resolve_digest() {
-            local image="$1"
-            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
-            local relative repository digest
-            case "$image" in
-              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
-              "$registry"*:*) ;;
-              *) echo "Image is outside the approved Test ACR." >&2; return 1 ;;
-            esac
-            relative="${image#"$registry"}"
-            repository="${relative%:*}"
-            digest="$(az acr repository show \
-              --name '${{ vars.AZURE_ACR_NAME }}' \
-              --image "$relative" --query digest -o tsv --only-show-errors)"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
-          }
-
-          API_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          WEB_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
-          API_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$API_JSON")"
-          WEB_MODE="$(jq -r '.properties.configuration.activeRevisionsMode // empty' <<<"$WEB_JSON")"
-          [[ "${API_MODE,,}" == single && "${WEB_MODE,,}" == single ]] || {
-            echo "Test API and web must both use single-revision mode." >&2
-            exit 1
-          }
-
-          API_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$API_JSON")"
-          API_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$API_JSON")"
-          WEB_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$WEB_JSON")"
-          WEB_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$WEB_JSON")"
-          [[ -n "$API_LATEST" && "$API_LATEST" == "$API_READY" ]] || {
-            echo "Test API baseline is not quiescent." >&2
-            exit 1
-          }
-          [[ -n "$WEB_LATEST" && "$WEB_LATEST" == "$WEB_READY" ]] || {
-            echo "Test web baseline is not quiescent." >&2
-            exit 1
-          }
-
-          API_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$API_JSON")")"
-          WEB_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$WEB_JSON")")"
-          API_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            --revision "$API_LATEST" \
-            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
-          WEB_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --revision "$WEB_LATEST" \
-            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
-          [[ "$API_TEMPLATE_IMAGE" == "$API_REVISION_IMAGE" ]] || {
-            echo "Test API template and latest ready revision images differ." >&2
-            exit 1
-          }
-          [[ "$WEB_TEMPLATE_IMAGE" == "$WEB_REVISION_IMAGE" ]] || {
-            echo "Test web template and latest ready revision images differ." >&2
-            exit 1
-          }
-
-          TOUCHED_NAMES='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
-          API_ENV_JSON="$(jq -c '.properties.template.containers[0].env // []' <<<"$API_JSON")"
-          BASELINE_ENV="$(jq -cS --argjson names "$TOUCHED_NAMES" '
-            [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
-            | sort_by(.name)
-          ' <<<"$API_ENV_JSON")"
-          [[ "$(jq '[.[] | select((.secretRef // "") != "")] | length' <<<"$BASELINE_ENV")" == 0 ]] || {
-            echo "A touched release variable is secret-backed and cannot be safely restored." >&2
-            exit 1
-          }
-          UNTOUCHED_ENV_HASH="$(jq -cS --argjson names "$TOUCHED_NAMES" '
-            [.[] | select(.name as $name | ($names | index($name) | not))]
-            | sort_by(.name)
-          ' <<<"$API_ENV_JSON" | sha256sum | awk '{print $1}')"
-
-          echo "old_api_env_b64=$(printf '%s' "$BASELINE_ENV" | base64 -w0)" >> "$GITHUB_OUTPUT"
-          echo "old_api_untouched_env_hash=$UNTOUCHED_ENV_HASH" >> "$GITHUB_OUTPUT"
-          echo "old_api_image=$API_TEMPLATE_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$WEB_TEMPLATE_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_api_revision=$API_LATEST" >> "$GITHUB_OUTPUT"
-          echo "old_web_revision=$WEB_LATEST" >> "$GITHUB_OUTPUT"
-          echo "QUIESCENT_TEST_BASELINE=VERIFIED"
-
-      - name: Build immutable source-stamped API and web images
-        id: build
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          SOURCE_SHA='${{ steps.guard.outputs.source_sha }}'
-          CONTROL_SHA='${{ steps.guard.outputs.control_sha }}'
-          install -d release/deployment/containers/release-test
-          install -m 0644 control/deployment/containers/release-test/api.Dockerfile \
-            release/deployment/containers/release-test/api.Dockerfile
-          install -d release/src/frontend/project-time-web/public
-          cat > release/src/frontend/project-time-web/public/release.json <<JSON
-          {"sourceSha":"$SOURCE_SHA","controlSha":"$CONTROL_SHA","environment":"test","modules":["081","082","001A"],"celarAiPrivateRagUxIncluded":true,"migrations":["075","076","077","078"]}
-          JSON
-          API_REPO=project-health-dashboard-api
-          WEB_REPO=project-health-dashboard-web
-          API_TAG="main-${SOURCE_SHA:0:12}-$GITHUB_RUN_ID"
-          WEB_TAG="main-${SOURCE_SHA:0:12}-$GITHUB_RUN_ID"
-          API_DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
-            '${{ vars.AZURE_ACR_NAME }}' "$API_REPO:$API_TAG" \
-            release/deployment/containers/release-test/api.Dockerfile release)"
-          WEB_DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
-            '${{ vars.AZURE_ACR_NAME }}' "$WEB_REPO:$WEB_TAG" \
-            release/deployment/containers/web/Dockerfile release)"
-          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$API_REPO@$API_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/$WEB_REPO@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "IMMUTABLE_TEST_IMAGES=BUILT"
-
-      - name: Build checksum-pinned migration image
+      - name: Build checksum-pinned migration 080 image
         id: migration
         shell: bash
         run: |
           set -Eeuo pipefail
-          CONTEXT="$RUNNER_TEMP/modules-081-082-001a-migrator-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CONTEXT="$RUNNER_TEMP/celar-ai-080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           install -d -m 0700 "$CONTEXT/migrations"
           install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
-          install -m 0755 control/scripts/apply-modules-081-082-001a-celar-ai-test-migrations.sh "$CONTEXT/apply-pr55-test-migrations.sh"
-          for file in \
-            075_pulse_product_rebrand.sql \
-            076_module_081_lab_equipment_tracker.sql \
-            077_module_082_enterprise_project_risk_register.sql \
-            078_module_001a_engineer_request_closeout.sql; do
-            install -m 0644 "release/database/migrations/$file" "$CONTEXT/migrations/$file"
-          done
-          jq -r '.migrations[] | "\(.sha256)  \(.path | split("/")[-1])"' \
-            "control/$RELEASE_MANIFEST" > "$CONTEXT/migrations/SHA256SUMS"
-          printf '%s\n' '${{ steps.guard.outputs.source_sha }}' > "$CONTEXT/release-commit"
-          DIGEST="$(bash control/scripts/build-pr55-acr-image.sh \
-            '${{ vars.AZURE_ACR_NAME }}' \
-            "project-health-dashboard-governance-release-migrator:${{ steps.guard.outputs.source_sha }}-$GITHUB_RUN_ID" \
-            "$CONTEXT/Dockerfile" "$CONTEXT")"
-          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-governance-release-migrator@$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          install -m 0755 control/scripts/release-test/apply-celar-ai-internal-data-080.sh "$CONTEXT/apply-pr55-test-migrations.sh"
+          install -m 0644 release/database/migrations/080_celar_ai_internal_data_intelligence.sql "$CONTEXT/migrations/080_celar_ai_internal_data_intelligence.sql"
+          (cd "$CONTEXT/migrations" && sha256sum 080_celar_ai_internal_data_intelligence.sql > SHA256SUMS)
+          printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$CONTEXT/release-commit"
+          DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-celar-ai-080:$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" "$CONTEXT/Dockerfile" "$CONTEXT")"
+          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-celar-ai-080@$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Apply or verify migrations 075 through 078 in the private Test network
+      - name: Apply and verify migration 080 inside the private Test network
         shell: bash
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -501,498 +191,141 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.contract.outputs.database_port }}
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
           PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
-          MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
+          MAIN_RELEASE_CONTROL_SHA: ${{ steps.release.outputs.control_commit }}
+          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
+          MAIN_RELEASE_MIGRATION_SCOPE: celar-ai-internal-data-080-b1335bd2-test
           MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr578-${{ github.run_id }}-${{ github.run_attempt }}-a
-          MAIN_RELEASE_MIGRATION_MODE: apply
-        run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
+        run: |
+          set -Eeuo pipefail
+          MAIN_RELEASE_MIGRATION_JOB_NAME="ca080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-a" MAIN_RELEASE_MIGRATION_MODE=apply bash control/scripts/release-test/run-migration-job.sh
+          MAIN_RELEASE_MIGRATION_JOB_NAME="ca080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-v" MAIN_RELEASE_MIGRATION_MODE=verify bash control/scripts/release-test/run-migration-job.sh
 
-      - name: Reverify migrations 075 through 078 without writes
+      - name: Build immutable API and web images from b1335bd2
+        id: build
         shell: bash
-        env:
-          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
-          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
-          AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
-          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.contract.outputs.database_password_secret_name }}
-          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.contract.outputs.database_host }}
-          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.contract.outputs.database_port }}
-          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
-          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
-          MAIN_RELEASE_CONTROL_SHA: ${{ steps.guard.outputs.control_sha }}
-          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: mr578-${{ github.run_id }}-${{ github.run_attempt }}-v
-          MAIN_RELEASE_MIGRATION_MODE: verify
-        run: bash control/scripts/run-modules-081-082-001a-celar-ai-test-migration-job.sh
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:timesheet-ai-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:timesheet-ai-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy exact API digest
+      - name: Deploy API image without private-runtime activation
         id: deploy_api
         shell: bash
         run: |
           set -Eeuo pipefail
-          resolve_digest() {
-            local image="$1"
-            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
-            local relative repository digest
-            case "$image" in
-              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
-              "$registry"*:*) ;;
-              *) echo "API image is outside the approved Test ACR." >&2; return 1 ;;
-            esac
-            relative="${image#"$registry"}"
-            repository="${relative%:*}"
-            digest="$(az acr repository show \
-              --name '${{ vars.AZURE_ACR_NAME }}' \
-              --image "$relative" --query digest -o tsv --only-show-errors)"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
-          }
-
-          LIVE_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          LIVE_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$LIVE_JSON")"
-          LIVE_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$LIVE_JSON")"
-          [[ "$LIVE_LATEST" == '${{ steps.before.outputs.old_api_revision }}' && "$LIVE_READY" == "$LIVE_LATEST" ]] || {
-            echo "API baseline revision changed before deployment." >&2
-            exit 1
-          }
-          LIVE_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$LIVE_JSON")")"
-          LIVE_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
-            --revision "$LIVE_LATEST" \
-            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
-          [[ "$LIVE_TEMPLATE_IMAGE" == '${{ steps.before.outputs.old_api_image }}' && "$LIVE_REVISION_IMAGE" == "$LIVE_TEMPLATE_IMAGE" ]] || {
-            echo "API baseline image changed before deployment." >&2
-            exit 1
-          }
-
-          TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
-          LIVE_ENV="$(jq -c '.properties.template.containers[0].env // []' <<<"$LIVE_JSON")"
-          LIVE_TOUCHED="$(jq -cS --argjson names "$TOUCHED_JSON" '
-            [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
-            | sort_by(.name)
-          ' <<<"$LIVE_ENV")"
-          EXPECTED_TOUCHED="$(printf '%s' '${{ steps.before.outputs.old_api_env_b64 }}' | base64 -d)"
-          [[ "$LIVE_TOUCHED" == "$EXPECTED_TOUCHED" ]] || {
-            echo "API release environment changed before deployment." >&2
-            exit 1
-          }
-          LIVE_UNTOUCHED_HASH="$(jq -cS --argjson names "$TOUCHED_JSON" '
-            [.[] | select(.name as $name | ($names | index($name) | not))]
-            | sort_by(.name)
-          ' <<<"$LIVE_ENV" | sha256sum | awk '{print $1}')"
-          [[ "$LIVE_UNTOUCHED_HASH" == '${{ steps.before.outputs.old_api_untouched_env_hash }}' ]] || {
-            echo "API untargeted environment changed before deployment." >&2
-            exit 1
-          }
-          echo "API_PREDEPLOY_CAS=PASSED"
-
-          echo "started=true" >> "$GITHUB_OUTPUT"
-          OLD_REV='${{ steps.before.outputs.old_api_revision }}'
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_API_APP }}' \
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
-            --set-env-vars \
-              PROJECTPULSE_ENVIRONMENT=test \
-              PROJECTPULSE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
-              PROJECTPULSE_RELEASE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
-              PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT='${{ steps.guard.outputs.source_sha }}' \
-              PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT='${{ steps.guard.outputs.control_sha }}' \
-              PROJECTPULSE_AI_RELEASE_PHASE='${{ steps.contract.outputs.phase }}' \
-              PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION=true \
-              PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED=true \
-            --revision-suffix "tapi-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
+            --revision-suffix "tsai-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
-          NEW_REV=""
-          for attempt in $(seq 1 30); do
-            NEW_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
-            [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]] && break
-            sleep 2
-          done
-          [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]]
-          echo "revision=$NEW_REV" >> "$GITHUB_OUTPUT"
-          bash control/scripts/wait-containerapp-ready-revision.sh \
-            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' \
-            "$NEW_REV" '${{ steps.build.outputs.api_image }}' 60 10
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$RUNNER_TEMP/private-runtime-after.json"
+          diff -u "$RUNNER_TEMP/private-runtime-before.json" "$RUNNER_TEMP/private-runtime-after.json"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy exact web digest
+      - name: Deploy web image
         id: deploy_web
         shell: bash
         run: |
           set -Eeuo pipefail
-          resolve_digest() {
-            local image="$1"
-            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
-            local relative repository digest
-            case "$image" in
-              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
-              "$registry"*:*) ;;
-              *) echo "Web image is outside the approved Test ACR." >&2; return 1 ;;
-            esac
-            relative="${image#"$registry"}"
-            repository="${relative%:*}"
-            digest="$(az acr repository show \
-              --name '${{ vars.AZURE_ACR_NAME }}' \
-              --image "$relative" --query digest -o tsv --only-show-errors)"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
-          }
-
-          LIVE_JSON="$(az containerapp show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
-          LIVE_LATEST="$(jq -r '.properties.latestRevisionName // empty' <<<"$LIVE_JSON")"
-          LIVE_READY="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$LIVE_JSON")"
-          [[ "$LIVE_LATEST" == '${{ steps.before.outputs.old_web_revision }}' && "$LIVE_READY" == "$LIVE_LATEST" ]] || {
-            echo "Web baseline revision changed before deployment." >&2
-            exit 1
-          }
-          LIVE_TEMPLATE_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image // empty' <<<"$LIVE_JSON")")"
-          LIVE_REVISION_IMAGE="$(resolve_digest "$(az containerapp revision show \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
-            --revision "$LIVE_LATEST" \
-            --query properties.template.containers[0].image -o tsv --only-show-errors)")"
-          [[ "$LIVE_TEMPLATE_IMAGE" == '${{ steps.before.outputs.old_web_image }}' && "$LIVE_REVISION_IMAGE" == "$LIVE_TEMPLATE_IMAGE" ]] || {
-            echo "Web baseline image changed before deployment." >&2
-            exit 1
-          }
-          echo "WEB_PREDEPLOY_CAS=PASSED"
-
-          echo "started=true" >> "$GITHUB_OUTPUT"
-          OLD_REV='${{ steps.before.outputs.old_web_revision }}'
-          az containerapp update \
-            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-            -n '${{ vars.AZURE_WEB_APP }}' \
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "tweb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --revision-suffix "tsaiw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
-          NEW_REV=""
-          for attempt in $(seq 1 30); do
-            NEW_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
-            [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]] && break
-            sleep 2
-          done
-          [[ -n "$NEW_REV" && "$NEW_REV" != "$OLD_REV" ]]
-          echo "revision=$NEW_REV" >> "$GITHUB_OUTPUT"
-          bash control/scripts/wait-containerapp-ready-revision.sh \
-            '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' \
-            "$NEW_REV" '${{ steps.build.outputs.web_image }}' 60 10
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Verify Modules 081, 082, 001A, Celar AI, and served release runtime
+      - name: Prove exact release and Timesheet AI Working on training behavior
+        id: uat
         shell: bash
         env:
-          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
-          SOURCE_SHA: ${{ steps.guard.outputs.source_sha }}
-          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
-          PROJECTPULSE_TEST_FORGE_PROJECT_ID: ${{ vars.PROJECTPULSE_TEST_FORGE_PROJECT_ID }}
-          EVIDENCE_PATH: /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json
-        run: node control/scripts/verify-modules-081-082-001a-celar-ai-test-runtime.mjs
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          auth=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
 
-      - name: Roll back candidate application digests and release environment on failure
-        if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+          READY=false
+          for attempt in $(seq 1 36); do
+            STAMP="$(curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/release.json?release=$GITHUB_RUN_ID-$attempt" || true)"
+            if jq -e --arg sha "$TARGET_RELEASE_COMMIT" '.sourceSha == $sha' <<<"$STAMP" >/dev/null 2>&1 \
+              && curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health" >/dev/null; then
+              READY=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]]
+
+          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' "${auth[@]}" "$BASE/api/non-project-time-categories")"
+          CATEGORY="$(jq -c '[.categories[]? | select(((.name // "") + " " + (.code // "")) | test("training"; "i"))] | first // empty' <<<"$CATEGORIES")"
+          [[ -n "$CATEGORY" ]]
+          CATEGORY_ID="$(jq -r .id <<<"$CATEGORY")"
+          CATEGORY_NAME="$(jq -r .name <<<"$CATEGORY")"
+          CATEGORY_CODE="$(jq -r '.code // ""' <<<"$CATEGORY")"
+          PAYLOAD="$(jq -nc --arg id "$CATEGORY_ID" --arg name "$CATEGORY_NAME" --arg code "$CATEGORY_CODE" '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:null,projectId:null,taskId:null,nonProjectTimeCategoryId:$id,timeType:"regular",rowType:"nonProject",rowLabel:$name,customerName:null,projectName:null,projectCode:null,taskName:null,taskCode:null,categoryCode:$code,hours:0.5,currentDescription:"Working on training"}')"
+          RESPONSE_FILE="$RUNNER_TEMP/timesheet-working-on-training.json"
+          HTTP_STATUS="$(curl -sS --max-time 120 -o "$RESPONSE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth[@]}" -d "$PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
+          [[ "$HTTP_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$RESPONSE_FILE" >&2 || true; exit 1; }
+          jq -e '
+            .status == "ai_suggestion_generated" and
+            ((.provider // "") | ascii_downcase) as $provider |
+            ($provider == "celar_ai" or $provider == "claude" or $provider == "openai") and
+            ((.suggestion // "") | length) >= 90 and
+            ((.suggestion // "") | contains("[REDACTED_") | not) and
+            any(.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used")
+          ' "$RESPONSE_FILE" >/dev/null
+          jq '{status,provider,suggestionLength:(.suggestion|length),successfulTarget:(.targetDecisions[]? | select((.outcome|ascii_downcase)=="used") | {target,outcome,reasonCode})}' "$RESPONSE_FILE" > "$RUNNER_TEMP/timesheet-ai-uat-evidence.json"
+          echo "provider=$(jq -r .provider "$RESPONSE_FILE")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish deployment evidence
+        if: success()
         shell: bash
         run: |
           set -Eeuo pipefail
-          touch /tmp/current-main-release-rollback-attempted
-          result=0
-          resolve_digest() {
-            local image="$1"
-            local registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/'
-            local relative repository digest
-            case "$image" in
-              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
-              "$registry"*:*) ;;
-              *) return 1 ;;
-            esac
-            relative="${image#"$registry"}"
-            repository="${relative%:*}"
-            digest="$(az acr repository show \
-              --name '${{ vars.AZURE_ACR_NAME }}' \
-              --image "$relative" --query digest -o tsv --only-show-errors)"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
-          }
-          wait_for_revision() {
-            local app="$1" candidate_revision="$2" expected_image="$3"
-            local latest="" ready=""
-            [[ -n "$candidate_revision" ]]
-            for _ in $(seq 1 30); do
-              latest="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n "$app" --query properties.latestRevisionName -o tsv --only-show-errors)"
-              ready="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n "$app" --query properties.latestReadyRevisionName -o tsv --only-show-errors)"
-              [[ -n "$latest" && "$latest" != "$candidate_revision" && "$ready" == "$latest" ]] && break
-              sleep 2
-            done
-            [[ -n "$latest" && "$latest" != "$candidate_revision" && "$ready" == "$latest" ]]
-            bash control/scripts/wait-containerapp-ready-revision.sh \
-              '${{ vars.AZURE_RESOURCE_GROUP }}' "$app" "$latest" "$expected_image" 60 10
-          }
-          capture_api_candidate_diagnostics() {
-            local revision="$1" replica container
-            local revision_json='{}' replicas_json='[]'
-            [[ -n "$revision" ]] || return 0
-            revision_json="$(az containerapp revision show \
-              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-              -n '${{ vars.AZURE_API_APP }}' \
-              --revision "$revision" -o json --only-show-errors 2>/dev/null || printf '{}')"
-            replicas_json="$(az containerapp replica list \
-              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-              -n '${{ vars.AZURE_API_APP }}' \
-              --revision "$revision" -o json --only-show-errors 2>/dev/null || printf '[]')"
-            replica="$(jq -r '.[0].name // empty' <<<"$replicas_json")"
-            container="$(jq -r '.properties.template.containers[0].name // empty' <<<"$revision_json")"
+          mkdir -p evidence
+          jq -n \
+            --arg releaseCommit "$TARGET_RELEASE_COMMIT" \
+            --arg controlCommit '${{ steps.release.outputs.control_commit }}' \
+            --arg migrationImage '${{ steps.migration.outputs.image }}' \
+            --arg apiImage '${{ steps.build.outputs.api_image }}' \
+            --arg webImage '${{ steps.build.outputs.web_image }}' \
+            --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
+            --argjson timesheetUat "$(cat "$RUNNER_TEMP/timesheet-ai-uat-evidence.json")" \
+            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:["080"],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,migrationImage:$migrationImage,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,timesheetWorkingOnTraining:$timesheetUat}' \
+            > evidence/timesheet-ai-b1335bd2-test-deployment.json
 
-            jq -n \
-              --arg revision "$revision" \
-              --argjson revisionState "$revision_json" \
-              --argjson replicas "$replicas_json" \
-              '{
-                revision: $revision,
-                healthState: ($revisionState.properties.healthState // "unknown"),
-                provisioningState: ($revisionState.properties.provisioningState // "unknown"),
-                runningState: ($revisionState.properties.runningState // "unknown"),
-                replicas: [$replicas[] | {
-                  name,
-                  runningState: (.properties.runningState // "unknown"),
-                  containers: [(.properties.containers // [])[] | {
-                    name,
-                    runningState,
-                    runningStateDetails,
-                    restartCount
-                  }],
-                  initContainers: [(.properties.initContainers // [])[] | {
-                    name,
-                    runningState,
-                    runningStateDetails,
-                    restartCount
-                  }]
-                }]
-              }' > /tmp/current-main-api-candidate-state.json
-
-            : > /tmp/current-main-api-system-raw.json
-            : > /tmp/current-main-api-console-raw.json
-            az containerapp logs show \
-              -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-              -n '${{ vars.AZURE_API_APP }}' \
-              --revision "$revision" \
-              --type system --tail 200 --format json \
-              > /tmp/current-main-api-system-raw.json 2>/dev/null || true
-            if [[ -n "$replica" && -n "$container" ]]; then
-              az containerapp logs show \
-                -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
-                -n '${{ vars.AZURE_API_APP }}' \
-                --revision "$revision" \
-                --replica "$replica" \
-                --container "$container" \
-                --type console --tail 200 --format json \
-                > /tmp/current-main-api-console-raw.json 2>/dev/null || true
-            fi
-
-            python3 - <<'PY'
-          import json
-          import re
-          from pathlib import Path
-
-          interesting = re.compile(
-              r"exception|fail|fatal|error|warn|crash|exit|terminat|startup|host|listen|health|restart",
-              re.IGNORECASE,
-          )
-          redactions = [
-              (re.compile(r"(?i)(password|secret|token|api[-_ ]?key|authorization|cookie|session)(\s*[:=]\s*)[^\s,;]+"), r"\1\2[REDACTED]"),
-              (re.compile(r"(?i)(Host|Server|Data Source|Database|Username|User ID)\s*=\s*[^;\s]+"), r"\1=[REDACTED]"),
-              (re.compile(r"https?://[^\s\"']+"), "[REDACTED_URL]"),
-              (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
-              (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[REDACTED_IP]"),
-              (re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"), "[REDACTED_ID]"),
-              (re.compile(r"\b[A-Za-z0-9_+/=-]{80,}\b"), "[REDACTED_LONG_VALUE]"),
-          ]
-
-          def strings(value):
-              if isinstance(value, str):
-                  yield value
-              elif isinstance(value, list):
-                  for item in value:
-                      yield from strings(item)
-              elif isinstance(value, dict):
-                  for item in value.values():
-                      yield from strings(item)
-
-          output = []
-          for label, source in (
-              ("system", Path("/tmp/current-main-api-system-raw.json")),
-              ("console", Path("/tmp/current-main-api-console-raw.json")),
-          ):
-              try:
-                  raw = source.read_text(errors="replace")
-                  parsed = json.loads(raw) if raw.strip() else []
-              except (OSError, json.JSONDecodeError):
-                  parsed = []
-              for value in strings(parsed):
-                  for line in value.splitlines():
-                      if not interesting.search(line):
-                          continue
-                      sanitized = line[:2_000]
-                      for pattern, replacement in redactions:
-                          sanitized = pattern.sub(replacement, sanitized)
-                      output.append(f"{label}: {sanitized}")
-
-          Path("/tmp/current-main-api-candidate-startup.log").write_text(
-              "\n".join(output[:400]) + ("\n" if output else "no matching sanitized log lines were available\n")
-          )
-          PY
-            rm -f /tmp/current-main-api-system-raw.json /tmp/current-main-api-console-raw.json
-            echo 'API_CANDIDATE_DIAGNOSTICS=SANITIZED'
-            jq -c . /tmp/current-main-api-candidate-state.json
-            sed -n '1,400p' /tmp/current-main-api-candidate-startup.log
-          }
-
-          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
-            ACTIVE_WEB_RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
-            ACTIVE_WEB="$(resolve_digest "$ACTIVE_WEB_RAW")"
-            CANDIDATE_WEB_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
-            EXPECTED_CANDIDATE_WEB_REV='${{ steps.deploy_web.outputs.revision }}'
-            if [[ "$ACTIVE_WEB" == '${{ steps.build.outputs.web_image }}' ]]; then
-              if [[ -n "$EXPECTED_CANDIDATE_WEB_REV" && "$CANDIDATE_WEB_REV" != "$EXPECTED_CANDIDATE_WEB_REV" ]]; then
-                echo "WEB_ROLLBACK=BLOCKED_CANDIDATE_REVISION_DRIFT" >&2
-                result=1
-              else
-                az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
-                  --image '${{ steps.before.outputs.old_web_image }}' \
-                  --revision-suffix "tweb-rb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-                  --output none --only-show-errors || result=1
-                wait_for_revision '${{ vars.AZURE_WEB_APP }}' \
-                  "$CANDIDATE_WEB_REV" \
-                  '${{ steps.before.outputs.old_web_image }}' || result=1
-              fi
-            else
-              echo "WEB_ROLLBACK=SKIPPED_CANDIDATE_NOT_ACTIVE" >&2
-              result=1
-            fi
-          fi
-
-          if [[ '${{ steps.deploy_api.outputs.started }}' == true ]]; then
-            ACTIVE_API_RAW="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].image -o tsv --only-show-errors)"
-            ACTIVE_API="$(resolve_digest "$ACTIVE_API_RAW")"
-            CANDIDATE_API_REV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
-            EXPECTED_CANDIDATE_API_REV='${{ steps.deploy_api.outputs.revision }}'
-            capture_api_candidate_diagnostics "$CANDIDATE_API_REV" || true
-            if [[ "$ACTIVE_API" == '${{ steps.build.outputs.api_image }}' ]]; then
-              if [[ -n "$EXPECTED_CANDIDATE_API_REV" && "$CANDIDATE_API_REV" != "$EXPECTED_CANDIDATE_API_REV" ]]; then
-                echo "API_ROLLBACK=BLOCKED_CANDIDATE_REVISION_DRIFT" >&2
-                result=1
-              else
-                TOUCHED_JSON='["PROJECTPULSE_ENVIRONMENT","PROJECTPULSE_SOURCE_COMMIT","PROJECTPULSE_RELEASE_COMMIT","PROJECTPULSE_AI_RELEASE_SOURCE_COMMIT","PROJECTPULSE_AI_RELEASE_CONTROL_COMMIT","PROJECTPULSE_AI_RELEASE_PHASE","PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION","PROJECTPULSE_CELAR_AI_SANITIZED_EXTERNAL_FALLBACK_ENABLED"]'
-                LIVE_ENV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
-                LIVE_UNTOUCHED_HASH="$(jq -cS --argjson names "$TOUCHED_JSON" '
-                  [.[] | select(.name as $name | ($names | index($name) | not))]
-                  | sort_by(.name)
-                ' <<<"$LIVE_ENV" | sha256sum | awk '{print $1}')"
-                if [[ "$LIVE_UNTOUCHED_HASH" != '${{ steps.before.outputs.old_api_untouched_env_hash }}' ]]; then
-                  echo "API_ROLLBACK=BLOCKED_UNTARGETED_ENVIRONMENT_DRIFT" >&2
-                  result=1
-                else
-                  BASELINE_ENV="$(printf '%s' '${{ steps.before.outputs.old_api_env_b64 }}' | base64 -d)"
-                  mapfile -t RESTORE_ENV < <(jq -r '.[] | .name + "=" + (.value // "")' <<<"$BASELINE_ENV")
-                  mapfile -t REMOVE_NAMES < <(jq -r --argjson names "$TOUCHED_JSON" --argjson baseline "$BASELINE_ENV" '
-                    ($names - ($baseline | map(.name)))[]
-                  ' <<<"{}")
-                  UPDATE_ARGS=(az containerapp update
-                    -g '${{ vars.AZURE_RESOURCE_GROUP }}'
-                    -n '${{ vars.AZURE_API_APP }}'
-                    --image '${{ steps.before.outputs.old_api_image }}'
-                    --revision-suffix "tapi-rb-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-                    --output none
-                    --only-show-errors)
-                  if (( ${#REMOVE_NAMES[@]} > 0 )); then
-                    UPDATE_ARGS+=(--remove-env-vars "${REMOVE_NAMES[@]}")
-                  fi
-                  if (( ${#RESTORE_ENV[@]} > 0 )); then
-                    UPDATE_ARGS+=(--set-env-vars "${RESTORE_ENV[@]}")
-                  fi
-                  "${UPDATE_ARGS[@]}" || result=1
-                  wait_for_revision '${{ vars.AZURE_API_APP }}' \
-                    "$CANDIDATE_API_REV" \
-                    '${{ steps.before.outputs.old_api_image }}' || result=1
-                  FINAL_ENV="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.template.containers[0].env -o json --only-show-errors)"
-                  FINAL_BASELINE="$(jq -cS --argjson names "$TOUCHED_JSON" '
-                    [.[] | select(.name as $name | $names | index($name)) | {name, value, secretRef}]
-                    | sort_by(.name)
-                  ' <<<"$FINAL_ENV")"
-                  FINAL_UNTOUCHED_HASH="$(jq -cS --argjson names "$TOUCHED_JSON" '
-                    [.[] | select(.name as $name | ($names | index($name) | not))]
-                    | sort_by(.name)
-                  ' <<<"$FINAL_ENV" | sha256sum | awk '{print $1}')"
-                  [[ "$FINAL_BASELINE" == "$BASELINE_ENV" ]] || result=1
-                  [[ "$FINAL_UNTOUCHED_HASH" == '${{ steps.before.outputs.old_api_untouched_env_hash }}' ]] || result=1
-                fi
-              fi
-            else
-              echo "API_ROLLBACK=SKIPPED_CANDIDATE_NOT_ACTIVE" >&2
-              result=1
-            fi
-          fi
-          echo "DATABASE_ROLLBACK=NOT_EXECUTED_SCHEMA_STAYS_FORWARD"
-          exit "$result"
-
-      - name: Write sanitized Test release evidence
-        if: always()
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          mkdir -p control/evidence
-          ROLLBACK_ATTEMPTED=false
-          AUTHENTICATED_UAT_STATUS=pending_user_session_validation
-          if [[ -f /tmp/current-main-release-rollback-attempted ]]; then
-            ROLLBACK_ATTEMPTED=true
-          fi
-          if [[ '${{ steps.contract.outputs.uat_enabled }}' == true ]]; then
-            AUTHENTICATED_UAT_STATUS=executed
-          fi
-          if [[ -f /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json ]]; then
-            install -m 0600 /tmp/modules-081-082-001a-celar-ai-runtime-evidence.json \
-              control/evidence/modules-081-082-001a-celar-ai-runtime.json
-          fi
-          if [[ -f /tmp/current-main-api-candidate-state.json ]]; then
-            install -m 0600 /tmp/current-main-api-candidate-state.json \
-              control/evidence/current-main-api-candidate-state.json
-          fi
-          if [[ -f /tmp/current-main-api-candidate-startup.log ]]; then
-            install -m 0600 /tmp/current-main-api-candidate-startup.log \
-              control/evidence/current-main-api-candidate-startup.log
-          fi
-          cat > control/evidence/modules-081-082-001a-celar-ai-test-release.json <<JSON
-          {
-            "environment": "test",
-            "sourceSha": "${{ steps.guard.outputs.source_sha }}",
-            "controlSha": "${{ steps.guard.outputs.control_sha }}",
-            "runId": "${{ github.run_id }}",
-            "runAttempt": "${{ github.run_attempt }}",
-            "modules": ["081", "082", "001A"],
-            "celarAiPrivateRagUxIncluded": true,
-            "legacyRiskTableReconciliation": true,
-            "migrations": ["075_pulse_product_rebrand", "076_module_081_lab_equipment_tracker", "077_module_082_enterprise_project_risk_register", "078_module_001a_engineer_request_closeout"],
-            "migrationImage": "${{ steps.migration.outputs.image }}",
-            "apiImage": "${{ steps.build.outputs.api_image }}",
-            "webImage": "${{ steps.build.outputs.web_image }}",
-            "apiRevision": "${{ steps.deploy_api.outputs.revision }}",
-            "webRevision": "${{ steps.deploy_web.outputs.revision }}",
-            "jobStatus": "${{ job.status }}",
-            "authenticatedUatRequired": true,
-            "authenticatedUatStatus": "$AUTHENTICATED_UAT_STATUS",
-            "applicationRollbackAttempted": $ROLLBACK_ATTEMPTED,
-            "databaseRollbackOnFailure": false
-          }
-          JSON
-
-      - name: Upload sanitized Test release evidence
-        if: always()
+      - name: Upload deployment evidence
+        if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: modules-081-082-001a-celar-ai-test-release-${{ github.run_id }}-${{ github.run_attempt }}
-          path: control/evidence
-          if-no-files-found: error
+          name: timesheet-ai-b1335bd2-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/timesheet-ai-b1335bd2-test-deployment.json
           retention-days: 30
+
+      - name: Restore prior images and source marker on failure
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          SOURCE_ROW="$(cat "$RUNNER_TEMP/source-commit-before.json" 2>/dev/null)"
+          if [[ -n "$SOURCE_ROW" && "$SOURCE_ROW" != null ]]; then
+            SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
+            SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
+            [[ -n "$SOURCE_SECRET" ]] && SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET" || SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --set-env-vars "$SOURCE_ARG" --revision-suffix "tsairb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          else
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --remove-env-vars PROJECTPULSE_SOURCE_COMMIT --revision-suffix "tsairb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.contract.outputs.old_web_image }}' --revision-suffix "tsaiwrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          fi
