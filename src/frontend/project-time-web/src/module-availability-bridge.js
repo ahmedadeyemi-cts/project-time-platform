@@ -7,6 +7,7 @@ import {
   rawModuleRoute,
   retiredModuleForRoute
 } from './module-availability-registry.js';
+import { resolveModuleNavigationAccess } from './module-navigation-access-policy.js';
 import './permission-aware-more-menu.css';
 
 const INSTALL_MARKER = '__projectPulseModuleAvailabilityFetchBridgeInstalled';
@@ -112,6 +113,7 @@ function installPermissionNavigationGuard(nativeFetch) {
   let observer = null;
   let applyTimer = 0;
   let moreSearchValue = '';
+  let refreshSequence = 0;
 
   function isModulesDirectoryOwned(element) {
     return Boolean(element?.closest?.('#modules-directory-portal-host'));
@@ -298,6 +300,7 @@ function installPermissionNavigationGuard(nativeFetch) {
   }
 
   function enforceRouteBoundary() {
+    if (permissionEvidenceState === 'loading') return;
     const rawRoute = rawModuleRoute(window.location.hash || '#dashboard') || 'dashboard';
     const retired = retiredModuleForRoute(rawRoute);
     if (retired) {
@@ -323,6 +326,12 @@ function installPermissionNavigationGuard(nativeFetch) {
       permanentFullControl: Boolean(effectiveActor.permanentFullControl),
       authoritySource: effectiveActor.authoritySource || '',
       deniedModuleNumbers: [...deniedModuleNumbers],
+      explicitDeniedModuleNumbers: [...(effectiveActor.explicitDeniedModuleNumbers || [])],
+      explicitGrantedModuleNumbers: [...(effectiveActor.explicitGrantedModuleNumbers || [])],
+      activeDynamicModuleNumbers: [...(effectiveActor.activeDynamicModuleNumbers || [])],
+      inactiveDynamicModuleNumbers: [...(effectiveActor.inactiveDynamicModuleNumbers || [])],
+      legacyFallbackModuleNumbers: [...(effectiveActor.legacyFallbackModuleNumbers || [])],
+      unregisteredLegacyModuleNumbers: [...(effectiveActor.unregisteredLegacyModuleNumbers || [])],
       retiredModuleNumbers: [...RETIRED_MODULE_NUMBERS],
       evidenceContract: 'projectpulse-rbac-v1',
       reactDomOwnership: 'attributes-only-v1',
@@ -365,105 +374,140 @@ function installPermissionNavigationGuard(nativeFetch) {
   };
 
   async function refreshPermissions() {
-    const token = sessionToken();
-    if (!token) {
-      deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
-      permissionEvidenceState = 'anonymous';
-      effectiveActor = { roleCodes: [], isViewAs: false, permanentFullControl: false };
-      applyVisibility();
-      publishNavigationState();
-      return;
-    }
-
-    permissionEvidenceState = 'loading';
+  const sequence = ++refreshSequence;
+  const requestedViewAsUserId = activeViewAs()?.userId || '';
+  const token = sessionToken();
+  if (!token) {
+    deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
+    permissionEvidenceState = 'anonymous';
+    effectiveActor = { roleCodes: [], isViewAs: false, permanentFullControl: false };
     applyVisibility();
-    try {
-      const request = {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'include',
-        headers: permissionHeaders()
-      };
-      const [bootstrapResponse, matrixResponse, securityResponse] = await Promise.all([
-        nativeFetch('/api/rbac/v1/bootstrap', request),
-        nativeFetch('/api/rbac/v1/matrix', request),
-        nativeFetch('/api/security/me', request)
-      ]);
-      if (!bootstrapResponse.ok || !matrixResponse.ok) {
-        throw new Error('Dynamic RBAC navigation evidence could not be loaded.');
-      }
-
-      const [bootstrap, matrix, security] = await Promise.all([
-        bootstrapResponse.json(),
-        matrixResponse.json(),
-        securityResponse.ok ? securityResponse.json() : Promise.resolve({})
-      ]);
-      if (!Array.isArray(bootstrap?.roles)
-          || !Array.isArray(bootstrap?.modules)
-          || !Array.isArray(matrix?.roles)
-          || !Array.isArray(matrix?.modules)
-          || !Array.isArray(matrix?.grants)) {
-        throw new Error('Dynamic RBAC navigation evidence was incomplete.');
-      }
-
-      const viewAs = activeViewAs();
-      const serverViewAs = security?.isViewAs === true;
-      const effectiveViewAs = Boolean(viewAs) || serverViewAs;
-      let actorRoles = normalizedRoleCodes(bootstrap?.actor?.roleCodes);
-      if (actorRoles.length === 0) {
-        actorRoles = normalizedRoleCodes(
-          security?.roles?.map((role) => role?.roleCode ?? role?.roleName)
-        );
-      }
-      if (effectiveViewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs?.roleCodes);
-      const roleSet = new Set(actorRoles);
-      const actualSuperAdministrator = !effectiveViewAs && (
-        security?.permanentFullControl === true
-        || bootstrap?.actor?.permanentFullControl === true
-        || actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode))
-      );
-      const activeModuleNumbers = new Set(matrix.modules
-        .map((module) => String(module?.moduleCode || '').trim().toUpperCase())
-        .filter(Boolean));
-      const denied = new Set(RETIRED_MODULE_NUMBERS);
-
-      if (!actualSuperAdministrator) {
-        for (const module of PROJECTPULSE_MODULES) {
-          const number = String(module.moduleNumber || '').trim().toUpperCase();
-          if (number && !activeModuleNumbers.has(number)) denied.add(number);
-        }
-
-        matrix.grants
-          .filter((grant) => roleSet.has(canonicalRoleCode(grant.roleCode)))
-          .filter((grant) => String(grant.actionCode || '').toUpperCase() === 'MODULE_ACCESS')
-          .filter((grant) => String(grant.grantEffect || '').toUpperCase() === 'DENY')
-          .forEach((grant) => denied.add(String(grant.moduleCode || '').toUpperCase()));
-      }
-
-      deniedModuleNumbers = denied;
-      permissionEvidenceState = 'ready';
-      effectiveActor = {
-        roleCodes: actorRoles,
-        isViewAs: effectiveViewAs,
-        permanentFullControl: actualSuperAdministrator,
-        authoritySource: security?.authoritySource
-          || bootstrap?.actor?.authoritySource
-          || (actualSuperAdministrator ? 'actual_session_super_administrator' : 'published_rbac_matrix')
-      };
-      applyVisibility();
-      publishNavigationState();
-    } catch {
-      deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
-      permissionEvidenceState = 'unavailable';
-      effectiveActor = {
-        roleCodes: [],
-        isViewAs: Boolean(activeViewAs()),
-        permanentFullControl: false
-      };
-      applyVisibility();
-      publishNavigationState();
-    }
+    publishNavigationState();
+    return;
   }
+
+  // Clear stale decisions before requesting the next effective identity.
+  // The More menu remains hidden while loading, and server endpoints remain
+  // authoritative, but a prior user's denial cannot redirect the new user.
+  permissionEvidenceState = 'loading';
+  deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
+  effectiveActor = {
+    roleCodes: [],
+    isViewAs: Boolean(requestedViewAsUserId),
+    permanentFullControl: false,
+    authoritySource: 'permission_refresh_pending',
+    explicitDeniedModuleNumbers: [],
+    explicitGrantedModuleNumbers: [],
+    activeDynamicModuleNumbers: [],
+    inactiveDynamicModuleNumbers: [],
+    legacyFallbackModuleNumbers: [],
+    unregisteredLegacyModuleNumbers: []
+  };
+  applyVisibility();
+  publishNavigationState();
+
+  try {
+    const request = {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'include',
+      headers: permissionHeaders()
+    };
+    const [bootstrapResponse, matrixResponse, securityResponse, moduleCatalogResponse] = await Promise.all([
+      nativeFetch('/api/rbac/v1/bootstrap', request),
+      nativeFetch('/api/rbac/v1/matrix', request),
+      nativeFetch('/api/security/me', request),
+      nativeFetch('/api/rbac/v1/modules?includeInactive=true', request)
+    ]);
+    if (!bootstrapResponse.ok || !matrixResponse.ok || !moduleCatalogResponse.ok) {
+      throw new Error('Dynamic RBAC navigation evidence could not be loaded.');
+    }
+
+    const [bootstrap, matrix, security, moduleCatalog] = await Promise.all([
+      bootstrapResponse.json(),
+      matrixResponse.json(),
+      securityResponse.ok ? securityResponse.json() : Promise.resolve({}),
+      moduleCatalogResponse.json()
+    ]);
+    if (!Array.isArray(bootstrap?.roles)
+        || !Array.isArray(bootstrap?.modules)
+        || !Array.isArray(matrix?.roles)
+        || !Array.isArray(matrix?.modules)
+        || !Array.isArray(matrix?.grants)
+        || !Array.isArray(matrix?.legacyFallback)
+        || !Array.isArray(moduleCatalog?.modules)) {
+      throw new Error('Dynamic RBAC navigation evidence was incomplete.');
+    }
+
+    const currentViewAsUserId = activeViewAs()?.userId || '';
+    if (sequence !== refreshSequence || currentViewAsUserId !== requestedViewAsUserId) return;
+
+    const viewAs = activeViewAs();
+    const serverViewAs = security?.isViewAs === true;
+    const effectiveViewAs = Boolean(viewAs) || serverViewAs;
+    let actorRoles = normalizedRoleCodes(bootstrap?.actor?.roleCodes);
+    if (actorRoles.length === 0) {
+      actorRoles = normalizedRoleCodes(
+        security?.roles?.map((role) => role?.roleCode ?? role?.roleName)
+      );
+    }
+    if (effectiveViewAs && actorRoles.length === 0) actorRoles = normalizedRoleCodes(viewAs?.roleCodes);
+    const actualSuperAdministrator = !effectiveViewAs && (
+      security?.permanentFullControl === true
+      || bootstrap?.actor?.permanentFullControl === true
+      || actorRoles.some((roleCode) => SUPER_ADMINISTRATOR_ROLE_CODES.has(roleCode))
+    );
+    const navigationAccess = resolveModuleNavigationAccess({
+      applicationModules: PROJECTPULSE_MODULES,
+      dynamicModules: moduleCatalog.modules,
+      grants: matrix.grants,
+      legacyFallback: matrix.legacyFallback,
+      actorRoleCodes: actorRoles,
+      actualSessionPermanentFullControl: actualSuperAdministrator,
+      retiredModuleNumbers: RETIRED_MODULE_NUMBERS
+    });
+
+    deniedModuleNumbers = new Set(navigationAccess.deniedModuleNumbers);
+    permissionEvidenceState = 'ready';
+    effectiveActor = {
+      roleCodes: actorRoles,
+      isViewAs: effectiveViewAs,
+      permanentFullControl: actualSuperAdministrator,
+      authoritySource: security?.authoritySource
+        || bootstrap?.actor?.authoritySource
+        || (actualSuperAdministrator
+          ? 'actual_session_super_administrator'
+          : 'published_rbac_matrix_with_legacy_fallback'),
+      explicitDeniedModuleNumbers: navigationAccess.explicitDeniedModuleNumbers,
+      explicitGrantedModuleNumbers: navigationAccess.explicitGrantedModuleNumbers,
+      activeDynamicModuleNumbers: navigationAccess.activeDynamicModuleNumbers,
+      inactiveDynamicModuleNumbers: navigationAccess.inactiveDynamicModuleNumbers,
+      legacyFallbackModuleNumbers: navigationAccess.legacyFallbackModuleNumbers,
+      unregisteredLegacyModuleNumbers: navigationAccess.unregisteredLegacyModuleNumbers
+    };
+    applyVisibility();
+    publishNavigationState();
+  } catch {
+    const currentViewAsUserId = activeViewAs()?.userId || '';
+    if (sequence !== refreshSequence || currentViewAsUserId !== requestedViewAsUserId) return;
+    deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
+    permissionEvidenceState = 'unavailable';
+    effectiveActor = {
+      roleCodes: [],
+      isViewAs: Boolean(activeViewAs()),
+      permanentFullControl: false,
+      authoritySource: 'server_endpoint_authorization_only',
+      explicitDeniedModuleNumbers: [],
+      explicitGrantedModuleNumbers: [],
+      activeDynamicModuleNumbers: [],
+      inactiveDynamicModuleNumbers: [],
+      legacyFallbackModuleNumbers: [],
+      unregisteredLegacyModuleNumbers: []
+    };
+    applyVisibility();
+    publishNavigationState();
+  }
+}
 
   const boot = () => {
     applyVisibility();
@@ -485,10 +529,7 @@ function installPermissionNavigationGuard(nativeFetch) {
     boot();
   }
 
-  window.addEventListener('hashchange', () => {
-    applyVisibility();
-    void refreshPermissions();
-  });
+  window.addEventListener('hashchange', applyVisibility);
   window.addEventListener('storage', (event) => {
     if (event.key === 'projectPulseAuthSession' || event.key === 'projectPulseViewAsUser') {
       void refreshPermissions();

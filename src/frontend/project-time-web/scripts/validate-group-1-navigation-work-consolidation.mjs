@@ -119,15 +119,20 @@ assert('MORE_MENU_FAILS_CLOSED', bridge.includes("permissionEvidenceState = 'loa
 
 assert('DYNAMIC_RBAC_EVIDENCE', bridge.includes("nativeFetch('/api/rbac/v1/bootstrap'")
   && bridge.includes("nativeFetch('/api/rbac/v1/matrix'")
-  && bridge.includes("actionCode || '').toUpperCase() === 'MODULE_ACCESS'")
-  && bridge.includes("grantEffect || '').toUpperCase() === 'DENY'")
+  && bridge.includes("nativeFetch('/api/rbac/v1/modules?includeInactive=true'")
+  && bridge.includes('resolveModuleNavigationAccess')
+  && bridge.includes('legacyFallback: matrix.legacyFallback')
+  && bridge.includes('explicitDeniedModuleNumbers')
   && bridge.includes("evidenceContract: 'projectpulse-rbac-v1'"),
-'More menu consumes the same dynamic RBAC contract as Modules 012 and 037');
+'More menu consumes role grants, explicit denials, lifecycle state, and legacy fallback from the shared dynamic RBAC contract');
 
-assert('DYNAMIC_MODULE_LIFECYCLE', bridge.includes('activeModuleNumbers')
-  && bridge.includes('!activeModuleNumbers.has(number)')
-  && bridge.includes('PROJECTPULSE_MODULES'),
-'More navigation removes pages that are not in the active dynamic RBAC module catalog');
+assert('DYNAMIC_MODULE_LIFECYCLE', bridge.includes("nativeFetch('/api/rbac/v1/modules?includeInactive=true'")
+  && bridge.includes('inactiveDynamicModuleNumbers')
+  && bridge.includes('legacyFallbackModuleNumbers')
+  && bridge.includes('unregisteredLegacyModuleNumbers')
+  && bridge.includes('resolveModuleNavigationAccess')
+  && !bridge.includes('!activeModuleNumbers.has(number)'),
+'More navigation hides explicitly retired or inactive modules while preserving backend-authorized legacy and unregistered routes');
 
 assert('VIEW_AS_PERMISSION_CONTEXT', bridge.includes("headers['X-ProjectPulse-View-As-User']")
   && bridge.includes("event.key === 'projectPulseViewAsUser'")
