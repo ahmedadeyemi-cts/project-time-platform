@@ -56,6 +56,56 @@ jobs:
           PY
           bash /tmp/apply-view-as-navigation.sh
 
+      - name: Align Module 012 validation with shared navigation policy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/scripts/validate-module-012-scoped-role-admin.mjs')
+          text = path.read_text()
+
+          anchor = """const [
+            ui, model, compatibility, navigation, main, backend, dynamicBackend, registrar,
+            writes, persistence, evaluator, css, dynamicCss, project
+          ] = await Promise.all([
+            text(paths.ui), text(paths.model), text(paths.compatibility), text(paths.navigation), text(paths.main),
+            optionalText(paths.backend), optionalText(paths.dynamicBackend), optionalText(paths.registrar), optionalText(paths.writes),
+            optionalText(paths.persistence), optionalText(paths.evaluator), text(paths.css), text(paths.dynamicCss), optionalText(paths.project)
+          ]);
+          """
+          addition = anchor + "\nconst navigationPolicy = await text('src/frontend/project-time-web/src/module-navigation-access-policy.js');\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('Module 012 validator source-loading anchor was not unique.')
+          text = text.replace(anchor, addition, 1)
+
+          for obsolete in [
+              "  \"actionCode || '').toUpperCase() === 'MODULE_ACCESS'\",\n",
+              "  \"grantEffect || '').toUpperCase() === 'DENY'\",\n",
+          ]:
+              if text.count(obsolete) != 1:
+                  raise SystemExit(f'Module 012 obsolete navigation assertion was not unique: {obsolete!r}')
+              text = text.replace(obsolete, '', 1)
+
+          marker = """requireAll(compatibility, [
+          """
+          shared_policy_contract = """requireAll(navigationPolicy, [
+            "canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'",
+            "effect === 'DENY'",
+            'explicitDeniedModuleNumbers.add(moduleCode)',
+            'inactiveDynamicModuleNumbers',
+            'legacyFallbackModuleNumbers',
+            'unregisteredLegacyModuleNumbers',
+            'actualSessionPermanentFullControl'
+          ], 'Shared View-As module navigation policy');
+
+          """
+          if text.count(marker) != 1:
+              raise SystemExit('Module 012 compatibility assertion marker was not unique.')
+          text = text.replace(marker, shared_policy_contract + marker, 1)
+          path.write_text(text)
+          PY
+
       - name: Validate focused View-As and RBAC contracts
         working-directory: src/frontend/project-time-web
         run: |
