@@ -67,6 +67,12 @@ Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),
     "spelled-out public officeholder question is external eligible");
 Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Acme Corp?"),
+    "named-organization officeholder question remains private");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Acme Corp?").IntentCode != "general_knowledge",
+    "named-organization officeholder question cannot enter the public-provider route");
+Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the project manager for our project?"),
     "internal project-role question remains private");
 Require(

@@ -456,7 +456,8 @@ public sealed class PulseAiPrivateRagService
                     ? ParseFlowHive(answerRunId, query, retrieval, model, options)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
-            else if (flowHive || !options.RequirePrivateModelForDocumentAnswers)
+            else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
+                     || !options.RequirePrivateModelForDocumentAnswers)
             {
                 // Planning remains fail-closed on scope. When private inference
                 // is unavailable, retain a cited private scaffold so the shared
@@ -935,6 +936,10 @@ public sealed class PulseAiPrivateRagService
             query.CorrelationId,
             model.DiagnosticCode);
     }
+
+    private static bool AllowsDeterministicCitedPlanningFallback(string featureCode) =>
+        featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan
+            or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
 
     private static string DeterministicPlanningPhase(
         PulseAiPrivateRetrievedChunk chunk,

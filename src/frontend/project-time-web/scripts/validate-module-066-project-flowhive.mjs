@@ -619,7 +619,13 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_066_CITED_SCAFFOLD_EXTERNAL_ENRICHMENT',
-  privateRag.includes('else if (flowHive || !options.RequirePrivateModelForDocumentAnswers)') &&
+  privateRag.includes('flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode)') &&
+    privateRag.includes('featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan') &&
+    privateRag.includes('or CelarAiCapabilityCatalog.ProjectForgePlanEstimate') &&
+    !privateRag.slice(
+      privateRag.indexOf('private static bool AllowsDeterministicCitedPlanningFallback'),
+      privateRag.indexOf('private static string DeterministicPlanningPhase')
+    ).includes('SowGsdPlanning') &&
     privateRag.includes('DeterministicPlanningSteps') &&
     privateRag.includes('DeterministicPlanningMilestones') &&
     privateRag.includes('identity-free generic planning guidance') &&

@@ -88,12 +88,21 @@ for (const token of [
 ]) requireText(enterpriseService, token, 'Celar AI enterprise capability propagation');
 requireText(externalReasoning, 'ProjectPulseAiFeatures.ProjectForgePlanEstimate', 'Module 064 Project Forge execution route');
 for (const token of [
-  'else if (flowHive || !options.RequirePrivateModelForDocumentAnswers)',
+  'flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode)',
+  'featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan',
+  'or CelarAiCapabilityCatalog.ProjectForgePlanEstimate',
   'DeterministicPlanningSteps',
   'DeterministicPlanningMilestones',
   'identity-free generic planning guidance',
   'No raw SOW/GSD text'
 ]) requireText(privateRagService, token, 'Project Forge cited scaffold and external enrichment boundary');
+const planningFallbackGuard = privateRagService.slice(
+  privateRagService.indexOf('private static bool AllowsDeterministicCitedPlanningFallback'),
+  privateRagService.indexOf('private static string DeterministicPlanningPhase')
+);
+if (!planningFallbackGuard || planningFallbackGuard.includes('SowGsdPlanning')) {
+  throw new Error('SOW drafting must remain subject to the configured private-model requirement.');
+}
 requireText(compileTargets, 'CelarAiCapabilityRouter', 'Compiled Module 064 persisted capability router');
 requireText(compileTargets, "grep -Fq 'ExternalCapsulePurpose: serverOwnedPurposeCategory'", 'Compiled Module 064 external capability execution');
 requireText(compileTargets, 'DestinationFiles="$(CelarAiExternalReasoningGenerated)"', 'Compiled Module 064 external capability copy');
