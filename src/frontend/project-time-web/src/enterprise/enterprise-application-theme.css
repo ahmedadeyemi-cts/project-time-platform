@@ -1,0 +1,447 @@
+/* Canonical US Signal application theme.
+   Loaded after component styles so every routed module shares one readable
+   header, surface, control, and light/dark color contract. */
+
+:root {
+  color-scheme: light;
+  --uss-app-brand-navy: #06192b;
+  --uss-app-brand-blue: #123f68;
+  --uss-app-brand-cyan: #13a8bf;
+  --uss-app-brand-green: #75b843;
+  --uss-app-canvas: #eef4f8;
+  --uss-app-surface: #ffffff;
+  --uss-app-surface-raised: #ffffff;
+  --uss-app-surface-subtle: #f4f7fb;
+  --uss-app-control: #ffffff;
+  --uss-app-border: #ced9e3;
+  --uss-app-border-strong: #8798aa;
+  --uss-app-text: #172033;
+  --uss-app-muted: #52627a;
+  --uss-app-link: #005ea8;
+  --uss-app-focus: #0078b9;
+  --uss-app-header-title: #ffffff;
+  --uss-app-header-copy: #d9e8f2;
+  --uss-app-header-label: #8ee8f2;
+  --uss-app-header-border: rgba(255, 255, 255, 0.2);
+  --uss-app-header-secondary: rgba(255, 255, 255, 0.1);
+  --uss-app-header-secondary-hover: rgba(255, 255, 255, 0.17);
+  --uss-app-header-background:
+    radial-gradient(circle at 88% 12%, rgba(19, 168, 191, 0.34), transparent 33%),
+    linear-gradient(135deg, #06192b 0%, #123f68 58%, #0d6173 100%);
+  --uss-app-shadow-sm: 0 6px 18px rgba(6, 25, 43, 0.08);
+  --uss-app-shadow-md: 0 16px 38px rgba(6, 25, 43, 0.16);
+}
+
+:root[data-theme='dark'],
+body[data-theme='dark'] {
+  color-scheme: dark;
+  --uss-app-canvas: #07111f;
+  --uss-app-surface: #111f33;
+  --uss-app-surface-raised: #14243a;
+  --uss-app-surface-subtle: #18283d;
+  --uss-app-control: #111f33;
+  --uss-app-border: #33475e;
+  --uss-app-border-strong: #71839c;
+  --uss-app-text: #f4f8ff;
+  --uss-app-muted: #b8c4d6;
+  --uss-app-link: #75c2ff;
+  --uss-app-focus: #70d7ff;
+  --uss-app-shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.24);
+  --uss-app-shadow-md: 0 18px 42px rgba(0, 0, 0, 0.34);
+}
+
+:where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) {
+  --panel-bg: var(--uss-app-surface);
+  --surface-color: var(--uss-app-surface);
+  --text-color: var(--uss-app-text);
+  --muted-color: var(--uss-app-muted);
+  --border-color: var(--uss-app-border);
+  color: var(--uss-app-text);
+}
+
+/* Canonical route-header contract. The explicit data attribute is applied to
+   legacy route headers by CriticalRoutePresentationBoundary. */
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 154px;
+  padding: clamp(1.15rem, 2.2vw, 1.6rem);
+  border: 1px solid var(--uss-app-header-border) !important;
+  border-radius: 18px;
+  background: var(--uss-app-header-background) !important;
+  color: var(--uss-app-header-title) !important;
+  box-shadow: var(--uss-app-shadow-md);
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+)::after {
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(h1, h2, h3) {
+  color: var(--uss-app-header-title) !important;
+  text-wrap: balance;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) p {
+  color: var(--uss-app-header-copy) !important;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
+  color: var(--uss-app-header-label) !important;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(
+  .projectpulse-module-standard__logo,
+  .uss-logo-lockup,
+  .group2b-resilience-brand-block > img,
+  img[alt*='US Signal']
+) {
+  background: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.38) !important;
+  background: var(--uss-app-header-secondary) !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button:is(
+  .primary-action,
+  [class*='primary'],
+  [data-variant='primary']
+) {
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+  color: var(--uss-app-brand-navy) !important;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button:hover:not(:disabled) {
+  background: var(--uss-app-header-secondary-hover) !important;
+  transform: translateY(-1px);
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button:is(
+  .primary-action,
+  [class*='primary'],
+  [data-variant='primary']
+):hover:not(:disabled) {
+  background: #eef7fb !important;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button:disabled {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e5f4fa !important;
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+:where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) button:is(
+  .primary-action,
+  [class*='primary'],
+  [data-variant='primary']
+):disabled {
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #17324f !important;
+}
+
+/* Shared surfaces and controls. Module-specific status colors remain intact. */
+:where(.projectpulse-module-standard, .uss-enterprise-module-page) {
+  color: var(--uss-app-text);
+  border-color: var(--uss-app-border);
+  background-color: var(--uss-app-surface);
+}
+
+:where(.projectpulse-module-standard, .uss-enterprise-module-page)
+  :is(input, select, textarea) {
+  border-color: var(--uss-app-border-strong);
+  background: var(--uss-app-control);
+  color: var(--uss-app-text);
+}
+
+:where(.projectpulse-module-standard, .uss-enterprise-module-page)
+  :is(input, textarea)::placeholder {
+  color: var(--uss-app-muted);
+  opacity: 1;
+}
+
+:where(.projectpulse-module-standard, .uss-enterprise-module-page)
+  :is(button, input, select, textarea, a, summary):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--uss-app-focus) 42%, transparent);
+  outline-offset: 2px;
+}
+
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+),
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) {
+  color: var(--uss-app-text);
+  border-color: var(--uss-app-border);
+  background-color: var(--uss-app-surface);
+}
+
+:root[data-theme='dark'] :is(
+  .uss-status-card,
+  .uss-filter-bar,
+  .uss-tabs > button,
+  .uss-table-wrap,
+  .uss-empty-state,
+  .group2b-resilience-card,
+  .group2b-resilience-metric,
+  .group2b-resilience-detail-item,
+  .group2b-resilience-prerequisite-list article,
+  .group2b-resilience-owner-list > div,
+  .group2b-resilience-evidence-list > div,
+  .group2b-resilience-approval-list > div,
+  .group2b-resilience-blocker
+),
+body[data-theme='dark'] :is(
+  .uss-status-card,
+  .uss-filter-bar,
+  .uss-tabs > button,
+  .uss-table-wrap,
+  .uss-empty-state,
+  .group2b-resilience-card,
+  .group2b-resilience-metric,
+  .group2b-resilience-detail-item,
+  .group2b-resilience-prerequisite-list article,
+  .group2b-resilience-owner-list > div,
+  .group2b-resilience-evidence-list > div,
+  .group2b-resilience-approval-list > div,
+  .group2b-resilience-blocker
+) {
+  border-color: var(--uss-app-border);
+  background-color: var(--uss-app-surface-raised);
+  color: var(--uss-app-text);
+}
+
+:root[data-theme='dark'] :is(
+  .uss-table caption,
+  .group2b-resilience-table th,
+  .group2b-resilience-api-grid code,
+  .group2b-resilience-contract-note
+),
+body[data-theme='dark'] :is(
+  .uss-table caption,
+  .group2b-resilience-table th,
+  .group2b-resilience-api-grid code,
+  .group2b-resilience-contract-note
+) {
+  border-color: var(--uss-app-border);
+  background: var(--uss-app-surface-subtle);
+  color: var(--uss-app-text);
+}
+
+:root[data-theme='dark'] .group2b-resilience-provider-banner,
+body[data-theme='dark'] .group2b-resilience-provider-banner {
+  border-color: color-mix(in srgb, var(--uss-app-brand-cyan) 46%, var(--uss-app-border));
+  background: color-mix(in srgb, var(--uss-app-brand-cyan) 12%, var(--uss-app-surface-raised));
+}
+
+:root[data-theme='dark'] .group2b-resilience-provider-banner :is(strong, span),
+body[data-theme='dark'] .group2b-resilience-provider-banner :is(strong, span) {
+  color: var(--uss-app-text);
+}
+
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) :is(h1, h2, h3, h4, strong, dt, dd),
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) :is(h1, h2, h3, h4, strong, dt, dd) {
+  color: var(--uss-app-text);
+}
+
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) :is(p, small, .muted, .subtitle, .helper-text, .supporting-text),
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page,
+  .uss-enterprise-module-presentation,
+  .group6-enterprise-route,
+  .group2b-resilience-shell
+) :is(p, small, .muted, .subtitle, .helper-text, .supporting-text) {
+  color: var(--uss-app-muted);
+}
+
+/* Preserve the branded header colors after the dark-surface rules above. */
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(h1, h2, h3),
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(h1, h2, h3) {
+  color: var(--uss-app-header-title) !important;
+}
+
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) p,
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) p {
+  color: var(--uss-app-header-copy) !important;
+}
+
+:root[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']),
+body[data-theme='dark'] :where(
+  .projectpulse-module-standard > header,
+  .uss-enterprise-page-header,
+  [data-enterprise-page-header='true']
+) :is(.eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
+  color: var(--uss-app-header-label) !important;
+}
+
+:root[data-theme='dark'] .uss-tabs > button.active,
+body[data-theme='dark'] .uss-tabs > button.active {
+  border-color: var(--uss-app-brand-cyan);
+  background: color-mix(in srgb, var(--uss-app-brand-cyan) 18%, var(--uss-app-surface-raised));
+  color: var(--uss-app-text);
+}
+
+:root[data-theme='dark'] .uss-table th,
+body[data-theme='dark'] .uss-table th {
+  background: #0b2f52;
+  color: #ffffff;
+}
+
+:root[data-theme='dark'] .uss-table tbody tr:nth-child(even) td,
+body[data-theme='dark'] .uss-table tbody tr:nth-child(even) td {
+  background: var(--uss-app-surface-subtle);
+}
+
+@media (max-width: 760px) {
+  :where(
+    .projectpulse-module-standard > header,
+    .uss-enterprise-page-header,
+    [data-enterprise-page-header='true']
+  ) {
+    min-height: auto;
+    padding: 1rem;
+    border-radius: 14px;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(
+    .projectpulse-module-standard > header,
+    .uss-enterprise-page-header,
+    [data-enterprise-page-header='true']
+  ) {
+    border-color: CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+    box-shadow: none;
+  }
+
+  :where(
+    .projectpulse-module-standard > header,
+    .uss-enterprise-page-header,
+    [data-enterprise-page-header='true']
+  ) :is(h1, h2, h3, p, .eyebrow, .uss-module-label, [class*='__eyebrow'], [class$='-eyebrow']) {
+    color: CanvasText !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(
+    .projectpulse-module-standard > header,
+    .uss-enterprise-page-header,
+    [data-enterprise-page-header='true']
+  ) button {
+    transition: none;
+  }
+}
