@@ -19,7 +19,7 @@ public sealed record PulseAiSystemIntentPlan(
 
 public static class PulseAiSystemKnowledgeCatalog
 {
-    public const string ContractVersion = "celar-ai-system-knowledge-v3-20260806";
+    public const string ContractVersion = "celar-ai-system-knowledge-v4-20260807";
 
     private static readonly PulseAiSystemToolDefinition[] ToolDefinitions =
     [
@@ -270,7 +270,7 @@ public static class PulseAiSystemKnowledgeCatalog
     public static PulseAiSystemIntentPlan Analyze(string question)
     {
         var normalized = Normalize(question);
-        var pulseScoped = IsPulseScopedQuestion(normalized);
+        var pulseScoped = IsPulseScopedQuestion(question);
         // Do not infer an API request from a substring such as "capabilities".
         // Technical inventory is intentionally opt-in and appears only when the
         // user names an API, endpoint, route, or Swagger explicitly.
@@ -382,15 +382,21 @@ public static class PulseAiSystemKnowledgeCatalog
     }
 
     /// <summary>
-    /// Determines whether a free-form question is asking about Pulse or an
-    /// authenticated Pulse workflow. Everything else is a public general-
-    /// knowledge question and must not cause system tools or API inventory to
-    /// run merely because it contains words such as "project" or "current".
+    /// Applies the Celar AI internal-first boundary. Questions that name Pulse,
+    /// a Pulse workflow, or an enterprise record/metric stay inside authorized
+    /// local data tools. Only clearly public questions are eligible for Module
+    /// 064 Claude/OpenAI routing. Ambiguous questions remain internal so a name,
+    /// customer, identifier, or enterprise fact cannot escape through a
+    /// classification miss.
     /// </summary>
     public static bool IsPulseScopedQuestion(string? question)
     {
         var normalized = Normalize(question);
         if (normalized.Length == 0) return true;
+
+        if (ContainsAny(normalized, "outside pulse", "not about pulse")) return false;
+
+        if (CelarAiInternalDataService.IsSupportedQuestion(question)) return true;
 
         if (ContainsAny(normalized,
             "pulse", "celar", "module ", "module-", "project forge", "project-forge",
@@ -406,12 +412,85 @@ public static class PulseAiSystemKnowledgeCatalog
         if (Regex.IsMatch(normalized, @"\b(?:module\s*)?(?:\d{3}|055[a-d])\b", RegexOptions.IgnoreCase))
             return true;
 
-        return ContainsAny(normalized,
+        if (ContainsAny(normalized,
             "how do i create a project", "how do i enter my time", "how do i submit my time",
             "how do i submit my timesheet", "how do i upload a sow", "what is my team working on",
             "which apis are running", "what apis are running", "why did this request return 403",
-            "what is the system name", "what is the current system version", "what can celar ai answer");
+            "what is the system name", "what is the current system version", "what can celar ai answer"))
+        {
+            return true;
+        }
+
+        if (LooksLikeInternalRecordQuestion(normalized)) return true;
+        if (IsExplicitlyPublicQuestion(question)) return false;
+
+        // Privacy-preserving default: unresolved scope stays local. The local
+        // answer may ask for a project/person/module/date, but it cannot silently
+        // forward an ambiguous internal question to a public provider.
+        return true;
     }
+
+    public static bool IsExplicitlyPublicQuestion(string? question)
+    {
+        var raw = question?.Trim() ?? string.Empty;
+        var normalized = Normalize(question);
+        if (normalized.Length == 0) return false;
+        if (ContainsAny(normalized,
+            "outside pulse", "not about pulse", "public general knowledge",
+            "general knowledge question", "external question"))
+        {
+            return true;
+        }
+
+        if (Regex.IsMatch(normalized,
+            @"\b(?:capital\s+of|weather\s+(?:in|for)|sports?\s+(?:score|schedule)|recipe\s+for|translate\s+.+\s+to\s+|distance\s+between|population\s+of)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return true;
+        }
+
+        if (LooksLikeNamedInternalSubject(raw)) return false;
+
+        return Regex.IsMatch(normalized,
+                @"^(?:(?:what\s+(?:is|are|was|were)|why\s+(?:is|are|does|do|did)|how\s+(?:do|does|can|to)|define|explain|translate|calculate|write|give\s+me)\b)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            && !LooksLikeInternalRecordQuestion(normalized);
+    }
+
+    private static bool LooksLikeNamedInternalSubject(string raw)
+    {
+        if (raw.Contains('@')
+            || Regex.IsMatch(raw, @"\b[A-Z]{2,}[-_]?[A-Z0-9]{2,}\b", RegexOptions.CultureInvariant))
+        {
+            return true;
+        }
+
+        var ignoredSentenceWords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "What", "Why", "How", "Where", "When", "Which", "Who", "Define", "Explain",
+            "Translate", "Calculate", "Write", "Give", "Outside", "Public", "General", "External"
+        };
+        foreach (Match match in Regex.Matches(
+                     raw,
+                     @"\b[A-Z][a-z][A-Za-z'’.-]{1,}\b",
+                     RegexOptions.CultureInvariant))
+        {
+            if (!ignoredSentenceWords.Contains(match.Value)) return true;
+        }
+        return false;
+    }
+
+    private static bool LooksLikeInternalRecordQuestion(string normalized) =>
+        ContainsAny(normalized,
+            "our project", "my project", "assigned project", "project assigned", "project manager",
+            "our customer", "our client", "our employee", "our engineer", "our manager", "our team",
+            "assigned to him", "assigned to her", "assigned to them", "assigned to me",
+            "employee", "engineer", "manager", "approver", "assignee", "resource request",
+            "assignment", "workload", "work on", "busy is", "responsible for", "utilization", "capacity", "approval", "timesheet",
+            "customer", "client", "invoice", "billing", "expense", "contract", "opportunity",
+            "task", "document", "sow", "gsd", "project id", "project code", "project status",
+            "role", "permission", "audit history", "change history", "login history",
+            "email history", "ai usage history", "notification history", "system version");
 
     public static IReadOnlyList<PulseAiSystemToolDefinition> SelectTools(
         PulseAiSystemIntentPlan plan,

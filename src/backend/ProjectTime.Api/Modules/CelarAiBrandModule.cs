@@ -29,7 +29,7 @@ public static class CelarAiBrandModule
             (Func<HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)GetPeopleActivityReadinessAsync);
         endpoints.MapPost(
             CelarAiBrandProfile.ChatRoute,
-            (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CancellationToken, Task<IResult>>)ChatAsync);
+            (Func<PulseAiSystemQuestionRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiInternalDataService, CelarAiPeopleAndGuidanceService, CancellationToken, Task<IResult>>)ChatAsync);
         // The brand module is the compiled startup registration authority. Map
         // the unified Module 011/Module 064 production surface here so the v2
         // chat and attachment routes cannot silently fall back to legacy v1.
@@ -219,6 +219,7 @@ public static class CelarAiBrandModule
         HttpContext context,
         PulseAiSystemIntelligenceService service,
         PulseAiSystemIntelligenceRepository repository,
+        CelarAiInternalDataService internalData,
         CelarAiPeopleAndGuidanceService peopleAndGuidance,
         CancellationToken cancellationToken)
     {
@@ -252,7 +253,14 @@ public static class CelarAiBrandModule
         }
         else
         {
-            var specialized = await peopleAndGuidance.TryAnswerAsync(
+            var specialized = await internalData.TryAnswerAsync(
+                identities.Value.Actual,
+                identities.Value.Effective,
+                access,
+                request with { Question = question },
+                context,
+                cancellationToken);
+            specialized ??= await peopleAndGuidance.TryAnswerAsync(
                 identities.Value.Actual,
                 identities.Value.Effective,
                 access,

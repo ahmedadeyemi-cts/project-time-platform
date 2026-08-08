@@ -640,7 +640,7 @@ async function run() {
   assert(fabric.privateEndpointsReady === true, "One or more required private endpoints are not ready.");
   assert(fabric.sourceCommit === sourceSha, "Knowledge-fabric source binding is incorrect.");
   assert(fabric.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "The latest product knowledge catalog is not active.");
-  assert(fabric.systemKnowledgeVersion === "celar-ai-system-knowledge-v3-20260806", "The latest system knowledge catalog is not active.");
+  assert(fabric.systemKnowledgeVersion === "celar-ai-system-knowledge-v4-20260807", "The latest system knowledge catalog is not active.");
   assert(Number(fabric.readyDocumentCount) > 0, "The private content graph has no ready documents.");
   assert(Number(fabric.readySowDocumentCount) > 0, "The private content graph has no current ready SOW/GSD document.");
   assert(Number(fabric.activeVersionCount) > 0, "The private content graph has no authoritative active versions.");
@@ -902,7 +902,7 @@ async function run() {
   assert(JSON.stringify(forgeConnection.route) === JSON.stringify(configuredRoutes.get("project_forge_plan_estimate")), "Project Forge does not expose its selected Module 064 route order.");
   assert(forgeConnection.sourceCommit === sourceSha, "Project Forge Module 064 evidence is not bound to this release.");
   assert(forgeConnection.productKnowledgeVersion === "celar-ai-product-knowledge-v3-20260806", "Project Forge is not using the latest product knowledge catalog.");
-  assert(forgeConnection.systemKnowledgeVersion === "celar-ai-system-knowledge-v3-20260806", "Project Forge is not using the latest system knowledge catalog.");
+  assert(forgeConnection.systemKnowledgeVersion === "celar-ai-system-knowledge-v4-20260807", "Project Forge is not using the latest system knowledge catalog.");
   assert(Number(forgeConnection.readyDocumentCount) > 0 && Number(forgeConnection.readySowDocumentCount) > 0, "Project Forge has no ready private project/SOW knowledge.");
   assert(Number(forgeConnection.activeVersionCount) > 0 && Number(forgeConnection.activeChunkCount) > 0, "Project Forge has no active authoritative content graph.");
   assert(Array.isArray(forgeConnection.blockers) && forgeConnection.blockers.length === 0, "Project Forge reports Module 064 connection blockers.");

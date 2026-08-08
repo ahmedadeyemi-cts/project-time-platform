@@ -793,6 +793,25 @@ public sealed class CelarAiCapabilityRoutingStore : IDisposable
             };
         }
 
+        // Test and other deployment-managed environments may activate the
+        // private target without enabling the stricter release-candidate
+        // phase. An explicit authority switch prevents an old or incomplete
+        // database form row from shadowing the verified container settings.
+        if (bool.TryParse(
+                Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED"),
+                out var deploymentManaged)
+            && deploymentManaged)
+        {
+            return EnvironmentProfile(allowDefaultAllowlist: false) with
+            {
+                DeploymentManaged = true,
+                ConfigurationSourceCommit = Clean(
+                    Environment.GetEnvironmentVariable("PROJECTPULSE_SOURCE_COMMIT"),
+                    64,
+                    string.Empty)
+            };
+        }
+
         if (DatabaseAvailable && SecretEncryptionAvailable)
         {
             try

@@ -1,0 +1,57 @@
+name: Celar AI Internal Data Intelligence CI
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/080_celar_ai_internal_data_intelligence.sql'
+      - 'database/migrations/081_celar_ai_private_runtime_activation.sql'
+      - 'database/rollback/080_celar_ai_internal_data_intelligence_rollback.sql'
+      - 'database/rollback/081_celar_ai_private_runtime_activation_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiBrandModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'tests/CelarAiInternalDataTests/**'
+      - 'tests/validate-celar-ai-internal-data-intelligence.mjs'
+      - 'tests/test-celar-ai-internal-data-migration-080.sh'
+      - 'tests/test-celar-ai-private-runtime-activation-migration-081.sh'
+      - 'docs/modules/module-011-pulse-ai/CELAR-AI-INTERNAL-DATA-INTELLIGENCE.md'
+      - 'docs/modules/module-011-pulse-ai/ANSWER-QUALITY-AND-PRIVACY-CONTRACT.md'
+      - 'scripts/release-test/verify-runtime.mjs'
+      - '.github/workflows/celar-ai-internal-data-intelligence-ci.yml'
+      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-internal-data-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Validate internal-first source contract
+        run: node tests/validate-celar-ai-internal-data-intelligence.mjs
+      - name: Build API and run routing/parser contract
+        run: dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+      - name: Test migration and guarded rollback
+        run: bash tests/test-celar-ai-internal-data-migration-080.sh
+      - name: Test private-runtime activation migration and guarded rollback
+        run: bash tests/test-celar-ai-private-runtime-activation-migration-081.sh
+      - name: Verify clean diff
+        run: git diff --check && git diff --exit-code

@@ -36,9 +36,22 @@ function Status({ value }) {
   return <span className={`pulse-ai-rag-status ${ready ? 'is-ready' : failed ? 'is-failed' : 'is-partial'}`}>{title(normalized)}</span>;
 }
 
+function displayValue(value) {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value === null || value === undefined || value === '') return 'Not recorded';
+  if (Array.isArray(value)) return value.length ? value.map(displayValue).join('; ') : 'None';
+  if (typeof value === 'object') {
+    const entries = Object.entries(value);
+    return entries.length
+      ? entries.map(([key, item]) => `${title(key)}: ${displayValue(item)}`).join('; ')
+      : 'Not recorded';
+  }
+  return String(value);
+}
+
 function KeyValues({ values }) {
   return <dl className="pulse-ai-rag-key-values">{Object.entries(values ?? {}).filter(([, value]) => value !== undefined).map(([key, value]) => (
-    <div key={key}><dt>{title(key)}</dt><dd>{typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value ?? 'Not recorded')}</dd></div>
+    <div key={key}><dt>{title(key)}</dt><dd>{displayValue(value)}</dd></div>
   ))}</dl>;
 }
 

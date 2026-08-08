@@ -99,6 +99,7 @@ public static class ProjectPulseAiServiceCollectionExtensions
         services.AddSingleton<PulseAiSystemToolExecutor>();
         services.AddSingleton<PulseAiSystemIntelligenceRepository>();
         services.AddSingleton<PulseAiSystemIntelligenceService>();
+        services.AddSingleton<CelarAiInternalDataService>();
         services.AddSingleton<CelarAiPeopleAndGuidanceService>();
         services.AddSingleton<CelarAiExternalReasoningService>();
         services.AddSingleton<CelarAiEnterprisePlatformService>();

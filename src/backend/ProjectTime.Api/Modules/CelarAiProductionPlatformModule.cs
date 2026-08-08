@@ -82,7 +82,7 @@ public sealed record CelarAiFlowHiveProductionRequest(
 /// </summary>
 public static partial class CelarAiProductionPlatformModule
 {
-    public const string ContractVersion = "celar-ai-production-platform-v1-20260803";
+    public const string ContractVersion = "celar-ai-production-platform-v2-20260807";
     public const string SchemaVersion = "celar_ai_production_platform_runtime_v1";
     public const string ChatRoute = "/api/celar-ai/v2/chat";
     public const string FlowHiveRoute = "/api/project-flowhive/ai/production-generate";
@@ -147,7 +147,7 @@ public static partial class CelarAiProductionPlatformModule
         endpoints.MapPost("/api/celar-ai/v1/production/deployments",
             (Func<CelarAiDeploymentRequest, HttpContext, PulseAiSystemIntelligenceService, CancellationToken, Task<IResult>>)CreateDeploymentAsync);
         endpoints.MapPost(ChatRoute,
-            (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ChatAsync);
+            (Func<CelarAiProductionChatRequest, HttpContext, PulseAiSystemIntelligenceService, PulseAiSystemIntelligenceRepository, CelarAiInternalDataService, CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)ChatAsync);
         endpoints.MapCelarAiConversationAttachmentEndpoints();
         endpoints.MapPost(FlowHiveRoute,
             (Func<CelarAiFlowHiveProductionRequest, HttpContext, PulseAiSystemIntelligenceService, CelarAiEnterprisePlatformService, CelarAiCapabilityRoutingStore, CancellationToken, Task<IResult>>)GenerateFlowHiveAsync);
@@ -246,6 +246,7 @@ public static partial class CelarAiProductionPlatformModule
         HttpContext context,
         PulseAiSystemIntelligenceService system,
         PulseAiSystemIntelligenceRepository repository,
+        CelarAiInternalDataService internalData,
         CelarAiPeopleAndGuidanceService peopleAndGuidance,
         CelarAiCapabilityRoutingStore routing,
         CancellationToken cancellationToken)
@@ -293,6 +294,17 @@ public static partial class CelarAiProductionPlatformModule
         else if (attachmentIds.Length == 0 && intent.Code == "platform_identity")
         {
             result = await DirectResultAsync(request, identity.Value, access, repository, context, intent, PlatformIdentityAnswer(), "celar_ai_canonical_knowledge", cancellationToken);
+        }
+        else if (attachmentIds.Length == 0 && intent.Code == CelarAiInternalDataService.IntentCode)
+        {
+            var specialized = await internalData.TryAnswerAsync(
+                identity.Value.Actual,
+                identity.Value.Effective,
+                access,
+                ToSystemRequest(request, intent, question),
+                context,
+                cancellationToken);
+            result = specialized ?? await system.AskAsync(identity.Value.Actual, identity.Value.Effective, ToSystemRequest(request, intent, question), context, cancellationToken);
         }
         else if (attachmentIds.Length == 0
             && (intent.Code == "procedure" || intent.Code == "people_activity"))
@@ -572,6 +584,7 @@ public static partial class CelarAiProductionPlatformModule
         if (value is "what can you answer" or "what can you do" or "what can celar ai answer" or "what can celar ai do" || value.Contains("celar ai capabilities")) return new("capabilities", false, false, false, false, 0, false, "Governed Celar AI capability catalog.");
         if (value is "what is the system name" or "what is this system called" or "what is the platform name" or "what is this platform called") return new("platform_identity", false, false, false, false, 0, false, "Canonical Pulse platform identity.");
         if (CelarAiBrandProfile.IsIdentityQuestion(question)) return new("identity", false, false, false, false, 0, false, "Canonical Celar AI identity profile.");
+        if (CelarAiInternalDataService.IsSupportedQuestion(question)) return new(CelarAiInternalDataService.IntentCode, false, false, false, false, 0, true, "Deterministic permission-scoped Pulse internal-data query.");
         if (PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion(question)
             && (value.StartsWith("how do i ") || value.StartsWith("how can i ") || value.StartsWith("how to ") || value.StartsWith("where do i ") || value.Contains("steps to "))) return new("procedure", false, false, false, false, 1, false, "Source-controlled Pulse procedure catalog.");
         if (CelarAiPeopleAndGuidanceService.IsPeopleActivityQuestion(question)) return new("people_activity", false, false, false, false, 6, true, "Current authorized people, assignment, workload, approval, capacity, and planning evidence.");
@@ -588,6 +601,7 @@ public static partial class CelarAiProductionPlatformModule
             "general_knowledge" => 0,
             "financial_and_reporting" => 10,
             "projects_and_delivery" => 8,
+            "internal_data" => 0,
             "documents_and_rag" => 6,
             _ when plan.WantsTroubleshooting => 10,
             _ when plan.WantsApiInventory => 6,
@@ -700,13 +714,19 @@ public static partial class CelarAiProductionPlatformModule
             return result with { Status = "completed", Answer = apiInventoryAnswer };
         }
 
+        if (!string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            return result;
+
         var direct = result.Answer.DirectConclusion?.Trim() ?? string.Empty;
         var boilerplate = direct.Contains("answered the question using 0 successful governed", StringComparison.OrdinalIgnoreCase)
             || direct.Contains("registered API route/method combinations, and approved operating knowledge", StringComparison.OrdinalIgnoreCase);
         var successful = result.ToolResults.Count(tool => tool.Succeeded)
             + result.Sources.Count(source => source.StatusCode is >= 200 and < 300)
             + (intent.Code == "api_inventory" && result.RelevantApis.Count > 0 ? 1 : 0);
-        if (direct.Length > 0 && !boilerplate && (!intent.RequiresCurrentEvidence || successful > 0)) return result;
+        if (direct.Length > 0
+            && !boilerplate
+            && AnswerHasRequiredShape(question, direct)
+            && (!intent.RequiresCurrentEvidence || successful > 0)) return result;
         var answer = result.Answer with
         {
             DirectConclusion = intent.RequiresCurrentEvidence
@@ -756,15 +776,17 @@ public static partial class CelarAiProductionPlatformModule
                 CelarAiCapabilityTargets.CelarAi,
                 StringComparison.OrdinalIgnoreCase);
         var citations = result.Answer.CitationIds.Count;
-        var answered = !result.Answer.DirectConclusion.Contains("did not receive enough", StringComparison.OrdinalIgnoreCase)
-            && !result.Answer.DirectConclusion.Contains("could not produce", StringComparison.OrdinalIgnoreCase);
+        var answered = string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
+            && AnswerHasRequiredShape(string.Empty, result.Answer.DirectConclusion, intent.Code)
+            && !LooksLikeNonAnswer(result.Answer.DirectConclusion);
         var classification = intent.Code switch
         {
             "current_date_time" or "system_version" or "api_inventory" => "verified_current_fact",
             "capabilities" or "identity" or "platform_identity" => "platform_capability",
-            "general_knowledge" => "general_knowledge",
+            "general_knowledge" when answered => "general_knowledge",
             "procedure" => "procedure",
             "future_enhancement" => "draft",
+            "internal_data" when answered && successful > 0 => "verified_current_fact",
             "projects_and_delivery" => verifiedPrivateAnswer ? "verified_document_draft" : "draft",
             "documents_and_rag" => verifiedPrivateAnswer ? "verified_document_fact" : "insufficient_evidence",
             _ when !answered || intent.RequiresCurrentEvidence && successful == 0 => "insufficient_evidence",
@@ -800,6 +822,31 @@ public static partial class CelarAiProductionPlatformModule
             dataAsOf = result.Answer.DataAsOf
         };
     }
+
+    private static bool AnswerHasRequiredShape(string question, string direct, string? intentCode = null)
+    {
+        var asksForCount = Regex.IsMatch(
+            question,
+            @"\b(?:how\s+many|count|total)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (string.Equals(intentCode, CelarAiInternalDataService.IntentCode, StringComparison.Ordinal))
+        {
+            asksForCount = true;
+        }
+        return !asksForCount || Regex.IsMatch(direct, @"\b\d+\b", RegexOptions.CultureInvariant);
+    }
+
+    private static bool LooksLikeNonAnswer(string value) =>
+        value.Contains("did not receive enough", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("could not produce", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("could not resolve", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("could not reach", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("outside your current authorized", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("more than one authorized", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("i don't have access", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("i do not have access", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("cannot access", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("no way to look up", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<PulseAiSystemQuestionResult> DirectResultAsync(
         CelarAiProductionChatRequest request,

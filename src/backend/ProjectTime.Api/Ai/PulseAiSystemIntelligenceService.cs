@@ -10,6 +10,7 @@ public sealed class PulseAiSystemIntelligenceService
     private readonly PulseAiSystemApiCatalogService _apiCatalog;
     private readonly PulseAiSystemToolExecutor _toolExecutor;
     private readonly PulseAiPrivateRagService _privateRag;
+    private readonly CelarAiInternalDataService _internalData;
     private readonly CelarAiCapabilityRouter _router;
     private readonly ILogger<PulseAiSystemIntelligenceService> _logger;
 
@@ -18,6 +19,7 @@ public sealed class PulseAiSystemIntelligenceService
         PulseAiSystemApiCatalogService apiCatalog,
         PulseAiSystemToolExecutor toolExecutor,
         PulseAiPrivateRagService privateRag,
+        CelarAiInternalDataService internalData,
         CelarAiCapabilityRouter router,
         ILogger<PulseAiSystemIntelligenceService> logger)
     {
@@ -25,6 +27,7 @@ public sealed class PulseAiSystemIntelligenceService
         _apiCatalog = apiCatalog;
         _toolExecutor = toolExecutor;
         _privateRag = privateRag;
+        _internalData = internalData;
         _router = router;
         _logger = logger;
     }
@@ -207,6 +210,19 @@ public sealed class PulseAiSystemIntelligenceService
                 correlationId);
         }
         request = request with { AttachmentIds = attachmentIds };
+
+        // This interception makes the deterministic internal-data boundary
+        // authoritative for every System Intelligence entry point, including
+        // legacy routes that do not pass through the branded chat modules.
+        var internalAnswer = await _internalData.TryAnswerAsync(
+            actualUserId,
+            effectiveUserId,
+            access,
+            request with { Question = question },
+            context,
+            cancellationToken);
+        if (internalAnswer is not null) return internalAnswer;
+
         var trustedPlan = context.Items.TryGetValue(
                 PulseAiSystemIntelligencePolicy.ResolvedIntentContextItem,
                 out var resolvedIntentValue)
@@ -381,9 +397,7 @@ public sealed class PulseAiSystemIntelligenceService
                     toolResults,
                     privateRagAnswer,
                     options.MaximumToolResponseCharacters);
-                var externalCapsuleReady = TryResolveHelpCapsulePurpose(
-                    plan.IntentCode,
-                    out var externalCapsulePurpose);
+                _ = TryResolveHelpCapsulePurpose(plan.IntentCode, out var externalCapsulePurpose);
                 var identityTerms = new[]
                     {
                         Clean(request.ProjectCode, 120),
@@ -392,13 +406,10 @@ public sealed class PulseAiSystemIntelligenceService
                     .Where(value => value.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
-                var externalProblemStatement = externalCapsuleReady
-                    ? BuildExternalProblemStatement(
-                        question,
-                        plan,
-                        privateDocumentContextRequested,
-                        identityTerms)
-                    : string.Empty;
+                // Help Assistant internal intents never manufacture an external
+                // problem capsule. Public general knowledge uses PublicQuestion;
+                // every Pulse question remains local/private-only.
+                const string externalProblemStatement = "";
                 var privatePrompt = BuildPrivateRouterPrompt(
                     question,
                     plan,
@@ -1269,68 +1280,17 @@ public sealed class PulseAiSystemIntelligenceService
     }
 
     /// <summary>
-    /// Maps the internal intent to a closed backend-owned generic purpose. No
-    /// token, substring, count, identifier, source, question text, or tool result
-    /// is copied into these external capsules.
+    /// Only clearly public general-knowledge questions receive an external
+    /// purpose. Pulse/internal intents deliberately return no purpose, which
+    /// makes the router reject Claude/OpenAI even when an external target is
+    /// configured and healthy.
     /// </summary>
     private static bool TryResolveHelpCapsulePurpose(string intentCode, out string purposeCode)
     {
-        purposeCode = intentCode switch
-        {
-            "troubleshooting" => CelarAiExternalCapsuleCatalog.HelpTroubleshooting,
-            "api_inventory" => CelarAiExternalCapsuleCatalog.HelpApiInventory,
-            "architecture" => CelarAiExternalCapsuleCatalog.HelpArchitecture,
-            "future_enhancement" => CelarAiExternalCapsuleCatalog.HelpEnhancement,
-            "financial_and_reporting" => CelarAiExternalCapsuleCatalog.HelpFinancial,
-            "documents_and_rag" => CelarAiExternalCapsuleCatalog.HelpDocuments,
-            "identity_and_permissions" => CelarAiExternalCapsuleCatalog.HelpIdentity,
-            "release_and_deployment" => CelarAiExternalCapsuleCatalog.HelpRelease,
-            "observability" => CelarAiExternalCapsuleCatalog.HelpObservability,
-            "security" => CelarAiExternalCapsuleCatalog.HelpSecurity,
-            "projects_and_delivery" => CelarAiExternalCapsuleCatalog.HelpProjectDelivery,
-            "timesheets_and_approvals" => CelarAiExternalCapsuleCatalog.HelpTimesheet,
-            "general_knowledge" => CelarAiExternalCapsuleCatalog.GeneralKnowledge,
-            "product_help" or "general_system" => CelarAiExternalCapsuleCatalog.HelpProduct,
-            _ => string.Empty
-        };
+        purposeCode = string.Equals(intentCode, "general_knowledge", StringComparison.Ordinal)
+            ? CelarAiExternalCapsuleCatalog.GeneralKnowledge
+            : string.Empty;
         return purposeCode.Length > 0;
-    }
-
-    private static string BuildExternalProblemStatement(
-        string question,
-        PulseAiSystemIntentPlan plan,
-        bool containsPrivateDocumentContext,
-        IReadOnlyCollection<string> identityTerms)
-    {
-        if (containsPrivateDocumentContext
-            || identityTerms.Count > 0
-            || ContainsPeopleContext(plan)
-            || ContainsFinancialContext(plan))
-        {
-            return string.Empty;
-        }
-
-        // Never forward free-form user text to an external target. Resolve only
-        // a closed backend-owned topic whose wording cannot contain a name,
-        // customer, identifier, secret, document fact, or enterprise evidence.
-        return plan.IntentCode switch
-        {
-            "troubleshooting" when ContainsAny(question, "403", "forbidden", "access denied", "not authorized") =>
-                "Provide general troubleshooting guidance for an authorization-forbidden response in an enterprise web application. Cover session identity, effective role, permissions, record scope, and safe diagnostics without assuming a case-specific cause.",
-            "troubleshooting" when ContainsAny(question, "404", "not found", "route missing") =>
-                "Provide general troubleshooting guidance for a not-found response in an enterprise web application. Cover route registration, deployment revision, required parameters, record scope, and safe diagnostics without assuming a case-specific cause.",
-            "troubleshooting" when ContainsAny(question, "timeout", "timed out", "504", "408") =>
-                "Provide general troubleshooting guidance for an application timeout. Cover client, API, database, network, queue, and downstream dependencies without assuming a case-specific cause.",
-            "troubleshooting" =>
-                "Provide a general, safety-preserving troubleshooting framework for an unresolved enterprise application behavior. Separate evidence, hypotheses, diagnostics, remediation risks, and escalation.",
-            "architecture" =>
-                "Provide general architecture-review guidance for an enterprise application question. Cover ownership, trust boundaries, APIs, data, observability, rollout, and rollback without claiming knowledge of the current system.",
-            "future_enhancement" =>
-                "Provide general design considerations for an unspecified enterprise application enhancement. Cover ownership, APIs, data changes, authorization, privacy, operations, tests, rollout, and rollback.",
-            "product_help" or "general_system" =>
-                "Provide general product-help reasoning for an unresolved enterprise software question. Give a concise answer framework, state assumptions, and identify what authoritative local evidence would be required.",
-            _ => string.Empty
-        };
     }
 
     private static PulseAiSystemIntentPlan ApplyRequestControls(
@@ -1413,6 +1373,7 @@ public sealed class PulseAiSystemIntelligenceService
         int maximumAnswerCharacters)
     {
         var clean = Limit(content, Math.Min(20_000, maximumAnswerCharacters));
+        var providerAnswered = !LooksLikeExternalProviderNonAnswer(clean);
         var paragraphs = clean
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -1443,10 +1404,20 @@ public sealed class PulseAiSystemIntelligenceService
             FutureEnhancementBlueprint: null,
             NavigationTargets: [],
             CitationIds: [1],
-            Confidence: 0.72m,
-            ConfidenceExplanation: $"A configured {provider} target returned a response that passed the public-output privacy boundary; current web facts were not independently verified.",
+            Confidence: providerAnswered ? 0.72m : 0.12m,
+            ConfidenceExplanation: providerAnswered
+                ? $"A configured {provider} target returned a response that passed the public-output privacy boundary; current web facts were not independently verified."
+                : $"The configured {provider} target returned a non-answer or stated that it lacked the required access. The question is not marked answered.",
             DataAsOf: DateTimeOffset.UtcNow);
     }
+
+    private static bool LooksLikeExternalProviderNonAnswer(string value) =>
+        ContainsAny(value,
+            "i don't have access", "i do not have access", "cannot access", "can't access",
+            "no access to", "no way to look up", "unable to look up", "cannot look up",
+            "unable to determine", "cannot determine", "can't determine", "i cannot answer",
+            "i can't answer", "i am unable to answer", "contact your administrator",
+            "check your organization's", "check your organisation's");
 
     private static PulseAiSystemDetailedAnswer SuppressApiDetailUnlessRequested(
         PulseAiSystemDetailedAnswer answer,
