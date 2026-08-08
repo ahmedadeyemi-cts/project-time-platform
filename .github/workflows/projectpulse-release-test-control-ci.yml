@@ -10,6 +10,7 @@ on:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
       - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
+      - 'scripts/release-test/run-migration-job.sh'
       - 'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
 
 permissions:
@@ -31,6 +32,7 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
@@ -42,7 +44,13 @@ jobs:
           SOURCE='b1335bd2426d061f85498ace7c7b2a70c3b5bdc6'
 
           git fetch origin "$BASE_REF" --no-tags
-          cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
+          if [[ "$HEAD_REF" == fix/test-controller-migration-080-trigger-* ]]; then
+            cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          EOF
+          else
+            cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/celar-ai-enterprise-platform-ci.yml
           .github/workflows/celar-ai-production-platform-ci.yml
           .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
@@ -52,6 +60,7 @@ jobs:
           scripts/release-test/apply-celar-ai-internal-data-080.sh
           tests/validate-celar-ai-opencloud-deferred-runtime.mjs
           EOF
+          fi
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
           git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
           LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
@@ -80,6 +89,7 @@ jobs:
           grep -Fq 'privateRuntimeConfigurationChanged:false' "$CONTROLLER"
           grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
+          grep -Fq "'scripts/release-test/run-migration-job.sh'" "$CONTROLLER"
           ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
           ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
           ! grep -Fq 'az keyvault secret show' "$CONTROLLER"
@@ -89,6 +99,8 @@ jobs:
           grep -Fq 'PRIVATE_RUNTIME_MIGRATION_081=ABSENT' "$MIGRATOR"
           grep -Fq 'The migration image must contain exactly migration 080.' "$MIGRATOR"
           grep -Fq 'PGDATABASE does not match the protected Test database.' "$MIGRATOR"
+          grep -Fq '{name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release, secretRef: null}' scripts/release-test/run-migration-job.sh
+          grep -Fq '{name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release}' scripts/release-test/run-migration-job.sh
           printf '%s  %s\n' \
             5751d0a27552a3bf0c90ec4ef82eccebc1485e839e89c498bec2f5c04e0914b4 database/migrations/080_celar_ai_internal_data_intelligence.sql \
             | sha256sum --check --strict
