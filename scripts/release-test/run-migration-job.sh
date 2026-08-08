@@ -149,6 +149,7 @@ validate_job_ownership() {
           {name, value: (.value // null), secretRef: (.secretRef // null)}
         ] | sort_by(.name)
       ) == ([
+        {name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release, secretRef: null},
         {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode, secretRef: null},
         {name: "PGCONNECT_TIMEOUT", value: "15", secretRef: null},
         {name: "PGDATABASE", value: $databaseName, secretRef: null},
@@ -337,6 +338,7 @@ jq -n \
           name: $jobName,
           image: $image,
           env: [
+            {name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release},
             {name: "MAIN_RELEASE_MIGRATION_MODE", value: $mode},
             {name: "PGCONNECT_TIMEOUT", value: "15"},
             {name: "PGDATABASE", value: $databaseName},
