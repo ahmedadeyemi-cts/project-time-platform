@@ -8,6 +8,7 @@ on:
       - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
       - '.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
       - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
+      - 'scripts/release-test/run-migration-job.sh'
 
 permissions:
   id-token: write
