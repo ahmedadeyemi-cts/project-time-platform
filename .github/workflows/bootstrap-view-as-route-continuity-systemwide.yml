@@ -106,7 +106,7 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
             !/^[ \t]*window\.location\.replace\(\s*['\"]#dashboard['\"]\s*\)/m.test(bridge),
             'silent Dashboard permission replacement must not be executable'
           );'''
-          validator, count = validator_pattern.subn(validator_replacement, validator, count=1)
+          validator, count = validator_pattern.subn(lambda _: validator_replacement, validator, count=1)
           if count != 1:
               raise SystemExit(f'Expected one focused Dashboard-redirect assertion target, found {count}')
           validator_path.write_text(validator)
