@@ -5,12 +5,16 @@ const PREFIX = 'projectpulse-route-';
 const ENTERPRISE_HEADER_ATTRIBUTE = 'data-enterprise-page-header';
 const ENTERPRISE_HEADER_OWNER_ATTRIBUTE = 'data-enterprise-page-header-owned';
 
-const ROUTE_ROOT_SELECTORS = [
+const MODULE_ROOT_SELECTORS = [
   '[data-module]',
   '[data-module-code]',
   '[data-module-number]',
   '[data-module-id]',
-  '[data-brand="us-signal"]',
+  '[data-brand="us-signal"]'
+];
+
+const ROUTE_ROOT_SELECTORS = [
+  ...MODULE_ROOT_SELECTORS,
   '[class$="-center"]',
   '[class*="-center "]',
   '[class$="-workspace"]',
@@ -21,6 +25,7 @@ const ROUTE_ROOT_SELECTORS = [
   '[class*="-page "]'
 ];
 
+const MODULE_ROOT_SELECTOR = MODULE_ROOT_SELECTORS.join(', ');
 const ROUTE_HEADER_SELECTOR = ROUTE_ROOT_SELECTORS
   .map((selector) => `${selector} > header`)
   .join(', ');
@@ -41,7 +46,13 @@ function currentRoute() {
 
 function isRoutePageHeader(header) {
   if (!(header instanceof HTMLElement)) return false;
-  if (!header.querySelector('h1, h2')) return false;
+
+  const routeRoot = header.parentElement;
+  const hasPageTitle = Boolean(header.querySelector('h1'));
+  const hasModuleTitle = Boolean(header.querySelector('h2'))
+    && Boolean(routeRoot?.matches(MODULE_ROOT_SELECTOR));
+
+  if (!hasPageTitle && !hasModuleTitle) return false;
   if (header.closest(EXCLUDED_HEADER_ANCESTORS)) return false;
   return true;
 }
