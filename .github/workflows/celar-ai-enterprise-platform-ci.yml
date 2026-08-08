@@ -112,6 +112,12 @@ jobs:
             ALLOWED_DATABASE='^(database/migrations/079_coordinated_runtime_ai_document_rbac_repair\.sql|database/rollback/079_coordinated_runtime_ai_document_rbac_repair_rollback\.sql)$'
             test -f tests/test-coordinated-document-bridge-migration-079.sh
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=COORDINATED_FLOWHIVE_DOCUMENT_BRIDGE' >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == feature/celar-ai-internal-data-intelligence-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/(080_celar_ai_internal_data_intelligence|081_celar_ai_private_runtime_activation)\.sql|database/rollback/(080_celar_ai_internal_data_intelligence_rollback|081_celar_ai_private_runtime_activation_rollback)\.sql)$'
+            test -f tests/test-celar-ai-internal-data-migration-080.sh
+            test -f tests/test-celar-ai-private-runtime-activation-migration-081.sh
+            test -f .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=PRIVATE_RUNTIME_INTERNAL_DATA' >> "$GITHUB_ENV"
           elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then
             # Module 033 owns its review-first Project Forge persistence while
             # consuming the governed Celar AI capability router. Permit only
@@ -152,6 +158,11 @@ jobs:
           fi
           if [[ "$HEAD_BRANCH" == feature/celar-ai-flowhive-production-* ]]; then
             PROHIBITED="$(grep -Fvx 'src/backend/ProjectTime.Api/Modules/AiProviderConfigurationModule.cs' <<<"$PROHIBITED" || true)"
+          fi
+          if [[ "$HEAD_BRANCH" == feature/celar-ai-internal-data-intelligence-* ]]; then
+            PROHIBITED="$(grep -Fvx \
+              '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml' \
+              <<<"$PROHIBITED" || true)"
           fi
           if [[ -n "$PROHIBITED" ]]; then
             echo 'The Celar AI enterprise interface overlaps a prohibited deployment or provider-secret surface:' >&2
