@@ -289,15 +289,23 @@ jobs:
           CURRENT_WEEK_START="$(date -u -d "$TODAY_UTC - $((DAY_OF_WEEK - 1)) days" +%F)"
           for week_offset in 0 1 -1 2 -2 3 -3 4 -4 5 -5 6 -6; do
             WEEK_START="$(date -u -d "$CURRENT_WEEK_START $week_offset week" +%F)"
-            AVAILABLE_FILE="$RUNNER_TEMP/available-timesheet-tasks-$week_offset.json"
-            curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/assignments/available-tasks?weekStart=$WEEK_START" > "$AVAILABLE_FILE"
-            WEEK_TASK_COUNT="$(jq -r '(.tasks // []) | length' "$AVAILABLE_FILE")"
-            [[ "$WEEK_TASK_COUNT" =~ ^[0-9]+$ ]] || fail 'The assigned-task response did not expose a valid task count.'
+            TARGETS_FILE="$RUNNER_TEMP/available-timesheet-targets-$week_offset.json"
+            curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/timesheet/timers/targets?weekStart=$WEEK_START" > "$TARGETS_FILE"
+            jq -e '.targets | type == "array"' "$TARGETS_FILE" >/dev/null || fail 'The authoritative Timesheet target response did not expose a targets collection.'
+            WEEK_TASK_COUNT="$(jq -r '[.targets[]? | select((.targetType // "") == "assignment")] | length' "$TARGETS_FILE")"
+            [[ "$WEEK_TASK_COUNT" =~ ^[0-9]+$ ]] || fail 'The authoritative Timesheet target response did not expose a valid assignment count.'
             jq -nc --arg weekStart "$WEEK_START" --argjson taskCount "$WEEK_TASK_COUNT" '{weekStart:$weekStart,taskCount:$taskCount}'
-            jq -c --arg weekStart "$WEEK_START" '.tasks[]? | . + {uatWeekStart:$weekStart}' "$AVAILABLE_FILE" >> "$TASK_CANDIDATES_FILE"
+            jq -c --arg weekStart "$WEEK_START" '
+              .targets[]?
+              | select((.targetType // "") == "assignment")
+              | . + {
+                  assignmentId: (.assignmentId // .projectAssignmentId // .targetId // ((.selectionValue // "") | sub("^assignment:"; ""))),
+                  uatWeekStart: $weekStart
+                }
+            ' "$TARGETS_FILE" >> "$TASK_CANDIDATES_FILE"
           done
           mapfile -t TASK_ROWS < <(jq -sc 'unique_by([.assignmentId,.projectId,.taskId])[]' "$TASK_CANDIDATES_FILE" | head -200)
-          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No active assigned Test task is available in the current plus/minus six-week Test window for SOW-grounded Timesheet UAT.'
+          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No authoritative assigned Test task is available in the current plus/minus six-week Test window for SOW-grounded Timesheet UAT.'
           SELECTED_BOOTSTRAP=''
           SELECTED_TASK_ROW=''
           for task_row in "${TASK_ROWS[@]}"; do
