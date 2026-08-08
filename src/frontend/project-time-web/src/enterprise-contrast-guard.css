@@ -1,25 +1,28 @@
+@import './enterprise/enterprise-application-theme.css';
+
 /* Shared accessibility floor for every routed module. Component themes may
    refine these values, but no page may fall below this readable contract. */
 :root {
   color-scheme: light;
-  --readable-text: #172033;
-  --readable-muted: #52627a;
-  --readable-link: #005ea8;
-  --readable-focus: #006fb9;
-  --readable-control: #ffffff;
-  --readable-control-border: #8190a5;
+  --readable-text: var(--uss-app-text, #172033);
+  --readable-muted: var(--uss-app-muted, #52627a);
+  --readable-link: var(--uss-app-link, #005ea8);
+  --readable-focus: var(--uss-app-focus, #006fb9);
+  --readable-control: var(--uss-app-control, #ffffff);
+  --readable-control-border: var(--uss-app-border-strong, #8190a5);
   --readable-disabled-bg: #e7ebf0;
   --readable-disabled-text: #586577;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+body[data-theme='dark'] {
   color-scheme: dark;
-  --readable-text: #f4f8ff;
-  --readable-muted: #b8c4d6;
-  --readable-link: #75c2ff;
-  --readable-focus: #70d7ff;
-  --readable-control: #111f33;
-  --readable-control-border: #71839c;
+  --readable-text: var(--uss-app-text, #f4f8ff);
+  --readable-muted: var(--uss-app-muted, #b8c4d6);
+  --readable-link: var(--uss-app-link, #75c2ff);
+  --readable-focus: var(--uss-app-focus, #70d7ff);
+  --readable-control: var(--uss-app-control, #111f33);
+  --readable-control-border: var(--uss-app-border-strong, #71839c);
   --readable-disabled-bg: #27364a;
   --readable-disabled-text: #bdc8d8;
 }
