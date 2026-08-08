@@ -89,6 +89,34 @@ jobs:
             grep -Fq 'DEPLOY-CELAR-AI-OPENCLOUD-RUNTIME-TO-TEST' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
             ! grep -Eq '^[[:space:]]{2}push:' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
             grep -Fq 'status: deferred-until-opencloud' deployment/environments/opencloud-template.yml
+          elif [[ "$HEAD_BRANCH" == release/test-b1335bd2-timesheet-ai-* ]]; then
+            CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
+            PRIVATE_RUNTIME='.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+            HISTORICAL_HOTFIX='.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
+            MIGRATOR='scripts/release-test/apply-celar-ai-internal-data-080.sh'
+            DEFERRAL_TEST='tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
+            UNAUTHORIZED_CONTROL="$(grep -Fvx \
+              -e "$CONTROLLER" \
+              -e "$PRIVATE_RUNTIME" \
+              -e "$HISTORICAL_HOTFIX" \
+              <<<"$UNAUTHORIZED_CONTROL" || true)"
+            for required in "$CONTROLLER" "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX" "$MIGRATOR" "$DEFERRAL_TEST"; do
+              test -f "$required"
+              grep -Fxq "$required" <<<"$CHANGED"
+            done
+            grep -Fq 'b1335bd2426d061f85498ace7c7b2a70c3b5bdc6' "$CONTROLLER"
+            grep -Fq '080_celar_ai_internal_data_intelligence.sql' "$CONTROLLER"
+            grep -Fq 'currentDescription:"Working on training"' "$CONTROLLER"
+            grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
+            grep -Fq 'queue: max' "$CONTROLLER"
+            ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+            grep -Fq 'PRIVATE_RUNTIME_MIGRATION_081=ABSENT' "$MIGRATOR"
+            for deferred in "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX"; do
+              ! grep -Eq 'azure/[l]ogin@' "$deferred"
+              ! grep -Fq 'environment: test' "$deferred"
+              ! grep -Eq 'id-token:[[:space:]]+[w]rite' "$deferred"
+              ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
+            done
           fi
           if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
             echo 'Celar AI production source may not alter protected deployment controls.' >&2
