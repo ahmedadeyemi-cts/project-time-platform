@@ -148,6 +148,10 @@ jobs:
               'src/frontend/project-time-web/scripts/validate-group-1-navigation-work-consolidation.mjs',
               'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs',
               'docs/security/VIEW-AS-MODULE-NAVIGATION-CONTINUITY.md',
+              '.github/workflows/augment-view-as-module-navigation-systemwide.yml',
+              '.github/workflows/diagnose-view-as-systemwide-patch-anchor.yml',
+              '.github/workflows/run-normalized-view-as-systemwide-patch.yml',
+              '.github/workflows/execute-view-as-systemwide-publisher.yml',
           }
           changed = {
               line[3:]
