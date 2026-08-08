@@ -1,29 +1,17 @@
-name: Validate Test-Only Timesheet AI Release b1335bd2
+name: Validate Test-Only Unified Celar Routing Release 9c34c6c3
 
 on:
   pull_request:
     paths:
-      - '.github/workflows/celar-ai-enterprise-platform-ci.yml'
-      - '.github/workflows/celar-ai-production-platform-ci.yml'
-      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
-      - '.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
-      - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
-      - 'scripts/release-test/run-migration-job.sh'
-      - 'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Validate exact b1335bd2 Test release controls
-    if: >-
-      github.head_ref == 'release/test-b1335bd2-timesheet-ai-20260808' ||
-      startsWith(github.head_ref, 'fix/test-controller-migration-080-release-env-') ||
-      startsWith(github.head_ref, 'fix/test-controller-migration-080-trigger-') ||
-      startsWith(github.head_ref, 'fix/test-controller-runtime-source-uat-')
+    name: Validate exact 9c34c6c3 Test release controller
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
@@ -33,98 +21,70 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate source pin, migration boundary, UAT, and deferral contract
+      - name: Validate source pin, no-migration boundary, UAT, and rollback
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
         run: |
           set -Eeuo pipefail
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          PRIVATE_RUNTIME='.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
-          HISTORICAL_HOTFIX='.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
-          MIGRATOR='scripts/release-test/apply-celar-ai-internal-data-080.sh'
-          DEFERRAL_TEST='tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
-          SOURCE='b1335bd2426d061f85498ace7c7b2a70c3b5bdc6'
+          SOURCE='9c34c6c3a6151a04e2b9b76840c95dc10a9f438e'
 
           git fetch origin "$BASE_REF" --no-tags
-          if [[ "$HEAD_REF" == fix/test-controller-migration-080-trigger-* \
-             || "$HEAD_REF" == fix/test-controller-runtime-source-uat-* ]]; then
-            cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
+          cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           EOF
-          else
-            cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
-          .github/workflows/celar-ai-enterprise-platform-ci.yml
-          .github/workflows/celar-ai-production-platform-ci.yml
-          .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
-          .github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml
-          .github/workflows/projectpulse-deploy-test.yml
-          .github/workflows/projectpulse-release-test-control-ci.yml
-          scripts/release-test/apply-celar-ai-internal-data-080.sh
-          tests/validate-celar-ai-opencloud-deferred-runtime.mjs
-          EOF
-          fi
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
           git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
           LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
           diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
 
-          bash -n "$MIGRATOR"
-          bash -n scripts/release-test/run-migration-job.sh
-          node --check "$DEFERRAL_TEST"
-          node "$DEFERRAL_TEST"
-          node tests/validate-celar-ai-internal-data-intelligence.mjs
-          node src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs
-
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
+          grep -Fq "'.github/workflows/projectpulse-deploy-test.yml'" "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
-          grep -Fq '080_celar_ai_internal_data_intelligence.sql' "$CONTROLLER"
-          grep -Fq 'MIGRATION_SCOPE=080_ONLY' "$CONTROLLER"
+          grep -Fq 'MIGRATIONS_APPLIED=NONE' "$CONTROLLER"
+          grep -Fq 'MIGRATION_081=NOT_APPLIED' "$CONTROLLER"
           grep -Fq 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED' "$CONTROLLER"
-          grep -Fq 'currentDescription:"Working on training"' "$CONTROLLER"
-          grep -Fq 'timesheet-working-on-training.json' "$CONTROLLER"
-          grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
+          grep -Fq 'Deploy API image without migrations or private-runtime activation' "$CONTROLLER"
           grep -Fq 'privateRuntimeConfigurationChanged:false' "$CONTROLLER"
-          grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
+          grep -Fq 'migrationsApplied:[]' "$CONTROLLER"
+          grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
+          grep -Fq 'openCloudPrivateRuntime:"deferred"' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
-          grep -Fq "'scripts/release-test/run-migration-job.sh'" "$CONTROLLER"
-          grep -Fq 'SOURCE_COMMIT_AFTER=' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned application release.' "$CONTROLLER"
-          ! grep -Fq '/release.json' "$CONTROLLER"
+          grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
+          grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
+          grep -Fq 'public-president-summary.json' "$CONTROLLER"
+          grep -Fq '"usePrivateModelWhenAvailable":false' "$CONTROLLER"
+          grep -Fq 'Who is the US President?' "$CONTROLLER"
+          grep -Fq 'Who is the president of Acme Corp?' "$CONTROLLER"
+          grep -Fq 'Working on training' "$CONTROLLER"
+          grep -Fq 'project_flowhive_plan' "$CONTROLLER"
+          grep -Fq 'project_forge_plan_estimate' "$CONTROLLER"
+          grep -Fq 'projectEvidenceReady == true' "$CONTROLLER"
+          grep -Fq 'every(.result.flowHivePlan.tasks[]; (.citationIds | length) > 0)' "$CONTROLLER"
+          grep -Fq 'rawPrivateContextSentToExternalProvider == false' "$CONTROLLER"
+          grep -Fq 'externalProviderReceivesPrivateDocumentText == false' "$CONTROLLER"
+          grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned unified-routing release.' "$CONTROLLER"
+
+          ! grep -Eq 'run-migration-job|apply-celar-ai|psql|database/migrations|\.sql' "$CONTROLLER"
           ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+          ! grep -Fq 'az keyvault' "$CONTROLLER"
           ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
-          ! grep -Fq 'az keyvault secret show' "$CONTROLLER"
+          ! grep -Fq 'PROJECTPULSE_PRIVATE_MODEL_ENDPOINT' "$CONTROLLER"
+          ! grep -Fq 'PROJECTPULSE_PULSE_AI_CLAMAV' "$CONTROLLER"
+          ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
+          ! grep -Fq '.competency.currentPassRate == 1' "$CONTROLLER"
 
-          grep -Fq 'MIGRATION_NAME="080_celar_ai_internal_data_intelligence.sql"' "$MIGRATOR"
-          grep -Fq 'Migration 080 requires the core identity' database/migrations/080_celar_ai_internal_data_intelligence.sql
-          grep -Fq 'PRIVATE_RUNTIME_MIGRATION_081=ABSENT' "$MIGRATOR"
-          grep -Fq 'The migration image must contain exactly migration 080.' "$MIGRATOR"
-          grep -Fq 'PGDATABASE does not match the protected Test database.' "$MIGRATOR"
-          grep -Fq '{name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release, secretRef: null}' scripts/release-test/run-migration-job.sh
-          grep -Fq '{name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release}' scripts/release-test/run-migration-job.sh
-          printf '%s  %s\n' \
-            5751d0a27552a3bf0c90ec4ef82eccebc1485e839e89c498bec2f5c04e0914b4 database/migrations/080_celar_ai_internal_data_intelligence.sql \
-            | sha256sum --check --strict
-          test "$(git rev-parse "$SOURCE:database/migrations/080_celar_ai_internal_data_intelligence.sql")" = f64f3b8778355351175addb353fe57d06a9a32e6
-
-          for deferred in "$PRIVATE_RUNTIME" "$HISTORICAL_HOTFIX"; do
-            grep -Fq 'workflow_dispatch:' "$deferred"
-            ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
-            ! grep -Fq 'environment: test' "$deferred"
-            ! grep -Eq 'id-token:[[:space:]]+write' "$deferred"
-            ! grep -Eq 'azure/[l]ogin@' "$deferred"
-            ! grep -Eq 'az (containerapp|acr)' "$deferred"
-          done
-
+          git merge-base --is-ancestor "$SOURCE" HEAD
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
           git diff --check "origin/$BASE_REF...HEAD"
-          echo 'TIMESHEET_AI_B1335BD2_TEST_RELEASE_CONTROL=PASSED'
+          echo 'UNIFIED_CELAR_ROUTING_9C34C6C3_TEST_RELEASE_CONTROL=PASSED'

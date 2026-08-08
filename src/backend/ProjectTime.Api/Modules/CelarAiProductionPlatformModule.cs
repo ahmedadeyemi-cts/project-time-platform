@@ -110,6 +110,7 @@ public static partial class CelarAiProductionPlatformModule
         ("identity", "What is Celar AI?", "identity", "platform_capability"),
         ("platform_name", "What is the system name?", "platform_identity", "platform_capability"),
         ("general_knowledge", "What is the capital of France?", "general_knowledge", "general_knowledge"),
+        ("public_officeholder", "Who is the US President?", "general_knowledge", "general_knowledge"),
         ("enter_time", "How do I enter my time?", "procedure", "procedure"),
         ("submit_time", "How do I submit my Timesheet?", "procedure", "procedure"),
         ("create_project", "How do I create a project?", "procedure", "procedure"),

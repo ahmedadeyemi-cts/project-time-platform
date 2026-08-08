@@ -58,6 +58,24 @@ Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is the capital of France?"),
     "clearly public capital question is external eligible");
 Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the US President?"),
+    "public US officeholder question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the US President?").IntentCode == "general_knowledge",
+    "public US officeholder question resolves to general knowledge");
+Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),
+    "spelled-out public officeholder question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Acme Corp?"),
+    "named-organization officeholder question remains private");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Acme Corp?").IntentCode != "general_knowledge",
+    "named-organization officeholder question cannot enter the public-provider route");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the project manager for our project?"),
+    "internal project-role question remains private");
+Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is zero trust?"),
     "generic definition without Pulse context is external eligible");
 Require(
@@ -66,6 +84,25 @@ Require(
 Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Outside Pulse, who is Kevin Damisch?"),
     "explicit outside-Pulse override is external eligible");
+
+Require(
+    ExternalLooksLikeNonAnswer("I don't have access to real-time information, so I cannot determine who currently holds that office."),
+    "current-information access disclaimer is a semantic non-answer");
+Require(
+    ExternalLooksLikeNonAnswer("I'm sorry, but I can't access current officeholder information."),
+    "apologetic current-officeholder disclaimer is a semantic non-answer");
+Require(
+    ExternalLooksLikeNonAnswer("As an AI language model, I do not have access to live information."),
+    "model live-information disclaimer is a semantic non-answer");
+Require(
+    !ExternalLooksLikeNonAnswer("In C#, code cannot access a private member from an unrelated type because access modifiers enforce encapsulation."),
+    "substantive access-control explanation remains an answer");
+Require(
+    !ExternalLooksLikeNonAnswer("I cannot access a private member from an unrelated type because C# access modifiers enforce encapsulation."),
+    "first-person substantive access-control explanation remains an answer");
+Require(
+    !ExternalLooksLikeNonAnswer("The current officeholder is Example Person. I cannot access private Pulse records, but no such context was needed."),
+    "substantive officeholder answer with a later limitation remains an answer");
 
 var integrationConnectionString = Environment.GetEnvironmentVariable("CELAR_AI_TEST_CONNECTION_STRING");
 if (!string.IsNullOrWhiteSpace(integrationConnectionString))
@@ -92,6 +129,19 @@ static void Require(bool condition, string evidence)
 {
     if (!condition)
         throw new InvalidOperationException($"Celar AI internal-data assertion failed: {evidence}.");
+}
+
+static bool ExternalLooksLikeNonAnswer(string content)
+{
+    var qualityType = typeof(CelarAiInternalDataService).Assembly.GetType(
+        "ProjectTime.Api.Ai.CelarAiExternalAnswerQuality")
+        ?? throw new InvalidOperationException("Celar AI external answer-quality type was not found.");
+    var method = qualityType.GetMethod(
+        "LooksLikeNonAnswer",
+        BindingFlags.Public | BindingFlags.Static)
+        ?? throw new InvalidOperationException("Celar AI external answer-quality method was not found.");
+    return (bool)(method.Invoke(null, [content])
+        ?? throw new InvalidOperationException("Celar AI external answer-quality method returned no result."));
 }
 
 static async Task AssertDatabaseResolverAsync(string connectionString)

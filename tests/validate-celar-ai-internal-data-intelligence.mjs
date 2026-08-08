@@ -32,6 +32,20 @@ requireText(intelligence, 'CelarAiExternalCapsuleCatalog.GeneralKnowledge', 'pub
 requireText(intelligence, 'const string externalProblemStatement = "";', 'no internal help capsule')
 requireText(intelligence, '_internalData.TryAnswerAsync(', 'all-entry-point deterministic interception')
 requireText(intelligence, 'LooksLikeExternalProviderNonAnswer', 'provider non-answer detection')
+requireText(intelligence, 'CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value)', 'shared provider answer-quality gate')
+const routing = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
+requireText(routing, 'execution.PublicGeneralQuestion', 'public-only semantic fallback boundary')
+requireText(routing, 'CelarAiExternalAnswerQuality.LooksLikeNonAnswer(result.Content)', 'provider semantic non-answer fallback')
+requireText(routing, 'public_general_question_semantic_non_answer', 'semantic non-answer route decision')
+requireText(routing, 'ProjectPulseAiOutcomes.Unavailable', 'semantic non-answer assurance outcome')
+requireText(routing, 'DirectNonAnswerPreambles.Any(preamble => opening.StartsWith', 'direct non-answer preamble gate')
+requireText(routing, 'AccessLimitationPreambles.Any(preamble => opening.StartsWith', 'access-limitation opening gate')
+requireText(routing, 'ExternalInformationScopeCues.Any(cue => opening.Contains', 'external-information scope gate')
+requireText(routing, '_health.RecordSuccess(', 'semantic non-answer preserves provider availability')
+rejectText(routing, '_health.RecordFailure(target, nonAnswerCode', 'semantic non-answer circuit failure')
+const behavioralTests = read('tests/CelarAiInternalDataTests/Program.cs')
+requireText(behavioralTests, 'ExternalLooksLikeNonAnswer(', 'semantic non-answer behavioral tests')
+requireText(behavioralTests, 'first-person substantive access-control explanation remains an answer', 'substantive access-control negative case')
 const intelligenceContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs')
 requireText(intelligenceContracts, 'celar-ai-system-intelligence-v3-20260807', 'system-intelligence contract version')
 for (const formerInternalCapsule of [
@@ -43,9 +57,11 @@ for (const formerInternalCapsule of [
 }
 
 const catalog = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs')
-requireText(catalog, 'celar-ai-system-knowledge-v4-20260807', 'system-knowledge contract version')
+requireText(catalog, 'celar-ai-system-knowledge-v5-20260808', 'system-knowledge contract version')
 requireText(catalog, 'CelarAiInternalDataService.IsSupportedQuestion(question)', 'deterministic internal-first classification')
 requireText(catalog, 'LooksLikeNamedInternalSubject(raw)', 'named-subject privacy guard')
+requireText(catalog, 'LooksLikeClearlyPublicOfficeholderQuestion(normalized)', 'public officeholder classification before acronym privacy guard')
+rejectText(catalog, "(?:president|prime\\s+minister|head\\s+of\\s+state|monarch|king|queen)\\s+of\\s+[a-z]", 'unrestricted named-organization officeholder route')
 requireText(catalog, 'return true;', 'privacy-preserving internal default')
 
 const production = read('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs')

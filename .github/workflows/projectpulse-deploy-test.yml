@@ -1,14 +1,10 @@
-name: ProjectPulse Test-Only Timesheet AI Release b1335bd2
+name: ProjectPulse Test-Only Unified Celar Routing Release 9c34c6c3
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
-      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
-      - '.github/workflows/projectpulse-deploy-modules-runtime-hotfix-test.yml'
-      - 'scripts/release-test/apply-celar-ai-internal-data-080.sh'
-      - 'scripts/release-test/run-migration-job.sh'
 
 permissions:
   id-token: write
@@ -21,13 +17,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy b1335bd2 with migration 080 and Timesheet AI UAT
+    name: Deploy 9c34c6c3 and validate unified Celar routing
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TARGET_RELEASE_COMMIT: b1335bd2426d061f85498ace7c7b2a70c3b5bdc6
+      TARGET_RELEASE_COMMIT: 9c34c6c3a6151a04e2b9b76840c95dc10a9f438e
 
     steps:
       - name: Check out deployment controls
@@ -41,12 +37,12 @@ jobs:
       - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: b1335bd2426d061f85498ace7c7b2a70c3b5bdc6
+          ref: 9c34c6c3a6151a04e2b9b76840c95dc10a9f438e
           path: release
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Guard the exact application and migration boundary
+      - name: Guard exact source and no-migration boundary
         id: release
         shell: bash
         run: |
@@ -58,25 +54,31 @@ jobs:
           [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]]
           git -C control merge-base --is-ancestor "$RELEASE_COMMIT" "$CONTROL_COMMIT"
 
-          test -f release/database/migrations/080_celar_ai_internal_data_intelligence.sql
-          test -f release/src/backend/ProjectTime.Api/ProjectPulseAiTimeEntrySuggestionService.cs
-          test -f release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          test -f release/src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
-          test -f control/scripts/release-test/apply-celar-ai-internal-data-080.sh
-          test -f control/scripts/release-test/run-migration-job.sh
+          CATALOG='release/src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
+          PRIVATE_RAG='release/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+          INTERNAL_TESTS='release/tests/CelarAiInternalDataTests/Program.cs'
+          FLOWHIVE_TEST='release/src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+          FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+          test -f "$CATALOG"
+          test -f "$PRIVATE_RAG"
+          test -f "$INTERNAL_TESTS"
+          test -f "$FLOWHIVE_TEST"
+          test -f "$FORGE_TEST"
           test -f control/scripts/build-pr55-acr-image.sh
           test -f control/scripts/wait-containerapp-ready-revision.sh
 
-          bash -n control/scripts/release-test/apply-celar-ai-internal-data-080.sh
-          bash -n control/scripts/release-test/run-migration-job.sh
-          grep -Fq 'TimesheetActivityTrainingProfessionalDevelopment' release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          grep -Fq 'var externalPrompt = fixedCapsule.Capsule' release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
-          grep -Fq 'Why the AI suggestion did not complete' release/src/frontend/project-time-web/src/module001/TimesheetAiDescriptionAssistant.jsx
-          node release/src/frontend/project-time-web/scripts/validate-module-001-ai-task-grounding.mjs
+          grep -Fq 'LooksLikeClearlyPublicOfficeholderQuestion(normalized)' "$CATALOG"
+          grep -Fq 'Who is the president of Acme Corp?' "$INTERNAL_TESTS"
+          grep -Fq 'AllowsDeterministicCitedPlanningFallback(query.FeatureCode)' "$PRIVATE_RAG"
+          grep -Fq 'CelarAiCapabilityCatalog.ProjectFlowHivePlan' "$PRIVATE_RAG"
+          grep -Fq 'CelarAiCapabilityCatalog.ProjectForgePlanEstimate' "$PRIVATE_RAG"
+          node "$FLOWHIVE_TEST"
+          (cd release/src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)
 
           echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
           echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
-          echo 'MIGRATION_SCOPE=080_ONLY'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'MIGRATION_081=NOT_APPLIED'
           echo 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED'
 
       - name: Sign in to the protected Test subscription
@@ -94,12 +96,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
-          current_env() {
-            jq -r --arg name "$1" '[.properties.template.containers[0].env[]? | select(.name == $name) | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON"
-          }
-          current_secret_ref() {
-            jq -r --arg name "$1" '[.properties.template.containers[0].env[]? | select(.name == $name) | .secretRef // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON"
-          }
           resolve_digest() {
             local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
             case "$image" in
@@ -126,93 +122,34 @@ jobs:
 
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not the protected Test site.'
-          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' -H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001' "$BASE/api/non-project-time-categories")" || fail 'The Test UAT session is expired or unauthorized.'
-          jq -e 'any(.categories[]?; ((.name // "") + " " + (.code // "")) | test("training"; "i"))' <<<"$CATEGORIES" >/dev/null || fail 'The active Training category is unavailable.'
-
-          DATABASE_HOST="$(current_env PTP_DB_HOST)"
-          DATABASE_PORT="$(current_env PTP_DB_PORT)"
-          DATABASE_NAME="$(current_env PTP_DB_NAME)"
-          DATABASE_USER="$(current_env PTP_DB_USER)"
-          PASSWORD_SECRET_REF="$(current_secret_ref PTP_DB_PASSWORD)"
-          [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]]
-          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 ))
-          [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
-          [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]
-          [[ -n "$PASSWORD_SECRET_REF" ]] || fail 'The database password secret reference is absent.'
-
-          SECRET_JSON="$(az containerapp secret list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
-          KEY_VAULT_SECRET_URI="$(jq -r --arg name "$PASSWORD_SECRET_REF" '[.[] | select(.name == $name) | .keyVaultUrl // empty] | if length == 1 then .[0] else empty end' <<<"$SECRET_JSON")"
-          MIGRATOR_IDENTITY="$(jq -r --arg name "$PASSWORD_SECRET_REF" '[.[] | select(.name == $name) | .identity // empty] | if length == 1 then .[0] else empty end' <<<"$SECRET_JSON")"
-          [[ "$KEY_VAULT_SECRET_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] || fail 'The database password is not an exact Key Vault reference.'
-          [[ "${MIGRATOR_IDENTITY,,}" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.managedidentity/userassignedidentities/[^/]+$ ]] || fail 'The migrator identity is invalid.'
-          jq -e --arg identity "$MIGRATOR_IDENTITY" '(.identity.userAssignedIdentities // {}) | keys | map(ascii_downcase) | index($identity | ascii_downcase) != null' <<<"$API_JSON" >/dev/null || fail 'The migrator identity is not assigned to the Test API.'
+          HTTP_STATUS="$(curl -sS --max-time 45 -o "$RUNNER_TEMP/preflight-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$HTTP_STATUS" == 200 ]] || fail 'The Test UAT session is expired or unauthorized.'
 
           jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$API_JSON" > "$RUNNER_TEMP/private-runtime-before.json"
           jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON" > "$RUNNER_TEMP/source-commit-before.json"
 
           RAW_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")"
           RAW_WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_JSON")"
-          OLD_API_IMAGE="$(resolve_digest "$RAW_API_IMAGE")"
-          OLD_WEB_IMAGE="$(resolve_digest "$RAW_WEB_IMAGE")"
-          echo "old_api_image=$OLD_API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "old_web_image=$OLD_WEB_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "migrator_identity=$MIGRATOR_IDENTITY" >> "$GITHUB_OUTPUT"
-          echo "key_vault_uri=${KEY_VAULT_SECRET_URI%%/secrets/*}" >> "$GITHUB_OUTPUT"
-          echo "database_password_secret_name=${KEY_VAULT_SECRET_URI#*/secrets/}" >> "$GITHUB_OUTPUT"
-          echo "database_host=$DATABASE_HOST" >> "$GITHUB_OUTPUT"
-          echo "database_port=$DATABASE_PORT" >> "$GITHUB_OUTPUT"
-          echo "database_name=$DATABASE_NAME" >> "$GITHUB_OUTPUT"
-          echo "database_user=$DATABASE_USER" >> "$GITHUB_OUTPUT"
+          echo "old_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
 
-      - name: Build checksum-pinned migration 080 image
-        id: migration
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          CONTEXT="$RUNNER_TEMP/celar-ai-080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          install -d -m 0700 "$CONTEXT/migrations"
-          install -m 0644 control/deployment/containers/pr55-migrator/Dockerfile "$CONTEXT/Dockerfile"
-          install -m 0755 control/scripts/release-test/apply-celar-ai-internal-data-080.sh "$CONTEXT/apply-pr55-test-migrations.sh"
-          install -m 0644 release/database/migrations/080_celar_ai_internal_data_intelligence.sql "$CONTEXT/migrations/080_celar_ai_internal_data_intelligence.sql"
-          (cd "$CONTEXT/migrations" && sha256sum 080_celar_ai_internal_data_intelligence.sql > SHA256SUMS)
-          printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$CONTEXT/release-commit"
-          DIGEST="$(control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-celar-ai-080:$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" "$CONTEXT/Dockerfile" "$CONTEXT")"
-          echo "image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-celar-ai-080@$DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Apply and verify migration 080 inside the private Test network
-        shell: bash
-        env:
-          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
-          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ steps.contract.outputs.migrator_identity }}
-          AZURE_KEY_VAULT_URI: ${{ steps.contract.outputs.key_vault_uri }}
-          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ steps.contract.outputs.database_password_secret_name }}
-          PROJECTPULSE_TEST_DATABASE_HOST: ${{ steps.contract.outputs.database_host }}
-          PROJECTPULSE_TEST_DATABASE_PORT: ${{ steps.contract.outputs.database_port }}
-          PROJECTPULSE_TEST_DATABASE_NAME: ${{ steps.contract.outputs.database_name }}
-          PROJECTPULSE_TEST_DATABASE_USER: ${{ steps.contract.outputs.database_user }}
-          MAIN_RELEASE_CONTROL_SHA: ${{ steps.release.outputs.control_commit }}
-          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
-          MAIN_RELEASE_MIGRATION_SCOPE: celar-ai-internal-data-080-b1335bd2-test
-          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.migration.outputs.image }}
-        run: |
-          set -Eeuo pipefail
-          MAIN_RELEASE_MIGRATION_JOB_NAME="ca080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-a" MAIN_RELEASE_MIGRATION_MODE=apply bash control/scripts/release-test/run-migration-job.sh
-          MAIN_RELEASE_MIGRATION_JOB_NAME="ca080-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-v" MAIN_RELEASE_MIGRATION_MODE=verify bash control/scripts/release-test/run-migration-job.sh
-
-      - name: Build immutable API and web images from b1335bd2
+      - name: Build immutable API and web images from 9c34c6c3
         id: build
         shell: bash
         working-directory: release
         run: |
           set -Eeuo pipefail
-          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:timesheet-ai-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
-          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:timesheet-ai-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:unified-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:unified-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
           echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
           echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy API image without private-runtime activation
+      - name: Deploy API image without migrations or private-runtime activation
         id: deploy_api
         shell: bash
         run: |
@@ -221,13 +158,13 @@ jobs:
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
             --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
-            --revision-suffix "tsai-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "ucar-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
           REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
           AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
           SOURCE_COMMIT_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
-          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned application release.' >&2; exit 1; }
+          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned unified-routing release.' >&2; exit 1; }
           jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$RUNNER_TEMP/private-runtime-after.json"
           diff -u "$RUNNER_TEMP/private-runtime-before.json" "$RUNNER_TEMP/private-runtime-after.json"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -240,21 +177,24 @@ jobs:
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "tsaiw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "ucarw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
           REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Prove exact release and Timesheet AI Working on training behavior
+      - name: Prove public, private, Timesheet, FlowHive, and Forge routing
         id: uat
         shell: bash
         env:
           UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
         run: |
           set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
-          auth=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
+          auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
+          auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
+          auth001=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
 
           READY=false
           for attempt in $(seq 1 36); do
@@ -264,18 +204,65 @@ jobs:
             fi
             sleep 10
           done
-          [[ "$READY" == true ]]
+          [[ "$READY" == true ]] || fail 'The public Test health endpoint did not become ready.'
 
-          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' "${auth[@]}" "$BASE/api/non-project-time-categories")"
+          READINESS_FILE="$RUNNER_TEMP/celar-readiness.json"
+          curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth011[@]}" "$BASE/api/celar-ai/v1/production/readiness" > "$READINESS_FILE"
+          jq -c '{
+            status,
+            competencyPassRate:.competency.currentPassRate,
+            publicOfficeholderCases:[.competency.cases[]? | select(.code == "public_officeholder") | {code,actualIntent,passed}],
+            defaultTargets:.capabilityRouting.defaultTargets
+          }' "$READINESS_FILE" | tee "$RUNNER_TEMP/celar-readiness-summary.json"
+          jq -e '
+            any(.competency.cases[]?; .code == "public_officeholder" and .actualIntent == "general_knowledge" and .passed == true) and
+            (.capabilityRouting.defaultTargets == ["celar_ai","claude","openai","local_template"])
+          ' "$READINESS_FILE" >/dev/null || fail 'The deployed runtime did not report the public-officeholder and default-route contract.'
+
+          PUBLIC_FILE="$RUNNER_TEMP/public-president-answer.json"
+          PUBLIC_PAYLOAD='{"question":"Who is the US President?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":false,"usePrivateModelWhenAvailable":false,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
+          PUBLIC_STATUS="$(curl -sS --max-time 180 -o "$PUBLIC_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$PUBLIC_PAYLOAD" "$BASE/api/celar-ai/v2/chat")"
+          [[ "$PUBLIC_STATUS" == 200 ]] || { jq '{status,message,result}' "$PUBLIC_FILE" >&2 || true; fail 'The public President question failed.'; }
+          jq -c '{
+            decisionCode:.decision.code,
+            trustClassification:.trust.classification,
+            questionAnswered:.trust.questionAnswered,
+            status:.result.status,
+            modelProvider:.result.modelProvider,
+            directConclusionLength:((.result.answer.directConclusion // "") | length),
+            targetDecisions:.result.targetDecisions,
+            rawPrivateContextSentToExternalProvider
+          }' "$PUBLIC_FILE" | tee "$RUNNER_TEMP/public-president-summary.json"
+          jq -e '
+            .decision.code == "general_knowledge" and
+            .trust.classification == "general_knowledge" and
+            .trust.questionAnswered == true and
+            (.result.status | ascii_downcase) == "completed" and
+            ((.result.answer.directConclusion // "") | length) >= 20 and
+            ((.result.modelProvider // "") | ascii_downcase) as $provider |
+            ($provider == "claude" or $provider == "openai") and
+            any(.result.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used") and
+            .rawPrivateContextSentToExternalProvider == false
+          ' "$PUBLIC_FILE" >/dev/null || fail 'The President question did not use the governed public-provider route.'
+
+          PRIVATE_FILE="$RUNNER_TEMP/internal-organization-answer.json"
+          PRIVATE_PAYLOAD='{"question":"Who is the president of Acme Corp?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":true,"usePrivateModelWhenAvailable":true,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
+          PRIVATE_STATUS="$(curl -sS --max-time 180 -o "$PRIVATE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$PRIVATE_PAYLOAD" "$BASE/api/celar-ai/v2/chat")"
+          [[ "$PRIVATE_STATUS" == 200 ]] || { jq '{status,message,result}' "$PRIVATE_FILE" >&2 || true; fail 'The named-organization privacy question failed.'; }
+          jq -e '
+            .decision.code != "general_knowledge" and
+            ([.result.targetDecisions[]? | select((((.target // "") | ascii_downcase) == "claude" or ((.target // "") | ascii_downcase) == "openai") and ((.outcome // "") | ascii_downcase) == "used")] | length) == 0 and
+            .rawPrivateContextSentToExternalProvider == false and
+            .attachments.externalProviderReceivedAttachmentContent == false
+          ' "$PRIVATE_FILE" >/dev/null || fail 'A named organization crossed the public-provider privacy boundary.'
+
+          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/non-project-time-categories")"
           CATEGORY="$(jq -c '[.categories[]? | select(((.name // "") + " " + (.code // "")) | test("training"; "i"))] | first // empty' <<<"$CATEGORIES")"
-          [[ -n "$CATEGORY" ]]
-          CATEGORY_ID="$(jq -r .id <<<"$CATEGORY")"
-          CATEGORY_NAME="$(jq -r .name <<<"$CATEGORY")"
-          CATEGORY_CODE="$(jq -r '.code // ""' <<<"$CATEGORY")"
-          PAYLOAD="$(jq -nc --arg id "$CATEGORY_ID" --arg name "$CATEGORY_NAME" --arg code "$CATEGORY_CODE" '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:null,projectId:null,taskId:null,nonProjectTimeCategoryId:$id,timeType:"regular",rowType:"nonProject",rowLabel:$name,customerName:null,projectName:null,projectCode:null,taskName:null,taskCode:null,categoryCode:$code,hours:0.5,currentDescription:"Working on training"}')"
-          RESPONSE_FILE="$RUNNER_TEMP/timesheet-working-on-training.json"
-          HTTP_STATUS="$(curl -sS --max-time 120 -o "$RESPONSE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth[@]}" -d "$PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
-          [[ "$HTTP_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$RESPONSE_FILE" >&2 || true; exit 1; }
+          [[ -n "$CATEGORY" ]] || fail 'The active Training category is unavailable.'
+          NO_SOW_PAYLOAD="$(jq -nc --arg id "$(jq -r .id <<<"$CATEGORY")" --arg name "$(jq -r .name <<<"$CATEGORY")" --arg code "$(jq -r '.code // ""' <<<"$CATEGORY")" '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:null,projectId:null,taskId:null,nonProjectTimeCategoryId:$id,timeType:"regular",rowType:"non_project",rowLabel:$name,customerName:null,projectName:null,projectCode:null,taskName:null,taskCode:null,categoryCode:$code,hours:0.5,currentDescription:"Working on training"}')"
+          NO_SOW_FILE="$RUNNER_TEMP/timesheet-no-sow.json"
+          NO_SOW_STATUS="$(curl -sS --max-time 180 -o "$NO_SOW_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$NO_SOW_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
+          [[ "$NO_SOW_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$NO_SOW_FILE" >&2 || true; fail 'The no-SOW Timesheet request failed.'; }
           jq -e '
             .status == "ai_suggestion_generated" and
             ((.provider // "") | ascii_downcase) as $provider |
@@ -283,9 +270,80 @@ jobs:
             ((.suggestion // "") | length) >= 90 and
             ((.suggestion // "") | contains("[REDACTED_") | not) and
             any(.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used")
-          ' "$RESPONSE_FILE" >/dev/null
-          jq '{status,provider,suggestionLength:(.suggestion|length),successfulTarget:(.targetDecisions[]? | select((.outcome|ascii_downcase)=="used") | {target,outcome,reasonCode})}' "$RESPONSE_FILE" > "$RUNNER_TEMP/timesheet-ai-uat-evidence.json"
-          echo "provider=$(jq -r .provider "$RESPONSE_FILE")" >> "$GITHUB_OUTPUT"
+          ' "$NO_SOW_FILE" >/dev/null || fail 'The no-SOW Timesheet route did not return a reviewable suggestion.'
+
+          AVAILABLE_FILE="$RUNNER_TEMP/available-timesheet-tasks.json"
+          curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/assignments/available-tasks" > "$AVAILABLE_FILE"
+          mapfile -t TASK_ROWS < <(jq -c '.tasks[]?' "$AVAILABLE_FILE" | head -50)
+          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No active assigned Test task is available for SOW-grounded Timesheet UAT.'
+          SELECTED_BOOTSTRAP=''
+          SELECTED_TASK_ROW=''
+          for task_row in "${TASK_ROWS[@]}"; do
+            project_id="$(jq -r .projectId <<<"$task_row")"
+            task_id="$(jq -r .taskId <<<"$task_row")"
+            CANDIDATE="$RUNNER_TEMP/project-forge-$project_id.json"
+            STATUS="$(curl -sS --max-time 120 -o "$CANDIDATE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth033[@]}" "$BASE/api/project-forge/bootstrap?workspace=canonical&projectId=$project_id")"
+            if [[ "$STATUS" == 200 ]] && jq -e --arg task "$task_id" '.ai.module064Connection.projectEvidenceReady == true and .ai.module064Connection.projectReadySowDocumentCount > 0 and any(.tasks[]?; .taskId == $task)' "$CANDIDATE" >/dev/null; then
+              SELECTED_BOOTSTRAP="$CANDIDATE"
+              SELECTED_TASK_ROW="$task_row"
+              break
+            fi
+          done
+          [[ -n "$SELECTED_BOOTSTRAP" && -n "$SELECTED_TASK_ROW" ]] || fail 'No active assigned task has citation-ready SOW evidence for unified-routing UAT.'
+
+          ASSIGNMENT_ID="$(jq -r .assignmentId <<<"$SELECTED_TASK_ROW")"
+          PROJECT_ID="$(jq -r .projectId <<<"$SELECTED_TASK_ROW")"
+          PROJECT_CODE="$(jq -r .projectCode <<<"$SELECTED_TASK_ROW")"
+          PROJECT_NAME="$(jq -r .projectName <<<"$SELECTED_TASK_ROW")"
+          TASK_ID="$(jq -r .taskId <<<"$SELECTED_TASK_ROW")"
+          TASK_CODE="$(jq -r '.taskCode // ""' <<<"$SELECTED_TASK_ROW")"
+          TASK_NAME="$(jq -r .taskName <<<"$SELECTED_TASK_ROW")"
+          [[ "$ASSIGNMENT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$TASK_ID" =~ ^[0-9a-fA-F-]{36}$ && -n "$PROJECT_CODE" && -n "$PROJECT_NAME" && -n "$TASK_NAME" ]] || fail 'The selected UAT assignment identity is incomplete.'
+
+          START_DATE="$(date -u +%F)"
+          PLAN_BASE="$(jq -nc --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" --arg startDate "$START_DATE" '{mode:"project_plan",projectId:$projectId,projectCode:$projectCode,projectName:$projectName,startDate:$startDate,requestedOutcome:"Create a comprehensive cited delivery plan with detailed tasks, dependencies, validation, acceptance criteria, responsibilities, risks, and review controls.",detailLevel:"comprehensive",diagramType:"gantt",allowSanitizedExternalFallback:true}')"
+
+          FLOWHIVE_PAYLOAD="$(jq '. + {capabilityCode:"project_flowhive_plan"}' <<<"$PLAN_BASE")"
+          FLOWHIVE_FILE="$RUNNER_TEMP/flowhive-compose.json"
+          FLOWHIVE_STATUS="$(curl -sS --max-time 240 -o "$FLOWHIVE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FLOWHIVE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
+          [[ "$FLOWHIVE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FLOWHIVE_FILE" >&2 || true; fail 'FlowHive citation-preserving composition failed.'; }
+
+          FORGE_PAYLOAD="$(jq '. + {capabilityCode:"project_forge_plan_estimate"}' <<<"$PLAN_BASE")"
+          FORGE_FILE="$RUNNER_TEMP/project-forge-compose.json"
+          FORGE_STATUS="$(curl -sS --max-time 240 -o "$FORGE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FORGE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
+          [[ "$FORGE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FORGE_FILE" >&2 || true; fail 'Project Forge citation-preserving composition failed.'; }
+
+          for artifact in "$FLOWHIVE_FILE" "$FORGE_FILE"; do
+            jq -e '
+              (.result.status | test("completed|partial"; "i")) and
+              (.result.flowHivePlan.tasks | length) > 0 and
+              (.result.citations | length) > 0 and
+              every(.result.flowHivePlan.tasks[]; (.citationIds | length) > 0) and
+              .result.privacy.externalProviderReceivesPrivateDocumentText == false and
+              .result.privacy.externalProviderReceivesCustomerIdentity == false and
+              .stateChanged == false
+            ' "$artifact" >/dev/null || fail "Citation or privacy evidence failed for $artifact."
+          done
+
+          SOW_TIMESHEET_PAYLOAD="$(jq -nc \
+            --arg assignmentId "$ASSIGNMENT_ID" \
+            --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" \
+            --arg taskId "$TASK_ID" --arg taskCode "$TASK_CODE" --arg taskName "$TASK_NAME" \
+            '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:$assignmentId,projectId:$projectId,taskId:$taskId,nonProjectTimeCategoryId:null,timeType:"regular",rowType:"project_task",rowLabel:($projectCode+" "+$taskCode),customerName:null,projectName:$projectName,projectCode:$projectCode,taskName:$taskName,taskCode:$taskCode,categoryCode:"",hours:0.5,currentDescription:"Reviewed the assigned implementation task, validated the current requirements, and documented the next engineering steps."}')"
+          SOW_TIMESHEET_FILE="$RUNNER_TEMP/timesheet-sow-private-boundary.json"
+          SOW_TIMESHEET_STATUS="$(curl -sS --max-time 240 -o "$SOW_TIMESHEET_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$SOW_TIMESHEET_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
+          [[ "$SOW_TIMESHEET_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$SOW_TIMESHEET_FILE" >&2 || true; fail 'The SOW-grounded Timesheet privacy test failed.'; }
+          jq -e '
+            ([.targetDecisions[]? | select((((.target // "") | ascii_downcase) == "claude" or ((.target // "") | ascii_downcase) == "openai") and ((.outcome // "") | ascii_downcase) == "used")] | length) == 0
+          ' "$SOW_TIMESHEET_FILE" >/dev/null || fail 'A SOW-grounded Timesheet request crossed the public-provider boundary.'
+
+          jq '{question:.decision.code,provider:.result.modelProvider,answerLength:(.result.answer.directConclusion|length)}' "$PUBLIC_FILE" > "$RUNNER_TEMP/public-summary.json"
+          jq '{intent:.decision.code,status:.result.status,externalProviderUsed:([.result.targetDecisions[]? | select((((.target // "")|ascii_downcase)=="claude" or ((.target // "")|ascii_downcase)=="openai") and ((.outcome // "")|ascii_downcase)=="used")]|length>0)}' "$PRIVATE_FILE" > "$RUNNER_TEMP/private-summary.json"
+          jq '{status,provider,suggestionLength:(.suggestion|length)}' "$NO_SOW_FILE" > "$RUNNER_TEMP/no-sow-summary.json"
+          jq '{status,provider,suggestionLength:((.suggestion // "")|length),warningPresent:((.warning // "")|length>0)}' "$SOW_TIMESHEET_FILE" > "$RUNNER_TEMP/sow-timesheet-summary.json"
+          jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FLOWHIVE_FILE" > "$RUNNER_TEMP/flowhive-summary.json"
+          jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FORGE_FILE" > "$RUNNER_TEMP/forge-summary.json"
+          printf '%s' "$PROJECT_ID" > "$RUNNER_TEMP/uat-project-id"
 
       - name: Publish deployment evidence
         if: success()
@@ -296,21 +354,26 @@ jobs:
           jq -n \
             --arg releaseCommit "$TARGET_RELEASE_COMMIT" \
             --arg controlCommit '${{ steps.release.outputs.control_commit }}' \
-            --arg migrationImage '${{ steps.migration.outputs.image }}' \
             --arg apiImage '${{ steps.build.outputs.api_image }}' \
             --arg webImage '${{ steps.build.outputs.web_image }}' \
             --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
             --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
-            --argjson timesheetUat "$(cat "$RUNNER_TEMP/timesheet-ai-uat-evidence.json")" \
-            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:["080"],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,migrationImage:$migrationImage,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,timesheetWorkingOnTraining:$timesheetUat}' \
-            > evidence/timesheet-ai-b1335bd2-test-deployment.json
+            --arg projectId "$(cat "$RUNNER_TEMP/uat-project-id")" \
+            --argjson publicQuestion "$(cat "$RUNNER_TEMP/public-summary.json")" \
+            --argjson internalQuestion "$(cat "$RUNNER_TEMP/private-summary.json")" \
+            --argjson noSowTimesheet "$(cat "$RUNNER_TEMP/no-sow-summary.json")" \
+            --argjson sowTimesheet "$(cat "$RUNNER_TEMP/sow-timesheet-summary.json")" \
+            --argjson flowHive "$(cat "$RUNNER_TEMP/flowhive-summary.json")" \
+            --argjson projectForge "$(cat "$RUNNER_TEMP/forge-summary.json")" \
+            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:$projectId,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
+            > evidence/unified-celar-routing-9c34c6c3-test-deployment.json
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: timesheet-ai-b1335bd2-test-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/timesheet-ai-b1335bd2-test-deployment.json
+          name: unified-celar-routing-9c34c6c3-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/unified-celar-routing-9c34c6c3-test-deployment.json
           retention-days: 30
 
       - name: Restore prior images and source marker on failure
@@ -323,10 +386,10 @@ jobs:
             SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
             SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
             [[ -n "$SOURCE_SECRET" ]] && SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET" || SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"
-            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --set-env-vars "$SOURCE_ARG" --revision-suffix "tsairb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --set-env-vars "$SOURCE_ARG" --revision-suffix "ucarrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
           else
-            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --remove-env-vars PROJECTPULSE_SOURCE_COMMIT --revision-suffix "tsairb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --remove-env-vars PROJECTPULSE_SOURCE_COMMIT --revision-suffix "ucarrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
           fi
           if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
-            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.contract.outputs.old_web_image }}' --revision-suffix "tsaiwrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.contract.outputs.old_web_image }}' --revision-suffix "ucarwrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
           fi

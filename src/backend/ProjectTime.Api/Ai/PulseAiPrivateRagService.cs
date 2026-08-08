@@ -456,8 +456,13 @@ public sealed class PulseAiPrivateRagService
                     ? ParseFlowHive(answerRunId, query, retrieval, model, options)
                     : ParseDetailedAnswer(answerRunId, query, retrieval, model, options);
             }
-            else if (!options.RequirePrivateModelForDocumentAnswers)
+            else if ((flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode))
+                     || !options.RequirePrivateModelForDocumentAnswers)
             {
+                // Planning remains fail-closed on scope. When private inference
+                // is unavailable, retain a cited private scaffold so the shared
+                // router may continue with only its fixed identity-free generic
+                // planning capsule. Raw SOW/GSD text and identities stay private.
                 answer = DeterministicEvidenceAnswer(
                     answerRunId,
                     query,
@@ -765,28 +770,99 @@ public sealed class PulseAiPrivateRagService
         var citations = Citations(retrieval.Chunks);
         if (flowHive)
         {
-            var plan = new PulseAiPrivateFlowHivePlan(
-                Objective: "Prepare a reviewable project-plan draft from the authorized project documents.",
-                Tasks: retrieval.Chunks.Take(8).Select((chunk, index) => new PulseAiPrivateFlowHiveTask(
+            var tasks = retrieval.Chunks.Take(8).Select((chunk, index) =>
+            {
+                var phase = DeterministicPlanningPhase(chunk, index);
+                return new PulseAiPrivateFlowHiveTask(
                     Wbs: $"{index + 1}.0",
-                    Name: chunk.SectionTitle.Length > 0 ? chunk.SectionTitle : $"Review {chunk.DocumentCategory.ToUpperInvariant()} evidence",
-                    Description: "Engineering and the Project Manager must convert this cited scope evidence into a validated task, duration, dependency, and acceptance definition.",
-                    EstimatedDurationDays: 1m,
+                    Name: chunk.SectionTitle.Length > 0
+                        ? chunk.SectionTitle
+                        : $"Review {chunk.DocumentCategory.ToUpperInvariant()} evidence",
+                    Description: "Convert this cited scope evidence into one controlled delivery work package with explicit prerequisites, ordered execution, objective outputs, validation evidence, measurable acceptance criteria, and accountable human review.",
+                    EstimatedDurationDays: phase == "Implement" ? 2m : 1m,
                     RequiredRoles: ["Project Manager", "Engineer"],
                     Predecessors: index == 0 ? [] : [$"{index}.0"],
                     CitationIds: [chunk.RankOrder],
-                    IsAssumption: true)).ToArray(),
-                Milestones: [],
-                Dependencies: ["Dependencies require deterministic FlowHive scheduling and Engineering validation."],
+                    IsAssumption: true,
+                    Phase: phase,
+                    DetailedSteps: DeterministicPlanningSteps(phase),
+                    Inputs:
+                    [
+                        "Current authorized citation and its approved scope boundary.",
+                        "Confirmed access, decisions, dependencies, change controls, and review criteria required for this work package."
+                    ],
+                    Outputs:
+                    [
+                        $"{phase} work-package deliverable or objective evidence record.",
+                        "Updated decision, exception, dependency, risk, and follow-up record for unresolved items."
+                    ],
+                    AcceptanceCriteria:
+                    [
+                        "The Project Manager and Engineering reviewer confirm that the output is traceable to the cited scope and contains no unsupported commitment.",
+                        "Every prerequisite, exception, failed validation, and open item has an accountable owner and review disposition."
+                    ],
+                    ValidationSteps:
+                    [
+                        "Compare the produced output with the cited scope, approved prerequisites, and measurable acceptance criteria.",
+                        "Retain objective evidence, record exceptions without hiding them, and repeat affected checks after an authorized correction."
+                    ],
+                    CustomerResponsibilities:
+                    [
+                        "Provide the decisions, access, information, review responses, and acceptance participation required by the approved scope."
+                    ],
+                    UsSignalResponsibilities:
+                    [
+                        "Perform only the authorized delivery activity, preserve objective evidence, and escalate missing prerequisites or scope conflicts rather than assuming them."
+                    ],
+                    Prerequisites:
+                    [
+                        "The governing citation remains current, authorized, and applicable to this work package.",
+                        "Required access, backups, approvals, dependencies, communications, and rollback controls are available before execution."
+                    ],
+                    Risks:
+                    [
+                        "A deterministic scaffold can omit technical nuance and therefore requires Engineering review before adoption.",
+                        "Missing access, decisions, evidence, dependencies, or acceptance measures can delay work and must be escalated."
+                    ],
+                    OpenQuestions:
+                    [
+                        "Which source-backed technical details, owners, dependencies, or acceptance measures still require confirmation?",
+                        "Which assumptions must become verified facts before this work package is scheduled or adopted?"
+                    ],
+                    EstimatedHours: phase == "Implement" ? 16m : 8m,
+                    Priority: "normal");
+            }).ToArray();
+            var plan = new PulseAiPrivateFlowHivePlan(
+                Objective: "Prepare a comprehensive, reviewable project-plan draft from current authorized evidence while preserving source citations, scope boundaries, deterministic scheduling, and required human approval.",
+                Tasks: tasks,
+                Milestones: DeterministicPlanningMilestones(retrieval.Chunks),
+                Dependencies:
+                [
+                    "The deterministic FlowHive schedule establishes executable predecessor relationships after PM and Engineering review.",
+                    "A task cannot advance while a cited prerequisite, required decision, access dependency, or acceptance condition remains unresolved."
+                ],
                 RequiredRoles: ["Project Manager", "Engineer"],
-                Assumptions: ["Durations are placeholders until Engineering reviews the cited source evidence."],
-                Risks: ["The approved private model was unavailable, so the deterministic draft is intentionally limited."],
-                OutOfScopeItems: [],
-                OpenQuestions: retrieval.MissingEvidence,
+                Assumptions:
+                [
+                    "Durations and effort are planning placeholders until Engineering validates the cited scope and technical complexity.",
+                    "Identity-free Claude/OpenAI guidance may improve generic delivery structure but cannot establish project scope, dates, completion, or customer commitments."
+                ],
+                Risks:
+                [
+                    "The approved private model was unavailable, so every generated detail requires PM and Engineering review.",
+                    "Generic external planning guidance may be incomplete for the private technical environment and is never treated as source evidence."
+                ],
+                OutOfScopeItems:
+                [
+                    "Any activity, deliverable, technical detail, date, or commitment not supported by current authorized citations remains out of scope until approved through governed change control."
+                ],
+                OpenQuestions: retrieval.MissingEvidence.Count > 0
+                    ? retrieval.MissingEvidence
+                    : ["Which source-backed details, owners, dependencies, or acceptance measures still require PM and Engineering confirmation?"],
                 Conflicts: retrieval.Conflicts,
                 CitationIds: retrieval.Chunks.Select(chunk => chunk.RankOrder).ToArray(),
                 Confidence: Math.Min(0.45m, retrieval.CoverageScore),
-                ConfidenceExplanation: "The deterministic fallback preserves citations but does not perform full private-model planning reasoning.");
+                ConfidenceExplanation: "The deterministic private fallback preserves citation-grounded scope and complete review fields. Identity-free external guidance remains supplementary and unverified, so confidence is capped until PM and Engineering validate the plan.");
             return new PulseAiPrivateRagAnswer(
                 answerRunId,
                 "partial",
@@ -801,7 +877,7 @@ public sealed class PulseAiPrivateRagService
                 null,
                 plan,
                 citations,
-                ["The approved private model was unavailable. This scaffold must not be treated as a complete project plan."],
+                ["The approved private model was unavailable. Celar AI preserved a citation-grounded scope scaffold while the shared router used only identity-free generic planning guidance. No raw SOW/GSD text, identity, date, environment detail, identifier, or commercial value left the private boundary; PM and Engineering review remains mandatory."],
                 retrieval.MissingEvidence,
                 retrieval.Conflicts,
                 retrieval.CoverageScore,
@@ -859,6 +935,91 @@ public sealed class PulseAiPrivateRagService
             retrieval.DataAsOf,
             query.CorrelationId,
             model.DiagnosticCode);
+    }
+
+    private static bool AllowsDeterministicCitedPlanningFallback(string featureCode) =>
+        featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan
+            or CelarAiCapabilityCatalog.ProjectForgePlanEstimate;
+
+    private static string DeterministicPlanningPhase(
+        PulseAiPrivateRetrievedChunk chunk,
+        int index)
+    {
+        var evidence = $"{chunk.SectionTitle} {chunk.CitationAnchor}".ToLowerInvariant();
+        if (new[] { "release", "handoff", "transition", "knowledge transfer", "closeout" }
+            .Any(value => evidence.Contains(value, StringComparison.Ordinal)))
+            return "Release";
+        if (new[] { "validate", "validation", "test", "testing", "verify", "acceptance", "uat", "remediation" }
+            .Any(value => evidence.Contains(value, StringComparison.Ordinal)))
+            return "Validate";
+        if (new[] { "design", "architecture", "workshop", "technical requirement", "solution" }
+            .Any(value => evidence.Contains(value, StringComparison.Ordinal)))
+            return "Design";
+        if (new[] { "plan", "planning", "discovery", "kickoff", "prerequisite", "readiness", "scope" }
+            .Any(value => evidence.Contains(value, StringComparison.Ordinal)))
+            return "Plan";
+        if (new[] { "implement", "configuration", "deployment", "migration", "integration", "install", "upgrade" }
+            .Any(value => evidence.Contains(value, StringComparison.Ordinal)))
+            return "Implement";
+        return new[] { "Plan", "Design", "Implement", "Validate", "Release" }[index % 5];
+    }
+
+    private static IReadOnlyList<string> DeterministicPlanningSteps(string phase) =>
+        phase switch
+        {
+            "Plan" =>
+            [
+                "Review the current authorized citation, scope boundaries, exclusions, responsibilities, assumptions, dependencies, and acceptance requirements before creating executable work.",
+                "Confirm accountable roles, required decisions, access, source artifacts, communications, change controls, scheduling constraints, and escalation paths without inventing unavailable facts.",
+                "Translate the supported outcome into a bounded work package, identify missing evidence and conflicts, and assign every unresolved prerequisite or decision for human follow-up.",
+                "Record the approved planning output, objective review evidence, exceptions, and authorization required before the work package advances to design."
+            ],
+            "Design" =>
+            [
+                "Translate the cited scope outcome into traceable functional, technical, security, operational, support, and acceptance requirements without expanding the approved boundary.",
+                "Document the proposed approach, dependencies, interfaces, assumptions, constraints, implementation sequence, validation method, rollback criteria, and required human decisions.",
+                "Review the design with the accountable Project Manager and Engineer, resolve or assign every conflict, and preserve the resulting decision and exception evidence.",
+                "Approve the design package only after prerequisites, acceptance measures, implementation controls, and validation evidence requirements are complete enough for execution."
+            ],
+            "Implement" =>
+            [
+                "Verify the approved design, access, backups, prerequisites, maintenance controls, communications, monitoring, dependency readiness, and rollback capability before the first change.",
+                "Perform the authorized implementation, configuration, migration, integration, installation, upgrade, or remediation activity in controlled stages traceable to the cited scope.",
+                "Capture objective evidence for each stage, document deviations and failed actions, and stop or escalate when a prerequisite, safety control, or scope boundary is not satisfied.",
+                "Record the implemented state, outstanding exceptions, follow-up actions, and readiness evidence required before formal validation begins."
+            ],
+            "Validate" =>
+            [
+                "Execute the approved technical, functional, security, operational, and regression checks that map directly to the cited acceptance requirements and implemented output.",
+                "Record passed and failed checks with objective evidence, determine ownership for every defect or exception, and avoid claiming success when evidence remains incomplete.",
+                "Apply only authorized corrections, repeat affected validation, and preserve before-and-after evidence plus any remaining risk, limitation, or deferred item.",
+                "Prepare the acceptance evidence package for Project Manager, Engineering, and required stakeholder review before the work advances to release."
+            ],
+            _ =>
+            [
+                "Finalize the approved configuration record, operating procedures, support information, known limitations, open risks, and role-appropriate knowledge-transfer material.",
+                "Confirm monitoring, support ownership, escalation paths, access, documentation, acceptance evidence, and operational readiness for the authorized transition.",
+                "Complete the handoff review, assign every unresolved action, and preserve evidence that the receiving owner understands responsibilities and limitations.",
+                "Close the work package only after deliverable status, acceptance evidence, exceptions, lessons learned, archival requirements, and required approvals are recorded."
+            ]
+        };
+
+    private static IReadOnlyList<PulseAiPrivateFlowHiveMilestone> DeterministicPlanningMilestones(
+        IReadOnlyList<PulseAiPrivateRetrievedChunk> chunks)
+    {
+        var supported = chunks.Take(5).ToArray();
+        var phases = new[] { "Plan", "Design", "Implement", "Validate", "Release" };
+        return phases.Select((phase, index) => new PulseAiPrivateFlowHiveMilestone(
+            Name: $"{phase} review gate",
+            Description: $"Confirm that the {phase.ToLowerInvariant()} work packages remain traceable to authorized evidence, contain complete review fields, and include no unsupported scope, date, or commitment before advancing.",
+            ProposedTiming: $"After completion and review of the {phase} work packages.",
+            AcceptanceEvidence:
+            [
+                "Objective work-package output and validation evidence are retained.",
+                "Every exception, risk, dependency, assumption, and open item has an accountable review disposition."
+            ],
+            CitationIds: [supported[Math.Min(index, supported.Length - 1)].RankOrder],
+            IsAssumption: true)).ToArray();
     }
 
     private static PulseAiPrivateRagAnswer InsufficientEvidence(
