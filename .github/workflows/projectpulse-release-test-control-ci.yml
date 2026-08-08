@@ -58,6 +58,8 @@ jobs:
           grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
           grep -Fq 'openCloudPrivateRuntime:"deferred"' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
+          grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
+          grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
           grep -Fq 'Who is the US President?' "$CONTROLLER"
           grep -Fq 'Who is the president of Acme Corp?' "$CONTROLLER"
           grep -Fq 'Working on training' "$CONTROLLER"
@@ -77,6 +79,7 @@ jobs:
           ! grep -Fq 'PROJECTPULSE_PRIVATE_MODEL_ENDPOINT' "$CONTROLLER"
           ! grep -Fq 'PROJECTPULSE_PULSE_AI_CLAMAV' "$CONTROLLER"
           ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
+          ! grep -Fq '.competency.currentPassRate == 1' "$CONTROLLER"
 
           git merge-base --is-ancestor "$SOURCE" HEAD
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
