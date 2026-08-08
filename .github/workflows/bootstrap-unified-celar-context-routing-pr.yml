@@ -51,8 +51,25 @@ jobs:
                   lines.append(line)
           script = '\n'.join(lines) + '\n'
 
+          # The carrier is nested inside YAML and then Python. Continuation
+          # lines of embedded triple-quoted source blocks therefore retain the
+          # four-space Python argument indent after the YAML indent is removed.
+          # Normalize that carrier-only indent once for every source block and
+          # remove the whitespace-only line before each closing delimiter.
+          def normalize_triple_literal(match):
+              content = match.group(1)
+              literal_lines = content.splitlines(keepends=True)
+              for index in range(1, len(literal_lines)):
+                  if literal_lines[index].startswith('    '):
+                      literal_lines[index] = literal_lines[index][4:]
+              if literal_lines and literal_lines[-1].strip() == '':
+                  literal_lines[-1] = ''
+              return "'''" + ''.join(literal_lines) + "'''"
+
+          script = re.sub(r"'''(.*?)'''", normalize_triple_literal, script, flags=re.DOTALL)
+
           marker_pattern = re.compile(
-              r"'''Require\(\n\s+!PulseAiSystemKnowledgeCatalog\.IsPulseScopedQuestion\(\"What is the capital of France\?\"\),\n\s+\"clearly public capital question is external eligible\"\);\n\s+'''"
+              r"'''Require\(\n\s+!PulseAiSystemKnowledgeCatalog\.IsPulseScopedQuestion\(\"What is the capital of France\?\"\),\n\s+\"clearly public capital question is external eligible\"\);\n\s*'''"
           )
           script, replacements = marker_pattern.subn(
               "'''Require(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion(\"What is the capital of France?\"),\n    \"clearly public capital question is external eligible\");\n'''",
