@@ -1,123 +1,231 @@
-/* Temporary source template used by the atomic Checkpoint A recovery. */
+/* Canonical shared presentation contract for routed ProjectPulse modules.
+   The semantic tokens come from enterprise-application-theme.css and retain
+   safe fallbacks when a component is rendered independently. */
+
 .projectpulse-module-standard {
-  --pp-module-navy: #102a43;
-  --pp-module-blue: #1261a0;
-  --pp-module-cyan: #00a6d6;
-  --pp-module-green: #75b843;
-  --pp-module-ink: #172b3a;
-  --pp-module-muted: #5c6f7d;
-  --pp-module-line: #d9e4ec;
-  --pp-module-surface: #ffffff;
+  --pp-module-navy: var(--uss-app-brand-navy, #06192b);
+  --pp-module-blue: var(--uss-app-brand-blue, #123f68);
+  --pp-module-cyan: var(--uss-app-brand-cyan, #13a8bf);
+  --pp-module-green: var(--uss-app-brand-green, #75b843);
+  --pp-module-ink: var(--uss-app-text, #172033);
+  --pp-module-muted: var(--uss-app-muted, #52627a);
+  --pp-module-line: var(--uss-app-border, #ced9e3);
+  --pp-module-line-strong: var(--uss-app-border-strong, #8798aa);
+  --pp-module-surface: var(--uss-app-surface, #ffffff);
+  --pp-module-surface-subtle: var(--uss-app-surface-subtle, #f4f7fb);
+  --pp-module-control: var(--uss-app-control, #ffffff);
   --pp-module-radius: 18px;
-  --pp-module-shadow: 0 16px 42px rgba(16, 42, 67, 0.09);
+  --pp-module-shadow: var(--uss-app-shadow-md, 0 16px 38px rgba(6, 25, 43, 0.16));
+  --panel-bg: var(--pp-module-surface);
+  --surface-color: var(--pp-module-surface);
+  --text-color: var(--pp-module-ink);
+  --muted-color: var(--pp-module-muted);
+  --border-color: var(--pp-module-line);
   position: relative;
   width: 100%;
   color: var(--pp-module-ink);
-  background: linear-gradient(180deg, rgba(0, 166, 214, 0.055), transparent 240px), var(--pp-module-surface);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pp-module-cyan) 5%, transparent), transparent 240px),
+    var(--pp-module-surface);
   border: 1px solid var(--pp-module-line);
   border-radius: var(--pp-module-radius);
   box-shadow: var(--pp-module-shadow);
   overflow: hidden;
 }
+
 .projectpulse-module-standard > header {
   position: relative;
-  min-height: 112px;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  min-height: 154px;
   margin: 0;
-  padding: clamp(1.25rem, 2.3vw, 2rem);
-  border-bottom: 1px solid var(--pp-module-line);
-  background: radial-gradient(circle at top right, rgba(117, 184, 67, 0.16), transparent 35%), linear-gradient(135deg, #f8fbfd, #eef7fb);
+  padding: clamp(1.15rem, 2.2vw, 1.6rem);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--pp-module-radius);
+  background:
+    radial-gradient(circle at 88% 12%, rgba(19, 168, 191, 0.34), transparent 33%),
+    linear-gradient(135deg, #06192b 0%, #123f68 58%, #0d6173 100%);
+  color: #ffffff;
+  box-shadow: var(--pp-module-shadow);
 }
-.projectpulse-module-standard > header h1 {
+
+.projectpulse-module-standard > header::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: -90px;
+  bottom: -140px;
+  width: 340px;
+  height: 340px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.projectpulse-module-standard > header :is(h1, h2, h3) {
   margin-block: 0.22rem 0.45rem;
-  color: var(--pp-module-navy);
-  font-size: clamp(1.55rem, 2.6vw, 2.25rem);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  color: #ffffff;
+  font-size: clamp(1.55rem, 2.6vw, 2.3rem);
+  line-height: 1.12;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
 }
+
 .projectpulse-module-standard > header p {
   max-width: 78ch;
-  color: var(--pp-module-muted);
-  line-height: 1.55;
+  color: #d9e8f2;
+  line-height: 1.58;
 }
+
 .projectpulse-module-standard .projectpulse-module-standard__logo {
   display: block;
   width: min(142px, 34vw);
   height: auto;
   margin: 0 0 0.75rem;
+  padding: 0.42rem;
   object-fit: contain;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
 }
-.projectpulse-module-standard :is(.eyebrow, [class*="__eyebrow"], [class$="-eyebrow"]) {
+
+.projectpulse-module-standard :is(.eyebrow, [class*='__eyebrow'], [class$='-eyebrow']) {
   color: var(--pp-module-blue);
   font-size: 0.73rem;
   font-weight: 800;
   letter-spacing: 0.095em;
   text-transform: uppercase;
 }
-.projectpulse-module-standard :is(section, article, [class*="-card"], [class*="__section"]) {
+
+.projectpulse-module-standard > header
+  :is(.eyebrow, [class*='__eyebrow'], [class$='-eyebrow']) {
+  color: #8ee8f2 !important;
+}
+
+.projectpulse-module-standard :is(section, article, [class*='-card'], [class*='__section']) {
   border-color: var(--pp-module-line);
 }
+
 .projectpulse-module-standard :is(button, .primary-action, .secondary-action) {
   min-height: 38px;
   border-radius: 10px;
   font: inherit;
   font-weight: 700;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
+
 .projectpulse-module-standard button:not(:disabled):hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(16, 42, 67, 0.12);
 }
+
+.projectpulse-module-standard > header button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.projectpulse-module-standard > header button:is(
+  .primary-action,
+  [class*='primary'],
+  [data-variant='primary']
+) {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: var(--pp-module-navy);
+}
+
+.projectpulse-module-standard > header button:disabled {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5f4fa;
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
 .projectpulse-module-standard button:focus-visible,
 .projectpulse-module-standard input:focus-visible,
 .projectpulse-module-standard select:focus-visible,
 .projectpulse-module-standard textarea:focus-visible {
-  outline: 3px solid rgba(0, 166, 214, 0.24);
+  outline: 3px solid color-mix(in srgb, var(--uss-app-focus, #0078b9) 42%, transparent);
   outline-offset: 2px;
 }
+
 .projectpulse-module-standard :is(input, select, textarea) {
   min-height: 40px;
-  border: 1px solid #c8d7e2;
+  border: 1px solid var(--pp-module-line-strong);
   border-radius: 10px;
-  background: #fff;
+  background: var(--pp-module-control);
   color: var(--pp-module-ink);
   font: inherit;
 }
+
+.projectpulse-module-standard :is(input, textarea)::placeholder {
+  color: var(--pp-module-muted);
+  opacity: 1;
+}
+
 .projectpulse-module-standard textarea {
   min-height: 108px;
   resize: vertical;
 }
+
 .projectpulse-module-standard label > span {
-  color: var(--pp-module-navy);
+  color: var(--pp-module-ink);
   font-size: 0.82rem;
   font-weight: 750;
 }
+
 .projectpulse-module-standard table {
   width: 100%;
+  color: var(--pp-module-ink);
   border-collapse: separate;
   border-spacing: 0;
 }
+
 .projectpulse-module-standard thead th {
-  background: #edf5f9;
-  color: var(--pp-module-navy);
+  background: var(--pp-module-surface-subtle);
+  color: var(--pp-module-ink);
   font-size: 0.73rem;
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
+
 .projectpulse-module-standard :is(th, td) {
   border-bottom: 1px solid var(--pp-module-line);
   padding: 0.72rem 0.8rem;
   text-align: left;
   vertical-align: top;
 }
+
 .projectpulse-module-standard tbody tr:hover {
-  background: rgba(0, 166, 214, 0.035);
+  background: color-mix(in srgb, var(--pp-module-cyan) 5%, transparent);
 }
-@media (max-width: 720px) {
+
+:root[data-theme='dark'] .projectpulse-module-standard,
+body[data-theme='dark'] .projectpulse-module-standard {
+  color-scheme: dark;
+}
+
+@media (max-width: 760px) {
   .projectpulse-module-standard {
     border-radius: 14px;
   }
+
   .projectpulse-module-standard > header {
     min-height: auto;
-    padding: 1.1rem;
+    padding: 1rem;
+    border-radius: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projectpulse-module-standard :is(button, .primary-action, .secondary-action) {
+    transition: none;
   }
 }
