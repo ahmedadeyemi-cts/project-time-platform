@@ -44,6 +44,8 @@ const [
   optionalText(paths.persistence), optionalText(paths.evaluator), text(paths.css), text(paths.dynamicCss), optionalText(paths.project)
 ]);
 
+const navigationPolicy = await text('src/frontend/project-time-web/src/module-navigation-access-policy.js');
+
 requireAll(ui, [
   'Module 012',
   'Role-Based Access Control',
@@ -185,8 +187,14 @@ requireAll(navigation, [
   'installPermissionNavigationGuard',
   "nativeFetch('/api/rbac/v1/bootstrap'",
   "nativeFetch('/api/rbac/v1/matrix'",
-  "actionCode || '').toUpperCase() === 'MODULE_ACCESS'",
-  "grantEffect || '').toUpperCase() === 'DENY'",
+  "nativeFetch('/api/rbac/v1/modules?includeInactive=true'",
+  'resolveModuleNavigationAccess',
+  'const sequence = ++refreshSequence;',
+  'sequence !== refreshSequence',
+  "window.addEventListener('hashchange', applyVisibility);",
+  'inactiveDynamicModuleNumbers',
+  'legacyFallbackModuleNumbers',
+  'unregisteredLegacyModuleNumbers',
   "window.location.hash = '#dashboard'",
   "const SUPER_ADMINISTRATOR_ROLE_CODES = new Set(['SUPER_ADMINISTRATOR', 'ADMINISTRATOR']);",
   'const actualSuperAdministrator = !viewAs',
@@ -195,6 +203,21 @@ requireAll(navigation, [
   'permanentFullControl: actualSuperAdministrator',
   "headers['X-ProjectPulse-View-As-User']"
 ], 'No Access navigation enforcement');
+
+rejectAll(navigation, [
+  '!activeModuleNumbers.has(number)',
+  "window.addEventListener('hashchange', () => {\n    applyVisibility();\n    void refreshPermissions();"
+], 'View-As navigation false-deny and refresh-race contract');
+
+requireAll(navigationPolicy, [
+  "canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'",
+  "effect === 'DENY'",
+  'explicitDeniedModuleNumbers.add(moduleCode)',
+  'inactiveDynamicModuleNumbers',
+  'legacyFallbackModuleNumbers',
+  'unregisteredLegacyModuleNumbers',
+  'actualSessionPermanentFullControl'
+], 'Shared View-As module navigation policy');
 
 requireAll(compatibility, [
   "SCOPED_RBAC_CATALOG_PATH = '/api/role-policy/catalog'",

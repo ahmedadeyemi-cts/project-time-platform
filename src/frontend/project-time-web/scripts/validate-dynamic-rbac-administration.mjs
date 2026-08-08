@@ -248,4 +248,6 @@ validateWhenPresent(group2aWorkflow, (source) => requireAll(source, [
   'Build complete frontend production bundle'
 ], 'Group 2A regression workflow'), 'Group 2A regression workflow');
 
-console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=react-owned-name-only');
+await import('./validate-view-as-module-navigation.mjs');
+
+console.log('DYNAMIC_RBAC_ADMINISTRATION_PACKAGE=PASS moduleCounts=69,70,71 superAdmin=permanent-full-control group2a=preserved moreMenu=react-owned-name-only viewAsNavigation=continuous');
