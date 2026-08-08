@@ -87,12 +87,35 @@ jobs:
 
           bash /tmp/apply-view-as-systemwide.sh
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-view-as-module-navigation.mjs')
+          validator_text = validator.read_text()
+          invalid_assertion = """assert(directory.includes('permissionPending: navigationState === 'loading''), 'Directory Open actions must pause during effective-user verification.');"""
+          valid_assertion = """assert(directory.includes("permissionPending: navigationState === 'loading'"), 'Directory Open actions must pause during effective-user verification.');"""
+          if validator_text.count(invalid_assertion) != 1:
+              raise SystemExit('The expected View-As validator quote defect was not found exactly once.')
+          validator.write_text(validator_text.replace(invalid_assertion, valid_assertion, 1))
+
+          directory_validator = Path('src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs')
+          directory_text = directory_validator.read_text()
+          invalid_token = """    'permissionPending: navigationState === 'loading'',"""
+          valid_token = """    "permissionPending: navigationState === 'loading'","""
+          if invalid_token in directory_text:
+              if directory_text.count(invalid_token) != 1:
+                  raise SystemExit('The Modules directory validator quote defect was not unique.')
+              directory_text = directory_text.replace(invalid_token, valid_token, 1)
+          directory_validator.write_text(directory_text)
+          PY
+
       - name: Validate focused systemwide contracts
         working-directory: src/frontend/project-time-web
         run: |
           node --check src/module-navigation-access-policy.js
           node --check src/module-availability-bridge.js
           node --check scripts/validate-view-as-module-navigation.mjs
+          node --check scripts/validate-modules-directory-page.mjs
           node scripts/validate-view-as-module-navigation.mjs
           node scripts/validate-dynamic-rbac-administration.mjs
           node scripts/validate-module-012-scoped-role-admin.mjs
