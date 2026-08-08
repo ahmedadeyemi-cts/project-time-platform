@@ -82,7 +82,7 @@ jobs:
           python3 - <<'PY'
           import subprocess
 
-          source_files = {
+          production_files = {
               'src/frontend/project-time-web/src/module-availability-bridge.js',
               'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
               'src/frontend/project-time-web/src/module-availability.css',
@@ -94,13 +94,18 @@ jobs:
               'tests/test-view-as-route-authority-migration-082.sh',
               'docs/security/VIEW-AS-ROUTE-CONTINUITY.md',
           }
-          required = source_files - {'src/frontend/project-time-web/package-lock.json'}
+          temporary_publishers = {
+              '.github/workflows/bootstrap-view-as-route-continuity-systemwide.yml',
+              '.github/workflows/bootstrap-view-as-route-continuity-pr.yml',
+          }
+          allowed = production_files | temporary_publishers
+          required = production_files - {'src/frontend/project-time-web/package-lock.json'}
           changed = {
               line[3:]
               for line in subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
               if len(line) >= 4
           }
-          unexpected = changed - source_files
+          unexpected = changed - allowed
           if unexpected:
               raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
           missing = required - changed
