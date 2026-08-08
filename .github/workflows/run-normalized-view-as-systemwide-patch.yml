@@ -173,6 +173,189 @@ jobs:
           '''
           script = script[:enforce_start] + targeted_enforce + script[enforce_end:]
 
+          # The top-level directory mutations are valid. Replace the remaining
+          # component-indented mutation calls with exact line-encoded JSX.
+          portal_component_start_marker = "insert_after_once(\n    portal,\n    '''  useEffect(() => {"
+          portal_component_end_marker = "css = 'src/frontend/project-time-web/src/module-availability.css'"
+          portal_component_start = script.index(portal_component_start_marker)
+          portal_component_end = script.index(portal_component_end_marker, portal_component_start)
+          targeted_portal = '''portal_path = root / portal
+          portal_text = portal_path.read_text()
+
+          def replace_portal(text, label, old_lines, new_lines):
+              old = "\\n".join(old_lines)
+              new = "\\n".join(new_lines)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'ModulesDirectoryPortal.jsx: {label} count={count}')
+              return text.replace(old, new, 1)
+
+          hash_effect = [
+              "  useEffect(() => {",
+              "    const handleHashChange = () => setRoute(currentRoute());",
+              "    window.addEventListener('hashchange', handleHashChange);",
+              "    return () => window.removeEventListener('hashchange', handleHashChange);",
+              "  }, []);",
+          ]
+          authority_effect = [
+              "",
+              "  useEffect(() => {",
+              "    const updateAuthority = (event) => {",
+              "      const next = event?.detail && typeof event.detail === 'object'",
+              "        ? event.detail",
+              "        : readEffectiveNavigationAuthority();",
+              "      setNavigationAuthority(next);",
+              "    };",
+              "    updateAuthority();",
+              "    window.addEventListener('projectpulse:permission-navigation-updated', updateAuthority);",
+              "    return () => window.removeEventListener('projectpulse:permission-navigation-updated', updateAuthority);",
+              "  }, []);",
+          ]
+          portal_text = replace_portal(
+              portal_text,
+              'effective navigation listener',
+              hash_effect,
+              hash_effect + authority_effect
+          )
+
+          portal_text = replace_portal(
+              portal_text,
+              'enriched modules',
+              [
+                  "  const enrichedModules = useMemo(",
+                  "    () => directoryModules.map((module) => effectiveModuleState(module, availability)),",
+                  "    [directoryModules, availability]",
+                  "  );",
+              ],
+              [
+                  "  const enrichedModules = useMemo(",
+                  "    () => directoryModules.map((module) => effectiveModuleState(module, availability, navigationAuthority)),",
+                  "    [directoryModules, availability, navigationAuthority]",
+                  "  );",
+              ]
+          )
+
+          portal_text = replace_portal(
+              portal_text,
+              'visible module denial filter',
+              [
+                  "    return enrichedModules.filter((module) => {",
+                  "      if (availability.loaded && !isSuperAdministrator && !module.isEnabled) return false;",
+              ],
+              [
+                  "    return enrichedModules.filter((module) => {",
+                  "      if (module.permissionDenied) return false;",
+                  "      if (availability.loaded && !isSuperAdministrator && !module.isEnabled) return false;",
+              ]
+          )
+
+          portal_text = replace_portal(
+              portal_text,
+              'group denial filter',
+              [
+                  "      enrichedModules",
+                  "        .filter((module) => !availability.loaded || isSuperAdministrator || module.isEnabled)",
+                  "        .map((module) => module.group)",
+              ],
+              [
+                  "      enrichedModules",
+                  "        .filter((module) => !module.permissionDenied)",
+                  "        .filter((module) => !availability.loaded || isSuperAdministrator || module.isEnabled)",
+                  "        .map((module) => module.group)",
+              ]
+          )
+
+          portal_text = replace_portal(
+              portal_text,
+              'effective user notice',
+              [
+                  "      {availability.access?.isViewAs ? (",
+                  "        <div className=\"module-availability-notice warning\">View-As is read-only. Exit preview to change module availability.</div>",
+                  "      ) : null}",
+                  "      {statusMessage ? <div className=\"module-availability-notice success\">{statusMessage}</div> : null}",
+              ],
+              [
+                  "      {availability.access?.isViewAs ? (",
+                  "        <div className=\"module-availability-notice warning\">View-As is read-only. Exit preview to change module availability.</div>",
+                  "      ) : null}",
+                  "      {navigationAuthority.state === 'loading' ? (",
+                  "        <div className=\"module-availability-notice warning\" role=\"status\">",
+                  "          Checking module access for the current effective user. Open actions are paused until verification completes.",
+                  "        </div>",
+                  "      ) : navigationAuthority.state === 'unavailable' ? (",
+                  "        <div className=\"module-availability-notice warning\" role=\"status\">",
+                  "          The optional navigation catalog is unavailable. Existing server endpoint authorization remains authoritative, and Pulse will not redirect this View-As session to Dashboard.",
+                  "        </div>",
+                  "      ) : null}",
+                  "      {statusMessage ? <div className=\"module-availability-notice success\">{statusMessage}</div> : null}",
+              ]
+          )
+
+          portal_text = replace_portal(
+              portal_text,
+              'Open module action',
+              [
+                  "                {/* MODULE_065_REACT_OWNED_OPEN_ACTION */}",
+                  "                {module.moduleNumber === '065' ? (",
+                  "                  <button",
+                  "                    type=\"button\"",
+                  "                    className=\"modules-directory-open-link modules-directory-open-button\"",
+                  "                    aria-label={`Open Module ${module.moduleNumber} — ${module.label}`}",
+                  "                    onClick={() => { window.location.hash = module.route; }}",
+                  "                  >",
+                  "                    Open module →",
+                  "                  </button>",
+                  "                ) : (",
+                  "                  <a",
+                  "                    className=\"modules-directory-open-link\"",
+                  "                    data-module-open-route={module.route}",
+                  "                    href={module.href || `#${module.route}`}",
+                  "                    aria-label={`Open Module ${module.moduleNumber} — ${module.label}`}",
+                  "                  >",
+                  "                    Open module →",
+                  "                  </a>",
+                  "                )}",
+              ],
+              [
+                  "                {/* MODULE_065_REACT_OWNED_OPEN_ACTION */}",
+                  "                {module.permissionPending ? (",
+                  "                  <button",
+                  "                    type=\"button\"",
+                  "                    className=\"modules-directory-open-link modules-directory-open-button\"",
+                  "                    data-module-open-route={module.route}",
+                  "                    disabled",
+                  "                    aria-label={`Access verification pending for Module ${module.moduleNumber} — ${module.label}`}",
+                  "                  >",
+                  "                    Checking access…",
+                  "                  </button>",
+                  "                ) : module.moduleNumber === '065' ? (",
+                  "                  <button",
+                  "                    type=\"button\"",
+                  "                    className=\"modules-directory-open-link modules-directory-open-button\"",
+                  "                    data-module-open-route={module.route}",
+                  "                    aria-label={`Open Module ${module.moduleNumber} — ${module.label}`}",
+                  "                    onClick={() => { window.location.hash = module.route; }}",
+                  "                  >",
+                  "                    Open module →",
+                  "                  </button>",
+                  "                ) : (",
+                  "                  <a",
+                  "                    className=\"modules-directory-open-link\"",
+                  "                    data-module-open-route={module.route}",
+                  "                    href={module.href || `#${module.route}`}",
+                  "                    aria-label={`Open Module ${module.moduleNumber} — ${module.label}`}",
+                  "                  >",
+                  "                    Open module →",
+                  "                  </a>",
+                  "                )}",
+              ]
+          )
+
+          portal_path.write_text(portal_text)
+
+          '''
+          script = script[:portal_component_start] + targeted_portal + script[portal_component_end:]
+
           script = script.replace(
               'raise SystemExit(f"{relative}: expected one replacement target, found {count}")',
               'raise SystemExit(f"{relative}: expected one replacement target, found {count}; marker={old.splitlines()[0]!r}")'
