@@ -1,0 +1,417 @@
+.celar-ai-architecture-catalog {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.35rem;
+  color: var(--text-primary, #17233a);
+}
+
+.celar-ai-architecture-catalog__heading,
+.celar-ai-runtime-topology__heading,
+.celar-ai-component-group__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.celar-ai-architecture-catalog__heading p,
+.celar-ai-runtime-topology__heading p {
+  margin: 0 0 .28rem;
+  color: #1769aa;
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.celar-ai-architecture-catalog__heading h3,
+.celar-ai-runtime-topology__heading h3,
+.celar-ai-component-group__heading h4 {
+  margin: 0;
+  color: inherit;
+}
+
+.celar-ai-architecture-catalog__heading > div:first-child > span {
+  display: block;
+  max-width: 76ch;
+  margin-top: .45rem;
+  color: var(--text-secondary, #52637a);
+  line-height: 1.55;
+}
+
+.celar-ai-architecture-catalog__meta {
+  display: grid;
+  flex: 0 0 auto;
+  gap: .2rem;
+  justify-items: end;
+  text-align: right;
+}
+
+.celar-ai-architecture-catalog__meta span {
+  color: var(--text-secondary, #627188);
+  font-size: .78rem;
+}
+
+.celar-ai-architecture-catalog__meta button {
+  margin-top: .35rem;
+  padding: .48rem .72rem;
+  border: 1px solid #b9c8d8;
+  border-radius: .55rem;
+  background: var(--surface, #fff);
+  color: #1769aa;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.celar-ai-architecture-catalog__notice {
+  padding: .78rem .95rem;
+  border: 1px solid #b8d6ef;
+  border-radius: .72rem;
+  background: #f2f8fd;
+  color: #244b6a;
+  font-size: .86rem;
+  line-height: 1.48;
+}
+
+.celar-ai-architecture-catalog__notice.is-warning {
+  border-color: #e8c888;
+  background: #fff9ed;
+  color: #744c0e;
+}
+
+.celar-ai-runtime-topology {
+  padding: 1rem;
+  border: 1px solid #cbd7e4;
+  border-radius: .9rem;
+  background: linear-gradient(145deg, #f8fbfe, #eef5fa);
+}
+
+.celar-ai-runtime-topology__badge {
+  flex: 0 0 auto;
+  padding: .38rem .62rem;
+  border: 1px solid #d4a450;
+  border-radius: 999px;
+  background: #fff8e8;
+  color: #79500e;
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+.celar-ai-runtime-flow {
+  display: grid;
+  grid-template-columns: minmax(13rem, .85fr) minmax(8rem, .35fr) minmax(24rem, 1.5fr);
+  gap: .8rem;
+  align-items: stretch;
+  margin-top: 1rem;
+}
+
+.celar-ai-runtime-flow__current,
+.celar-ai-runtime-flow__vm,
+.celar-ai-runtime-worker-boundary {
+  display: grid;
+  gap: .65rem;
+}
+
+.celar-ai-runtime-flow__current,
+.celar-ai-runtime-flow__vm {
+  padding: .75rem;
+  border: 1px solid #b9cce0;
+  border-radius: .8rem;
+  background: rgba(255, 255, 255, .86);
+}
+
+.celar-ai-runtime-flow__vm {
+  border-style: dashed;
+  border-width: 2px;
+  border-color: #3a8b65;
+  background: #f1f8f4;
+}
+
+.celar-ai-runtime-flow__vm-heading .celar-ai-runtime-node {
+  border-color: #3a8b65;
+}
+
+.celar-ai-runtime-flow__containers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.celar-ai-runtime-flow__vm > p {
+  margin: 0;
+  color: #39634f;
+  font-size: .75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.celar-ai-runtime-flow__connector {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  color: #53718c;
+  text-align: center;
+}
+
+.celar-ai-runtime-flow__connector span {
+  max-width: 12ch;
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.celar-ai-runtime-flow__connector i {
+  color: #1769aa;
+  font-size: 2.2rem;
+  font-style: normal;
+  line-height: 1;
+}
+
+.celar-ai-runtime-node {
+  display: grid;
+  gap: .22rem;
+  padding: .7rem;
+  border: 1px solid #98bddd;
+  border-radius: .65rem;
+  background: #fff;
+  min-width: 0;
+}
+
+.celar-ai-runtime-node > span {
+  color: #1769aa;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.celar-ai-runtime-node > strong {
+  overflow-wrap: anywhere;
+  font-size: .88rem;
+  line-height: 1.25;
+}
+
+.celar-ai-runtime-node > small {
+  color: var(--text-secondary, #5e6d80);
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.celar-ai-runtime-node.is-compact {
+  padding: .58rem;
+}
+
+.celar-ai-runtime-node.is-planned,
+.celar-ai-runtime-node.is-deferred {
+  border-style: dashed;
+  border-color: #4f9d73;
+}
+
+.celar-ai-runtime-node.is-planned > span { color: #21744b; }
+.celar-ai-runtime-node.is-deferred > span { color: #9a6214; }
+
+.celar-ai-runtime-worker-boundary {
+  grid-template-columns: minmax(14rem, .65fr) 1.35fr;
+  align-items: center;
+  margin-top: .75rem;
+  padding: .72rem;
+  border: 1px dashed #d2a14a;
+  border-radius: .72rem;
+  background: #fff9ed;
+}
+
+.celar-ai-runtime-worker-boundary > p {
+  margin: 0;
+  color: #6f501b;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+
+.celar-ai-component-group {
+  display: grid;
+  gap: .7rem;
+}
+
+.celar-ai-component-group__heading {
+  align-items: center;
+}
+
+.celar-ai-component-group__heading span {
+  color: var(--text-secondary, #607086);
+  font-size: .78rem;
+}
+
+.celar-ai-component-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: .8rem;
+}
+
+.celar-ai-component-card {
+  display: grid;
+  align-content: start;
+  gap: .58rem;
+  padding: .9rem;
+  border: 1px solid #c8d5e2;
+  border-top: 4px solid #1769aa;
+  border-radius: .75rem;
+  background: var(--surface, #fff);
+  box-shadow: 0 8px 20px rgba(23, 48, 75, .06);
+}
+
+.celar-ai-component-card.is-planned { border-top-color: #2d8b59; }
+.celar-ai-component-card.is-deferred { border-top-color: #c48624; }
+.celar-ai-component-card.is-optional { border-top-color: #7755b7; }
+.celar-ai-component-card.is-future { border-top-color: #64758b; }
+
+.celar-ai-component-card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .55rem;
+}
+
+.celar-ai-component-card__heading span,
+.celar-ai-component-card__heading small {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.celar-ai-component-card__heading span { color: #1769aa; }
+.celar-ai-component-card.is-planned .celar-ai-component-card__heading span { color: #21744b; }
+.celar-ai-component-card.is-deferred .celar-ai-component-card__heading span { color: #9a6214; }
+.celar-ai-component-card__heading small { color: var(--text-secondary, #65758a); }
+
+.celar-ai-component-card h4,
+.celar-ai-component-card p,
+.celar-ai-component-card dl,
+.celar-ai-component-card details p {
+  margin: 0;
+}
+
+.celar-ai-component-card h4 { font-size: 1rem; line-height: 1.3; }
+.celar-ai-component-card > p { color: var(--text-secondary, #53657a); font-size: .82rem; line-height: 1.5; }
+
+.celar-ai-component-card dl {
+  display: grid;
+  gap: .35rem;
+  padding-top: .15rem;
+}
+
+.celar-ai-component-card dl > div {
+  display: grid;
+  grid-template-columns: 6.3rem 1fr;
+  gap: .45rem;
+  align-items: start;
+}
+
+.celar-ai-component-card dt { color: #64758a; font-size: .72rem; font-weight: 750; }
+.celar-ai-component-card dd { margin: 0; color: inherit; font-size: .76rem; overflow-wrap: anywhere; }
+
+.celar-ai-component-card details {
+  padding-top: .4rem;
+  border-top: 1px solid #dde5ed;
+}
+
+.celar-ai-component-card summary,
+.celar-ai-component-optional > summary,
+.celar-ai-architecture-manager > summary {
+  color: #1769aa;
+  font-size: .8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.celar-ai-component-card details p {
+  margin-top: .45rem;
+  color: var(--text-secondary, #53657a);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.celar-ai-component-optional,
+.celar-ai-architecture-manager {
+  padding: .9rem;
+  border: 1px solid #c9d6e3;
+  border-radius: .75rem;
+  background: var(--surface, #fff);
+}
+
+.celar-ai-component-optional[open] > summary,
+.celar-ai-architecture-manager[open] > summary {
+  margin-bottom: .85rem;
+}
+
+.celar-ai-architecture-manager__boundary {
+  display: flex;
+  gap: .55rem;
+  margin-bottom: .85rem;
+  padding: .7rem .8rem;
+  border: 1px solid #e3c47f;
+  border-radius: .65rem;
+  background: #fff9ed;
+  color: #6e4c13;
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.celar-ai-architecture-manager .native-module-administration {
+  margin: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 980px) {
+  .celar-ai-runtime-flow { grid-template-columns: 1fr; }
+  .celar-ai-runtime-flow__connector { grid-template-columns: auto auto; gap: .4rem; }
+  .celar-ai-runtime-flow__connector span { max-width: none; }
+  .celar-ai-runtime-flow__connector i { transform: rotate(90deg); }
+}
+
+@media (max-width: 720px) {
+  .celar-ai-architecture-catalog__heading,
+  .celar-ai-runtime-topology__heading,
+  .celar-ai-runtime-worker-boundary {
+    grid-template-columns: 1fr;
+  }
+  .celar-ai-architecture-catalog__heading,
+  .celar-ai-runtime-topology__heading {
+    display: grid;
+  }
+  .celar-ai-architecture-catalog__meta { justify-items: start; text-align: left; }
+  .celar-ai-runtime-flow__containers { grid-template-columns: 1fr; }
+  .celar-ai-runtime-worker-boundary { display: grid; }
+  .celar-ai-component-grid { grid-template-columns: 1fr; }
+  .celar-ai-architecture-manager__boundary { display: grid; }
+}
+
+[data-theme="dark"] .celar-ai-runtime-topology,
+.dark .celar-ai-runtime-topology {
+  background: linear-gradient(145deg, #172334, #1d2d40);
+}
+
+[data-theme="dark"] .celar-ai-runtime-flow__current,
+.dark .celar-ai-runtime-flow__current,
+[data-theme="dark"] .celar-ai-runtime-node,
+.dark .celar-ai-runtime-node,
+[data-theme="dark"] .celar-ai-component-card,
+.dark .celar-ai-component-card,
+[data-theme="dark"] .celar-ai-component-optional,
+.dark .celar-ai-component-optional,
+[data-theme="dark"] .celar-ai-architecture-manager,
+.dark .celar-ai-architecture-manager {
+  background: #172334;
+}
+
+[data-theme="dark"] .celar-ai-runtime-flow__vm,
+.dark .celar-ai-runtime-flow__vm {
+  background: #173126;
+}
+
+[data-theme="dark"] .celar-ai-architecture-catalog__notice,
+.dark .celar-ai-architecture-catalog__notice {
+  background: #172f43;
+  color: #c9e5fa;
+}

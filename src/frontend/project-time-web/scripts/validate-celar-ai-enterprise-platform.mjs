@@ -32,6 +32,9 @@ const files = {
   enterprise: 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx',
   help: 'src/frontend/project-time-web/src/HelpAssistant.jsx',
   architecture: 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx',
+  architectureCatalog: 'src/frontend/project-time-web/src/CelarAiArchitectureCatalog.jsx',
+  architectureCatalogCss: 'src/frontend/project-time-web/src/celar-ai-architecture-catalog.css',
+  nativeAdministration: 'src/backend/ProjectTime.Api/Modules/Module064074NativeAdministration.cs',
   composer: 'src/frontend/project-time-web/src/CelarAiSolutionComposer.jsx',
   panel: 'src/frontend/project-time-web/src/WorkTaskBuilderPanel.jsx',
   chatInjector: 'src/frontend/project-time-web/scripts/inject-celar-ai-contextual-chat-workspace.mjs',
@@ -59,6 +62,8 @@ const targets = read(files.targets);
 const enterprise = read(files.enterprise);
 const help = read(files.help);
 const architecture = read(files.architecture);
+const architectureCatalog = read(files.architectureCatalog);
+const nativeAdministration = read(files.nativeAdministration);
 const composer = read(files.composer);
 const panel = read(files.panel);
 const chatInjector = read(files.chatInjector);
@@ -156,10 +161,20 @@ assert(
   'ARCHITECTURE_CONTEXT_FABRIC',
   moduleSource.includes('celar-ai-private-first-architecture-v5-context-fabric')
     && architecture.includes('Private content graph and retrieval')
-    && architecture.includes('Readiness-gated services · authoritative versions · governed fine-tuning lifecycle')
+    && architecture.includes('Managed component states · live readiness gates · authoritative versions · governed lifecycle')
     && architecture.includes('Confidence · freshness · policy · live decision trace')
     && architecture.includes('Self-monitoring adapters'),
   'Module 011 shows the current content, temporal, policy, decision-trace, private-adapter, and fine-tuning architecture'
+);
+assert(
+  'ARCHITECTURE_MANAGED_COMPONENT_CATALOG',
+  architecture.includes('<CelarAiArchitectureCatalog />')
+    && architectureCatalog.includes("'/api/native-administration/011/document'")
+    && architectureCatalog.includes('No private-runtime activation performed')
+    && ['ollama', 'tesseract-5', 'clamav'].every((component) => architectureCatalog.includes(`'${component}'`))
+    && nativeAdministration.includes('["011"] = new(')
+    && nativeAdministration.includes('CelarAiArchitectureDocument'),
+  'Module 011 versions editable component names while clearly separating deployed and deferred OpenCloud services'
 );
 assert('ENTERPRISE_MOUNT', panel.includes("import CelarAiEnterprisePlatform") && panel.includes('<CelarAiEnterprisePlatform />'), 'Module 011 mounts the enterprise platform before lifecycle workbenches');
 assert('COMPOSER_INTERFACE', composer.includes("'/api/celar-ai/v1/compose'") && composer.includes('Download SVG') && composer.includes('Mermaid source') && composer.includes('Fallback is automatic and governed by Module 064') && composer.includes('allowSanitizedExternalFallback: true'), 'composer supports private artifacts and diagrams while backend-managed fallback follows stored Module 064 order without an Engineer checkbox');

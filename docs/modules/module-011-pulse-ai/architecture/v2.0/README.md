@@ -33,6 +33,21 @@ The additional Azure private-runtime deployment is deferred until OpenCloud is a
 
 FlowHive continues to fail closed when citation-ready SOW evidence is unavailable. It may be enabled only after the OpenCloud runtime passes live malware scan, extraction/OCR, retrieval, approval, citation, and end-to-end plan-generation checks.
 
+## Module 011 managed component register
+
+The live Module 011 architecture view uses the same deployment boundary and
+adds an audited, administrator-managed component register. Display names,
+future model/version labels, placement, purpose, dependencies, and explanatory
+notes can be updated without rebuilding this document package. The register
+uses the existing migration 032 versioned native-administration storage and
+does not require or apply migration 081.
+
+The register must never be treated as a health probe. Ollama, Tesseract 5,
+ClamAV, the shared OpenCloud VM, and the private document worker remain labeled
+planned or deferred until their owning readiness evidence passes. Saving their
+names does not deploy them, configure them, or make FlowHive document grounding
+available.
+
 ## OpenCloud Test/UAT placement
 
 The approved starting topology uses one private Linux VM with separate OCI/Podman containers for:

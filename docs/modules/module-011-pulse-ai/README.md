@@ -17,6 +17,34 @@ The current internal-first question-routing and deterministic live-data
 resolver contract is documented in
 `CELAR-AI-INTERNAL-DATA-INTELLIGENCE.md`.
 
+## Managed Celar AI architecture catalog
+
+The current Module 011 experience pairs its accessible logical diagram with a
+versioned component catalog stored through the existing migration 032 native
+administration tables. Every authenticated Module 011 user can read the
+architecture. Only the actual Super Administrator or Administrator session may
+save or restore catalog revisions; View-As remains read-only.
+
+The catalog records non-secret architecture metadata only: display name,
+layer, lifecycle intent, planned placement, technology, version/model display
+label, readiness authority, dependencies, purpose, owner, and notes. It never
+stores provider credentials, bearer values, connection strings, or private
+endpoints, and saving a component record never activates infrastructure.
+
+The baseline explicitly distinguishes:
+
+- current Pulse application, internal-data intelligence, Module 064 routing,
+  PostgreSQL, and governed storage components;
+- the deferred Celar AI private document worker and unapplied migration 081;
+- the planned shared OpenCloud Test/UAT VM;
+- Ollama, Tesseract 5, and ClamAV as separate planned containers on that VM;
+- optional Claude/OpenAI reasoning through Module 064; and
+- the future boundary that may move Ollama to GPU-capable production compute.
+
+Architecture state is explanatory metadata, not live health evidence. The
+owning readiness API or deployment evidence remains authoritative before any
+component can be described as operational.
+
 ## Source checkpoint
 
 | Field | Value |

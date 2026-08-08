@@ -32,7 +32,14 @@ function formatTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
-export default function NativeModuleAdministrationPanel({ moduleNumber }) {
+export default function NativeModuleAdministrationPanel({
+  moduleNumber,
+  eyebrow = 'Native edit and save',
+  heading = '',
+  description = '',
+  addRecordLabel = 'Add record',
+  onDocumentChanged
+}) {
   const [schema, setSchema] = useState(null);
   const [document, setDocument] = useState(null);
   const [revision, setRevision] = useState(0);
@@ -151,6 +158,7 @@ export default function NativeModuleAdministrationPanel({ moduleNumber }) {
       setDocument(body.document || document);
       setRevision(Number(body.revision || revision));
       setMessage(`Saved revision ${body.revision}.`);
+      onDocumentChanged?.(body.document || document);
       await load();
     } catch (saveError) {
       setError(saveError?.message || 'The document could not be saved.');
@@ -170,6 +178,7 @@ export default function NativeModuleAdministrationPanel({ moduleNumber }) {
       const body = await readJson(response);
       if (!response.ok) throw new Error(asErrorMessage(body, 'The revision could not be restored.'));
       setMessage(`Restored as revision ${body.revision}.`);
+      onDocumentChanged?.(body.document || null);
       await load();
     } catch (restoreError) {
       setError(restoreError?.message || 'The revision could not be restored.');
@@ -250,10 +259,10 @@ export default function NativeModuleAdministrationPanel({ moduleNumber }) {
     <section className="native-module-administration projectpulse-module-standard" data-module-administration={moduleNumber}>
       <div className="native-admin-heading">
         <div>
-          <p className="eyebrow">Native edit and save</p>
-          <h2>{schema?.moduleName || `Module ${moduleNumber}`} management</h2>
+          <p className="eyebrow">{eyebrow}</p>
+          <h2>{heading || `${schema?.moduleName || `Module ${moduleNumber}`} management`}</h2>
           <p className="section-copy">
-            Saved changes are versioned in the ProjectPulse PostgreSQL application database and audited against the actual session. This surface does not activate Entra, Key Vault, AI-provider secrets, SMTP delivery, or any external system.
+            {description || 'Saved changes are versioned in the Pulse PostgreSQL application database and audited against the actual session. This surface does not activate Entra, Key Vault, AI-provider secrets, SMTP delivery, or any external system.'}
           </p>
         </div>
         <div className="native-admin-heading-actions">
@@ -293,7 +302,7 @@ export default function NativeModuleAdministrationPanel({ moduleNumber }) {
               <strong>{records.length} saved record{records.length === 1 ? '' : 's'}</strong>
               <small>Maximum 1,000 records per module document.</small>
             </div>
-            <button type="button" className="secondary-action" onClick={addRecord} disabled={!canManage || saving}>Add record</button>
+            <button type="button" className="secondary-action" onClick={addRecord} disabled={!canManage || saving}>{addRecordLabel}</button>
           </div>
 
           {records.length === 0 ? (
@@ -303,7 +312,7 @@ export default function NativeModuleAdministrationPanel({ moduleNumber }) {
               {records.map((record, index) => (
                 <article className="native-admin-record-card" key={record.id || record.planId || record.vendorId || record.alignmentId || index}>
                   <div className="native-admin-record-heading">
-                    <strong>Record {index + 1}</strong>
+                    <strong>{record.name || record.componentId || record.planName || record.vendorId || record.alignmentId || `Record ${index + 1}`}</strong>
                     <button type="button" className="danger-action" onClick={() => removeRecord(index)} disabled={!canManage || saving}>Remove</button>
                   </div>
                   <div className="native-admin-form-grid">

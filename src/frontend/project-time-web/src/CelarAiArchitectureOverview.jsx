@@ -1,4 +1,5 @@
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
+import CelarAiArchitectureCatalog from './CelarAiArchitectureCatalog.jsx';
 import './celar-ai-architecture-overview.css';
 
 function AtAGlance({ icon, title, children, tone }) {
@@ -19,7 +20,7 @@ export default function CelarAiArchitectureOverview() {
           <h2 id="celar-ai-architecture-title">Celar AI Architecture Overview</h2>
           <span>
             Celar AI is the unified operational intelligence system for the US Signal Solution Provider division.
-            This is the governed target architecture; the Module 011 readiness cards show which optional runtime services are active now.
+            The logical diagram explains the governed target. The managed component register below separates what is deployed now from what remains planned or deferred until OpenCloud.
           </span>
         </div>
         <a href="#system-architecture">Open system architecture</a>
@@ -83,8 +84,8 @@ export default function CelarAiArchitectureOverview() {
             <g filter="url(#celar-ai-shadow)">
               <rect className="diagram-node is-intelligence" x="175" y="350" width="850" height="88" rx="12" />
               <text className="diagram-node-title" x="600" y="377" textAnchor="middle">Celar AI private intelligence and context fabric</text>
-              <text className="diagram-node-subtitle" x="600" y="399" textAnchor="middle">Configured private RAG · inference · OCR · embeddings · deterministic tools · solution composer</text>
-              <text className="diagram-node-subtitle" x="600" y="420" textAnchor="middle">Readiness-gated services · authoritative versions · governed fine-tuning lifecycle</text>
+              <text className="diagram-node-subtitle" x="600" y="399" textAnchor="middle">Architecture targets: private RAG · inference · OCR · embeddings · deterministic tools · solution composer</text>
+              <text className="diagram-node-subtitle" x="600" y="420" textAnchor="middle">Managed component states · live readiness gates · authoritative versions · governed lifecycle</text>
             </g>
 
             <path className="diagram-line" markerEnd="url(#celar-ai-arrow)" d="M600 438 L600 452" />
@@ -144,6 +145,8 @@ export default function CelarAiArchitectureOverview() {
           </AtAGlance>
         </aside>
       </div>
+
+      <CelarAiArchitectureCatalog />
     </section>
   );
 }
