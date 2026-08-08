@@ -226,6 +226,8 @@ jobs:
           REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
           bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
           AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          SOURCE_COMMIT_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned application release.' >&2; exit 1; }
           jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$RUNNER_TEMP/private-runtime-after.json"
           diff -u "$RUNNER_TEMP/private-runtime-before.json" "$RUNNER_TEMP/private-runtime-after.json"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
@@ -256,9 +258,7 @@ jobs:
 
           READY=false
           for attempt in $(seq 1 36); do
-            STAMP="$(curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/release.json?release=$GITHUB_RUN_ID-$attempt" || true)"
-            if jq -e --arg sha "$TARGET_RELEASE_COMMIT" '.sourceSha == $sha' <<<"$STAMP" >/dev/null 2>&1 \
-              && curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health" >/dev/null; then
+            if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health?release=$GITHUB_RUN_ID-$attempt" >/dev/null; then
               READY=true
               break
             fi

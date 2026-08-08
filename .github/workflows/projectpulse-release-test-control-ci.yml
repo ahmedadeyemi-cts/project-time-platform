@@ -44,7 +44,8 @@ jobs:
           SOURCE='b1335bd2426d061f85498ace7c7b2a70c3b5bdc6'
 
           git fetch origin "$BASE_REF" --no-tags
-          if [[ "$HEAD_REF" == fix/test-controller-migration-080-trigger-* ]]; then
+          if [[ "$HEAD_REF" == fix/test-controller-migration-080-trigger-* \
+             || "$HEAD_REF" == fix/test-controller-runtime-source-uat-* ]]; then
             cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
@@ -90,6 +91,9 @@ jobs:
           grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
           grep -Fq "'scripts/release-test/run-migration-job.sh'" "$CONTROLLER"
+          grep -Fq 'SOURCE_COMMIT_AFTER=' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned application release.' "$CONTROLLER"
+          ! grep -Fq '/release.json' "$CONTROLLER"
           ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
           ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
           ! grep -Fq 'az keyvault secret show' "$CONTROLLER"
