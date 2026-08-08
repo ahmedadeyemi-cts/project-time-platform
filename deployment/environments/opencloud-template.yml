@@ -1,12 +1,81 @@
-environment: production
+environment: test
+status: deferred-until-opencloud
+decisionDate: 2026-08-08
+
 sourceControl:
   provider: future-git-provider
-  repository: not-configured
+  repository: ahmedadeyemi-cts/project-time-platform
+
 deployment:
   provider: opencloud
-  runtime: not-configured
-registry:
-  provider: opencloud-registry
-  name: not-configured
-artifact:
-  format: oci
+  runtime: podman
+  artifactFormat: oci
+  topology: shared-private-runtime-vm
+
+host:
+  operatingSystem: rocky-linux
+  privateOnly: true
+  sizing:
+    minimumVcpu: 8
+    preferredVcpu: 16
+    minimumMemoryGiB: 32
+    preferredMemoryGiB: 64
+    storageGiB: 250
+    gpu: optional-for-test-uat
+
+network:
+  publicServiceIngress: false
+  privateDnsZone: not-configured
+  pulseSourceCidrs: []
+  tlsCertificateSecretReference: not-configured
+  allowedServicePorts:
+    httpsGateway: 443
+    clamav: 3310
+
+privateRuntime:
+  services:
+    gateway:
+      purpose: tls-and-bearer-authentication
+      image: not-configured
+      placement: shared-vm
+    ollama:
+      purpose:
+        - private-inference
+        - private-embeddings
+      image: not-configured
+      model: not-configured
+      placement: shared-vm
+      persistentVolume: ollama-models
+    tesseract:
+      purpose: scanned-document-ocr
+      image: not-configured
+      model: tesseract-5-eng
+      placement: shared-vm
+      persistentVolume: tesseract-work
+    clamav:
+      purpose: malware-scanning
+      image: not-configured
+      placement: shared-vm
+      persistentVolume: clamav-signatures
+
+pulseIntegration:
+  internalDataIntelligence:
+    enabled: true
+    authority: permission-scoped-postgresql-and-governed-apis
+    dependsOnPrivateRuntime: false
+  documentGroundedRuntime:
+    enabled: false
+    enableAfter:
+      - private-dns-and-firewall-verified
+      - gateway-tls-and-authentication-verified
+      - ollama-inference-and-embedding-probes-pass
+      - tesseract-ocr-probe-passes
+      - clamav-signatures-current-and-scan-passes
+      - sow-reprocessed-and-approved
+      - citation-retrieval-passes
+      - flowhive-sow-grounded-plan-passes
+
+productionEvolution:
+  ollama: move-to-dedicated-gpu-compute-when-required
+  tesseractAndClamav: may-remain-on-shared-cpu-compute
+  apiContract: unchanged-when-placement-changes

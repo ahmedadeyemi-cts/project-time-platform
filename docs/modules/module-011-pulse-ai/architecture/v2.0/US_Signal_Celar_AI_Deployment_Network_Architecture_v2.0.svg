@@ -38,7 +38,7 @@
 <text x="86" y="735" class="box-copy">private management path</text>
 <text x="86" y="752" class="box-copy">no direct model public access</text>
 <g filter="url(#shadow)"><rect x="390" y="210" width="320" height="115" rx="12" fill="#FFFFFF" stroke="#1769AA" stroke-width="2"/></g>
-<rect x="402" y="222" width="70" height="22" rx="11" fill="#1769AA"/><text x="412" y="238" font-size="11" font-weight="700" fill="#FFFFFF">PULSE</text>
+<rect x="402" y="222" width="84" height="22" rx="11" fill="#1769AA"/><text x="412" y="238" font-size="11" font-weight="700" fill="#FFFFFF">PULSE</text>
 <text x="406" y="264" class="box-title">Pulse Web and API</text>
 <text x="406" y="287" class="box-copy">authenticated application shell</text>
 <text x="406" y="304" class="box-copy">module endpoints • request correlation</text>
@@ -90,7 +90,7 @@
 <text x="1246" y="280" class="box-copy">approved embedding model</text>
 <text x="1246" y="297" class="box-copy">no public data path</text>
 <g filter="url(#shadow)"><rect x="1230" y="380" width="260" height="135" rx="12" fill="#F1F8ED" stroke="#67B446" stroke-width="2"/></g>
-<rect x="1242" y="392" width="70" height="22" rx="11" fill="#67B446"/><text x="1252" y="408" font-size="11" font-weight="700" fill="#FFFFFF">PRIMARY</text>
+<rect x="1242" y="392" width="84" height="22" rx="11" fill="#67B446"/><text x="1252" y="408" font-size="11" font-weight="700" fill="#FFFFFF">PRIMARY</text>
 <text x="1246" y="434" class="box-title">Private Celar AI Model</text>
 <text x="1246" y="457" class="box-copy">open-weight inference endpoint</text>
 <text x="1246" y="474" class="box-copy">restricted-context reasoning</text>

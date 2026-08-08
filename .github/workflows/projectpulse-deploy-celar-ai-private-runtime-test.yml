@@ -1,4 +1,4 @@
-name: ProjectPulse Deploy Celar AI Private Runtime Test
+name: ProjectPulse Deploy Celar AI OpenCloud Private Runtime Test
 
 on:
   workflow_dispatch:
@@ -8,22 +8,9 @@ on:
         required: true
         type: string
       confirmation:
-        description: Enter DEPLOY-CELAR-AI-PRIVATE-RUNTIME-TO-TEST
+        description: Enter DEPLOY-CELAR-AI-OPENCLOUD-RUNTIME-TO-TEST after OpenCloud is ready
         required: true
         type: string
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
-      - 'database/migrations/080_celar_ai_internal_data_intelligence.sql'
-      - 'database/migrations/081_celar_ai_private_runtime_activation.sql'
-      - 'database/rollback/080_celar_ai_internal_data_intelligence_rollback.sql'
-      - 'database/rollback/081_celar_ai_private_runtime_activation_rollback.sql'
-      - 'scripts/release-test/apply-celar-ai-private-runtime-080-081.sh'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
-      - 'src/frontend/project-time-web/src/PulseAiPrivateRagWorkbench.jsx'
 
 permissions:
   id-token: write
@@ -74,7 +61,7 @@ jobs:
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           [[ "$SOURCE_COMMIT" == "$GITHUB_SHA" ]]
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-CELAR-AI-PRIVATE-RUNTIME-TO-TEST ]]
+            [[ "$DISPATCH_CONFIRMATION" == DEPLOY-CELAR-AI-OPENCLOUD-RUNTIME-TO-TEST ]]
             [[ "$DISPATCH_COMMIT" =~ ^[0-9a-f]{40}$ && "$DISPATCH_COMMIT" == "$SOURCE_COMMIT" ]]
           fi
           git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main

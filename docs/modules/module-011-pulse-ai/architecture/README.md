@@ -10,6 +10,8 @@ docs/modules/module-011-pulse-ai/architecture/v2.0/
 
 Version 2.0 establishes **Celar AI** as the target brand for Module 011 while preserving **Pulse** as the business platform name.
 
+The August 8, 2026 addendum documents the cost-controlled OpenCloud target: Ollama, Tesseract, and ClamAV share one private Test/UAT Linux VM as separate containers, while Pulse application and database placement remain independent.
+
 ## Historical baseline
 
 ```text
