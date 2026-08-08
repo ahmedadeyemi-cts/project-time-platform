@@ -1,0 +1,119 @@
+name: Bootstrap unified Celar context routing repair from PR
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-unified-celar-context-routing-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'fix/unified-celar-context-routing-20260808'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact head branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Extract and apply the reviewed source patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/bootstrap-unified-celar-context-routing.yml').read_text()
+          start_marker = "      - name: Apply source repair and regression coverage\n        shell: bash\n        run: |\n"
+          end_marker = "\n      - name: Validate internal/public classification"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          block = workflow[start:end]
+          lines = []
+          for line in block.splitlines():
+              if line.startswith('          '):
+                  lines.append(line[10:])
+              else:
+                  lines.append(line)
+          Path('/tmp/apply-unified-celar-routing.sh').write_text('\n'.join(lines) + '\n')
+          PY
+          bash /tmp/apply-unified-celar-routing.sh
+
+      - name: Validate internal and public classification
+        run: |
+          node tests/validate-celar-ai-internal-data-intelligence.mjs
+          dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+
+      - name: Validate FlowHive and Project Forge contracts
+        run: |
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-033-project-forge.mjs
+            node scripts/validate-celar-ai-enterprise-platform.mjs
+          )
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+
+      - name: Validate exact source boundary
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
+              'tests/CelarAiInternalDataTests/Program.cs',
+              'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs',
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+              'tests/validate-celar-ai-internal-data-intelligence.mjs',
+              'src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs',
+              'src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs',
+              'docs/modules/module-011-pulse-ai/UNIFIED-CELAR-CONTEXT-ROUTING.md',
+              '.github/workflows/bootstrap-unified-celar-context-routing.yml',
+              '.github/workflows/bootstrap-unified-celar-context-routing-pr.yml',
+          }
+          changed = {
+              line[3:]
+              for line in subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
+              if len(line) >= 4
+          }
+          unexpected = changed - allowed
+          if unexpected:
+              raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
+          PY
+
+      - name: Commit validated repair and remove temporary workflows
+        shell: bash
+        run: |
+          rm .github/workflows/bootstrap-unified-celar-context-routing.yml
+          rm .github/workflows/bootstrap-unified-celar-context-routing-pr.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs \
+            tests/CelarAiInternalDataTests/Program.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs \
+            tests/validate-celar-ai-internal-data-intelligence.mjs \
+            src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs \
+            src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs \
+            docs/modules/module-011-pulse-ai/UNIFIED-CELAR-CONTEXT-ROUTING.md \
+            .github/workflows/bootstrap-unified-celar-context-routing.yml \
+            .github/workflows/bootstrap-unified-celar-context-routing-pr.yml
+          git commit -m "Fix unified Celar context routing"
+          git push origin HEAD:fix/unified-celar-context-routing-20260808
