@@ -87,6 +87,13 @@ for (const token of [
   'CelarAiCapabilityCatalog.ProjectForgePlanEstimate'
 ]) requireText(enterpriseService, token, 'Celar AI enterprise capability propagation');
 requireText(externalReasoning, 'ProjectPulseAiFeatures.ProjectForgePlanEstimate', 'Module 064 Project Forge execution route');
+for (const token of [
+  'else if (flowHive || !options.RequirePrivateModelForDocumentAnswers)',
+  'DeterministicPlanningSteps',
+  'DeterministicPlanningMilestones',
+  'identity-free generic planning guidance',
+  'No raw SOW/GSD text'
+]) requireText(privateRagService, token, 'Project Forge cited scaffold and external enrichment boundary');
 requireText(compileTargets, 'CelarAiCapabilityRouter', 'Compiled Module 064 persisted capability router');
 requireText(compileTargets, "grep -Fq 'ExternalCapsulePurpose: serverOwnedPurposeCategory'", 'Compiled Module 064 external capability execution');
 requireText(compileTargets, 'DestinationFiles="$(CelarAiExternalReasoningGenerated)"', 'Compiled Module 064 external capability copy');
