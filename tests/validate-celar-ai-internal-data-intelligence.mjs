@@ -43,9 +43,11 @@ for (const formerInternalCapsule of [
 }
 
 const catalog = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs')
-requireText(catalog, 'celar-ai-system-knowledge-v4-20260807', 'system-knowledge contract version')
+requireText(catalog, 'celar-ai-system-knowledge-v5-20260808', 'system-knowledge contract version')
 requireText(catalog, 'CelarAiInternalDataService.IsSupportedQuestion(question)', 'deterministic internal-first classification')
 requireText(catalog, 'LooksLikeNamedInternalSubject(raw)', 'named-subject privacy guard')
+requireText(catalog, 'LooksLikeClearlyPublicOfficeholderQuestion(normalized)', 'public officeholder classification before acronym privacy guard')
+rejectText(catalog, "(?:president|prime\\s+minister|head\\s+of\\s+state|monarch|king|queen)\\s+of\\s+[a-z]", 'unrestricted named-organization officeholder route')
 requireText(catalog, 'return true;', 'privacy-preserving internal default')
 
 const production = read('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs')

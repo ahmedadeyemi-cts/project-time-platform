@@ -19,7 +19,7 @@ public sealed record PulseAiSystemIntentPlan(
 
 public static class PulseAiSystemKnowledgeCatalog
 {
-    public const string ContractVersion = "celar-ai-system-knowledge-v4-20260807";
+    public const string ContractVersion = "celar-ai-system-knowledge-v5-20260808";
 
     private static readonly PulseAiSystemToolDefinition[] ToolDefinitions =
     [
@@ -449,6 +449,12 @@ public static class PulseAiSystemKnowledgeCatalog
             return true;
         }
 
+        // Clearly public country-officeholder questions are safe to route
+        // through the isolated public-question boundary. This check runs before
+        // the conservative acronym/proper-name guard so ordinary public terms
+        // such as "US President" are not mistaken for an internal record code.
+        if (LooksLikeClearlyPublicOfficeholderQuestion(normalized)) return true;
+
         if (LooksLikeNamedInternalSubject(raw)) return false;
 
         return Regex.IsMatch(normalized,
@@ -456,6 +462,12 @@ public static class PulseAiSystemKnowledgeCatalog
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
             && !LooksLikeInternalRecordQuestion(normalized);
     }
+
+    private static bool LooksLikeClearlyPublicOfficeholderQuestion(string normalized) =>
+        Regex.IsMatch(
+            normalized,
+            @"^who\s+(?:is|are|was|were)\s+(?:the\s+)?(?:current\s+)?(?:(?:(?:u\.?\s*s\.?|united\s+states)\s+)?(?:president|vice\s+president)|(?:president|vice\s+president)\s+of\s+(?:the\s+)?(?:u\.?\s*s\.?|united\s+states))\s*\??$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static bool LooksLikeNamedInternalSubject(string raw)
     {

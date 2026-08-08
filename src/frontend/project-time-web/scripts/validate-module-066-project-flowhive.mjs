@@ -617,6 +617,22 @@ assertInvariant(
   'runtime and UI report production capability from dependency evidence rather than a static connected label'
 );
 
+assertInvariant(
+  'MODULE_066_CITED_SCAFFOLD_EXTERNAL_ENRICHMENT',
+  privateRag.includes('flowHive && AllowsDeterministicCitedPlanningFallback(query.FeatureCode)') &&
+    privateRag.includes('featureCode is CelarAiCapabilityCatalog.ProjectFlowHivePlan') &&
+    privateRag.includes('or CelarAiCapabilityCatalog.ProjectForgePlanEstimate') &&
+    !privateRag.slice(
+      privateRag.indexOf('private static bool AllowsDeterministicCitedPlanningFallback'),
+      privateRag.indexOf('private static string DeterministicPlanningPhase')
+    ).includes('SowGsdPlanning') &&
+    privateRag.includes('DeterministicPlanningSteps') &&
+    privateRag.includes('DeterministicPlanningMilestones') &&
+    privateRag.includes('identity-free generic planning guidance') &&
+    privateRag.includes('No raw SOW/GSD text'),
+  'private cited scope survives private-model unavailability while only identity-free generic guidance may use Claude/OpenAI'
+);
+
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log('');
 console.log(`MODULE_066_VALIDATION_CHECKS=${assertions.length}`);

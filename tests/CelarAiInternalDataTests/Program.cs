@@ -58,6 +58,24 @@ Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is the capital of France?"),
     "clearly public capital question is external eligible");
 Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the US President?"),
+    "public US officeholder question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the US President?").IntentCode == "general_knowledge",
+    "public US officeholder question resolves to general knowledge");
+Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),
+    "spelled-out public officeholder question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Acme Corp?"),
+    "named-organization officeholder question remains private");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Acme Corp?").IntentCode != "general_knowledge",
+    "named-organization officeholder question cannot enter the public-provider route");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the project manager for our project?"),
+    "internal project-role question remains private");
+Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("What is zero trust?"),
     "generic definition without Pulse context is external eligible");
 Require(
