@@ -130,6 +130,23 @@ assert_eq 'Architecture.docx' "$(value "SELECT projectpulse081_supported_file_na
 assert_eq 'true|true|true' "$(value "SELECT service_user.is_active||'|'||service_role.is_active||'|'||assignment.is_active FROM app_users service_user JOIN app_user_role_assignments assignment ON assignment.user_id=service_user.user_id JOIN app_roles service_role ON service_role.app_role_id=assignment.app_role_id WHERE service_user.user_id='08100000-0000-0000-0000-000000000001'")" service_identity_active
 assert_eq 'QUEUE_PULSE_AI_DOCUMENT_PROCESSING' "$(value "SELECT string_agg(permission.permission_code,',' ORDER BY permission.permission_code) FROM app_roles role JOIN app_role_permissions grant_row ON grant_row.app_role_id=role.app_role_id JOIN app_permissions permission ON permission.app_permission_id=grant_row.app_permission_id WHERE role.role_code='CELAR_AI_DOCUMENT_SERVICE'")" service_role_least_privilege
 
+psql_exec <<'SQL'
+CREATE TABLE pulse_ai_document_processing_jobs(requested_by_user_id UUID NOT NULL);
+INSERT INTO pulse_ai_document_processing_jobs(requested_by_user_id)
+VALUES ('08100000-0000-0000-0000-000000000001');
+SQL
+
+rollback_log="$(mktemp)"
+if psql_exec -f "$ROLLBACK" >"$rollback_log" 2>&1; then
+  echo 'ASSERTION_FAILED guarded_rollback accepted owned processing evidence' >&2
+  exit 1
+fi
+grep -Fq 'Rollback 081 refused: the Celar AI document service identity owns processing evidence.' "$rollback_log"
+rm -f "$rollback_log"
+assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='081_celar_ai_private_runtime_activation'")" guarded_rollback_preserved_ledger
+assert_eq 1 "$(value "SELECT COUNT(*) FROM app_users WHERE user_id='08100000-0000-0000-0000-000000000001'")" guarded_rollback_preserved_service_user
+
+psql_exec -c "DELETE FROM pulse_ai_document_processing_jobs WHERE requested_by_user_id='08100000-0000-0000-0000-000000000001'" >/dev/null
 psql_exec -f "$ROLLBACK" >/dev/null
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_users WHERE user_id='08100000-0000-0000-0000-000000000001'")" rollback_removed_created_service_user
 assert_eq 0 "$(value "SELECT COUNT(*) FROM app_roles WHERE role_code='CELAR_AI_DOCUMENT_SERVICE'")" rollback_removed_created_service_role

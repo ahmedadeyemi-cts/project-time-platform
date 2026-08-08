@@ -3,13 +3,22 @@
 BEGIN;
 
 DO $projectpulse081_rollback_guard$
+DECLARE
+    service_identity_has_jobs BOOLEAN := FALSE;
 BEGIN
-    IF to_regclass('public.pulse_ai_document_processing_jobs') IS NOT NULL
-       AND EXISTS (
-            SELECT 1
-            FROM pulse_ai_document_processing_jobs
-            WHERE requested_by_user_id = '08100000-0000-0000-0000-000000000001'::UUID
-       ) THEN
+    IF to_regclass('public.pulse_ai_document_processing_jobs') IS NOT NULL THEN
+        EXECUTE $guard_query$
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.pulse_ai_document_processing_jobs
+                WHERE requested_by_user_id = $1
+            )
+        $guard_query$
+        INTO service_identity_has_jobs
+        USING '08100000-0000-0000-0000-000000000001'::UUID;
+    END IF;
+
+    IF service_identity_has_jobs THEN
         RAISE EXCEPTION 'Rollback 081 refused: the Celar AI document service identity owns processing evidence.';
     END IF;
 END;
