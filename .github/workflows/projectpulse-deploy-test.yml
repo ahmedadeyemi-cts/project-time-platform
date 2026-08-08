@@ -220,9 +220,19 @@ jobs:
           ' "$READINESS_FILE" >/dev/null || fail 'The deployed runtime did not report the public-officeholder and default-route contract.'
 
           PUBLIC_FILE="$RUNNER_TEMP/public-president-answer.json"
-          PUBLIC_PAYLOAD='{"question":"Who is the US President?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":false,"usePrivateModelWhenAvailable":true,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
+          PUBLIC_PAYLOAD='{"question":"Who is the US President?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":false,"usePrivateModelWhenAvailable":false,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
           PUBLIC_STATUS="$(curl -sS --max-time 180 -o "$PUBLIC_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$PUBLIC_PAYLOAD" "$BASE/api/celar-ai/v2/chat")"
           [[ "$PUBLIC_STATUS" == 200 ]] || { jq '{status,message,result}' "$PUBLIC_FILE" >&2 || true; fail 'The public President question failed.'; }
+          jq -c '{
+            decisionCode:.decision.code,
+            trustClassification:.trust.classification,
+            questionAnswered:.trust.questionAnswered,
+            status:.result.status,
+            modelProvider:.result.modelProvider,
+            directConclusionLength:((.result.answer.directConclusion // "") | length),
+            targetDecisions:.result.targetDecisions,
+            rawPrivateContextSentToExternalProvider
+          }' "$PUBLIC_FILE" | tee "$RUNNER_TEMP/public-president-summary.json"
           jq -e '
             .decision.code == "general_knowledge" and
             .trust.classification == "general_knowledge" and
