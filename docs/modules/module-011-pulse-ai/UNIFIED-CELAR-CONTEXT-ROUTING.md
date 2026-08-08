@@ -28,3 +28,7 @@ Public answers must be classified as public, contain no protected context, pass 
 ## Regression repaired on August 8, 2026
 
 The public classifier previously recognized `What`, `Why`, and `How` question forms but not clearly public `Who` officeholder questions. It also treated the ordinary acronym `US` as a possible internal identifier. As a result, `Who is the US President?` was incorrectly routed to internal product knowledge and ended as an evidence-limited local answer. Clearly public country-officeholder questions are now recognized before the conservative named-subject/acronym privacy guard, while named employees, project roles, customer records, and other internal subjects continue to fail closed inside Celar AI.
+
+## Required release validation
+
+The exact repair head must pass the compiled Ask classifier tests, Timesheet AI grounding, external de-identification, unified chat and attachment privacy, FlowHive, Project Forge, Celar AI enterprise routing, API Release build, repository security, and aggregate ProjectPulse CI before merge or Test deployment. Live Test acceptance must then prove the public-question route, a SOW-grounded Timesheet suggestion, a no-SOW Timesheet suggestion, and citation-preserving FlowHive and Project Forge drafts without changing provider order or exposing private evidence.
