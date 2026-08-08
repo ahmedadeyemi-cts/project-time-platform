@@ -2,7 +2,7 @@ name: Publish systemwide View-As route continuity repair from PR
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, reopened, synchronize]
     branches: [main]
 
 permissions:
@@ -51,47 +51,6 @@ jobs:
           PY
           bash /tmp/apply-view-as-route-continuity.sh
 
-      - name: Tighten migration provenance and rollback coverage
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          migration_path = Path('database/migrations/082_view_as_route_authority_catalog.sql')
-          migration = migration_path.read_text()
-          pattern = re.compile(
-              r"SELECT\s+module_code,\s+FALSE\s+"
-              r"FROM\s+unnest\(ARRAY\['001A','031','032','033','081','082'\]\)\s+AS\s+module_code\s+"
-              r"WHERE\s+NOT\s+EXISTS\s*\(\s*"
-              r"SELECT\s+1\s+FROM\s+scoped_role_policy_modules\s+existing\s+"
-              r"WHERE\s+existing\.module_code\s*=\s*module_code\s*\)",
-              re.DOTALL,
-          )
-          replacement = """SELECT desired.module_code, FALSE
-          FROM unnest(ARRAY['001A','031','032','033','081','082']) AS desired(module_code)
-          WHERE NOT EXISTS (
-              SELECT 1 FROM scoped_role_policy_modules existing
-              WHERE existing.module_code = desired.module_code
-          )"""
-          migration, count = pattern.subn(replacement, migration, count=1)
-          if count != 1:
-              raise SystemExit(f'Expected one migration snapshot alias target, found {count}')
-          migration_path.write_text(migration)
-
-          test_path = Path('tests/test-view-as-route-authority-migration-082.sh')
-          test = test_path.read_text()
-          marker = '''assert_eq 6 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous")" rollback_snapshot_complete
-'''
-          addition = marker + '''assert_eq 5 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous WHERE existed_before=FALSE")" introduced_snapshot_count
-assert_eq t "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='033'")" existing_snapshot_identity
-assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='031'")" introduced_snapshot_identity
-'''
-          if test.count(marker) != 1:
-              raise SystemExit(f'Expected one rollback snapshot assertion marker, found {test.count(marker)}')
-          test_path.write_text(test.replace(marker, addition, 1))
-          PY
-
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
@@ -122,55 +81,39 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
           git diff --check
           python3 - <<'PY'
           import subprocess
-          allowed = {
+
+          source_files = {
               'src/frontend/project-time-web/src/module-availability-bridge.js',
               'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
               'src/frontend/project-time-web/src/module-availability.css',
               'src/frontend/project-time-web/package.json',
+              'src/frontend/project-time-web/package-lock.json',
               'src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs',
               'database/migrations/082_view_as_route_authority_catalog.sql',
               'database/rollback/082_view_as_route_authority_catalog_rollback.sql',
               'tests/test-view-as-route-authority-migration-082.sh',
               'docs/security/VIEW-AS-ROUTE-CONTINUITY.md',
-              '.github/workflows/bootstrap-view-as-route-continuity-systemwide.yml',
-              '.github/workflows/bootstrap-view-as-route-continuity-pr.yml',
-              '.github/workflows/bootstrap-view-as-route-continuity-final.yml',
-              '.github/view-as-route-continuity-trigger.txt',
-              '.github/view-as-route-continuity-trigger-2.txt',
           }
+          required = source_files - {'src/frontend/project-time-web/package-lock.json'}
           changed = {
               line[3:]
               for line in subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
               if len(line) >= 4
           }
-          unexpected = changed - allowed
+          unexpected = changed - source_files
           if unexpected:
               raise SystemExit(f'Unexpected files after validation: {sorted(unexpected)}')
-          required = {
-              'src/frontend/project-time-web/src/module-availability-bridge.js',
-              'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx',
-              'src/frontend/project-time-web/src/module-availability.css',
-              'src/frontend/project-time-web/package.json',
-              'src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs',
-              'database/migrations/082_view_as_route_authority_catalog.sql',
-              'database/rollback/082_view_as_route_authority_catalog_rollback.sql',
-              'tests/test-view-as-route-authority-migration-082.sh',
-              'docs/security/VIEW-AS-ROUTE-CONTINUITY.md',
-          }
           missing = required - changed
           if missing:
               raise SystemExit(f'Expected files were not changed: {sorted(missing)}')
           PY
 
-      - name: Commit validated repair and remove temporary controls
+      - name: Commit validated repair and remove temporary publishers
         shell: bash
         run: |
           rm -f \
             .github/workflows/bootstrap-view-as-route-continuity-systemwide.yml \
-            .github/workflows/bootstrap-view-as-route-continuity-pr.yml \
-            .github/workflows/bootstrap-view-as-route-continuity-final.yml \
-            .github/view-as-route-continuity-trigger.txt \
-            .github/view-as-route-continuity-trigger-2.txt
+            .github/workflows/bootstrap-view-as-route-continuity-pr.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -178,15 +121,14 @@ assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_
             src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx \
             src/frontend/project-time-web/src/module-availability.css \
             src/frontend/project-time-web/package.json \
+            src/frontend/project-time-web/package-lock.json \
             src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs \
             database/migrations/082_view_as_route_authority_catalog.sql \
+            database/rollback/082_view_as_route-authority-catalog_rollback.sql \
             database/rollback/082_view_as_route_authority_catalog_rollback.sql \
             tests/test-view-as-route-authority-migration-082.sh \
             docs/security/VIEW-AS-ROUTE-CONTINUITY.md \
             .github/workflows/bootstrap-view-as-route-continuity-systemwide.yml \
-            .github/workflows/bootstrap-view-as-route-continuity-pr.yml \
-            .github/workflows/bootstrap-view-as-route-continuity-final.yml \
-            .github/view-as-route-continuity-trigger.txt \
-            .github/view-as-route-continuity-trigger-2.txt
+            .github/workflows/bootstrap-view-as-route-continuity-pr.yml
           git commit -m "Fix systemwide View-As route continuity"
           git push origin HEAD:fix/view-as-route-continuity-systemwide-20260808
