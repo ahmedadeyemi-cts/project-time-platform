@@ -16,6 +16,8 @@ on:
       - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiArchitectureCatalog.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-architecture-catalog.css'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs'

@@ -317,7 +317,7 @@ assert(
 
 assert(
   'BUILD_GUARD_REGISTERED',
-  packageJson.includes('"validate:module011": "node ./scripts/validate-module-011-pulse-ai.mjs"')
+  packageJson.includes('"validate:module011": "node ./scripts/validate-module-011-pulse-ai.mjs && node ./scripts/validate-module-011-managed-architecture.mjs"')
     && packageJson.includes('npm run validate:module011'),
   'the complete frontend build executes the Pulse AI validator'
 );

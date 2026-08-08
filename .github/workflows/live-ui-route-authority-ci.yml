@@ -17,6 +17,8 @@ on:
       - 'src/frontend/project-time-web/src/AnalyticsCenter.jsx'
       - 'src/frontend/project-time-web/src/CelarAiEnterprisePlatform.jsx'
       - 'src/frontend/project-time-web/src/CelarAiArchitectureOverview.jsx'
+      - 'src/frontend/project-time-web/src/CelarAiArchitectureCatalog.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-architecture-catalog.css'
       - 'src/frontend/project-time-web/src/PageContextGuide.jsx'
       - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/backend/ProjectTime.Api/ProjectTime.Api.csproj'

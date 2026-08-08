@@ -12,6 +12,7 @@ DIRECTORY="$ROOT/src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx"
 HELP="$ROOT/src/frontend/project-time-web/src/HelpAssistant.jsx"
 TOOL_EXECUTOR="$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiSystemToolExecutor.cs"
 PRODUCTION_MODULE="$ROOT/src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs"
+SYSTEM_KNOWLEDGE="$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs"
 RAG_CONTRACTS="$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs"
 SYSTEM_CONTRACTS="$ROOT/src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs"
 PRODUCTION_INJECTOR="$ROOT/src/frontend/project-time-web/scripts/inject-celar-ai-production-platform.mjs"
@@ -62,8 +63,9 @@ require_text "$TOOL_EXECUTOR" 'decodedPath.StartsWith("/api/", StringComparison.
 require_text "$TOOL_EXECUTOR" 'decodedPath.Equals("/health", StringComparison.OrdinalIgnoreCase)' tool_accepts_health_only_exception
 
 # API inventory questions receive direct runtime counts and concise default presentation.
-require_text "$PRODUCTION_MODULE" 'value.Contains("how many")' api_intent_handles_how_many
-require_text "$PRODUCTION_MODULE" 'value.Contains("do i have")' api_intent_handles_do_i_have
+require_text "$SYSTEM_KNOWLEDGE" 'var wantsApis = Regex.IsMatch(' api_intent_uses_word_bounded_classifier
+require_text "$SYSTEM_KNOWLEDGE" '@"\b(?:api|apis|endpoint|endpoints|route|routes|swagger)\b"' api_intent_handles_explicit_api_inventory_terms
+require_text "$PRODUCTION_MODULE" 'var analyzed = PulseAiSystemKnowledgeCatalog.Analyze(question);' api_intent_uses_current_knowledge_catalog
 require_text "$PRODUCTION_MODULE" 'The running application currently registers' api_answer_is_direct
 require_text "$PRODUCTION_MODULE" 'Source: live ASP.NET EndpointDataSource.' api_answer_names_authoritative_source
 require_text "$PRODUCTION_MODULE" 'Open the collapsed API inventory below' api_answer_keeps_details_available
@@ -75,8 +77,8 @@ require_text "$SYSTEM_CONTRACTS" 'PulseAiRoleAuthority.HasAdministratorRole(Role
 require_text "$HELP" 'applyHelpAnswerPreferences(preferenceUrl, clean)' help_uses_saved_or_query_detail_preference
 require_text "$HELP" "const detailLevel = result?.detailLevel ?? 'standard';" help_standard_default
 reject_text "$HELP" "detailLevel: 'comprehensive'," help_no_forced_comprehensive_request
-require_text "$HELP" 'open={troubleshootingProfile || detailedProfile}' help_current_state_intent_aware
-require_text "$HELP" 'open={troubleshootingProfile || enhancementProfile || detailedProfile}' help_actions_intent_aware
+require_text "$HELP" 'open={troubleshootingProfile}' help_current_state_intent_aware
+require_text "$HELP" 'open={troubleshootingProfile || enhancementProfile}' help_actions_intent_aware
 require_text "$HELP" '<details className="pulse-ai-system-api-inventory">' api_inventory_collapsed_by_default
 require_text "$PRODUCTION_INJECTOR" "const path = '/api/celar-ai/v2/chat';" production_chat_remains_v2
 
