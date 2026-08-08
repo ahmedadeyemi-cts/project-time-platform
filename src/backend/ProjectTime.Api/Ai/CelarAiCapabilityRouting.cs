@@ -1801,6 +1801,27 @@ public sealed record CelarAiExternalFallbackProductionProbeResult(
     IReadOnlyList<CelarAiExternalFallbackProbeTargetResult> Targets,
     DateTimeOffset GeneratedAt);
 
+internal static class CelarAiExternalAnswerQuality
+{
+    private static readonly string[] NonAnswerSignals =
+    [
+        "i don't have access", "i do not have access", "cannot access", "can't access",
+        "no access to", "no way to look up", "unable to look up", "cannot look up",
+        "unable to determine", "cannot determine", "can't determine", "i cannot answer",
+        "i can't answer", "i am unable to answer", "contact your administrator",
+        "check your organization's", "check your organisation's"
+    ];
+
+    public static bool LooksLikeNonAnswer(string? content)
+    {
+        var normalized = Regex.Replace(content ?? string.Empty, @"\s+", " ").Trim();
+        return normalized.Length == 0
+            || NonAnswerSignals.Any(signal => normalized.Contains(
+                signal,
+                StringComparison.OrdinalIgnoreCase));
+    }
+}
+
 public sealed class CelarAiCapabilityRouter
 {
     private readonly CelarAiCapabilityRoutingStore _store;
@@ -2499,6 +2520,27 @@ public sealed class CelarAiCapabilityRouter
                     _health.RecordFailure(target, outputDecisionCode, result.RequestId);
                     failed.Add(target);
                     decisions.Add(new(target, "failed", outputDecisionCode));
+                    continue;
+                }
+
+                // A transport-level success is not an answered public question.
+                // Continue through the persisted Module 064 order when a provider
+                // returns an access disclaimer or another recognized semantic
+                // non-answer. This gate is intentionally limited to the isolated
+                // public-general-knowledge path; safety refusals and every private
+                // or enterprise-context route retain their existing behavior.
+                if (execution.PublicGeneralQuestion
+                    && CelarAiExternalAnswerQuality.LooksLikeNonAnswer(result.Content))
+                {
+                    const string nonAnswerCode = "public_general_question_semantic_non_answer";
+                    _health.RecordFailure(target, nonAnswerCode, result.RequestId);
+                    _assurance.Record(
+                        feature,
+                        target,
+                        ProjectPulseAiOutcomes.Unavailable,
+                        execution.CorrelationId);
+                    failed.Add(target);
+                    decisions.Add(new(target, "failed", nonAnswerCode));
                     continue;
                 }
 

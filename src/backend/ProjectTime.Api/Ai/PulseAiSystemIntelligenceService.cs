@@ -1412,12 +1412,7 @@ public sealed class PulseAiSystemIntelligenceService
     }
 
     private static bool LooksLikeExternalProviderNonAnswer(string value) =>
-        ContainsAny(value,
-            "i don't have access", "i do not have access", "cannot access", "can't access",
-            "no access to", "no way to look up", "unable to look up", "cannot look up",
-            "unable to determine", "cannot determine", "can't determine", "i cannot answer",
-            "i can't answer", "i am unable to answer", "contact your administrator",
-            "check your organization's", "check your organisation's");
+        CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value);
 
     private static PulseAiSystemDetailedAnswer SuppressApiDetailUnlessRequested(
         PulseAiSystemDetailedAnswer answer,

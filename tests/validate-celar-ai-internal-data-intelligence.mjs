@@ -32,6 +32,12 @@ requireText(intelligence, 'CelarAiExternalCapsuleCatalog.GeneralKnowledge', 'pub
 requireText(intelligence, 'const string externalProblemStatement = "";', 'no internal help capsule')
 requireText(intelligence, '_internalData.TryAnswerAsync(', 'all-entry-point deterministic interception')
 requireText(intelligence, 'LooksLikeExternalProviderNonAnswer', 'provider non-answer detection')
+requireText(intelligence, 'CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value)', 'shared provider answer-quality gate')
+const routing = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
+requireText(routing, 'execution.PublicGeneralQuestion', 'public-only semantic fallback boundary')
+requireText(routing, 'CelarAiExternalAnswerQuality.LooksLikeNonAnswer(result.Content)', 'provider semantic non-answer fallback')
+requireText(routing, 'public_general_question_semantic_non_answer', 'semantic non-answer route decision')
+requireText(routing, 'ProjectPulseAiOutcomes.Unavailable', 'semantic non-answer assurance outcome')
 const intelligenceContracts = read('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs')
 requireText(intelligenceContracts, 'celar-ai-system-intelligence-v3-20260807', 'system-intelligence contract version')
 for (const formerInternalCapsule of [
