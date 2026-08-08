@@ -1,0 +1,2 @@
+Temporary branch-local trigger for the validated View-As route continuity source publisher.
+This file is removed before the pull request is marked review-ready.
