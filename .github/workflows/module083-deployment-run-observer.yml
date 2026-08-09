@@ -1,4 +1,4 @@
-name: Diagnose Module 083 Protected Test Deployment Run
+name: Locate Corrected Module 083 Protected Test Deployment
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
 
 permissions:
   actions: read
-  checks: read
   contents: read
   issues: write
   statuses: write
@@ -18,103 +17,122 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  diagnose:
-    name: Capture Module 083 deployment startup evidence
+  locate:
+    name: Publish corrected Module 083 deployment run identity
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
-      TARGET_RUN_ID: '31329214801'
-      TARGET_CONTROL_COMMIT: 4d80605e130346323fa7d5df33dc5cf27fbd1ab3
-      TARGET_PR: '587'
-      STATUS_CONTEXT: projectpulse/module083-test-run-locator
+      TARGET_WORKFLOW: projectpulse-deploy-module083-test-v2.yml
+      TARGET_CONTROL_COMMIT: 2e67aa894a67d1ef0ded78e7c6270c9c52903743
+      TARGET_PR: '593'
+      STATUS_CONTEXT: projectpulse/module083-v2-test-run-locator
     steps:
-      - name: Read exact run, jobs, checks, and annotations
-        id: diagnose
+      - name: Locate exact push-triggered deployment run
+        id: locate
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          RUN_META="$(
-            gh api \
-              -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID"
-          )"
-          [[ "$(jq -r '.id' <<<"$RUN_META")" == "$TARGET_RUN_ID" ]]
-          [[ "$(jq -r '.head_sha' <<<"$RUN_META")" == "$TARGET_CONTROL_COMMIT" ]]
-          [[ "$(jq -r '.event' <<<"$RUN_META")" == push ]]
-          [[ "$(jq -r '.path' <<<"$RUN_META" | cut -d@ -f1)" == '.github/workflows/projectpulse-deploy-module083-test.yml' ]]
+          EXPECTED_PATH=".github/workflows/$TARGET_WORKFLOW"
+          EXACT_RUN=''
+          RUNS=''
 
-          RUN_JOBS="$(
-            gh api \
-              -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/jobs?filter=all&per_page=100"
-          )"
-
-          CHECK_SUITE_ID="$(jq -r '.check_suite_id // empty' <<<"$RUN_META")"
-          CHECK_RUNS='{"total_count":0,"check_runs":[]}'
-          if [[ "$CHECK_SUITE_ID" =~ ^[0-9]+$ ]]; then
-            CHECK_RUNS="$(
+          for attempt in $(seq 1 60); do
+            RUNS="$(
               gh api \
                 -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/check-suites/$CHECK_SUITE_ID/check-runs?filter=latest&per_page=100"
+                "repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/runs?event=push&branch=main&per_page=50"
             )"
+            EXACT_RUN="$(
+              jq -c \
+                --arg sha "$TARGET_CONTROL_COMMIT" \
+                --arg expected "$EXPECTED_PATH" '
+                  [.workflow_runs[]
+                    | select(
+                        .head_sha == $sha
+                        and .event == "push"
+                        and ((.path // "") | split("@")[0]) == $expected
+                      )]
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0] // empty
+                ' <<<"$RUNS"
+            )"
+            [[ -n "$EXACT_RUN" ]] && break
+            sleep 10
+          done
+
+          if [[ -n "$EXACT_RUN" ]]; then
+            RUN_ID="$(jq -r '.id' <<<"$EXACT_RUN")"
+            RUN_URL="$(jq -r '.html_url' <<<"$EXACT_RUN")"
+            RUN_STATUS="$(jq -r '.status' <<<"$EXACT_RUN")"
+            RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$EXACT_RUN")"
+            RUN_ATTEMPT="$(jq -r '.run_attempt' <<<"$EXACT_RUN")"
+            RUN_CREATED="$(jq -r '.created_at' <<<"$EXACT_RUN")"
+            RUN_PATH="$(jq -r '.path' <<<"$EXACT_RUN")"
+
+            [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+            [[ "$RUN_URL" == "https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" ]]
+            [[ "${RUN_PATH%%@*}" == "$EXPECTED_PATH" ]]
+
+            {
+              echo 'found=true'
+              echo "run_id=$RUN_ID"
+              echo "run_url=$RUN_URL"
+              echo "run_status=$RUN_STATUS"
+              echo "run_conclusion=$RUN_CONCLUSION"
+              echo "run_attempt=$RUN_ATTEMPT"
+              echo "run_created=$RUN_CREATED"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'found=false'
+              echo 'run_id='
+              echo 'run_url='
+              echo 'run_status=not_found'
+              echo 'run_conclusion=not_found'
+              echo 'run_attempt=0'
+              echo 'run_created='
+            } >> "$GITHUB_OUTPUT"
           fi
 
-          ANNOTATIONS='[]'
-          while IFS= read -r CHECK_RUN_ID; do
-            [[ "$CHECK_RUN_ID" =~ ^[0-9]+$ ]] || continue
-            CURRENT="$(
-              gh api \
-                -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_RUN_ID/annotations?per_page=100"
-            )"
-            ANNOTATIONS="$(jq -c --argjson current "$CURRENT" '. + $current' <<<"$ANNOTATIONS")"
-          done < <(jq -r '.check_runs[]?.id' <<<"$CHECK_RUNS")
-
-          DIAGNOSTIC_FILE="$RUNNER_TEMP/module083-deployment-diagnostic.json"
-          jq -n \
-            --argjson run "$(jq '{id,name,display_title,path,event,status,conclusion,run_number,run_attempt,head_sha,created_at,updated_at,check_suite_id,html_url}' <<<"$RUN_META")" \
-            --argjson jobs "$(jq '{total_count,jobs:[.jobs[]? | {id,name,status,conclusion,started_at,completed_at,html_url}]}' <<<"$RUN_JOBS")" \
-            --argjson checks "$(jq '{total_count,check_runs:[.check_runs[]? | {id,name,status,conclusion,details_url,started_at,completed_at,output:{title:.output.title,summary:.output.summary,text:.output.text}}]}' <<<"$CHECK_RUNS")" \
-            --argjson annotations "$ANNOTATIONS" \
-            '{run:$run,jobs:$jobs,checks:$checks,annotations:$annotations}' \
-            > "$DIAGNOSTIC_FILE"
-
-          RUN_STATUS="$(jq -r '.run.status' "$DIAGNOSTIC_FILE")"
-          RUN_CONCLUSION="$(jq -r '.run.conclusion // "pending"' "$DIAGNOSTIC_FILE")"
-          JOB_COUNT="$(jq -r '.jobs.total_count // 0' "$DIAGNOSTIC_FILE")"
-          CHECK_COUNT="$(jq -r '.checks.total_count // 0' "$DIAGNOSTIC_FILE")"
-          ANNOTATION_COUNT="$(jq -r '.annotations | length' "$DIAGNOSTIC_FILE")"
-          FIRST_MESSAGE="$(jq -r '[.annotations[]?.message, .checks.check_runs[]?.output.title, .checks.check_runs[]?.output.summary] | map(select(type == "string" and length > 0)) | .[0] // "no_diagnostic_message"' "$DIAGNOSTIC_FILE")"
-          MESSAGE_SLUG="$(printf '%s' "$FIRST_MESSAGE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-55)"
-          [[ -n "$MESSAGE_SLUG" ]] || MESSAGE_SLUG='no-diagnostic-message'
-
-          echo "run_status=$RUN_STATUS" >> "$GITHUB_OUTPUT"
-          echo "run_conclusion=$RUN_CONCLUSION" >> "$GITHUB_OUTPUT"
-          echo "job_count=$JOB_COUNT" >> "$GITHUB_OUTPUT"
-          echo "check_count=$CHECK_COUNT" >> "$GITHUB_OUTPUT"
-          echo "annotation_count=$ANNOTATION_COUNT" >> "$GITHUB_OUTPUT"
-          echo "message_slug=$MESSAGE_SLUG" >> "$GITHUB_OUTPUT"
-
-          BODY_FILE="$RUNNER_TEMP/module083-deployment-diagnostic.md"
+      - name: Publish locator on merged PR 593
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOUND: ${{ steps.locate.outputs.found }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.locate.outputs.run_url }}
+          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
+          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
+          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
+          RUN_CREATED: ${{ steps.locate.outputs.run_created }}
+        run: |
+          set -Eeuo pipefail
+          BODY_FILE="$RUNNER_TEMP/module083-v2-run-locator.md"
           {
-            echo '<!-- module083-deployment-startup-diagnostic -->'
-            echo '## Module 083 protected Test deployment diagnostic'
+            echo '<!-- module083-v2-deployment-run-locator -->'
+            if [[ "$FOUND" == true ]]; then
+              echo '## Corrected Module 083 protected Test deployment located'
+              echo
+              printf -- '- Run ID: `%s`\n' "$RUN_ID"
+              printf -- '- Attempt: `%s`\n' "$RUN_ATTEMPT"
+              printf -- '- Status at observation: `%s`\n' "$RUN_STATUS"
+              printf -- '- Conclusion at observation: `%s`\n' "$RUN_CONCLUSION"
+              printf -- '- Created: `%s`\n' "$RUN_CREATED"
+              printf -- '- Control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
+              printf -- '- Run: %s\n' "$RUN_URL"
+            else
+              echo '## Corrected Module 083 protected Test deployment was not located'
+              echo
+              printf -- '- Expected workflow: `%s`\n' "$TARGET_WORKFLOW"
+              printf -- '- Expected control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
+            fi
             echo
-            printf -- '- Run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$TARGET_RUN_ID"
-            printf -- '- Status: `%s`\n' "$RUN_STATUS"
-            printf -- '- Conclusion: `%s`\n' "$RUN_CONCLUSION"
-            printf -- '- Jobs: `%s`\n' "$JOB_COUNT"
-            printf -- '- Check runs: `%s`\n' "$CHECK_COUNT"
-            printf -- '- Annotations: `%s`\n' "$ANNOTATION_COUNT"
-            echo
-            echo '```json'
-            jq . "$DIAGNOSTIC_FILE"
-            echo '```'
-            echo
-            echo 'This diagnostic performed no deployment, migration, secret, infrastructure, Test, Production, or private-runtime action.'
+            echo 'This observer performs no deployment, migration, secret, infrastructure, Test, Production, or private-runtime mutation.'
           } > "$BODY_FILE"
 
           gh api \
@@ -124,46 +142,46 @@ jobs:
             -f body="$(cat "$BODY_FILE")" >/dev/null
           cat "$BODY_FILE" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish machine-readable diagnostic statuses
+      - name: Publish immutable locator status
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_STATUS: ${{ steps.diagnose.outputs.run_status }}
-          RUN_CONCLUSION: ${{ steps.diagnose.outputs.run_conclusion }}
-          JOB_COUNT: ${{ steps.diagnose.outputs.job_count }}
-          CHECK_COUNT: ${{ steps.diagnose.outputs.check_count }}
-          ANNOTATION_COUNT: ${{ steps.diagnose.outputs.annotation_count }}
-          MESSAGE_SLUG: ${{ steps.diagnose.outputs.message_slug }}
+          FOUND: ${{ steps.locate.outputs.found }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.locate.outputs.run_url }}
+          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
+          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
+          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
         run: |
           set -Eeuo pipefail
-          RUN_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID"
           STATE='failure'
-          [[ "$RUN_STATUS" != completed ]] && STATE='pending'
-          [[ "$RUN_STATUS" == completed && "$RUN_CONCLUSION" == success ]] && STATE='success'
+          TARGET_URL="https://github.com/$GITHUB_REPOSITORY/actions"
+          DESCRIPTION='Corrected Module 083 Test deployment run not found'
 
-          publish() {
-            local context="$1" description="$2"
-            gh api \
-              --method POST \
-              -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/statuses/$TARGET_CONTROL_COMMIT" \
-              -f state="$STATE" \
-              -f context="$context" \
-              -f description="${description:0:140}" \
-              -f target_url="$RUN_URL" >/dev/null
-          }
+          if [[ "$FOUND" == true && "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            TARGET_URL="$RUN_URL"
+            DESCRIPTION="Module 083 v2 run $RUN_ID: $RUN_STATUS/$RUN_CONCLUSION (attempt $RUN_ATTEMPT)"
+            if [[ "$RUN_STATUS" != completed ]]; then
+              STATE='pending'
+            elif [[ "$RUN_CONCLUSION" == success ]]; then
+              STATE='success'
+            else
+              STATE='failure'
+            fi
+          fi
 
-          publish "$STATUS_CONTEXT" "Module 083 Test run $TARGET_RUN_ID: ${RUN_STATUS:-unknown}/${RUN_CONCLUSION:-unknown}"
-          publish "projectpulse/module083-run-${RUN_STATUS:-unknown}-${RUN_CONCLUSION:-unknown}-jobs-${JOB_COUNT:-0}" "Exact deployment run state and job count"
-          publish "projectpulse/module083-checks-${CHECK_COUNT:-0}-annotations-${ANNOTATION_COUNT:-0}" "Check-run and annotation counts"
-          publish "projectpulse/module083-diagnostic-${MESSAGE_SLUG:-unavailable}" "First available startup diagnostic"
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_CONTROL_COMMIT" \
+            -f state="$STATE" \
+            -f context="$STATUS_CONTEXT" \
+            -f description="${DESCRIPTION:0:140}" \
+            -f target_url="$TARGET_URL" >/dev/null
 
-          echo "MODULE_083_RUN_STATUS=${RUN_STATUS:-unknown}"
-          echo "MODULE_083_RUN_CONCLUSION=${RUN_CONCLUSION:-unknown}"
-          echo "MODULE_083_RUN_JOB_COUNT=${JOB_COUNT:-0}"
-          echo "MODULE_083_CHECK_COUNT=${CHECK_COUNT:-0}"
-          echo "MODULE_083_ANNOTATION_COUNT=${ANNOTATION_COUNT:-0}"
+          echo "MODULE_083_V2_TARGET_RUN_FOUND=${FOUND:-false}"
+          echo "MODULE_083_V2_TARGET_RUN_ID=${RUN_ID:-none}"
           echo 'DEPLOYMENT_ACTIONS=NONE'
           echo 'MIGRATION_ACTIONS=NONE'
           echo 'PRODUCTION_CHANGES=NONE'
