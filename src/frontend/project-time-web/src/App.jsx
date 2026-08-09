@@ -2359,6 +2359,17 @@ const roleWorkspaceModules = sortProjectPulseModules([
     permissions: ['VIEW_PROJECT_RISKS_082', 'MANAGE_PROJECT_RISKS_082', 'UPDATE_ASSIGNED_RISK_ACTIONS_082', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEER', 'ENGINEERING']
   },
+  /* MODULE_083_FULL_FUTURE_LOOP_NAV_START */
+  {
+    route: 'full-future-loop',
+    href: '#full-future-loop',
+    title: 'Full Future Loop',
+    navLabel: 'MODULE 083',
+    description: 'Run and review the complete governed sandbox lifecycle from selective governance through private development, canary, promotion, production evidence, support, repair, re-promotion, and final verification.',
+    permissions: ['VIEW_FULL_FUTURE_LOOP_083', 'RUN_FULL_FUTURE_LOOP_SANDBOX_083', 'MANAGE_FULL_FUTURE_LOOP_083', 'VIEW_FULL_FUTURE_LOOP_EVIDENCE_083', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER', 'RELEASE_MANAGER', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SOLUTION_ARCHITECT', 'SUPPORT', 'HELP_DESK', 'SERVICE_DESK', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  /* MODULE_083_FULL_FUTURE_LOOP_NAV_END */
   /* MODULES_075_080_RUNTIME_NAV_END */
   /* MODULES_064_074_RELEASE_TRAIN_NAV_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_NAV_START */
@@ -2660,6 +2671,7 @@ function getNavigationGroup(item) {
     case 'cicd-pipeline':
     case 'integration-event-gateway':
     case 'release-deployment-control':
+    case 'full-future-loop':
     case 'observability-slo-health':
       return 'Platform Operations';
 
