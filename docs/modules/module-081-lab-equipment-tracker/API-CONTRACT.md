@@ -4,6 +4,7 @@ All operational endpoints resolve the actual ProjectPulse session, the effective
 
 | Method | Route | Purpose |
 |---|---|---|
+| GET | `/access` | Effective scope, permissions, and migration-076 data readiness independent of operational queries |
 | GET | `/summary` | Scoped KPIs and effective permissions |
 | GET/POST | `/equipment` | List or create equipment |
 | PUT | `/equipment/{id}` | Revision-guarded equipment update |
@@ -20,3 +21,5 @@ All operational endpoints resolve the actual ProjectPulse session, the effective
 | GET | `/exports/{xlsx\|pdf}` | Branded, role-scoped evidence export |
 
 Mutations use allowlisted lifecycle values, typed PostgreSQL parameters, optimistic revisions, network/rack validation triggers, and append-only audit events. Duplicate IPs, overlapping networks, repeated cable endpoints, serial/asset collisions, and rack overlaps fail closed.
+
+The client resolves `/access` before loading dashboard data. This prevents a KPI or secondary-view failure from leaving effective scope indefinitely loading or silently disabling a permitted Add action. If migration 076 is not ready, mutations remain disabled with an explicit readiness message.

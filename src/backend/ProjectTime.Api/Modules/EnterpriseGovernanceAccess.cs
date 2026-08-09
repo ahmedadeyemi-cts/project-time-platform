@@ -268,14 +268,16 @@ internal static class EnterpriseGovernanceResults
 {
     internal static IResult Unavailable(string module, Exception exception, HttpContext context, string operation)
     {
+        var correlationId = context.TraceIdentifier;
         context.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger($"Module{module}EnterpriseGovernance")
-            .LogWarning(exception, "Module {Module} could not {Operation}.", module, operation);
+            .LogWarning(exception, "Module {Module} could not {Operation}. Correlation {CorrelationId}.", module, operation, correlationId);
         return Results.Json(new
         {
             module,
             code = $"MODULE_{module}_DEPENDENCY_UNAVAILABLE",
-            message = "The governed data service is temporarily unavailable. No changes were made."
+            message = "The governed data service is temporarily unavailable. No changes were made.",
+            correlationId
         }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 

@@ -132,7 +132,7 @@ check(
     && themeJs.includes("window.dispatchEvent(new CustomEvent('projectpulse:theme-changed'"),
   'theme changes use one event boundary without route-wide observation or page reload'
 );
-check('THEME_NO_APP_EDIT_REQUIRED', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';"), 'theme bridge loads through existing Module 009 import');
+check('THEME_GLOBAL_BOOTSTRAP', userUi.includes("import './admin-experience-theme.js';") && userUi.includes("import './admin-experience-theme.css';") && main.includes("import './admin-experience-theme.js';") && main.includes("import './admin-experience-theme.css';") && themeJs.includes("document.createElement('button')"), 'theme bridge retains Module 009 compatibility and creates the global control from the application bootstrap');
 check(
   'THEME_ICON_ONLY_DOCK',
   themeCss.includes("[data-projectpulse-theme-control='true']")
