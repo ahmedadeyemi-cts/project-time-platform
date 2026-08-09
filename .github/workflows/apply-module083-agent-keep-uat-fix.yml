@@ -1,0 +1,97 @@
+name: Apply Module 083 Agent Keep UAT Correction
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/apply-module083-agent-keep-uat-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-module083-agent-keep-uat-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Restore Agent Keep evidence before Module 083 history verification
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module083-agent-keep-uat-20260809'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact fix branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/module083-agent-keep-uat-20260809
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded Agent Keep UAT correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/projectpulse-deploy-module083-test-v2.yml')
+          source = path.read_text(encoding='utf-8')
+          anchor = '          HISTORY_FILE="$EVIDENCE_DIR/module-083-history.json"\n'
+          marker = '          AGENT_FILE="$EVIDENCE_DIR/module-083-agent-keep.json"\n'
+
+          if marker in source:
+              raise SystemExit('The Agent Keep UAT block is already present.')
+          if source.count(anchor) != 1:
+              raise SystemExit(
+                  f'Expected exactly one Module 083 history anchor, found {source.count(anchor)}.'
+              )
+
+          block = '''          AGENT_FILE="$EVIDENCE_DIR/module-083-agent-keep.json"
+          AGENT_PAYLOAD='{"question":"What is the current state and what can Agent Keep access?","openSupportIssue":false}'
+          AGENT_STATUS="$(curl -sS --max-time 90 -o "$AGENT_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth083[@]}" -d "$AGENT_PAYLOAD" "$BASE/api/full-future-loop/loops/$LOOP_ID/agent-keep")"
+          [[ "$AGENT_STATUS" == 200 ]] || { cat "$AGENT_FILE" >&2 || true; fail 'Module 083 Agent Keep guidance failed.'; }
+          require_json "$AGENT_FILE" 'Module 083 Agent Keep'
+          jq -e '.status == "agent_keep_answered" and .issueOpened == false and (.answer | contains("cannot read private source")) and (.restrictions | length) >= 4' "$AGENT_FILE" >/dev/null || fail 'Agent Keep exceeded or failed to explain its evidence boundary.'
+
+'''
+          source = source.replace(anchor, block + anchor, 1)
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          CONTROLLER='.github/workflows/projectpulse-deploy-module083-test-v2.yml'
+          grep -Fq 'AGENT_FILE="$EVIDENCE_DIR/module-083-agent-keep.json"' "$CONTROLLER"
+          grep -Fq '/agent-keep")' "$CONTROLLER"
+          grep -Fq '.status == "agent_keep_answered"' "$CONTROLLER"
+          grep -Fq '(.artifacts | length) >= 13' "$CONTROLLER"
+          grep -Fq 'Roll back Test images after a release-blocking failure' "$CONTROLLER"
+          git diff --check
+
+      - name: Install checksum-pinned actionlint 1.7.12
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose .github/workflows/projectpulse-deploy-module083-test-v2.yml
+
+      - name: Commit the corrected controller and remove this helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/apply-module083-agent-keep-uat-fix.yml
+          git add \
+            .github/workflows/projectpulse-deploy-module083-test-v2.yml \
+            .github/workflows/apply-module083-agent-keep-uat-fix.yml
+          git diff --cached --check
+          [[ "$(git diff --cached --name-only | wc -l | tr -d ' ')" == 2 ]]
+          git config user.name 'ProjectPulse Release Automation'
+          git config user.email 'projectpulse-release-automation@users.noreply.github.com'
+          git commit -m 'ci: restore Module 083 Agent Keep UAT evidence'
+          git push origin HEAD:fix/module083-agent-keep-uat-20260809
