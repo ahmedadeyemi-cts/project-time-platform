@@ -1,0 +1,250 @@
+name: ProjectPulse One-Time Module 083 Test Retry After UAT Refresh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-rerun-module083-v2-after-session-refresh.yml'
+
+permissions:
+  actions: write
+  contents: read
+  statuses: write
+
+concurrency:
+  group: projectpulse-module083-v2-session-refresh-rerun
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: Rerun exact failed Module 083 protected Test deployment
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    env:
+      TARGET_WORKFLOW: projectpulse-deploy-module083-test-v2.yml
+      TARGET_CONTROL_COMMIT: 2e67aa894a67d1ef0ded78e7c6270c9c52903743
+      TARGET_RELEASE_COMMIT: eedf635ea53f527c9cefa2b7bc6fb1e1e5f190f5
+      TARGET_RUN_ID: '31333721279'
+      STATUS_CONTEXT: projectpulse/module083-v2-session-refresh-rerun
+
+    steps:
+      - name: Prove the exact guarded Test controller
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          CONTROLLER="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$TARGET_WORKFLOW?ref=$TARGET_CONTROL_COMMIT" \
+              --jq '.content' \
+              | tr -d '\n' \
+              | base64 --decode
+          )"
+
+          grep -Fq "TARGET_RELEASE_COMMIT: $TARGET_RELEASE_COMMIT" <<<"$CONTROLLER"
+          grep -Fq "ref: $TARGET_RELEASE_COMMIT" <<<"$CONTROLLER"
+          grep -Fq 'environment: test' <<<"$CONTROLLER"
+          grep -Fq '082_module_083_full_future_loop' <<<"$CONTROLLER"
+          grep -Fq 'module-083-full-future-loop-082-test-v2' <<<"$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' <<<"$CONTROLLER"
+          grep -Fq 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED' <<<"$CONTROLLER"
+          grep -Fq 'PRODUCTION_CHANGES=NONE' <<<"$CONTROLLER"
+          grep -Fq 'phd-west-test.onenecklab.com' <<<"$CONTROLLER"
+          ! grep -Eq 'workflow_dispatch:|environment: production|PRODUCTION_CHANGES=(YES|TRUE)' <<<"$CONTROLLER"
+
+      - name: Confirm the exact failed deployment run
+        id: locate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          META="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID"
+          )"
+
+          [[ "$(jq -r '.id' <<<"$META")" == "$TARGET_RUN_ID" ]]
+          [[ "$(jq -r '.head_sha' <<<"$META")" == "$TARGET_CONTROL_COMMIT" ]]
+          [[ "$(jq -r '.event' <<<"$META")" == push ]]
+          [[ "$(jq -r '.status' <<<"$META")" == completed ]]
+          [[ "$(jq -r '.conclusion' <<<"$META")" == failure ]]
+          [[ "$(jq -r '.path' <<<"$META" | cut -d@ -f1)" == ".github/workflows/$TARGET_WORKFLOW" ]]
+
+          JOBS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/jobs?filter=all&per_page=100"
+          )"
+          jq -e '
+            .total_count >= 1 and
+            any(.jobs[];
+              .name == "Apply migration 082 and deploy Module 083 to protected Test" and
+              .status == "completed" and
+              .conclusion == "failure"
+            )
+          ' <<<"$JOBS" >/dev/null
+
+          {
+            echo "run_id=$TARGET_RUN_ID"
+            echo "run_url=$(jq -r '.html_url' <<<"$META")"
+            echo "before_attempt=$(jq -r '.run_attempt' <<<"$META")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Rerun only the failed deployment job
+        id: rerun
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/rerun-failed-jobs"
+          echo 'requested=true' >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the new attempt and verify deployment evidence
+        id: verify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          BEFORE_ATTEMPT: ${{ steps.locate.outputs.before_attempt }}
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_ATTEMPT=$((BEFORE_ATTEMPT + 1))
+          META=''
+          CONCLUSION=''
+          CURRENT_ATTEMPT='0'
+
+          for poll in $(seq 1 900); do
+            META="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+            )"
+            CURRENT_ATTEMPT="$(jq -r '.run_attempt' <<<"$META")"
+            STATUS="$(jq -r '.status' <<<"$META")"
+
+            if [[ "$CURRENT_ATTEMPT" -ge "$EXPECTED_ATTEMPT" && "$STATUS" == completed ]]; then
+              CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$META")"
+              break
+            fi
+
+            sleep 10
+          done
+
+          [[ -n "$CONCLUSION" ]] || CONCLUSION='timed_out'
+          RUN_URL="$(jq -r '.html_url // empty' <<<"${META:-{}}")"
+
+          ARTIFACTS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"
+          )"
+          ARTIFACT_NAME="$(
+            jq -r \
+              --arg run "$RUN_ID" \
+              --arg attempt "$CURRENT_ATTEMPT" '
+                [.artifacts[]
+                  | select(
+                      .expired == false and
+                      .name == ("module-083-test-v2-evidence-" + $run + "-" + $attempt)
+                    )]
+                | sort_by(.created_at)
+                | reverse
+                | .[0].name // empty
+              ' <<<"$ARTIFACTS"
+          )"
+
+          EVIDENCE_VERIFIED=false
+          if [[ "$CONCLUSION" == success && -n "$ARTIFACT_NAME" ]]; then
+            EVIDENCE_DIR="$RUNNER_TEMP/module083-v2-retry-evidence"
+            install -d -m 0700 "$EVIDENCE_DIR"
+            gh run download "$RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "$ARTIFACT_NAME" \
+              --dir "$EVIDENCE_DIR"
+
+            test -s "$EVIDENCE_DIR/final-uat-summary.json"
+            test -s "$EVIDENCE_DIR/migration-verification.json"
+            test -s "$EVIDENCE_DIR/release-images.json"
+            test ! -e "$EVIDENCE_DIR/rollback-summary.json"
+            jq -e '
+              .status == "passed" and
+              .releaseCommit == "eedf635ea53f527c9cefa2b7bc6fb1e1e5f190f5" and
+              .module083Ready == true and
+              .completeLoopVerified == true and
+              .module082Ready == true and
+              .pulseShellVerified == true and
+              .productionChanges == false
+            ' "$EVIDENCE_DIR/final-uat-summary.json" >/dev/null
+            jq -e '
+              .status == "verified" and
+              .migration == "082_module_083_full_future_loop" and
+              .privateNetworkExecution == true and
+              .temporaryJobsCleaned == true
+            ' "$EVIDENCE_DIR/migration-verification.json" >/dev/null
+            EVIDENCE_VERIFIED=true
+          fi
+
+          {
+            echo "conclusion=$CONCLUSION"
+            echo "run_url=$RUN_URL"
+            echo "attempt=$CURRENT_ATTEMPT"
+            echo "artifact_name=$ARTIFACT_NAME"
+            echo "evidence_verified=$EVIDENCE_VERIFIED"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable retry status on the helper merge commit
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.verify.outputs.run_url }}
+          CONCLUSION: ${{ steps.verify.outputs.conclusion }}
+          ARTIFACT_NAME: ${{ steps.verify.outputs.artifact_name }}
+          EVIDENCE_VERIFIED: ${{ steps.verify.outputs.evidence_verified }}
+        run: |
+          set -Eeuo pipefail
+          STATE='failure'
+          [[ "$CONCLUSION" == success && -n "$ARTIFACT_NAME" && "$EVIDENCE_VERIFIED" == true ]] && STATE='success'
+
+          DESCRIPTION="Module 083 Test retry ${RUN_ID:-unknown}: ${CONCLUSION:-not_completed}; evidence ${EVIDENCE_VERIFIED:-false}"
+          TARGET_URL="${RUN_URL:-https://github.com/$GITHUB_REPOSITORY/actions}"
+
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$STATE" \
+            -f context="$STATUS_CONTEXT" \
+            -f description="${DESCRIPTION:0:140}" \
+            -f target_url="$TARGET_URL" >/dev/null
+
+      - name: Enforce successful protected Test deployment
+        if: always()
+        shell: bash
+        env:
+          LOCATE_OUTCOME: ${{ steps.locate.outcome }}
+          RERUN_OUTCOME: ${{ steps.rerun.outcome }}
+          CONCLUSION: ${{ steps.verify.outputs.conclusion }}
+          ARTIFACT_NAME: ${{ steps.verify.outputs.artifact_name }}
+          EVIDENCE_VERIFIED: ${{ steps.verify.outputs.evidence_verified }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$LOCATE_OUTCOME" == success ]]
+          [[ "$RERUN_OUTCOME" == success ]]
+          [[ "$CONCLUSION" == success ]]
+          [[ -n "$ARTIFACT_NAME" ]]
+          [[ "$EVIDENCE_VERIFIED" == true ]]
+          echo 'PROTECTED_MODULE_083_TEST_RETRY=PASSED'
+          echo "DEPLOYMENT_EVIDENCE_ARTIFACT=$ARTIFACT_NAME"
+          echo 'PRODUCTION_CHANGES=NONE'
