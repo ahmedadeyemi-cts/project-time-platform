@@ -6,12 +6,13 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/execute-enterprise-ui-documents-governance-fix.yml'
-      - '.github/workflows/apply-enterprise-ui-documents-governance-fix.yml'
+      - 'scripts/apply-enterprise-ui-documents-governance-fix.py'
   push:
     branches:
       - fix/enterprise-ui-documents-governance-20260809
     paths:
       - '.github/workflows/execute-enterprise-ui-documents-governance-fix.yml'
+      - 'scripts/apply-enterprise-ui-documents-governance-fix.py'
 
 permissions:
   contents: write
@@ -35,21 +36,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Execute reviewed patch and validation scripts
+      - name: Apply bounded source corrections
         shell: bash
         run: |
           set -Eeuo pipefail
-          ruby -ryaml -e '
-            workflow = YAML.load_file(".github/workflows/apply-enterprise-ui-documents-governance-fix.yml")
-            steps = workflow.fetch("jobs").fetch("patch").fetch("steps")
-            ["Apply bounded source corrections", "Validate focused contracts and full builds"].each do |name|
-              step = steps.find { |candidate| candidate["name"] == name }
-              abort("Missing reviewed workflow step: #{name}") unless step && step["run"]
-              path = "/tmp/#{name.downcase.gsub(/[^a-z0-9]+/, "-")}.sh"
-              File.write(path, "set -Eeuo pipefail\n" + step["run"])
-              system("bash", path) or abort("Reviewed step failed: #{name}")
-            end
-          '
+          python3 -m py_compile scripts/apply-enterprise-ui-documents-governance-fix.py
+          python3 scripts/apply-enterprise-ui-documents-governance-fix.py
+          git diff --check
+
+      - name: Validate focused contracts and full builds
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-enterprise-ui-documents-governance.mjs
+          node src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
+          node src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          npm --prefix src/frontend/project-time-web ci
+          npm --prefix src/frontend/project-time-web run build
+          git diff --check
 
       - name: Commit validated corrections and remove temporary executors
         shell: bash
@@ -57,7 +62,8 @@ jobs:
           set -Eeuo pipefail
           rm -f \
             .github/workflows/apply-enterprise-ui-documents-governance-fix.yml \
-            .github/workflows/execute-enterprise-ui-documents-governance-fix.yml
+            .github/workflows/execute-enterprise-ui-documents-governance-fix.yml \
+            scripts/apply-enterprise-ui-documents-governance-fix.py
           git add -A
           git diff --cached --check
           git config user.name 'Pulse Enterprise Automation'
