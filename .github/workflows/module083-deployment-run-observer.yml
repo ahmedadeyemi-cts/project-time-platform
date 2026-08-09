@@ -1,4 +1,4 @@
-name: Locate Corrected Module 083 Protected Test Deployment
+name: Observe Module 083 Protected Test Candidate Promotion
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: write
   statuses: write
 
 concurrency:
@@ -17,160 +16,142 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  locate:
-    name: Publish corrected Module 083 deployment run identity
+  observe:
+    name: Locate and verify exact Module 083 candidate promotion
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 120
     env:
-      TARGET_WORKFLOW: projectpulse-deploy-module083-test-v2.yml
-      TARGET_CONTROL_COMMIT: 2e67aa894a67d1ef0ded78e7c6270c9c52903743
-      TARGET_PR: '593'
-      STATUS_CONTEXT: projectpulse/module083-v2-test-run-locator
+      TARGET_WORKFLOW: .github/workflows/projectpulse-promote-module083-candidate-test.yml
+      TARGET_CONTROL_COMMIT: 4883cc2f93df312bb3e767a5d41d6cc98d5a8f51
+      STATUS_CONTEXT: projectpulse/module083-candidate-promotion
+      EXPECTED_ARTIFACT_PREFIX: module-083-candidate-promotion-
+
     steps:
-      - name: Locate exact push-triggered deployment run
+      - name: Locate exact push-triggered promotion run
         id: locate
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          EXPECTED_PATH=".github/workflows/$TARGET_WORKFLOW"
-          EXACT_RUN=''
-          RUNS=''
+          RUN_ID=''
+          RUN_URL=''
 
-          for attempt in $(seq 1 60); do
+          for poll in $(seq 1 60); do
             RUNS="$(
               gh api \
                 -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/runs?event=push&branch=main&per_page=50"
+                "repos/$GITHUB_REPOSITORY/actions/runs?event=push&branch=main&per_page=100"
             )"
-            EXACT_RUN="$(
+            TARGET="$(
               jq -c \
                 --arg sha "$TARGET_CONTROL_COMMIT" \
-                --arg expected "$EXPECTED_PATH" '
+                --arg path "$TARGET_WORKFLOW" '
                   [.workflow_runs[]
                     | select(
                         .head_sha == $sha
                         and .event == "push"
-                        and ((.path // "") | split("@")[0]) == $expected
+                        and ((.path | split("@")[0]) == $path)
                       )]
                   | sort_by(.created_at)
                   | reverse
-                  | .[0] // empty
+                  | .[0] // {}
                 ' <<<"$RUNS"
             )"
-            [[ -n "$EXACT_RUN" ]] && break
+            RUN_ID="$(jq -r '.id // empty' <<<"$TARGET")"
+            RUN_URL="$(jq -r '.html_url // empty' <<<"$TARGET")"
+            [[ -n "$RUN_ID" ]] && break
             sleep 10
           done
 
-          if [[ -n "$EXACT_RUN" ]]; then
-            RUN_ID="$(jq -r '.id' <<<"$EXACT_RUN")"
-            RUN_URL="$(jq -r '.html_url' <<<"$EXACT_RUN")"
-            RUN_STATUS="$(jq -r '.status' <<<"$EXACT_RUN")"
-            RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$EXACT_RUN")"
-            RUN_ATTEMPT="$(jq -r '.run_attempt' <<<"$EXACT_RUN")"
-            RUN_CREATED="$(jq -r '.created_at' <<<"$EXACT_RUN")"
-            RUN_PATH="$(jq -r '.path' <<<"$EXACT_RUN")"
-
-            [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-            [[ "$RUN_URL" == "https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" ]]
-            [[ "${RUN_PATH%%@*}" == "$EXPECTED_PATH" ]]
-
-            {
-              echo 'found=true'
-              echo "run_id=$RUN_ID"
-              echo "run_url=$RUN_URL"
-              echo "run_status=$RUN_STATUS"
-              echo "run_conclusion=$RUN_CONCLUSION"
-              echo "run_attempt=$RUN_ATTEMPT"
-              echo "run_created=$RUN_CREATED"
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo 'found=false'
-              echo 'run_id='
-              echo 'run_url='
-              echo 'run_status=not_found'
-              echo 'run_conclusion=not_found'
-              echo 'run_attempt=0'
-              echo 'run_created='
-            } >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish locator on merged PR 593
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          FOUND: ${{ steps.locate.outputs.found }}
-          RUN_ID: ${{ steps.locate.outputs.run_id }}
-          RUN_URL: ${{ steps.locate.outputs.run_url }}
-          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
-          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
-          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
-          RUN_CREATED: ${{ steps.locate.outputs.run_created }}
-        run: |
-          set -Eeuo pipefail
-          BODY_FILE="$RUNNER_TEMP/module083-v2-run-locator.md"
-          {
-            echo '<!-- module083-v2-deployment-run-locator -->'
-            if [[ "$FOUND" == true ]]; then
-              echo '## Corrected Module 083 protected Test deployment located'
-              echo
-              printf -- '- Run ID: `%s`\n' "$RUN_ID"
-              printf -- '- Attempt: `%s`\n' "$RUN_ATTEMPT"
-              printf -- '- Status at observation: `%s`\n' "$RUN_STATUS"
-              printf -- '- Conclusion at observation: `%s`\n' "$RUN_CONCLUSION"
-              printf -- '- Created: `%s`\n' "$RUN_CREATED"
-              printf -- '- Control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
-              printf -- '- Run: %s\n' "$RUN_URL"
-            else
-              echo '## Corrected Module 083 protected Test deployment was not located'
-              echo
-              printf -- '- Expected workflow: `%s`\n' "$TARGET_WORKFLOW"
-              printf -- '- Expected control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
-            fi
-            echo
-            echo 'This observer performs no deployment, migration, secret, infrastructure, Test, Production, or private-runtime mutation.'
-          } > "$BODY_FILE"
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo 'The exact Module 083 candidate promotion run was not found.' >&2
+            exit 1
+          }
+          [[ -n "$RUN_URL" ]]
 
           gh api \
             --method POST \
             -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/issues/$TARGET_PR/comments" \
-            -f body="$(cat "$BODY_FILE")" >/dev/null
-          cat "$BODY_FILE" >> "$GITHUB_STEP_SUMMARY"
+            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_CONTROL_COMMIT" \
+            -f state=pending \
+            -f context="$STATUS_CONTEXT" \
+            -f description="Module 083 Test promotion run $RUN_ID is being verified" \
+            -f target_url="$RUN_URL" >/dev/null
 
-      - name: Publish immutable locator status
-        if: always()
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "TARGET_RUN_ID=$RUN_ID"
+          echo "TARGET_RUN_URL=$RUN_URL"
+
+      - name: Wait for completion and verify immutable evidence
+        id: verify
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          FOUND: ${{ steps.locate.outputs.found }}
           RUN_ID: ${{ steps.locate.outputs.run_id }}
           RUN_URL: ${{ steps.locate.outputs.run_url }}
-          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
-          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
-          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
         run: |
           set -Eeuo pipefail
-          STATE='failure'
-          TARGET_URL="https://github.com/$GITHUB_REPOSITORY/actions"
-          DESCRIPTION='Corrected Module 083 Test deployment run not found'
+          TARGET=''
+          CONCLUSION=''
 
-          if [[ "$FOUND" == true && "$RUN_ID" =~ ^[0-9]+$ ]]; then
-            TARGET_URL="$RUN_URL"
-            DESCRIPTION="Module 083 v2 run $RUN_ID: $RUN_STATUS/$RUN_CONCLUSION (attempt $RUN_ATTEMPT)"
-            if [[ "$RUN_STATUS" != completed ]]; then
-              STATE='pending'
-            elif [[ "$RUN_CONCLUSION" == success ]]; then
-              STATE='success'
-            else
-              STATE='failure'
+          for poll in $(seq 1 480); do
+            TARGET="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+            )"
+            [[ "$(jq -r '.head_sha' <<<"$TARGET")" == "$TARGET_CONTROL_COMMIT" ]]
+            [[ "$(jq -r '.event' <<<"$TARGET")" == push ]]
+            [[ "$(jq -r '.path' <<<"$TARGET" | cut -d@ -f1)" == "$TARGET_WORKFLOW" ]]
+
+            STATUS="$(jq -r '.status' <<<"$TARGET")"
+            ATTEMPT="$(jq -r '.run_attempt' <<<"$TARGET")"
+            echo "TARGET_POLL=$poll STATUS=$STATUS ATTEMPT=$ATTEMPT"
+            if [[ "$STATUS" == completed ]]; then
+              CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$TARGET")"
+              break
             fi
-          fi
+            sleep 15
+          done
 
+          [[ -n "$CONCLUSION" ]] || CONCLUSION=timed_out
+          ATTEMPT="$(jq -r '.run_attempt // 0' <<<"$TARGET")"
+
+          JOBS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100"
+          )"
+          jq -r '.jobs[] | [.id,.name,.status,(.conclusion // "none")] | @tsv' <<<"$JOBS" \
+            | sed 's/^/TARGET_JOB=/'
+
+          ARTIFACTS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"
+          )"
+          ARTIFACT_NAME="$(
+            jq -r --arg prefix "$EXPECTED_ARTIFACT_PREFIX" '
+              [.artifacts[]
+                | select(.expired == false and (.name | startswith($prefix)))]
+              | sort_by(.created_at)
+              | reverse
+              | .[0].name // empty
+            ' <<<"$ARTIFACTS"
+          )"
+          ARTIFACT_DIGEST="$(
+            jq -r --arg name "$ARTIFACT_NAME" '
+              [.artifacts[] | select(.name == $name)]
+              | .[0].digest // empty
+            ' <<<"$ARTIFACTS"
+          )"
+
+          STATE=failure
+          [[ "$CONCLUSION" == success && -n "$ARTIFACT_NAME" ]] && STATE=success
+          DESCRIPTION="Module 083 Test promotion $RUN_ID attempt $ATTEMPT: $CONCLUSION"
           gh api \
             --method POST \
             -H 'Accept: application/vnd.github+json' \
@@ -178,10 +159,13 @@ jobs:
             -f state="$STATE" \
             -f context="$STATUS_CONTEXT" \
             -f description="${DESCRIPTION:0:140}" \
-            -f target_url="$TARGET_URL" >/dev/null
+            -f target_url="$RUN_URL" >/dev/null
 
-          echo "MODULE_083_V2_TARGET_RUN_FOUND=${FOUND:-false}"
-          echo "MODULE_083_V2_TARGET_RUN_ID=${RUN_ID:-none}"
-          echo 'DEPLOYMENT_ACTIONS=NONE'
-          echo 'MIGRATION_ACTIONS=NONE'
-          echo 'PRODUCTION_CHANGES=NONE'
+          echo "TARGET_RUN_CONCLUSION=$CONCLUSION"
+          echo "TARGET_RUN_ATTEMPT=$ATTEMPT"
+          echo "TARGET_ARTIFACT_NAME=${ARTIFACT_NAME:-none}"
+          echo "TARGET_ARTIFACT_DIGEST=${ARTIFACT_DIGEST:-none}"
+
+          [[ "$CONCLUSION" == success ]]
+          [[ -n "$ARTIFACT_NAME" ]]
+          echo 'MODULE_083_CANDIDATE_PROMOTION_OBSERVER=PASSED'
