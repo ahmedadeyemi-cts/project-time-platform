@@ -17,6 +17,11 @@ public static class ReleaseDeploymentControlModule
         group.MapPost("/releases/{id}/promote", (Delegate)LockedAsync);
         group.MapPost("/releases/{id}/verify", (Delegate)LockedAsync);
         group.MapPost("/releases/{id}/rollback", (Delegate)LockedAsync);
+
+        // Module 083 extends the platform-operations lifecycle from the already
+        // registered Module 077 endpoint bridge. The Full Future Loop remains a
+        // sandbox and does not unlock any Module 077 deployment mutation.
+        endpoints.MapFullFutureLoopEndpoints();
         return endpoints;
     }
 
