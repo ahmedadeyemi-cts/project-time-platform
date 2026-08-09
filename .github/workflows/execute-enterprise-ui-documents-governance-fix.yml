@@ -7,12 +7,14 @@ on:
     paths:
       - '.github/workflows/execute-enterprise-ui-documents-governance-fix.yml'
       - 'scripts/apply-enterprise-ui-documents-governance-fix.py'
+      - 'src/frontend/project-time-web/scripts/validate-project-workspace-document-download.mjs'
   push:
     branches:
       - fix/enterprise-ui-documents-governance-20260809
     paths:
       - '.github/workflows/execute-enterprise-ui-documents-governance-fix.yml'
       - 'scripts/apply-enterprise-ui-documents-governance-fix.py'
+      - 'src/frontend/project-time-web/scripts/validate-project-workspace-document-download.mjs'
 
 permissions:
   contents: write
