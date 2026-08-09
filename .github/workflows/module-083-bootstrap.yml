@@ -6,6 +6,13 @@ on:
       - 'feature/module-083-full-future-loop-20260809'
     paths:
       - '.github/workflows/module-083-bootstrap.yml'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/module-083-bootstrap.yml'
+      - '.module083-bootstrap/**'
 
 permissions:
   contents: write
@@ -21,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: feature/module-083-full-future-loop-20260809
           fetch-depth: 0
           persist-credentials: true
 
