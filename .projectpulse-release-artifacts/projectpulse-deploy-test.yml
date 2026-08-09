@@ -1,0 +1,590 @@
+name: ProjectPulse Test-Only Module 081/082 and Theme Recovery b0aedc70
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-deploy-test.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy b0aedc70 and validate Module 081/082 and theme recovery
+    if: github.ref == 'refs/heads/main'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_RELEASE_COMMIT: b0aedc706c3fe33b97b91a1b0074a20578c82b64
+
+    steps:
+      - name: Check out deployment controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact application release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b0aedc706c3fe33b97b91a1b0074a20578c82b64
+          path: release
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Guard exact source and no-migration boundary
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ github.event_name }}' == push ]]
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          RELEASE_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == '${{ github.sha }}' ]]
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]]
+          git -C control merge-base --is-ancestor "$RELEASE_COMMIT" "$CONTROL_COMMIT"
+
+          CATALOG='release/src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
+          PRIVATE_RAG='release/src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs'
+          INTERNAL_TESTS='release/tests/CelarAiInternalDataTests/Program.cs'
+          ARCHITECTURE_TEST='release/src/frontend/project-time-web/scripts/validate-module-011-managed-architecture.mjs'
+          VIEW_AS_TEST='release/src/frontend/project-time-web/scripts/validate-view-as-module-navigation.mjs'
+          FLOWHIVE_TEST='release/src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
+          FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+          LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'
+          RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'
+          test -f "$CATALOG"
+          test -f "$PRIVATE_RAG"
+          test -f "$INTERNAL_TESTS"
+          test -f "$ARCHITECTURE_TEST"
+          test -f "$VIEW_AS_TEST"
+          test -f "$FLOWHIVE_TEST"
+          test -f "$FORGE_TEST"
+          test -f "$LAB_MODULE"
+          test -f "$RISK_MODULE"
+          test -f control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+
+          grep -Fq 'LooksLikeClearlyPublicOfficeholderQuestion(normalized)' "$CATALOG"
+          grep -Fq 'Who is the president of Acme Corp?' "$INTERNAL_TESTS"
+          node "$ARCHITECTURE_TEST"
+          node "$VIEW_AS_TEST"
+          grep -Fq 'AllowsDeterministicCitedPlanningFallback(query.FeatureCode)' "$PRIVATE_RAG"
+          grep -Fq 'CelarAiCapabilityCatalog.ProjectFlowHivePlan' "$PRIVATE_RAG"
+          grep -Fq 'CelarAiCapabilityCatalog.ProjectForgePlanEstimate' "$PRIVATE_RAG"
+          node "$FLOWHIVE_TEST"
+          (cd release/src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$LAB_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$LAB_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$RISK_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$RISK_MODULE"
+
+          echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'MIGRATION_081=NOT_APPLIED'
+          echo 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED'
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve protected Test contracts and prove UAT session
+        id: contract
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Rollback image is outside the approved ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail "Could not resolve rollback digest for $image."
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || fail 'Azure login is outside Test.'
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'The API is not tagged as Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_JSON")" == test ]] || fail 'The web app is not tagged as Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The API is not in single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The web app is not in single-revision mode.'
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not the protected Test site.'
+          HTTP_STATUS="$(curl -sS --max-time 45 -o "$RUNNER_TEMP/preflight-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$HTTP_STATUS" == 200 ]] || fail 'The Test UAT session is expired or unauthorized.'
+
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$API_JSON" > "$RUNNER_TEMP/private-runtime-before.json"
+          jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON" > "$RUNNER_TEMP/source-commit-before.json"
+
+          RAW_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")"
+          RAW_WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_JSON")"
+          echo "old_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable API and web images from b0aedc70
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          API_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:combined-release-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:combined-release-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API image without migrations or private-runtime activation
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
+            --revision-suffix "ucar-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          SOURCE_COMMIT_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_COMMIT_AFTER" == "$TARGET_RELEASE_COMMIT" ]] || { echo 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned combined release.' >&2; exit 1; }
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$RUNNER_TEMP/private-runtime-after.json"
+          diff -u "$RUNNER_TEMP/private-runtime-before.json" "$RUNNER_TEMP/private-runtime-after.json"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "ucarw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Prove release-blocking health, privacy, and task-independent routing
+        id: uat
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          require_json_file() {
+            local file="$1" label="$2"
+            [[ -s "$file" ]] || fail "$label returned HTTP 200 with an empty response body."
+            jq -e . "$file" >/dev/null 2>&1 || {
+              echo "Invalid JSON response for $label:" >&2
+              head -c 2048 "$file" >&2 || true
+              echo >&2
+              fail "$label returned HTTP 200 with an invalid JSON response body."
+            }
+          }
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
+          auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
+          auth001=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
+          auth081=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 081')
+          auth082=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 082')
+
+          READY=false
+          for attempt in $(seq 1 36); do
+            if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health?release=$GITHUB_RUN_ID-$attempt" >/dev/null; then
+              READY=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || fail 'The public Test health endpoint did not become ready.'
+
+          MODULE_081_ACCESS_FILE="$RUNNER_TEMP/module-081-access.json"
+          MODULE_081_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_081_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/access")"
+          [[ "$MODULE_081_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_081_ACCESS_FILE" >&2 || true; fail 'Module 081 effective access remained unavailable.'; }
+          require_json_file "$MODULE_081_ACCESS_FILE" 'Module 081 access'
+          jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_081_ACCESS_FILE" | tee "$RUNNER_TEMP/module-081-access-summary.json"
+          jq -e '
+            .module == "081" and
+            .contractVersion == "081-enterprise-v1" and
+            .status == "ready" and
+            .dataReady == true and
+            ((.scope.mode // "") | length) > 0 and
+            .scope.isViewAs == false and
+            .permissions.canManage == true
+          ' "$MODULE_081_ACCESS_FILE" >/dev/null || fail 'Module 081 did not resolve a ready, manageable effective scope.'
+
+          MODULE_082_ACCESS_FILE="$RUNNER_TEMP/module-082-access.json"
+          MODULE_082_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_082_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/access")"
+          [[ "$MODULE_082_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_082_ACCESS_FILE" >&2 || true; fail 'Module 082 effective access remained unavailable.'; }
+          require_json_file "$MODULE_082_ACCESS_FILE" 'Module 082 access'
+          jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_082_ACCESS_FILE" | tee "$RUNNER_TEMP/module-082-access-summary.json"
+          jq -e '
+            .module == "082" and
+            .contractVersion == "082-enterprise-v1" and
+            .status == "ready" and
+            .dataReady == true and
+            ((.scope.mode // "") | length) > 0 and
+            .scope.isViewAs == false and
+            .permissions.canManage == true
+          ' "$MODULE_082_ACCESS_FILE" >/dev/null || fail 'Module 082 did not resolve a ready, manageable effective scope.'
+
+          MODULE_081_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-081-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/summary")"
+          [[ "$MODULE_081_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-081-summary.json" >&2 || true; fail 'Module 081 governed summary remained unavailable.'; }
+          require_json_file "$RUNNER_TEMP/module-081-summary.json" 'Module 081 summary'
+          MODULE_082_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-082-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/summary")"
+          [[ "$MODULE_082_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-082-summary.json" >&2 || true; fail 'Module 082 governed summary remained unavailable.'; }
+          require_json_file "$RUNNER_TEMP/module-082-summary.json" 'Module 082 summary'
+
+          PORTAL_HTML="$RUNNER_TEMP/test-portal.html"
+          FRONTEND_BUNDLE="$RUNNER_TEMP/test-portal-assets.txt"
+          curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_RUN_ID" > "$PORTAL_HTML"
+          mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
+          [[ "${#FRONTEND_ASSETS[@]}" -gt 0 ]] || fail 'The Test portal did not expose frontend assets.'
+          : > "$FRONTEND_BUNDLE"
+          for asset in "${FRONTEND_ASSETS[@]}"; do
+            case "$asset" in
+              /assets/*) curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "$BASE$asset" >> "$FRONTEND_BUNDLE" ;;
+              *) fail "Unexpected frontend asset path: $asset" ;;
+            esac
+          done
+          grep -Fq 'projectpulse-floating-theme-toggle' "$FRONTEND_BUNDLE" || fail 'The restored global theme control is absent from the deployed bundle.'
+          grep -Fq 'ptp-theme' "$FRONTEND_BUNDLE" || fail 'The deployed bundle does not preserve the persistent theme preference.'
+          grep -Fq 'projectpulse-theme-control' "$FRONTEND_BUNDLE" || fail 'The deployed theme dock stylesheet is absent.'
+          jq -n --arg status verified --argjson assetCount "${#FRONTEND_ASSETS[@]}" '{status:$status,assetCount:$assetCount,persistentThemeKey:"ptp-theme",floatingControl:"projectpulse-floating-theme-toggle"}' > "$RUNNER_TEMP/theme-recovery-summary.json"
+
+          READINESS_FILE="$RUNNER_TEMP/celar-readiness.json"
+          curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth011[@]}" "$BASE/api/celar-ai/v1/production/readiness" > "$READINESS_FILE"
+          jq -c '{
+            status,
+            competencyPassRate:.competency.currentPassRate,
+            publicOfficeholderCases:[.competency.cases[]? | select(.code == "public_officeholder") | {code,actualIntent,passed}],
+            defaultTargets:.capabilityRouting.defaultTargets
+          }' "$READINESS_FILE" | tee "$RUNNER_TEMP/celar-readiness-summary.json"
+          jq -e '
+            any(.competency.cases[]?; .code == "public_officeholder" and .actualIntent == "general_knowledge" and .passed == true) and
+            (.capabilityRouting.defaultTargets == ["celar_ai","claude","openai","local_template"])
+          ' "$READINESS_FILE" >/dev/null || fail 'The deployed runtime did not report the public-officeholder and default-route contract.'
+
+          PUBLIC_FILE="$RUNNER_TEMP/public-president-answer.json"
+          PUBLIC_PAYLOAD='{"question":"Who is the US President?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":false,"usePrivateModelWhenAvailable":false,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
+          PUBLIC_STATUS="$(curl -sS --max-time 180 -o "$PUBLIC_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$PUBLIC_PAYLOAD" "$BASE/api/celar-ai/v2/chat")"
+          [[ "$PUBLIC_STATUS" == 200 ]] || { jq '{status,message,result}' "$PUBLIC_FILE" >&2 || true; fail 'The public President question failed.'; }
+          jq -c '{
+            decisionCode:.decision.code,
+            trustClassification:.trust.classification,
+            questionAnswered:.trust.questionAnswered,
+            status:.result.status,
+            modelProvider:.result.modelProvider,
+            directConclusionLength:((.result.answer.directConclusion // "") | length),
+            targetDecisions:.result.targetDecisions,
+            rawPrivateContextSentToExternalProvider
+          }' "$PUBLIC_FILE" | tee "$RUNNER_TEMP/public-president-summary.json"
+          jq -e '
+            .decision.code == "general_knowledge" and
+            .trust.classification == "general_knowledge" and
+            .trust.questionAnswered == true and
+            (.result.status | ascii_downcase) == "completed" and
+            ((.result.answer.directConclusion // "") | length) >= 20 and
+            ((.result.modelProvider // "") | ascii_downcase) as $provider |
+            ($provider == "claude" or $provider == "openai") and
+            any(.result.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used") and
+            ($provider == "claude" or any(.result.targetDecisions[]?;
+              ((.target // "") | ascii_downcase) == "claude" and
+              ((.outcome // "") | ascii_downcase) == "failed" and
+              ((.reasonCode // "") | ascii_downcase) == "public_general_question_semantic_non_answer")) and
+            .rawPrivateContextSentToExternalProvider == false
+          ' "$PUBLIC_FILE" >/dev/null || fail 'The President question did not use the governed public-provider route.'
+
+          PRIVATE_FILE="$RUNNER_TEMP/internal-organization-answer.json"
+          PRIVATE_PAYLOAD='{"question":"Who is the president of Acme Corp?","mode":"system_help","detailLevel":"comprehensive","includeAuthorizedProjectDocuments":true,"usePrivateModelWhenAvailable":true,"includeRepositoryContext":false,"includeAssumptions":true,"includeSourceCitations":true,"answerPreferenceSource":"release_uat"}'
+          PRIVATE_STATUS="$(curl -sS --max-time 180 -o "$PRIVATE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$PRIVATE_PAYLOAD" "$BASE/api/celar-ai/v2/chat")"
+          [[ "$PRIVATE_STATUS" == 200 ]] || { jq '{status,message,result}' "$PRIVATE_FILE" >&2 || true; fail 'The named-organization privacy question failed.'; }
+          jq -e '
+            .decision.code != "general_knowledge" and
+            ([.result.targetDecisions[]? | select((((.target // "") | ascii_downcase) == "claude" or ((.target // "") | ascii_downcase) == "openai") and ((.outcome // "") | ascii_downcase) == "used")] | length) == 0 and
+            .rawPrivateContextSentToExternalProvider == false and
+            .attachments.externalProviderReceivedAttachmentContent == false
+          ' "$PRIVATE_FILE" >/dev/null || fail 'A named organization crossed the public-provider privacy boundary.'
+
+          CATEGORIES="$(curl -fsS --max-time 45 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/non-project-time-categories")"
+          CATEGORY="$(jq -c '[.categories[]? | select(((.name // "") + " " + (.code // "")) | test("training"; "i"))] | first // empty' <<<"$CATEGORIES")"
+          [[ -n "$CATEGORY" ]] || fail 'The active Training category is unavailable.'
+          NO_SOW_PAYLOAD="$(jq -nc --arg id "$(jq -r .id <<<"$CATEGORY")" --arg name "$(jq -r .name <<<"$CATEGORY")" --arg code "$(jq -r '.code // ""' <<<"$CATEGORY")" '{workDate:(now|strftime("%Y-%m-%d")),timeEntryId:null,assignmentId:null,projectId:null,taskId:null,nonProjectTimeCategoryId:$id,timeType:"regular",rowType:"non_project",rowLabel:$name,customerName:null,projectName:null,projectCode:null,taskName:null,taskCode:null,categoryCode:$code,hours:0.5,currentDescription:"Working on training"}')"
+          NO_SOW_FILE="$RUNNER_TEMP/timesheet-no-sow.json"
+          NO_SOW_STATUS="$(curl -sS --max-time 180 -o "$NO_SOW_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$NO_SOW_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
+          [[ "$NO_SOW_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$NO_SOW_FILE" >&2 || true; fail 'The no-SOW Timesheet request failed.'; }
+          jq -e '
+            .status == "ai_suggestion_generated" and
+            ((.provider // "") | ascii_downcase) as $provider |
+            ($provider == "celar_ai" or $provider == "claude" or $provider == "openai") and
+            ((.suggestion // "") | length) >= 90 and
+            ((.suggestion // "") | contains("[REDACTED_") | not) and
+            any(.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used")
+          ' "$NO_SOW_FILE" >/dev/null || fail 'The no-SOW Timesheet route did not return a reviewable suggestion.'
+
+          jq '{question:.decision.code,provider:.result.modelProvider,answerLength:(.result.answer.directConclusion|length)}' "$PUBLIC_FILE" > "$RUNNER_TEMP/public-summary.json"
+          jq '{intent:.decision.code,status:.result.status,externalProviderUsed:([.result.targetDecisions[]? | select((((.target // "")|ascii_downcase)=="claude" or ((.target // "")|ascii_downcase)=="openai") and ((.outcome // "")|ascii_downcase)=="used")]|length>0)}' "$PRIVATE_FILE" > "$RUNNER_TEMP/private-summary.json"
+          jq '{status,provider,suggestionLength:(.suggestion|length)}' "$NO_SOW_FILE" > "$RUNNER_TEMP/no-sow-summary.json"
+
+      - name: Diagnose assigned SOW Timesheet, FlowHive, and Forge routing
+        id: assignment_diagnostics
+        continue-on-error: true
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          ASSIGNMENT_DIAGNOSTICS_FILE="$RUNNER_TEMP/assignment-diagnostics-summary.json"
+          ASSIGNMENT_PRIVACY_BREACH_MARKER="$RUNNER_TEMP/assignment-privacy-breach"
+          DIAGNOSTIC_STAGE=assignment_discovery
+          fail() { echo "ERROR: $*" >&2; return 1; }
+          privacy_fail() {
+            local message="$1"
+            : > "$ASSIGNMENT_PRIVACY_BREACH_MARKER"
+            jq -n --arg status failed --arg stage privacy_boundary --arg reason observed_private_data_boundary_breach \
+              '{status:$status,releaseBlocking:true,stage:$stage,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo "ERROR: $message" >&2
+            trap - ERR
+            exit 1
+          }
+          on_diagnostic_error() {
+            local exit_code=$?
+            trap - ERR
+            if [[ ! -s "$ASSIGNMENT_DIAGNOSTICS_FILE" ]]; then
+              jq -n --arg status failed --arg stage "$DIAGNOSTIC_STAGE" --arg reason diagnostic_assertion_failed \
+                '{status:$status,releaseBlocking:false,stage:$stage,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            fi
+            echo "::warning::Assignment-dependent AI diagnostics did not complete at stage $DIAGNOSTIC_STAGE; the deployed release will remain active unless a privacy breach was observed."
+            exit "$exit_code"
+          }
+          trap on_diagnostic_error ERR
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
+          auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
+          auth001=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
+          TASK_CANDIDATES_FILE="$RUNNER_TEMP/available-timesheet-task-candidates.jsonl"
+          : > "$TASK_CANDIDATES_FILE"
+          TODAY_UTC="$(date -u +%F)"
+          DAY_OF_WEEK="$(date -u +%u)"
+          CURRENT_WEEK_START="$(date -u -d "$TODAY_UTC - $((DAY_OF_WEEK - 1)) days" +%F)"
+          for week_offset in 0 1 -1 2 -2 3 -3 4 -4 5 -5 6 -6; do
+            WEEK_START="$(date -u -d "$CURRENT_WEEK_START $week_offset week" +%F)"
+            TARGETS_FILE="$RUNNER_TEMP/available-timesheet-targets-$week_offset.json"
+            curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth001[@]}" "$BASE/api/timesheet/timers/targets?weekStart=$WEEK_START" > "$TARGETS_FILE"
+            jq -e '.targets | type == "array"' "$TARGETS_FILE" >/dev/null || fail 'The authoritative Timesheet target response did not expose a targets collection.'
+            WEEK_TASK_COUNT="$(jq -r '[.targets[]? | select((.targetType // "") == "assignment")] | length' "$TARGETS_FILE")"
+            [[ "$WEEK_TASK_COUNT" =~ ^[0-9]+$ ]] || fail 'The authoritative Timesheet target response did not expose a valid assignment count.'
+            jq -nc --arg weekStart "$WEEK_START" --argjson taskCount "$WEEK_TASK_COUNT" '{weekStart:$weekStart,taskCount:$taskCount}'
+            jq -c --arg weekStart "$WEEK_START" '
+              .targets[]?
+              | select((.targetType // "") == "assignment")
+              | . + {
+                  assignmentId: (.assignmentId // .projectAssignmentId // .targetId // ((.selectionValue // "") | sub("^assignment:"; ""))),
+                  uatWeekStart: $weekStart
+                }
+            ' "$TARGETS_FILE" >> "$TASK_CANDIDATES_FILE"
+          done
+          mapfile -t TASK_ROWS < <(jq -sc 'unique_by([.assignmentId,.projectId,.taskId])[]' "$TASK_CANDIDATES_FILE" | head -200)
+          if [[ "${#TASK_ROWS[@]}" -eq 0 ]]; then
+            jq -n --arg status not_testable --arg reason no_authoritative_assignment_targets \
+              '{status:$status,releaseBlocking:false,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo '::warning::Assignment-dependent AI diagnostics are not testable: the UAT identity has no authoritative assignment targets in the bounded Test window.'
+            trap - ERR
+            exit 0
+          fi
+          DIAGNOSTIC_STAGE=sow_readiness
+          SELECTED_BOOTSTRAP=''
+          SELECTED_TASK_ROW=''
+          for task_row in "${TASK_ROWS[@]}"; do
+            project_id="$(jq -r .projectId <<<"$task_row")"
+            task_id="$(jq -r .taskId <<<"$task_row")"
+            CANDIDATE="$RUNNER_TEMP/project-forge-$project_id.json"
+            STATUS="$(curl -sS --max-time 120 -o "$CANDIDATE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth033[@]}" "$BASE/api/project-forge/bootstrap?workspace=canonical&projectId=$project_id")"
+            if [[ "$STATUS" == 200 ]] && jq -e --arg task "$task_id" '.ai.module064Connection.projectEvidenceReady == true and .ai.module064Connection.projectReadySowDocumentCount > 0 and any(.tasks[]?; .taskId == $task)' "$CANDIDATE" >/dev/null; then
+              SELECTED_BOOTSTRAP="$CANDIDATE"
+              SELECTED_TASK_ROW="$task_row"
+              break
+            fi
+          done
+          if [[ -z "$SELECTED_BOOTSTRAP" || -z "$SELECTED_TASK_ROW" ]]; then
+            jq -n --arg status not_testable --arg reason no_citation_ready_sow_assignment \
+              '{status:$status,releaseBlocking:false,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo '::warning::Assignment-dependent AI diagnostics are not testable: no discovered assignment has citation-ready SOW evidence.'
+            trap - ERR
+            exit 0
+          fi
+
+          DIAGNOSTIC_STAGE=assignment_identity
+          ASSIGNMENT_ID="$(jq -r .assignmentId <<<"$SELECTED_TASK_ROW")"
+          PROJECT_ID="$(jq -r .projectId <<<"$SELECTED_TASK_ROW")"
+          PROJECT_CODE="$(jq -r .projectCode <<<"$SELECTED_TASK_ROW")"
+          PROJECT_NAME="$(jq -r .projectName <<<"$SELECTED_TASK_ROW")"
+          TASK_ID="$(jq -r .taskId <<<"$SELECTED_TASK_ROW")"
+          TASK_CODE="$(jq -r '.taskCode // ""' <<<"$SELECTED_TASK_ROW")"
+          TASK_NAME="$(jq -r .taskName <<<"$SELECTED_TASK_ROW")"
+          SELECTED_WEEK_START="$(jq -r .uatWeekStart <<<"$SELECTED_TASK_ROW")"
+          [[ "$ASSIGNMENT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ && "$TASK_ID" =~ ^[0-9a-fA-F-]{36}$ && "$SELECTED_WEEK_START" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && -n "$PROJECT_CODE" && -n "$PROJECT_NAME" && -n "$TASK_NAME" ]] || fail 'The selected UAT assignment identity is incomplete.'
+
+          START_DATE="$SELECTED_WEEK_START"
+          PLAN_BASE="$(jq -nc --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" --arg startDate "$START_DATE" '{mode:"project_plan",projectId:$projectId,projectCode:$projectCode,projectName:$projectName,startDate:$startDate,requestedOutcome:"Create a comprehensive cited delivery plan with detailed tasks, dependencies, validation, acceptance criteria, responsibilities, risks, and review controls.",detailLevel:"comprehensive",diagramType:"gantt",allowSanitizedExternalFallback:true}')"
+
+          DIAGNOSTIC_STAGE=flowhive
+          FLOWHIVE_PAYLOAD="$(jq '. + {capabilityCode:"project_flowhive_plan"}' <<<"$PLAN_BASE")"
+          FLOWHIVE_FILE="$RUNNER_TEMP/flowhive-compose.json"
+          FLOWHIVE_STATUS="$(curl -sS --max-time 240 -o "$FLOWHIVE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FLOWHIVE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
+          [[ "$FLOWHIVE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FLOWHIVE_FILE" >&2 || true; fail 'FlowHive citation-preserving composition failed.'; }
+
+          DIAGNOSTIC_STAGE=project_forge
+          FORGE_PAYLOAD="$(jq '. + {capabilityCode:"project_forge_plan_estimate"}' <<<"$PLAN_BASE")"
+          FORGE_FILE="$RUNNER_TEMP/project-forge-compose.json"
+          FORGE_STATUS="$(curl -sS --max-time 240 -o "$FORGE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FORGE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
+          [[ "$FORGE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FORGE_FILE" >&2 || true; fail 'Project Forge citation-preserving composition failed.'; }
+
+          for artifact in "$FLOWHIVE_FILE" "$FORGE_FILE"; do
+            if ! jq -e '
+              .result.privacy.externalProviderReceivesPrivateDocumentText == false and
+              .result.privacy.externalProviderReceivesCustomerIdentity == false
+            ' "$artifact" >/dev/null; then
+              privacy_fail "An assigned SOW planning request crossed the external-provider privacy boundary."
+            fi
+            jq -e '
+              (.result.status | test("completed|partial"; "i")) and
+              (.result.flowHivePlan.tasks | length) > 0 and
+              (.result.citations | length) > 0 and
+              every(.result.flowHivePlan.tasks[]; (.citationIds | length) > 0) and
+              .stateChanged == false
+            ' "$artifact" >/dev/null || fail "Citation or planning evidence failed for $artifact."
+          done
+
+          DIAGNOSTIC_STAGE=timesheet_sow
+          SOW_TIMESHEET_PAYLOAD="$(jq -nc \
+            --arg assignmentId "$ASSIGNMENT_ID" \
+            --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" \
+            --arg taskId "$TASK_ID" --arg taskCode "$TASK_CODE" --arg taskName "$TASK_NAME" \
+            --arg workDate "$SELECTED_WEEK_START" \
+            '{workDate:$workDate,timeEntryId:null,assignmentId:$assignmentId,projectId:$projectId,taskId:$taskId,nonProjectTimeCategoryId:null,timeType:"regular",rowType:"project_task",rowLabel:($projectCode+" "+$taskCode),customerName:null,projectName:$projectName,projectCode:$projectCode,taskName:$taskName,taskCode:$taskCode,categoryCode:"",hours:0.5,currentDescription:"Reviewed the assigned implementation task, validated the current requirements, and documented the next engineering steps."}')"
+          SOW_TIMESHEET_FILE="$RUNNER_TEMP/timesheet-sow-private-boundary.json"
+          SOW_TIMESHEET_STATUS="$(curl -sS --max-time 240 -o "$SOW_TIMESHEET_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$SOW_TIMESHEET_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
+          [[ "$SOW_TIMESHEET_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$SOW_TIMESHEET_FILE" >&2 || true; fail 'The SOW-grounded Timesheet privacy test failed.'; }
+          if ! jq -e '
+            ([.targetDecisions[]? | select((((.target // "") | ascii_downcase) == "claude" or ((.target // "") | ascii_downcase) == "openai") and ((.outcome // "") | ascii_downcase) == "used")] | length) == 0
+          ' "$SOW_TIMESHEET_FILE" >/dev/null; then
+            privacy_fail 'A SOW-grounded Timesheet request crossed the public-provider boundary.'
+          fi
+
+          jq '{status,provider,suggestionLength:((.suggestion // "")|length),warningPresent:((.warning // "")|length>0)}' "$SOW_TIMESHEET_FILE" > "$RUNNER_TEMP/sow-timesheet-summary.json"
+          jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FLOWHIVE_FILE" > "$RUNNER_TEMP/flowhive-summary.json"
+          jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FORGE_FILE" > "$RUNNER_TEMP/forge-summary.json"
+          printf '%s' "$PROJECT_ID" > "$RUNNER_TEMP/uat-project-id"
+          jq -n --arg status completed --arg projectId "$PROJECT_ID" '{status:$status,releaseBlocking:false,projectId:$projectId}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+          trap - ERR
+
+      - name: Enforce any observed assigned-SOW privacy breach
+        if: always() && steps.deploy_api.outputs.started == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/assignment-privacy-breach" ]]; then
+            echo 'ERROR: Assignment-dependent diagnostics observed a private-data routing breach.' >&2
+            exit 1
+          fi
+
+
+      - name: Publish deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          read_json_or_null() {
+            local path="$1"
+            [[ -s "$path" ]] && cat "$path" || printf 'null\n'
+          }
+          UAT_PROJECT_ID="$(cat "$RUNNER_TEMP/uat-project-id" 2>/dev/null || true)"
+          ASSIGNMENT_DIAGNOSTICS="$(read_json_or_null "$RUNNER_TEMP/assignment-diagnostics-summary.json")"
+          SOW_TIMESHEET_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/sow-timesheet-summary.json")"
+          FLOWHIVE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/flowhive-summary.json")"
+          FORGE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/forge-summary.json")"
+          MODULE_081_ACCESS_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/module-081-access-summary.json")"
+          MODULE_082_ACCESS_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/module-082-access-summary.json")"
+          THEME_RECOVERY_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/theme-recovery-summary.json")"
+          jq -n \
+            --arg releaseCommit "$TARGET_RELEASE_COMMIT" \
+            --arg controlCommit '${{ steps.release.outputs.control_commit }}' \
+            --arg apiImage '${{ steps.build.outputs.api_image }}' \
+            --arg webImage '${{ steps.build.outputs.web_image }}' \
+            --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
+            --arg projectId "$UAT_PROJECT_ID" \
+            --argjson assignmentDiagnostics "$ASSIGNMENT_DIAGNOSTICS" \
+            --argjson publicQuestion "$(cat "$RUNNER_TEMP/public-summary.json")" \
+            --argjson internalQuestion "$(cat "$RUNNER_TEMP/private-summary.json")" \
+            --argjson noSowTimesheet "$(cat "$RUNNER_TEMP/no-sow-summary.json")" \
+            --argjson sowTimesheet "$SOW_TIMESHEET_SUMMARY" \
+            --argjson flowHive "$FLOWHIVE_SUMMARY" \
+            --argjson projectForge "$FORGE_SUMMARY" \
+            --argjson module081Access "$MODULE_081_ACCESS_SUMMARY" \
+            --argjson module082Access "$MODULE_082_ACCESS_SUMMARY" \
+            --argjson themeRecovery "$THEME_RECOVERY_SUMMARY" \
+            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:($projectId | if length > 0 then . else null end),module081Access:$module081Access,module082Access:$module082Access,themeRecovery:$themeRecovery,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,assignmentDiagnostics:$assignmentDiagnostics,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
+            > evidence/modules-081-082-theme-b0aedc70-test-deployment.json
+
+      - name: Upload deployment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: modules-081-082-theme-b0aedc70-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/modules-081-082-theme-b0aedc70-test-deployment.json
+          retention-days: 30
+
+      - name: Restore prior images and source marker on failure
+        if: ${{ failure() && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          SOURCE_ROW="$(cat "$RUNNER_TEMP/source-commit-before.json" 2>/dev/null)"
+          if [[ -n "$SOURCE_ROW" && "$SOURCE_ROW" != null ]]; then
+            SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
+            SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
+            [[ -n "$SOURCE_SECRET" ]] && SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET" || SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --set-env-vars "$SOURCE_ARG" --revision-suffix "ucarrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          else
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --image '${{ steps.contract.outputs.old_api_image }}' --remove-env-vars PROJECTPULSE_SOURCE_COMMIT --revision-suffix "ucarrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --image '${{ steps.contract.outputs.old_web_image }}' --revision-suffix "ucarwrb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          fi
