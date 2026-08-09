@@ -1,0 +1,216 @@
+name: ProjectPulse One-Time Test Retry After UAT Session Refresh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-rerun-failed-test-after-session-refresh.yml'
+
+permissions:
+  actions: write
+  contents: read
+  statuses: write
+
+concurrency:
+  group: projectpulse-rerun-failed-test-after-session-refresh
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: Rerun exact failed protected Test deployment
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      TARGET_WORKFLOW: projectpulse-deploy-test.yml
+      TARGET_CONTROL_COMMIT: a28c310c41a19e274d4ded5011d7f41c5760608d
+      TARGET_RELEASE_COMMIT: adada448a0410d24feac45f11ef3b280c2756aaa
+      STATUS_CONTEXT: projectpulse/test-session-refresh-rerun
+
+    steps:
+      - name: Prove the exact guarded Test controller
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          CONTROLLER="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$TARGET_WORKFLOW?ref=$TARGET_CONTROL_COMMIT" \
+              --jq '.content' \
+              | tr -d '\n' \
+              | base64 --decode
+          )"
+
+          grep -Fq "TARGET_RELEASE_COMMIT: $TARGET_RELEASE_COMMIT" <<<"$CONTROLLER"
+          grep -Fq "ref: $TARGET_RELEASE_COMMIT" <<<"$CONTROLLER"
+          grep -Fq 'environment: test' <<<"$CONTROLLER"
+          grep -Fq 'MIGRATIONS_APPLIED=NONE' <<<"$CONTROLLER"
+          grep -Fq 'MIGRATION_081=NOT_APPLIED' <<<"$CONTROLLER"
+          grep -Fq 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED' <<<"$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' <<<"$CONTROLLER"
+          ! grep -Eq 'workflow_dispatch:|run-migration-job|psql|az keyvault' <<<"$CONTROLLER"
+
+      - name: Locate the exact failed post-merge deployment run
+        id: locate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          RUNS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/runs?branch=main&event=push&status=failure&per_page=100"
+          )"
+
+          RUN_ID="$(
+            jq -r --arg sha "$TARGET_CONTROL_COMMIT" '
+              [.workflow_runs[]
+                | select(
+                    .head_sha == $sha
+                    and .event == "push"
+                    and .status == "completed"
+                    and .conclusion == "failure"
+                  )]
+              | sort_by(.created_at)
+              | reverse
+              | .[0].id // empty
+            ' <<<"$RUNS"
+          )"
+
+          [[ -n "$RUN_ID" ]] || {
+            echo 'No failed protected Test deployment was found for the exact controller commit.' >&2
+            exit 1
+          }
+
+          META="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+          )"
+          [[ "$(jq -r '.head_sha' <<<"$META")" == "$TARGET_CONTROL_COMMIT" ]]
+          [[ "$(jq -r '.event' <<<"$META")" == push ]]
+          [[ "$(jq -r '.status' <<<"$META")" == completed ]]
+          [[ "$(jq -r '.conclusion' <<<"$META")" == failure ]]
+          [[ "$(jq -r '.path' <<<"$META" | cut -d@ -f1)" == ".github/workflows/$TARGET_WORKFLOW" ]]
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_url=$(jq -r '.html_url' <<<"$META")" >> "$GITHUB_OUTPUT"
+          echo "before_attempt=$(jq -r '.run_attempt' <<<"$META")" >> "$GITHUB_OUTPUT"
+
+      - name: Rerun only the failed jobs
+        id: rerun
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/rerun-failed-jobs"
+          echo 'requested=true' >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the new attempt and capture deployment evidence
+        id: verify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          BEFORE_ATTEMPT: ${{ steps.locate.outputs.before_attempt }}
+        run: |
+          set -Eeuo pipefail
+          EXPECTED_ATTEMPT=$((BEFORE_ATTEMPT + 1))
+          META=''
+          CONCLUSION=''
+
+          for poll in $(seq 1 840); do
+            META="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+            )"
+            CURRENT_ATTEMPT="$(jq -r '.run_attempt' <<<"$META")"
+            STATUS="$(jq -r '.status' <<<"$META")"
+
+            if [[ "$CURRENT_ATTEMPT" -ge "$EXPECTED_ATTEMPT" && "$STATUS" == completed ]]; then
+              CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$META")"
+              break
+            fi
+
+            sleep 10
+          done
+
+          [[ -n "$CONCLUSION" ]] || CONCLUSION='timed_out'
+          RUN_URL="$(jq -r '.html_url // empty' <<<"${META:-{}}")"
+          CURRENT_ATTEMPT="$(jq -r '.run_attempt // 0' <<<"${META:-{}}")"
+
+          ARTIFACTS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"
+          )"
+          ARTIFACT_NAME="$(
+            jq -r '
+              [.artifacts[]
+                | select(
+                    .expired == false
+                    and (.name | startswith("modules-081-082-theme-adada448-test-"))
+                  )]
+              | sort_by(.created_at)
+              | reverse
+              | .[0].name // empty
+            ' <<<"$ARTIFACTS"
+          )"
+
+          echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "attempt=$CURRENT_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable retry status on the helper merge commit
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.verify.outputs.run_url }}
+          CONCLUSION: ${{ steps.verify.outputs.conclusion }}
+          ARTIFACT_NAME: ${{ steps.verify.outputs.artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          STATE='failure'
+          [[ "$CONCLUSION" == success && -n "$ARTIFACT_NAME" ]] && STATE='success'
+
+          DESCRIPTION="Test retry ${RUN_ID:-unknown}: ${CONCLUSION:-not_completed}"
+          DESCRIPTION="${DESCRIPTION:0:140}"
+          TARGET_URL="${RUN_URL:-https://github.com/$GITHUB_REPOSITORY/actions}"
+
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$STATE" \
+            -f context="$STATUS_CONTEXT" \
+            -f description="$DESCRIPTION" \
+            -f target_url="$TARGET_URL" >/dev/null
+
+      - name: Enforce successful protected Test deployment
+        if: always()
+        shell: bash
+        env:
+          LOCATE_OUTCOME: ${{ steps.locate.outcome }}
+          RERUN_OUTCOME: ${{ steps.rerun.outcome }}
+          CONCLUSION: ${{ steps.verify.outputs.conclusion }}
+          ARTIFACT_NAME: ${{ steps.verify.outputs.artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$LOCATE_OUTCOME" == success ]]
+          [[ "$RERUN_OUTCOME" == success ]]
+          [[ "$CONCLUSION" == success ]]
+          [[ -n "$ARTIFACT_NAME" ]]
+          echo "PROTECTED_TEST_RETRY=PASSED"
+          echo "DEPLOYMENT_EVIDENCE_ARTIFACT=$ARTIFACT_NAME"
