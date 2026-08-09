@@ -44,12 +44,22 @@ jobs:
           from pathlib import Path
           path = Path('scripts/apply-enterprise-ui-documents-governance-fix.py')
           source = path.read_text(encoding='utf-8')
-          old = 'risk.residual_impact_score,risk.residual_exposure'
-          new = 'risk.risk_status,risk.residual_probability_score,risk.residual_impact_score,risk.residual_exposure'
-          count = source.count(old)
-          if count != 2:
-              raise SystemExit(f'Expected two Module 082 patch literals, found {count}.')
-          path.write_text(source.replace(old, new), encoding='utf-8')
+
+          old_risk = 'risk.residual_impact_score,risk.residual_exposure'
+          new_risk = 'risk.risk_status,risk.residual_probability_score,risk.residual_impact_score,risk.residual_exposure'
+          risk_count = source.count(old_risk)
+          if risk_count != 2:
+              raise SystemExit(f'Expected two Module 082 patch literals, found {risk_count}.')
+          source = source.replace(old_risk, new_risk)
+
+          old_surface = '<div className="billing-readiness-center"'
+          new_surface = '<section className="billing-readiness-center"'
+          surface_count = source.count(old_surface)
+          if surface_count != 1:
+              raise SystemExit(f'Expected one Module 039 presentation anchor, found {surface_count}.')
+          source = source.replace(old_surface, new_surface)
+
+          path.write_text(source, encoding='utf-8')
           PY
           python3 -m py_compile scripts/apply-enterprise-ui-documents-governance-fix.py
           python3 scripts/apply-enterprise-ui-documents-governance-fix.py
