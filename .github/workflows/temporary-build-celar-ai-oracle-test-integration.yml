@@ -49,6 +49,16 @@ jobs:
             > /tmp/apply-celar-ai-oracle-test-integration.py
           python3 -m py_compile /tmp/apply-celar-ai-oracle-test-integration.py
           python3 /tmp/apply-celar-ai-oracle-test-integration.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs')
+          text = path.read_text(encoding='utf-8')
+          old = 'if (buffer.Length + read > MaximumHealthResponseBytes)'
+          new = 'if (buffer.Length + read > PulseAiExternalHttpsRuntimePolicy.MaximumHealthResponseBytes)'
+          if old not in text:
+              raise SystemExit('Expected bounded readiness reference was not found.')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Validate source syntax and Test-only policy behavior
         shell: bash
