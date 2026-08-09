@@ -200,17 +200,24 @@ jobs:
           ! grep -Fq 'ADADA448' .github/workflows/projectpulse-release-test-control-ci.yml
           git diff --check
 
-      - name: Commit the exact two-file release controller and remove this helper
+      - name: Stage validated controller blobs for authorized publication
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm .github/workflows/apply-test-controller-b0aedc70.yml
-          git add \
+          rm -rf .projectpulse-release-artifacts
+          mkdir -p .projectpulse-release-artifacts
+          cp .github/workflows/projectpulse-deploy-test.yml \
+            .projectpulse-release-artifacts/projectpulse-deploy-test.yml
+          cp .github/workflows/projectpulse-release-test-control-ci.yml \
+            .projectpulse-release-artifacts/projectpulse-release-test-control-ci.yml
+
+          git checkout -- \
             .github/workflows/projectpulse-deploy-test.yml \
-            .github/workflows/projectpulse-release-test-control-ci.yml \
-            .github/workflows/apply-test-controller-b0aedc70.yml
+            .github/workflows/projectpulse-release-test-control-ci.yml
+          git add .projectpulse-release-artifacts
           git diff --cached --check
+          [[ "$(git diff --cached --name-only | wc -l | tr -d ' ')" == 2 ]]
           git config user.name 'ProjectPulse Release Automation'
           git config user.email 'projectpulse-release-automation@users.noreply.github.com'
-          git commit -m 'ci: deploy corrected Module 081/082 responses to Test'
+          git commit -m 'chore: stage corrected Test controller blobs'
           git push origin HEAD:release/test-modules-081-082-theme-b0aedc70-20260809
