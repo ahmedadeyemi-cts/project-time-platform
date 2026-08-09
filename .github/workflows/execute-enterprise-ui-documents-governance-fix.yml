@@ -40,6 +40,17 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-enterprise-ui-documents-governance-fix.py')
+          source = path.read_text(encoding='utf-8')
+          old = 'risk.residual_impact_score,risk.residual_exposure'
+          new = 'risk.risk_status,risk.residual_probability_score,risk.residual_impact_score,risk.residual_exposure'
+          count = source.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected two Module 082 patch literals, found {count}.')
+          path.write_text(source.replace(old, new), encoding='utf-8')
+          PY
           python3 -m py_compile scripts/apply-enterprise-ui-documents-governance-fix.py
           python3 scripts/apply-enterprise-ui-documents-governance-fix.py
           git diff --check
