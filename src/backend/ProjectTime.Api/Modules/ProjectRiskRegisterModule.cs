@@ -17,8 +17,12 @@ public static class ProjectRiskRegisterModule
     {
         var group = endpoints.MapGroup("/api/project-risk-register");
         group.MapGet("/capabilities", Capabilities);
-        group.MapGet("/access", GetAccessAsync);
-        group.MapGet("/summary", GetSummaryAsync);
+        group.MapGet(
+            "/access",
+            (Func<HttpContext, Task<IResult>>)GetAccessAsync);
+        group.MapGet(
+            "/summary",
+            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);
         group.MapGet("/projects", ListProjectsAsync);
         group.MapGet("/directory/users", ListProjectUsersAsync);
         group.MapGet("/risks", ListRisksAsync);

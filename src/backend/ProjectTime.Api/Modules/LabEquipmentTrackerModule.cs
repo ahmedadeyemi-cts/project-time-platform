@@ -15,8 +15,12 @@ public static class LabEquipmentTrackerModule
     {
         var group = endpoints.MapGroup("/api/lab-equipment-tracker");
         group.MapGet("/capabilities", Capabilities);
-        group.MapGet("/access", GetAccessAsync);
-        group.MapGet("/summary", GetSummaryAsync);
+        group.MapGet(
+            "/access",
+            (Func<HttpContext, Task<IResult>>)GetAccessAsync);
+        group.MapGet(
+            "/summary",
+            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);
         group.MapGet("/equipment", ListEquipmentAsync);
         group.MapPost("/equipment", CreateEquipmentAsync);
         group.MapPut("/equipment/{equipmentId:guid}", UpdateEquipmentAsync);
