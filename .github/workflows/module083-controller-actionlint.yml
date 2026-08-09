@@ -1,0 +1,60 @@
+name: Lint Module 083 Test Deployment Controller
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/module083-controller-actionlint.yml'
+      - '.github/workflows/projectpulse-deploy-module083-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module083-controller-actionlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Run actionlint against the Module 083 controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact pull request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install checksum-pinned actionlint 1.7.12
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -version
+
+      - name: Lint the exact Module 083 protected Test controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/actionlint" \
+            -color \
+            -verbose \
+            .github/workflows/projectpulse-deploy-module083-test.yml
+          echo 'MODULE_083_CONTROLLER_ACTIONLINT=PASSED'
+
+      - name: Confirm diagnostic boundary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'DEPLOYMENT_ACTIONS=NONE'
+          echo 'MIGRATION_ACTIONS=NONE'
+          echo 'TEST_CHANGES=NONE'
+          echo 'PRODUCTION_CHANGES=NONE'
