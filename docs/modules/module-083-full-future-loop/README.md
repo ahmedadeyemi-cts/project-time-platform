@@ -4,7 +4,7 @@ Module 083 turns the Full Future Loop architecture into a persistent, interactiv
 
 ## Integration status
 
-The source package is integrated into the Pulse runtime on the dedicated Module 083 feature branch. Migration execution and environment deployment are intentionally excluded from the source pull request.
+The source package is integrated into the Pulse runtime on the dedicated Module 083 feature branch. The module is registered in Module Availability, the installed-module catalog, its guarded runtime route, and the role-aware navigation under **Platform Operations**. Migration execution and environment deployment are intentionally excluded from the source pull request.
 
 ## Purpose
 
