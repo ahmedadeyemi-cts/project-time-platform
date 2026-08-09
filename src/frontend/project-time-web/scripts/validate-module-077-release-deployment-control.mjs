@@ -1,3 +1,4 @@
+import './validate-module-083-full-future-loop.mjs';
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
