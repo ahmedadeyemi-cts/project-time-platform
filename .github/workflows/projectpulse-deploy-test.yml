@@ -1,4 +1,4 @@
-name: ProjectPulse Test-Only Module 081/082 and Theme Recovery adada448
+name: ProjectPulse Test-Only Module 081/082 and Theme Recovery b0aedc70
 
 on:
   push:
@@ -17,13 +17,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy adada448 and validate Module 081/082 and theme recovery
+    name: Deploy b0aedc70 and validate Module 081/082 and theme recovery
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TARGET_RELEASE_COMMIT: adada448a0410d24feac45f11ef3b280c2756aaa
+      TARGET_RELEASE_COMMIT: b0aedc706c3fe33b97b91a1b0074a20578c82b64
 
     steps:
       - name: Check out deployment controls
@@ -37,7 +37,7 @@ jobs:
       - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: adada448a0410d24feac45f11ef3b280c2756aaa
+          ref: b0aedc706c3fe33b97b91a1b0074a20578c82b64
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -61,6 +61,8 @@ jobs:
           VIEW_AS_TEST='release/src/frontend/project-time-web/scripts/validate-view-as-module-navigation.mjs'
           FLOWHIVE_TEST='release/src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
           FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'
+          LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'
+          RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'
           test -f "$CATALOG"
           test -f "$PRIVATE_RAG"
           test -f "$INTERNAL_TESTS"
@@ -68,6 +70,8 @@ jobs:
           test -f "$VIEW_AS_TEST"
           test -f "$FLOWHIVE_TEST"
           test -f "$FORGE_TEST"
+          test -f "$LAB_MODULE"
+          test -f "$RISK_MODULE"
           test -f control/scripts/build-pr55-acr-image.sh
           test -f control/scripts/wait-containerapp-ready-revision.sh
 
@@ -80,6 +84,10 @@ jobs:
           grep -Fq 'CelarAiCapabilityCatalog.ProjectForgePlanEstimate' "$PRIVATE_RAG"
           node "$FLOWHIVE_TEST"
           (cd release/src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$LAB_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$LAB_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$RISK_MODULE"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$RISK_MODULE"
 
           echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
           echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
@@ -144,7 +152,7 @@ jobs:
           echo "old_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable API and web images from adada448
+      - name: Build immutable API and web images from b0aedc70
         id: build
         shell: bash
         working-directory: release
@@ -197,6 +205,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          require_json_file() {
+            local file="$1" label="$2"
+            [[ -s "$file" ]] || fail "$label returned HTTP 200 with an empty response body."
+            jq -e . "$file" >/dev/null 2>&1 || {
+              echo "Invalid JSON response for $label:" >&2
+              head -c 2048 "$file" >&2 || true
+              echo >&2
+              fail "$label returned HTTP 200 with an invalid JSON response body."
+            }
+          }
           BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
           auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
           auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
@@ -217,6 +235,7 @@ jobs:
           MODULE_081_ACCESS_FILE="$RUNNER_TEMP/module-081-access.json"
           MODULE_081_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_081_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/access")"
           [[ "$MODULE_081_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_081_ACCESS_FILE" >&2 || true; fail 'Module 081 effective access remained unavailable.'; }
+          require_json_file "$MODULE_081_ACCESS_FILE" 'Module 081 access'
           jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_081_ACCESS_FILE" | tee "$RUNNER_TEMP/module-081-access-summary.json"
           jq -e '
             .module == "081" and
@@ -231,6 +250,7 @@ jobs:
           MODULE_082_ACCESS_FILE="$RUNNER_TEMP/module-082-access.json"
           MODULE_082_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_082_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/access")"
           [[ "$MODULE_082_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_082_ACCESS_FILE" >&2 || true; fail 'Module 082 effective access remained unavailable.'; }
+          require_json_file "$MODULE_082_ACCESS_FILE" 'Module 082 access'
           jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_082_ACCESS_FILE" | tee "$RUNNER_TEMP/module-082-access-summary.json"
           jq -e '
             .module == "082" and
@@ -244,8 +264,10 @@ jobs:
 
           MODULE_081_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-081-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/summary")"
           [[ "$MODULE_081_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-081-summary.json" >&2 || true; fail 'Module 081 governed summary remained unavailable.'; }
+          require_json_file "$RUNNER_TEMP/module-081-summary.json" 'Module 081 summary'
           MODULE_082_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-082-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/summary")"
           [[ "$MODULE_082_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-082-summary.json" >&2 || true; fail 'Module 082 governed summary remained unavailable.'; }
+          require_json_file "$RUNNER_TEMP/module-082-summary.json" 'Module 082 summary'
 
           PORTAL_HTML="$RUNNER_TEMP/test-portal.html"
           FRONTEND_BUNDLE="$RUNNER_TEMP/test-portal-assets.txt"
@@ -539,14 +561,14 @@ jobs:
             --argjson module082Access "$MODULE_082_ACCESS_SUMMARY" \
             --argjson themeRecovery "$THEME_RECOVERY_SUMMARY" \
             '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:($projectId | if length > 0 then . else null end),module081Access:$module081Access,module082Access:$module082Access,themeRecovery:$themeRecovery,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,assignmentDiagnostics:$assignmentDiagnostics,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
-            > evidence/modules-081-082-theme-adada448-test-deployment.json
+            > evidence/modules-081-082-theme-b0aedc70-test-deployment.json
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: modules-081-082-theme-adada448-test-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/modules-081-082-theme-adada448-test-deployment.json
+          name: modules-081-082-theme-b0aedc70-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/modules-081-082-theme-b0aedc70-test-deployment.json
           retention-days: 30
 
       - name: Restore prior images and source marker on failure

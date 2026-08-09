@@ -1,4 +1,4 @@
-name: Validate Test-Only Module 081/082 and Theme Recovery adada448
+name: Validate Test-Only Module 081/082 and Theme Recovery b0aedc70
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate exact adada448 Test release controller
+    name: Validate exact b0aedc70 Test release controller
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
@@ -29,7 +29,7 @@ jobs:
           set -Eeuo pipefail
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='adada448a0410d24feac45f11ef3b280c2756aaa'
+          SOURCE='b0aedc706c3fe33b97b91a1b0074a20578c82b64'
 
           git fetch origin "$BASE_REF" --no-tags
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
@@ -67,6 +67,16 @@ jobs:
           grep -Fq '081-enterprise-v1' "$CONTROLLER"
           grep -Fq '082-enterprise-v1' "$CONTROLLER"
           grep -Fq '.permissions.canManage == true' "$CONTROLLER"
+          grep -Fq "LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'" "$CONTROLLER"
+          grep -Fq "RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'" "$CONTROLLER"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$CONTROLLER"
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$CONTROLLER"
+          grep -Fq 'require_json_file "$MODULE_081_ACCESS_FILE"' "$CONTROLLER"
+          grep -Fq 'require_json_file "$MODULE_082_ACCESS_FILE"' "$CONTROLLER"
+          grep -Fq 'require_json_file "$RUNNER_TEMP/module-081-summary.json"' "$CONTROLLER"
+          grep -Fq 'require_json_file "$RUNNER_TEMP/module-082-summary.json"' "$CONTROLLER"
+          grep -Fq 'HTTP 200 with an empty response body.' "$CONTROLLER"
+          grep -Fq 'HTTP 200 with an invalid JSON response body.' "$CONTROLLER"
           grep -Fq 'projectpulse-floating-theme-toggle' "$CONTROLLER"
           grep -Fq 'ptp-theme' "$CONTROLLER"
           grep -Fq 'projectpulse-theme-control' "$CONTROLLER"
@@ -123,4 +133,4 @@ jobs:
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
           git diff --check "origin/$BASE_REF...HEAD"
-          echo 'MODULES_081_082_THEME_ADADA448_TEST_CONTROL=PASSED'
+          echo 'MODULES_081_082_THEME_B0AEDC70_TEST_CONTROL=PASSED'
