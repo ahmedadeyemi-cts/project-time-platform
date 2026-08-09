@@ -1,0 +1,119 @@
+name: Locate Module 083 Protected Test Deployment Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/module083-deployment-run-observer.yml'
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: module083-deployment-run-observer
+  cancel-in-progress: false
+
+jobs:
+  locate:
+    name: Publish Module 083 deployment run identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TARGET_WORKFLOW: projectpulse-deploy-module083-test.yml
+      TARGET_CONTROL_COMMIT: 4d80605e130346323fa7d5df33dc5cf27fbd1ab3
+      TARGET_PR: '587'
+    steps:
+      - name: Locate the exact protected Test deployment run
+        id: locate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          RUN=''
+          for attempt in $(seq 1 60); do
+            RUNS="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/runs?event=push&branch=main&per_page=50"
+            )"
+            RUN="$(
+              jq -c --arg sha "$TARGET_CONTROL_COMMIT" '
+                [.workflow_runs[]
+                  | select(.head_sha == $sha and .event == "push")]
+                | sort_by(.created_at)
+                | reverse
+                | .[0] // empty
+              ' <<<"$RUNS"
+            )"
+            [[ -n "$RUN" ]] && break
+            sleep 10
+          done
+
+          [[ -n "$RUN" ]] || {
+            echo 'The exact Module 083 protected Test deployment run was not found.' >&2
+            exit 1
+          }
+
+          RUN_ID="$(jq -r '.id' <<<"$RUN")"
+          RUN_URL="$(jq -r '.html_url' <<<"$RUN")"
+          RUN_STATUS="$(jq -r '.status' <<<"$RUN")"
+          RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$RUN")"
+          RUN_ATTEMPT="$(jq -r '.run_attempt' <<<"$RUN")"
+          RUN_CREATED="$(jq -r '.created_at' <<<"$RUN")"
+          RUN_PATH="$(jq -r '.path' <<<"$RUN")"
+
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RUN_URL" == "https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" ]]
+          [[ "${RUN_PATH%%@*}" == ".github/workflows/$TARGET_WORKFLOW" ]]
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "run_status=$RUN_STATUS" >> "$GITHUB_OUTPUT"
+          echo "run_conclusion=$RUN_CONCLUSION" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "run_created=$RUN_CREATED" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the immutable run locator on PR 587
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.locate.outputs.run_url }}
+          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
+          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
+          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
+          RUN_CREATED: ${{ steps.locate.outputs.run_created }}
+        run: |
+          set -Eeuo pipefail
+          BODY="$(cat <<EOF
+          <!-- module083-deployment-run-observer -->
+          ## Module 083 protected Test deployment run located
+
+          - Run ID: \`$RUN_ID\`
+          - Attempt: \`$RUN_ATTEMPT\`
+          - Status at observation: \`$RUN_STATUS\`
+          - Conclusion at observation: \`$RUN_CONCLUSION\`
+          - Created: \`$RUN_CREATED\`
+          - Exact control commit: \`$TARGET_CONTROL_COMMIT\`
+          - Run: $RUN_URL
+
+          This observer performs no deployment, migration, secret, infrastructure, Production, or private-runtime action.
+          EOF
+          )"
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/issues/$TARGET_PR/comments" \
+            -f body="$BODY" >/dev/null
+
+      - name: Confirm observer boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'MODULE_083_DEPLOYMENT_RUN_OBSERVER=PASSED'
+          echo 'DEPLOYMENT_ACTIONS=NONE'
+          echo 'MIGRATION_ACTIONS=NONE'
+          echo 'PRODUCTION_CHANGES=NONE'
