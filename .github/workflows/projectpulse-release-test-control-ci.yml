@@ -76,7 +76,7 @@ jobs:
           grep -Fq '.targets | type == "array"' "$CONTROLLER"
           grep -Fq 'select((.targetType // "") == "assignment")' "$CONTROLLER"
           grep -Fq 'assignmentId: (.assignmentId // .projectAssignmentId // .targetId' "$CONTROLLER"
-          grep -Fq 'current plus/minus six-week Test window' "$CONTROLLER"
+          grep -Fq 'bounded Test window' "$CONTROLLER"
           grep -Fq 'continue-on-error: true' "$CONTROLLER"
           grep -Fq 'releaseBlocking:false' "$CONTROLLER"
           grep -Fq 'no_authoritative_assignment_targets' "$CONTROLLER"
