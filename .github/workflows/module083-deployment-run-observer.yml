@@ -9,7 +9,7 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: write
+  statuses: write
 
 concurrency:
   group: module083-deployment-run-observer
@@ -18,14 +18,15 @@ concurrency:
 jobs:
   locate:
     name: Publish Module 083 deployment run identity
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       TARGET_WORKFLOW: projectpulse-deploy-module083-test.yml
       TARGET_CONTROL_COMMIT: 4d80605e130346323fa7d5df33dc5cf27fbd1ab3
-      TARGET_PR: '587'
+      STATUS_CONTEXT: projectpulse/module083-test-run-locator
     steps:
-      - name: Inspect repository workflow runs and publish diagnostics
+      - name: Inspect repository workflow runs
         id: locate
         shell: bash
         env:
@@ -33,110 +34,112 @@ jobs:
         run: |
           set -Eeuo pipefail
           EXPECTED_PATH=".github/workflows/$TARGET_WORKFLOW"
-          RUNS="$(
-            gh api \
-              -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/actions/runs?event=push&branch=main&per_page=100"
-          )"
+          RUNS=''
+          for attempt in $(seq 1 30); do
+            RUNS="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/actions/runs?event=push&branch=main&per_page=100"
+            )"
+            EXACT_RUN="$(
+              jq -c \
+                --arg sha "$TARGET_CONTROL_COMMIT" \
+                --arg expected "$EXPECTED_PATH" '
+                  [.workflow_runs[]
+                    | select(
+                        .head_sha == $sha
+                        and .event == "push"
+                        and ((.path // "") | split("@")[0]) == $expected
+                      )]
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0] // empty
+                ' <<<"$RUNS"
+            )"
+            [[ -n "$EXACT_RUN" ]] && break
+            sleep 10
+          done
 
-          EXACT_RUN="$(
-            jq -c \
-              --arg sha "$TARGET_CONTROL_COMMIT" \
-              --arg expected "$EXPECTED_PATH" '
-                [.workflow_runs[]
-                  | select(
-                      .head_sha == $sha
-                      and .event == "push"
-                      and ((.path // "") | split("@")[0]) == $expected
-                    )]
-                | sort_by(.created_at)
-                | reverse
-                | .[0] // empty
-              ' <<<"$RUNS"
-          )"
+          if [[ -n "${EXACT_RUN:-}" ]]; then
+            RUN_ID="$(jq -r '.id' <<<"$EXACT_RUN")"
+            RUN_URL="$(jq -r '.html_url' <<<"$EXACT_RUN")"
+            RUN_STATUS="$(jq -r '.status' <<<"$EXACT_RUN")"
+            RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$EXACT_RUN")"
+            RUN_ATTEMPT="$(jq -r '.run_attempt' <<<"$EXACT_RUN")"
+            RUN_PATH="$(jq -r '.path' <<<"$EXACT_RUN")"
 
-          LATEST_MATCHING="$(
-            jq -r \
-              --arg expected "$EXPECTED_PATH" '
-                [.workflow_runs[]
-                  | select(((.path // "") | split("@")[0]) == $expected)]
-                | sort_by(.created_at)
-                | reverse
-                | .[0:5][]
-                | "- Run `\(.id)` — status `\(.status)` — conclusion `\(.conclusion // "pending")` — head `\(.head_sha)` — attempt `\(.run_attempt)` — \(.html_url)"
-              ' <<<"$RUNS"
-          )"
+            [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+            [[ "$RUN_URL" == "https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" ]]
+            [[ "${RUN_PATH%%@*}" == "$EXPECTED_PATH" ]]
 
-          BODY_FILE="$RUNNER_TEMP/module083-deployment-run-observer.md"
-          {
-            echo '<!-- module083-deployment-run-observer -->'
-            if [[ -n "$EXACT_RUN" ]]; then
-              RUN_ID="$(jq -r '.id' <<<"$EXACT_RUN")"
-              RUN_URL="$(jq -r '.html_url' <<<"$EXACT_RUN")"
-              RUN_STATUS="$(jq -r '.status' <<<"$EXACT_RUN")"
-              RUN_CONCLUSION="$(jq -r '.conclusion // "pending"' <<<"$EXACT_RUN")"
-              RUN_ATTEMPT="$(jq -r '.run_attempt' <<<"$EXACT_RUN")"
-              RUN_CREATED="$(jq -r '.created_at' <<<"$EXACT_RUN")"
-              RUN_PATH="$(jq -r '.path' <<<"$EXACT_RUN")"
+            echo 'found=true' >> "$GITHUB_OUTPUT"
+            echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+            echo "run_status=$RUN_STATUS" >> "$GITHUB_OUTPUT"
+            echo "run_conclusion=$RUN_CONCLUSION" >> "$GITHUB_OUTPUT"
+            echo "run_attempt=$RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          else
+            LATEST_MATCHING="$(
+              jq -r \
+                --arg expected "$EXPECTED_PATH" '
+                  [.workflow_runs[]
+                    | select(((.path // "") | split("@")[0]) == $expected)]
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0:5]
+                  | map("run=\(.id),head=\(.head_sha),status=\(.status),conclusion=\(.conclusion // "pending")")
+                  | join("; ")
+                ' <<<"${RUNS:-{\"workflow_runs\":[]}}"
+            )"
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+            echo 'run_id=' >> "$GITHUB_OUTPUT"
+            echo "latest_matching=$LATEST_MATCHING" >> "$GITHUB_OUTPUT"
+          fi
 
-              [[ "$RUN_ID" =~ ^[0-9]+$ ]]
-              [[ "$RUN_URL" == "https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" ]]
-              [[ "${RUN_PATH%%@*}" == "$EXPECTED_PATH" ]]
+      - name: Publish immutable locator status on the deployment controller commit
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOUND: ${{ steps.locate.outputs.found }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+          RUN_URL: ${{ steps.locate.outputs.run_url }}
+          RUN_STATUS: ${{ steps.locate.outputs.run_status }}
+          RUN_CONCLUSION: ${{ steps.locate.outputs.run_conclusion }}
+          RUN_ATTEMPT: ${{ steps.locate.outputs.run_attempt }}
+          LATEST_MATCHING: ${{ steps.locate.outputs.latest_matching }}
+        run: |
+          set -Eeuo pipefail
+          STATE='failure'
+          TARGET_URL="https://github.com/$GITHUB_REPOSITORY/actions"
+          DESCRIPTION='Module 083 Test deployment run not found'
 
-              echo '## Module 083 protected Test deployment run located'
-              echo
-              printf -- '- Run ID: `%s`\n' "$RUN_ID"
-              printf -- '- Attempt: `%s`\n' "$RUN_ATTEMPT"
-              printf -- '- Status at observation: `%s`\n' "$RUN_STATUS"
-              printf -- '- Conclusion at observation: `%s`\n' "$RUN_CONCLUSION"
-              printf -- '- Created: `%s`\n' "$RUN_CREATED"
-              printf -- '- Exact control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
-              printf -- '- Run: %s\n' "$RUN_URL"
-              echo
-              echo 'The exact run can now be monitored through the GitHub Actions job and artifact APIs.'
-
-              echo 'found=true' >> "$GITHUB_OUTPUT"
-              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-              echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          if [[ "$FOUND" == true && "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            TARGET_URL="$RUN_URL"
+            DESCRIPTION="Module 083 Test run $RUN_ID: $RUN_STATUS/$RUN_CONCLUSION (attempt $RUN_ATTEMPT)"
+            if [[ "$RUN_STATUS" != completed ]]; then
+              STATE='pending'
+            elif [[ "$RUN_CONCLUSION" == success ]]; then
+              STATE='success'
             else
-              echo '## Module 083 protected Test deployment run was not located'
-              echo
-              printf -- '- Expected workflow: `%s`\n' "$EXPECTED_PATH"
-              printf -- '- Expected control commit: `%s`\n' "$TARGET_CONTROL_COMMIT"
-              printf -- '- Repository push runs inspected: `%s`\n' "$(jq -r '.workflow_runs | length' <<<"$RUNS")"
-              echo
-              if [[ -n "$LATEST_MATCHING" ]]; then
-                echo '### Most recent runs registered for the target workflow'
-                echo
-                printf '%s\n' "$LATEST_MATCHING"
-              else
-                echo 'No push run for the target workflow was present in the 100 most recent main-branch push runs. The controller may not have registered or triggered.'
-              fi
-              echo
-              echo 'This diagnostic performed no deployment or migration action.'
-
-              echo 'found=false' >> "$GITHUB_OUTPUT"
-              echo 'run_id=' >> "$GITHUB_OUTPUT"
-              echo 'run_url=' >> "$GITHUB_OUTPUT"
+              STATE='failure'
             fi
-            echo
-            echo 'This observer performs no deployment, migration, secret, infrastructure, Production, or private-runtime action.'
-          } > "$BODY_FILE"
+          elif [[ -n "$LATEST_MATCHING" ]]; then
+            DESCRIPTION="No exact Module 083 Test run; latest: $LATEST_MATCHING"
+          fi
 
+          DESCRIPTION="${DESCRIPTION:0:140}"
           gh api \
             --method POST \
             -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/issues/$TARGET_PR/comments" \
-            -f body="$(cat "$BODY_FILE")" >/dev/null
+            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_CONTROL_COMMIT" \
+            -f state="$STATE" \
+            -f context="$STATUS_CONTEXT" \
+            -f description="$DESCRIPTION" \
+            -f target_url="$TARGET_URL" >/dev/null
 
-          cat "$BODY_FILE" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Confirm observer boundary
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          echo 'MODULE_083_DEPLOYMENT_RUN_OBSERVER=PASSED'
-          echo 'TARGET_RUN_FOUND=${{ steps.locate.outputs.found }}'
+          echo "MODULE_083_TARGET_RUN_FOUND=${FOUND:-false}"
+          echo "MODULE_083_TARGET_RUN_ID=${RUN_ID:-none}"
           echo 'DEPLOYMENT_ACTIONS=NONE'
           echo 'MIGRATION_ACTIONS=NONE'
           echo 'PRODUCTION_CHANGES=NONE'
