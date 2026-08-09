@@ -9,11 +9,13 @@ public static class LabEquipmentTrackerModule
 {
     private const string Module = "081";
     private const string ContractVersion = "081-enterprise-v1";
+    private const string Migration = "076_module_081_lab_equipment_tracker";
 
     public static IEndpointRouteBuilder MapLabEquipmentTrackerEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/lab-equipment-tracker");
         group.MapGet("/capabilities", Capabilities);
+        group.MapGet("/access", GetAccessAsync);
         group.MapGet("/summary", GetSummaryAsync);
         group.MapGet("/equipment", ListEquipmentAsync);
         group.MapPost("/equipment", CreateEquipmentAsync);
@@ -44,6 +46,32 @@ public static class LabEquipmentTrackerModule
         exportFormats = new[] { "xlsx", "pdf" },
         controls = new[] { "team-scope", "project-scope", "view-as-read-only", "duplicate-ip", "network-overlap", "rack-conflict", "immutable-provenance", "formula-neutralization" }
     });
+
+    private static async Task<IResult> GetAccessAsync(HttpContext context)
+    {
+        try
+        {
+            await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
+            var access = await RequireAccessAsync(context, connection, manage: false);
+            if (access.Error is not null) return access.Error;
+            var dataReady = await RuntimeReadyAsync(connection, context.RequestAborted);
+            return Results.Ok(new
+            {
+                module = Module,
+                contractVersion = ContractVersion,
+                scope = Scope(access.Value!),
+                permissions = PermissionProjection(access.Value!),
+                dataReady,
+                status = dataReady ? "ready" : "migration_required",
+                migration = Migration,
+                message = dataReady
+                    ? "Module 081 access and data foundations are ready."
+                    : "Module 081 data foundations are not ready. Migration 076 must be applied and verified before records can be changed.",
+                generatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        catch (Exception exception) { return EnterpriseGovernanceResults.Unavailable(Module, exception, context, "resolve access"); }
+    }
 
     private static async Task<IResult> GetSummaryAsync(HttpContext context)
     {
@@ -497,6 +525,20 @@ public static class LabEquipmentTrackerModule
         if(manage&&access.IsViewAs)return(access,EnterpriseGovernanceResults.ViewAsReadOnly(Module));
         if(manage&&!access.CanManageLabEquipment)return(access,EnterpriseGovernanceResults.Forbidden(Module,"Your role has read-only Lab Equipment Tracker access."));
         return(access,null);
+    }
+
+    private static async Task<bool> RuntimeReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@migration)
+               AND to_regclass('public.lab_equipment') IS NOT NULL
+               AND to_regclass('public.lab_ip_allocations') IS NOT NULL
+               AND to_regclass('public.lab_cable_connections') IS NOT NULL
+               AND to_regclass('public.lab_import_batches') IS NOT NULL
+               AND to_regclass('public.lab_equipment_audit_events') IS NOT NULL;
+            """, connection);
+        command.Parameters.AddWithValue("migration", Migration);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     internal static async Task<(EnterpriseGovernanceAccess? Value,IResult? Error)> RequireImportAccessAsync(HttpContext context,NpgsqlConnection connection)

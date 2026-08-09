@@ -4296,8 +4296,37 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
     window.localStorage.setItem('ptp-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    function synchronizeTheme(nextTheme) {
+      const normalized = nextTheme === 'dark' ? 'dark' : 'light';
+      setTheme(normalized);
+      setUserPreferences((current) => {
+        const next = { ...current, theme: normalized };
+        saveStoredUserPreferences(authSession, next);
+        return next;
+      });
+      setProfileDraft((current) => ({ ...current, theme: normalized }));
+    }
+
+    function handleThemeChanged(event) {
+      synchronizeTheme(event.detail?.theme);
+    }
+
+    function handleThemeStorage(event) {
+      if (event.key === 'ptp-theme') synchronizeTheme(event.newValue);
+    }
+
+    window.addEventListener('projectpulse:theme-changed', handleThemeChanged);
+    window.addEventListener('storage', handleThemeStorage);
+    return () => {
+      window.removeEventListener('projectpulse:theme-changed', handleThemeChanged);
+      window.removeEventListener('storage', handleThemeStorage);
+    };
+  }, [authSession]);
 
 
 

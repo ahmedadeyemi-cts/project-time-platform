@@ -17,7 +17,10 @@ function tokenHeaders(authSession, json = false) {
 async function readResponse(response) {
   const text = await response.text(); let body = {};
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
-  if (!response.ok) throw new Error(body.message || body.code || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const message = body.message || body.code || `Request failed (${response.status}).`;
+    throw new Error(body.correlationId ? `${message} Reference ${body.correlationId}.` : message);
+  }
   return body;
 }
 function Badge({ value }) { const label = String(value || 'unknown').replaceAll('_', ' '); return <span className={`eg-badge ${String(value || '').toLowerCase()}`}>{label}</span>; }
@@ -29,6 +32,7 @@ function Select({ value, onChange, children, ...props }) { return <select classN
 
 export default function LabEquipmentTrackerCenter({ authSession }) {
   const [tab, setTab] = useState('equipment');
+  const [access, setAccess] = useState(null);
   const [summary, setSummary] = useState(null);
   const [data, setData] = useState({ equipment: [], allocations: [], connections: [], racks: [], imports: [], history: [] });
   const [filters, setFilters] = useState({ search: '', status: '', location: '', pod: '' });
@@ -36,6 +40,7 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
   const [form, setForm] = useState(EMPTY_EQUIPMENT);
   const [importPreview, setImportPreview] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [loadState, setLoadState] = useState('loading');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -45,20 +50,26 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
   }, [authSession]);
 
   const refresh = useCallback(async () => {
-    setBusy(true); setError('');
+    setBusy(true); setLoadState('loading'); setError('');
     const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '')).toString();
     try {
-      const summaryBody = await request('/summary');
-      setSummary(summaryBody);
+      const accessBody = await request('/access');
+      setAccess(accessBody);
+      if (!accessBody.dataReady) {
+        setLoadState('blocked');
+        setError(accessBody.message || 'Module 081 data foundations are not ready.');
+        return;
+      }
       const connectionQuery = new URLSearchParams(Object.entries({ location: filters.location, pod: filters.pod }).filter(([, value]) => value !== '')).toString();
       const rackQuery = new URLSearchParams(Object.entries({ location: filters.location }).filter(([, value]) => value !== '')).toString();
       const surfaces = [
+        ['summary', request('/summary')],
         ['equipment', request(query ? `/equipment?${query}` : '/equipment')],
         ['allocations', request(query ? `/ip-addresses?${query}` : '/ip-addresses')],
         ['connections', request(connectionQuery ? `/connections?${connectionQuery}` : '/connections')],
         ['racks', request(rackQuery ? `/rack-view?${rackQuery}` : '/rack-view')],
         ['history', request('/history?limit=250')],
-        ...(summaryBody.permissions?.canImport ? [['imports', request('/imports?limit=100')]] : [])
+        ...(accessBody.permissions?.canImport ? [['imports', request('/imports?limit=100')]] : [])
       ];
       const results = await Promise.allSettled(surfaces.map(([, pending]) => pending));
       const failures = [];
@@ -70,6 +81,7 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
           return;
         }
         const payload = result.value || {};
+        if (surface === 'summary') setSummary(payload);
         if (surface === 'equipment') loaded.equipment = payload.equipment || [];
         if (surface === 'allocations') loaded.allocations = payload.allocations || [];
         if (surface === 'connections') loaded.connections = payload.connections || [];
@@ -81,14 +93,27 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
       if (failures.length) {
         setError(`Some Module 081 views are temporarily unavailable. ${failures.join(' · ')}`);
       }
-    } catch (caught) { setError(caught.message); }
+      setLoadState('ready');
+    } catch (caught) { setAccess(null); setLoadState('unavailable'); setError(caught.message); }
     finally { setBusy(false); }
   }, [filters, request]);
 
   useEffect(() => { refresh(); }, [refresh]);
-  const permissions = summary?.permissions || {};
-  const scope = summary?.scope || {};
+  const permissions = access?.permissions || summary?.permissions || {};
+  const scope = access?.scope || summary?.scope || {};
   const kpis = summary?.kpis || {};
+  const dataReady = access?.dataReady === true;
+  const canManage = dataReady && permissions.canManage && !scope.isViewAs;
+  const scopeLabel = scope.mode?.replaceAll('_', ' ') || (loadState === 'loading' ? 'loading' : 'unavailable');
+  const manageTitle = canManage
+    ? 'Add governed lab equipment'
+    : loadState === 'loading'
+      ? 'Loading your effective access'
+      : !dataReady
+        ? access?.message || 'Module 081 data foundations are unavailable'
+        : scope.isViewAs
+          ? 'Exit View-As to add equipment'
+          : 'Your effective role has read-only Module 081 access';
 
   function openCreate(kind) {
     setMessage(''); setError(''); setModal(kind);
@@ -126,12 +151,12 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
 
   return <div className="eg-center" data-module="081">
     <header className="eg-hero">
-      <div><p className="eg-eyebrow">Module 081 · Lab operations</p><h1>Lab Equipment Tracker</h1><p>Authoritative equipment, IP address, cabling, rack placement, import provenance, and audit evidence for US Signal labs.</p><div className="eg-scope">Effective scope <strong>{scope.mode?.replaceAll('_', ' ') || 'loading'}</strong>{scope.team ? <span>{scope.team}</span> : null}</div></div>
-      <div className="eg-hero-actions"><button className="eg-button hero" onClick={() => download('xlsx')} disabled={!permissions.canExport || busy}>Export Excel</button><button className="eg-button hero" onClick={() => download('pdf')} disabled={!permissions.canExport || busy}>Export PDF</button><button className="eg-button hero primary" onClick={() => openCreate('equipment')} disabled={!permissions.canManage || busy}>Add equipment</button></div>
+      <div><p className="eg-eyebrow">Module 081 · Lab operations</p><h1>Lab Equipment Tracker</h1><p>Authoritative equipment, IP address, cabling, rack placement, import provenance, and audit evidence for US Signal labs.</p><div className="eg-scope">Effective scope <strong>{scopeLabel}</strong>{scope.team ? <span>{scope.team}</span> : null}</div></div>
+      <div className="eg-hero-actions"><button className="eg-button hero" onClick={() => download('xlsx')} disabled={!dataReady || !permissions.canExport || busy}>Export Excel</button><button className="eg-button hero" onClick={() => download('pdf')} disabled={!dataReady || !permissions.canExport || busy}>Export PDF</button><button className="eg-button hero primary" title={manageTitle} onClick={() => openCreate('equipment')} disabled={!canManage || busy}>Add equipment</button></div>
     </header>
     {busy ? <div className="eg-loading" aria-label="Loading" /> : null}
     {scope.isViewAs ? <div className="eg-notice warning">View-As is active. All Module 081 mutations and exports are intentionally disabled.</div> : null}
-    {error ? <div className="eg-notice error" role="alert">{error}</div> : null}{message ? <div className="eg-notice">{message}</div> : null}
+    {error ? <div className="eg-notice error eg-retry-notice" role="alert"><span>{error}</span><button className="eg-button" type="button" onClick={refresh} disabled={busy}>Retry</button></div> : null}{message ? <div className="eg-notice">{message}</div> : null}
     <section className="eg-kpis">
       <article className="eg-kpi"><span>Total equipment</span><strong>{kpis.equipment ?? '—'}</strong><small>{kpis.active ?? 0} active</small></article>
       <article className="eg-kpi"><span>IP allocations</span><strong>{kpis.ipAllocations ?? '—'}</strong><small>{kpis.availableIps ?? 0} available</small></article>
@@ -140,7 +165,7 @@ export default function LabEquipmentTrackerCenter({ authSession }) {
       <article className="eg-kpi"><span>Maintenance</span><strong>{kpis.maintenance ?? '—'}</strong><small>{kpis.warrantyExpiring ?? 0} warranties due</small></article>
     </section>
     <nav className="eg-tabs" aria-label="Lab equipment tracker views">{TABS.map(([key, label]) => <button key={key} className={`eg-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</nav>
-    <div className="eg-toolbar"><div className="eg-toolbar-group"><input className="eg-input" aria-label="Search records" placeholder="Search equipment, hostname, IP, purpose…" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /><select className="eg-select" aria-label="Status filter" value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">All statuses</option><option>active</option><option>maintenance</option><option>available</option><option>assigned</option><option>conflict</option><option>retired</option></select></div><div className="eg-toolbar-group"><button className="eg-button" onClick={refresh} disabled={busy}>Refresh</button>{tab === 'ipam' ? <button className="eg-button primary" onClick={() => openCreate('ip')} disabled={!permissions.canManage}>Add allocation</button> : null}{tab === 'connections' ? <button className="eg-button primary" onClick={() => openCreate('connection')} disabled={!permissions.canManage}>Add connection</button> : null}</div></div>
+    <div className="eg-toolbar"><div className="eg-toolbar-group"><input className="eg-input" aria-label="Search records" placeholder="Search equipment, hostname, IP, purpose…" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /><select className="eg-select" aria-label="Status filter" value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">All statuses</option><option>active</option><option>maintenance</option><option>available</option><option>assigned</option><option>conflict</option><option>retired</option></select></div><div className="eg-toolbar-group"><button className="eg-button" onClick={refresh} disabled={busy}>Refresh</button>{tab === 'ipam' ? <button className="eg-button primary" onClick={() => openCreate('ip')} disabled={!canManage || busy}>Add allocation</button> : null}{tab === 'connections' ? <button className="eg-button primary" onClick={() => openCreate('connection')} disabled={!canManage || busy}>Add connection</button> : null}</div></div>
 
     {tab === 'equipment' ? <EquipmentTable rows={data.equipment} /> : null}
     {tab === 'ipam' ? <IpTable rows={data.allocations} /> : null}

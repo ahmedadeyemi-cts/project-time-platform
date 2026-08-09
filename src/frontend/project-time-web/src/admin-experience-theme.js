@@ -26,6 +26,19 @@ function findThemeControl() {
     || null;
 }
 
+function ensureThemeControl() {
+  const existing = findThemeControl();
+  if (existing || !document.body) return existing;
+
+  const button = document.createElement('button');
+  button.id = THEME_CONTROL_ID;
+  button.className = 'theme-toggle projectpulse-theme-control';
+  button.dataset.projectpulseThemeControl = 'true';
+  button.type = 'button';
+  document.body.appendChild(button);
+  return button;
+}
+
 function currentTheme() {
   const declared = document.documentElement.dataset.theme
     || document.body?.dataset.theme
@@ -52,7 +65,7 @@ function neutralizeStrayThemeText(button) {
 }
 
 function polishThemeControl() {
-  const button = findThemeControl();
+  const button = ensureThemeControl();
   if (!button) return false;
 
   const theme = currentTheme();
@@ -89,6 +102,8 @@ function handleThemeClick(event) {
 function installThemeControlPolish() {
   if (window.__projectPulseThemeControlPolishInstalled) return;
   window.__projectPulseThemeControlPolishInstalled = true;
+
+  applyTheme(currentTheme());
 
   document.addEventListener('click', handleThemeClick, true);
   if (document.readyState === 'loading') {

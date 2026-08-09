@@ -2,6 +2,7 @@
 
 | Method | Route | Purpose |
 |---|---|---|
+| GET | `/access` | Effective scope, permissions, and migration-077 data readiness independent of risk queries |
 | GET | `/summary` | Scoped risk and action KPIs |
 | GET | `/projects` | Authoritative accessible projects |
 | GET | `/directory/users?projectId=` | Active, eligible project owners |
@@ -18,3 +19,5 @@
 | GET | `/exports/{xlsx\|pdf}` | Branded, role-scoped evidence export |
 
 Exposure is computed at the database boundary as probability multiplied by the greatest impact dimension. Closed and retired risks are immutable. Every change produces a version snapshot and an audit event; action changes produce action history and audit evidence.
+
+The client resolves `/access` first and loads risk surfaces independently. A failure in one surface no longer discards successful scope, permission, KPI, project, risk, action, heatmap, calendar, or history responses. If migration 077 is not ready, mutations remain disabled with an explicit readiness message.

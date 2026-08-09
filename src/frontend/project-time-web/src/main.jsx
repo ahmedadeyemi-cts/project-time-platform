@@ -13,6 +13,7 @@ import './microsoft-mail-runtime-activation.js';
 import './legacy-analytics-overlay-authority.js';
 import './react-dom-ownership-prelude.js';
 import './pulse-ai-help-chat-usability.js';
+import './admin-experience-theme.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
@@ -36,6 +37,7 @@ import './role-welcome-dashboard-visibility.css';
 import './scoped-role-policy-admin.css';
 import './scoped-role-policy-matrix.css';
 import './module001/module001-uat-fixes.css';
+import './admin-experience-theme.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(

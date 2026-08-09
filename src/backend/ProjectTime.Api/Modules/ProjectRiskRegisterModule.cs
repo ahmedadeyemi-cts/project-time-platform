@@ -9,6 +9,7 @@ public static class ProjectRiskRegisterModule
 {
     private const string Module = "082";
     private const string ContractVersion = "082-enterprise-v1";
+    private const string Migration = "077_module_082_enterprise_project_risk_register";
     private static readonly string[] RiskStatuses = ["proposed","open","monitoring","response_in_progress","accepted","realized","closed","retired"];
     private static readonly string[] Strategies = ["avoid","mitigate","transfer","accept","escalate","exploit","enhance","share"];
 
@@ -16,6 +17,7 @@ public static class ProjectRiskRegisterModule
     {
         var group = endpoints.MapGroup("/api/project-risk-register");
         group.MapGet("/capabilities", Capabilities);
+        group.MapGet("/access", GetAccessAsync);
         group.MapGet("/summary", GetSummaryAsync);
         group.MapGet("/projects", ListProjectsAsync);
         group.MapGet("/directory/users", ListProjectUsersAsync);
@@ -42,6 +44,32 @@ public static class ProjectRiskRegisterModule
         ratingScale = new { low = "1–4", moderate = "5–9", high = "10–16", critical = "17–25" },
         exportFormats = new[] { "xlsx", "pdf" }
     });
+
+    private static async Task<IResult> GetAccessAsync(HttpContext context)
+    {
+        try
+        {
+            await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
+            var authorization = await RequireAccessAsync(context, connection, false);
+            if (authorization.Error is not null) return authorization.Error;
+            var dataReady = await RuntimeReadyAsync(connection, context.RequestAborted);
+            return Results.Ok(new
+            {
+                module = Module,
+                contractVersion = ContractVersion,
+                scope = Scope(authorization.Value!),
+                permissions = Permissions(authorization.Value!),
+                dataReady,
+                status = dataReady ? "ready" : "migration_required",
+                migration = Migration,
+                message = dataReady
+                    ? "Module 082 access and data foundations are ready."
+                    : "Module 082 data foundations are not ready. Migration 077 must be applied and verified before records can be changed.",
+                generatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        catch (Exception exception) { return EnterpriseGovernanceResults.Unavailable(Module, exception, context, "resolve access"); }
+    }
 
     private static async Task<IResult> GetSummaryAsync(HttpContext context)
     {
@@ -426,6 +454,20 @@ public static class ProjectRiskRegisterModule
         if (manage && access.IsViewAs) return (access, EnterpriseGovernanceResults.ViewAsReadOnly(Module));
         if (manage && !access.CanManageRiskRegister) return (access, EnterpriseGovernanceResults.Forbidden(Module, "Your role has read-only project risk access."));
         return (access, null);
+    }
+
+    private static async Task<bool> RuntimeReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=@migration)
+               AND to_regclass('public.project_risks') IS NOT NULL
+               AND to_regclass('public.project_risk_versions') IS NOT NULL
+               AND to_regclass('public.project_risk_actions') IS NOT NULL
+               AND to_regclass('public.project_risk_action_history') IS NOT NULL
+               AND to_regclass('public.project_risk_audit_events') IS NOT NULL;
+            """, connection);
+        command.Parameters.AddWithValue("migration", Migration);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
     }
 
     private static string ScopedProjectsCte => "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + ", scoped_projects AS (SELECT project.* FROM projects project WHERE " + EnterpriseGovernanceAccessResolver.ProjectScopePredicate + ") ";

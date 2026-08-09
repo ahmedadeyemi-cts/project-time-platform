@@ -143,15 +143,19 @@ check('NO_REACT_DOM_MUTATION_BRIDGES', !theme.includes('MutationObserver')
   && !microsoft.includes('querySelectorAll(')
   && !microsoft.includes('style.setProperty')
   && !microsoft.includes('.hidden ='),
-'compatibility bridges do not insert, remove, hide, or move React-owned nodes');
+'compatibility bridges do not remove, hide, or move React-owned nodes');
 
 check('THEME_ICON_NO_RELOAD', theme.includes("button.textContent = ''")
+  && theme.includes("document.createElement('button')")
+  && theme.includes('document.body.appendChild(button)')
   && theme.includes("document.addEventListener('click', handleThemeClick, true)")
   && theme.includes("new CustomEvent('projectpulse:theme-changed'")
+  && main.includes("import './admin-experience-theme.js';")
+  && main.includes("import './admin-experience-theme.css';")
   && !theme.includes('window.location.reload')
   && themeCss.includes("content: '☾'")
   && themeCss.includes("content: '☀'"),
-'icon-only theme changes do not reload the app or remove DOM nodes');
+'the global icon-only theme control is created outside the React root and changes theme without a reload');
 
 check('MODULE010_RESPONSIVE_ACTIONS', microsoftCss.includes('.route-azure-admin .azure-admin-heading-actions')
   && microsoftCss.includes('.route-azure-admin .azure-selection-toolbar')
