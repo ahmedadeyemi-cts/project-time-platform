@@ -15,85 +15,73 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      TARGET_WORKFLOW: projectpulse-deploy-test.yml
+      TARGET_RUN_ID: '31293522333'
+      TARGET_JOB_ID: '93200620776'
       TARGET_CONTROL_COMMIT: a28c310c41a19e274d4ded5011d7f41c5760608d
-      HELPER_WORKFLOW: projectpulse-rerun-failed-test-after-session-refresh.yml
       HELPER_MERGE_COMMIT: 71b7d119d70e0afa6b798a1e9626dc8a4e6c7a10
 
     steps:
-      - name: Query exact target and helper workflow runs
+      - name: Query exact target run, jobs, artifacts, and failure evidence
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
 
-          TARGET_RUNS="$(
-            gh api \
-              -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/runs?branch=main&event=push&per_page=100"
-          )"
           TARGET="$(
-            jq -c --arg sha "$TARGET_CONTROL_COMMIT" '
-              [.workflow_runs[] | select(.head_sha == $sha)]
-              | sort_by(.created_at)
-              | reverse
-              | .[0] // {}
-            ' <<<"$TARGET_RUNS"
-          )"
-
-          TARGET_RUN_ID="$(jq -r '.id // empty' <<<"$TARGET")"
-          echo "TARGET_RUN_ID=${TARGET_RUN_ID:-not_found}"
-          echo "TARGET_RUN_ATTEMPT=$(jq -r '.run_attempt // 0' <<<"$TARGET")"
-          echo "TARGET_RUN_STATUS=$(jq -r '.status // "not_found"' <<<"$TARGET")"
-          echo "TARGET_RUN_CONCLUSION=$(jq -r '.conclusion // "none"' <<<"$TARGET")"
-          echo "TARGET_RUN_CREATED_AT=$(jq -r '.created_at // "none"' <<<"$TARGET")"
-          echo "TARGET_RUN_UPDATED_AT=$(jq -r '.updated_at // "none"' <<<"$TARGET")"
-          echo "TARGET_RUN_URL=$(jq -r '.html_url // "none"' <<<"$TARGET")"
-
-          if [[ -n "$TARGET_RUN_ID" ]]; then
-            TARGET_JOBS="$(
-              gh api \
-                -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/jobs?per_page=100"
-            )"
-            jq -r '.jobs[] | "TARGET_JOB=\(.id)|\(.name)|\(.status)|\(.conclusion // \"none\")"' <<<"$TARGET_JOBS"
-
-            TARGET_ARTIFACTS="$(
-              gh api \
-                -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/artifacts?per_page=100"
-            )"
-            jq -r '.artifacts[]? | "TARGET_ARTIFACT=\(.id)|\(.name)|expired=\(.expired)"' <<<"$TARGET_ARTIFACTS"
-          fi
-
-          HELPER_RUNS="$(
             gh api \
               -H 'Accept: application/vnd.github+json' \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/$HELPER_WORKFLOW/runs?branch=main&event=push&per_page=100"
-          )"
-          HELPER="$(
-            jq -c --arg sha "$HELPER_MERGE_COMMIT" '
-              [.workflow_runs[] | select(.head_sha == $sha)]
-              | sort_by(.created_at)
-              | reverse
-              | .[0] // {}
-            ' <<<"$HELPER_RUNS"
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID"
           )"
 
-          HELPER_RUN_ID="$(jq -r '.id // empty' <<<"$HELPER")"
-          echo "HELPER_RUN_ID=${HELPER_RUN_ID:-not_found}"
-          echo "HELPER_RUN_STATUS=$(jq -r '.status // "not_found"' <<<"$HELPER")"
-          echo "HELPER_RUN_CONCLUSION=$(jq -r '.conclusion // "none"' <<<"$HELPER")"
-          echo "HELPER_RUN_URL=$(jq -r '.html_url // "none"' <<<"$HELPER")"
+          [[ "$(jq -r '.head_sha' <<<"$TARGET")" == "$TARGET_CONTROL_COMMIT" ]]
+          [[ "$(jq -r '.event' <<<"$TARGET")" == push ]]
 
-          if [[ -n "$HELPER_RUN_ID" ]]; then
-            HELPER_JOBS="$(
-              gh api \
-                -H 'Accept: application/vnd.github+json' \
-                "repos/$GITHUB_REPOSITORY/actions/runs/$HELPER_RUN_ID/jobs?per_page=100"
-            )"
-            jq -r '.jobs[] | "HELPER_JOB=\(.id)|\(.name)|\(.status)|\(.conclusion // \"none\")"' <<<"$HELPER_JOBS"
-          fi
+          echo "TARGET_RUN_ID=$(jq -r '.id' <<<"$TARGET")"
+          echo "TARGET_RUN_ATTEMPT=$(jq -r '.run_attempt' <<<"$TARGET")"
+          echo "TARGET_RUN_STATUS=$(jq -r '.status' <<<"$TARGET")"
+          echo "TARGET_RUN_CONCLUSION=$(jq -r '.conclusion // "none"' <<<"$TARGET")"
+          echo "TARGET_RUN_CREATED_AT=$(jq -r '.created_at' <<<"$TARGET")"
+          echo "TARGET_RUN_UPDATED_AT=$(jq -r '.updated_at' <<<"$TARGET")"
+          echo "TARGET_RUN_URL=$(jq -r '.html_url' <<<"$TARGET")"
+
+          JOBS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/jobs?per_page=100"
+          )"
+          jq -r '.jobs[] | [.id, .name, .status, (.conclusion // "none")] | @tsv' <<<"$JOBS" \
+            | sed 's/^/TARGET_JOB=/'
+
+          ARTIFACTS="$(
+            gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/artifacts?per_page=100"
+          )"
+          jq -r '.artifacts[]? | [.id, .name, (.expired | tostring)] | @tsv' <<<"$ARTIFACTS" \
+            | sed 's/^/TARGET_ARTIFACT=/'
+
+          gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/jobs/$TARGET_JOB_ID/logs" \
+            > "$RUNNER_TEMP/target-job.log"
+
+          echo '--- MODULE 081 ACCESS SUMMARY ---'
+          grep -E '^.*\{"module":"081","contractVersion":"081-enterprise-v1"' \
+            "$RUNNER_TEMP/target-job.log" \
+            | tail -n 3 \
+            || true
+
+          echo '--- MODULE 081 FAILURE CONTEXT ---'
+          grep -n -E 'module-081-access-summary|Module 081 did not resolve|Module 081 effective access|migration_required|"canManage":(true|false)|"dataReady":(true|false)' \
+            "$RUNNER_TEMP/target-job.log" \
+            | tail -n 40 \
+            || true
+
+          echo '--- DEPLOYMENT AND ROLLBACK CONTEXT ---'
+          grep -n -E 'Build immutable API|Deploy API image|Deploy web image|Restore prior images|Candidate revision|Rollback revision|MODULES_081_082_THEME' \
+            "$RUNNER_TEMP/target-job.log" \
+            | tail -n 80 \
+            || true
 
           echo 'READ_ONLY_TEST_RETRY_INSPECTION=PASSED'
