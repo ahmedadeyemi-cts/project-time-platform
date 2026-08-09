@@ -1,4 +1,4 @@
-name: Temporary Finalize Celar AI Oracle Test Integration
+name: Temporary Clean Celar AI Oracle Integration Staging
 
 on:
   pull_request:
@@ -11,15 +11,15 @@ permissions:
   contents: write
 
 concurrency:
-  group: temporary-celar-ai-oracle-test-integration-finalizer
+  group: temporary-celar-ai-oracle-test-integration-cleaner
   cancel-in-progress: true
 
 jobs:
-  finalize:
-    name: Install final workflows and remove temporary staging
+  clean:
+    name: Remove temporary payload files from the isolated branch
     if: github.head_ref == 'feature/celar-ai-oracle-test-external-https-runtime-20260809'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Check out the isolated branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -28,28 +28,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Reconstruct, verify, commit, and push the final workflows
+      - name: Remove temporary payloads and push the cleanup
         shell: bash
         run: |
           set -Eeuo pipefail
-          cat scripts/.temporary-celar-ai-oracle-patch/deploy-part* \
-            | tr -d '\n' | base64 -d | gzip -d \
-            > .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
-          cat scripts/.temporary-celar-ai-oracle-patch/ci-part* \
-            | tr -d '\n' | base64 -d | gzip -d \
-            > .github/workflows/celar-ai-oracle-test-runtime-ci.yml
-          grep -Fq 'DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST' \
-            .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
-          grep -Fq 'Validate Celar AI Oracle Test HTTPS Runtime' \
-            .github/workflows/celar-ai-oracle-test-runtime-ci.yml
-          git diff --check
+          test -d scripts/.temporary-celar-ai-oracle-patch
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml \
-            .github/workflows/celar-ai-oracle-test-runtime-ci.yml
           git rm -r scripts/.temporary-celar-ai-oracle-patch
-          git rm .github/workflows/temporary-build-celar-ai-oracle-test-integration.yml
           git diff --cached --check
-          git commit -m 'ci: add guarded Oracle Celar AI deployment for Test'
+          git commit -m 'chore: remove temporary Oracle integration staging payloads'
           git push origin HEAD:feature/celar-ai-oracle-test-external-https-runtime-20260809
