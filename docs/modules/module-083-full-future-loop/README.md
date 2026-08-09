@@ -2,6 +2,10 @@
 
 Module 083 turns the Full Future Loop architecture into a persistent, interactive, end-to-end sandbox inside Pulse.
 
+## Integration status
+
+The source package is integrated into the Pulse runtime on the dedicated Module 083 feature branch. Migration execution and environment deployment are intentionally excluded from the source pull request.
+
 ## Purpose
 
 The module demonstrates and validates the complete governed lifecycle:
