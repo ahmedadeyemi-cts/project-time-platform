@@ -59,6 +59,11 @@ jobs:
               raise SystemExit(f'Expected one Module 039 presentation anchor, found {surface_count}.')
           source = source.replace(old_surface, new_surface)
 
+          terminal_guard = 'if conditional_count < 4:'
+          if source.count(terminal_guard) != 1:
+              raise SystemExit('Expected one Module 019 terminal-state count guard.')
+          source = source.replace(terminal_guard, 'if conditional_count < 2:', 1)
+
           path.write_text(source, encoding='utf-8')
           PY
           python3 -m py_compile scripts/apply-enterprise-ui-documents-governance-fix.py
