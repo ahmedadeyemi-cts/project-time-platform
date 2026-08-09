@@ -1,11 +1,6 @@
 name: Apply Modules 081 and 082 Explicit IResult Fix
 
 on:
-  push:
-    branches:
-      - fix/modules-081-082-explicit-iresult-20260809
-    paths:
-      - '.github/workflows/apply-modules-081-082-iresult-fix.yml'
   pull_request:
     branches: [main]
     paths:
@@ -21,7 +16,7 @@ concurrency:
 jobs:
   patch:
     name: Apply and validate exact route-result correction
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -38,66 +33,75 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
+          backend_files = [
+              Path('src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'),
+              Path('src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'),
+          ]
 
           replacements = {
-              Path('src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'): [
-                  (
-                      '        group.MapGet("/access", GetAccessAsync);\n'
-                      '        group.MapGet("/summary", GetSummaryAsync);',
-                      '        group.MapGet(\n'
-                      '            "/access",\n'
-                      '            (Func<HttpContext, Task<IResult>>)GetAccessAsync);\n'
-                      '        group.MapGet(\n'
-                      '            "/summary",\n'
-                      '            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);'
-                  )
-              ],
-              Path('src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'): [
-                  (
-                      '        group.MapGet("/access", GetAccessAsync);\n'
-                      '        group.MapGet("/summary", GetSummaryAsync);',
-                      '        group.MapGet(\n'
-                      '            "/access",\n'
-                      '            (Func<HttpContext, Task<IResult>>)GetAccessAsync);\n'
-                      '        group.MapGet(\n'
-                      '            "/summary",\n'
-                      '            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);'
-                  )
-              ],
-              Path('src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs'): [
-                  (
-                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"const accessBody = await request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary', request('/summary')]\")&&frontend.includes('access?.permissions'));\n",
-                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"const accessBody = await request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary', request('/summary')]\")&&frontend.includes('access?.permissions'));\n"
-                      "test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet(\"/access\", GetAccessAsync)')&&!backend.includes('MapGet(\"/summary\", GetSummaryAsync)'));\n"
-                  )
-              ],
-              Path('src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs'): [
-                  (
-                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary',request('/summary')]\")&&frontend.includes('access?.permissions'));\n",
-                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary',request('/summary')]\")&&frontend.includes('access?.permissions'));\n"
-                      "test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet(\"/access\", GetAccessAsync)')&&!backend.includes('MapGet(\"/summary\", GetSummaryAsync)'));\n"
-                  )
-              ]
+              'access': (
+                  re.compile(r'(?m)^[\t ]*group\.MapGet\("/access", GetAccessAsync\);\r?\n'),
+                  '        group.MapGet(\n'
+                  '            "/access",\n'
+                  '            (Func<HttpContext, Task<IResult>>)GetAccessAsync);\n'
+              ),
+              'summary': (
+                  re.compile(r'(?m)^[\t ]*group\.MapGet\("/summary", GetSummaryAsync\);\r?\n'),
+                  '        group.MapGet(\n'
+                  '            "/summary",\n'
+                  '            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);\n'
+              ),
           }
 
-          for path, path_replacements in replacements.items():
+          for path in backend_files:
               text = path.read_text(encoding='utf-8')
-              for old, new in path_replacements:
-                  count = text.count(old)
-                  if count != 1:
-                      raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
-                  text = text.replace(old, new, 1)
-              path.write_text(text, encoding='utf-8')
+              newline = '\r\n' if '\r\n' in text else '\n'
+              for name, (pattern, replacement) in replacements.items():
+                  if len(pattern.findall(text)) != 1:
+                      raise SystemExit(
+                          f'{path}: expected exactly one {name} registration target'
+                      )
+                  text = pattern.sub(
+                      lambda _match, value=replacement: value.replace('\n', newline),
+                      text,
+                      count=1,
+                  )
+              path.write_text(text, encoding='utf-8', newline='')
+
+          validator_files = [
+              Path('src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs'),
+              Path('src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs'),
+          ]
+          explicit_test = (
+              "test('EXPLICIT_IRESULT_EXECUTION',"
+              "backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')"
+              "&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')"
+              "&&!backend.includes('MapGet(\\\"/access\\\", GetAccessAsync)')"
+              "&&!backend.includes('MapGet(\\\"/summary\\\", GetSummaryAsync)'));"
+          )
+
+          for path in validator_files:
+              text = path.read_text(encoding='utf-8')
+              newline = '\r\n' if '\r\n' in text else '\n'
+              marker = "test('RUNTIME_READINESS',"
+              if explicit_test in text:
+                  raise SystemExit(f'{path}: explicit-result validator already present')
+              if text.count(marker) != 1:
+                  raise SystemExit(f'{path}: expected one runtime-readiness marker')
+              text = text.replace(marker, explicit_test + newline + marker, 1)
+              path.write_text(text, encoding='utf-8', newline='')
           PY
 
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
-          ! grep -Fq 'MapGet("/access", GetAccessAsync)' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          ! grep -Fq 'MapGet("/summary", GetSummaryAsync)' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
-          ! grep -Fq 'MapGet("/access", GetAccessAsync)' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
-          ! grep -Fq 'MapGet("/summary", GetSummaryAsync)' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          for file in \
+            src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs; do
+            grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$file"
+            grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$file"
+            ! grep -Fq 'MapGet("/access", GetAccessAsync)' "$file"
+            ! grep -Fq 'MapGet("/summary", GetSummaryAsync)' "$file"
+          done
 
       - name: Validate framework result execution and module contracts
         shell: bash
