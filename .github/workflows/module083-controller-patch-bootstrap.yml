@@ -1,0 +1,90 @@
+name: Apply Module 083 Controller Startup Corrections
+
+on:
+  push:
+    branches:
+      - 'diagnostic/actionlint-module083-controller-20260809'
+    paths:
+      - '.github/workflows/module083-controller-patch-bootstrap.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: module083-controller-patch-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Correct and commit the Module 083 controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: diagnostic/actionlint-module083-controller-20260809
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded workflow corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/projectpulse-deploy-module083-test.yml')
+          source = path.read_text(encoding='utf-8')
+
+          replacements = [
+              ('  queue: max\n', ''),
+              ('      EVIDENCE_DIR: ${{ runner.temp }}/module083-test-evidence\n', '      EVIDENCE_DIR: /tmp/module083-test-evidence\n'),
+              ('          path: ${{ runner.temp }}/module083-test-evidence\n', '          path: /tmp/module083-test-evidence\n'),
+          ]
+          for old, new in replacements:
+              if old not in source:
+                  raise SystemExit(f'Module 083 controller patch anchor is missing: {old!r}')
+              source = source.replace(old, new, 1)
+
+          guard_anchor = """      - name: Guard exact source, migration, and Test-only boundary
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+"""
+          guard_replacement = guard_anchor + "          # shellcheck disable=SC2129\n"
+          if guard_anchor not in source:
+              raise SystemExit('The Module 083 release-boundary step anchor is missing.')
+          source = source.replace(guard_anchor, guard_replacement, 1)
+
+          rollback_anchor = """      - name: Roll back Test images after a release-blocking failure
+        if: ${{ failure() && steps.contract.outcome == 'success' && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+"""
+          rollback_replacement = rollback_anchor + "          # shellcheck disable=SC2016\n"
+          if rollback_anchor not in source:
+              raise SystemExit('The Module 083 rollback step anchor is missing.')
+          source = source.replace(rollback_anchor, rollback_replacement, 1)
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          grep -Fq 'EVIDENCE_DIR: /tmp/module083-test-evidence' .github/workflows/projectpulse-deploy-module083-test.yml
+          grep -Fq 'path: /tmp/module083-test-evidence' .github/workflows/projectpulse-deploy-module083-test.yml
+          ! grep -Fq 'queue: max' .github/workflows/projectpulse-deploy-module083-test.yml
+          ! grep -Fq 'EVIDENCE_DIR: ${{ runner.temp }}' .github/workflows/projectpulse-deploy-module083-test.yml
+
+      - name: Commit corrected controller and remove this bootstrap
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/module083-controller-patch-bootstrap.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Fix Module 083 Test controller startup validation'
+          git push origin HEAD:diagnostic/actionlint-module083-controller-20260809
