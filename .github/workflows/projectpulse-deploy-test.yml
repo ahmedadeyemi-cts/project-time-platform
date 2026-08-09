@@ -1,4 +1,4 @@
-name: ProjectPulse Test-Only Combined Release d9b5c6c3
+name: ProjectPulse Test-Only Module 081/082 and Theme Recovery adada448
 
 on:
   push:
@@ -17,13 +17,13 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy d9b5c6c3 and validate the combined release
+    name: Deploy adada448 and validate Module 081/082 and theme recovery
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TARGET_RELEASE_COMMIT: d9b5c6c3acf26348c15d97c800605453413f9819
+      TARGET_RELEASE_COMMIT: adada448a0410d24feac45f11ef3b280c2756aaa
 
     steps:
       - name: Check out deployment controls
@@ -37,7 +37,7 @@ jobs:
       - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: d9b5c6c3acf26348c15d97c800605453413f9819
+          ref: adada448a0410d24feac45f11ef3b280c2756aaa
           path: release
           fetch-depth: 1
           persist-credentials: false
@@ -144,7 +144,7 @@ jobs:
           echo "old_api_image=$(resolve_digest "$RAW_API_IMAGE")" >> "$GITHUB_OUTPUT"
           echo "old_web_image=$(resolve_digest "$RAW_WEB_IMAGE")" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable API and web images from d9b5c6c3
+      - name: Build immutable API and web images from adada448
         id: build
         shell: bash
         working-directory: release
@@ -201,6 +201,8 @@ jobs:
           auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
           auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
           auth001=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
+          auth081=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 081')
+          auth082=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 082')
 
           READY=false
           for attempt in $(seq 1 36); do
@@ -211,6 +213,56 @@ jobs:
             sleep 10
           done
           [[ "$READY" == true ]] || fail 'The public Test health endpoint did not become ready.'
+
+          MODULE_081_ACCESS_FILE="$RUNNER_TEMP/module-081-access.json"
+          MODULE_081_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_081_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/access")"
+          [[ "$MODULE_081_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_081_ACCESS_FILE" >&2 || true; fail 'Module 081 effective access remained unavailable.'; }
+          jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_081_ACCESS_FILE" | tee "$RUNNER_TEMP/module-081-access-summary.json"
+          jq -e '
+            .module == "081" and
+            .contractVersion == "081-enterprise-v1" and
+            .status == "ready" and
+            .dataReady == true and
+            ((.scope.mode // "") | length) > 0 and
+            .scope.isViewAs == false and
+            .permissions.canManage == true
+          ' "$MODULE_081_ACCESS_FILE" >/dev/null || fail 'Module 081 did not resolve a ready, manageable effective scope.'
+
+          MODULE_082_ACCESS_FILE="$RUNNER_TEMP/module-082-access.json"
+          MODULE_082_ACCESS_STATUS="$(curl -sS --max-time 60 -o "$MODULE_082_ACCESS_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/access")"
+          [[ "$MODULE_082_ACCESS_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$MODULE_082_ACCESS_FILE" >&2 || true; fail 'Module 082 effective access remained unavailable.'; }
+          jq -c '{module,contractVersion,status,dataReady,scopeMode:.scope.mode,isViewAs:.scope.isViewAs,canManage:.permissions.canManage}' "$MODULE_082_ACCESS_FILE" | tee "$RUNNER_TEMP/module-082-access-summary.json"
+          jq -e '
+            .module == "082" and
+            .contractVersion == "082-enterprise-v1" and
+            .status == "ready" and
+            .dataReady == true and
+            ((.scope.mode // "") | length) > 0 and
+            .scope.isViewAs == false and
+            .permissions.canManage == true
+          ' "$MODULE_082_ACCESS_FILE" >/dev/null || fail 'Module 082 did not resolve a ready, manageable effective scope.'
+
+          MODULE_081_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-081-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/summary")"
+          [[ "$MODULE_081_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-081-summary.json" >&2 || true; fail 'Module 081 governed summary remained unavailable.'; }
+          MODULE_082_SUMMARY_STATUS="$(curl -sS --max-time 90 -o "$RUNNER_TEMP/module-082-summary.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/summary")"
+          [[ "$MODULE_082_SUMMARY_STATUS" == 200 ]] || { jq '{code,message,correlationId}' "$RUNNER_TEMP/module-082-summary.json" >&2 || true; fail 'Module 082 governed summary remained unavailable.'; }
+
+          PORTAL_HTML="$RUNNER_TEMP/test-portal.html"
+          FRONTEND_BUNDLE="$RUNNER_TEMP/test-portal-assets.txt"
+          curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_RUN_ID" > "$PORTAL_HTML"
+          mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
+          [[ "${#FRONTEND_ASSETS[@]}" -gt 0 ]] || fail 'The Test portal did not expose frontend assets.'
+          : > "$FRONTEND_BUNDLE"
+          for asset in "${FRONTEND_ASSETS[@]}"; do
+            case "$asset" in
+              /assets/*) curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "$BASE$asset" >> "$FRONTEND_BUNDLE" ;;
+              *) fail "Unexpected frontend asset path: $asset" ;;
+            esac
+          done
+          grep -Fq 'projectpulse-floating-theme-toggle' "$FRONTEND_BUNDLE" || fail 'The restored global theme control is absent from the deployed bundle.'
+          grep -Fq 'ptp-theme' "$FRONTEND_BUNDLE" || fail 'The deployed bundle does not preserve the persistent theme preference.'
+          grep -Fq 'projectpulse-theme-control' "$FRONTEND_BUNDLE" || fail 'The deployed theme dock stylesheet is absent.'
+          jq -n --arg status verified --argjson assetCount "${#FRONTEND_ASSETS[@]}" '{status:$status,assetCount:$assetCount,persistentThemeKey:"ptp-theme",floatingControl:"projectpulse-floating-theme-toggle"}' > "$RUNNER_TEMP/theme-recovery-summary.json"
 
           READINESS_FILE="$RUNNER_TEMP/celar-readiness.json"
           curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth011[@]}" "$BASE/api/celar-ai/v1/production/readiness" > "$READINESS_FILE"
@@ -465,6 +517,9 @@ jobs:
           SOW_TIMESHEET_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/sow-timesheet-summary.json")"
           FLOWHIVE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/flowhive-summary.json")"
           FORGE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/forge-summary.json")"
+          MODULE_081_ACCESS_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/module-081-access-summary.json")"
+          MODULE_082_ACCESS_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/module-082-access-summary.json")"
+          THEME_RECOVERY_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/theme-recovery-summary.json")"
           jq -n \
             --arg releaseCommit "$TARGET_RELEASE_COMMIT" \
             --arg controlCommit '${{ steps.release.outputs.control_commit }}' \
@@ -480,15 +535,18 @@ jobs:
             --argjson sowTimesheet "$SOW_TIMESHEET_SUMMARY" \
             --argjson flowHive "$FLOWHIVE_SUMMARY" \
             --argjson projectForge "$FORGE_SUMMARY" \
-            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:($projectId | if length > 0 then . else null end),publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,assignmentDiagnostics:$assignmentDiagnostics,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
-            > evidence/combined-release-d9b5c6c3-test-deployment.json
+            --argjson module081Access "$MODULE_081_ACCESS_SUMMARY" \
+            --argjson module082Access "$MODULE_082_ACCESS_SUMMARY" \
+            --argjson themeRecovery "$THEME_RECOVERY_SUMMARY" \
+            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:($projectId | if length > 0 then . else null end),module081Access:$module081Access,module082Access:$module082Access,themeRecovery:$themeRecovery,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,assignmentDiagnostics:$assignmentDiagnostics,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
+            > evidence/modules-081-082-theme-adada448-test-deployment.json
 
       - name: Upload deployment evidence
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: combined-release-d9b5c6c3-test-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evidence/combined-release-d9b5c6c3-test-deployment.json
+          name: modules-081-082-theme-adada448-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/modules-081-082-theme-adada448-test-deployment.json
           retention-days: 30
 
       - name: Restore prior images and source marker on failure
