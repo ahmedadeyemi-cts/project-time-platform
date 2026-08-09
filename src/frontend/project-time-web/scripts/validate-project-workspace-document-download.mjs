@@ -58,7 +58,16 @@ test(
   'BACKEND_SCOPE_AND_FILE_GUARDS',
   backend.includes('ResolveViewAsAccessContextAsync(connection, httpContext, actualAccess)')
     && backend.includes('d.project_intake_document_id = @document_id')
-    && backend.includes('if (!File.Exists(storagePath))')
+    && (
+      backend.includes('if (!File.Exists(storagePath))')
+      || (
+        backend.includes('ResolveProjectDocumentStoragePath(storagePath)')
+        && backend.includes('if (resolvedStoragePath is null)')
+        && backend.includes('ProjectPulseUploadStorage.ResolveRoot()')
+        && backend.includes('if (!File.Exists(candidate)) continue;')
+        && backend.includes('FileAttributes.ReparsePoint')
+      )
+    )
 );
 test(
   'BUTTON_STYLING',
