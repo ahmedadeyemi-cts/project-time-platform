@@ -6,6 +6,11 @@ on:
       - 'diagnostic/actionlint-module083-controller-20260809'
     paths:
       - '.github/workflows/module083-controller-patch-bootstrap.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/module083-controller-patch-bootstrap.yml'
 
 permissions:
   contents: write
@@ -17,6 +22,7 @@ concurrency:
 jobs:
   patch:
     name: Correct and commit the Module 083 controller
+    if: github.event_name == 'push' || github.event.pull_request.head.ref == 'diagnostic/actionlint-module083-controller-20260809'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -36,11 +42,12 @@ jobs:
 
           path = Path('.github/workflows/projectpulse-deploy-module083-test.yml')
           source = path.read_text(encoding='utf-8')
+          expression_open = chr(36) + '{{'
 
           replacements = [
               ('  queue: max\n', ''),
-              ('      EVIDENCE_DIR: ${{ runner.temp }}/module083-test-evidence\n', '      EVIDENCE_DIR: /tmp/module083-test-evidence\n'),
-              ('          path: ${{ runner.temp }}/module083-test-evidence\n', '          path: /tmp/module083-test-evidence\n'),
+              (f'      EVIDENCE_DIR: {expression_open} runner.temp }}}}/module083-test-evidence\n', '      EVIDENCE_DIR: /tmp/module083-test-evidence\n'),
+              (f'          path: {expression_open} runner.temp }}}}/module083-test-evidence\n', '          path: /tmp/module083-test-evidence\n'),
           ]
           for old, new in replacements:
               if old not in source:
@@ -58,12 +65,14 @@ jobs:
               raise SystemExit('The Module 083 release-boundary step anchor is missing.')
           source = source.replace(guard_anchor, guard_replacement, 1)
 
-          rollback_anchor = """      - name: Roll back Test images after a release-blocking failure
-        if: ${{ failure() && steps.contract.outcome == 'success' && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-"""
+          rollback_expression = expression_open + " failure() && steps.contract.outcome == 'success' && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}"
+          rollback_anchor = (
+              "      - name: Roll back Test images after a release-blocking failure\n"
+              f"        if: {rollback_expression}\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -Eeuo pipefail\n"
+          )
           rollback_replacement = rollback_anchor + "          # shellcheck disable=SC2016\n"
           if rollback_anchor not in source:
               raise SystemExit('The Module 083 rollback step anchor is missing.')
@@ -75,7 +84,7 @@ jobs:
           grep -Fq 'EVIDENCE_DIR: /tmp/module083-test-evidence' .github/workflows/projectpulse-deploy-module083-test.yml
           grep -Fq 'path: /tmp/module083-test-evidence' .github/workflows/projectpulse-deploy-module083-test.yml
           ! grep -Fq 'queue: max' .github/workflows/projectpulse-deploy-module083-test.yml
-          ! grep -Fq 'EVIDENCE_DIR: ${{ runner.temp }}' .github/workflows/projectpulse-deploy-module083-test.yml
+          ! grep -Eq 'EVIDENCE_DIR:.*runner\.temp' .github/workflows/projectpulse-deploy-module083-test.yml
 
       - name: Commit corrected controller and remove this bootstrap
         shell: bash
