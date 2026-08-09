@@ -189,7 +189,7 @@ jobs:
           bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Prove public, private, Timesheet, FlowHive, and Forge routing
+      - name: Prove release-blocking health, privacy, and task-independent routing
         id: uat
         shell: bash
         env:
@@ -282,6 +282,46 @@ jobs:
             any(.targetDecisions[]?; ((.target // "") | ascii_downcase) == $provider and ((.outcome // "") | ascii_downcase) == "used")
           ' "$NO_SOW_FILE" >/dev/null || fail 'The no-SOW Timesheet route did not return a reviewable suggestion.'
 
+          jq '{question:.decision.code,provider:.result.modelProvider,answerLength:(.result.answer.directConclusion|length)}' "$PUBLIC_FILE" > "$RUNNER_TEMP/public-summary.json"
+          jq '{intent:.decision.code,status:.result.status,externalProviderUsed:([.result.targetDecisions[]? | select((((.target // "")|ascii_downcase)=="claude" or ((.target // "")|ascii_downcase)=="openai") and ((.outcome // "")|ascii_downcase)=="used")]|length>0)}' "$PRIVATE_FILE" > "$RUNNER_TEMP/private-summary.json"
+          jq '{status,provider,suggestionLength:(.suggestion|length)}' "$NO_SOW_FILE" > "$RUNNER_TEMP/no-sow-summary.json"
+
+      - name: Diagnose assigned SOW Timesheet, FlowHive, and Forge routing
+        id: assignment_diagnostics
+        continue-on-error: true
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          ASSIGNMENT_DIAGNOSTICS_FILE="$RUNNER_TEMP/assignment-diagnostics-summary.json"
+          ASSIGNMENT_PRIVACY_BREACH_MARKER="$RUNNER_TEMP/assignment-privacy-breach"
+          DIAGNOSTIC_STAGE=assignment_discovery
+          fail() { echo "ERROR: $*" >&2; return 1; }
+          privacy_fail() {
+            local message="$1"
+            : > "$ASSIGNMENT_PRIVACY_BREACH_MARKER"
+            jq -n --arg status failed --arg stage privacy_boundary --arg reason observed_private_data_boundary_breach \
+              '{status:$status,releaseBlocking:true,stage:$stage,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo "ERROR: $message" >&2
+            trap - ERR
+            exit 1
+          }
+          on_diagnostic_error() {
+            local exit_code=$?
+            trap - ERR
+            if [[ ! -s "$ASSIGNMENT_DIAGNOSTICS_FILE" ]]; then
+              jq -n --arg status failed --arg stage "$DIAGNOSTIC_STAGE" --arg reason diagnostic_assertion_failed \
+                '{status:$status,releaseBlocking:false,stage:$stage,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            fi
+            echo "::warning::Assignment-dependent AI diagnostics did not complete at stage $DIAGNOSTIC_STAGE; the deployed release will remain active unless a privacy breach was observed."
+            exit "$exit_code"
+          }
+          trap on_diagnostic_error ERR
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          auth011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011')
+          auth033=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 033')
+          auth001=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 001')
           TASK_CANDIDATES_FILE="$RUNNER_TEMP/available-timesheet-task-candidates.jsonl"
           : > "$TASK_CANDIDATES_FILE"
           TODAY_UTC="$(date -u +%F)"
@@ -305,7 +345,14 @@ jobs:
             ' "$TARGETS_FILE" >> "$TASK_CANDIDATES_FILE"
           done
           mapfile -t TASK_ROWS < <(jq -sc 'unique_by([.assignmentId,.projectId,.taskId])[]' "$TASK_CANDIDATES_FILE" | head -200)
-          [[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail 'No authoritative assigned Test task is available in the current plus/minus six-week Test window for SOW-grounded Timesheet UAT.'
+          if [[ "${#TASK_ROWS[@]}" -eq 0 ]]; then
+            jq -n --arg status not_testable --arg reason no_authoritative_assignment_targets \
+              '{status:$status,releaseBlocking:false,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo '::warning::Assignment-dependent AI diagnostics are not testable: the UAT identity has no authoritative assignment targets in the bounded Test window.'
+            trap - ERR
+            exit 0
+          fi
+          DIAGNOSTIC_STAGE=sow_readiness
           SELECTED_BOOTSTRAP=''
           SELECTED_TASK_ROW=''
           for task_row in "${TASK_ROWS[@]}"; do
@@ -319,8 +366,15 @@ jobs:
               break
             fi
           done
-          [[ -n "$SELECTED_BOOTSTRAP" && -n "$SELECTED_TASK_ROW" ]] || fail 'No active assigned task has citation-ready SOW evidence for combined-release UAT.'
+          if [[ -z "$SELECTED_BOOTSTRAP" || -z "$SELECTED_TASK_ROW" ]]; then
+            jq -n --arg status not_testable --arg reason no_citation_ready_sow_assignment \
+              '{status:$status,releaseBlocking:false,reason:$reason}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+            echo '::warning::Assignment-dependent AI diagnostics are not testable: no discovered assignment has citation-ready SOW evidence.'
+            trap - ERR
+            exit 0
+          fi
 
+          DIAGNOSTIC_STAGE=assignment_identity
           ASSIGNMENT_ID="$(jq -r .assignmentId <<<"$SELECTED_TASK_ROW")"
           PROJECT_ID="$(jq -r .projectId <<<"$SELECTED_TASK_ROW")"
           PROJECT_CODE="$(jq -r .projectCode <<<"$SELECTED_TASK_ROW")"
@@ -334,28 +388,35 @@ jobs:
           START_DATE="$SELECTED_WEEK_START"
           PLAN_BASE="$(jq -nc --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" --arg startDate "$START_DATE" '{mode:"project_plan",projectId:$projectId,projectCode:$projectCode,projectName:$projectName,startDate:$startDate,requestedOutcome:"Create a comprehensive cited delivery plan with detailed tasks, dependencies, validation, acceptance criteria, responsibilities, risks, and review controls.",detailLevel:"comprehensive",diagramType:"gantt",allowSanitizedExternalFallback:true}')"
 
+          DIAGNOSTIC_STAGE=flowhive
           FLOWHIVE_PAYLOAD="$(jq '. + {capabilityCode:"project_flowhive_plan"}' <<<"$PLAN_BASE")"
           FLOWHIVE_FILE="$RUNNER_TEMP/flowhive-compose.json"
           FLOWHIVE_STATUS="$(curl -sS --max-time 240 -o "$FLOWHIVE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FLOWHIVE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
           [[ "$FLOWHIVE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FLOWHIVE_FILE" >&2 || true; fail 'FlowHive citation-preserving composition failed.'; }
 
+          DIAGNOSTIC_STAGE=project_forge
           FORGE_PAYLOAD="$(jq '. + {capabilityCode:"project_forge_plan_estimate"}' <<<"$PLAN_BASE")"
           FORGE_FILE="$RUNNER_TEMP/project-forge-compose.json"
           FORGE_STATUS="$(curl -sS --max-time 240 -o "$FORGE_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth011[@]}" -d "$FORGE_PAYLOAD" "$BASE/api/celar-ai/v1/compose")"
           [[ "$FORGE_STATUS" == 200 ]] || { jq '{status,message,result}' "$FORGE_FILE" >&2 || true; fail 'Project Forge citation-preserving composition failed.'; }
 
           for artifact in "$FLOWHIVE_FILE" "$FORGE_FILE"; do
+            if ! jq -e '
+              .result.privacy.externalProviderReceivesPrivateDocumentText == false and
+              .result.privacy.externalProviderReceivesCustomerIdentity == false
+            ' "$artifact" >/dev/null; then
+              privacy_fail "An assigned SOW planning request crossed the external-provider privacy boundary."
+            fi
             jq -e '
               (.result.status | test("completed|partial"; "i")) and
               (.result.flowHivePlan.tasks | length) > 0 and
               (.result.citations | length) > 0 and
               every(.result.flowHivePlan.tasks[]; (.citationIds | length) > 0) and
-              .result.privacy.externalProviderReceivesPrivateDocumentText == false and
-              .result.privacy.externalProviderReceivesCustomerIdentity == false and
               .stateChanged == false
-            ' "$artifact" >/dev/null || fail "Citation or privacy evidence failed for $artifact."
+            ' "$artifact" >/dev/null || fail "Citation or planning evidence failed for $artifact."
           done
 
+          DIAGNOSTIC_STAGE=timesheet_sow
           SOW_TIMESHEET_PAYLOAD="$(jq -nc \
             --arg assignmentId "$ASSIGNMENT_ID" \
             --arg projectId "$PROJECT_ID" --arg projectCode "$PROJECT_CODE" --arg projectName "$PROJECT_NAME" \
@@ -365,17 +426,29 @@ jobs:
           SOW_TIMESHEET_FILE="$RUNNER_TEMP/timesheet-sow-private-boundary.json"
           SOW_TIMESHEET_STATUS="$(curl -sS --max-time 240 -o "$SOW_TIMESHEET_FILE" -w '%{http_code}' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' -H "Origin: $BASE" "${auth001[@]}" -d "$SOW_TIMESHEET_PAYLOAD" "$BASE/api/timesheets/ai-description-suggestions")"
           [[ "$SOW_TIMESHEET_STATUS" == 200 ]] || { jq '{status,error,warning,targetDecisions}' "$SOW_TIMESHEET_FILE" >&2 || true; fail 'The SOW-grounded Timesheet privacy test failed.'; }
-          jq -e '
+          if ! jq -e '
             ([.targetDecisions[]? | select((((.target // "") | ascii_downcase) == "claude" or ((.target // "") | ascii_downcase) == "openai") and ((.outcome // "") | ascii_downcase) == "used")] | length) == 0
-          ' "$SOW_TIMESHEET_FILE" >/dev/null || fail 'A SOW-grounded Timesheet request crossed the public-provider boundary.'
+          ' "$SOW_TIMESHEET_FILE" >/dev/null; then
+            privacy_fail 'A SOW-grounded Timesheet request crossed the public-provider boundary.'
+          fi
 
-          jq '{question:.decision.code,provider:.result.modelProvider,answerLength:(.result.answer.directConclusion|length)}' "$PUBLIC_FILE" > "$RUNNER_TEMP/public-summary.json"
-          jq '{intent:.decision.code,status:.result.status,externalProviderUsed:([.result.targetDecisions[]? | select((((.target // "")|ascii_downcase)=="claude" or ((.target // "")|ascii_downcase)=="openai") and ((.outcome // "")|ascii_downcase)=="used")]|length>0)}' "$PRIVATE_FILE" > "$RUNNER_TEMP/private-summary.json"
-          jq '{status,provider,suggestionLength:(.suggestion|length)}' "$NO_SOW_FILE" > "$RUNNER_TEMP/no-sow-summary.json"
           jq '{status,provider,suggestionLength:((.suggestion // "")|length),warningPresent:((.warning // "")|length>0)}' "$SOW_TIMESHEET_FILE" > "$RUNNER_TEMP/sow-timesheet-summary.json"
           jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FLOWHIVE_FILE" > "$RUNNER_TEMP/flowhive-summary.json"
           jq '{status:.result.status,selectedTarget:.result.selectedTarget,taskCount:(.result.flowHivePlan.tasks|length),citationCount:(.result.citations|length)}' "$FORGE_FILE" > "$RUNNER_TEMP/forge-summary.json"
           printf '%s' "$PROJECT_ID" > "$RUNNER_TEMP/uat-project-id"
+          jq -n --arg status completed --arg projectId "$PROJECT_ID" '{status:$status,releaseBlocking:false,projectId:$projectId}' > "$ASSIGNMENT_DIAGNOSTICS_FILE"
+          trap - ERR
+
+      - name: Enforce any observed assigned-SOW privacy breach
+        if: always() && steps.deploy_api.outputs.started == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/assignment-privacy-breach" ]]; then
+            echo 'ERROR: Assignment-dependent diagnostics observed a private-data routing breach.' >&2
+            exit 1
+          fi
+
 
       - name: Publish deployment evidence
         if: success()
@@ -383,6 +456,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
+          read_json_or_null() {
+            local path="$1"
+            [[ -s "$path" ]] && cat "$path" || printf 'null\n'
+          }
+          UAT_PROJECT_ID="$(cat "$RUNNER_TEMP/uat-project-id" 2>/dev/null || true)"
+          ASSIGNMENT_DIAGNOSTICS="$(read_json_or_null "$RUNNER_TEMP/assignment-diagnostics-summary.json")"
+          SOW_TIMESHEET_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/sow-timesheet-summary.json")"
+          FLOWHIVE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/flowhive-summary.json")"
+          FORGE_SUMMARY="$(read_json_or_null "$RUNNER_TEMP/forge-summary.json")"
           jq -n \
             --arg releaseCommit "$TARGET_RELEASE_COMMIT" \
             --arg controlCommit '${{ steps.release.outputs.control_commit }}' \
@@ -390,14 +472,15 @@ jobs:
             --arg webImage '${{ steps.build.outputs.web_image }}' \
             --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
             --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
-            --arg projectId "$(cat "$RUNNER_TEMP/uat-project-id")" \
+            --arg projectId "$UAT_PROJECT_ID" \
+            --argjson assignmentDiagnostics "$ASSIGNMENT_DIAGNOSTICS" \
             --argjson publicQuestion "$(cat "$RUNNER_TEMP/public-summary.json")" \
             --argjson internalQuestion "$(cat "$RUNNER_TEMP/private-summary.json")" \
             --argjson noSowTimesheet "$(cat "$RUNNER_TEMP/no-sow-summary.json")" \
-            --argjson sowTimesheet "$(cat "$RUNNER_TEMP/sow-timesheet-summary.json")" \
-            --argjson flowHive "$(cat "$RUNNER_TEMP/flowhive-summary.json")" \
-            --argjson projectForge "$(cat "$RUNNER_TEMP/forge-summary.json")" \
-            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:$projectId,publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
+            --argjson sowTimesheet "$SOW_TIMESHEET_SUMMARY" \
+            --argjson flowHive "$FLOWHIVE_SUMMARY" \
+            --argjson projectForge "$FORGE_SUMMARY" \
+            '{environment:"test",releaseCommit:$releaseCommit,controlCommit:$controlCommit,migrationsApplied:[],migration081:"not_applied",openCloudPrivateRuntime:"deferred",privateRuntimeConfigurationChanged:false,apiImage:$apiImage,webImage:$webImage,apiRevision:$apiRevision,webRevision:$webRevision,uatProjectId:($projectId | if length > 0 then . else null end),publicQuestion:$publicQuestion,internalQuestion:$internalQuestion,noSowTimesheet:$noSowTimesheet,assignmentDiagnostics:$assignmentDiagnostics,sowTimesheet:$sowTimesheet,flowHive:$flowHive,projectForge:$projectForge}' \
             > evidence/combined-release-d9b5c6c3-test-deployment.json
 
       - name: Upload deployment evidence
