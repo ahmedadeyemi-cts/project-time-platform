@@ -43,20 +43,27 @@ jobs:
           new_sha = 'b0aedc706c3fe33b97b91a1b0074a20578c82b64'
           old_short = 'adada448'
           new_short = 'b0aedc70'
+          old_upper = 'ADADA448'
+          new_upper = 'B0AEDC70'
 
           if controller.count(old_sha) != 2:
-              raise SystemExit(f'controller: expected two old release SHA references, found {controller.count(old_sha)}')
+              raise SystemExit(
+                  f'controller: expected two old release SHA references, found {controller.count(old_sha)}'
+              )
           if validator.count(old_sha) != 1:
-              raise SystemExit(f'validator: expected one old release SHA reference, found {validator.count(old_sha)}')
+              raise SystemExit(
+                  f'validator: expected one old release SHA reference, found {validator.count(old_sha)}'
+              )
           controller = controller.replace(old_sha, new_sha)
           validator = validator.replace(old_sha, new_sha)
 
-          if controller.count(old_short) < 5:
-              raise SystemExit('controller: expected release label references were not found')
-          if validator.count(old_short) < 3:
-              raise SystemExit('validator: expected release label references were not found')
+          if old_short not in controller:
+              raise SystemExit('controller: old release label was not found')
+          if old_short not in validator:
+              raise SystemExit('validator: old release label was not found')
           controller = controller.replace(old_short, new_short)
           validator = validator.replace(old_short, new_short)
+          validator = validator.replace(old_upper, new_upper)
 
           source_marker = (
               "          FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'\n"
@@ -102,27 +109,34 @@ jobs:
               raise SystemExit('controller: explicit-result guard marker was not unique')
           controller = controller.replace(explicit_marker, explicit_replacement, 1)
 
-          helper_marker = (
-              "          fail() { echo \"ERROR: $*\" >&2; exit 1; }\n"
-              "          BASE='${{ vars.PUBLIC_URL }}'; BASE=\"${BASE%/}\""
+          uat_anchor = (
+              '      - name: Prove release-blocking health, privacy, and task-independent routing'
           )
-          helper_replacement = (
-              "          fail() { echo \"ERROR: $*\" >&2; exit 1; }\n"
-              "          require_json_file() {\n"
-              "            local file=\"$1\" label=\"$2\"\n"
-              "            [[ -s \"$file\" ]] || fail \"$label returned HTTP 200 with an empty response body.\"\n"
-              "            jq -e . \"$file\" >/dev/null 2>&1 || {\n"
-              "              echo \"Invalid JSON response for $label:\" >&2\n"
-              "              head -c 2048 \"$file\" >&2 || true\n"
-              "              echo >&2\n"
-              "              fail \"$label returned HTTP 200 with an invalid JSON response body.\"\n"
-              "            }\n"
-              "          }\n"
-              "          BASE='${{ vars.PUBLIC_URL }}'; BASE=\"${BASE%/}\""
+          fail_line = '          fail() { echo "ERROR: $*" >&2; exit 1; }'
+          uat_start = controller.find(uat_anchor)
+          if uat_start < 0:
+              raise SystemExit('controller: UAT step anchor was not found')
+          fail_start = controller.find(fail_line, uat_start)
+          if fail_start < 0:
+              raise SystemExit('controller: UAT fail helper was not found')
+          if controller.find('          require_json_file() {', uat_start) >= 0:
+              raise SystemExit('controller: JSON-response helper already exists')
+
+          json_helper = (
+              '\n'
+              '          require_json_file() {\n'
+              '            local file="$1" label="$2"\n'
+              '            [[ -s "$file" ]] || fail "$label returned HTTP 200 with an empty response body."\n'
+              '            jq -e . "$file" >/dev/null 2>&1 || {\n'
+              '              echo "Invalid JSON response for $label:" >&2\n'
+              '              head -c 2048 "$file" >&2 || true\n'
+              '              echo >&2\n'
+              '              fail "$label returned HTTP 200 with an invalid JSON response body."\n'
+              '            }\n'
+              '          }'
           )
-          if controller.count(helper_marker) != 1:
-              raise SystemExit('controller: UAT helper marker was not unique')
-          controller = controller.replace(helper_marker, helper_replacement, 1)
+          insert_at = fail_start + len(fail_line)
+          controller = controller[:insert_at] + json_helper + controller[insert_at:]
 
           guarded_responses = [
               (
@@ -144,10 +158,18 @@ jobs:
           ]
           for status_line, guard_line in guarded_responses:
               if controller.count(status_line) != 1:
-                  raise SystemExit(f'controller: expected one status line for {guard_line}')
-              controller = controller.replace(status_line, status_line + '\n' + guard_line, 1)
+                  raise SystemExit(
+                      f'controller: expected one status line for {guard_line}'
+                  )
+              controller = controller.replace(
+                  status_line,
+                  status_line + '\n' + guard_line,
+                  1,
+              )
 
-          validator_marker = "          grep -Fq '.permissions.canManage == true' \"$CONTROLLER\""
+          validator_marker = (
+              "          grep -Fq '.permissions.canManage == true' \"$CONTROLLER\""
+          )
           validator_replacement = (
               validator_marker + "\n"
               "          grep -Fq \"LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'\" \"$CONTROLLER\"\n"
@@ -172,8 +194,10 @@ jobs:
           grep -Fq 'TARGET_RELEASE_COMMIT: b0aedc706c3fe33b97b91a1b0074a20578c82b64' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'require_json_file "$MODULE_081_ACCESS_FILE"' .github/workflows/projectpulse-deploy-test.yml
           grep -Fq 'require_json_file "$RUNNER_TEMP/module-082-summary.json"' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'adada448' .github/workflows/projectpulse-deploy-test.yml
           ! grep -Fq 'adada448' .github/workflows/projectpulse-release-test-control-ci.yml
+          ! grep -Fq 'ADADA448' .github/workflows/projectpulse-release-test-control-ci.yml
           git diff --check
 
       - name: Commit the exact two-file release controller and remove this helper
