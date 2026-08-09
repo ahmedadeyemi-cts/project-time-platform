@@ -6,6 +6,11 @@ on:
       - feature/celar-ai-oracle-test-external-https-runtime-20260809
     paths:
       - '.github/workflows/temporary-build-celar-ai-oracle-test-integration.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temporary-build-celar-ai-oracle-test-integration.yml'
 
 permissions:
   contents: write
@@ -17,7 +22,7 @@ concurrency:
 jobs:
   build:
     name: Apply and validate the reviewed Test-only Oracle bridge
-    if: github.ref == 'refs/heads/feature/celar-ai-oracle-test-external-https-runtime-20260809'
+    if: github.event_name == 'push' || github.head_ref == 'feature/celar-ai-oracle-test-external-https-runtime-20260809'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
