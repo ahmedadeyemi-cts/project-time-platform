@@ -669,6 +669,7 @@ import DataGovernanceRetentionCenter from './DataGovernanceRetentionCenter.jsx';
 import CustomerDeliveryAcceptanceCenter from './CustomerDeliveryAcceptanceCenter.jsx';
 import LabEquipmentTrackerCenter from './LabEquipmentTrackerCenter.jsx';
 import ProjectRiskRegisterCenter from './ProjectRiskRegisterCenter.jsx';
+import FullFutureLoopCenter from './FullFutureLoopCenter.jsx';
 import ProjectManagerWorkloadCenter from './ProjectManagerWorkloadCenter.jsx';
 import EngineeringTeamLeadUtilizationPanel from './EngineeringTeamLeadUtilizationPanel.jsx';
 import WorkTaskBuilderPanel from './WorkTaskBuilderPanel.jsx';
@@ -3599,6 +3600,17 @@ function getInstalledProjectPulseModuleRegistry() {
     permissions: ['VIEW_PROJECT_RISKS_082', 'MANAGE_PROJECT_RISKS_082', 'UPDATE_ASSIGNED_RISK_ACTIONS_082', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     description: 'Provides PMI-aligned risk identification, analysis, response actions, heatmaps, review governance, decisions, versions, audit, and evidence exports.'
   },
+  /* MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_START */
+  {
+    route: 'full-future-loop',
+    title: 'Full Future Loop',
+    navLabel: 'MODULE 083',
+    status: 'Safe persistent sandbox',
+    group: 'Platform Operations',
+    permissions: ['VIEW_FULL_FUTURE_LOOP_083', 'RUN_FULL_FUTURE_LOOP_SANDBOX_083', 'MANAGE_FULL_FUTURE_LOOP_083', 'VIEW_FULL_FUTURE_LOOP_EVIDENCE_083', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    description: 'Provides a governed roadmap-to-delivery sandbox covering selective governance, private development, canary verification, curated promotion, production evidence, support, repair, re-promotion, and final verification.'
+  },
+  /* MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_END */
   /* MODULES_075_080_RUNTIME_REGISTRY_END */
   /* MODULES_064_074_RELEASE_TRAIN_INSTALLED_REGISTRY_END */
   /* MODULE_998_SYSTEM_DIAGNOSTICS_INSTALLED_REGISTRY_START */
@@ -7573,6 +7585,13 @@ Analytics - Variphy / Infortel`}
           <ProjectRiskRegisterCenter authSession={authSession} />
         </section>
       ) : null}
+      {/* MODULE_083_FULL_FUTURE_LOOP_ROUTE_START */}
+      {(activeRoute === 'full-future-loop' && canSeeAny(['VIEW_FULL_FUTURE_LOOP_083', 'RUN_FULL_FUTURE_LOOP_SANDBOX_083', 'MANAGE_FULL_FUTURE_LOOP_083', 'VIEW_FULL_FUTURE_LOOP_EVIDENCE_083', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
+        <section id="full-future-loop" className="panel full-future-loop-route-panel">
+          <FullFutureLoopCenter authSession={authSession} />
+        </section>
+      ) : null}
+      {/* MODULE_083_FULL_FUTURE_LOOP_ROUTE_END */}
       {/* MODULES_075_080_RUNTIME_ROUTES_END */}
 
 
@@ -7700,6 +7719,7 @@ Analytics - Variphy / Infortel`}
         'engineer-task-closeout',
         'lab-equipment-tracker',
         'project-risk-register',
+        'full-future-loop',
         'security-operations',
         'calendar-capacity',
         'cicd-pipeline',
