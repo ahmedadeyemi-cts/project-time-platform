@@ -1,0 +1,59 @@
+name: Module 083 Full Future Loop CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs'
+      - 'src/frontend/project-time-web/src/FullFutureLoopCenter.jsx'
+      - 'src/frontend/project-time-web/src/full-future-loop-center.css'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/App.Module001.g.jsx'
+      - 'src/frontend/project-time-web/src/module-availability-registry.js'
+      - 'src/frontend/project-time-web/scripts/inject-module-083-full-future-loop.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-083-full-future-loop.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-077-release-deployment-control.mjs'
+      - 'database/migrations/082_module_083_full_future_loop.sql'
+      - 'database/rollback/082_module_083_full_future_loop_rollback.sql'
+      - 'docs/modules/module-083-full-future-loop/**'
+      - '.github/workflows/module-083-full-future-loop-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-fund
+      - name: Validate Module 083 integration
+        run: node src/frontend/project-time-web/scripts/validate-module-083-full-future-loop.mjs
+      - name: Build backend
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+      - name: Build frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+      - name: Confirm validation is source-stable
+        run: git diff --exit-code
+      - name: Confirm sandbox boundary
+        run: |
+          ! grep -R "new HttpClient\|Octokit\|Process.Start" src/backend/ProjectTime.Api/Modules/FullFutureLoopModule.cs
+          grep -q "productionMutationEnabled = false" src/backend/ProjectTime.Api/Modules/FullFutureLoopModule.cs
+          grep -q "CHECK (environment='sandbox')" database/migrations/082_module_083_full_future_loop.sql
