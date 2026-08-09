@@ -88,20 +88,31 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             blockers.Add("The configured Celar AI document service principal is inactive.");
         if (options.AutoQueueEligibleDocuments && servicePrincipal.Exists && servicePrincipal.Active && !servicePrincipal.QueuePermissionGranted)
             blockers.Add("The configured Celar AI document service principal does not have QUEUE_PULSE_AI_DOCUMENT_PROCESSING through an active role assignment.");
-        if (!options.ClamAvConfigured && !options.PreScanAttestationConfigured)
-            blockers.Add("A private ClamAV endpoint or explicitly approved pre-scan attestation is required.");
+        if (!options.MalwareScannerConfigured)
+            blockers.Add("A private ClamAV endpoint, authenticated Test-only HTTPS scanner, or explicitly approved pre-scan attestation is required.");
         if (!options.EmbeddingConfigured && !options.LexicalOnlyCompletionApproved)
             blockers.Add("A private embedding endpoint is required unless lexical-only completion has an explicit approval reference.");
 
-        var scannerReason = options.ClamAvConfigured ? "private_scanner_not_checked" : "scanner_not_configured";
-        var scannerPrivate = options.PreScanAttestationConfigured;
-        if (options.ClamAvConfigured)
+        var scannerReason = options.MalwareScannerConfigured ? "scanner_not_checked" : "scanner_not_configured";
+        var scannerApproved = options.PreScanAttestationConfigured;
+        if (options.HttpsMalwareScanConfigured)
+        {
+            var scannerResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                options.MalwareScanEndpoint,
+                options.PrivateHostAllowlist,
+                requireHttps: true,
+                allowLoopback: false,
+                cancellationToken: cancellationToken);
+            scannerApproved = scannerResolution.Approved;
+            scannerReason = scannerResolution.Reason;
+        }
+        else if (options.ClamAvConfigured)
         {
             var scannerResolution = await PulseAiPrivateEndpointPolicy.VerifyPrivateHostAsync(
                 options.MalwareScannerHost,
                 allowLoopback: false,
                 cancellationToken);
-            scannerPrivate = scannerResolution.Approved;
+            scannerApproved = scannerResolution.Approved;
             scannerReason = scannerResolution.Reason;
         }
 
@@ -126,8 +137,8 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         var embeddingPrivate = embeddingResolution.Approved;
         var embeddingReason = embeddingResolution.Reason;
 
-        if (options.ClamAvConfigured && !scannerPrivate)
-            blockers.Add($"The configured malware scanner host was rejected by private DNS policy ({scannerReason}).");
+        if ((options.ClamAvConfigured || options.HttpsMalwareScanConfigured) && !scannerApproved)
+            blockers.Add($"The configured malware scanner destination was rejected by runtime endpoint policy ({scannerReason}).");
         if (counts.AwaitingOcr > 0 && !ocrPrivate)
             blockers.Add($"{counts.AwaitingOcr} document processing job(s) require an approved private OCR endpoint ({ocrReason}).");
         if (options.OcrConfigured && !ocrPrivate)
@@ -135,9 +146,10 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         if (options.EmbeddingConfigured && !embeddingPrivate)
             blockers.Add($"The configured embedding endpoint was rejected by the private endpoint policy ({embeddingReason}).");
         if (schema.LexicalIndex) ready.Add("PostgreSQL full-text index is available");
-        if (options.ClamAvConfigured) ready.Add("private ClamAV scanning is configured");
+        if (options.HttpsMalwareScanConfigured) ready.Add("authenticated Test-only HTTPS malware scanning gateway is configured");
+        else if (options.ClamAvConfigured) ready.Add("private ClamAV scanning is configured");
         if (options.PreScanAttestationConfigured) ready.Add("approved pre-scan attestation mode is configured");
-        if (scannerPrivate) ready.Add("malware scanning destination or attestation passed private-runtime policy");
+        if (scannerApproved) ready.Add("malware scanning destination or attestation passed runtime endpoint policy");
         if (ocrPrivate) ready.Add("private OCR endpoint passed endpoint policy");
         if (embeddingPrivate) ready.Add("private embedding endpoint passed endpoint policy");
         if (options.LexicalOnlyCompletionApproved) ready.Add("lexical-only completion has an explicit approval reference");
@@ -151,7 +163,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             && options.AutoQueueEligibleDocuments
             && servicePrincipal.Authorized
             && storage.ProductionReady
-            && scannerPrivate
+            && scannerApproved
             && (counts.AwaitingOcr == 0 || ocrPrivate)
             && (embeddingPrivate || options.LexicalOnlyCompletionApproved)
             && counts.ReadySowDocuments > 0;
@@ -178,8 +190,8 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             ProcessingTablesAvailable: schema.Complete,
             UploadStorageProductionReady: storage.ProductionReady,
             UploadRootFingerprint: storage.RootFingerprint,
-            ClamAvConfigured: options.ClamAvConfigured,
-            MalwareScannerEndpointPrivate: scannerPrivate,
+            ClamAvConfigured: options.ClamAvConfigured || options.HttpsMalwareScanConfigured,
+            MalwareScannerEndpointPrivate: scannerApproved,
             PreScanAttestationConfigured: options.PreScanAttestationConfigured,
             OcrConfigured: options.OcrConfigured,
             OcrEndpointPrivate: ocrPrivate,

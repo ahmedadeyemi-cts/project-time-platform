@@ -58,12 +58,24 @@ public sealed record PulseAiPrivateRuntimeOptions(
     string EmbeddingEndpoint,
     string EmbeddingModel,
     string EmbeddingBearerToken,
-    IReadOnlyList<string> PrivateHostAllowlist)
+    IReadOnlyList<string> PrivateHostAllowlist,
+    string MalwareScanEndpoint = "",
+    string MalwareScanBearerToken = "")
 {
     public bool ClamAvConfigured =>
         MalwareScannerMode.Equals("clamav_tcp", StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(MalwareScannerHost)
         && MalwareScannerPort > 0;
+
+    public bool HttpsMalwareScanConfigured =>
+        MalwareScannerMode.Equals(
+            PulseAiExternalHttpsRuntimePolicy.MalwareScannerMode,
+            StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(MalwareScanEndpoint)
+        && !string.IsNullOrWhiteSpace(MalwareScanBearerToken);
+
+    public bool MalwareScannerConfigured =>
+        ClamAvConfigured || HttpsMalwareScanConfigured || PreScanAttestationConfigured;
 
     public bool PreScanAttestationConfigured =>
         MalwareScannerMode.Equals("pre_scanned_attestation", StringComparison.OrdinalIgnoreCase)
@@ -149,7 +161,13 @@ public sealed record PulseAiPrivateRuntimeOptions(
                 240,
                 string.Empty),
             EmbeddingBearerToken: Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN")?.Trim() ?? string.Empty,
-            PrivateHostAllowlist: hostAllowlist);
+            PrivateHostAllowlist: hostAllowlist,
+            MalwareScanEndpoint: Clean(
+                Environment.GetEnvironmentVariable(PulseAiExternalHttpsRuntimePolicy.MalwareScanEndpointVariable),
+                1000,
+                string.Empty),
+            MalwareScanBearerToken: Environment.GetEnvironmentVariable(
+                PulseAiExternalHttpsRuntimePolicy.MalwareScanBearerTokenVariable)?.Trim() ?? string.Empty);
     }
 
     private static bool Boolean(string name, bool fallback) =>
@@ -256,6 +274,13 @@ public static class PulseAiPrivateEndpointPolicy
         bool allowLoopback = false,
         CancellationToken cancellationToken = default)
     {
+        if (PulseAiExternalHttpsRuntimePolicy.IsEnabled)
+        {
+            return await PulseAiExternalHttpsRuntimePolicy.VerifyEndpointAsync(
+                value,
+                cancellationToken);
+        }
+
         if (!IsApprovedPrivateEndpoint(value, allowlist, out var endpoint, out var reason)
             || endpoint is null)
         {

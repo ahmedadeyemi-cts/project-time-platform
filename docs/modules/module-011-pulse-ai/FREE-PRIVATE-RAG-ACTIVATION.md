@@ -93,6 +93,10 @@ PROJECTPULSE_PULSE_AI_ALLOW_LEXICAL_ONLY_COMPLETION=true
 PROJECTPULSE_PULSE_AI_LEXICAL_ONLY_APPROVAL_REFERENCE=<change or risk approval>
 ```
 
+## Temporary protected-Test Oracle HTTPS bridge
+
+The normal production contract continues to require private DNS and private addresses. A separate, fail-closed Test-only exception for the verified Oracle runtime is documented in `ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md`. It requires the exact `celarai.onenecklab.com` host, an expected IPv4 pin, standard TLS validation, bearer authentication, exact endpoint paths, live readiness, and an `ORACLE-TEST-...` approval reference. Production cannot enable the exception, and the Oracle runtime does not expose Ollama, ClamAV, or the Python gateway directly.
+
 ## 4. Gates for `Private RAG Ready`
 
 All of these must pass:
