@@ -1,0 +1,122 @@
+name: Apply Modules 081 and 082 Explicit IResult Fix
+
+on:
+  push:
+    branches:
+      - fix/modules-081-082-explicit-iresult-20260809
+    paths:
+      - '.github/workflows/apply-modules-081-082-iresult-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-modules-081-082-explicit-iresult-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Apply and validate exact route-result correction
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact fix branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/modules-081-082-explicit-iresult-20260809
+          fetch-depth: 0
+
+      - name: Apply bounded source and regression-test replacements
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'): [
+                  (
+                      '        group.MapGet("/access", GetAccessAsync);\n'
+                      '        group.MapGet("/summary", GetSummaryAsync);',
+                      '        group.MapGet(\n'
+                      '            "/access",\n'
+                      '            (Func<HttpContext, Task<IResult>>)GetAccessAsync);\n'
+                      '        group.MapGet(\n'
+                      '            "/summary",\n'
+                      '            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);'
+                  )
+              ],
+              Path('src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'): [
+                  (
+                      '        group.MapGet("/access", GetAccessAsync);\n'
+                      '        group.MapGet("/summary", GetSummaryAsync);',
+                      '        group.MapGet(\n'
+                      '            "/access",\n'
+                      '            (Func<HttpContext, Task<IResult>>)GetAccessAsync);\n'
+                      '        group.MapGet(\n'
+                      '            "/summary",\n'
+                      '            (Func<HttpContext, Task<IResult>>)GetSummaryAsync);'
+                  )
+              ],
+              Path('src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs'): [
+                  (
+                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"const accessBody = await request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary', request('/summary')]\")&&frontend.includes('access?.permissions'));\n",
+                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"const accessBody = await request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary', request('/summary')]\")&&frontend.includes('access?.permissions'));\n"
+                      "test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet(\"/access\", GetAccessAsync)')&&!backend.includes('MapGet(\"/summary\", GetSummaryAsync)'));\n"
+                  )
+              ],
+              Path('src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs'): [
+                  (
+                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary',request('/summary')]\")&&frontend.includes('access?.permissions'));\n",
+                      "test('PROGRESSIVE_CAPABILITIES',frontend.includes(\"request('/access')\")&&frontend.includes('Promise.allSettled')&&frontend.includes(\"['summary',request('/summary')]\")&&frontend.includes('access?.permissions'));\n"
+                      "test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet(\"/access\", GetAccessAsync)')&&!backend.includes('MapGet(\"/summary\", GetSummaryAsync)'));\n"
+                  )
+              ]
+          }
+
+          for path, path_replacements in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in path_replacements:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          ! grep -Fq 'MapGet("/access", GetAccessAsync)' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          ! grep -Fq 'MapGet("/summary", GetSummaryAsync)' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          ! grep -Fq 'MapGet("/access", GetAccessAsync)' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          ! grep -Fq 'MapGet("/summary", GetSummaryAsync)' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+
+      - name: Validate framework result execution and module contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/ProjectTime.Api.RouteResultExecutionTests/ProjectTime.Api.RouteResultExecutionTests.csproj --configuration Release
+          node src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
+          node src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          git diff --check
+
+      - name: Commit the reviewed fix and remove this one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/apply-modules-081-082-iresult-fix.yml
+          git add \
+            src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs \
+            src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs \
+            src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs \
+            .github/workflows/apply-modules-081-082-iresult-fix.yml
+          git diff --cached --check
+          git config user.name 'ProjectPulse Release Automation'
+          git config user.email 'projectpulse-release-automation@users.noreply.github.com'
+          git commit -m 'fix: execute Module 081 and 082 access results'
+          git push origin HEAD:fix/modules-081-082-explicit-iresult-20260809
