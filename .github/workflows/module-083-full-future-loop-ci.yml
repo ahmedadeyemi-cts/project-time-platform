@@ -18,6 +18,7 @@ on:
       - 'database/rollback/082_module_083_full_future_loop_rollback.sql'
       - 'docs/modules/module-083-full-future-loop/**'
       - '.github/workflows/module-083-full-future-loop-ci.yml'
+      - '.github/workflows/projectpulse-deploy-module083-test.yml'
   workflow_dispatch:
 
 permissions:
@@ -57,3 +58,123 @@ jobs:
           ! grep -R "new HttpClient\|Octokit\|Process.Start" src/backend/ProjectTime.Api/Modules/FullFutureLoopModule.cs
           grep -q "productionMutationEnabled = false" src/backend/ProjectTime.Api/Modules/FullFutureLoopModule.cs
           grep -q "CHECK (environment='sandbox')" database/migrations/082_module_083_full_future_loop.sql
+
+  corrected-test-controller:
+    name: Generate and actionlint corrected Test controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out exact pull request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Generate bounded controller correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('.github/workflows/projectpulse-deploy-module083-test.yml')
+          output_path = Path('/tmp/projectpulse-deploy-module083-test.yml')
+          source = source_path.read_text(encoding='utf-8')
+          expression_open = chr(36) + '{{'
+          runner_temp = f'{expression_open} runner.temp }}}}'
+
+          replacements = [
+              ('  queue: max\n', ''),
+              (f'      EVIDENCE_DIR: {runner_temp}/module083-test-evidence\n', '      EVIDENCE_DIR: /tmp/module083-test-evidence\n'),
+              (f'          path: {runner_temp}/module083-test-evidence\n', '          path: /tmp/module083-test-evidence\n'),
+          ]
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one Module 083 controller anchor, found {count}: {old!r}')
+              source = source.replace(old, new, 1)
+
+          guard_anchor = """      - name: Guard exact source, migration, and Test-only boundary
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+"""
+          guard_replacement = """      - name: Guard exact source, migration, and Test-only boundary
+        id: release
+        shell: bash
+        run: |
+          # shellcheck disable=SC2129
+          set -Eeuo pipefail
+"""
+          if source.count(guard_anchor) != 1:
+              raise SystemExit('The Module 083 release-boundary step anchor is not unique.')
+          source = source.replace(guard_anchor, guard_replacement, 1)
+
+          rollback_if = expression_open + " failure() && steps.contract.outcome == 'success' && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}"
+          rollback_anchor = (
+              "      - name: Roll back Test images after a release-blocking failure\n"
+              f"        if: {rollback_if}\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -Eeuo pipefail\n"
+          )
+          rollback_replacement = (
+              "      - name: Roll back Test images after a release-blocking failure\n"
+              f"        if: {rollback_if}\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          # shellcheck disable=SC2016\n"
+              "          set -Eeuo pipefail\n"
+          )
+          if source.count(rollback_anchor) != 1:
+              raise SystemExit('The Module 083 rollback step anchor is not unique.')
+          source = source.replace(rollback_anchor, rollback_replacement, 1)
+
+          output_path.write_text(source, encoding='utf-8')
+          PY
+
+          grep -Fq 'EVIDENCE_DIR: /tmp/module083-test-evidence' /tmp/projectpulse-deploy-module083-test.yml
+          grep -Fq 'path: /tmp/module083-test-evidence' /tmp/projectpulse-deploy-module083-test.yml
+          grep -Fq '# shellcheck disable=SC2129' /tmp/projectpulse-deploy-module083-test.yml
+          grep -Fq '# shellcheck disable=SC2016' /tmp/projectpulse-deploy-module083-test.yml
+          ! grep -Fq 'queue: max' /tmp/projectpulse-deploy-module083-test.yml
+          ! grep -Eq 'EVIDENCE_DIR:.*runner\.temp' /tmp/projectpulse-deploy-module083-test.yml
+          sha256sum /tmp/projectpulse-deploy-module083-test.yml
+
+      - name: Install checksum-pinned actionlint 1.7.12
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -version
+
+      - name: Actionlint corrected controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/actionlint" -color -verbose /tmp/projectpulse-deploy-module083-test.yml
+          echo 'MODULE_083_CORRECTED_CONTROLLER_ACTIONLINT=PASSED'
+
+      - name: Upload corrected controller
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: corrected-module083-test-controller-${{ github.run_id }}
+          path: /tmp/projectpulse-deploy-module083-test.yml
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Confirm diagnostic boundary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'DEPLOYMENT_ACTIONS=NONE'
+          echo 'MIGRATION_ACTIONS=NONE'
+          echo 'TEST_CHANGES=NONE'
+          echo 'PRODUCTION_CHANGES=NONE'
