@@ -105,7 +105,7 @@ export function EnterprisePrintHeader({ moduleCode, title }) {
       <USSignalLogo decorative size="compact" />
       <div>
         <strong>{title}</strong>
-        <span>Module {moduleCode} · ProjectPulse</span>
+        <span>Module {moduleCode} · Pulse</span>
       </div>
     </div>
   );

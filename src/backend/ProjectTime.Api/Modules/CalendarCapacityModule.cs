@@ -44,7 +44,7 @@ public static class CalendarCapacityModule
         {
             var actor = SessionUserId(context);
             if (actor is null)
-                return Results.Json(new { status = "session_required", message = "A ProjectPulse session is required." }, statusCode: 401);
+                return Results.Json(new { status = "session_required", message = "A Pulse session is required." }, statusCode: 401);
 
             await using var connection = new NpgsqlConnection(ConnectionString());
             await connection.OpenAsync();
@@ -134,7 +134,7 @@ public static class CalendarCapacityModule
                     new
                     {
                         status = "session_required",
-                        message = "A ProjectPulse session is required."
+                        message = "A Pulse session is required."
                     },
                     statusCode: 401);
             }
@@ -364,7 +364,7 @@ public static class CalendarCapacityModule
         {
             var actor = SessionUserId(context);
             if (actor is null)
-                return Results.Json(new { status = "session_required", message = "A ProjectPulse session is required." }, statusCode: 401);
+                return Results.Json(new { status = "session_required", message = "A Pulse session is required." }, statusCode: 401);
 
             if (request.End <= request.Start || request.End - request.Start > TimeSpan.FromDays(186))
                 return Results.BadRequest(new { status = "invalid_range", message = "Choose a valid range of 186 days or fewer." });
@@ -599,7 +599,7 @@ public static class CalendarCapacityModule
             var value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     private static async Task<string> GraphToken()

@@ -545,7 +545,7 @@ public static class OneAssistRoutingDirectoryModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -603,7 +603,7 @@ public static class OneAssistRoutingDirectoryModule
         canManage = access.CanManage,
         managePermission = ManagePermission,
         isViewAs = IsViewAs(context),
-        authoritySource = "actual ProjectPulse session"
+        authoritySource = "actual Pulse session"
     };
 
 

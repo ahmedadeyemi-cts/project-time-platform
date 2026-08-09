@@ -1569,7 +1569,7 @@ public static class ProductionApprovalWorkModule
         await using var command = new NpgsqlCommand("""
             SELECT
                 COALESCE(user_row.email, ''),
-                COALESCE(NULLIF(user_row.display_name, ''), user_row.email, 'ProjectPulse user'),
+                COALESCE(NULLIF(user_row.display_name, ''), user_row.email, 'Pulse user'),
                 COALESCE(
                     ARRAY_AGG(DISTINCT UPPER(role_row.role_code))
                         FILTER (WHERE role_row.role_code IS NOT NULL),
@@ -1770,7 +1770,7 @@ public static class ProductionApprovalWorkModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid ProjectPulse session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static IResult SafeFailure(HttpContext context, string title, string message) =>
@@ -1784,7 +1784,7 @@ public static class ProductionApprovalWorkModule
 
     private static void LogFailure(string operation, HttpContext context, Exception exception) =>
         Console.Error.WriteLine(
-            $"ProjectPulse {operation} failed. traceId={context.TraceIdentifier} exception={exception}");
+            $"Pulse {operation} failed. traceId={context.TraceIdentifier} exception={exception}");
 
     private static string ConnectionString()
     {
@@ -1800,7 +1800,7 @@ public static class ProductionApprovalWorkModule
             var value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     public sealed record BulkCompleteRequest(

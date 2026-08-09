@@ -157,9 +157,9 @@ export default function SystemArchitectureCenter({ authSession }) {
       </section>
 
       <section className="system-architecture-panel architecture-map-panel">
-        <div className="system-architecture-heading"><div><p className="eyebrow">Runtime component map</p><h2>ProjectPulse Platform Operations</h2><p>Azure is the active adapter when Azure runtime evidence is present. OpenCloud and future providers use the same contract without changing Modules 013, 016, or 068.</p></div><small>Generated {dateTime(architecture.generatedAt)}</small></div>
+        <div className="system-architecture-heading"><div><p className="eyebrow">Runtime component map</p><h2>Pulse Platform Operations</h2><p>Azure is the active adapter when Azure runtime evidence is present. OpenCloud and future providers use the same contract without changing Modules 013, 016, or 068.</p></div><small>Generated {dateTime(architecture.generatedAt)}</small></div>
         <div className="provider-adapter-map" aria-label="Provider adapter architecture">
-          <div className="provider-contract-root"><strong>ProjectPulse Platform Operations</strong><span>Shared provider-neutral contract</span></div>
+          <div className="provider-contract-root"><strong>Pulse Platform Operations</strong><span>Shared provider-neutral contract</span></div>
           <div className="provider-adapter-branches">
             <article className={platform.provider === 'azure' ? 'active' : ''}><strong>Azure adapter</strong><span>{platform.provider === 'azure' ? 'Active now' : 'Available when detected'}</span></article>
             <article className={platform.provider === 'opencloud' ? 'active' : ''}><strong>OpenCloud adapter</strong><span>{platform.provider === 'opencloud' ? 'Active now' : 'Future provider contract'}</span></article>

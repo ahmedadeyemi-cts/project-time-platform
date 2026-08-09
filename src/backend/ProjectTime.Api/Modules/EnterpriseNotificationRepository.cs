@@ -575,7 +575,7 @@ internal static class EnterpriseNotificationRepository
                 END AS runtime_coverage,
                 CASE
                     WHEN inventory.source_state = 'native_worker' THEN 'An existing governed worker already uses Module 065.'
-                    WHEN inventory.source_state = 'scanner' THEN 'The enterprise worker reads authoritative ProjectPulse state.'
+                    WHEN inventory.source_state = 'scanner' THEN 'The enterprise worker reads authoritative Pulse state.'
                     WHEN inventory.source_state = 'signed_event' THEN 'The producer posts a signed, idempotent event; Module 065 owns delivery.'
                     ELSE 'The policy is registered and remains fail-closed until its producer is connected.'
                 END AS runtime_message
@@ -1035,7 +1035,7 @@ internal static class EnterpriseNotificationRepository
             || string.IsNullOrWhiteSpace(username)
             || string.IsNullOrWhiteSpace(password))
         {
-            throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+            throw new InvalidOperationException("Pulse database connection is not configured.");
         }
 
         return new NpgsqlConnectionStringBuilder

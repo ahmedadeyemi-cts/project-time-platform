@@ -326,7 +326,7 @@ public static class SalesCoverageAlignmentModule
     {
         actualUserId = access.ActualUserId, effectiveUserId = access.EffectiveUserId,
         roles = access.Roles.OrderBy(value => value), canView = true, canManage = access.CanManage,
-        manageRoles = ManageRoles.OrderBy(value => value), isViewAs = IsViewAs(context), authoritySource = "actual ProjectPulse session"
+        manageRoles = ManageRoles.OrderBy(value => value), isViewAs = IsViewAs(context), authoritySource = "actual Pulse session"
     };
     private static Guid? SessionUserId(HttpContext context, params string[] keys) { foreach (var key in keys) { if (!context.Items.TryGetValue(key, out var value)) continue; if (value is Guid id) return id; if (Guid.TryParse(value?.ToString(), out var parsed)) return parsed; } return null; }
     private static bool IsViewAs(HttpContext context) => context.Items.TryGetValue("ProjectPulseIsViewAs", out var value) && value is bool flag && flag;

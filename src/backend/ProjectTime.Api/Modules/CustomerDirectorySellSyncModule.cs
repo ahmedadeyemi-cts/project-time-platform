@@ -10,7 +10,7 @@ namespace ProjectTime.Api.Modules;
 /// <summary>
 /// Module 021 customer-directory synchronization through the authoritative
 /// Module 026 Zendesk Sell connection. SELL organization records create or
-/// update ProjectPulse customers; locally maintained customer contacts remain
+/// update Pulse customers; locally maintained customer contacts remain
 /// owned by Module 021 and are never overwritten by this synchronization.
 /// </summary>
 public static class CustomerDirectorySellSyncModule
@@ -242,7 +242,7 @@ public static class CustomerDirectorySellSyncModule
         catch (JsonException)
         {
             await FailRunAsync(connection, runId, "sell_response_invalid", "SELL returned an invalid contacts response.", context.RequestAborted);
-            return ProviderFailure("sell_response_invalid", "SELL returned data that ProjectPulse could not read.");
+            return ProviderFailure("sell_response_invalid", "SELL returned data that Pulse could not read.");
         }
         catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested)
         {
@@ -251,8 +251,8 @@ public static class CustomerDirectorySellSyncModule
         }
         catch (HttpRequestException)
         {
-            await FailRunAsync(connection, runId, "sell_connection_failed", "ProjectPulse could not reach SELL.", context.RequestAborted);
-            return ProviderFailure("sell_connection_failed", "ProjectPulse could not reach SELL.");
+            await FailRunAsync(connection, runId, "sell_connection_failed", "Pulse could not reach SELL.", context.RequestAborted);
+            return ProviderFailure("sell_connection_failed", "Pulse could not reach SELL.");
         }
         catch (Exception exception)
         {
@@ -415,8 +415,8 @@ public static class CustomerDirectorySellSyncModule
         }
         catch (HttpRequestException)
         {
-            await FailRunAsync(connection, runId, "sell_connection_failed", "ProjectPulse could not reach SELL.", context.RequestAborted);
-            return ProviderFailure("sell_connection_failed", "ProjectPulse could not reach SELL.");
+            await FailRunAsync(connection, runId, "sell_connection_failed", "Pulse could not reach SELL.", context.RequestAborted);
+            return ProviderFailure("sell_connection_failed", "Pulse could not reach SELL.");
         }
         catch (Exception exception)
         {

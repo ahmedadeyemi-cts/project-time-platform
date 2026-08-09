@@ -790,7 +790,7 @@ public static class ApprovalCenterModule
         var body = new StringBuilder()
             .AppendLine($"Hello {target.DisplayName},")
             .AppendLine()
-            .AppendLine("One or more submitted time entries were returned for correction in ProjectPulse.")
+            .AppendLine("One or more submitted time entries were returned for correction in Pulse.")
             .AppendLine()
             .AppendLine($"Reviewed by: {reviewer.DisplayName} — {reviewer.PrimaryRoleLabel}")
             .AppendLine($"Work date: {request.WorkDate:MMMM d, yyyy}")
@@ -826,7 +826,7 @@ public static class ApprovalCenterModule
             .AppendLine(reason)
             .AppendLine()
             .AppendLine("Required action:")
-            .AppendLine("Open ProjectPulse, correct the returned time, and resubmit it for approval.")
+            .AppendLine("Open Pulse, correct the returned time, and resubmit it for approval.")
             .AppendLine()
             .AppendLine("Pulse: https://phd-west-test.onenecklab.com/#timesheet");
 
@@ -970,7 +970,7 @@ public static class ApprovalCenterModule
             return (null, Results.Json(new
             {
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -1001,7 +1001,7 @@ public static class ApprovalCenterModule
         await using var command = new NpgsqlCommand("""
             SELECT
                 COALESCE(u.email, ''),
-                COALESCE(u.display_name, u.email, 'ProjectPulse user'),
+                COALESCE(u.display_name, u.email, 'Pulse user'),
                 COALESCE(array_agg(DISTINCT r.role_code) FILTER (WHERE r.role_code IS NOT NULL), ARRAY[]::text[])
             FROM app_users u
             LEFT JOIN app_user_role_assignments ura
@@ -1140,7 +1140,7 @@ public static class ApprovalCenterModule
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
 
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     private sealed record ApprovalActionRequest(Guid TimesheetId, DateOnly WorkDate, string? Comment);

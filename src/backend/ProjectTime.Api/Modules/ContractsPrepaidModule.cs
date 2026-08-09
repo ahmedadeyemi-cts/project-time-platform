@@ -772,7 +772,7 @@ public static class ContractsPrepaidModule
             new
             {
                 status = "session_required",
-                message = "A ProjectPulse session is required."
+                message = "A Pulse session is required."
             },
             statusCode: 401);
     }

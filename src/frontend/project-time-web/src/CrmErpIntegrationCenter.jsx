@@ -61,7 +61,7 @@ const PROVIDER_TEMPLATES = Object.freeze({
     apiKeyPrefix: 'Bearer',
     recordLookupUrlTemplate: 'https://api.getbase.com/v2/deals/{recordId}',
     importMappingJson: SELL_MAPPING,
-    description: 'Authoritative customer, organization, deal, quote, and pricing source for ProjectPulse.',
+    description: 'Authoritative customer, organization, deal, quote, and pricing source for Pulse.',
     consumes: ['Module 021 customer sync', 'Module 055D work intake', 'Customer and opportunity handoff'],
     setup: [
       'Choose API key for a governed access token or OAuth 2.0 for delegated consent.',
@@ -251,7 +251,7 @@ function templateProvider(templateKey, current = EMPTY_PROVIDER) {
     importMappingJson: current.importMappingJson && current.importMappingJson !== '{}'
       ? current.importMappingJson
       : template.importMappingJson,
-    notes: current.notes || `${template.shortName} connection managed by ProjectPulse Module 026.`,
+    notes: current.notes || `${template.shortName} connection managed by Pulse Module 026.`,
     isBuiltin: true,
     isPersisted: Boolean(current.isPersisted),
   };
@@ -531,7 +531,7 @@ export default function CrmErpIntegrationCenter() {
         <article><span>Registered platforms</span><strong>{providers.length}</strong><small>Built-in templates and custom connectors</small></article>
         <article><span>Configured</span><strong>{configuredCount}</strong><small>Credential metadata only</small></article>
         <article><span>Available</span><strong>{availableCount}</strong><small>Latest explicit connection test</small></article>
-        <article><span>Your access</span><strong>{canManage ? 'Configure' : 'View status'}</strong><small>{state.payload?.access?.isViewAs ? 'View-As is read-only' : 'Actual ProjectPulse session'}</small></article>
+        <article><span>Your access</span><strong>{canManage ? 'Configure' : 'View status'}</strong><small>{state.payload?.access?.isViewAs ? 'View-As is read-only' : 'Actual Pulse session'}</small></article>
       </div>
 
       {/* CRM_ERP_TOKEN_PERSISTENCE_PANEL_MOUNT */}
@@ -623,7 +623,7 @@ export default function CrmErpIntegrationCenter() {
                     <label className="wide">Availability / health URL<input type="url" placeholder="https://provider.example.com/api/status" value={draft.healthCheckUrl} onChange={(event) => updateDraft('healthCheckUrl', event.target.value)} /></label>
                     {draft.authModel === 'oauth2' ? <><label className="wide">OAuth authorization URL<input type="url" value={draft.oauthAuthorizationUrl} onChange={(event) => updateDraft('oauthAuthorizationUrl', event.target.value)} /></label><label className="wide">OAuth token URL<input type="url" value={draft.oauthTokenUrl} onChange={(event) => updateDraft('oauthTokenUrl', event.target.value)} /></label><label>OAuth client ID<input value={draft.oauthClientId} onChange={(event) => updateDraft('oauthClientId', event.target.value)} /></label><label>OAuth scopes<input value={draft.oauthScopes} placeholder="api refresh_token" onChange={(event) => updateDraft('oauthScopes', event.target.value)} /></label></> : <><label>API-key header<input value={draft.apiKeyHeader} onChange={(event) => updateDraft('apiKeyHeader', event.target.value)} /></label><label>Value prefix<input value={draft.apiKeyPrefix} placeholder="Bearer" onChange={(event) => updateDraft('apiKeyPrefix', event.target.value)} /></label></>}
                     <label className="wide">Record lookup URL template<input type="text" inputMode="url" placeholder="https://provider.example.com/api/records/{recordId}" value={draft.recordLookupUrlTemplate || ''} onChange={(event) => updateDraft('recordLookupUrlTemplate', event.target.value)} /><small>Keep the literal {'{recordId}'} placeholder.</small></label>
-                    <label className="wide">Import field mapping (JSON)<textarea rows={10} value={draft.importMappingJson || '{}'} onChange={(event) => updateDraft('importMappingJson', event.target.value)} /><small>Maps approved source fields into ProjectPulse.</small></label>
+                    <label className="wide">Import field mapping (JSON)<textarea rows={10} value={draft.importMappingJson || '{}'} onChange={(event) => updateDraft('importMappingJson', event.target.value)} /><small>Maps approved source fields into Pulse.</small></label>
                     <label className="wide">Notes<textarea value={draft.notes} onChange={(event) => updateDraft('notes', event.target.value)} /></label>
                   </div>
                   <div className="crm-erp-actions"><button type="submit" className="primary-action" disabled={busy === `save:${draft.providerKey}`}>{busy === `save:${draft.providerKey}` ? 'Saving…' : draft.isPersisted ? 'Save configuration' : 'Create connection'}</button><button type="button" className="secondary-action" onClick={cancelEditing}>Cancel</button></div>

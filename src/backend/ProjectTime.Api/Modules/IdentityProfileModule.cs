@@ -37,7 +37,7 @@ public static class IdentityProfileModule
                             module = "062",
                             status = "session_required",
                             message =
-                                "A ProjectPulse session is required."
+                                "A Pulse session is required."
                         },
                         statusCode: 401);
                 }
@@ -59,7 +59,7 @@ public static class IdentityProfileModule
                             module = "062",
                             status = "identity_profile_not_found",
                             message =
-                                "The authenticated ProjectPulse profile "
+                                "The authenticated Pulse profile "
                                 + "could not be resolved."
                         },
                         statusCode: 404);
@@ -291,7 +291,7 @@ public static class IdentityProfileModule
                 COALESCE(
                     NULLIF(to_jsonb(u)->>'display_name', ''),
                     NULLIF(to_jsonb(u)->>'email', ''),
-                    'ProjectPulse user'
+                    'Pulse user'
                 ),
                 NULLIF(
                     to_jsonb(u)->>'entra_object_id',
@@ -688,7 +688,7 @@ public static class IdentityProfileModule
         }
 
         throw new InvalidOperationException(
-            "ProjectPulse database connection "
+            "Pulse database connection "
             + "is not configured.");
     }
 

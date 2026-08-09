@@ -56,7 +56,7 @@ function dateTime(value, fallback = 'Not recorded') {
 
 function freshDraft(profile = {}) {
   return {
-    applicationName: profile.applicationName || 'ProjectPulse Microsoft Integration',
+    applicationName: profile.applicationName || 'Pulse Microsoft Integration',
     environment: profile.environment || 'test',
     secretLabel: profile.secretLabel || 'Microsoft Entra application client secret',
     secretVersion: profile.secretVersion || '',

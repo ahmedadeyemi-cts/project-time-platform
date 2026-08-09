@@ -186,7 +186,7 @@ async function requestJson(path, authSession, options = {}) {
 }
 
 function friendlyError(error, fallback) {
-  if (error?.status === 401) return 'Your ProjectPulse session needs to be refreshed before closeout data can be loaded.';
+  if (error?.status === 401) return 'Your Pulse session needs to be refreshed before closeout data can be loaded.';
   if (error?.status === 403) return 'This project is outside your assigned closeout scope, or this action requires a different closeout role.';
   if (error?.status === 409) return error?.message || 'The project changed while closeout was being reviewed. Refresh the project and try again.';
   if (error?.status >= 500) return 'A closeout service is temporarily unavailable. Retry the closeout review; no project state was changed.';

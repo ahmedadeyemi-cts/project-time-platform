@@ -281,7 +281,7 @@ function KnowledgeAnswer({ answer }) {
   if (!answer) return null;
   return (
     <section className="pulse-ai-deep-knowledge-answer">
-      <p className="pulse-ai-deep-eyebrow">Detailed ProjectPulse answer</p>
+      <p className="pulse-ai-deep-eyebrow">Detailed Pulse answer</p>
       <h4>{answer.title}</h4>
       <p className="pulse-ai-deep-answer-summary">{answer.summary}</p>
       <div className="pulse-ai-deep-two-column">
@@ -590,7 +590,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
 
       <div className="pulse-ai-deep-boundary" role="note">
         <strong>Runtime boundary</strong>
-        <p>All workspaces are read-only previews. No document is uploaded, extracted, indexed, trained, externally transmitted, or used to change ProjectPulse state from this workbench.</p>
+        <p>All workspaces are read-only previews. No document is uploaded, extracted, indexed, trained, externally transmitted, or used to change Pulse state from this workbench.</p>
       </div>
 
       <div className="pulse-ai-deep-layout">
@@ -651,7 +651,7 @@ export default function PulseAiDeepIntelligenceWorkbench() {
           {active === 'help' ? (
             <div className="pulse-ai-deep-workspace-stack">
               <form className="pulse-ai-deep-form" onSubmit={runHelp}>
-                <div className="pulse-ai-deep-form-heading"><h4>Ask a detailed ProjectPulse question</h4><p>The planner classifies every relevant domain and returns the evidence, filters, tools, calculations, answer sections, and privacy controls needed for a comprehensive answer.</p></div>
+                <div className="pulse-ai-deep-form-heading"><h4>Ask a detailed Pulse question</h4><p>The planner classifies every relevant domain and returns the evidence, filters, tools, calculations, answer sections, and privacy controls needed for a comprehensive answer.</p></div>
                 <label>Question<textarea rows={5} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label>
                 <button type="submit" disabled={helpResult.loading}>{helpResult.loading ? 'Building comprehensive plan…' : 'Build detailed answer plan'}</button>
               </form>

@@ -4,7 +4,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 069 provides a role-scoped qualifications and certification matrix
-/// over the existing ProjectPulse resource profile foundation. The package is
+/// over the existing Pulse resource profile foundation. The package is
 /// read-only and introduces no schema or data mutation.
 /// </summary>
 public static class QualificationsCertificationModule
@@ -281,7 +281,7 @@ public static class QualificationsCertificationModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -308,7 +308,7 @@ public static class QualificationsCertificationModule
                 {
                     module = ModuleNumber,
                     status = "access_denied",
-                    message = "The active ProjectPulse user could not be resolved."
+                    message = "The active Pulse user could not be resolved."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 

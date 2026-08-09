@@ -88,7 +88,7 @@ public static partial class Module001NonProjectTaskModule
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
 
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     private sealed record NonProjectTaskRequest(

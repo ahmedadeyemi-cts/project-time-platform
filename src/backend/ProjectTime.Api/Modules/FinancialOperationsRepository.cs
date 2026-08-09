@@ -13,7 +13,7 @@ internal static class FinancialOperationsRepository
     {
         var connectionString = ProjectFinancialTruthModule.FinancialOperationsConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException("ProjectPulse database configuration is unavailable.");
+            throw new InvalidOperationException("Pulse database configuration is unavailable.");
 
         var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

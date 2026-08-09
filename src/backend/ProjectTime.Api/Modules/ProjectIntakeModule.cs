@@ -523,7 +523,7 @@ public static class ProjectIntakeModule
 
             Review the package in Pulse: {platformUrl}
 
-            Each document link requires ProjectPulse authentication, enforces the PTC/project access scope, and records governed download evidence. Raw customer files are not copied into automated email.
+            Each document link requires Pulse authentication, enforces the PTC/project access scope, and records governed download evidence. Raw customer files are not copied into automated email.
             """;
         var documentHtml = string.Join(string.Empty, documents.Select(document =>
         {
@@ -540,8 +540,8 @@ public static class ProjectIntakeModule
               <strong>Submitted by:</strong> {System.Net.WebUtility.HtmlEncode(actor.DisplayName)} ({System.Net.WebUtility.HtmlEncode(actor.Email)})</p>
               <h3>Secure documents</h3>
               <ul>{documentHtml}</ul>
-              <p><a href="{System.Net.WebUtility.HtmlEncode(platformUrl)}">Open the intake workspace in ProjectPulse</a></p>
-              <p style="font-size:12px;color:#526173">Links require ProjectPulse authentication, enforce the PTC/project access scope, and retain download evidence. Raw customer files are not copied into automated email.</p>
+              <p><a href="{System.Net.WebUtility.HtmlEncode(platformUrl)}">Open the intake workspace in Pulse</a></p>
+              <p style="font-size:12px;color:#526173">Links require Pulse authentication, enforce the PTC/project access scope, and retain download evidence. Raw customer files are not copied into automated email.</p>
             </div>
             """;
         var readiness = await Module065ProjectNotificationDelivery.GetReadinessAsync(

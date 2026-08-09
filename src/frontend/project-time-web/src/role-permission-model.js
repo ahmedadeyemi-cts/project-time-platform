@@ -96,7 +96,7 @@ export const ROLE_GUIDANCE = Object.freeze({
   },
   SUPER_ADMINISTRATOR: {
     title: 'Super Administrator',
-    purpose: 'Administer the complete ProjectPulse platform, roles, modules, security, and configuration.',
+    purpose: 'Administer the complete Pulse platform, roles, modules, security, and configuration.',
     boundary: 'Permanent organization-wide Full Control. This invariant cannot be reduced.',
     recommendedLevel: 'Full Control'
   }
@@ -262,7 +262,7 @@ export async function api(path, options = {}) {
   try {
     payload = text ? JSON.parse(text) : {};
   } catch {
-    const error = new Error(`${requestPath} returned non-JSON content instead of ProjectPulse API data.`);
+    const error = new Error(`${requestPath} returned non-JSON content instead of Pulse API data.`);
     error.status = response.status;
     error.responsePreview = text.slice(0, 160);
     throw error;

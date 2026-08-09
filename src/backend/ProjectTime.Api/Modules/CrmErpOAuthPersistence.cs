@@ -40,7 +40,7 @@ public static partial class CrmErpIntegrationModule
     }
 
     /// <summary>
-    /// The actual ProjectPulse administrator session is an immutable authority
+    /// The actual Pulse administrator session is an immutable authority
     /// invariant. A missing optional dynamic-policy grant cannot reduce Super
     /// Administrator, Administrator, Integration Administrator, MANAGE_ALL, or
     /// MANAGE_INTEGRATIONS_026 authority. View-As remains read-only.
@@ -72,7 +72,7 @@ public static partial class CrmErpIntegrationModule
             return new ManageAuthority(
                 true,
                 "actual_session_administrator_or_permission",
-                "Your actual ProjectPulse session can manage Module 026 integrations.");
+                "Your actual Pulse session can manage Module 026 integrations.");
         }
 
         return await ResolveManageAuthorityPolicyFirstAsync(context);
@@ -442,7 +442,7 @@ public static partial class CrmErpIntegrationModule
                 "oauth_refresh_already_running",
                 "refresh_already_running",
                 null,
-                "Another ProjectPulse instance is already refreshing this connector.",
+                "Another Pulse instance is already refreshing this connector.",
                 StatusCodes.Status409Conflict);
         }
 
@@ -664,7 +664,7 @@ public static partial class CrmErpIntegrationModule
                     "oauth_refresh_actor_unavailable",
                     "credential_actor_unavailable",
                     null,
-                    "ProjectPulse could not identify the governed credential owner for token renewal.",
+                    "Pulse could not identify the governed credential owner for token renewal.",
                     StatusCodes.Status503ServiceUnavailable);
                 await RecordOAuthRefreshEventAsync(
                     connection,
@@ -777,7 +777,7 @@ public static partial class CrmErpIntegrationModule
                 "oauth_refresh_connection_failed",
                 "provider_connection_failed",
                 null,
-                "ProjectPulse could not reach the approved provider token endpoint.",
+                "Pulse could not reach the approved provider token endpoint.",
                 StatusCodes.Status502BadGateway);
             await RecordOAuthRefreshEventAsync(
                 connection,

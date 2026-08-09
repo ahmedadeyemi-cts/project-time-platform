@@ -132,7 +132,7 @@ public static class EntraSecretExpirationGovernanceModule
                     isAcknowledged = currentRecipient?.AcknowledgedAt is not null,
                     acknowledgedAt = currentRecipient?.AcknowledgedAt,
                     isViewAs = actor.IsViewAs,
-                    authoritySource = "actual ProjectPulse session"
+                    authoritySource = "actual Pulse session"
                 },
                 summary = new
                 {
@@ -666,7 +666,7 @@ public static class EntraSecretExpirationGovernanceModule
                 ? $"CRITICAL: Microsoft Integration client secret {daysText}"
                 : $"Action required: Microsoft Integration client secret {daysText}";
             var textBody = $"""
-                ProjectPulse Module 065 expiration reminder
+                Pulse Module 065 expiration reminder
 
                 Application: {profile.ApplicationName}
                 Environment: {profile.Environment}
@@ -675,13 +675,13 @@ public static class EntraSecretExpirationGovernanceModule
                 Expiration: {expiresAt:O}
                 Status: {daysText}
 
-                Open ProjectPulse Module 065 to acknowledge this reminder and coordinate rotation before expiration.
+                Open Pulse Module 065 to acknowledge this reminder and coordinate rotation before expiration.
                 Acknowledgement stops recurring reminders for you. An organization-wide critical warning remains until an administrator updates the version or expiration date.
 
                 No client-secret value is included in this message.
                 """;
             var htmlBody = $"""
-                <h2>ProjectPulse Module 065 expiration reminder</h2>
+                <h2>Pulse Module 065 expiration reminder</h2>
                 <p><strong>{Escape(profile.ApplicationName)}</strong> {Escape(daysText)}.</p>
                 <ul>
                   <li>Environment: {Escape(profile.Environment)}</li>
@@ -689,7 +689,7 @@ public static class EntraSecretExpirationGovernanceModule
                   <li>Version: {Escape(profile.SecretVersion)}</li>
                   <li>Expiration: {Escape(expiresAt.ToString("O"))}</li>
                 </ul>
-                <p>Open ProjectPulse Module 065 to acknowledge this reminder and coordinate rotation before expiration.</p>
+                <p>Open Pulse Module 065 to acknowledge this reminder and coordinate rotation before expiration.</p>
                 <p><strong>No client-secret value is included in this message.</strong></p>
                 """;
             var notificationRecipient = new ProjectNotificationUser(
@@ -1047,7 +1047,7 @@ public static class EntraSecretExpirationGovernanceModule
             Guid.Empty,
             0,
             Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_APPLICATION_NAME")?.Trim()
-                ?? "ProjectPulse Microsoft Integration",
+                ?? "Pulse Microsoft Integration",
             NormalizeEnvironment(Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_MODE")),
             "Microsoft Entra application client secret",
             Environment.GetEnvironmentVariable("PROJECTPULSE_ENTRA_SECRET_VERSION")?.Trim() ?? string.Empty,

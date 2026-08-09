@@ -238,7 +238,7 @@ public static partial class ScopedRolePolicyModule
                     delegatedAuthority = false,
                     reasonRequired = false,
                     auditRequired = true,
-                    explanation = "No scoped workbook decision exists. Existing ProjectPulse authorization remains in effect."
+                    explanation = "No scoped workbook decision exists. Existing Pulse authorization remains in effect."
                 });
             }
 

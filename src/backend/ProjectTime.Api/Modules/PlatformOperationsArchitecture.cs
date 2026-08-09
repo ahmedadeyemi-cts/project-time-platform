@@ -71,7 +71,7 @@ public static partial class PlatformOperationsModule
         {
             new(
                 "browser",
-                "Browser and ProjectPulse web application",
+                "Browser and Pulse web application",
                 "experience",
                 "client",
                 "Permission-aware React application used by authenticated users."),
@@ -83,13 +83,13 @@ public static partial class PlatformOperationsModule
                 "Serves static assets and forwards protected API requests."),
             new(
                 "api",
-                "ProjectPulse API",
+                "Pulse API",
                 "application",
                 "api",
                 "Hosts module routes, authorization, workflows, diagnostics, and provider adapters."),
             new(
                 "database",
-                "ProjectPulse database",
+                "Pulse database",
                 "data",
                 "database",
                 "Canonical business records, security policy, workflow state, and audit evidence."),
@@ -235,7 +235,7 @@ public static partial class PlatformOperationsModule
             snapshot.Integrations
                 .Select(integration => new ExternalDataFlow(
                     integration.Name,
-                    "ProjectPulse API",
+                    "Pulse API",
                     string.Join(", ", integration.Capabilities),
                     integration.Status,
                     integration.Owner))
@@ -310,7 +310,7 @@ public static partial class PlatformOperationsModule
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>ProjectPulse System Architecture</title>
+<title>Pulse System Architecture</title>
 <style>
 @page { size: landscape; margin: 0.45in; }
 * { box-sizing: border-box; }
@@ -337,7 +337,7 @@ footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #9fb3c8
 <header>
 <div>{{logoHtml}}</div>
 <div>
-<h1>ProjectPulse System Architecture &amp; API Inventory</h1>
+<h1>Pulse System Architecture &amp; API Inventory</h1>
 <div>Provider-neutral runtime architecture and governed operational evidence</div>
 </div>
 </header>
@@ -360,7 +360,7 @@ footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #9fb3c8
 <div class="page-break"></div>
 <h2>API appendix</h2>
 <table><thead><tr><th>Module</th><th>Method</th><th>Path</th><th>Purpose</th><th>Authentication</th><th>Permission</th><th>Status</th></tr></thead><tbody>{{apiRows}}</tbody></table>
-<footer><span>ProjectPulse · {{H(snapshot.Platform.Environment)}} · {{H(snapshot.Runtime.ReleaseSha)}}</span><span>Created by Ahmed Adeyemi</span></footer>
+<footer><span>Pulse · {{H(snapshot.Platform.Environment)}} · {{H(snapshot.Runtime.ReleaseSha)}}</span><span>Created by Ahmed Adeyemi</span></footer>
 </body>
 </html>
 """;

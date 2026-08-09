@@ -2928,7 +2928,7 @@ public sealed class CelarAiCapabilityRouter
 
     private static string SanitizerDecisionCode(PulseAiSanitizationResult result)
     {
-        if (result.BlockedReasons.Any(reason => reason.Contains("disabled by ProjectPulse runtime policy", StringComparison.OrdinalIgnoreCase)))
+        if (result.BlockedReasons.Any(reason => reason.Contains("disabled by Pulse runtime policy", StringComparison.OrdinalIgnoreCase)))
             return "sanitized_external_policy_disabled";
         if (result.BlockedReasons.Any(reason => reason.Contains("financial", StringComparison.OrdinalIgnoreCase)))
             return "sanitized_external_financial_context_blocked";

@@ -244,7 +244,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
         OneAssist PINs are public routing identifiers and are intentionally displayed without masking. They must never be accepted as proof of identity.
       </div>
       <div className="oneassist-banner governed">
-        Directory edits and revision history are stored in the ProjectPulse PostgreSQL application database.
+        Directory edits and revision history are stored in the Pulse PostgreSQL application database.
       </div>
 
       <nav className="oneassist-tabs" aria-label="OneAssist workspace sections">

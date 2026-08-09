@@ -11,7 +11,12 @@ const TABS = Object.freeze([
 ]);
 
 function asArray(value) { return Array.isArray(value) ? value : []; }
-function rebrandCelarString(value) { return String(value ?? '').replace(/\bPulse\s+AI\b/gi, 'Celar AI'); }
+function rebrandCelarString(value) {
+  return String(value ?? '')
+    .replace(/\bPulse\s+AI\b/gi, 'Celar AI')
+    .replace(/\bProject\s+Pulse\b/gi, 'Pulse')
+    .replace(/\bProjectPulse\b/g, 'Pulse');
+}
 function rebrandCelarValue(value) {
   if (typeof value === 'string') return rebrandCelarString(value);
   if (Array.isArray(value)) return value.map(rebrandCelarValue);

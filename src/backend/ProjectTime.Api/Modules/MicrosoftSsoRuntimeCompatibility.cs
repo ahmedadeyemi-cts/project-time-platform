@@ -174,7 +174,7 @@ public static class MicrosoftSsoRuntimeCompatibility
                 status = "sso_redirect_host_mismatch",
                 configuredRedirectUri = profile.RedirectUri,
                 expectedRedirectUri = ExpectedRedirectUri(context),
-                message = "The active SSO redirect URI must exactly match this ProjectPulse environment and the Entra App Registration redirect URI."
+                message = "The active SSO redirect URI must exactly match this Pulse environment and the Entra App Registration redirect URI."
             }, statusCode: StatusCodes.Status409Conflict);
         }
 
@@ -277,7 +277,7 @@ public static class MicrosoftSsoRuntimeCompatibility
             return new(null, Results.Json(new
             {
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 

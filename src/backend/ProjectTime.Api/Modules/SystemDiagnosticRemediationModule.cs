@@ -91,7 +91,7 @@ public static class SystemDiagnosticRemediationModule
         await using var connection = outcome.Connection!;
         if (!await SecurityDiagnosticsOperations.OperationalSchemaAvailableAsync(connection, context.RequestAborted))
             return SecurityDiagnosticsOperations.SchemaUnavailable(ModuleNumber);
-        var checks = await ExecuteChecksAsync(connection, "platform", "ProjectPulse", context.RequestAborted);
+        var checks = await ExecuteChecksAsync(connection, "platform", "Pulse", context.RequestAborted);
         return Results.Ok(new
         {
             module = ModuleNumber,
@@ -100,7 +100,7 @@ public static class SystemDiagnosticRemediationModule
             observedAt = DateTimeOffset.UtcNow,
             summary = Summarize(checks),
             checks,
-            statement = "Every direct check is evaluated from sanitized ProjectPulse runtime and database metadata. External Azure, WAF, container, and network health remains adapter-required."
+            statement = "Every direct check is evaluated from sanitized Pulse runtime and database metadata. External Azure, WAF, container, and network health remains adapter-required."
         });
     }
 
@@ -762,7 +762,7 @@ public static class SystemDiagnosticRemediationModule
     {
         var findings = new List<DiagnosticFinding>
         {
-            new("database_connectivity", "data_resilience", "healthy", "informational", "ProjectPulse database connection and authorization query succeeded.", new { targetKind, targetReference }),
+            new("database_connectivity", "data_resilience", "healthy", "informational", "Pulse database connection and authorization query succeeded.", new { targetKind, targetReference }),
             new("api_request_path", "application_runtime", "healthy", "informational", "The authenticated Module 998 API request completed to the diagnostic engine.", new { environment = SecurityDiagnosticsOperations.RuntimeEnvironment() })
         };
 
@@ -1149,9 +1149,9 @@ public static class SystemDiagnosticRemediationModule
 
     private static object[] DiagnosticCategories() =>
     [
-        new { id = "application_runtime", name = "Application runtime", owner = "ProjectPulse API and Module 013" },
+        new { id = "application_runtime", name = "Application runtime", owner = "Pulse API and Module 013" },
         new { id = "data_resilience", name = "Data and resilience", owner = "PostgreSQL and Modules 014-017" },
-        new { id = "identity_access", name = "Identity and access", owner = "ProjectPulse authentication and Modules 010/062" },
+        new { id = "identity_access", name = "Identity and access", owner = "Pulse authentication and Modules 010/062" },
         new { id = "delivery", name = "Build and delivery", owner = "Modules 077 and 058" },
         new { id = "security_operations", name = "Security operations", owner = "Module 997" },
         new { id = "cloud_platform", name = "Cloud platform", owner = "Approved Azure diagnostics adapter" }

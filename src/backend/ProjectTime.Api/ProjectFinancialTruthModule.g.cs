@@ -197,7 +197,7 @@ public static partial class ProjectFinancialTruthModule
             {
                 module = "GROUP_3",
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -1151,7 +1151,7 @@ public static partial class ProjectFinancialTruthModule
     private static object[] CalculationContract() =>
     [
         new { field = "plannedHours", authority = "Project assignments and engineering resource allocations." },
-        new { field = "usedHours", authority = "Non-voided and non-declined ProjectPulse time entries." },
+        new { field = "usedHours", authority = "Non-voided and non-declined Pulse time entries." },
         new { field = "laborCost", authority = "Module 026 SELL/current governed rate model, with a labeled budget-derived fallback." },
         new { field = "uploadedExpenses", authority = "Current, non-deleted Module 005 expense uploads." },
         new { field = "forecastedFinalCost", authority = "Assignments, time entries, governed rates, and Module 005 expenses." },

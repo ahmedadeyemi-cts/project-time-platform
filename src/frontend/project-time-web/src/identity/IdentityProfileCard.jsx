@@ -12,7 +12,7 @@ export default function IdentityProfileCard({
     profile?.displayName
     || profile?.name
     || profile?.email
-    || 'ProjectPulse user';
+    || 'Pulse user';
 
   const jobTitle =
     profile?.jobTitle

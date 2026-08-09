@@ -43,7 +43,7 @@ public static class OpportunitiesModule
                     new
                     {
                         status = "session_required",
-                        message = "A ProjectPulse session is required."
+                        message = "A Pulse session is required."
                     },
                     statusCode: 401);
             }
@@ -1567,7 +1567,7 @@ public static class OpportunitiesModule
         }
 
         throw new InvalidOperationException(
-            "ProjectPulse database connection is not configured.");
+            "Pulse database connection is not configured.");
     }
 
     private static string ResolveDisplayName(

@@ -74,7 +74,7 @@ public static class MicrosoftMailTransportTestModule
                 module = ModuleNumber,
                 status = "microsoft_environment_unresolved",
                 correlationId = context.TraceIdentifier,
-                message = "ProjectPulse could not determine the Test or Production Microsoft environment."
+                message = "Pulse could not determine the Test or Production Microsoft environment."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -274,7 +274,7 @@ public static class MicrosoftMailTransportTestModule
             {
                 module = ModuleNumber,
                 status = "governed_mail_test_origin_rejected",
-                message = "The governed Module 065 Test request must originate from the active ProjectPulse site."
+                message = "The governed Module 065 Test request must originate from the active Pulse site."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -400,9 +400,9 @@ public static class MicrosoftMailTransportTestModule
             selfRecipient ? "signed_in_user" : "server_allowlist",
             "to");
         var now = DateTimeOffset.UtcNow;
-        var subject = $"US Signal ProjectPulse Module 065 Test — {now:yyyy-MM-dd HH:mm:ss} UTC";
+        var subject = $"US Signal Pulse Module 065 Test — {now:yyyy-MM-dd HH:mm:ss} UTC";
         var textBody = $"""
-            This is an explicitly confirmed ProjectPulse Module 065 Test message.
+            This is an explicitly confirmed Pulse Module 065 Test message.
 
             Environment: Test
             Provider: {readiness.ConfiguredProvider}
@@ -416,7 +416,7 @@ public static class MicrosoftMailTransportTestModule
             """;
         var htmlBody = $"""
             <div style="font-family:Arial,sans-serif;line-height:1.55;color:#15233b">
-              <h2 style="color:#0b385f">US Signal ProjectPulse · Module 065 Test</h2>
+              <h2 style="color:#0b385f">US Signal Pulse · Module 065 Test</h2>
               <p>This is an explicitly confirmed, governed Test-environment delivery.</p>
               <table style="border-collapse:collapse">
                 <tr><td style="padding:4px 10px 4px 0"><strong>Environment</strong></td><td>Test</td></tr>

@@ -91,7 +91,7 @@ public static partial class ScopedRolePolicyModule
                 await context.Response.WriteAsJsonAsync(new
                 {
                     status = "session_required",
-                    message = "A valid ProjectPulse session is required for scoped authorization."
+                    message = "A valid Pulse session is required for scoped authorization."
                 });
                 return;
             }
@@ -323,7 +323,7 @@ public static partial class ScopedRolePolicyModule
                 reasonRequired = false,
                 auditRequired = true,
                 conditions = new { legacyAuthorizationPreserved = true },
-                explanation = "No scoped workbook decision exists. Existing ProjectPulse authorization remains in effect."
+                explanation = "No scoped workbook decision exists. Existing Pulse authorization remains in effect."
             });
         }
 

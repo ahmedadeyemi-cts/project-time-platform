@@ -1492,7 +1492,7 @@
   }
 
   .analytics-topbar::before {
-    content: 'US SIGNAL · PROJECTPULSE';
+    content: 'US SIGNAL · PULSE';
     display: block;
     color: var(--analytics-navy-800);
     font-size: 0.72rem;

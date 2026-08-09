@@ -887,7 +887,7 @@ public static class Module064074NativeAdministration
             case "identity":
                 if (!Guid.TryParse(text, out _))
                 {
-                    return InvalidDocument(moduleNumber, path, $"{field.Label} must reference a valid ProjectPulse user ID.");
+                    return InvalidDocument(moduleNumber, path, $"{field.Label} must reference a valid Pulse user ID.");
                 }
                 break;
             case "email":
@@ -1019,7 +1019,7 @@ public static class Module064074NativeAdministration
                     module = definition.ModuleNumber,
                     status = "native_administration_permission_required",
                     allowedRoles = definition.ManageRoles,
-                    message = "Your actual ProjectPulse session does not have management authority for this module."
+                    message = "Your actual Pulse session does not have management authority for this module."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 
@@ -1086,7 +1086,7 @@ public static class Module064074NativeAdministration
         canView = true,
         canManage = access.CanManage,
         isViewAs = IsViewAs(context),
-        authoritySource = "actual ProjectPulse session"
+        authoritySource = "actual Pulse session"
     };
 
     private static object PersistenceStatus() => new
@@ -1120,7 +1120,7 @@ public static class Module064074NativeAdministration
         {
             module = moduleNumber,
             status = "native_persistence_unavailable",
-            message = "ProjectPulse native administration storage is unavailable. Migration 032 may be pending."
+            message = "Pulse native administration storage is unavailable. Migration 032 may be pending."
         }, statusCode: StatusCodes.Status503ServiceUnavailable);
 
     private static Guid? SessionUserId(HttpContext context, params string[] keys)

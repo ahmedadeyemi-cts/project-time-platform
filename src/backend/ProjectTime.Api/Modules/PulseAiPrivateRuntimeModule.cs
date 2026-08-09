@@ -90,7 +90,7 @@ public static class PulseAiPrivateRuntimeModule
                 "Extract natively and use only an approved private OCR endpoint when required.",
                 "Create citation-preserving sections and deterministic chunks.",
                 "Generate embeddings only through an endpoint accepted by the private-endpoint policy.",
-                "Persist lexical and optional embedding index evidence in ProjectPulse PostgreSQL.",
+                "Persist lexical and optional embedding index evidence in Pulse PostgreSQL.",
                 "Reauthorize every retrieval and revoke access without retraining a model."
             },
             externalProviderCalled = false,
@@ -448,7 +448,7 @@ public static class PulseAiPrivateRuntimeModule
         {
             module = "011",
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static IResult Forbidden(string permission) =>

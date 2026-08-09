@@ -345,7 +345,7 @@ public static class SellCommercialReadModelModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid ProjectPulse session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static bool ReadFlag(string name) =>

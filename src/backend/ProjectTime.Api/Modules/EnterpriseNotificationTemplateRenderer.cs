@@ -62,7 +62,7 @@ internal static partial class EnterpriseNotificationTemplateRenderer
         if (string.IsNullOrWhiteSpace(subject))
             subject = $"Pulse: {policy.PolicyName}";
         if (string.IsNullOrWhiteSpace(textBody))
-            textBody = $"A ProjectPulse {policy.PolicyName} event occurred at {notificationEvent.OccurredAt:O}.";
+            textBody = $"A Pulse {policy.PolicyName} event occurred at {notificationEvent.OccurredAt:O}.";
 
         subject = Truncate(subject.Replace('\r', ' ').Replace('\n', ' ').Trim(), 240);
         textBody = Truncate(textBody.Trim(), 12000);
@@ -204,7 +204,7 @@ internal static partial class EnterpriseNotificationTemplateRenderer
             ? string.Empty
             : $"""
               <p style="margin:24px 0 4px">
-                <a href="{WebUtility.HtmlEncode(projectPulseUrl)}" style="display:inline-block;background:#005a9c;color:#fff;text-decoration:none;padding:11px 18px;border-radius:6px;font-weight:700">Open ProjectPulse</a>
+                <a href="{WebUtility.HtmlEncode(projectPulseUrl)}" style="display:inline-block;background:#005a9c;color:#fff;text-decoration:none;padding:11px 18px;border-radius:6px;font-weight:700">Open Pulse</a>
               </p>
               """;
         return $"""
@@ -215,7 +215,7 @@ internal static partial class EnterpriseNotificationTemplateRenderer
                 <tr><td align="center">
                   <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#fff;border:1px solid #dbe3eb;border-radius:10px;overflow:hidden">
                     <tr><td style="background:#0b2d4d;padding:20px 28px;color:#fff">
-                      <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.84">US Signal · ProjectPulse</div>
+                      <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.84">US Signal · Pulse</div>
                       <div style="font-size:22px;font-weight:700;margin-top:7px">{WebUtility.HtmlEncode(subject)}</div>
                     </td></tr>
                     <tr><td style="padding:28px">

@@ -24,7 +24,7 @@ internal static class Module065ProjectNotificationDelivery
         if (string.IsNullOrWhiteSpace(runtimeEnvironment))
         {
             return Module065MailReadiness.Locked(
-                "ProjectPulse could not determine whether the Test or Production Module 065 mail profile is active.");
+                "Pulse could not determine whether the Test or Production Module 065 mail profile is active.");
         }
 
         try
@@ -85,7 +85,7 @@ internal static class Module065ProjectNotificationDelivery
             : boundary == "test_only"
                 ? "Module 065 is configured with a Test-only recipient boundary. Dispatches remain recorded and suppressed; no live email is sent."
                 : boundary == "locked"
-                    ? "Module 065 delivery is locked. Dispatches remain recorded and cannot leave ProjectPulse."
+                    ? "Module 065 delivery is locked. Dispatches remain recorded and cannot leave Pulse."
                     : !configuredTransportReady
                         ? "The Module 065 transport or sender is incomplete. Dispatches remain queued or failed with sanitized diagnostics."
                         : "Module 065 is eligible for governed delivery in the running environment.";
@@ -413,7 +413,7 @@ internal static class Module065ProjectNotificationDelivery
         {
             return new(false, "failed", "microsoft_graph", readiness.RecipientBoundary, string.Empty,
                 $"MODULE_065_GRAPH_SEND_HTTP_{(int)response.StatusCode}",
-                "Microsoft Graph did not accept the governed ProjectPulse notification.");
+                "Microsoft Graph did not accept the governed Pulse notification.");
         }
 
         return new(

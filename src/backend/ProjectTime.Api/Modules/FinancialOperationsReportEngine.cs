@@ -13,7 +13,7 @@ internal static class FinancialOperationsReportEngine
             ["project_expenses", "project_metadata", "sell_commercial_model", "cost_alerts"],
             [
                 Column("customer", "Customer", "text", "Authoritative customer name."),
-                Column("projectCode", "Project code", "text", "Authoritative ProjectPulse project code."),
+                Column("projectCode", "Project code", "text", "Authoritative Pulse project code."),
                 Column("projectName", "Project", "text", "Authoritative project name."),
                 Column("projectManager", "Project Manager", "text", "Assigned Project Manager."),
                 Column("contractType", "Contract type", "text", "Recorded commercial contract type."),

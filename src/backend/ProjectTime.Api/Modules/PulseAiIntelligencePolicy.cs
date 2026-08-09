@@ -120,7 +120,7 @@ public static class PulseAiIntelligencePolicy
     public static readonly PulseAiEscalationStage[] PrivateReasoningPath =
     [
         new(1, "authorize", "Resolve the actual and effective user, module permissions, project scope, and data classification before retrieval."),
-        new(2, "retrieve_privately", "Read only authorized live records and approved document versions inside the ProjectPulse trust boundary."),
+        new(2, "retrieve_privately", "Read only authorized live records and approved document versions inside the Pulse trust boundary."),
         new(3, "reason_privately", "Use deterministic tools, private retrieval, and a private model as the primary reasoning path."),
         new(4, "confidence_gate", "Measure source coverage, conflicts, freshness, calculation validity, and answer confidence."),
         new(5, "build_sanitized_capsule", "When policy allows escalation, remove raw documents, identities, secrets, pricing details, and unnecessary customer data."),

@@ -78,7 +78,7 @@ public static class GlobalMailConfigurationModule
                         status = "trusted_public_origin_unavailable",
                         correlationId = context.TraceIdentifier,
                         originRecoveryCode = recovered.FailureCode,
-                        message = "ProjectPulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
+                        message = "Pulse could not determine the trusted HTTPS public origin for this Microsoft SSO operation. Verify the public URL and reverse-proxy forwarding configuration."
                     }).ExecuteAsync(context);
                     return;
                 }

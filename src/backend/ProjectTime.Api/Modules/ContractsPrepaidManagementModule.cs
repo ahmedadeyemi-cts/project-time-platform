@@ -205,7 +205,7 @@ public static class ContractsPrepaidManagementModule
                 status = "system_reference_validation_failed",
                 message =
                     "Account Executive, Customer, and Contract Manager "
-                    + "must be existing active ProjectPulse records."
+                    + "must be existing active Pulse records."
             });
         }
 
@@ -1759,7 +1759,7 @@ public static class ContractsPrepaidManagementModule
             if (credit > 0 && creditBy is null)
             {
                 messages.Add(
-                    "Credit Awarded By must match one active ProjectPulse user.");
+                    "Credit Awarded By must match one active Pulse user.");
             }
 
             var changeType = "new";
@@ -3020,7 +3020,7 @@ public static class ContractsPrepaidManagementModule
             new
             {
                 status = "session_required",
-                message = "A ProjectPulse session is required."
+                message = "A Pulse session is required."
             },
             statusCode: 401);
     }

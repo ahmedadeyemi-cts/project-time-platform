@@ -398,7 +398,7 @@ function ReportCenter({ authSession }) {
           <div>
             <p className="group5-eyebrow">Actual report catalog</p>
             <h3>Search, preview, run, and export</h3>
-            <p>Every result is generated from current role-scoped ProjectPulse sources. Placeholder reports are excluded.</p>
+            <p>Every result is generated from current role-scoped Pulse sources. Placeholder reports are excluded.</p>
           </div>
           <button type="button" className="group5-secondary" onClick={load} disabled={catalogState.loading}>Refresh</button>
         </div>
@@ -661,7 +661,7 @@ export default function FinancialOperationsRecoveryWorkspace({ mode = 'reporting
     ? 'Resolve project-financial exceptions through one accountable queue with exact source attribution, priority, ownership, retry, and immutable action evidence.'
     : moduleCode
       ? moduleMetadata[moduleCode]?.summary
-      : 'Search, preview, run, export, and revisit actual ProjectPulse financial reports while every source reports its own health and retry path.';
+      : 'Search, preview, run, export, and revisit actual Pulse financial reports while every source reports its own health and retry path.';
 
   return (
     <section className="group5-financial-operations projectpulse-module-standard" data-projectpulse-group5="financial-recovery" data-mode={mode} data-module-code={moduleCode ?? ''}>

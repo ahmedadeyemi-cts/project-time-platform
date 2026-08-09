@@ -45,7 +45,7 @@ export default function EntraSecretExpirationGlobalWarning({ authSession }) {
       const payload = await response.json().catch(() => null);
       if (response.ok) setStatus(payload);
     } catch {
-      // A global alert must never prevent the rest of ProjectPulse from rendering.
+      // A global alert must never prevent the rest of Pulse from rendering.
     }
   }, [authSession]);
 
@@ -78,7 +78,7 @@ export default function EntraSecretExpirationGlobalWarning({ authSession }) {
       <div>
         <strong>Microsoft Integration client secret {timing}.</strong>
         <span>
-          ProjectPulse authentication and Microsoft Graph services are at risk. An authorized administrator must update the expiration date or secret version in Module 065 now.
+          Pulse authentication and Microsoft Graph services are at risk. An authorized administrator must update the expiration date or secret version in Module 065 now.
         </span>
       </div>
       <a href="#entra-secret-administration">Open Module 065</a>

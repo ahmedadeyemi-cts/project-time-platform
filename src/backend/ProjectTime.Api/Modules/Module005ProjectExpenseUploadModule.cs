@@ -76,7 +76,7 @@ public static partial class Module005ProjectExpenseUploadModule
         {
             var missing = settings.Where(pair => string.IsNullOrWhiteSpace(pair.Value)).Select(pair => pair.Key).ToArray();
             if (missing.Length > 0)
-                throw new InvalidOperationException($"ProjectPulse database configuration is incomplete: {string.Join(", ", missing)}.");
+                throw new InvalidOperationException($"Pulse database configuration is incomplete: {string.Join(", ", missing)}.");
 
             connectionString = new NpgsqlConnectionStringBuilder
             {
@@ -99,7 +99,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 "PROJECTTIME_DATABASE_CONNECTION"
             }.Select(Environment.GetEnvironmentVariable)
              .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-             ?? throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+             ?? throw new InvalidOperationException("Pulse database connection is not configured.");
         }
 
         var connection = new NpgsqlConnection(connectionString);
@@ -148,7 +148,7 @@ public static partial class Module005ProjectExpenseUploadModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid ProjectPulse session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static IResult AccessDenied(string message) => Results.Json(new

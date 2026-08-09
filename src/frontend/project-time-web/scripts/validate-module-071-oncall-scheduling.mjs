@@ -45,7 +45,7 @@ check('NATIVE_ROSTER', native.includes('projectpulse_oncall_roster_members') && 
 check('ACKNOWLEDGEMENTS', migration.includes('projectpulse_oncall_acknowledgements'), 'acknowledgement persistence foundation');
 check('AUDIT', native.includes('projectpulse_module_audit_events') && migration.includes('projectpulse_module_audit_events'), 'sanitized audit evidence');
 check('NO_EXTERNAL_ADAPTER', forbidden.every((token) => !backend.includes(token) && !frontend.includes(token) && !docs.includes(token)), 'external compatibility removed');
-check('FRONTEND_NATIVE', frontend.includes('data-persistence="projectpulse-postgresql"') && frontend.includes('ProjectPulse PostgreSQL application database'), 'native storage visible');
+check('FRONTEND_NATIVE', frontend.includes('data-persistence="projectpulse-postgresql"') && frontend.includes('Pulse PostgreSQL application database'), 'native storage visible');
 check('US_SIGNAL', frontend.includes('usSignalLogoDataUrl') && frontend.includes('projectpulse-module-standard'), 'US Signal branding');
 check('ROLLBACK', rollback.includes('projectpulse_oncall_schedule_versions') && rollback.includes('projectpulse_oncall_roster_members'), 'reviewed rollback source');
 check('PROGRAM_REGISTRATION', program.split('app.MapOnCallSchedulingEndpoints();').length - 1 === 1, 'registered once');

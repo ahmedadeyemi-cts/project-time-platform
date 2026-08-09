@@ -223,7 +223,7 @@ export default function NativeModuleAdministrationPanel({
           {value && !selected ? <option value={value}>{value}</option> : null}
           {identityOptions.map((identity) => (
             <option value={identity.userId} key={identity.userId}>
-              {identity.displayName || identity.email} — {identity.jobTitle || identity.teamName || 'ProjectPulse user'}
+              {identity.displayName || identity.email} — {identity.jobTitle || identity.teamName || 'Pulse user'}
             </option>
           ))}
         </select>

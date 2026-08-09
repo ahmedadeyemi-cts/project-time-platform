@@ -3,9 +3,9 @@ using Npgsql;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Module 076 defines the ProjectPulse defect intake, tracking, assignment,
+/// Module 076 defines the Pulse defect intake, tracking, assignment,
 /// notification, and GitHub synchronization contract. This source checkpoint
-/// is deliberately fail-closed: it reads existing ProjectPulse identity and
+/// is deliberately fail-closed: it reads existing Pulse identity and
 /// authorization data, but it does not create a defect table, write an outbox
 /// record, call GitHub, invoke an AI provider, or send email.
 /// </summary>
@@ -269,7 +269,7 @@ public static class DefectTrackerModule
             status = "defect_notification_policy_loaded",
             contractVersion = ContractVersion,
             owner = "Module 067 Global Mail Configuration",
-            provider = "shared ProjectPulse global mail only",
+            provider = "shared Pulse global mail only",
             events = new[]
             {
                 new
@@ -317,7 +317,7 @@ public static class DefectTrackerModule
             repository = "ahmedadeyemi-cts/project-time-platform",
             integrations = new[]
             {
-                new { channel = "help", state = "source_connected", mechanism = "ProjectPulse Help opens the Module 076 intake route." },
+                new { channel = "help", state = "source_connected", mechanism = "Pulse Help opens the Module 076 intake route." },
                 new { channel = "github", state = "issue_form_present_webhook_locked", mechanism = "Governed GitHub issue form plus future signed webhook." },
                 new { channel = "claude_github", state = "contract_ready_webhook_locked", mechanism = "Claude reports through a GitHub issue; Module 076 performs no direct Claude call." },
                 new { channel = "chatgpt_github", state = "contract_ready_webhook_locked", mechanism = "ChatGPT reports through a GitHub issue; Module 076 performs no direct OpenAI call." }
@@ -483,7 +483,7 @@ public static class DefectTrackerModule
 
     private static object[] SourceChannels() =>
     [
-        new { code = "help", label = "ProjectPulse Help", trusted = true },
+        new { code = "help", label = "Pulse Help", trusted = true },
         new { code = "tracker", label = "Module 076 Tracker", trusted = true },
         new { code = "github", label = "GitHub", trusted = true },
         new { code = "claude_github", label = "Claude through GitHub", trusted = false },
@@ -579,7 +579,7 @@ public static class DefectTrackerModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -634,7 +634,7 @@ public static class DefectTrackerModule
                 {
                     module = ModuleNumber,
                     status = "active_user_required",
-                    message = "An active ProjectPulse identity is required."
+                    message = "An active Pulse identity is required."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 
@@ -678,7 +678,7 @@ public static class DefectTrackerModule
         canResolve = !IsViewAs(context)
             && (access.CanManage || access.CanReassign(defaultAssignee)),
         isViewAs = IsViewAs(context),
-        authoritySource = "actual ProjectPulse session",
+        authoritySource = "actual Pulse session",
         viewAsTransfersMutationAuthority = false
     };
 

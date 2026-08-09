@@ -381,7 +381,7 @@ public static class CiCdPipelineModule
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
         throw new InvalidOperationException(
-            "ProjectPulse database connection is not configured.");
+            "Pulse database connection is not configured.");
     }
 
     private static string Repository() =>

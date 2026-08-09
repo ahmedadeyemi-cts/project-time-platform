@@ -452,7 +452,7 @@ export default function RoleAdminDirectoryPanel() {
 
   return <section className="role-permission-workbench dynamic-rbac-admin" data-projectpulse-module="012" data-rbac-contract="projectpulse-rbac-v1">
     <header className="rpw-hero dynamic-rbac-hero">
-      <div><p className="eyebrow">Module 012</p><h1>Role-Based Access Control</h1><p>Assign users to roles, configure each role’s permissions, and keep the module catalog flexible as ProjectPulse grows.</p></div>
+      <div><p className="eyebrow">Module 012</p><h1>Role-Based Access Control</h1><p>Assign users to roles, configure each role’s permissions, and keep the module catalog flexible as Pulse grows.</p></div>
       <div className="rpw-kpis"><article><span>Policy</span><strong>v{bootstrap.policyVersion?.versionNumber || bootstrap.policyVersion?.VersionNumber || '—'}</strong></article><article><span>Active roles</span><strong>{roles.length}</strong></article><article><span>Active modules</span><strong>{modules.length}</strong></article></div>
     </header>
 

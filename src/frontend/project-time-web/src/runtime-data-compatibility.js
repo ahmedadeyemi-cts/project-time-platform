@@ -229,7 +229,7 @@ async function directRolePolicyResponse(previousFetch, originalUrl, init) {
   if (!session.token) {
     return new Response(JSON.stringify({
       status: 'session_not_ready',
-      message: 'ProjectPulse session is not ready for role-policy data.'
+      message: 'Pulse session is not ready for role-policy data.'
     }), { status: 425, headers: { 'Content-Type': 'application/json' } });
   }
 

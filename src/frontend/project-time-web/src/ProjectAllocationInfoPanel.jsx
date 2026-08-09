@@ -339,7 +339,7 @@ export default function ProjectAllocationInfoPanel() {
 
         <div className="expense-mail-note">
           <strong>Automatic notification</strong>
-          <span>After a successful upload/import, ProjectPulse emails {selectedOwner?.displayName || 'the expense owner'} a category summary and copies {selectedProject?.projectManagerName || 'the assigned Project Manager'} using Module 067 Global Mail Configuration.</span>
+          <span>After a successful upload/import, Pulse emails {selectedOwner?.displayName || 'the expense owner'} a category summary and copies {selectedProject?.projectManagerName || 'the assigned Project Manager'} using Module 067 Global Mail Configuration.</span>
         </div>
       </section>
 

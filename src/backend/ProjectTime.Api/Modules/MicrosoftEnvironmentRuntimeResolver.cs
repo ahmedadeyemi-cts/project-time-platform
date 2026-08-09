@@ -1,7 +1,7 @@
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Resolves the ProjectPulse Microsoft environment from an explicit Microsoft
+/// Resolves the Pulse Microsoft environment from an explicit Microsoft
 /// override or the trusted public host before considering generic application
 /// and ASP.NET runtime modes. Azure Container Apps normally runs the Test
 /// application with ASPNETCORE_ENVIRONMENT=Production, so that generic value

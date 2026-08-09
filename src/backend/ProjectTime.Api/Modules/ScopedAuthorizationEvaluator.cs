@@ -127,7 +127,7 @@ public static class ScopedAuthorizationEvaluator
                 false,
                 true,
                 false,
-                "No scoped workbook decision exists for this action. Existing ProjectPulse authorization remains authoritative.");
+                "No scoped workbook decision exists for this action. Existing Pulse authorization remains authoritative.");
         }
 
         foreach (var grant in grants)

@@ -336,7 +336,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
         </div>
         <div className="oncall-authority">
           <span>{canManage ? 'Schedule manager' : 'Read-only viewer'}</span>
-          <small>{canManage ? 'Super Administrator / Administrator / Manager / Engineering Team Lead' : 'All ProjectPulse users can view'}</small>
+          <small>{canManage ? 'Super Administrator / Administrator / Manager / Engineering Team Lead' : 'All Pulse users can view'}</small>
         </div>
       </header>
 
@@ -347,7 +347,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
         Email automation is owned by Global SMTP: Monday upcoming notice, Tuesday acknowledgement escalation, and Friday start notice at 8:00 AM America/Chicago.
       </div>
       <div className="oncall-banner governed">
-        Schedule, roster, and history changes are stored in the ProjectPulse PostgreSQL application database with actual-session audit evidence.
+        Schedule, roster, and history changes are stored in the Pulse PostgreSQL application database with actual-session audit evidence.
       </div>
 
       <nav className="oncall-tabs" aria-label="On-call workspace sections">

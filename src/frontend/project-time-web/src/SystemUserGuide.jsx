@@ -23,16 +23,16 @@ const globalGuide = [
     category: 'Getting Started',
     title: 'Sign in, session, and security',
     audience: ['Everyone'],
-    summary: 'How ProjectPulse identifies you, protects API requests, and handles session expiration.',
+    summary: 'How Pulse identifies you, protects API requests, and handles session expiration.',
     functions: [
       'Sign in with the authentication method configured for the environment.',
-      'A ProjectPulse session token is stored in the browser and attached to same-origin API requests.',
+      'A Pulse session token is stored in the browser and attached to same-origin API requests.',
       'The session has an expiration time. Expired sessions require a new sign-in.',
       'Unauthenticated protected API calls return HTTP 401 and do not expose application data.',
-      'Signing out removes the local ProjectPulse session.'
+      'Signing out removes the local Pulse session.'
     ],
     steps: [
-      'Open ProjectPulse and complete sign-in.',
+      'Open Pulse and complete sign-in.',
       'Confirm your display name and role-aware workspace are shown.',
       'When the session warning appears, save work before the session expires.',
       'Sign in again when the application reports that a session is required.'
@@ -78,7 +78,7 @@ const globalGuide = [
       'Open search from the top bar or press Ctrl+K on Windows/Linux or Command+K on macOS.',
       'Search loads role-appropriate records from Project Workspace, reporting filters, and the module catalog.',
       'Results show the item type, title, supporting context, and destination route.',
-      'Selecting a result opens the relevant ProjectPulse page.'
+      'Selecting a result opens the relevant Pulse page.'
     ],
     steps: [
       'Open Pulse Search.',
@@ -539,7 +539,7 @@ const detailedModuleGuides = {
       'Allows review of customer, assignments, tasks, documents, and other permitted fields.',
       'Records intake, review, and final-creation audit evidence.'
     ],
-    steps: ['Choose GSD or SELL.', 'Select the ProjectPulse customer and enter the audit reason.', 'Upload GSD/SOW files or enter the SELL record ID.', 'Review the permitted fields and assignments.', 'Create the record and verify its Audit tab in Module 055C.'],
+    steps: ['Choose GSD or SELL.', 'Select the Pulse customer and enter the audit reason.', 'Upload GSD/SOW files or enter the SELL record ID.', 'Review the permitted fields and assignments.', 'Create the record and verify its Audit tab in Module 055C.'],
     notes: ['Project Team Coordinators, Administrators, and Super Administrators can create. SELL project name and pricing fields cannot be overwritten during review.']
   },
   'rate-card-administration': {
@@ -723,7 +723,7 @@ const detailedModuleGuides = {
   'user-admin': {
     category: 'Administration',
     audience: ['Administrator'],
-    purpose: 'Manage ProjectPulse users and account state.',
+    purpose: 'Manage Pulse users and account state.',
     functions: [
       'Lists users and identity information.',
       'Creates or updates supported local user records.',
@@ -784,7 +784,7 @@ const detailedModuleGuides = {
   'backup-dr': {
     category: 'Platform Operations',
     audience: ['Administrator'],
-    purpose: 'Create and validate ProjectPulse backup and disaster-recovery bundles.',
+    purpose: 'Create and validate Pulse backup and disaster-recovery bundles.',
     functions: [
       'Shows backup readiness.',
       'Creates controlled backup bundles.',
@@ -878,10 +878,10 @@ const glossary = [
   ['Audit event', 'A recorded action with actor, timestamp, target, and supporting details.'],
   ['Effective user', 'The identity whose access is being evaluated, including Administrator View-As where supported.'],
   ['Immutable image', 'A deployed container image referenced by digest so its contents cannot silently change under the same reference.'],
-  ['Module', 'A ProjectPulse page or workflow identified by a module number and route.'],
+  ['Module', 'A Pulse page or workflow identified by a module number and route.'],
   ['Permission', 'A specific authorization code that controls visibility or an action.'],
   ['Role', 'A collection of responsibilities and permissions assigned to a user.'],
-  ['Session', 'The time-limited authenticated browser context used to call protected ProjectPulse APIs.'],
+  ['Session', 'The time-limited authenticated browser context used to call protected Pulse APIs.'],
   ['Worktree', 'A separate Git working directory used to isolate module development.']
 ];
 
@@ -915,7 +915,7 @@ function accessText(module) {
   const permissions = Array.isArray(module?.permissions) ? module.permissions : [];
 
   if (!roleCodes.length && !permissions.length) {
-    return 'Available to every authenticated ProjectPulse user.';
+    return 'Available to every authenticated Pulse user.';
   }
 
   const parts = [];
@@ -927,10 +927,10 @@ function accessText(module) {
 function genericGuide(module) {
   return {
     category: module?.group || 'Installed Modules',
-    purpose: module?.description || 'Provides an installed ProjectPulse workflow.',
+    purpose: module?.description || 'Provides an installed Pulse workflow.',
     functions: [
       `Opens the ${module?.title || module?.route || 'module'} page.`,
-      'Loads role-authorized data from ProjectPulse APIs.',
+      'Loads role-authorized data from Pulse APIs.',
       'Displays page-specific information and controls.',
       'Validates write actions on the backend before changing stored data.',
       'Preserves role and permission boundaries.'
@@ -993,7 +993,7 @@ export default function SystemUserGuide({ modules = [] }) {
       code: 'Platform function',
       access: entry.audience.includes('Administrator')
         ? 'Audience-specific guidance; page and action access remain role controlled.'
-        : 'Available to every authenticated ProjectPulse user.',
+        : 'Available to every authenticated Pulse user.',
       statuses: entry.statuses || [],
       notes: entry.notes || []
     }));
@@ -1047,7 +1047,7 @@ export default function SystemUserGuide({ modules = [] }) {
           <h1>System User Guide</h1>
           <span>
             Searchable documentation for every global function and every installed
-            ProjectPulse module. The guide is visible to all authenticated users;
+            Pulse module. The guide is visible to all authenticated users;
             the documented modules continue to enforce their own role and permission rules.
           </span>
         </div>
@@ -1230,7 +1230,7 @@ export default function SystemUserGuide({ modules = [] }) {
         <div className="system-user-guide-group-heading">
           <div>
             <p>Reference</p>
-            <h2>ProjectPulse glossary</h2>
+            <h2>Pulse glossary</h2>
           </div>
           <span>{glossary.length} terms</span>
         </div>

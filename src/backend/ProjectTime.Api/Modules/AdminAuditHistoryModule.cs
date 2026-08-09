@@ -269,7 +269,7 @@ public static class AdminAuditHistoryModule
             _ = Task.Run(() => RecordLifecycleEventAsync(
                 "API_STARTED",
                 "success",
-                "ProjectPulse API process started.",
+                "Pulse API process started.",
                 environment,
                 loggerFactory));
         });
@@ -281,7 +281,7 @@ public static class AdminAuditHistoryModule
                 RecordLifecycleEventAsync(
                         "API_STOPPING",
                         "warning",
-                        "ProjectPulse API process is stopping.",
+                        "Pulse API process is stopping.",
                         environment,
                         loggerFactory)
                     .Wait(TimeSpan.FromSeconds(3));
@@ -858,7 +858,7 @@ public static class AdminAuditHistoryModule
                 "system",
                 "api_runtime",
                 revision,
-                string.IsNullOrWhiteSpace(revision) ? "ProjectPulse API" : revision,
+                string.IsNullOrWhiteSpace(revision) ? "Pulse API" : revision,
                 ModuleNumber,
                 CentralAuditTable,
                 revision,

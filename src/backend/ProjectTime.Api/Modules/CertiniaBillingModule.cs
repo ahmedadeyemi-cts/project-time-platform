@@ -126,7 +126,7 @@ public static class CertiniaBillingModule
             new
             {
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             },
             statusCode: StatusCodes.Status401Unauthorized);
     }
@@ -510,7 +510,7 @@ public static class CertiniaBillingModule
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             throw new InvalidOperationException(
-                "ProjectPulse database configuration is missing. Set a supported ConnectionStrings value or PTP_DB_* variables.");
+                "Pulse database configuration is missing. Set a supported ConnectionStrings value or PTP_DB_* variables.");
         }
 
         var connection = new NpgsqlConnection(connectionString);
@@ -1038,9 +1038,9 @@ public static class CertiniaBillingModule
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
             <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
               <dc:title>Invoice {XlsxXml(invoice.Header.InvoiceNumber)}</dc:title>
-              <dc:subject>ProjectPulse immutable invoice workbook</dc:subject>
-              <dc:creator>ProjectPulse</dc:creator>
-              <cp:lastModifiedBy>ProjectPulse</cp:lastModifiedBy>
+              <dc:subject>Pulse immutable invoice workbook</dc:subject>
+              <dc:creator>Pulse</dc:creator>
+              <cp:lastModifiedBy>Pulse</cp:lastModifiedBy>
               <dcterms:created xsi:type="dcterms:W3CDTF">{created}</dcterms:created>
               <dcterms:modified xsi:type="dcterms:W3CDTF">{created}</dcterms:modified>
             </cp:coreProperties>
@@ -1050,7 +1050,7 @@ public static class CertiniaBillingModule
     private static string BuildXlsxAppProperties() => """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-          <Application>ProjectPulse</Application>
+          <Application>Pulse</Application>
           <DocSecurity>0</DocSecurity>
           <ScaleCrop>false</ScaleCrop>
           <HeadingPairs>
@@ -1065,7 +1065,7 @@ public static class CertiniaBillingModule
               <vt:lpstr>Invoice Detail</vt:lpstr>
             </vt:vector>
           </TitlesOfParts>
-          <Company>ProjectPulse</Company>
+          <Company>Pulse</Company>
           <AppVersion>1.0</AppVersion>
         </Properties>
         """;
@@ -1219,7 +1219,7 @@ public static class CertiniaBillingModule
         AppendXlsxInlineCell(xml, "A18", Fallback(header.Notes, "No invoice notes."), 4);
         xml.Append("</row>");
         xml.Append("<row r=\"22\" ht=\"28\" customHeight=\"1\">");
-        AppendXlsxInlineCell(xml, "A22", "Generated from the immutable ProjectPulse invoice snapshot. Dates, hours, rates, and amounts are native Excel values.", 4);
+        AppendXlsxInlineCell(xml, "A22", "Generated from the immutable Pulse invoice snapshot. Dates, hours, rates, and amounts are native Excel values.", 4);
         xml.Append("</row>");
 
         xml.Append("</sheetData>");
@@ -1494,7 +1494,7 @@ public static class CertiniaBillingModule
         objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
 
         using var output = new MemoryStream();
-        WriteAscii(output, "%PDF-1.4\n%ProjectPulse\n");
+        WriteAscii(output, "%PDF-1.4\n%Pulse\n");
         var offsets = new List<long> { 0 };
 
         for (var index = 0; index < objects.Count; index++)

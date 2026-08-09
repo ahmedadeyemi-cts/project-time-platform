@@ -198,6 +198,23 @@ jobs:
           path: /tmp/coordinated-document-bridge-migration-079.log
           retention-days: 7
 
+      - name: Test Pulse and Celar AI canonical-label migration 082
+        shell: bash
+        run: |
+          set +e
+          bash tests/test-pulse-celar-ai-canonical-labels-migration-082.sh > /tmp/pulse-celar-ai-canonical-labels-migration-082.log 2>&1
+          status=$?
+          cat /tmp/pulse-celar-ai-canonical-labels-migration-082.log
+          exit $status
+
+      - name: Upload canonical-label migration 082 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pulse-celar-ai-canonical-labels-migration-082-diagnostics
+          path: /tmp/pulse-celar-ai-canonical-labels-migration-082.log
+          retention-days: 7
+
       - name: Test Work Register project authorization
         run: dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj --configuration Release
 

@@ -397,7 +397,7 @@ public static class SellInboundSnapshotModule
         var config = InvoiceBillingDatabaseConfig.FromEnvironment();
         if (config.Missing.Count > 0)
             throw new InvalidOperationException(
-                "ProjectPulse database configuration is missing: "
+                "Pulse database configuration is missing: "
                 + string.Join(", ", config.Missing));
         var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync();
@@ -462,7 +462,7 @@ public static class SellInboundSnapshotModule
         new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         },
         statusCode: StatusCodes.Status401Unauthorized);
 

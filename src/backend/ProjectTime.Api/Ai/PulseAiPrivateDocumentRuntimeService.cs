@@ -60,7 +60,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         var missing = new List<string>();
 
         if (!_repository.DatabaseConfigured)
-            missing.Add("ProjectPulse database configuration is incomplete.");
+            missing.Add("Pulse database configuration is incomplete.");
         if (!schema.MigrationApplied)
             blockers.Add("Migration 052 has not been applied.");
         if (!schema.RagMigrationApplied)

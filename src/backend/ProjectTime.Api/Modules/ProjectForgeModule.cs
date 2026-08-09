@@ -2291,7 +2291,7 @@ public static partial class ProjectForgeModule
     private static string RevisionKey(IEnumerable<Guid> ids) => string.Join('-', ids.Order().Select(id => id.ToString("N")[..8]));
     private static HashSet<string> Split(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    private static IResult SessionRequired() => Results.Json(new { status = "session_required", message = "A valid ProjectPulse session is required." }, statusCode: 401);
+    private static IResult SessionRequired() => Results.Json(new { status = "session_required", message = "A valid Pulse session is required." }, statusCode: 401);
     private static IResult Forbidden(string permission) => Results.Json(new { status = "forbidden", requiredPermission = permission }, statusCode: 403);
     private static IResult WriteForbidden(ProjectForgeAccess access) => Results.Json(new { status = access.IsViewAs ? "view_as_read_only" : "forbidden", message = access.IsViewAs ? "Administrator View-As is read-only." : "Project Forge management access is required." }, statusCode: 403);
     private static IResult MigrationRequired() => Results.Json(new { status = "project_forge_migration_required", message = "Project Forge persistence is not available until migrations 070 and the current interactive migration have been applied." }, statusCode: 503);

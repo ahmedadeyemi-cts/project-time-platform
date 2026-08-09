@@ -220,7 +220,7 @@ function logDiagnostic(diagnostic) {
   if (loggedFingerprints.has(diagnostic.fingerprint)) return;
   loggedFingerprints.add(diagnostic.fingerprint);
 
-  const label = `[ProjectPulse API diagnostic] ${diagnostic.category} · ${diagnostic.referenceId}`;
+  const label = `[Pulse API diagnostic] ${diagnostic.category} · ${diagnostic.referenceId}`;
   console.groupCollapsed(label);
   console.error(diagnostic.rawMessage || diagnostic.detail || 'API request failed');
   console.table({
@@ -276,7 +276,7 @@ async function auditDiagnostic(diagnostic, userMessage) {
       })
     });
   } catch (error) {
-    console.debug('[ProjectPulse API diagnostic] Audit write was unavailable.', error);
+    console.debug('[Pulse API diagnostic] Audit write was unavailable.', error);
   }
 }
 

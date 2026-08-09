@@ -142,7 +142,7 @@ export default function PtcRuntimeTaskCatalog() {
       <div>
         <p className="eyebrow">Available work for selected user</p>
         <h3>{selectedUser?.displayName || 'Select an active user'}</h3>
-        <p>{selectedUser ? `${roleLabel(selectedUser)} · ${selectedUser.email}` : 'Choose any active ProjectPulse user. Their assigned regular tasks, requests, and available non-project categories will appear below.'}</p>
+        <p>{selectedUser ? `${roleLabel(selectedUser)} · ${selectedUser.email}` : 'Choose any active Pulse user. Their assigned regular tasks, requests, and available non-project categories will appear below.'}</p>
       </div>
       <div className="ptc-runtime-role-boundary">
         <strong>User scope</strong>

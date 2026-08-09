@@ -235,14 +235,14 @@ assert(
 assert(
   'EXTERNAL_COMPUTE_BOUNDARY',
   center.includes('External GPU environment')
-    && center.includes('LoRA or QLoRA runs outside the ProjectPulse web/API process.')
+    && center.includes('LoRA or QLoRA runs outside the Pulse web/API process.')
     && center.includes('Large adapters and models belong in approved object storage or a model registry'),
-  'future training is explicitly external to the ProjectPulse web and API processes'
+  'future training is explicitly external to the Pulse web and API processes'
 );
 
 assert(
   'PERMISSION_AUTHORITY',
-  center.includes('The ProjectPulse backend—not the model—enforces authorization.')
+  center.includes('The Pulse backend—not the model—enforces authorization.')
     && center.includes('Super Administrator receives Full Control')
     && center.includes('No Access hides the module and denies its APIs')
     && center.includes('Modules 012 and 037'),

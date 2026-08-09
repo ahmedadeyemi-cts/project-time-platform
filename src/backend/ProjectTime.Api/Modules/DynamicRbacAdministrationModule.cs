@@ -425,7 +425,7 @@ public static partial class ScopedRolePolicyModule
                 return Results.NotFound(new
                 {
                     status = "role_not_found",
-                    message = "Select an active ProjectPulse role."
+                    message = "Select an active Pulse role."
                 });
             }
             if (!await ActiveUserExistsAsync(connection, transaction, request.UserId))
@@ -434,7 +434,7 @@ public static partial class ScopedRolePolicyModule
                 return Results.NotFound(new
                 {
                     status = "user_not_found",
-                    message = "Select an active ProjectPulse user."
+                    message = "Select an active Pulse user."
                 });
             }
 
@@ -514,7 +514,7 @@ public static partial class ScopedRolePolicyModule
             if (role is null)
             {
                 await transaction.RollbackAsync(context.RequestAborted);
-                return Results.NotFound(new { status = "role_not_found", message = "Select an active ProjectPulse role." });
+                return Results.NotFound(new { status = "role_not_found", message = "Select an active Pulse role." });
             }
 
             var superAdministrator = string.Equals(

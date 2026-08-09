@@ -314,7 +314,7 @@ public static class MicrosoftMailRuntimeConfigurationModule
     private static async Task<IResult?> AuthorizeAsync(HttpContext context)
     {
         var userId = ActualSessionUserId(context);
-        if (userId is null) return Results.Json(new { status = "session_required", message = "A valid ProjectPulse session is required." }, statusCode: StatusCodes.Status401Unauthorized);
+        if (userId is null) return Results.Json(new { status = "session_required", message = "A valid Pulse session is required." }, statusCode: StatusCodes.Status401Unauthorized);
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString)) return Results.Json(new { status = "authorization_dependency_unavailable", message = "Microsoft Integration authorization is temporarily unavailable." }, statusCode: StatusCodes.Status503ServiceUnavailable);
 

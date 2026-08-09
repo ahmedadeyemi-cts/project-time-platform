@@ -410,7 +410,7 @@ export default function AiProviderConfigurationCenter() {
             <ul>
               <li>API key values are never returned.</li>
               <li>No browser or repository secret storage is permitted.</li>
-              <li>Only administrators with an active ProjectPulse session may replace keys.</li>
+              <li>Only administrators with an active Pulse session may replace keys.</li>
               <li>Every replacement creates sanitized audit evidence without the key value.</li>
             </ul>
           </section>

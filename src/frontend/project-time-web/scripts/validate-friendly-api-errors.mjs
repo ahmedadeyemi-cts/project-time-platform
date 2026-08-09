@@ -41,7 +41,7 @@ for (const contract of [
   'This information is temporarily unavailable while access is being verified. The rest of the page is still available.',
   'A supporting service is temporarily unavailable. The rest of the page may still be available. Try again shortly.',
   'Something went wrong while processing your request. Try again shortly.',
-  '[ProjectPulse API diagnostic]',
+  '[Pulse API diagnostic]',
   'console.table({',
   "'.audit-history-panel'",
   "const DIAGNOSTIC_ENDPOINT = '/api/client-diagnostics'",

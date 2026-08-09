@@ -164,7 +164,7 @@ public static class PulseAiDeepIntelligenceModule
                 "A listed tool is not automatically callable by every user; the owning module and record scope remain authoritative.",
                 "Celar AI receives sanitized results from approved read-only tools and never receives unrestricted database credentials.",
                 "Unknown, stale, unavailable, or optional values remain explicit and are never silently replaced with zero or a model estimate.",
-                "Tool execution cannot mutate ProjectPulse state unless a separate, explicit, confirmed action contract is implemented and authorized."
+                "Tool execution cannot mutate Pulse state unless a separate, explicit, confirmed action contract is implemented and authorized."
             },
             stateChanged = false
         });
@@ -264,7 +264,7 @@ public static class PulseAiDeepIntelligenceModule
             {
                 module = "011",
                 status = "question_required",
-                message = "Ask a ProjectPulse product, workflow, project, operational, reporting, or financial question."
+                message = "Ask a Pulse product, workflow, project, operational, reporting, or financial question."
             });
         }
 
@@ -292,10 +292,10 @@ public static class PulseAiDeepIntelligenceModule
                     "Source modules, documents, tools, record counts, and filters.",
                     "Data-as-of time, calculation definitions, and source freshness.",
                     "Assumptions, contradictions, missing inputs, uncertainty, and material limitations.",
-                    "Actionable next steps and direct ProjectPulse navigation targets when available."
+                    "Actionable next steps and direct Pulse navigation targets when available."
                 },
                 unsupportedClaimPolicy = "State that authorized evidence was insufficient; never create a confident unsupported answer.",
-                mutationPolicy = "Read-only plan. No ProjectPulse state is changed."
+                mutationPolicy = "Read-only plan. No Pulse state is changed."
             },
             runtimeExecution = new
             {
@@ -517,6 +517,6 @@ public static class PulseAiDeepIntelligenceModule
         {
             module = "011",
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
 }

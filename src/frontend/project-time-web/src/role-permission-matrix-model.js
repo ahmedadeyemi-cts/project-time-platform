@@ -28,7 +28,7 @@ export const ROLE_REFERENCE = Object.freeze({
     defaultScope: 'ORGANIZATION'
   },
   ACCOUNTING: { purpose: 'Perform billing, invoicing, reconciliation, export, and accounting review.', visibility: 'Authorized organization-wide financial and billing information.', defaultScope: 'ORGANIZATION' },
-  SUPER_ADMINISTRATOR: { purpose: 'Administer the complete ProjectPulse platform, roles, modules, security, and configuration.', visibility: 'Everything. Full Control is permanent and cannot be reduced.', defaultScope: 'ORGANIZATION' }
+  SUPER_ADMINISTRATOR: { purpose: 'Administer the complete Pulse platform, roles, modules, security, and configuration.', visibility: 'Everything. Full Control is permanent and cannot be reduced.', defaultScope: 'ORGANIZATION' }
 });
 
 function sessionToken() {
@@ -95,7 +95,7 @@ export async function api(path) {
   try {
     payload = raw ? JSON.parse(raw) : {};
   } catch {
-    const error = new Error(`${requestPath} returned non-JSON content instead of ProjectPulse API data.`);
+    const error = new Error(`${requestPath} returned non-JSON content instead of Pulse API data.`);
     error.status = response.status;
     error.responsePreview = raw.slice(0, 160);
     throw error;

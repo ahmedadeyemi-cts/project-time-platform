@@ -134,7 +134,7 @@ export default function CertifyIntegrationCenter() {
         <div>
           <p className="eyebrow">Synchronization</p>
           <h2 id="certify-sync-heading">Automatic sync</h2>
-          <p>The control stays visible at the top of the page. A successful connection test is required before ProjectPulse can enable scheduled synchronization.</p>
+          <p>The control stays visible at the top of the page. A successful connection test is required before Pulse can enable scheduled synchronization.</p>
           {syncLockedReason ? <div className="certify-sync-lock"><strong>Locked</strong><span>{syncLockedReason}</span></div> : <div className="certify-sync-ready"><strong>Ready</strong><span>Choose automatic sync and save the selected cadence.</span></div>}
         </div>
         <div className="certify-sync-controls">
@@ -185,7 +185,7 @@ export default function CertifyIntegrationCenter() {
           <div className={`certify-secret-state ${connection.apiKeyConfigured ? 'ready' : 'missing'}`}>API key: {connection.apiKeyConfigured ? 'configured' : 'missing'}</div>
           <label>API secret environment name<input disabled={!canManage || busy !== ''} value={form.apiSecretEnvironmentName} onChange={(event) => setForm((current) => ({ ...current, apiSecretEnvironmentName: event.target.value }))} /></label>
           <div className={`certify-secret-state ${connection.apiSecretConfigured ? 'ready' : 'missing'}`}>API secret: {connection.apiSecretConfigured ? 'configured' : 'missing'}</div>
-          <small>No credential value is stored in the ProjectPulse database or returned to the browser.</small>
+          <small>No credential value is stored in the Pulse database or returned to the browser.</small>
         </div>
       </section>
 

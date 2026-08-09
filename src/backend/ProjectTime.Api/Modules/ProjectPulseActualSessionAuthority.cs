@@ -5,7 +5,7 @@ using NpgsqlTypes;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Resolves non-transferable authority from the actual authenticated ProjectPulse
+/// Resolves non-transferable authority from the actual authenticated Pulse
 /// session. Super Administrator authority is permanent and organization-wide in
 /// an administrator's own session, but it is never transferred into View-As.
 ///

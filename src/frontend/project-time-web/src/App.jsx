@@ -1818,7 +1818,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
     href: '#project-forge',
     title: 'Project Forge',
     navLabel: 'MODULE 033',
-    description: 'Build governed project plans, schedules, estimates, decision matrices, Kanban boards, and Gantt views from live ProjectPulse records.',
+    description: 'Build governed project plans, schedules, estimates, decision matrices, Kanban boards, and Gantt views from live Pulse records.',
     permissions: ['VIEW_PROJECT_FORGE_033', 'MANAGE_PROJECT_FORGE_033', 'USE_PROJECT_FORGE_AI_033', 'EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
     roleCodes: ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'SYSTEMS_ENGINEER', 'NETWORK_ENGINEER', 'ENTERPRISE_NETWORK_ENGINEER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']
   },
@@ -1895,9 +1895,9 @@ const roleWorkspaceModules = sortProjectPulseModules([
   {
     route: 'user-guide',
     href: '#user-guide',
-    title: 'ProjectPulse Complete User Guide',
+    title: 'Pulse Complete User Guide',
     navLabel: 'MODULE 999',
-    description: 'Searchable documentation for every global platform function and every installed ProjectPulse module.',
+    description: 'Searchable documentation for every global platform function and every installed Pulse module.',
     permissions: []
   },
   /* MODULE_999_COMPLETE_USER_GUIDE_NAV_END */
@@ -2238,7 +2238,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
     href: '#system-architecture',
     title: 'System Architecture & Dependency Map',
     navLabel: 'MODULE 068',
-    description: 'View the role-safe ProjectPulse component, data, authentication, integration, environment, and live-status ownership map.',
+    description: 'View the role-safe Pulse component, data, authentication, integration, environment, and live-status ownership map.',
     permissions: ['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']
   },
   {
@@ -2296,7 +2296,7 @@ const roleWorkspaceModules = sortProjectPulseModules([
     href: '#defect-tracker',
     title: 'Defect Intake & Resolution Tracker',
     navLabel: 'MODULE 076',
-    description: 'Report and track defects from ProjectPulse Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with identity-backed assignment and governed notification contracts.',
+    description: 'Report and track defects from Pulse Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with identity-backed assignment and governed notification contracts.',
     permissions: []
   },
   /* MODULES_075_080_RUNTIME_NAV_START */
@@ -3631,12 +3631,12 @@ function getInstalledProjectPulseModuleRegistry() {
     {
       route: 'user-guide',
       href: '#user-guide',
-      title: 'ProjectPulse Complete User Guide',
+      title: 'Pulse Complete User Guide',
       navLabel: 'MODULE 999',
       status: 'Active',
       group: 'Help & Documentation',
       permissions: [],
-      description: 'Searchable documentation for every global platform function and every installed ProjectPulse module.'
+      description: 'Searchable documentation for every global platform function and every installed Pulse module.'
     },
     {
       route: 'opportunities',
@@ -4046,7 +4046,7 @@ function getInstalledModuleDescription(module) {
     'create-work-register': 'Creates Work Register records from GSD or SELL; SELL is authoritative for project name and Actual Rate / Pricing / Rate Review.',
     'rate-card-administration': 'Manages standard, customer-specific, Toyota, Hyundai, service request, emergency, and travel rate cards.',
     'customer-directory': 'Maintains customer/account records, customer contacts, and customer data used by intake, project, cost, billing, and reconciliation workflows.',
-    'user-guide': 'Explains every global ProjectPulse function and every installed module with searchable procedures, roles, statuses, and troubleshooting.',
+    'user-guide': 'Explains every global Pulse function and every installed module with searchable procedures, roles, statuses, and troubleshooting.',
     opportunities: 'Tracks active and closed sales opportunities, collaborative Sales, Presales, and Engineering actions, ownership, completion, dates, and accountable history.',
     'cost-alerts': 'Monitors project planned cost, assigned hours, used hours, over-assignment risk, and notification routing for cost overrun alerts.',
     workflow: 'Coordinates PM validation, accounting readiness, reconciliation, locking, export preparation, and audit visibility after manager approval.',
@@ -4061,12 +4061,12 @@ function getInstalledModuleDescription(module) {
     'role-admin': 'Manages application roles, permissions, module access, and role-based security configuration.',
     'service-control': 'Provides operational service restart controls, service health checks, and audit-backed service management.',
     'global-mail-configuration': 'Shows non-secret shared Microsoft 365 mail configuration, consumer ownership, and controlled activation readiness.',
-    'system-architecture': 'Shows the versioned ProjectPulse component, data, authentication, integration, environment, and status-ownership map.',
+    'system-architecture': 'Shows the versioned Pulse component, data, authentication, integration, environment, and status-ownership map.',
     'qualifications-certifications': 'Shows identity-backed skills, certifications, competency, experience, and expiration within server-authorized scope.',
     'capacity-pipeline-forecast': 'Shows continuous weekly engineering capacity, committed work, weighted demand, scenarios, remaining capacity, and utilization.',
     'oncall-scheduling': 'Shows the US Signal on-call schedule and roster with Manager and Engineering Team Lead management controls.',
     'oneassist-routing-directory': 'Shows the OneAssist customer routing directory and unmasked five-digit PINs with role-governed editing.',
-    'sales-coverage-alignment': 'Shows current coverage signals and a validated effective-dated alignment draft backed by ProjectPulse identities.',
+    'sales-coverage-alignment': 'Shows current coverage signals and a validated effective-dated alignment draft backed by Pulse identities.',
     'oem-vendor-directory': 'Shows a validated, US Signal-branded OEM and vendor directory draft with governed role-aware editing.',
     'system-diagnostics': 'Shows sanitized system diagnostics, ownership, evidence, runbooks, and fail-closed controlled-remediation readiness.',
     'defect-tracker': 'Shows the governed defect register and intake surface for Help, GitHub, Claude through GitHub, and ChatGPT through GitHub with automatic-ID, identity assignment, date, resolution, comment, and notification contracts.',
@@ -8528,7 +8528,7 @@ Analytics - Variphy / Infortel`}
           <section id="work-register" className="panel work-register-route-panel">
             <div className="work-register-center">
               <div className="work-register-banner error">
-                Work Register access is restricted to authorized ProjectPulse users.
+                Work Register access is restricted to authorized Pulse users.
               </div>
             </div>
           </section>

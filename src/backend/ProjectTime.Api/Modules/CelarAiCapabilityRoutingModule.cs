@@ -729,7 +729,7 @@ public static class CelarAiCapabilityRoutingModule
             externalHealthFreshAfter);
 
         var blockers = new List<string>();
-        if (!store.DatabaseAvailable) blockers.Add("The ProjectPulse database connection is unavailable to Module 064.");
+        if (!store.DatabaseAvailable) blockers.Add("The Pulse database connection is unavailable to Module 064.");
         if (!store.SecretEncryptionAvailable) blockers.Add("A stable base64-encoded 32-byte PROJECTPULSE_AI_SECRET_ENCRYPTION_KEY is required.");
         if (!profile.Persisted && !profile.DeploymentManaged)
             blockers.Add("The private Celar AI profile is neither persisted nor deployment-managed for this environment.");

@@ -62,7 +62,7 @@ internal static class AnalyticsBrandedExportBuilder
         JsonSerializer.SerializeToUtf8Bytes(new
         {
             brand = "US Signal",
-            product = "ProjectPulse Analytics Center",
+            product = "Pulse Analytics Center",
             run.RunId,
             run.ReportCode,
             run.ReportName,
@@ -114,7 +114,7 @@ internal static class AnalyticsBrandedExportBuilder
         report.Cell(4, 2).Value = run.ResultStatus;
         report.Cell(4, 3).Value = "Rows";
         report.Cell(4, 4).Value = run.RowCount;
-        report.Cell(5, 1).Value = "ProjectPulse release scope";
+        report.Cell(5, 1).Value = "Pulse release scope";
         report.Cell(5, 2).Value = "Role-scoped at execution time";
         report.Range(3, 1, 5, 4).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         report.Range(3, 1, 5, 4).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
@@ -159,7 +159,7 @@ internal static class AnalyticsBrandedExportBuilder
         report.PageSetup.FitToPages(1, 0);
         report.PageSetup.Margins.Top = 0.4;
         report.PageSetup.Margins.Bottom = 0.4;
-        report.PageSetup.Footer.Center.AddText("US Signal · ProjectPulse Analytics Center");
+        report.PageSetup.Footer.Center.AddText("US Signal · Pulse Analytics Center");
         report.PageSetup.Footer.Right.AddText("Page &[Page] of &[Pages]");
 
         var criteria = workbook.Worksheets.Add("Criteria");
@@ -210,9 +210,9 @@ internal static class AnalyticsBrandedExportBuilder
         sources.SheetView.FreezeRows(2);
 
         workbook.Properties.Title = run.ReportName;
-        workbook.Properties.Subject = "ProjectPulse Analytics Center";
+        workbook.Properties.Subject = "Pulse Analytics Center";
         workbook.Properties.Company = "US Signal";
-        workbook.Properties.Author = "ProjectPulse";
+        workbook.Properties.Author = "Pulse";
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
@@ -331,7 +331,7 @@ internal static class AnalyticsBrandedExportBuilder
         }
 
         builder.AppendLine("q 0.043 0.184 0.322 RG 0.8 w 28 28 m 764 28 l S Q");
-        builder.AppendLine(PdfText(28, 15, "F1", 7.5, "US Signal · ProjectPulse Analytics Center · Role-scoped at execution time", 0.24, 0.34, 0.45));
+        builder.AppendLine(PdfText(28, 15, "F1", 7.5, "US Signal · Pulse Analytics Center · Role-scoped at execution time", 0.24, 0.34, 0.45));
         builder.AppendLine(PdfText(700, 15, "F1", 7.5, $"{page}/{pages}", 0.24, 0.34, 0.45));
         return builder.ToString();
     }

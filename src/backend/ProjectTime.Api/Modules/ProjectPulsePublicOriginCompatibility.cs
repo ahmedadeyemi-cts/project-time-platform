@@ -4,11 +4,11 @@ using System.Text;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Resolves the externally visible ProjectPulse origin without trusting an
+/// Resolves the externally visible Pulse origin without trusting an
 /// arbitrary browser-supplied host. Azure Container Apps terminates TLS before
 /// the web container, so the web proxy can observe HTTP even though the public
 /// request is HTTPS. This compatibility boundary accepts only approved
-/// ProjectPulse environment hosts or explicitly configured public URLs.
+/// Pulse environment hosts or explicitly configured public URLs.
 /// </summary>
 public static class ProjectPulsePublicOriginCompatibility
 {
@@ -234,7 +234,7 @@ public static class ProjectPulsePublicOriginCompatibility
         else if (local && normalized.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
             yield return Uri.UriSchemeHttp;
 
-        // Public ProjectPulse environments are HTTPS-only. This deliberately
+        // Public Pulse environments are HTTPS-only. This deliberately
         // upgrades the trusted public host when TLS was terminated upstream and
         // the inner web proxy observed HTTP.
         yield return local ? Uri.UriSchemeHttp : Uri.UriSchemeHttps;
