@@ -1,9 +1,9 @@
 name: Temporary Finalize Celar AI Oracle Test Integration
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/celar-ai-oracle-test-external-https-runtime-20260809
+      - main
     paths:
       - '.github/workflows/temporary-build-celar-ai-oracle-test-integration.yml'
 
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   finalize:
     name: Install final workflows and remove temporary staging
-    if: github.ref == 'refs/heads/feature/celar-ai-oracle-test-external-https-runtime-20260809'
+    if: github.head_ref == 'feature/celar-ai-oracle-test-external-https-runtime-20260809'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
