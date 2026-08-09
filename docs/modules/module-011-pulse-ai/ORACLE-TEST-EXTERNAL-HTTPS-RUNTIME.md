@@ -32,7 +32,7 @@ Do not enter these URLs in Module 064. The Test integration is deployment-manage
 
 The five URLs are non-secret and are pinned in the deployment workflow. The Oracle gateway bearer token is the only value that must be supplied separately.
 
-In GitHub, go to:
+In GitHub, use this navigation path: **Settings → Environments → test → Environment secrets**.
 
 ```text
 Repository
@@ -88,7 +88,7 @@ After the source PR is merged and the protected GitHub environment secret exists
 5. Enter an approved reference matching `ORACLE-TEST-...`.
 6. Enter `DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST` as the confirmation.
 
-The workflow performs live unauthenticated, incorrect-token, authenticated health, inference, embedding, clean-file malware, and OCR tests before changing Azure. It then deploys an immutable API image, applies only the protected Test API environment and secret bindings, validates Pulse-to-Oracle inference and readiness, and restores the prior API image, environment values, and secret references if any post-change gate fails.
+The workflow performs live unauthenticated, incorrect-token, authenticated health, inference, embedding, and clean-file malware tests before changing Azure. Authenticated readiness must also report the OCR service and configured OCR model as ready. It then deploys an immutable API image, applies only the protected Test API environment and secret bindings, validates Pulse-to-Oracle inference and readiness, and restores the prior API image, environment values, and secret references if any post-change gate fails.
 
 No database migration, web deployment, Production mutation, Oracle infrastructure mutation, or public opening of ports 3310, 8787, or 11434 is included.
 
