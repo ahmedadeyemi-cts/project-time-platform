@@ -1,6 +1,11 @@
 name: Apply Module 083 Agent Keep UAT Correction
 
 on:
+  push:
+    branches:
+      - fix/module083-agent-keep-uat-20260809
+    paths:
+      - '.github/workflows/apply-module083-agent-keep-uat-fix.yml'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
@@ -18,8 +23,9 @@ jobs:
   patch:
     name: Restore Agent Keep evidence before Module 083 history verification
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'fix/module083-agent-keep-uat-20260809'
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module083-agent-keep-uat-20260809')
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
