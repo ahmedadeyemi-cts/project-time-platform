@@ -1,0 +1,83 @@
+name: Temporary Build Celar AI Oracle Test Integration
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-oracle-test-external-https-runtime-20260809
+    paths:
+      - '.github/workflows/temporary-build-celar-ai-oracle-test-integration.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-celar-ai-oracle-test-integration-builder
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Apply and validate the reviewed Test-only Oracle bridge
+    if: github.ref == 'refs/heads/feature/celar-ai-oracle-test-external-https-runtime-20260809'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the isolated branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/celar-ai-oracle-test-external-https-runtime-20260809
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Reconstruct and apply the reviewed source patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat scripts/.temporary-celar-ai-oracle-patch/part* \
+            | tr -d '\n' \
+            | base64 -d \
+            | gzip -d \
+            > /tmp/apply-celar-ai-oracle-test-integration.py
+          python3 -m py_compile /tmp/apply-celar-ai-oracle-test-integration.py
+          python3 /tmp/apply-celar-ai-oracle-test-integration.py
+
+      - name: Validate source syntax and Test-only policy behavior
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --check tests/validate-celar-ai-oracle-test-runtime.mjs
+          node --check tests/validate-celar-ai-opencloud-deferred-runtime.mjs
+          dotnet run \
+            --project tests/CelarAiOracleExternalRuntimeTests/CelarAiOracleExternalRuntimeTests.csproj \
+            --configuration Release \
+            -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+          git diff --check
+
+      - name: Commit and push only the reviewed implementation files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs \
+            src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs \
+            tests/CelarAiOracleExternalRuntimeTests \
+            tests/validate-celar-ai-oracle-test-runtime.mjs \
+            tests/validate-celar-ai-opencloud-deferred-runtime.mjs \
+            docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md \
+            docs/modules/module-011-pulse-ai/FREE-PRIVATE-RAG-ACTIVATION.md
+          git diff --cached --check
+          git diff --cached --quiet && {
+            echo 'No implementation changes remained to commit.'
+            exit 0
+          }
+          git commit -m 'feat: add guarded Oracle Celar AI runtime bridge for Test'
+          git push origin HEAD:feature/celar-ai-oracle-test-external-https-runtime-20260809
