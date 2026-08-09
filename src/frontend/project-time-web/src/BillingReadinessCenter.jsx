@@ -471,7 +471,7 @@ function blockerGuidance(issue) {
 }
 
 export default function BillingReadinessCenter() {
-  const [payload, setPayload] = useState({ loading: true, error: null, workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
+  const [payload, setPayload] = useState({ loading: true, error: null, degradedSources: [], workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
   const [billingMode, setBillingMode] = useState('project');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [packageType, setPackageType] = useState('Partial project invoice');
@@ -500,13 +500,20 @@ export default function BillingReadinessCenter() {
 
     const [workspace, intake, customers, certifyExpenses, certifyExceptions, billingCandidates] = results;
 
-    const failures = results
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason instanceof Error ? result.reason.message : 'Unknown loading error.');
+    const sourceNames = ['Project Workspace', 'Project Intake', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];
+    const degradedSources = results
+      .map((result, index) => result.status === 'rejected'
+        ? { source: sourceNames[index], message: result.reason instanceof Error ? result.reason.message : 'Source unavailable.' }
+        : null)
+      .filter(Boolean);
+    const billingCandidateFailure = billingCandidates.status === 'rejected'
+      ? (billingCandidates.reason instanceof Error ? billingCandidates.reason.message : 'Billing candidates are unavailable.')
+      : null;
 
     setPayload({
       loading: false,
-      error: failures.length > 0 ? failures.join(' | ') : null,
+      error: billingCandidateFailure,
+      degradedSources,
       workspace: workspace.status === 'fulfilled' ? workspace.value : null,
       intake: intake.status === 'fulfilled' ? intake.value : null,
       customers: customers.status === 'fulfilled' ? customers.value : null,
@@ -877,6 +884,7 @@ export default function BillingReadinessCenter() {
 
   return (
     <section className="billing-readiness-center">
+      {payload.degradedSources?.length ? <div className="billing-source-warning" role="status"><div><strong>Supporting source status</strong><span>{payload.degradedSources.map((item) => item.source).join(', ')} {payload.degradedSources.length === 1 ? 'is' : 'are'} temporarily unavailable. Healthy billing data remains available.</span></div><button type="button" onClick={loadBillingReadinessData}>Retry sources</button></div> : null}
       {/* PR467_BILLING_CLOSEOUT_HANDOFFS */}
       <section className="billing-readiness-handoff-panel">
         <div>
