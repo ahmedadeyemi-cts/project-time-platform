@@ -1,0 +1,52 @@
+name: Apply Module 083 Role Navigation Integration
+
+on:
+  push:
+    branches:
+      - 'feature/module-083-full-future-loop-20260809'
+    paths:
+      - '.github/workflows/module-083-navigation-bootstrap.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: module-083-navigation-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: feature/module-083-full-future-loop-20260809
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Apply and validate Module 083 role navigation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/inject-module-083-full-future-loop.mjs
+          node src/frontend/project-time-web/scripts/validate-module-083-full-future-loop.mjs
+
+      - name: Commit integrated navigation and remove this one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/module-083-navigation-bootstrap.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No navigation integration changes were required.'
+            exit 0
+          fi
+          git commit -m 'Expose Module 083 in role navigation'
+          git push origin HEAD:feature/module-083-full-future-loop-20260809
