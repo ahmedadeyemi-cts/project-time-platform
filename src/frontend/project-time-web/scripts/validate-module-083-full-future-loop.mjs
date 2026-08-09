@@ -51,6 +51,8 @@ test('ROLLBACK_OWNERSHIP', rollback.includes('full_future_loop_082_role_grants')
 test('ENDPOINT_BRIDGE', bridge.includes('endpoints.MapFullFutureLoopEndpoints();'));
 test('MODULE_AVAILABILITY', availability.includes('["083"] = Module("083", "full-future-loop", "Full Future Loop", "Platform Operations")'));
 test('APP_INTEGRATION', app.includes("import FullFutureLoopCenter from './FullFutureLoopCenter.jsx';") && app.includes("activeRoute === 'full-future-loop'") && app.includes('<FullFutureLoopCenter authSession={authSession} />'));
+test('ROLE_NAVIGATION', app.includes('MODULE_083_FULL_FUTURE_LOOP_NAV_START') && app.includes("href: '#full-future-loop'") && app.includes("navLabel: 'MODULE 083'"));
+test('PLATFORM_OPERATIONS_GROUP', app.includes("case 'full-future-loop':") && app.includes("case 'release-deployment-control':"));
 test('APP_ROUTE_ISOLATION', app.includes("        'full-future-loop',") && app.includes('MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_START'));
 test('APP_PERMISSION_VISIBILITY', ['VIEW_FULL_FUTURE_LOOP_083','RUN_FULL_FUTURE_LOOP_SANDBOX_083','MANAGE_FULL_FUTURE_LOOP_083','VIEW_FULL_FUTURE_LOOP_EVIDENCE_083'].every((value) => app.includes(value)));
 test('REGISTRY', registry.includes("moduleNumber: '083'") && registry.includes("route: 'full-future-loop'"));
