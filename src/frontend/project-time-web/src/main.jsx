@@ -39,8 +39,8 @@ import './scoped-role-policy-admin.css';
 import './scoped-role-policy-matrix.css';
 import './module001/module001-uat-fixes.css';
 import './admin-experience-theme.css';
-import './enterprise-contrast-guard.css';
 import './pulse-shell-frontend-compatibility.css';
+import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
