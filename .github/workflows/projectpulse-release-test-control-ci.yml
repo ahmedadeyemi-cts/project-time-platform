@@ -1,4 +1,4 @@
-name: Validate Test-Only Combined Release d9b5c6c3
+name: Validate Test-Only Module 081/082 and Theme Recovery adada448
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate exact d9b5c6c3 Test release controller
+    name: Validate exact adada448 Test release controller
     runs-on: ubuntu-latest
     steps:
       - name: Check out proposed release controls
@@ -29,7 +29,7 @@ jobs:
           set -Eeuo pipefail
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='d9b5c6c3acf26348c15d97c800605453413f9819'
+          SOURCE='adada448a0410d24feac45f11ef3b280c2756aaa'
 
           git fetch origin "$BASE_REF" --no-tags
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
@@ -58,6 +58,21 @@ jobs:
           grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
           grep -Fq 'openCloudPrivateRuntime:"deferred"' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
+          grep -Fq 'X-ProjectPulse-Module-Number: 081' "$CONTROLLER"
+          grep -Fq 'X-ProjectPulse-Module-Number: 082' "$CONTROLLER"
+          grep -Fq '/api/lab-equipment-tracker/access' "$CONTROLLER"
+          grep -Fq '/api/project-risk-register/access' "$CONTROLLER"
+          grep -Fq '/api/lab-equipment-tracker/summary' "$CONTROLLER"
+          grep -Fq '/api/project-risk-register/summary' "$CONTROLLER"
+          grep -Fq '081-enterprise-v1' "$CONTROLLER"
+          grep -Fq '082-enterprise-v1' "$CONTROLLER"
+          grep -Fq '.permissions.canManage == true' "$CONTROLLER"
+          grep -Fq 'projectpulse-floating-theme-toggle' "$CONTROLLER"
+          grep -Fq 'ptp-theme' "$CONTROLLER"
+          grep -Fq 'projectpulse-theme-control' "$CONTROLLER"
+          grep -Fq 'module081Access:$module081Access' "$CONTROLLER"
+          grep -Fq 'module082Access:$module082Access' "$CONTROLLER"
+          grep -Fq 'themeRecovery:$themeRecovery' "$CONTROLLER"
           grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
           grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
           grep -Fq 'public-president-summary.json' "$CONTROLLER"
@@ -108,4 +123,4 @@ jobs:
           node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
           git diff --check "origin/$BASE_REF...HEAD"
-          echo 'COMBINED_RELEASE_D9B5C6C3_TEST_CONTROL=PASSED'
+          echo 'MODULES_081_082_THEME_ADADA448_TEST_CONTROL=PASSED'
