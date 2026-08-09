@@ -49,6 +49,34 @@ function patchApp() {
     'MODULE_083_FULL_FUTURE_LOOP_ROUTE_START'
   );
 
+  const navDefinition = `  /* MODULE_083_FULL_FUTURE_LOOP_NAV_START */
+  {
+    route: 'full-future-loop',
+    href: '#full-future-loop',
+    title: 'Full Future Loop',
+    navLabel: 'MODULE 083',
+    description: 'Run and review the complete governed sandbox lifecycle from selective governance through private development, canary, promotion, production evidence, support, repair, re-promotion, and final verification.',
+    permissions: ['VIEW_FULL_FUTURE_LOOP_083', 'RUN_FULL_FUTURE_LOOP_SANDBOX_083', 'MANAGE_FULL_FUTURE_LOOP_083', 'VIEW_FULL_FUTURE_LOOP_EVIDENCE_083', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'MANAGER', 'RELEASE_MANAGER', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEER', 'ENGINEERING', 'SOLUTION_ARCHITECT', 'SUPPORT', 'HELP_DESK', 'SERVICE_DESK', 'EXECUTIVE', 'EXECUTIVE_LEADERSHIP']
+  },
+  /* MODULE_083_FULL_FUTURE_LOOP_NAV_END */`;
+  const module082NavDefinition = `  {
+    route: 'project-risk-register',
+    href: '#project-risk-register',
+    title: 'Enterprise Project Risk Register',
+    navLabel: 'MODULE 082',
+    description: 'Identify, analyze, respond to, review, realize, close, and export project risks and opportunities within authoritative project scope.',
+    permissions: ['VIEW_PROJECT_RISKS_082', 'MANAGE_PROJECT_RISKS_082', 'UPDATE_ASSIGNED_RISK_ACTIONS_082', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'],
+    roleCodes: ['SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'ENGINEERING_MANAGER', 'ENGINEERING_LEAD', 'ENGINEER', 'ENGINEERING']
+  },`;
+  source = insertAfter(
+    source,
+    module082NavDefinition,
+    navDefinition,
+    'Module 082 role navigation definition',
+    'MODULE_083_FULL_FUTURE_LOOP_NAV_START'
+  );
+
   const installedDefinition = `  /* MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_START */
   {
     route: 'full-future-loop',
@@ -79,6 +107,14 @@ function patchApp() {
 
   source = insertAfter(
     source,
+    "    case 'release-deployment-control':",
+    "    case 'full-future-loop':",
+    'Platform Operations navigation group',
+    "    case 'full-future-loop':"
+  );
+
+  source = insertAfter(
+    source,
     "        'project-risk-register',",
     "        'full-future-loop',",
     'standalone route exclusion list',
@@ -87,10 +123,12 @@ function patchApp() {
 
   const importCount = source.split("import FullFutureLoopCenter from './FullFutureLoopCenter.jsx';").length - 1;
   const routeCount = source.split('MODULE_083_FULL_FUTURE_LOOP_ROUTE_START').length - 1;
+  const navCount = source.split('MODULE_083_FULL_FUTURE_LOOP_NAV_START').length - 1;
   const installedCount = source.split('MODULE_083_FULL_FUTURE_LOOP_INSTALLED_REGISTRY_START').length - 1;
+  const groupCount = source.split("    case 'full-future-loop':").length - 1;
   const exclusionCount = source.split("        'full-future-loop',").length - 1;
-  if (importCount !== 1 || routeCount !== 1 || installedCount !== 1 || exclusionCount !== 1) {
-    throw new Error(`Module 083 App injection is not idempotent: imports=${importCount}, routes=${routeCount}, installed=${installedCount}, exclusions=${exclusionCount}`);
+  if (importCount !== 1 || routeCount !== 1 || navCount !== 1 || installedCount !== 1 || groupCount !== 1 || exclusionCount !== 1) {
+    throw new Error(`Module 083 App injection is not idempotent: imports=${importCount}, routes=${routeCount}, nav=${navCount}, installed=${installedCount}, groups=${groupCount}, exclusions=${exclusionCount}`);
   }
   fs.writeFileSync(appPath, source, 'utf8');
 }
