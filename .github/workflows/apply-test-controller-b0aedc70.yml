@@ -1,4 +1,4 @@
-name: Prepare Corrected Module 081 and 082 Test Controller
+name: Publish Corrected Test Controller Base Tree
 
 on:
   pull_request:
@@ -10,15 +10,15 @@ permissions:
   contents: write
 
 concurrency:
-  group: prepare-corrected-modules-081-082-test-controller
+  group: publish-corrected-test-controller-base-tree
   cancel-in-progress: false
 
 jobs:
-  patch:
-    name: Pin corrected release and harden JSON response verification
+  publish:
+    name: Record the validated branch tree for authorized publication
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Check out exact release-controller branch
@@ -27,197 +27,18 @@ jobs:
           ref: release/test-modules-081-082-theme-b0aedc70-20260809
           fetch-depth: 0
 
-      - name: Apply bounded controller and validator changes
+      - name: Publish the current tree identifier as a non-workflow artifact
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          controller_path = Path('.github/workflows/projectpulse-deploy-test.yml')
-          validator_path = Path('.github/workflows/projectpulse-release-test-control-ci.yml')
-          controller = controller_path.read_text(encoding='utf-8')
-          validator = validator_path.read_text(encoding='utf-8')
-
-          old_sha = 'adada448a0410d24feac45f11ef3b280c2756aaa'
-          new_sha = 'b0aedc706c3fe33b97b91a1b0074a20578c82b64'
-          old_short = 'adada448'
-          new_short = 'b0aedc70'
-          old_upper = 'ADADA448'
-          new_upper = 'B0AEDC70'
-
-          if controller.count(old_sha) != 2:
-              raise SystemExit(
-                  f'controller: expected two old release SHA references, found {controller.count(old_sha)}'
-              )
-          if validator.count(old_sha) != 1:
-              raise SystemExit(
-                  f'validator: expected one old release SHA reference, found {validator.count(old_sha)}'
-              )
-          controller = controller.replace(old_sha, new_sha)
-          validator = validator.replace(old_sha, new_sha)
-
-          if old_short not in controller:
-              raise SystemExit('controller: old release label was not found')
-          if old_short not in validator:
-              raise SystemExit('validator: old release label was not found')
-          controller = controller.replace(old_short, new_short)
-          validator = validator.replace(old_short, new_short)
-          validator = validator.replace(old_upper, new_upper)
-
-          source_marker = (
-              "          FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'\n"
-              "          test -f \"$CATALOG\""
-          )
-          source_replacement = (
-              "          FORGE_TEST='release/src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs'\n"
-              "          LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'\n"
-              "          RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'\n"
-              "          test -f \"$CATALOG\""
-          )
-          if controller.count(source_marker) != 1:
-              raise SystemExit('controller: source-file marker was not unique')
-          controller = controller.replace(source_marker, source_replacement, 1)
-
-          file_marker = (
-              "          test -f \"$FORGE_TEST\"\n"
-              "          test -f control/scripts/build-pr55-acr-image.sh"
-          )
-          file_replacement = (
-              "          test -f \"$FORGE_TEST\"\n"
-              "          test -f \"$LAB_MODULE\"\n"
-              "          test -f \"$RISK_MODULE\"\n"
-              "          test -f control/scripts/build-pr55-acr-image.sh"
-          )
-          if controller.count(file_marker) != 1:
-              raise SystemExit('controller: source existence marker was not unique')
-          controller = controller.replace(file_marker, file_replacement, 1)
-
-          explicit_marker = (
-              "          node \"$FLOWHIVE_TEST\"\n"
-              "          (cd release/src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)"
-          )
-          explicit_replacement = (
-              "          node \"$FLOWHIVE_TEST\"\n"
-              "          (cd release/src/frontend/project-time-web && node scripts/validate-module-033-project-forge.mjs)\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' \"$LAB_MODULE\"\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' \"$LAB_MODULE\"\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' \"$RISK_MODULE\"\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' \"$RISK_MODULE\""
-          )
-          if controller.count(explicit_marker) != 1:
-              raise SystemExit('controller: explicit-result guard marker was not unique')
-          controller = controller.replace(explicit_marker, explicit_replacement, 1)
-
-          uat_anchor = (
-              '      - name: Prove release-blocking health, privacy, and task-independent routing'
-          )
-          fail_line = '          fail() { echo "ERROR: $*" >&2; exit 1; }'
-          uat_start = controller.find(uat_anchor)
-          if uat_start < 0:
-              raise SystemExit('controller: UAT step anchor was not found')
-          fail_start = controller.find(fail_line, uat_start)
-          if fail_start < 0:
-              raise SystemExit('controller: UAT fail helper was not found')
-          if controller.find('          require_json_file() {', uat_start) >= 0:
-              raise SystemExit('controller: JSON-response helper already exists')
-
-          json_helper = (
-              '\n'
-              '          require_json_file() {\n'
-              '            local file="$1" label="$2"\n'
-              '            [[ -s "$file" ]] || fail "$label returned HTTP 200 with an empty response body."\n'
-              '            jq -e . "$file" >/dev/null 2>&1 || {\n'
-              '              echo "Invalid JSON response for $label:" >&2\n'
-              '              head -c 2048 "$file" >&2 || true\n'
-              '              echo >&2\n'
-              '              fail "$label returned HTTP 200 with an invalid JSON response body."\n'
-              '            }\n'
-              '          }'
-          )
-          insert_at = fail_start + len(fail_line)
-          controller = controller[:insert_at] + json_helper + controller[insert_at:]
-
-          guarded_responses = [
-              (
-                  "          [[ \"$MODULE_081_ACCESS_STATUS\" == 200 ]] || { jq '{code,message,correlationId}' \"$MODULE_081_ACCESS_FILE\" >&2 || true; fail 'Module 081 effective access remained unavailable.'; }",
-                  "          require_json_file \"$MODULE_081_ACCESS_FILE\" 'Module 081 access'",
-              ),
-              (
-                  "          [[ \"$MODULE_082_ACCESS_STATUS\" == 200 ]] || { jq '{code,message,correlationId}' \"$MODULE_082_ACCESS_FILE\" >&2 || true; fail 'Module 082 effective access remained unavailable.'; }",
-                  "          require_json_file \"$MODULE_082_ACCESS_FILE\" 'Module 082 access'",
-              ),
-              (
-                  "          [[ \"$MODULE_081_SUMMARY_STATUS\" == 200 ]] || { jq '{code,message,correlationId}' \"$RUNNER_TEMP/module-081-summary.json\" >&2 || true; fail 'Module 081 governed summary remained unavailable.'; }",
-                  "          require_json_file \"$RUNNER_TEMP/module-081-summary.json\" 'Module 081 summary'",
-              ),
-              (
-                  "          [[ \"$MODULE_082_SUMMARY_STATUS\" == 200 ]] || { jq '{code,message,correlationId}' \"$RUNNER_TEMP/module-082-summary.json\" >&2 || true; fail 'Module 082 governed summary remained unavailable.'; }",
-                  "          require_json_file \"$RUNNER_TEMP/module-082-summary.json\" 'Module 082 summary'",
-              ),
-          ]
-          for status_line, guard_line in guarded_responses:
-              if controller.count(status_line) != 1:
-                  raise SystemExit(
-                      f'controller: expected one status line for {guard_line}'
-                  )
-              controller = controller.replace(
-                  status_line,
-                  status_line + '\n' + guard_line,
-                  1,
-              )
-
-          validator_marker = (
-              "          grep -Fq '.permissions.canManage == true' \"$CONTROLLER\""
-          )
-          validator_replacement = (
-              validator_marker + "\n"
-              "          grep -Fq \"LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'\" \"$CONTROLLER\"\n"
-              "          grep -Fq \"RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'\" \"$CONTROLLER\"\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' \"$CONTROLLER\"\n"
-              "          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' \"$CONTROLLER\"\n"
-              "          grep -Fq 'require_json_file \"$MODULE_081_ACCESS_FILE\"' \"$CONTROLLER\"\n"
-              "          grep -Fq 'require_json_file \"$MODULE_082_ACCESS_FILE\"' \"$CONTROLLER\"\n"
-              "          grep -Fq 'require_json_file \"$RUNNER_TEMP/module-081-summary.json\"' \"$CONTROLLER\"\n"
-              "          grep -Fq 'require_json_file \"$RUNNER_TEMP/module-082-summary.json\"' \"$CONTROLLER\"\n"
-              "          grep -Fq 'HTTP 200 with an empty response body.' \"$CONTROLLER\"\n"
-              "          grep -Fq 'HTTP 200 with an invalid JSON response body.' \"$CONTROLLER\""
-          )
-          if validator.count(validator_marker) != 1:
-              raise SystemExit('validator: response-guard marker was not unique')
-          validator = validator.replace(validator_marker, validator_replacement, 1)
-
-          controller_path.write_text(controller, encoding='utf-8')
-          validator_path.write_text(validator, encoding='utf-8')
-          PY
-
-          grep -Fq 'TARGET_RELEASE_COMMIT: b0aedc706c3fe33b97b91a1b0074a20578c82b64' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'require_json_file "$MODULE_081_ACCESS_FILE"' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq 'require_json_file "$RUNNER_TEMP/module-082-summary.json"' .github/workflows/projectpulse-deploy-test.yml
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' .github/workflows/projectpulse-deploy-test.yml
-          ! grep -Fq 'adada448' .github/workflows/projectpulse-deploy-test.yml
-          ! grep -Fq 'adada448' .github/workflows/projectpulse-release-test-control-ci.yml
-          ! grep -Fq 'ADADA448' .github/workflows/projectpulse-release-test-control-ci.yml
-          git diff --check
-
-      - name: Stage validated controller blobs for authorized publication
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          rm -rf .projectpulse-release-artifacts
+          TREE_SHA="$(git rev-parse 'HEAD^{tree}')"
+          [[ "$TREE_SHA" =~ ^[0-9a-f]{40}$ ]]
           mkdir -p .projectpulse-release-artifacts
-          cp .github/workflows/projectpulse-deploy-test.yml \
-            .projectpulse-release-artifacts/projectpulse-deploy-test.yml
-          cp .github/workflows/projectpulse-release-test-control-ci.yml \
-            .projectpulse-release-artifacts/projectpulse-release-test-control-ci.yml
-
-          git checkout -- \
-            .github/workflows/projectpulse-deploy-test.yml \
-            .github/workflows/projectpulse-release-test-control-ci.yml
-          git add .projectpulse-release-artifacts
+          printf '%s\n' "$TREE_SHA" \
+            > .projectpulse-release-artifacts/base-tree-sha.txt
+          git add .projectpulse-release-artifacts/base-tree-sha.txt
           git diff --cached --check
-          [[ "$(git diff --cached --name-only | wc -l | tr -d ' ')" == 2 ]]
           git config user.name 'ProjectPulse Release Automation'
           git config user.email 'projectpulse-release-automation@users.noreply.github.com'
-          git commit -m 'chore: stage corrected Test controller blobs'
+          git commit -m 'chore: record corrected Test controller base tree'
           git push origin HEAD:release/test-modules-081-082-theme-b0aedc70-20260809
