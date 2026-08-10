@@ -4,7 +4,7 @@ using System.Text.Json;
 using ProjectTime.Api.Ai;
 
 const string RuntimeToken = "test-runtime-token-value-1234567890-abcdef";
-const string TokenReference = "secretref://github-environment-test/celar-ai-oracle-runtime-token@1111111111111111111111111111111111111111";
+const string TokenReference = "github-environment://test/celar-ai-oracle-runtime-token@1111111111111111111111111111111111111111";
 const string Approval = "ORACLE-TEST-CI-20260809";
 
 var touched = new[]

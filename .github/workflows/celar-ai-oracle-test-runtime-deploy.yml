@@ -209,7 +209,7 @@ jobs:
           echo 'started=true' >> "$GITHUB_OUTPUT"
           RESOURCE_GROUP='${{ steps.snapshot.outputs.resource_group }}'
           API_APP='${{ steps.snapshot.outputs.api_app }}'
-          TOKEN_REFERENCE="secretref://github-environment-test/celar-ai-oracle-runtime-token@$TARGET_RELEASE_COMMIT"
+          TOKEN_REFERENCE="github-environment://test/celar-ai-oracle-runtime-token@$TARGET_RELEASE_COMMIT"
           az containerapp secret set -g "$RESOURCE_GROUP" -n "$API_APP" --secrets "$TOKEN_SECRET_NAME=$RUNTIME_TOKEN" --output none --only-show-errors
           unset RUNTIME_TOKEN
           az containerapp update -g "$RESOURCE_GROUP" -n "$API_APP" \

@@ -553,7 +553,7 @@ internal static class ReleaseRuntimeBehavior
         Set("PROJECTPULSE_PRIVATE_INFERENCE_MODEL", "celar-ci");
         Set("PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE", "bearer");
         Set("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN", "ci-private-token");
-        Set("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE", "secretref://ci/celar-token@version-0001");
+        Set("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE", "github-environment://ci/celar-token@version-0001");
         Set("PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST", "celar.private.example");
         Set("PROJECTPULSE_AI_CLAUDE_ENABLED", "true");
         Set("PROJECTPULSE_CLAUDE_ENDPOINT", "https://api.anthropic.com/v1");
