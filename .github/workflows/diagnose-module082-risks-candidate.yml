@@ -1,0 +1,117 @@
+name: Diagnose Module 082 Candidate Risks Failure
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/diagnose-module082-risks-candidate.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: diagnose-module082-risks-candidate
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Capture candidate API revision diagnostics without mutation
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module082-risks-candidate-logs-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CANDIDATE_REVISION: ca-phd-test-api-westus3--egpapi-31353957139-1
+      EXPECTED_CANDIDATE_DIGEST: sha256:b14fd4dac8d648ccc40ce279bdb04d4d598e342976ae15a183c31eb1474cfad0
+      DIAGNOSTIC_DIR: /tmp/module082-candidate-diagnostics
+
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture exact inactive candidate revision and logs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          install -d -m 0700 "$DIAGNOSTIC_DIR"
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Azure login is outside Test.'
+
+          APP_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$APP_JSON")" == test ]] || fail 'API target is not tagged Test.'
+
+          REVISION_JSON="$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            -o json --only-show-errors)"
+          IMAGE="$(jq -r '.properties.template.containers[0].image // .properties.template.containers[0].image' <<<"$REVISION_JSON")"
+          [[ "$IMAGE" == *"@$EXPECTED_CANDIDATE_DIGEST" ]] || fail "Unexpected candidate image: $IMAGE"
+
+          jq '{name,properties:{active,createdTime,healthState,provisioningState,replicas,trafficWeight},image:.properties.template.containers[0].image}' \
+            <<<"$REVISION_JSON" > "$DIAGNOSTIC_DIR/revision-summary.json"
+
+          set +e
+          az containerapp logs show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            --type console \
+            --tail 500 \
+            --format text \
+            > "$DIAGNOSTIC_DIR/console.log" 2>&1
+          CONSOLE_STATUS=$?
+          az containerapp logs show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            --type system \
+            --tail 500 \
+            --format text \
+            > "$DIAGNOSTIC_DIR/system.log" 2>&1
+          SYSTEM_STATUS=$?
+          set -e
+
+          sed -E -i \
+            -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+            -e 's/(X-ProjectPulse-Session: )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+            -e 's/(password|secret|token)=([^[:space:]]+)/\1=[REDACTED]/Ig' \
+            "$DIAGNOSTIC_DIR/console.log" "$DIAGNOSTIC_DIR/system.log"
+
+          {
+            echo "CONSOLE_LOG_STATUS=$CONSOLE_STATUS"
+            echo "SYSTEM_LOG_STATUS=$SYSTEM_STATUS"
+            echo "CANDIDATE_REVISION=$CANDIDATE_REVISION"
+            echo "CANDIDATE_IMAGE=$IMAGE"
+          } > "$DIAGNOSTIC_DIR/diagnostic-status.txt"
+
+          grep -Ei 'project-risk-register|list risks|Npgsql|Postgres|InvalidCast|DBNull|exception|fail|error' \
+            "$DIAGNOSTIC_DIR/console.log" \
+            | tail -n 200 > "$DIAGNOSTIC_DIR/module082-error-extract.log" || true
+
+          test -s "$DIAGNOSTIC_DIR/revision-summary.json"
+          echo 'MODULE_082_CANDIDATE_DIAGNOSTICS_CAPTURED=true'
+
+      - name: Upload sanitized candidate diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: module-082-candidate-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/module082-candidate-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
