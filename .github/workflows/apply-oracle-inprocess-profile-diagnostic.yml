@@ -1,4 +1,4 @@
-name: Apply Oracle In-Process Profile Diagnostic
+name: Publish Validated Oracle In-Process Profile Diagnostic
 
 on:
   pull_request:
@@ -9,15 +9,15 @@ on:
       - 'scripts/patch-oracle-inprocess-profile-diagnostic.py'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apply-oracle-inprocess-profile-diagnostic
+  group: publish-oracle-inprocess-profile-diagnostic
   cancel-in-progress: true
 
 jobs:
-  finalize:
-    name: Patch, validate, and commit safe Oracle diagnostics
+  publish:
+    name: Patch, validate, and publish workflow artifact
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -31,9 +31,9 @@ jobs:
         with:
           ref: diagnostic/oracle-inprocess-profile-20260810
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Apply bounded workflow diagnostic
+      - name: Apply and validate bounded workflow diagnostic
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -56,10 +56,6 @@ jobs:
             .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
           git diff --check
 
-      - name: Install checksum-pinned actionlint
-        shell: bash
-        run: |
-          set -Eeuo pipefail
           curl -fsSL --retry 4 --retry-all-errors \
             -o "$RUNNER_TEMP/actionlint.tar.gz" \
             'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
@@ -68,62 +64,20 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color -verbose \
             .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
 
-      - name: Validate Oracle runtime workflow contracts
-        shell: bash
-        run: |
-          set -Eeuo pipefail
           node tests/validate-celar-ai-oracle-test-runtime.mjs
+          install -d -m 0700 "$RUNNER_TEMP/oracle-diagnostic-workflow"
+          install -m 0600 \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml \
+            "$RUNNER_TEMP/oracle-diagnostic-workflow/celar-ai-oracle-test-runtime-deploy.yml"
+          sha256sum \
+            "$RUNNER_TEMP/oracle-diagnostic-workflow/celar-ai-oracle-test-runtime-deploy.yml" \
+            > "$RUNNER_TEMP/oracle-diagnostic-workflow/SHA256SUMS"
+          echo 'ORACLE_DIAGNOSTIC_WORKFLOW_ARTIFACT=VALIDATED'
 
-          rm -f \
-            .github/workflows/apply-oracle-inprocess-profile-diagnostic.yml \
-            scripts/patch-oracle-inprocess-profile-diagnostic.py
-          python3 scripts/security/validate-repository-security-posture.py
-          git diff --check
-
-      - name: Commit validated permanent diagnostic
-        id: publish
-        shell: bash
-        run: |
-          set +e
-          DEBUG="$RUNNER_TEMP/oracle-finalizer-debug.txt"
-          {
-            echo 'FINALIZER_DEBUG_VERSION=1'
-            echo "BRANCH=$(git branch --show-current)"
-            echo "REMOTE=$(git remote get-url origin | sed -E 's#https://[^@]+@github.com/#https://github.com/#')"
-            git add -A
-            echo '--- staged status ---'
-            git status --short
-            echo '--- staged summary ---'
-            git diff --cached --stat
-            git diff --cached --check
-            CHECK_STATUS=$?
-            echo "DIFF_CHECK_STATUS=$CHECK_STATUS"
-            if (( CHECK_STATUS != 0 )); then
-              exit "$CHECK_STATUS"
-            fi
-            git config user.name 'Pulse Enterprise Automation'
-            git config user.email 'pulse-enterprise-automation@users.noreply.github.com'
-            git commit -m 'diagnostic: capture Oracle in-process profile safely'
-            COMMIT_STATUS=$?
-            echo "COMMIT_STATUS=$COMMIT_STATUS"
-            git rev-parse HEAD || true
-            if (( COMMIT_STATUS != 0 )); then
-              exit "$COMMIT_STATUS"
-            fi
-            git push --verbose origin HEAD:diagnostic/oracle-inprocess-profile-20260810
-            PUSH_STATUS=$?
-            echo "PUSH_STATUS=$PUSH_STATUS"
-            exit "$PUSH_STATUS"
-          } 2>&1 | tee "$DEBUG"
-          RESULT=${PIPESTATUS[0]}
-          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
-          exit "$RESULT"
-
-      - name: Upload bounded finalizer diagnostics
-        if: always()
+      - name: Upload validated workflow artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: oracle-finalizer-debug-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/oracle-finalizer-debug.txt
-          if-no-files-found: warn
+          name: validated-oracle-inprocess-profile-workflow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oracle-diagnostic-workflow
+          if-no-files-found: error
           retention-days: 3
