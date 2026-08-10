@@ -8,7 +8,9 @@
     "manifestVersion",
     "repository",
     "sourceCommit",
-    "build",
+    "buildWorkflow",
+    "buildRunId",
+    "buildRunAttempt",
     "artifacts",
     "migrations",
     "targetEnvironment",
@@ -39,15 +41,18 @@
       "type": ["integer", "null"],
       "minimum": 1
     },
-    "build": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["workflow", "runId", "runAttempt"],
-      "properties": {
-        "workflow": { "type": "string", "minLength": 1, "maxLength": 300 },
-        "runId": { "type": "integer", "minimum": 1 },
-        "runAttempt": { "type": "integer", "minimum": 1 }
-      }
+    "buildWorkflow": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "buildRunId": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "buildRunAttempt": {
+      "type": ["integer", "null"],
+      "minimum": 1
     },
     "artifacts": {
       "type": "array",
@@ -82,9 +87,9 @@
       }
     },
     "targetEnvironment": { "enum": ["canary", "test", "production"] },
-    "canaryEvidenceReferences": { "$ref": "#/$defs/evidenceReferences" },
-    "verificationEvidenceReferences": { "$ref": "#/$defs/evidenceReferences" },
-    "approvalEvidenceReferences": { "$ref": "#/$defs/evidenceReferences" },
+    "canaryEvidenceReferences": { "$ref": "#/$defs/requiredEvidenceReferences" },
+    "verificationEvidenceReferences": { "$ref": "#/$defs/requiredEvidenceReferences" },
+    "approvalEvidenceReferences": { "$ref": "#/$defs/optionalEvidenceReferences" },
     "rollbackArtifactDigests": {
       "type": "array",
       "minItems": 1,
@@ -93,15 +98,21 @@
     },
     "configurationFingerprint": {
       "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
+      "minLength": 1,
+      "maxLength": 1000
     },
     "createdAt": { "type": "string", "format": "date-time" },
     "expiresAt": { "type": "string", "format": "date-time" }
   },
   "$defs": {
-    "evidenceReferences": {
+    "requiredEvidenceReferences": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "optionalEvidenceReferences": {
+      "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
     }
