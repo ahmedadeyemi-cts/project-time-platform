@@ -1,0 +1,103 @@
+name: Inspect Module 082 Failed Test Candidate Logs
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/inspect-module082-risk-failure-test.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: inspect-module082-risk-failure-test
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Read exact failed Test revision logs without mutation
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module082-risk-logs-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESOURCE_GROUP: rg-project-health-dashboard-test-app-westus3
+      API_APP: ca-phd-test-api-westus3
+      FAILED_REVISION: ca-phd-test-api-westus3--egpapi-31353957139-1
+      EVIDENCE_DIR: /tmp/module082-risk-diagnostic
+
+    steps:
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture exact revision metadata and sanitized logs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]]
+
+          az containerapp revision show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$API_APP" \
+            --revision "$FAILED_REVISION" \
+            --output json \
+            --only-show-errors \
+            > "$EVIDENCE_DIR/revision.json"
+
+          az containerapp logs show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$API_APP" \
+            --revision "$FAILED_REVISION" \
+            --type console \
+            --tail 300 \
+            --format text \
+            > "$EVIDENCE_DIR/console-raw.log" 2>&1 || true
+
+          az containerapp logs show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$API_APP" \
+            --revision "$FAILED_REVISION" \
+            --type system \
+            --tail 300 \
+            --format text \
+            > "$EVIDENCE_DIR/system-raw.log" 2>&1 || true
+
+          for source in console system; do
+            sed -E \
+              -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+              -e 's/(X-ProjectPulse-Session: )[A-Za-z0-9._~+\/-]+/\1[REDACTED]/g' \
+              -e 's/(session(Token)?|access(Token)?|refresh(Token)?|password|secret|api[_-]?key)(["=: ]+)[^ ,;"}]+/\1\6[REDACTED]/Ig' \
+              "$EVIDENCE_DIR/$source-raw.log" \
+              > "$EVIDENCE_DIR/$source.log"
+            rm -f "$EVIDENCE_DIR/$source-raw.log"
+          done
+
+          jq '{name:.name,active:.properties.active,healthState:.properties.healthState,runningState:.properties.runningState,createdTime:.properties.createdTime,trafficWeight:.properties.trafficWeight}' \
+            "$EVIDENCE_DIR/revision.json" \
+            > "$EVIDENCE_DIR/revision-summary.json"
+
+          echo '--- MODULE 082 FAILURE CANDIDATES ---'
+          grep -Ein 'project-risk-register|list risks|Module 082|Npgsql|Postgres|InvalidCast|DBNull|JSON|exception|error|fail' \
+            "$EVIDENCE_DIR/console.log" \
+            | tail -n 160 \
+            || true
+          echo '--- REVISION SUMMARY ---'
+          cat "$EVIDENCE_DIR/revision-summary.json"
+
+      - name: Upload sanitized diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: module-082-risk-failure-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/module082-risk-diagnostic
+          if-no-files-found: warn
+          retention-days: 7
