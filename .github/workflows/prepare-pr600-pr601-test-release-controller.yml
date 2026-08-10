@@ -6,6 +6,11 @@ on:
       - release/test-pr600-pr601-1d1afbdc-20260810
     paths:
       - '.github/workflows/prepare-pr600-pr601-test-release-controller.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/prepare-pr600-pr601-test-release-controller.yml'
 
 permissions:
   contents: write
@@ -17,6 +22,7 @@ concurrency:
 jobs:
   prepare:
     name: Pin, validate, and commit the Test release controller
+    if: github.event_name == 'push' || github.event.pull_request.head.ref == 'release/test-pr600-pr601-1d1afbdc-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
