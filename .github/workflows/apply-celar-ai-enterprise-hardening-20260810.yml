@@ -52,6 +52,19 @@ jobs:
             -e 's/nonAnswerCodeCount !== 3/nonAnswerCodeCount !== 2/' \
             -e 's/expected 3 remaining uses/expected 2 remaining uses/' \
             tools/apply-celar-ai-enterprise-hardening-20260810.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+
+          patch = Path('tools/apply-celar-ai-enterprise-hardening-20260810.mjs')
+          source = patch.read_text(encoding='utf-8')
+          old = """  `import './enterprise-contrast-guard.css';\\n`,
+            `import './enterprise-contrast-guard.css';\\nimport './enterprise-theme-completion.css';\\n`,"""
+          new = """  `import './enterprise-contrast-guard.css';\\n`,
+            `import './enterprise-theme-completion.css';\\nimport './enterprise-contrast-guard.css';\\n`,"""
+          if source.count(old) != 1:
+              raise SystemExit('Theme import-order patch was not exact.')
+          patch.write_text(source.replace(old, new), encoding='utf-8')
+          PY
           node tools/apply-celar-ai-enterprise-hardening-20260810.mjs
           node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
           git diff --check
