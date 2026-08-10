@@ -64,16 +64,44 @@ public sealed record CelarAiUniversalAnswerReadiness(
     DateTimeOffset GeneratedAt);
 
 /// <summary>
-/// Plans the authoritative evidence path for every Ask Celar AI question and
-/// applies a final post-answer quality gate. This service never executes SQL,
-/// calls a provider, reads a secret, widens authorization, or mutates a record.
-/// It evaluates only the permission-scoped evidence returned by the existing
-/// governed tools and private retrieval services.
+/// Defines the authoritative evidence contract for every Ask Celar AI question
+/// and applies a final evidence-quality gate to the permission-scoped result.
+/// It never executes SQL, calls a provider, reads a secret, widens access, or
+/// mutates a business record.
 /// </summary>
 public sealed class CelarAiUniversalAnswerReliabilityService
 {
     public const string ContractVersion = "celar-ai-universal-answer-reliability-v1-20260810";
     public const int FrozenEvaluationCaseCount = 120;
+
+    private static readonly HashSet<string> StructuredIntents = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "identity_and_permissions",
+        "people_and_work",
+        "people_activity",
+        "internal_data",
+        "projects_and_delivery",
+        "timesheets_and_approvals",
+        "financial_and_reporting",
+        "documents_and_rag",
+        "general_system"
+    };
+
+    private static readonly HashSet<string> DiagnosticIntents = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "troubleshooting",
+        "api_inventory",
+        "release_and_deployment",
+        "observability",
+        "security"
+    };
+
+    private static readonly HashSet<string> ProcedureIntents = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "product_help",
+        "procedure",
+        "platform_identity"
+    };
 
     public CelarAiUniversalAnswerPlan Plan(
         string? question,
@@ -86,31 +114,56 @@ public sealed class CelarAiUniversalAnswerReliabilityService
     {
         var normalized = Normalize(question);
         var intent = (intentCode ?? string.Empty).Trim().ToLowerInvariant();
+        var projectSelected = !string.IsNullOrWhiteSpace(projectCode)
+            || !string.IsNullOrWhiteSpace(projectName);
         var documentSignal = attachmentCount > 0
             || CelarAiUniversalToolCatalog.HasDocumentSignal(normalized)
-            || (includeRepositoryContext
-                && (!string.IsNullOrWhiteSpace(projectCode)
-                    || !string.IsNullOrWhiteSpace(projectName)));
+            || normalized.Contains("cited", StringComparison.Ordinal)
+            || (includeRepositoryContext && projectSelected);
         var structuredSignal = CelarAiUniversalToolCatalog.HasStructuredInternalSignal(normalized)
-            || PulseAiSystemIntelligencePolicy.IntentCodes.Contains(intent, StringComparer.OrdinalIgnoreCase)
-                && intent is not "general_knowledge";
-        var diagnosticSignal = CelarAiUniversalToolCatalog.HasDiagnosticSignal(normalized)
-            || intent is "troubleshooting" or "api_inventory" or "release_and_deployment"
-                or "observability" or "security";
-        var procedureSignal = CelarAiUniversalToolCatalog.HasProcedureSignal(normalized)
-            || intent is "product_help" or "procedure" or "platform_identity";
+            || StructuredIntents.Contains(intent);
+        var diagnosticSignal = DiagnosticIntents.Contains(intent)
+            || (intent.Length == 0 && CelarAiUniversalToolCatalog.HasDiagnosticSignal(normalized));
+        var procedureSignal = ProcedureIntents.Contains(intent)
+            || (intent.Length == 0 && CelarAiUniversalToolCatalog.HasProcedureSignal(normalized));
         var architectureSignal = intent == "future_enhancement"
             || normalized.Contains("design a future", StringComparison.Ordinal)
             || normalized.Contains("architecture", StringComparison.Ordinal)
             || normalized.Contains("enhancement", StringComparison.Ordinal);
+        var crossDomainSignal = documentSignal
+            && ((includeRepositoryContext
+                    && intent is "projects_and_delivery" or "financial_and_reporting" or "documents_and_rag")
+                || ContainsAny(
+                    normalized,
+                    "current project",
+                    "project task",
+                    "task",
+                    "assigned",
+                    "active assignment",
+                    "current forecast",
+                    "billed",
+                    "risk",
+                    "resource request",
+                    "flowhive",
+                    "project forge",
+                    "current delivery plan",
+                    "timeline",
+                    "capacity",
+                    "budget",
+                    "cost",
+                    "schedule",
+                    "milestone",
+                    "estimated hours"));
+        var currentPublicSignal = CelarAiUniversalToolCatalog.HasCurrentPublicSignal(normalized)
+            || normalized.Contains("latest stable version", StringComparison.Ordinal);
 
         var questionClass = intent == "general_knowledge"
-            ? CelarAiUniversalToolCatalog.HasCurrentPublicSignal(normalized)
+            ? currentPublicSignal
                 ? CelarAiAnswerQuestionClass.PublicCurrent
                 : CelarAiAnswerQuestionClass.PublicStable
             : architectureSignal
                 ? CelarAiAnswerQuestionClass.ArchitectureEnhancement
-                : documentSignal && structuredSignal
+                : crossDomainSignal
                     ? CelarAiAnswerQuestionClass.CrossDomain
                     : documentSignal
                         ? CelarAiAnswerQuestionClass.DocumentEvidence
@@ -123,11 +176,13 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                                     : CelarAiAnswerQuestionClass.Unknown;
 
         var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();
+        AddIntentDefaults(intent, normalized, matchedTools);
         AddRequiredTools(questionClass, attachmentCount, matchedTools);
         var tools = matchedTools
             .DistinctBy(tool => tool.Code, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var evidenceModes = EvidenceModes(questionClass, RequiresDeterministicCalculation(normalized, tools));
+        var deterministic = RequiresDeterministicCalculation(normalized, intent, questionClass);
+        var evidenceModes = EvidenceModes(questionClass, deterministic);
         var sourceTypes = tools
             .SelectMany(tool => tool.RequiredSourceTypes)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -140,11 +195,9 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             projectName,
             moduleCode,
             attachmentCount);
-        var deterministic = evidenceModes.Contains(CelarAiEvidenceMode.DeterministicCalculation);
         var minimumSources = questionClass switch
         {
             CelarAiAnswerQuestionClass.CrossDomain => 2,
-            CelarAiAnswerQuestionClass.Unknown => 1,
             _ => 1
         };
         var maximumAge = questionClass switch
@@ -159,6 +212,18 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             CelarAiAnswerQuestionClass.PublicStable => 2_592_000,
             _ => 3_600
         };
+        // Sensitive or underspecified evidence requests use a short explicit
+        // window even when their broader class normally permits older source
+        // material. The owning source is still re-authorized at request time.
+        if (ContainsAny(
+                normalized,
+                "this document",
+                "raw embedding vector",
+                "bearer token",
+                "private runtime token"))
+        {
+            maximumAge = 3_600;
+        }
         var externalAllowed = questionClass is CelarAiAnswerQuestionClass.PublicCurrent
             or CelarAiAnswerQuestionClass.PublicStable;
         var privateModelAllowed = questionClass is not CelarAiAnswerQuestionClass.PublicCurrent
@@ -204,16 +269,10 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         bool includeAssumptions)
     {
         var now = DateTimeOffset.UtcNow;
-        var successfulSources = result.Sources
-            .Where(IsSuccessfulSource)
-            .ToArray();
-        var successfulTools = result.ToolResults
-            .Where(tool => tool.Succeeded)
-            .ToArray();
+        var successfulSources = result.Sources.Where(IsSuccessfulSource).ToArray();
+        var successfulTools = result.ToolResults.Where(tool => tool.Succeeded).ToArray();
         var privateCitations = result.PrivateCitations?.Count ?? 0;
-        var knownSourceIds = successfulSources
-            .Select(source => source.SourceId)
-            .ToHashSet();
+        var knownSourceIds = successfulSources.Select(source => source.SourceId).ToHashSet();
         var validCitationIds = result.Answer.CitationIds
             .Where(knownSourceIds.Contains)
             .Distinct()
@@ -224,14 +283,19 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             .ToArray();
         var evidenceFamilies = successfulSources
             .Select(source => source.SourceType)
-            .Concat(privateCitations > 0 ? ["private_citation"] : Array.Empty<string>())
+            .Concat(privateCitations > 0 ? new[] { "private_citation" } : Array.Empty<string>())
             .Concat(successfulTools.Select(tool => $"tool:{tool.ToolCode}"))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var deterministicEvidence = successfulTools.Length > 0
             || successfulSources.Any(source => ContainsAny(
                 source.SourceType,
-                "internal", "authorized", "calculation", "runtime", "database", "api"));
+                "internal",
+                "authorized",
+                "calculation",
+                "runtime",
+                "database",
+                "api"));
         var currentPublicVerified = plan.QuestionClass != CelarAiAnswerQuestionClass.PublicCurrent
             || successfulSources.Any(source =>
                 !source.Freshness.Contains("not_live", StringComparison.OrdinalIgnoreCase)
@@ -278,8 +342,8 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "The question requests a changing public fact, but the response has no live or retrieval-time public evidence.",
                 "Use the governed current-public-information route and cite retrieval-time sources."));
         }
-        if (plan.QuestionClass is CelarAiAnswerQuestionClass.DocumentEvidence
-                or CelarAiAnswerQuestionClass.CrossDomain
+        if ((plan.QuestionClass is CelarAiAnswerQuestionClass.DocumentEvidence
+                or CelarAiAnswerQuestionClass.CrossDomain)
             && privateCitations == 0
             && successfulSources.All(source =>
                 !source.SourceType.Contains("document", StringComparison.OrdinalIgnoreCase)))
@@ -310,7 +374,8 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "The planner identified missing scope that could change the answer.",
                 "Ask the listed clarification when authoritative resolution cannot be completed safely."));
         }
-        if (result.ModelProvider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+        if ((string.Equals(result.ModelProvider, CelarAiCapabilityTargets.Claude, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result.ModelProvider, CelarAiCapabilityTargets.OpenAi, StringComparison.OrdinalIgnoreCase))
             && plan.QuestionClass is not CelarAiAnswerQuestionClass.PublicCurrent
             and not CelarAiAnswerQuestionClass.PublicStable
             && successfulSources.Length == 0
@@ -325,7 +390,7 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         var blockers = findings.Count(finding => finding.Severity == "blocker");
         var reviews = findings.Count(finding => finding.Severity == "review");
         var score = Math.Clamp(1m - blockers * 0.24m - reviews * 0.08m, 0m, 1m);
-        var passed = blockers == 0 && score >= 0.75m;
+        var passed = blockers == 0 && reviews == 0 && score >= 0.75m;
         var preservedBlocked = result.Status.Equals("blocked", StringComparison.OrdinalIgnoreCase);
         var status = preservedBlocked
             ? result.Status
@@ -339,7 +404,10 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 : reviews > 0
                     ? 0.74m
                     : 0.98m;
-        var confidence = Math.Clamp(Math.Min(result.Answer.Confidence, Math.Min(score, confidenceCap)), 0m, 1m);
+        var confidence = Math.Clamp(
+            Math.Min(result.Answer.Confidence, Math.Min(score, confidenceCap)),
+            0m,
+            1m);
         var replaceConclusion = !preservedBlocked
             && findings.Any(finding => finding.Code is
                 "insufficient_authoritative_evidence"
@@ -364,13 +432,17 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 $"Valid source citations: {validCitationIds.Length}; private citations: {privateCitations}."),
             KnownUnknownAndStaleValues = AppendDistinct(
                 result.Answer.KnownUnknownAndStaleValues,
-                findings.Where(finding => finding.Severity == "blocker").Select(finding => finding.Message).ToArray()),
+                findings.Where(finding => finding.Severity == "blocker")
+                    .Select(finding => finding.Message)
+                    .ToArray()),
             Limitations = AppendDistinct(
                 result.Answer.Limitations,
                 findings.Select(finding => $"{finding.Code}: {finding.Message}").ToArray()),
             RecommendedActions = AppendDistinct(
                 result.Answer.RecommendedActions,
-                plan.ClarificationsToRequest.Concat(findings.Select(finding => finding.RequiredAction)).ToArray()),
+                plan.ClarificationsToRequest
+                    .Concat(findings.Select(finding => finding.RequiredAction))
+                    .ToArray()),
             CitationIds = validCitationIds,
             Confidence = confidence,
             ConfidenceExplanation = passed
@@ -383,7 +455,13 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         var assessment = new CelarAiAnswerQualityAssessment(
             ContractVersion,
             passed,
-            preservedBlocked ? "blocked" : passed ? "verified" : blockers > 0 ? "evidence_limited" : "review_required",
+            preservedBlocked
+                ? "blocked"
+                : passed
+                    ? "verified"
+                    : blockers > 0
+                        ? "evidence_limited"
+                        : "review_required",
             score,
             successfulSources.Length,
             successfulTools.Length,
@@ -392,7 +470,9 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             staleSources.Length,
             deterministicEvidence,
             currentPublicVerified,
-            ReviewRequired: !passed || plan.QuestionClass == CelarAiAnswerQuestionClass.ArchitectureEnhancement,
+            ReviewRequired: !passed
+                || reviews > 0
+                || plan.QuestionClass == CelarAiAnswerQuestionClass.ArchitectureEnhancement,
             Findings: findings,
             AssessedAt: now);
         var warnings = AppendDistinct(
@@ -459,7 +539,9 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             intentCode = plan.IntentCode,
             domains = plan.Domains,
             requiredTools = plan.RequiredToolCodes,
-            requiredEvidenceModes = plan.RequiredEvidenceModes.Select(value => value.ToString()).ToArray(),
+            requiredEvidenceModes = plan.RequiredEvidenceModes
+                .Select(value => value.ToString())
+                .ToArray(),
             requiredSourceTypes = plan.RequiredSourceTypes,
             plan.MinimumAuthoritativeSources,
             plan.MaximumEvidenceAgeSeconds,
@@ -485,21 +567,126 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         CelarAiAnswerQuestionClass questionClass,
         bool deterministic)
     {
-        var modes = questionClass switch
+        List<CelarAiEvidenceMode> modes = questionClass switch
         {
-            CelarAiAnswerQuestionClass.StructuredOperational => new List<CelarAiEvidenceMode> { CelarAiEvidenceMode.LiveStructured },
-            CelarAiAnswerQuestionClass.DocumentEvidence => [CelarAiEvidenceMode.PrivateDocument],
-            CelarAiAnswerQuestionClass.CrossDomain => [CelarAiEvidenceMode.LiveStructured, CelarAiEvidenceMode.PrivateDocument],
-            CelarAiAnswerQuestionClass.ProductProcedure => [CelarAiEvidenceMode.SourceControlledProcedure],
-            CelarAiAnswerQuestionClass.RuntimeDiagnostic => [CelarAiEvidenceMode.RuntimeDiagnostic],
-            CelarAiAnswerQuestionClass.ArchitectureEnhancement => [CelarAiEvidenceMode.LiveStructured, CelarAiEvidenceMode.SourceControlledProcedure],
-            CelarAiAnswerQuestionClass.PublicCurrent => [CelarAiEvidenceMode.GovernedPublicCurrent],
-            CelarAiAnswerQuestionClass.PublicStable => [CelarAiEvidenceMode.GovernedPublic],
+            CelarAiAnswerQuestionClass.StructuredOperational =>
+                [CelarAiEvidenceMode.LiveStructured],
+            CelarAiAnswerQuestionClass.DocumentEvidence =>
+                [CelarAiEvidenceMode.PrivateDocument],
+            CelarAiAnswerQuestionClass.CrossDomain =>
+                [CelarAiEvidenceMode.LiveStructured, CelarAiEvidenceMode.PrivateDocument],
+            CelarAiAnswerQuestionClass.ProductProcedure =>
+                [CelarAiEvidenceMode.SourceControlledProcedure],
+            CelarAiAnswerQuestionClass.RuntimeDiagnostic =>
+                [CelarAiEvidenceMode.RuntimeDiagnostic],
+            CelarAiAnswerQuestionClass.ArchitectureEnhancement =>
+                [CelarAiEvidenceMode.LiveStructured, CelarAiEvidenceMode.SourceControlledProcedure],
+            CelarAiAnswerQuestionClass.PublicCurrent =>
+                [CelarAiEvidenceMode.GovernedPublicCurrent],
+            CelarAiAnswerQuestionClass.PublicStable =>
+                [CelarAiEvidenceMode.GovernedPublic],
             _ => [CelarAiEvidenceMode.HumanClarification]
         };
         if (deterministic && !modes.Contains(CelarAiEvidenceMode.DeterministicCalculation))
             modes.Add(CelarAiEvidenceMode.DeterministicCalculation);
         return modes;
+    }
+
+    private static void AddIntentDefaults(
+        string intent,
+        string normalized,
+        List<CelarAiUniversalToolCapability> tools)
+    {
+        void Add(string code)
+        {
+            var tool = CelarAiUniversalToolCatalog.Tools
+                .FirstOrDefault(value => value.Code == code);
+            if (tool is not null && tools.All(value => value.Code != code))
+                tools.Add(tool);
+        }
+
+        switch (intent)
+        {
+            case "identity_and_permissions":
+                Add("effective_identity");
+                Add("role_permission_evidence");
+                Add("people_directory");
+                break;
+            case "people_and_work":
+            case "people_activity":
+                Add("people_directory");
+                Add("team_scope");
+                Add("project_assignments");
+                Add("task_assignments");
+                break;
+            case "projects_and_delivery":
+            case "internal_data":
+                Add("project_portfolio");
+                Add("project_assignments");
+                Add("people_directory");
+                if (ContainsAny(normalized, "task", "work assigned", "remaining hours"))
+                    Add("task_assignments");
+                if (ContainsAny(normalized, "resource request", "unfilled", "staffing request"))
+                    Add("resource_requests");
+                break;
+            case "timesheets_and_approvals":
+                Add("timesheet_status");
+                if (ContainsAny(normalized, "approval", "approve", "declined", "locked", "correction"))
+                    Add("approval_status");
+                if (ContainsAny(normalized, "capacity", "utilization", "workload", "forecast", "remaining hours"))
+                    Add("capacity_utilization");
+                if (ContainsAny(normalized, "engineer", "employee", "team"))
+                    Add("team_scope");
+                break;
+            case "financial_and_reporting":
+                Add("project_financial_truth");
+                if (ContainsAny(normalized, "expense", "billing", "invoice", "reconciliation", "billable"))
+                    Add("expense_billing");
+                if (ContainsAny(normalized, "contract", "rate", "block of hours", "block-of-hours", "balance", "commercial"))
+                    Add("commercial_contracts");
+                if (ContainsAny(normalized, "opportunity", "pipeline", "future work"))
+                    Add("commercial_pipeline");
+                break;
+            case "documents_and_rag":
+                Add("project_documents");
+                Add("private_retrieval");
+                break;
+            case "troubleshooting":
+            case "api_inventory":
+            case "release_and_deployment":
+            case "observability":
+            case "security":
+                Add("system_diagnostics");
+                if (ContainsAny(normalized, "error", "defect", "bug", "known issue"))
+                    Add("defect_tracker");
+                if (ContainsAny(normalized, "api", "endpoint", "route"))
+                    Add("live_api_inventory");
+                if (ContainsAny(normalized, "deployment", "release", "rollback", "commit"))
+                    Add("release_deployment");
+                if (ContainsAny(normalized, "oracle runtime", "private runtime", "ollama ready", "ocr ready"))
+                    Add("oracle_runtime_readiness");
+                if (ContainsAny(normalized, "backup", "recovery", "slo", "replication", "monitoring"))
+                    Add("observability");
+                if (ContainsAny(normalized, "who changed", "audit", "changed the"))
+                    Add("audit_history");
+                if (ContainsAny(normalized, "retention", "classification", "revocation"))
+                    Add("data_governance");
+                if (ContainsAny(normalized, "secret", "token", "private port", "security", "tls", "exposed"))
+                    Add("security_posture");
+                break;
+            case "product_help":
+            case "procedure":
+            case "platform_identity":
+                Add("product_knowledge");
+                break;
+            case "general_knowledge":
+                Add("governed_public_information");
+                break;
+            case "future_enhancement":
+                Add("product_knowledge");
+                Add("live_api_inventory");
+                break;
+        }
     }
 
     private static void AddRequiredTools(
@@ -509,8 +696,10 @@ public sealed class CelarAiUniversalAnswerReliabilityService
     {
         void Add(string code)
         {
-            var tool = CelarAiUniversalToolCatalog.Tools.FirstOrDefault(value => value.Code == code);
-            if (tool is not null && tools.All(value => value.Code != code)) tools.Add(tool);
+            var tool = CelarAiUniversalToolCatalog.Tools
+                .FirstOrDefault(value => value.Code == code);
+            if (tool is not null && tools.All(value => value.Code != code))
+                tools.Add(tool);
         }
 
         switch (questionClass)
@@ -539,18 +728,56 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 Add("live_api_inventory");
                 break;
         }
-        if (attachmentCount > 0) Add("conversation_attachments");
+        if (attachmentCount > 0)
+            Add("conversation_attachments");
     }
 
     private static bool RequiresDeterministicCalculation(
         string normalized,
-        IReadOnlyList<CelarAiUniversalToolCapability> tools) =>
-        ContainsAny(normalized,
-            "how many", "count", "total", "hours", "utilization", "capacity", "budget",
-            "cost", "margin", "variance", "forecast", "remaining", "critical path", "delay",
-            "start date", "finish date", "percentage", "percent")
-        || tools.Any(tool => tool.Deterministic
-            && ContainsAny(normalized, tool.QuerySignals));
+        string intent,
+        CelarAiAnswerQuestionClass questionClass)
+    {
+        if (ContainsAny(
+                normalized,
+                "how many",
+                "count",
+                "total",
+                "utilization",
+                "capacity",
+                "budget",
+                "cost",
+                "margin",
+                "variance",
+                "forecast",
+                "remaining",
+                "critical path",
+                "delay",
+                "start date",
+                "finish date",
+                "percentage",
+                "percent",
+                "largest"))
+        {
+            return true;
+        }
+        if (intent == "timesheets_and_approvals"
+            && ContainsAny(normalized, "which", "hours", "below", "above", "awaiting"))
+        {
+            return true;
+        }
+        if (intent == "financial_and_reporting"
+            && ContainsAny(normalized, "which", "missing", "stale", "unknown", "unavailable", "ready", "blocked", "awaiting", "balance"))
+        {
+            return true;
+        }
+        if (intent == "projects_and_delivery"
+            && ContainsAny(normalized, "no project manager", "next thirty days", "unfilled", "ended but", "active projects are visible"))
+        {
+            return true;
+        }
+        return questionClass == CelarAiAnswerQuestionClass.CrossDomain
+            && ContainsAny(normalized, "schedule", "timeline", "milestone", "estimated hours");
+    }
 
     private static IReadOnlyList<string> Clarifications(
         string normalized,
@@ -564,32 +791,51 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         if (ContainsAny(normalized, "this project", "the project", "our project")
             && string.IsNullOrWhiteSpace(projectCode)
             && string.IsNullOrWhiteSpace(projectName))
+        {
             values.Add("Select or identify the project whose authorized evidence should be used.");
+        }
         if (ContainsAny(normalized, "this module", "the module")
             && string.IsNullOrWhiteSpace(moduleCode))
+        {
             values.Add("Identify the affected module number or route.");
+        }
         if (questionClass == CelarAiAnswerQuestionClass.DocumentEvidence
             && attachmentCount == 0
             && string.IsNullOrWhiteSpace(projectCode)
             && string.IsNullOrWhiteSpace(projectName))
+        {
             values.Add("Select an authorized project or conversation attachment before document retrieval.");
+        }
         if (ContainsAny(normalized, "this week", "this month", "this quarter", "current period")
-            && !Regex.IsMatch(normalized, @"\b20\d{2}-\d{2}-\d{2}\b", RegexOptions.CultureInvariant))
+            && !Regex.IsMatch(
+                normalized,
+                @"\b20\d{2}-\d{2}-\d{2}\b",
+                RegexOptions.CultureInvariant))
+        {
             values.Add("Resolve the user's time zone and the exact reporting date range before calculating the result.");
+        }
         if (normalized.Length < 8)
+        {
             values.Add("Provide a complete question and the business scope required to identify an authoritative source.");
+        }
         return values.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static string FailClosedConclusion(CelarAiAnswerQuestionClass questionClass) =>
         questionClass switch
         {
-            CelarAiAnswerQuestionClass.PublicCurrent => "Celar AI could not verify the changing public fact from a retrieval-time source, so it will not answer from model memory.",
-            CelarAiAnswerQuestionClass.DocumentEvidence => "Celar AI could not verify the requested document claim from an authorized citation-ready source.",
-            CelarAiAnswerQuestionClass.CrossDomain => "Celar AI could not reconcile the required live Pulse data and authorized document evidence into one verified answer.",
-            CelarAiAnswerQuestionClass.StructuredOperational => "Celar AI could not verify the requested internal fact from a current authorized Pulse source.",
-            CelarAiAnswerQuestionClass.RuntimeDiagnostic => "Celar AI could not verify the diagnostic conclusion from current runtime evidence.",
-            CelarAiAnswerQuestionClass.ProductProcedure => "Celar AI could not verify the procedure against the current source-controlled operating contract.",
+            CelarAiAnswerQuestionClass.PublicCurrent =>
+                "Celar AI could not verify the changing public fact from a retrieval-time source, so it will not answer from model memory.",
+            CelarAiAnswerQuestionClass.DocumentEvidence =>
+                "Celar AI could not verify the requested document claim from an authorized citation-ready source.",
+            CelarAiAnswerQuestionClass.CrossDomain =>
+                "Celar AI could not reconcile the required live Pulse data and authorized document evidence into one verified answer.",
+            CelarAiAnswerQuestionClass.StructuredOperational =>
+                "Celar AI could not verify the requested internal fact from a current authorized Pulse source.",
+            CelarAiAnswerQuestionClass.RuntimeDiagnostic =>
+                "Celar AI could not verify the diagnostic conclusion from current runtime evidence.",
+            CelarAiAnswerQuestionClass.ProductProcedure =>
+                "Celar AI could not verify the procedure against the current source-controlled operating contract.",
             _ => "Celar AI does not yet have enough authoritative evidence to provide a verified answer."
         };
 
@@ -597,19 +843,26 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         source.Status.Equals("succeeded", StringComparison.OrdinalIgnoreCase)
         && source.StatusCode is >= 200 and < 300;
 
-    private static CelarAiReliabilityFinding Blocker(string code, string message, string action) =>
+    private static CelarAiReliabilityFinding Blocker(
+        string code,
+        string message,
+        string action) =>
         new(code, "blocker", message, action);
 
-    private static CelarAiReliabilityFinding Review(string code, string message, string action) =>
+    private static CelarAiReliabilityFinding Review(
+        string code,
+        string message,
+        string action) =>
         new(code, "review", message, action);
 
     private static string Normalize(string? value) =>
-        Regex.Replace((value ?? string.Empty).Trim().ToLowerInvariant(), @"\s+", " ", RegexOptions.CultureInvariant);
+        Regex.Replace(
+            (value ?? string.Empty).Trim().ToLowerInvariant(),
+            @"\s+",
+            " ",
+            RegexOptions.CultureInvariant);
 
     private static bool ContainsAny(string value, params string[] signals) =>
-        signals.Any(signal => value.Contains(signal, StringComparison.OrdinalIgnoreCase));
-
-    private static bool ContainsAny(string value, IEnumerable<string> signals) =>
         signals.Any(signal => value.Contains(signal, StringComparison.OrdinalIgnoreCase));
 
     private static IReadOnlyList<string> AppendDistinct(
