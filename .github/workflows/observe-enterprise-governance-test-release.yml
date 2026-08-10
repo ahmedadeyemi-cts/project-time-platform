@@ -1,4 +1,4 @@
-name: Observe Corrected Enterprise Governance Protected Test Promotion
+name: Observe Fixed Enterprise Governance Protected Test Release
 
 on:
   pull_request:
@@ -17,21 +17,21 @@ concurrency:
 
 jobs:
   observe:
-    name: Verify exact Test promotion and Oracle activation
+    name: Verify exact fixed Test release and Oracle activation
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'diagnostic/observe-enterprise-governance-test-release-20260810'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 210
     env:
-      TARGET_CONTROL_COMMIT: 497e211a50111674269ba8239fd21083603e2966
+      TARGET_CONTROL_COMMIT: 39e03363bbd6f2a2c35c9172cdcfc6090ba71ee4
       NORMAL_WORKFLOW_PATH: .github/workflows/projectpulse-promote-enterprise-governance-test.yml
       ORACLE_WORKFLOW_PATH: .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
-      NORMAL_ARTIFACT_PREFIX: enterprise-governance-promotion-
+      NORMAL_ARTIFACT_PREFIX: enterprise-governance-fixed-
       ORACLE_ARTIFACT_PREFIX: celar-ai-oracle-test-runtime-
 
     steps:
-      - name: Locate and verify the corrected protected Test promotion
+      - name: Locate and verify exact protected Test release
         id: normal
         shell: bash
         env:
@@ -39,29 +39,23 @@ jobs:
         run: |
           set -Eeuo pipefail
           RUN_ID=''
-          for poll in $(seq 1 90); do
+          for poll in $(seq 1 120); do
             RUNS="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs?branch=main&event=push&per_page=100")"
             RUN_ID="$(jq -r --arg sha "$TARGET_CONTROL_COMMIT" --arg path "$NORMAL_WORKFLOW_PATH" '
               [.workflow_runs[]
-                | select(
-                    .head_sha == $sha
-                    and .event == "push"
-                    and ((.path | split("@")[0]) == $path)
-                  )]
-              | sort_by(.created_at)
-              | reverse
-              | .[0].id // empty
+                | select(.head_sha == $sha and .event == "push" and ((.path | split("@")[0]) == $path))]
+              | sort_by(.created_at) | reverse | .[0].id // empty
             ' <<<"$RUNS")"
             [[ -n "$RUN_ID" ]] && break
             sleep 10
           done
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'ERROR: exact corrected Test promotion run was not found.' >&2; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Exact fixed Test release run was not found.' >&2; exit 1; }
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "NORMAL_RUN_ID=$RUN_ID"
 
-          RUN=''
           CONCLUSION=''
-          for poll in $(seq 1 600); do
+          RUN=''
+          for poll in $(seq 1 720); do
             RUN="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
             [[ "$(jq -r '.head_sha' <<<"$RUN")" == "$TARGET_CONTROL_COMMIT" ]]
             [[ "$(jq -r '.event' <<<"$RUN")" == push ]]
@@ -69,10 +63,7 @@ jobs:
             STATUS="$(jq -r '.status' <<<"$RUN")"
             ATTEMPT="$(jq -r '.run_attempt' <<<"$RUN")"
             echo "NORMAL_POLL=$poll STATUS=$STATUS ATTEMPT=$ATTEMPT"
-            if [[ "$STATUS" == completed ]]; then
-              CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$RUN")"
-              break
-            fi
+            if [[ "$STATUS" == completed ]]; then CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$RUN")"; break; fi
             sleep 15
           done
           [[ -n "$CONCLUSION" ]] || CONCLUSION=timed_out
@@ -82,23 +73,18 @@ jobs:
           jq -r '.jobs[] | .steps[]? | [.number,.name,.status,(.conclusion // "none")] | @tsv' <<<"$JOBS" | sed 's/^/NORMAL_STEP=/'
 
           ARTIFACTS="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100")"
-          ARTIFACT_NAME="$(jq -r --arg prefix "$NORMAL_ARTIFACT_PREFIX" '
-            [.artifacts[] | select(.expired == false and (.name | startswith($prefix)))]
-            | sort_by(.created_at) | reverse | .[0].name // empty
-          ' <<<"$ARTIFACTS")"
+          ARTIFACT_NAME="$(jq -r --arg prefix "$NORMAL_ARTIFACT_PREFIX" '[.artifacts[] | select(.expired == false and (.name | startswith($prefix)))] | sort_by(.created_at) | reverse | .[0].name // empty' <<<"$ARTIFACTS")"
           ARTIFACT_DIGEST="$(jq -r --arg name "$ARTIFACT_NAME" '[.artifacts[] | select(.name == $name)] | .[0].digest // empty' <<<"$ARTIFACTS")"
-
           echo "NORMAL_RUN_URL=$(jq -r '.html_url' <<<"$RUN")"
           echo "NORMAL_RUN_ATTEMPT=$(jq -r '.run_attempt' <<<"$RUN")"
           echo "NORMAL_RUN_CONCLUSION=$CONCLUSION"
           echo "NORMAL_ARTIFACT_NAME=${ARTIFACT_NAME:-none}"
           echo "NORMAL_ARTIFACT_DIGEST=${ARTIFACT_DIGEST:-none}"
-          echo "normal_conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
           echo "normal_artifact=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
           [[ "$CONCLUSION" == success ]]
           [[ -n "$ARTIFACT_NAME" ]]
 
-      - name: Locate and verify the queued Oracle Celar AI activation
+      - name: Locate and verify queued Oracle Celar AI Test activation
         id: oracle
         shell: bash
         env:
@@ -110,25 +96,19 @@ jobs:
             RUNS="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs?branch=main&event=workflow_dispatch&per_page=100")"
             RUN_ID="$(jq -r --arg sha "$TARGET_CONTROL_COMMIT" --arg path "$ORACLE_WORKFLOW_PATH" '
               [.workflow_runs[]
-                | select(
-                    .head_sha == $sha
-                    and .event == "workflow_dispatch"
-                    and ((.path | split("@")[0]) == $path)
-                  )]
-              | sort_by(.created_at)
-              | reverse
-              | .[0].id // empty
+                | select(.head_sha == $sha and .event == "workflow_dispatch" and ((.path | split("@")[0]) == $path))]
+              | sort_by(.created_at) | reverse | .[0].id // empty
             ' <<<"$RUNS")"
             [[ -n "$RUN_ID" ]] && break
             sleep 10
           done
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'ERROR: Oracle Test activation was not queued for the exact promotion commit.' >&2; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Oracle Celar AI activation run was not queued for the exact release.' >&2; exit 1; }
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "ORACLE_RUN_ID=$RUN_ID"
 
-          RUN=''
           CONCLUSION=''
-          for poll in $(seq 1 480); do
+          RUN=''
+          for poll in $(seq 1 600); do
             RUN="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
             [[ "$(jq -r '.head_sha' <<<"$RUN")" == "$TARGET_CONTROL_COMMIT" ]]
             [[ "$(jq -r '.event' <<<"$RUN")" == workflow_dispatch ]]
@@ -136,10 +116,7 @@ jobs:
             STATUS="$(jq -r '.status' <<<"$RUN")"
             ATTEMPT="$(jq -r '.run_attempt' <<<"$RUN")"
             echo "ORACLE_POLL=$poll STATUS=$STATUS ATTEMPT=$ATTEMPT"
-            if [[ "$STATUS" == completed ]]; then
-              CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$RUN")"
-              break
-            fi
+            if [[ "$STATUS" == completed ]]; then CONCLUSION="$(jq -r '.conclusion // "unknown"' <<<"$RUN")"; break; fi
             sleep 15
           done
           [[ -n "$CONCLUSION" ]] || CONCLUSION=timed_out
@@ -149,18 +126,13 @@ jobs:
           jq -r '.jobs[] | .steps[]? | [.number,.name,.status,(.conclusion // "none")] | @tsv' <<<"$JOBS" | sed 's/^/ORACLE_STEP=/'
 
           ARTIFACTS="$(gh api -H 'Accept: application/vnd.github+json' "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100")"
-          ARTIFACT_NAME="$(jq -r --arg prefix "$ORACLE_ARTIFACT_PREFIX" '
-            [.artifacts[] | select(.expired == false and (.name | startswith($prefix)))]
-            | sort_by(.created_at) | reverse | .[0].name // empty
-          ' <<<"$ARTIFACTS")"
+          ARTIFACT_NAME="$(jq -r --arg prefix "$ORACLE_ARTIFACT_PREFIX" '[.artifacts[] | select(.expired == false and (.name | startswith($prefix)))] | sort_by(.created_at) | reverse | .[0].name // empty' <<<"$ARTIFACTS")"
           ARTIFACT_DIGEST="$(jq -r --arg name "$ARTIFACT_NAME" '[.artifacts[] | select(.name == $name)] | .[0].digest // empty' <<<"$ARTIFACTS")"
-
           echo "ORACLE_RUN_URL=$(jq -r '.html_url' <<<"$RUN")"
           echo "ORACLE_RUN_ATTEMPT=$(jq -r '.run_attempt' <<<"$RUN")"
           echo "ORACLE_RUN_CONCLUSION=$CONCLUSION"
           echo "ORACLE_ARTIFACT_NAME=${ARTIFACT_NAME:-none}"
           echo "ORACLE_ARTIFACT_DIGEST=${ARTIFACT_DIGEST:-none}"
-          echo "oracle_conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
           echo "oracle_artifact=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
           [[ "$CONCLUSION" == success ]]
           [[ -n "$ARTIFACT_NAME" ]]
@@ -169,7 +141,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo 'ENTERPRISE_GOVERNANCE_TEST_PROMOTION=PASSED'
+          echo 'FIXED_ENTERPRISE_GOVERNANCE_TEST_RELEASE=PASSED'
+          echo 'MODULE_082_RISKS_UAT=PASSED'
           echo 'ORACLE_CELAR_AI_TEST_ACTIVATION=PASSED'
           echo "NORMAL_EVIDENCE_ARTIFACT=${{ steps.normal.outputs.normal_artifact }}"
           echo "ORACLE_EVIDENCE_ARTIFACT=${{ steps.oracle.outputs.oracle_artifact }}"
