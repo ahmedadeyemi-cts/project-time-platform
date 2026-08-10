@@ -87,7 +87,17 @@ test('RBAC', [
 test('ROLLBACK_GUARDS', ['autonomous run evidence exists','approval evidence exists','immutable release manifests exist','append-only automation evidence exists','outbox records exist'].every((value) => rollback.includes(value)));
 test('ROLLBACK_OWNERSHIP', rollback.includes('full_future_loop_083_role_grants') && rollback.includes('full_future_loop_083_permissions_created'));
 test('WORKFLOW_VALIDATION', workflow.includes('validate-module-083-autonomous-orchestration.mjs') && workflow.includes('dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj'));
-test('SOURCE_ONLY_WORKFLOW', !/(azure\/login@|id-token:\s*write|contents:\s*write|az containerapp update|psql .*083_module)/.test(workflow));
+const executableWorkflow = workflow
+  .split(/\r?\n/)
+  .filter((line) => !line.includes('grep -'))
+  .join('\n');
+test('SOURCE_ONLY_WORKFLOW',
+  !/^\s*uses:\s*azure\/login@/m.test(executableWorkflow)
+  && !/^\s*id-token:\s*write\s*$/m.test(executableWorkflow)
+  && !/^\s*contents:\s*write\s*$/m.test(executableWorkflow)
+  && !/^\s*environment:\s*(test|production)\s*$/m.test(executableWorkflow)
+  && !/\baz containerapp update\b/.test(executableWorkflow)
+  && !/\bpsql\b.*083_module/.test(executableWorkflow));
 test('DOCUMENTED_ACTIVATION', documentation.includes('GitHub App') && documentation.includes('Azure') && documentation.includes('kill switch') && documentation.includes('dry-run'));
 test('FOUNDATION_STILL_FAIL_CLOSED', foundation.includes('Enabled: false') && foundation.includes('GlobalKillSwitch: true') && foundation.includes('FullFutureLoopAdapterMode.Disabled'));
 
