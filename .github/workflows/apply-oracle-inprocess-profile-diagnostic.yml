@@ -1,0 +1,92 @@
+name: Apply Oracle In-Process Profile Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/apply-oracle-inprocess-profile-diagnostic.yml'
+      - 'scripts/patch-oracle-inprocess-profile-diagnostic.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-oracle-inprocess-profile-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    name: Patch, validate, and commit safe Oracle diagnostics
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/oracle-inprocess-profile-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact diagnostic branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: diagnostic/oracle-inprocess-profile-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded workflow diagnostic
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile scripts/patch-oracle-inprocess-profile-diagnostic.py
+          python3 scripts/patch-oracle-inprocess-profile-diagnostic.py
+
+          grep -Fq 'ORACLE_INPROCESS_PROFILE_DIAGNOSTIC=CAPTURED' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq 'oracle-private-model-profile-sanitized.json' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq 'oracle-private-model-probe-sanitized.json' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq 'privateModelProfile:($privateModelProfile[0] // {})' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq 'privateModelProbe:($privateModelProbe[0] // {})' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          ! grep -Fq 'cat "$PROFILE_RAW"' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          ! grep -Fq 'cat "$PROBE_RAW"' \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          git diff --check
+
+      - name: Install checksum-pinned actionlint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+
+      - name: Validate Oracle runtime workflow contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+
+          rm -f \
+            .github/workflows/apply-oracle-inprocess-profile-diagnostic.yml \
+            scripts/patch-oracle-inprocess-profile-diagnostic.py
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+
+      - name: Commit validated permanent diagnostic
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name 'Pulse Enterprise Automation'
+          git config user.email 'pulse-enterprise-automation@users.noreply.github.com'
+          git commit -m 'diagnostic: capture Oracle in-process profile safely'
+          git push origin HEAD:diagnostic/oracle-inprocess-profile-20260810
