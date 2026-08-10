@@ -101,8 +101,11 @@ jobs:
             -H "X-ProjectPulse-Session: $UAT_SESSION" \
             -H 'X-ProjectPulse-Module-Number: 011' \
             "$BASE/api/celar-ai/v1/production/readiness")"
-          [[ "$UAT_STATUS" == 200 ]] || fail "The protected Test UAT session is expired or unauthorized (HTTP $UAT_STATUS)."
-          jq -e . "$EVIDENCE_DIR/uat-readiness.json" >/dev/null
+          UAT_VALID=false
+          if [[ "$UAT_STATUS" == 200 ]]; then
+            jq -e . "$EVIDENCE_DIR/uat-readiness.json" >/dev/null
+            UAT_VALID=true
+          fi
 
           jq -n \
             --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
@@ -112,12 +115,15 @@ jobs:
             --arg webImage "$WEB_IMAGE" \
             --arg apiRevision "$API_REVISION" \
             --arg webRevision "$WEB_REVISION" \
+            --argjson uatSessionValidated "$UAT_VALID" \
+            --argjson uatHttpStatus "$UAT_STATUS" \
             '{
               observedAt:$observedAt,
               environment:"test",
               origin:$origin,
               healthHttpStatus:200,
-              uatSessionValidated:true,
+              uatSessionValidated:$uatSessionValidated,
+              uatHttpStatus:$uatHttpStatus,
               sourceCommit:$sourceCommit,
               apiImage:$apiImage,
               webImage:$webImage,
@@ -134,9 +140,14 @@ jobs:
           echo "LIVE_API_REVISION=$API_REVISION"
           echo "LIVE_WEB_REVISION=$WEB_REVISION"
           echo 'LIVE_HEALTH_HTTP_STATUS=200'
-          echo 'TEST_UAT_SESSION=VALID'
           echo 'TEST_MUTATION=NONE'
           echo 'PRODUCTION_MUTATION=NONE'
+          if [[ "$UAT_VALID" == true ]]; then
+            echo 'TEST_UAT_SESSION=VALID'
+          else
+            echo "TEST_UAT_SESSION=INVALID_HTTP_$UAT_STATUS"
+            fail "The protected Test UAT session is expired or unauthorized (HTTP $UAT_STATUS)."
+          fi
 
       - name: Upload immutable live-baseline evidence
         if: always()
@@ -157,7 +168,7 @@ jobs:
             if [[ -f "$EVIDENCE_DIR/live-test-baseline.json" ]]; then
               echo '- Read-only observation: passed'
               echo '- Health: HTTP 200'
-              echo '- Protected Test UAT session: valid'
+              echo '- Protected Test UAT session: checked; inspect the evidence status'
               echo '- Test mutation: none'
               echo '- Production mutation: none'
             else
