@@ -6,22 +6,34 @@ on:
     paths:
       - '.github/workflows/module-083-autonomous-control-plane-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
       - 'schemas/full-future-loop/**'
       - 'config/full-future-loop/**'
+      - 'database/migrations/083_module_083_autonomous_control_plane.sql'
+      - 'database/rollback/083_module_083_autonomous_control_plane_rollback.sql'
       - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md'
+      - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-ORCHESTRATION.md'
   push:
     branches:
       - feature/module-083-autonomous-control-plane-20260809
     paths:
       - '.github/workflows/module-083-autonomous-control-plane-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
+      - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
       - 'schemas/full-future-loop/**'
       - 'config/full-future-loop/**'
+      - 'database/migrations/083_module_083_autonomous_control_plane.sql'
+      - 'database/rollback/083_module_083_autonomous_control_plane_rollback.sql'
       - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md'
+      - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-ORCHESTRATION.md'
 
 permissions:
   contents: read
@@ -34,7 +46,7 @@ jobs:
   validate:
     name: Validate bounded enterprise autonomy
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out exact source
@@ -44,49 +56,72 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Guard source-only boundary
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Guard source-only and dry-run boundary
         shell: bash
         run: |
           set -Eeuo pipefail
           git diff --check
-          test -f src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs
-          test -f src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs
-          test -f tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj
-          test -f tests/FullFutureLoopAutomationPolicyTests/Program.cs
-          test -f schemas/full-future-loop/automation-policy.schema.json
-          test -f schemas/full-future-loop/release-manifest.schema.json
-          test -f config/full-future-loop/automation-policy.example.json
-          test -f docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md
+          for required in \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
+            src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs \
+            src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs \
+            src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs \
+            tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
+            tests/FullFutureLoopAutomationPolicyTests/Program.cs \
+            schemas/full-future-loop/automation-policy.schema.json \
+            schemas/full-future-loop/release-manifest.schema.json \
+            config/full-future-loop/automation-policy.example.json \
+            database/migrations/083_module_083_autonomous_control_plane.sql \
+            database/rollback/083_module_083_autonomous_control_plane_rollback.sql \
+            docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md \
+            docs/modules/module-083-full-future-loop/AUTONOMOUS-ORCHESTRATION.md; do
+            test -f "$required"
+          done
 
           ! grep -RInE 'azure/login@|az containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up' \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
             tests/FullFutureLoopAutomationPolicyTests \
             config/full-future-loop \
             schemas/full-future-loop
           ! grep -RInE '(BEGIN (RSA |OPENSSH )?PRIVATE KEY|ghp_[A-Za-z0-9]+|github_pat_|Bearer [A-Za-z0-9._-]{20,})' \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
             tests/FullFutureLoopAutomationPolicyTests \
             config/full-future-loop \
             schemas/full-future-loop \
-            docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md
+            database/migrations/083_module_083_autonomous_control_plane.sql \
+            docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md \
+            docs/modules/module-083-full-future-loop/AUTONOMOUS-ORCHESTRATION.md
+
+          grep -Fq 'CHECK (dry_run=TRUE)' database/migrations/083_module_083_autonomous_control_plane.sql
+          grep -Fq 'CHECK (dry_run_only=TRUE)' database/migrations/083_module_083_autonomous_control_plane.sql
+          grep -Fq "adapter_mode IN ('disabled','dry_run')" database/migrations/083_module_083_autonomous_control_plane.sql
+          grep -Fq 'externalExecutionEnabled = false' src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs
+          ! grep -Eq '^[[:space:]]*environment:[[:space:]]*(test|production)' .github/workflows/module-083-autonomous-control-plane-ci.yml
 
           echo 'MODULE_083_AUTONOMY_SOURCE_BOUNDARY=PASSED'
           echo 'EXTERNAL_MUTATIONS=NONE'
+          echo 'MIGRATION_EXECUTION=NONE'
           echo 'SECRETS_REQUIRED=NONE'
-          echo 'PR_600_MUTATION=NONE'
 
-      - name: Validate policy, manifest, and architecture contract
+      - name: Validate policy, manifest, and architecture foundation
         shell: bash
         run: |
           set -Eeuo pipefail
           node src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs
 
-      - name: Verify .NET 10 SDK is available
+      - name: Validate durable orchestration contract
         shell: bash
         run: |
           set -Eeuo pipefail
-          dotnet --info
-          dotnet --list-sdks | grep -Eq '^10\.'
+          node src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs
 
       - name: Compile and execute deterministic policy tests
         shell: bash
@@ -96,9 +131,18 @@ jobs:
             --project tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
             --configuration Release
 
+      - name: Compile complete API with autonomous orchestration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release \
+            --no-restore || dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
       - name: Prove validators do not rewrite tracked source
         shell: bash
         run: |
           set -Eeuo pipefail
           git diff --exit-code
-          echo 'MODULE_083_AUTONOMOUS_CONTROL_PLANE_FOUNDATION=PASSED'
+          echo 'MODULE_083_AUTONOMOUS_CONTROL_PLANE_ORCHESTRATION=PASSED'
+          echo 'EXTERNAL_EXECUTION_ENABLED=FALSE'
