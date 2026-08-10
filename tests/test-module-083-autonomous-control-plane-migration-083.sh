@@ -119,7 +119,7 @@ assert_eq 1 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id=
 assert_eq "$first_applied" "$(value "SELECT applied_at FROM schema_migrations WHERE migration_id='083_module_083_autonomous_control_plane'")" migration_timestamp_immutable
 assert_eq 9 "$(value "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND tablename IN ('full_future_loop_automation_policies','full_future_loop_automation_state','full_future_loop_automation_adapters','full_future_loop_automation_runs','full_future_loop_automation_steps','full_future_loop_automation_approvals','full_future_loop_release_manifests','full_future_loop_automation_evidence','full_future_loop_outbox')")" orchestration_tables
 assert_eq 1 "$(value "SELECT COUNT(*) FROM full_future_loop_automation_policies WHERE policy_version='enterprise-default-v1'")" baseline_policy
-assert_eq 'f|t|t|1' "$(value "SELECT automation_enabled::text||'|'||global_kill_switch::text||'|'||dry_run_only::text||'|'||revision_number::text FROM full_future_loop_automation_state WHERE state_id=1")" fail_closed_runtime
+assert_eq 'false|true|true|1' "$(value "SELECT automation_enabled::text||'|'||global_kill_switch::text||'|'||dry_run_only::text||'|'||revision_number::text FROM full_future_loop_automation_state WHERE state_id=1")" fail_closed_runtime
 assert_eq 7 "$(value "SELECT COUNT(*) FROM full_future_loop_automation_adapters")" provider_neutral_adapters
 assert_eq 7 "$(value "SELECT COUNT(*) FROM full_future_loop_automation_adapters WHERE adapter_mode='disabled' AND is_ready=FALSE")" adapters_disabled
 assert_eq 4 "$(value "SELECT COUNT(*) FROM app_permissions WHERE module_code='083' AND permission_code LIKE '%FULL_FUTURE_LOOP_AUTOMATION_083'")" automation_permissions
