@@ -132,3 +132,5 @@ jobs:
           git config user.email 'pulse-test-release-automation@users.noreply.github.com'
           git commit -m 'ci: deploy merged enterprise and Oracle runtime release to Test'
           git push origin HEAD:release/test-pr600-pr601-1d1afbdc-20260810
+
+# Synchronize PR #602 after the base-branch applicator was installed.
