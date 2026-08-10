@@ -122,6 +122,8 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             || (includeRepositoryContext && projectSelected);
         var structuredSignal = CelarAiUniversalToolCatalog.HasStructuredInternalSignal(normalized)
             || StructuredIntents.Contains(intent);
+        var explicitStructuredIntent = StructuredIntents.Contains(intent)
+            && !intent.Equals("documents_and_rag", StringComparison.OrdinalIgnoreCase);
         var diagnosticSignal = DiagnosticIntents.Contains(intent)
             || (intent.Length == 0 && CelarAiUniversalToolCatalog.HasDiagnosticSignal(normalized));
         var procedureSignal = ProcedureIntents.Contains(intent)
@@ -133,47 +135,55 @@ public sealed class CelarAiUniversalAnswerReliabilityService
         var crossDomainSignal = documentSignal
             && ((includeRepositoryContext
                     && intent is "projects_and_delivery" or "financial_and_reporting" or "documents_and_rag")
-                || ContainsAny(
-                    normalized,
-                    "current project",
-                    "project task",
-                    "task",
-                    "assigned",
-                    "active assignment",
-                    "current forecast",
-                    "billed",
-                    "risk",
-                    "resource request",
-                    "flowhive",
-                    "project forge",
-                    "current delivery plan",
-                    "timeline",
-                    "capacity",
-                    "budget",
-                    "cost",
-                    "schedule",
-                    "milestone",
-                    "estimated hours"));
+                || (attachmentCount == 0
+                    && ContainsAny(
+                        normalized,
+                        "current project",
+                        "project task",
+                        "task",
+                        "assigned",
+                        "active assignment",
+                        "current forecast",
+                        "billed",
+                        "risk",
+                        "resource request",
+                        "flowhive",
+                        "project forge",
+                        "current delivery plan",
+                        "timeline",
+                        "capacity",
+                        "budget",
+                        "cost",
+                        "schedule",
+                        "milestone",
+                        "estimated hours")));
         var currentPublicSignal = CelarAiUniversalToolCatalog.HasCurrentPublicSignal(normalized)
             || normalized.Contains("latest stable version", StringComparison.Ordinal);
 
+        // Explicit intent is authoritative when a generic word such as
+        // "document" or "attachment" appears in a permission, retention, or
+        // troubleshooting question. Cross-domain reconciliation remains above
+        // the single-source classes because it deliberately requires both live
+        // structured evidence and private document evidence.
         var questionClass = intent == "general_knowledge"
             ? currentPublicSignal
                 ? CelarAiAnswerQuestionClass.PublicCurrent
                 : CelarAiAnswerQuestionClass.PublicStable
             : architectureSignal
                 ? CelarAiAnswerQuestionClass.ArchitectureEnhancement
-                : crossDomainSignal
-                    ? CelarAiAnswerQuestionClass.CrossDomain
-                    : documentSignal
-                        ? CelarAiAnswerQuestionClass.DocumentEvidence
-                        : diagnosticSignal
-                            ? CelarAiAnswerQuestionClass.RuntimeDiagnostic
-                            : procedureSignal
-                                ? CelarAiAnswerQuestionClass.ProductProcedure
-                                : structuredSignal
-                                    ? CelarAiAnswerQuestionClass.StructuredOperational
-                                    : CelarAiAnswerQuestionClass.Unknown;
+                : diagnosticSignal
+                    ? CelarAiAnswerQuestionClass.RuntimeDiagnostic
+                    : crossDomainSignal
+                        ? CelarAiAnswerQuestionClass.CrossDomain
+                        : explicitStructuredIntent
+                            ? CelarAiAnswerQuestionClass.StructuredOperational
+                            : documentSignal
+                                ? CelarAiAnswerQuestionClass.DocumentEvidence
+                                : procedureSignal
+                                    ? CelarAiAnswerQuestionClass.ProductProcedure
+                                    : structuredSignal
+                                        ? CelarAiAnswerQuestionClass.StructuredOperational
+                                        : CelarAiAnswerQuestionClass.Unknown;
 
         var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();
         AddIntentDefaults(intent, normalized, matchedTools);
@@ -212,9 +222,6 @@ public sealed class CelarAiUniversalAnswerReliabilityService
             CelarAiAnswerQuestionClass.PublicStable => 2_592_000,
             _ => 3_600
         };
-        // Sensitive or underspecified evidence requests use a short explicit
-        // window even when their broader class normally permits older source
-        // material. The owning source is still re-authorized at request time.
         if (ContainsAny(
                 normalized,
                 "this document",
@@ -353,6 +360,28 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "The question requires document evidence, but no authorized document citation or document source was promoted.",
                 "Run permission-filtered private retrieval against the authoritative document version."));
         }
+        if (plan.QuestionClass == CelarAiAnswerQuestionClass.CrossDomain)
+        {
+            var hasDocumentEvidence = privateCitations > 0
+                || successfulSources.Any(source =>
+                    source.SourceType.Contains("document", StringComparison.OrdinalIgnoreCase));
+            var hasStructuredEvidence = successfulTools.Length > 0
+                || successfulSources.Any(source => ContainsAny(
+                    source.SourceType,
+                    "internal",
+                    "database",
+                    "api",
+                    "calculation",
+                    "runtime",
+                    "structured"));
+            if (!hasDocumentEvidence || !hasStructuredEvidence)
+            {
+                findings.Add(Blocker(
+                    "cross_domain_evidence_families_missing",
+                    "Cross-domain questions must combine current authorized structured evidence and private document evidence into one verified answer.",
+                    "Retrieve both permission-scoped structured data and an authoritative private document citation before promoting the answer."));
+            }
+        }
         if (result.Answer.Conflicts.Count > 0)
         {
             findings.Add(Review(
@@ -413,6 +442,7 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "insufficient_authoritative_evidence"
                 or "current_public_fact_not_live_verified"
                 or "private_document_evidence_missing"
+                or "cross_domain_evidence_families_missing"
                 or "deterministic_calculation_evidence_missing"
                 or "external_model_cannot_establish_internal_fact");
         var answer = result.Answer with
@@ -757,6 +787,11 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "percentage",
                 "percent",
                 "largest"))
+        {
+            return true;
+        }
+        if (intent == "identity_and_permissions"
+            && normalized.StartsWith("which ", StringComparison.Ordinal))
         {
             return true;
         }
