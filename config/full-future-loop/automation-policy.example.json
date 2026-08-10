@@ -1,0 +1,44 @@
+{
+  "policyVersion": "enterprise-default-v1",
+  "enabled": false,
+  "globalKillSwitch": true,
+  "allowedRepositories": [
+    "ahmedadeyemi-cts/project-time-platform"
+  ],
+  "allowedEnvironments": [
+    "canary",
+    "test"
+  ],
+  "allowedOperations": [
+    "observe",
+    "classify",
+    "create_issue",
+    "dispatch_ci",
+    "run_canary",
+    "deploy",
+    "verify",
+    "rollback",
+    "notify",
+    "propose_repair"
+  ],
+  "automaticActions": {
+    "testDeployment": true,
+    "testRollback": true,
+    "productionDeployment": false,
+    "productionRollback": false
+  },
+  "approvalRequirements": {
+    "production": true,
+    "migration": true,
+    "security": true,
+    "infrastructure": true,
+    "secretChange": true
+  },
+  "limits": {
+    "maximumConcurrentRuns": 2,
+    "maximumStepAttempts": 3,
+    "maximumRunMinutes": 120
+  },
+  "evidenceMaximumAgeMinutes": 1440,
+  "approvedProductionChangeTypes": []
+}
