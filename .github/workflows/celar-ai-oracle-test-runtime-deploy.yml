@@ -102,9 +102,61 @@ jobs:
           curl -fsS --max-time 600 "${AUTH[@]}" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE OK"}],stream:false,temperature:0,max_tokens:32}')" \
             "$ORACLE_INFERENCE_ENDPOINT" | jq -e '.choices[0].message.content | length > 0' >/dev/null
+          EMBEDDING_FILE="$RUNNER_TEMP/oracle-embedding.json"
           curl -fsS --max-time 180 "${AUTH[@]}" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg model "$ORACLE_EMBEDDING_MODEL" '{model:$model,input:["Celar AI Test embedding proof"],encoding_format:"float"}')" \
-            "$ORACLE_EMBEDDING_ENDPOINT" | jq -e '.data | length == 1 and (.data[0].embedding | length) == 768' >/dev/null
+            "$ORACLE_EMBEDDING_ENDPOINT" > "$EMBEDDING_FILE"
+          python3 - "$EMBEDDING_FILE" <<'PY'
+          import json
+          import math
+          import sys
+
+          with open(sys.argv[1], encoding='utf-8') as handle:
+              payload = json.load(handle)
+
+          def vector(value):
+              if not isinstance(value, list) or not value:
+                  return None
+              if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+                  return None
+              converted = [float(item) for item in value]
+              return converted if all(math.isfinite(item) for item in converted) else None
+
+          def vectors(value):
+              if isinstance(value, dict):
+                  if isinstance(value.get('data'), list):
+                      ordered = {}
+                      for fallback, item in enumerate(value['data']):
+                          if not isinstance(item, dict):
+                              return []
+                          parsed = vector(item.get('embedding'))
+                          index = item.get('index', fallback)
+                          if parsed is None or isinstance(index, bool) or not isinstance(index, int) or index in ordered:
+                              return []
+                          ordered[index] = parsed
+                      if sorted(ordered) != list(range(len(ordered))):
+                          return []
+                      return [ordered[index] for index in sorted(ordered)]
+                  if 'embeddings' in value:
+                      return vectors(value['embeddings'])
+                  parsed = vector(value.get('embedding'))
+                  return [parsed] if parsed is not None else []
+              if isinstance(value, list):
+                  parsed = vector(value)
+                  if parsed is not None:
+                      return [parsed]
+                  if value and all(isinstance(item, list) for item in value):
+                      result = [vector(item) for item in value]
+                      return result if all(item is not None for item in result) else []
+                  if value and all(isinstance(item, dict) for item in value):
+                      return vectors({'data': value})
+              return []
+
+          result = vectors(payload)
+          if len(result) != 1 or len(result[0]) != 768:
+              raise SystemExit('Oracle embedding response did not contain one finite 768-dimensional vector.')
+          print('ORACLE_EMBEDDING_RESPONSE=VALID')
+          PY
           CLEAN_FILE="$RUNNER_TEMP/celar-oracle-clean.txt"
           printf 'Celar AI protected Test clean-file validation.\n' > "$CLEAN_FILE"
           curl -fsS --max-time 180 "${AUTH[@]}" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" \
@@ -144,7 +196,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          DIGEST="$(scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:celar-oracle-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          DIGEST="$(bash scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:celar-oracle-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
           echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Configure the protected token and deploy the Test API revision
@@ -216,7 +268,7 @@ jobs:
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
           AUTH=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011' -H 'Cache-Control: no-cache')
           AVAILABLE=false
-          for attempt in $(seq 1 18); do
+          for _attempt in $(seq 1 18); do
             PROBE="$(curl -fsS --max-time 600 "${AUTH[@]}" -H 'Content-Type: application/json' -H "Origin: $BASE" -d '{}' "$BASE/api/ai-configuration/private-model/test" || true)"
             if jq -e '.status == "private_model_available" and .configured == true and .available == true' <<<"$PROBE" >/dev/null 2>&1; then AVAILABLE=true; break; fi
             sleep 10
