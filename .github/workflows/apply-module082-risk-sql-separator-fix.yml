@@ -1,7 +1,11 @@
-# Second branch push intentionally triggers this one-time source applicator.
 name: Apply Module 082 Risk SQL Separator Correction
 
 on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/apply-module082-risk-sql-separator-fix.yml'
   push:
     branches:
       - fix/module082-risk-sql-separator-20260810
@@ -18,6 +22,7 @@ concurrency:
 jobs:
   patch:
     name: Patch, validate, and commit Module 082 SQL correction
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
