@@ -10,6 +10,9 @@ const files = Object.freeze({
   foundation: 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs',
   module: 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs',
   bridge: 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs',
+  host: 'src/frontend/project-time-web/src/FullFutureLoopCenter.jsx',
+  ui: 'src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx',
+  uiStyle: 'src/frontend/project-time-web/src/full-future-loop-automation-center.css',
   migration: 'database/migrations/083_module_083_autonomous_control_plane.sql',
   rollback: 'database/rollback/083_module_083_autonomous_control_plane_rollback.sql',
   policySchema: 'schemas/full-future-loop/automation-policy.schema.json',
@@ -44,9 +47,13 @@ for (const jsonFile of [files.policySchema, files.manifestSchema, files.policyEx
 const foundation = read(files.foundation);
 const module = read(files.module);
 const bridge = read(files.bridge);
+const host = read(files.host);
+const ui = read(files.ui);
+const uiStyle = read(files.uiStyle);
 const migration = read(files.migration);
 const rollback = read(files.rollback);
 const workflow = read(files.workflow);
+const manifestSchema = read(files.manifestSchema);
 const documentation = read(files.architecture) + read(files.orchestration);
 
 const endpoints = [
@@ -73,6 +80,7 @@ test('IDEMPOTENCY_AND_LEASES', migration.includes('idempotency_key') && migratio
 test('APPROVAL_SEPARATION_OF_DUTIES', module.includes('Separation of duties prevents the requesting user') && module.includes('runRequester == access!.EffectiveUserId'));
 test('APPROVAL_GATES', ['production_environment_approval','migration_approval','security_approval','infrastructure_approval','secret_change_approval'].every((value) => foundation.includes(value)));
 test('MANIFEST_EVIDENCE', ['SbomReference','ProvenanceReference','SignatureReference','RollbackArtifactDigests','ConfigurationFingerprint'].every((value) => foundation.includes(value) && module.includes(value)));
+test('MANIFEST_SCHEMA_ALIGNED', ['buildWorkflow','buildRunId','buildRunAttempt','approvalEvidenceReferences','rollbackArtifactDigests'].every((value) => manifestSchema.includes(`"${value}"`)) && !manifestSchema.includes('"build": {'));
 test('APPEND_ONLY', migration.includes('pulse083_immutable_automation_evidence') && migration.includes('BEFORE UPDATE OR DELETE ON full_future_loop_automation_policies') && migration.includes('BEFORE UPDATE OR DELETE ON full_future_loop_release_manifests') && migration.includes('BEFORE UPDATE OR DELETE ON full_future_loop_automation_evidence'));
 test('VIEW_AS_READ_ONLY', module.includes('EnterpriseGovernanceResults.ViewAsReadOnly') && module.includes('access.IsViewAs'));
 test('AI_NOT_AUTHORITY', foundation.includes('AI model cannot be the approving or requesting authority') && documentation.includes('cannot approve its own'));
@@ -86,7 +94,13 @@ test('RBAC', [
 ].every((value) => migration.includes(value) && module.includes(value)));
 test('ROLLBACK_GUARDS', ['autonomous run evidence exists','approval evidence exists','immutable release manifests exist','append-only automation evidence exists','outbox records exist'].every((value) => rollback.includes(value)));
 test('ROLLBACK_OWNERSHIP', rollback.includes('full_future_loop_083_role_grants') && rollback.includes('full_future_loop_083_permissions_created'));
+test('UI_INTEGRATION', host.includes("import FullFutureLoopAutomationCenter from './FullFutureLoopAutomationCenter.jsx';") && host.includes('<FullFutureLoopAutomationCenter authSession={authSession} selectedLoopId={loop?.loopId || null} />'));
+test('UI_CONTROL_SURFACES', ['Policy Simulator','Adapters','Runs & Manifests','Approvals','Evidence','Save governed runtime state','Create durable dry run','Register immutable manifest'].every((value) => ui.includes(value)));
+test('UI_SAFETY_BOUNDARY', ui.includes('External execution: OFF') && ui.includes('No external execution was attempted') && ui.includes('ACTIVE_ADAPTER_MODE_NOT_AUTHORIZED') === false && !/(azure\/login@|az containerapp update|Octokit|HttpClient)/.test(ui));
+test('UI_ACCESS_BOUNDARIES', ui.includes('permissions.canManage') && ui.includes('permissions.canOperateDryRuns') && ui.includes('permissions.canApprove') && ui.includes('separationOfDutiesSatisfied'));
+test('UI_THEME_AND_RESPONSIVE', uiStyle.includes("[data-theme='dark'] .ffla-center") && uiStyle.includes('@media (max-width: 900px)') && uiStyle.includes('@media (max-width: 620px)'));
 test('WORKFLOW_VALIDATION', workflow.includes('validate-module-083-autonomous-orchestration.mjs') && workflow.includes('dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj'));
+test('WORKFLOW_FRONTEND_BUILD', workflow.includes('npm ci --no-fund') && workflow.includes('npm run build') && workflow.includes('FullFutureLoopAutomationCenter.jsx'));
 const executableWorkflow = workflow
   .split(/\r?\n/)
   .filter((line) => !line.includes('grep -'))
