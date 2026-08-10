@@ -1,3 +1,4 @@
+// Prevent PostgreSQL from receiving the invalid ON TRUEWHERE token sequence in Module 082 risk queries.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,4 +11,5 @@ test('OPTIONAL_GUID_QUERY',frontend.includes('function queryPath(path, values)')
 test('PROGRESSIVE_CAPABILITIES',frontend.includes("request('/access')")&&frontend.includes('Promise.allSettled')&&frontend.includes("['summary',request('/summary')]")&&frontend.includes('access?.permissions'));
 test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet("/access", GetAccessAsync)')&&!backend.includes('MapGet("/summary", GetSummaryAsync)'));
 test('RUNTIME_READINESS',backend.includes('077_module_082_enterprise_project_risk_register')&&backend.includes('RuntimeReadyAsync')&&backend.includes('dataReady'));
+test('RISK_SQL_TOKEN_BOUNDARY',backend.includes('RiskSelect + \"\\n\" + $\"\"\"')&&!backend.includes('RiskSelect + $\"\"\"'));
 console.log(`MODULE_082_VALIDATION_CHECKS=${checks}`);console.log(`MODULE_082_CONTRACT=${failures?'FAILED':'PASSED'}`);process.exitCode=failures?1:0;
