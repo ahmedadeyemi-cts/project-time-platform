@@ -1,0 +1,258 @@
+name: Diagnose Oracle Candidate Environment Projection
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/diagnose-oracle-candidate-env-projection.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: diagnose-oracle-candidate-env-projection
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    name: Read sanitized candidate revision environment metadata
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/oracle-candidate-env-projection-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EVIDENCE_DIR: /tmp/oracle-candidate-env-projection
+      TARGET_ORACLE_RUN_ID: '31426428559'
+      TARGET_ORACLE_RUN_ATTEMPT: '1'
+
+    steps:
+      - name: Sign in read-only to protected Test
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture sanitized candidate and active revision environment projection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] \
+            || fail 'Azure login is outside protected Test.'
+
+          APP_JSON="$(az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$APP_JSON")" == test ]] \
+            || fail 'The API target is not tagged Test.'
+
+          EXPECTED_SUFFIX="caor-${TARGET_ORACLE_RUN_ID}-${TARGET_ORACLE_RUN_ATTEMPT}"
+          REVISION_LIST="$(az containerapp revision list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors)"
+          CANDIDATE_REVISION="$(jq -r \
+            --arg suffix "$EXPECTED_SUFFIX" \
+            '[.[] | select(.name | endswith("--" + $suffix)) | .name] |
+             if length == 1 then .[0] else empty end' <<<"$REVISION_LIST")"
+          [[ -n "$CANDIDATE_REVISION" ]] || {
+            jq -n \
+              --arg suffix "$EXPECTED_SUFFIX" \
+              --argjson available "$(jq '[.[] | .name | select(contains("--caor-"))]' <<<"$REVISION_LIST")" \
+              '{status:"candidate_revision_not_found",expectedSuffix:$suffix,availableOracleRevisions:$available}' \
+              > "$EVIDENCE_DIR/oracle-candidate-env-projection.json"
+            fail 'The exact Oracle candidate revision is no longer retained.'
+          }
+
+          ACTIVE_REVISIONS="$(jq '[.[] | select(.properties.active == true) | .name]' <<<"$REVISION_LIST")"
+          [[ "$(jq 'length' <<<"$ACTIVE_REVISIONS")" == 1 ]] \
+            || fail 'Protected Test must have exactly one active API revision.'
+          ACTIVE_REVISION="$(jq -r '.[0]' <<<"$ACTIVE_REVISIONS")"
+
+          CANDIDATE_JSON="$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            -o json --only-show-errors)"
+          ACTIVE_JSON="$(az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$ACTIVE_REVISION" \
+            -o json --only-show-errors)"
+
+          jq '.properties.template.containers[0].env // [] | sort_by(.name)' \
+            <<<"$CANDIDATE_JSON" > "$EVIDENCE_DIR/candidate-env.json"
+          jq '.properties.template.containers[0].env // [] | sort_by(.name)' \
+            <<<"$ACTIVE_JSON" > "$EVIDENCE_DIR/active-env.json"
+
+          safe_value() {
+            local file="$1" name="$2"
+            jq -r --arg name "$name" \
+              '[.[] | select(.name == $name) | .value // empty] |
+               if length == 1 then .[0] else empty end' "$file"
+          }
+          entry_count() {
+            local file="$1" name="$2"
+            jq --arg name "$name" '[.[] | select(.name == $name)] | length' "$file"
+          }
+          secret_ref() {
+            local file="$1" name="$2"
+            jq -r --arg name "$name" \
+              '[.[] | select(.name == $name) | .secretRef // empty] |
+               if length == 1 then .[0] else empty end' "$file"
+          }
+
+          C="$EVIDENCE_DIR/candidate-env.json"
+          A="$EVIDENCE_DIR/active-env.json"
+
+          CANDIDATE_DUPLICATES="$(jq \
+            'sort_by(.name) | group_by(.name) |
+             [.[] | select(length > 1) | {name:.[0].name,count:length}]' "$C")"
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg candidateRevision "$CANDIDATE_REVISION" \
+            --arg activeRevision "$ACTIVE_REVISION" \
+            --arg candidateImage "$(jq -r '.properties.template.containers[0].image' <<<"$CANDIDATE_JSON")" \
+            --arg activeImage "$(jq -r '.properties.template.containers[0].image' <<<"$ACTIVE_JSON")" \
+            --arg candidateSource "$(safe_value "$C" PROJECTPULSE_SOURCE_COMMIT)" \
+            --arg activeSource "$(safe_value "$A" PROJECTPULSE_SOURCE_COMMIT)" \
+            --arg inferenceEndpoint "$(safe_value "$C" PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT)" \
+            --arg inferenceModel "$(safe_value "$C" PROJECTPULSE_PRIVATE_INFERENCE_MODEL)" \
+            --arg inferenceAuthMode "$(safe_value "$C" PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE)" \
+            --arg inferenceTokenSecretRef "$(secret_ref "$C" PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN)" \
+            --arg inferenceTokenLiteral "$(safe_value "$C" PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN)" \
+            --arg endpointAllowlist "$(safe_value "$C" PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST)" \
+            --arg externalEnabled "$(safe_value "$C" PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED)" \
+            --arg externalHost "$(safe_value "$C" PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST)" \
+            --arg externalIp "$(safe_value "$C" PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP)" \
+            --arg externalApproval "$(safe_value "$C" PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE)" \
+            --arg deploymentManaged "$(safe_value "$C" PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED)" \
+            --arg celarEnabled "$(safe_value "$C" PROJECTPULSE_CELAR_AI_ENABLED)" \
+            --arg embeddingEndpoint "$(safe_value "$C" PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT)" \
+            --arg embeddingModel "$(safe_value "$C" PROJECTPULSE_PRIVATE_EMBEDDING_MODEL)" \
+            --arg embeddingTokenSecretRef "$(secret_ref "$C" PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN)" \
+            --arg ocrEndpoint "$(safe_value "$C" PROJECTPULSE_PRIVATE_OCR_ENDPOINT)" \
+            --arg ocrModel "$(safe_value "$C" PROJECTPULSE_PRIVATE_OCR_MODEL)" \
+            --arg ocrTokenSecretRef "$(secret_ref "$C" PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN)" \
+            --arg scanEndpoint "$(safe_value "$C" PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT)" \
+            --arg scanTokenSecretRef "$(secret_ref "$C" PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN)" \
+            --arg releaseTokenReference "$(safe_value "$C" PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE)" \
+            --argjson duplicates "$CANDIDATE_DUPLICATES" \
+            --argjson endpointCount "$(entry_count "$C" PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT)" \
+            --argjson modelCount "$(entry_count "$C" PROJECTPULSE_PRIVATE_INFERENCE_MODEL)" \
+            --argjson authModeCount "$(entry_count "$C" PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE)" \
+            --argjson tokenCount "$(entry_count "$C" PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN)" \
+            --argjson allowlistCount "$(entry_count "$C" PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST)" \
+            '{
+              status:"captured",
+              observedAt:$observedAt,
+              environment:"test",
+              mutationPerformed:false,
+              candidate:{
+                revision:$candidateRevision,
+                image:$candidateImage,
+                sourceCommit:$candidateSource,
+                duplicateEnvironmentNames:$duplicates,
+                inference:{
+                  endpoint:$inferenceEndpoint,
+                  model:$inferenceModel,
+                  authMode:$inferenceAuthMode,
+                  tokenEntryCount:$tokenCount,
+                  tokenSecretRef:$inferenceTokenSecretRef,
+                  tokenLiteralPresent:($inferenceTokenLiteral != ""),
+                  endpointEntryCount:$endpointCount,
+                  modelEntryCount:$modelCount,
+                  authModeEntryCount:$authModeCount,
+                  allowlistEntryCount:$allowlistCount,
+                  allowlist:$endpointAllowlist,
+                  releaseTokenReference:$releaseTokenReference
+                },
+                externalRuntime:{
+                  enabled:$externalEnabled,
+                  host:$externalHost,
+                  expectedIp:$externalIp,
+                  approvalReference:$externalApproval
+                },
+                releaseMode:{
+                  celarEnabled:$celarEnabled,
+                  deploymentManaged:$deploymentManaged
+                },
+                embedding:{
+                  endpoint:$embeddingEndpoint,
+                  model:$embeddingModel,
+                  tokenSecretRef:$embeddingTokenSecretRef
+                },
+                ocr:{
+                  endpoint:$ocrEndpoint,
+                  model:$ocrModel,
+                  tokenSecretRef:$ocrTokenSecretRef
+                },
+                malwareScan:{
+                  endpoint:$scanEndpoint,
+                  tokenSecretRef:$scanTokenSecretRef
+                }
+              },
+              activeAfterRollback:{
+                revision:$activeRevision,
+                image:$activeImage,
+                sourceCommit:$activeSource
+              },
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/oracle-candidate-env-projection.json"
+
+          jq -e '
+            .candidate.sourceCommit == "4134c234dd7f6a373c433f706783ff98683b7a4b" and
+            .candidate.inference.endpoint == "https://celarai.onenecklab.com/v1/chat/completions" and
+            .candidate.inference.model == "gemma3:4b" and
+            .candidate.inference.authMode == "bearer" and
+            .candidate.inference.tokenSecretRef == "celar-ai-oracle-runtime-bearer" and
+            .candidate.inference.tokenLiteralPresent == false and
+            .candidate.inference.allowlist == "celarai.onenecklab.com" and
+            .candidate.externalRuntime.enabled == "true" and
+            .candidate.externalRuntime.host == "celarai.onenecklab.com" and
+            .candidate.externalRuntime.expectedIp == "129.213.82.144" and
+            .candidate.releaseMode.celarEnabled == "true" and
+            .candidate.releaseMode.deploymentManaged == "true" and
+            (.candidate.duplicateEnvironmentNames | length) == 0
+          ' "$EVIDENCE_DIR/oracle-candidate-env-projection.json" >/dev/null
+
+          echo "CANDIDATE_REVISION=$CANDIDATE_REVISION"
+          echo "ACTIVE_REVISION=$ACTIVE_REVISION"
+          echo 'SANITIZED_ORACLE_ENV_PROJECTION=VALID'
+          echo 'TEST_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Upload immutable sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oracle-candidate-env-projection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/oracle-candidate-env-projection
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish diagnostic summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Oracle candidate environment projection'
+            echo
+            if [[ -f "$EVIDENCE_DIR/oracle-candidate-env-projection.json" ]]; then
+              echo '- Sanitized candidate metadata: captured'
+              echo '- Secret values: not read or logged'
+              echo '- Test mutation: none'
+              echo '- Production mutation: none'
+            else
+              echo '- Diagnostic capture: failed; inspect the sanitized job log'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
