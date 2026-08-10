@@ -89,5 +89,13 @@ if updated.count(old_build) != 1:
     )
 updated = updated.replace(old_build, new_build, 1)
 
+old_loop = 'for attempt in $(seq 1 18); do'
+new_loop = 'for _attempt in $(seq 1 18); do'
+if updated.count(old_loop) != 1:
+    raise SystemExit(
+        f'Expected exactly one private-model availability loop, found {updated.count(old_loop)}.'
+    )
+updated = updated.replace(old_loop, new_loop, 1)
+
 path.write_text(updated, encoding='utf-8')
 print('Oracle Test activation workflow patched without logging embedding values.')
