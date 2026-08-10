@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/celar-ai-oracle-test-runtime-ci.yml'
+      - '.github/workflows/celar-ai-oracle-test-runtime-deploy.yml'
       - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
