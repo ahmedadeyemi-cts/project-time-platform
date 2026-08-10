@@ -16,7 +16,7 @@ const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeCont
 const services = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs')
 const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs')
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
-const workflow = read('.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml')
+const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const openCloud = read('deployment/environments/opencloud-template.yml')
 
