@@ -42,32 +42,39 @@ replace_once(
 
 validator = Path("tests/validate-celar-ai-oracle-test-runtime.mjs")
 validator_text = validator.read_text(encoding="utf-8")
-policy_marker = "  'TryGetPinnedAddress',\n"
-if validator_text.count(policy_marker) != 1:
-    raise SystemExit("Could not locate the external HTTPS policy marker list.")
+
+read_marker = "const policy = read('src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs')\n"
+if validator_text.count(read_marker) != 1:
+    raise SystemExit("Could not locate the external HTTPS policy reader.")
 validator_text = validator_text.replace(
-    policy_marker,
-    policy_marker + "  'github-environment://',\n",
+    read_marker,
+    read_marker
+    + "const releasePolicy = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs')\n",
     1,
 )
 
-workflow_marker = "  'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN',\n"
-if validator_text.count(workflow_marker) != 1:
-    raise SystemExit("Could not locate the Oracle workflow marker list.")
+policy_assertion_marker = (
+    "]) requireText(policy, marker, 'external HTTPS policy')\n\n"
+    "requireText(services, 'PulseAiExternalRuntimeReadiness', 'authenticated startup readiness client')\n"
+)
+if validator_text.count(policy_assertion_marker) != 1:
+    raise SystemExit("Could not locate the external HTTPS policy assertion boundary.")
 validator_text = validator_text.replace(
-    workflow_marker,
-    workflow_marker
-    + "  'github-environment://test/celar-ai-oracle-runtime-token@',\n"
-    + "  'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN=\"secretref:$TOKEN_SECRET_NAME\"',\n",
+    policy_assertion_marker,
+    "]) requireText(policy, marker, 'external HTTPS policy')\n\n"
+    "requireText(releasePolicy, 'github-environment://', 'GitHub Environment token provenance scheme')\n"
+    "requireText(services, 'PulseAiExternalRuntimeReadiness', 'authenticated startup readiness client')\n",
     1,
 )
 
-reject_marker = "rejectText(workflow, 'curl -k', 'TLS verification bypass')\n"
-if validator_text.count(reject_marker) != 1:
+workflow_assertion_marker = "rejectText(workflow, 'curl -k', 'TLS verification bypass')\n"
+if validator_text.count(workflow_assertion_marker) != 1:
     raise SystemExit("Could not locate the Oracle workflow rejection checks.")
 validator_text = validator_text.replace(
-    reject_marker,
-    reject_marker
+    workflow_assertion_marker,
+    "requireText(workflow, 'github-environment://test/celar-ai-oracle-runtime-token@', 'literal GitHub Environment token provenance')\n"
+    "requireText(workflow, 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN=\"secretref:$TOKEN_SECRET_NAME\"', 'native Container Apps token binding')\n"
+    + workflow_assertion_marker
     + "rejectText(workflow, 'TOKEN_REFERENCE=\"secretref://', 'Azure-reserved secretref metadata prefix')\n",
     1,
 )
