@@ -276,7 +276,9 @@ jobs:
           OLD_SOURCE_COMMIT="$(current_env PROJECTPULSE_SOURCE_COMMIT)"
 
           [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]] || fail 'Database host is invalid.'
-          [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 )) || fail 'Database port is invalid.'
+          if ! [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] || (( DATABASE_PORT < 1 || DATABASE_PORT > 65535 )); then
+            fail 'Database port is invalid.'
+          fi
           [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail 'Database name is invalid.'
           [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || fail 'Database user is invalid.'
           [[ -n "$PASSWORD_SECRET_REF" ]] || fail 'Database password secret reference is absent.'
