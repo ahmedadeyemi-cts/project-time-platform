@@ -1,0 +1,50 @@
+name: Synchronize Current Main Into Module 083 Autonomy
+
+on:
+  push:
+    branches:
+      - feature/module-083-autonomous-control-plane-20260809
+    paths:
+      - '.github/workflows/sync-main-into-module083-autonomy.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-main-into-module083-autonomy
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge current main and remove synchronization helper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact feature branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/module-083-autonomous-control-plane-20260809
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge current main without deploying or running migrations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          FEATURE_BEFORE="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          git merge-base --is-ancestor "$FEATURE_BEFORE" HEAD
+          git config user.name 'Pulse Module 083 Automation'
+          git config user.email 'pulse-module-083-automation@users.noreply.github.com'
+          git merge --no-ff --no-commit origin/main
+          rm .github/workflows/sync-main-into-module083-autonomy.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "Merge current main into Module 083 autonomy branch" \
+            -m "Main synchronized at $MAIN_SHA. No migration execution, Test deployment, Production change, secret change, or infrastructure change."
+          git push origin HEAD:feature/module-083-autonomous-control-plane-20260809
+          echo "FEATURE_BEFORE=$FEATURE_BEFORE"
+          echo "MAIN_SHA=$MAIN_SHA"
+          echo "SYNC_COMMIT=$(git rev-parse HEAD)"
