@@ -175,7 +175,7 @@ public static class ProjectPulseAiReleaseRuntimePolicy
     };
 
     private static readonly Regex VersionedSecretReference = new(
-        @"^(?:https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+/[A-Za-z0-9-]{16,}|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",
+        @"^(?:https://[a-z0-9-]+\.vault\.azure\.net/secrets/[A-Za-z0-9-]+/[A-Za-z0-9-]{16,}|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,}|github-environment://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static bool IsCandidate => Snapshot().IsCandidate;

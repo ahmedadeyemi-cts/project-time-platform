@@ -12,6 +12,7 @@ const rejectText = (content, value, evidence) => {
 }
 
 const policy = read('src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs')
+const releasePolicy = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs')
 const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs')
 const services = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs')
 const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs')
@@ -36,6 +37,7 @@ for (const marker of [
   'TryGetPinnedAddress',
 ]) requireText(policy, marker, 'external HTTPS policy')
 
+requireText(releasePolicy, 'github-environment://', 'GitHub Environment token provenance scheme')
 requireText(services, 'PulseAiExternalRuntimeReadiness', 'authenticated startup readiness client')
 requireText(services, 'PulseAiPrivateMalwareScan', 'authenticated malware-scan client')
 requireText(services, 'PulseAiExternalHttpsRuntimeGuard', 'startup guard registration')
@@ -92,7 +94,10 @@ if (/^\s{2}push:\s*$/m.test(workflow)) {
 }
 rejectText(workflow, 'environment: production', 'Production environment binding')
 rejectText(workflow, '--insecure', 'TLS verification bypass')
+requireText(workflow, 'github-environment://test/celar-ai-oracle-runtime-token@', 'literal GitHub Environment token provenance')
+requireText(workflow, 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME"', 'native Container Apps token binding')
 rejectText(workflow, 'curl -k', 'TLS verification bypass')
+rejectText(workflow, 'TOKEN_REFERENCE="secretref://', 'Azure-reserved secretref metadata prefix')
 
 for (const marker of [
   'Settings → Environments → test → Environment secrets',
