@@ -1,0 +1,100 @@
+name: Validate Ask Celar AI Universal Answer Reliability
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/celar-ai-universal-answer-reliability-ci.yml'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversalToolCatalog.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css'
+      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
+      - 'tests/celar-ai-universal-answer-evaluation-cases.json'
+      - 'tests/validate-celar-ai-universal-answer-reliability.mjs'
+      - 'tests/CelarAiUniversalAnswerReliabilityTests/**'
+      - 'docs/modules/module-011-pulse-ai/UNIVERSAL-ANSWER-*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-universal-answer-reliability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate universal planning, evidence gates, privacy, API, and UI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate exact source, 120-case corpus, tool catalog, and no-mutation boundary
+        run: node tests/validate-celar-ai-universal-answer-reliability.mjs
+
+      - name: Run deterministic universal answer reliability behavior tests
+        run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Preserve named-person internal-data parser and database-boundary tests
+        run: dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release
+
+      - name: Build the complete ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install complete frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Preserve Module 011, private-document, FlowHive, and Project Forge contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          node scripts/validate-module-011-pulse-ai.mjs
+          node scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
+          if [[ -f scripts/validate-module-011-private-document-pipeline.mjs ]]; then
+            node scripts/validate-module-011-private-document-pipeline.mjs
+          fi
+          node scripts/validate-module-066-project-flowhive.mjs
+          node scripts/validate-module-033-project-forge.mjs
+
+      - name: Build the complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Verify generated-source stability and clean patch formatting
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Publish source-only validation summary
+        run: |
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_RELIABILITY=SOURCE_VALIDATED'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_DATABASE_CHANGES=0'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_DEPLOYMENTS=0'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_PRODUCTION_MUTATIONS=0'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_ORACLE_MUTATIONS=0'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_SECRETS_PRINTED=0'
