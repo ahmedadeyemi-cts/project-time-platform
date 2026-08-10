@@ -1,0 +1,166 @@
+name: Observe Live Pulse Protected Test Baseline
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/observe-live-protected-test-baseline.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: observe-live-protected-test-baseline
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    name: Capture exact protected Test revisions, digests, source, and session validity
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/live-protected-test-baseline-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EVIDENCE_DIR: /tmp/live-protected-test-baseline
+
+    steps:
+      - name: Sign in read-only to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture exact live protected Test state and validate the UAT session
+        id: observe
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Image is outside the approved Test ACR." ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail 'Could not resolve an immutable Test image digest.'
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ "$GITHUB_EVENT_NAME" == pull_request ]] || fail 'This observer is pull-request-only.'
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is missing.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Azure login is outside protected Test.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not protected Test.'
+
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'The API target is not tagged Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_JSON")" == test ]] || fail 'The web target is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The API is not in single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The web app is not in single-revision mode.'
+
+          API_ACTIVE_JSON="$(az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query '[?properties.active==`true`].name' -o json --only-show-errors)"
+          WEB_ACTIVE_JSON="$(az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query '[?properties.active==`true`].name' -o json --only-show-errors)"
+          [[ "$(jq 'length' <<<"$API_ACTIVE_JSON")" == 1 ]] || fail 'Protected Test API does not have exactly one active revision.'
+          [[ "$(jq 'length' <<<"$WEB_ACTIVE_JSON")" == 1 ]] || fail 'Protected Test web does not have exactly one active revision.'
+          API_REVISION="$(jq -r '.[0]' <<<"$API_ACTIVE_JSON")"
+          WEB_REVISION="$(jq -r '.[0]' <<<"$WEB_ACTIVE_JSON")"
+          [[ -n "$API_REVISION" && -n "$WEB_REVISION" ]] || fail 'Active Test revisions were not resolved.'
+
+          API_REV_JSON="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$API_REVISION" -o json --only-show-errors)"
+          WEB_REV_JSON="$(az containerapp revision show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --revision "$WEB_REVISION" -o json --only-show-errors)"
+          API_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$API_REV_JSON")")"
+          WEB_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$WEB_REV_JSON")")"
+
+          SOURCE_ROWS="$(jq '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")]' <<<"$API_REV_JSON")"
+          [[ "$(jq 'length' <<<"$SOURCE_ROWS")" == 1 ]] || fail 'The live API must expose exactly one source marker.'
+          [[ "$(jq -r '.[0].secretRef // empty' <<<"$SOURCE_ROWS")" == '' ]] || fail 'The source marker cannot be secret-backed.'
+          SOURCE_COMMIT="$(jq -r '.[0].value // empty' <<<"$SOURCE_ROWS")"
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'The deployed source marker is not a commit SHA.'
+
+          HEALTH_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/health.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/health")"
+          [[ "$HEALTH_STATUS" == 200 ]] || fail "Protected Test /health returned HTTP $HEALTH_STATUS."
+          jq -e . "$EVIDENCE_DIR/health.json" >/dev/null
+
+          UAT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/uat-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$UAT_STATUS" == 200 ]] || fail "The protected Test UAT session is expired or unauthorized (HTTP $UAT_STATUS)."
+          jq -e . "$EVIDENCE_DIR/uat-readiness.json" >/dev/null
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg origin "$BASE" \
+            --arg sourceCommit "$SOURCE_COMMIT" \
+            --arg apiImage "$API_IMAGE" \
+            --arg webImage "$WEB_IMAGE" \
+            --arg apiRevision "$API_REVISION" \
+            --arg webRevision "$WEB_REVISION" \
+            '{
+              observedAt:$observedAt,
+              environment:"test",
+              origin:$origin,
+              healthHttpStatus:200,
+              uatSessionValidated:true,
+              sourceCommit:$sourceCommit,
+              apiImage:$apiImage,
+              webImage:$webImage,
+              apiRevision:$apiRevision,
+              webRevision:$webRevision,
+              migrationsApplied:[],
+              mutationPerformed:false,
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/live-test-baseline.json"
+
+          echo "LIVE_SOURCE_COMMIT=$SOURCE_COMMIT"
+          echo "LIVE_API_IMAGE=$API_IMAGE"
+          echo "LIVE_WEB_IMAGE=$WEB_IMAGE"
+          echo "LIVE_API_REVISION=$API_REVISION"
+          echo "LIVE_WEB_REVISION=$WEB_REVISION"
+          echo 'LIVE_HEALTH_HTTP_STATUS=200'
+          echo 'TEST_UAT_SESSION=VALID'
+          echo 'TEST_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Upload immutable live-baseline evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-protected-test-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/live-protected-test-baseline
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish sanitized baseline summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Live Pulse protected Test baseline'
+            echo
+            if [[ -f "$EVIDENCE_DIR/live-test-baseline.json" ]]; then
+              echo '- Read-only observation: passed'
+              echo '- Health: HTTP 200'
+              echo '- Protected Test UAT session: valid'
+              echo '- Test mutation: none'
+              echo '- Production mutation: none'
+            else
+              echo '- Read-only observation: failed; inspect the sanitized job log and evidence artifact'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
