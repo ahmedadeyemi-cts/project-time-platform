@@ -139,7 +139,8 @@ requireMarker(reliability, 'unrestrictedSqlAllowed = false', 'CELAR_UAR_NO_UNRES
 requireMarker(reliability, 'authorizationWidened = false', 'CELAR_UAR_NO_AUTHORIZATION_WIDENING');
 requireMarker(reliability, 'PermitSanitizedExternalAssistance: externalAllowed', 'CELAR_UAR_EXTERNAL_PUBLIC_ONLY_PLAN');
 requireMarker(reliability, 'external model response has no authorized internal evidence', 'CELAR_UAR_EXTERNAL_CANNOT_ESTABLISH_INTERNAL_FACT');
-requireMarker(reliability, 'private document evidence into one verified answer', 'CELAR_UAR_CROSS_DOMAIN_FAIL_CLOSED');
+requireMarker(reliability, 'CelarAiAnswerQuestionClass.CrossDomain => 2', 'CELAR_UAR_CROSS_DOMAIN_MINIMUM_EVIDENCE');
+requireMarker(reliability, 'private_document_evidence_missing', 'CELAR_UAR_CROSS_DOMAIN_DOCUMENT_EVIDENCE');
 requireMarker(reliability, 'Resolve the actual and effective user before retrieval.', 'CELAR_UAR_IDENTITY_FIRST');
 
 for (const [marker, code] of [
@@ -203,7 +204,7 @@ requireNoMarker(workbench, 'sessionStorage', 'CELAR_UAR_UI_NO_SESSION_STORAGE');
 requireNoMarker(workbench, 'dangerouslySetInnerHTML', 'CELAR_UAR_UI_NO_UNSAFE_HTML');
 requireValue(count(backup, "'CelarAiProductionPlatform.jsx'") === 1 && count(restore, "'CelarAiProductionPlatform.jsx'") === 1, 'CELAR_UAR_UI_SOURCE_TRANSACTION_BALANCED', 'production shell backed up and restored once');
 
-for (const marker of ['CELAR_AI_UNIVERSAL_ANSWER_CORPUS=120/120_PASS', 'CELAR_AI_UNIVERSAL_ANSWER_QUALITY_GATE=PASS', 'CELAR_AI_UNIVERSAL_ANSWER_PRIVACY_BOUNDARY=PASS', 'unsupported internal factual answer fails quality gate', 'cited authorized document answer passes', 'cross-domain answer with one evidence family fails', 'current public answer from model memory fails', 'stale internal evidence fails', 'invalid or unknown citation fails', 'existing safety block remains terminal', 'external model cannot establish an internal fact without evidence']) requireMarker(tests, marker, `CELAR_UAR_TEST_${marker.replaceAll(/[^A-Za-z0-9]+/g, '_').toUpperCase()}`);
+for (const marker of ['CELAR_AI_UNIVERSAL_ANSWER_CORPUS=120/120_PASS', 'CELAR_AI_UNIVERSAL_ANSWER_QUALITY_GATE=PASS', 'CELAR_AI_UNIVERSAL_ANSWER_PRIVACY_BOUNDARY=PASS', 'unsupported internal factual answer fails quality gate', 'cited authorized document answer passes', 'cross-domain answer with one evidence family fails', 'current public answer from model memory fails', 'stale internal evidence fails', 'invented or unknown citation fails', 'existing safety block remains terminal', 'external model cannot establish an internal fact without evidence']) requireMarker(tests, marker, `CELAR_UAR_TEST_${marker.replaceAll(/[^A-Za-z0-9]+/g, '_').toUpperCase()}`);
 
 for (const [source, marker, code] of [
   [architecture, 'A fluent answer is not considered correct merely because it sounds plausible.', 'CELAR_UAR_DOC_TRUST_STANDARD'],
