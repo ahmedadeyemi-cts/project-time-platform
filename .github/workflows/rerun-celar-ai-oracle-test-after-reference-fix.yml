@@ -47,9 +47,9 @@ jobs:
           test -f src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs
           test -f tests/validate-celar-ai-oracle-test-runtime.mjs
 
-          grep -Fq 'TOKEN_REFERENCE="github-environment://test/celar-ai-oracle-runtime-token@$TARGET_RELEASE_COMMIT"' \
+          grep -Fq "TOKEN_REFERENCE=\"github-environment://test/celar-ai-oracle-runtime-token@\$TARGET_RELEASE_COMMIT\"" \
             .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
-          grep -Fq 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME"' \
+          grep -Fq "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN=\"secretref:\$TOKEN_SECRET_NAME\"" \
             .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
           grep -Fq 'github-environment://' \
             src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs
@@ -112,7 +112,7 @@ jobs:
           git merge-base --is-ancestor a7d90572569aad6b70229ec0ec32413eacf4ee46 "$GITHUB_SHA" \
             || fail 'The corrected Oracle reference merge is missing.'
 
-          grep -Fq 'TOKEN_REFERENCE="github-environment://test/celar-ai-oracle-runtime-token@$TARGET_RELEASE_COMMIT"' \
+          grep -Fq "TOKEN_REFERENCE=\"github-environment://test/celar-ai-oracle-runtime-token@\$TARGET_RELEASE_COMMIT\"" \
             .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
           node tests/validate-celar-ai-oracle-test-runtime.mjs
 
