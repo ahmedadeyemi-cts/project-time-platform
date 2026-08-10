@@ -10,15 +10,6 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs'
       - 'tests/CelarAiOracleExternalRuntimeTests/Program.cs'
       - 'tests/validate-celar-ai-oracle-test-runtime.mjs'
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-    paths:
-      - '.github/workflows/apply-celar-oracle-embedding-current-main.yml'
-      - 'scripts/patch-celar-oracle-workflow-current-main.py'
-      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs'
-      - 'tests/CelarAiOracleExternalRuntimeTests/Program.cs'
-      - 'tests/validate-celar-ai-oracle-test-runtime.mjs'
 
 permissions:
   contents: write
@@ -30,7 +21,9 @@ concurrency:
 jobs:
   finalize:
     name: Patch, validate, and commit Oracle compatibility
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/fix/celar-oracle-embedding-current-main-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -74,16 +67,19 @@ jobs:
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
           npm --prefix src/frontend/project-time-web ci
           npm --prefix src/frontend/project-time-web run build
-          python3 scripts/security/validate-repository-security-posture.py
-          git diff --check
 
-      - name: Commit validated source and remove temporary helpers
-        shell: bash
-        run: |
-          set -Eeuo pipefail
+          # The repository-security validator must inspect the intended permanent tree,
+          # not this temporary same-repository publisher with contents:write.
           rm -f \
             .github/workflows/apply-celar-oracle-embedding-current-main.yml \
             scripts/patch-celar-oracle-workflow-current-main.py
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+
+      - name: Commit validated permanent source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
           git add -A
           git diff --cached --check
           git config user.name 'Pulse Enterprise Automation'
