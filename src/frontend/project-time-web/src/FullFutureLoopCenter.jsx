@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import FullFutureLoopAutomationCenter from './FullFutureLoopAutomationCenter.jsx';
 import './full-future-loop-center.css';
 
 const BASE = '/api/full-future-loop';
@@ -291,7 +292,9 @@ export default function FullFutureLoopCenter({ authSession }) {
       </div>
     </section>
 
-    <footer className="ffl-mission"><strong>Mission</strong><span>Move work items from intent to live verification with maximum autonomy under human authority and verifiable evidence.</span><em>No external mutation occurs in Module 083 sandbox mode.</em></footer>
+    <FullFutureLoopAutomationCenter authSession={authSession} selectedLoopId={loop?.loopId || null} />
+
+    <footer className="ffl-mission"><strong>Mission</strong><span>Move work items from intent to live verification with maximum autonomy under human authority and verifiable evidence.</span><em>No external mutation occurs in Module 083 sandbox or durable dry-run mode.</em></footer>
 
     {createOpen ? <div className="ffl-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setCreateOpen(false)}><form className="ffl-modal" onSubmit={createLoop}><header><div><small>Module 083</small><h2>Create a Full Future Loop test</h2><p>This creates a persistent sandbox record only. It does not create a branch, pull request, deployment, cloud resource, or production change.</p></div><button type="button" onClick={() => setCreateOpen(false)}>Close</button></header><label>Test title<input required maxLength="200" value={createForm.title} onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))} /></label><label>Purpose and expected outcome<textarea rows="5" maxLength="4000" value={createForm.description} onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))} /></label><div className="ffl-form-row"><label>Change classification<select value={createForm.changeType} onChange={(event) => setCreateForm((current) => ({ ...current, changeType: event.target.value }))}><option value="standard">Standard</option><option value="major">Major</option><option value="complex">Complex</option><option value="architecture">Architecture</option><option value="security">Security</option></select></label><label className="ffl-checkbox"><input type="checkbox" checked={createForm.selectiveGovernance} onChange={(event) => setCreateForm((current) => ({ ...current, selectiveGovernance: event.target.checked }))} /><span>Require STEER-IT governance</span></label></div><footer><button type="button" onClick={() => setCreateOpen(false)}>Cancel</button><button type="submit" className="primary" disabled={busy === 'create' || createForm.title.trim().length < 3}>{busy === 'create' ? 'Creating…' : 'Create sandbox loop'}</button></footer></form></div> : null}
   </main>;
