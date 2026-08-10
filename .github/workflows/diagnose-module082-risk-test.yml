@@ -1,3 +1,4 @@
+# One-time protected Test diagnostic; remove after root-cause capture.
 name: Diagnose Module 082 Risks on Protected Test Candidate
 
 on:
