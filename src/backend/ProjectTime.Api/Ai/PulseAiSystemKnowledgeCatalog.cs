@@ -398,6 +398,12 @@ public static class PulseAiSystemKnowledgeCatalog
 
         if (CelarAiInternalDataService.IsSupportedQuestion(question)) return true;
 
+        // Public organization facts use an explicit allowlist and remain eligible
+        // only when no Pulse, customer, employee, project, document, or financial
+        // context is present. This check runs before the proper-name fail-closed
+        // rule so approved public entities are not mistaken for internal records.
+        if (CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(question)) return false;
+
         if (ContainsAny(normalized,
             "pulse", "celar", "module ", "module-", "project forge", "project-forge",
             "flowhive", "work register", "view-as", "view as", "timesheet", "time entry",
@@ -454,6 +460,8 @@ public static class PulseAiSystemKnowledgeCatalog
         // the conservative acronym/proper-name guard so ordinary public terms
         // such as "US President" are not mistaken for an internal record code.
         if (LooksLikeClearlyPublicOfficeholderQuestion(normalized)) return true;
+
+        if (CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(question)) return true;
 
         if (LooksLikeNamedInternalSubject(raw)) return false;
 

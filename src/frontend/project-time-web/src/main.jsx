@@ -41,6 +41,7 @@ import './module001/module001-uat-fixes.css';
 import './admin-experience-theme.css';
 import './pulse-shell-frontend-compatibility.css';
 import './profile-settings-enterprise.css';
+import './enterprise-theme-completion.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
