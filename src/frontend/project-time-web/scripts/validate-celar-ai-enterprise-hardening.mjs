@@ -8,10 +8,12 @@ function requireContains(content, marker, label) {
   if (!content.includes(marker)) throw new Error(`Missing ${label}: ${marker}`);
 }
 
-const workflow = text('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml');
+const workflow = text('.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml');
 requireContains(workflow, "X-ProjectPulse-Module-Number: 064", 'Module 064 activation authorization');
-requireContains(workflow, 'pulse-private-model-probe-safe.json', 'sanitized private-model activation diagnostic');
+requireContains(workflow, 'private-model-probe-safe.json', 'sanitized private-model activation diagnostic');
 requireContains(workflow, 'AUTH_011', 'separate document-runtime authorization boundary');
+requireContains(workflow, 'Restore exact prior Test API on failure', 'exact protected-Test rollback');
+requireContains(workflow, 'PRODUCTION_MUTATION=NONE', 'Test-only activation boundary');
 
 const registry = text('src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs');
 requireContains(registry, 'US Signal', 'approved public entity');
