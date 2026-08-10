@@ -1,0 +1,111 @@
+name: Repair PR 628 Universal Answer Validation
+
+on:
+  push:
+    branches:
+      - feature/celar-ai-universal-answer-reliability-20260810
+    paths:
+      - '.github/workflows/repair-pr628-universal-answer-validation.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr628-universal-answer-validation
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Apply and verify the two narrow reliability corrections
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/celar-ai-universal-answer-reliability-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Strengthen cross-domain evidence and align the citation assertion
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          reliability_path = Path('src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs')
+          reliability = reliability_path.read_text()
+
+          conflict_anchor = '        if (result.Answer.Conflicts.Count > 0)\n'
+          if 'cross_domain_evidence_families_missing' not in reliability:
+              if reliability.count(conflict_anchor) != 1:
+                  raise SystemExit('PR628_REPAIR_CONFLICT_ANCHOR_NOT_UNIQUE')
+              cross_domain_gate = '''        if (plan.QuestionClass == CelarAiAnswerQuestionClass.CrossDomain)
+          {
+              var hasCrossDomainDocumentEvidence = privateCitations > 0
+                  || successfulSources.Any(source =>
+                      source.SourceType.Contains("document", StringComparison.OrdinalIgnoreCase));
+              var hasCrossDomainStructuredEvidence = successfulTools.Length > 0
+                  || successfulSources.Any(source => ContainsAny(
+                      source.SourceType,
+                      "internal",
+                      "database",
+                      "api",
+                      "calculation",
+                      "runtime",
+                      "structured"));
+              if (!hasCrossDomainDocumentEvidence || !hasCrossDomainStructuredEvidence)
+              {
+                  findings.Add(Blocker(
+                      "cross_domain_evidence_families_missing",
+                      "Cross-domain questions must combine current authorized structured evidence and private document evidence into one verified answer.",
+                      "Retrieve both permission-scoped structured data and an authoritative private document citation before promoting the answer."));
+              }
+          }
+          '''
+              reliability = reliability.replace(conflict_anchor, cross_domain_gate + conflict_anchor, 1)
+
+          replacement_anchor = '''                or "private_document_evidence_missing"
+                  or "deterministic_calculation_evidence_missing"'''
+          replacement_value = '''                or "private_document_evidence_missing"
+                  or "cross_domain_evidence_families_missing"
+                  or "deterministic_calculation_evidence_missing"'''
+          if 'or "cross_domain_evidence_families_missing"' not in reliability:
+              if reliability.count(replacement_anchor) != 1:
+                  raise SystemExit('PR628_REPAIR_REPLACEMENT_ANCHOR_NOT_UNIQUE')
+              reliability = reliability.replace(replacement_anchor, replacement_value, 1)
+
+          reliability_path.write_text(reliability)
+
+          tests_path = Path('tests/CelarAiUniversalAnswerReliabilityTests/Program.cs')
+          tests = tests_path.read_text()
+          tests = tests.replace(
+              'Require(!invalidCitation.Assessment.Passed, "invented or unknown citation fails");',
+              'Require(!invalidCitation.Assessment.Passed, "invalid or unknown citation fails");',
+              1)
+
+          cross_test_anchor = 'Require(HasFinding(oneFamilyCrossDomain, "insufficient_authoritative_evidence"), "cross-domain source-family requirement is enforced");\n'
+          cross_test_value = cross_test_anchor + 'Require(HasFinding(oneFamilyCrossDomain, "cross_domain_evidence_families_missing"), "cross-domain structured and document evidence requirement is enforced");\n'
+          if 'cross-domain structured and document evidence requirement is enforced' not in tests:
+              if tests.count(cross_test_anchor) != 1:
+                  raise SystemExit('PR628_REPAIR_CROSS_TEST_ANCHOR_NOT_UNIQUE')
+              tests = tests.replace(cross_test_anchor, cross_test_value, 1)
+
+          tests_path.write_text(tests)
+          PY
+
+          rm -f .github/workflows/repair-pr628-universal-answer-validation.yml
+
+          git diff --check
+          node tests/validate-celar-ai-universal-answer-reliability.mjs
+
+      - name: Commit the validated correction and remove this temporary control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Pulse Celar AI Reliability Automation'
+          git config user.email 'pulse-celar-ai-reliability@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: enforce cross-domain evidence and citation validation'
+          git push origin HEAD:feature/celar-ai-universal-answer-reliability-20260810
