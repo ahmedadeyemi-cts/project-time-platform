@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pulse.ussignal.com/schemas/full-future-loop/release-manifest.schema.json",
+  "title": "Pulse Full Future Loop Release Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "repository",
+    "sourceCommit",
+    "buildWorkflow",
+    "buildRunId",
+    "buildRunAttempt",
+    "artifacts",
+    "migrations",
+    "targetEnvironment",
+    "canaryEvidenceReferences",
+    "verificationEvidenceReferences",
+    "approvalEvidenceReferences",
+    "rollbackArtifactDigests",
+    "configurationFingerprint",
+    "createdAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "pullRequestNumber": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "buildWorkflow": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "buildRunId": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "buildRunAttempt": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "image", "digest", "sbomReference", "provenanceReference", "signatureReference"],
+        "properties": {
+          "component": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "image": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "sbomReference": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "provenanceReference": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "signatureReference": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      }
+    },
+    "migrations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["migrationId", "sha256", "additive", "rollbackReviewed", "requiresDowntime"],
+        "properties": {
+          "migrationId": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "additive": { "type": "boolean" },
+          "rollbackReviewed": { "type": "boolean" },
+          "requiresDowntime": { "type": "boolean" }
+        }
+      }
+    },
+    "targetEnvironment": { "enum": ["canary", "test", "production"] },
+    "canaryEvidenceReferences": { "$ref": "#/$defs/requiredEvidenceReferences" },
+    "verificationEvidenceReferences": { "$ref": "#/$defs/requiredEvidenceReferences" },
+    "approvalEvidenceReferences": { "$ref": "#/$defs/optionalEvidenceReferences" },
+    "rollbackArtifactDigests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "configurationFingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "requiredEvidenceReferences": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "optionalEvidenceReferences": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    }
+  }
+}
