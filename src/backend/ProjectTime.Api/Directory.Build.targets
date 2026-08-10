@@ -136,4 +136,33 @@
       <Compile Include="$(CelarAiExternalReasoningGenerated)" />
     </ItemGroup>
   </Target>
+
+  <!--
+    Compile guarded copies of the established Celar AI service-registration and
+    production-chat sources. The generator inserts one read-only reliability
+    service, one endpoint map, one evidence plan, one post-answer quality gate,
+    and one sanitized reliability projection. Canonical oversized sources remain
+    readable and unchanged.
+  -->
+  <Target Name="GenerateCelarAiUniversalAnswerReliabilitySources"
+          DependsOnTargets="PrepareCelarAiGeneratedDirectory;GenerateCelarAiEnterpriseCompatibilitySources"
+          BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <CelarAiUniversalAnswerGenerator>$(MSBuildProjectDirectory)/build/generate-celar-ai-universal-answer-reliability.awk</CelarAiUniversalAnswerGenerator>
+      <CelarAiUniversalServicesGenerated>$(CelarAiGeneratedDirectory)/ProjectPulseAiServiceCollectionExtensions.Universal.g.cs</CelarAiUniversalServicesGenerated>
+      <CelarAiUniversalProductionGenerated>$(CelarAiGeneratedDirectory)/CelarAiProductionPlatformModule.Universal.g.cs</CelarAiUniversalProductionGenerated>
+    </PropertyGroup>
+    <Exec Command="awk -v mode=services -f &quot;$(CelarAiUniversalAnswerGenerator)&quot; &quot;$(MSBuildProjectDirectory)/Ai/ProjectPulseAiServiceCollectionExtensions.cs&quot; &gt; &quot;$(CelarAiUniversalServicesGenerated)&quot;" />
+    <Exec Command="awk -v mode=production -f &quot;$(CelarAiUniversalAnswerGenerator)&quot; &quot;$(MSBuildProjectDirectory)/Modules/CelarAiProductionPlatformModule.cs&quot; &gt; &quot;$(CelarAiUniversalProductionGenerated)&quot;" />
+    <Exec Command="grep -Fq 'AddSingleton&lt;CelarAiUniversalAnswerReliabilityService&gt;()' &quot;$(CelarAiUniversalServicesGenerated)&quot;" />
+    <Exec Command="grep -Fq 'MapCelarAiUniversalAnswerReliabilityEndpoints();' &quot;$(CelarAiUniversalProductionGenerated)&quot;" />
+    <Exec Command="grep -Fq 'universalReliability.Enforce(' &quot;$(CelarAiUniversalProductionGenerated)&quot;" />
+    <Exec Command="grep -Fq 'reliability = universalReliability.ToPublicEvidence(' &quot;$(CelarAiUniversalProductionGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Remove="Ai/ProjectPulseAiServiceCollectionExtensions.cs" />
+      <Compile Remove="Modules/CelarAiProductionPlatformModule.cs" />
+      <Compile Include="$(CelarAiUniversalServicesGenerated)" />
+      <Compile Include="$(CelarAiUniversalProductionGenerated)" />
+    </ItemGroup>
+  </Target>
 </Project>
