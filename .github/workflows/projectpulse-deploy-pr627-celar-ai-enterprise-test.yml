@@ -60,13 +60,18 @@ jobs:
 
           grep -Fq "environment: test" "$ACTIVATION"
           grep -Fq "if: github.ref == 'refs/heads/main'" "$ACTIVATION"
+          # shellcheck disable=SC2016
           grep -Fq 'git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA"' "$ACTIVATION"
           grep -Fq 'X-ProjectPulse-Module-Number: 064' "$ACTIVATION"
           grep -Fq 'AUTH_011=' "$ACTIVATION"
           grep -Fq 'private-model-probe-safe.json' "$ACTIVATION"
           grep -Fq 'Restore exact prior Test API on failure' "$ACTIVATION"
-          ! grep -Fq 'PROJECTPULSE_PRODUCTION' "$CONTROLLER"
-          ! grep -Fq 'database/migrations/' "$CONTROLLER"
+          if grep -Fq 'PROJECTPULSE_PRODUCTION' "$CONTROLLER"; then
+            fail 'Controller contains an unapproved Production mutation marker.'
+          fi
+          if grep -Fq 'database/migrations/' "$CONTROLLER"; then
+            fail 'Controller invokes a migration path.'
+          fi
 
           node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
           node tests/validate-celar-ai-internal-data-intelligence.mjs
@@ -170,6 +175,7 @@ jobs:
           test -f release/src/frontend/project-time-web/src/enterprise-theme-completion.css
           test -f release/src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
 
+          # shellcheck disable=SC2016
           grep -Fq 'git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA"' \
             control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
           grep -Fq 'X-ProjectPulse-Module-Number: 064' \
