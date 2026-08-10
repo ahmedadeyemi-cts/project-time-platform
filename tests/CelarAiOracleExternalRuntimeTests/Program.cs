@@ -1,4 +1,6 @@
 using System.Net;
+using System.Reflection;
+using System.Text.Json;
 using ProjectTime.Api.Ai;
 
 const string RuntimeToken = "test-runtime-token-value-1234567890-abcdef";
@@ -96,6 +98,8 @@ try
     Require(options.MalwareScanEndpoint == "https://celarai.onenecklab.com/v1/scan",
         "runtime options preserve the exact scan endpoint");
 
+    ValidateEmbeddingResponseVariants();
+
     Console.WriteLine("CELAR_AI_ORACLE_EXTERNAL_HTTPS_RUNTIME_BEHAVIOR=PASS");
 }
 finally
@@ -105,6 +109,60 @@ finally
 }
 
 return;
+
+static void ValidateEmbeddingResponseVariants()
+{
+    var parser = typeof(PulseAiPrivateEmbeddingClient).GetMethod(
+        "ParseVectors",
+        BindingFlags.Static | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("Private embedding parser was not found.");
+
+    IReadOnlyList<double[]> Parse(string json, int expectedCount)
+    {
+        using var document = JsonDocument.Parse(json);
+        return (IReadOnlyList<double[]>)(parser.Invoke(
+            null,
+            new object?[] { document.RootElement.Clone(), expectedCount })
+            ?? Array.Empty<double[]>());
+    }
+
+    var openAi = Parse("""
+        {"data":[{"index":1,"embedding":[3,4]},{"index":0,"embedding":[1,2]}]}
+        """, 2);
+    Require(openAi.Count == 2 && openAi[0][0] == 1 && openAi[1][0] == 3,
+        "OpenAI indexed embeddings are returned in input order");
+
+    var ollama = Parse("""{"embeddings":[[1,2],[3,4]]}""", 2);
+    Require(ollama.Count == 2 && ollama.All(vector => vector.Length == 2),
+        "Ollama embeddings envelope is accepted");
+
+    var singleObject = Parse("""{"embedding":[1,2]}""", 1);
+    Require(singleObject.Count == 1 && singleObject[0].Length == 2,
+        "single embedding envelope is accepted");
+
+    var rawVector = Parse("""[1,2]""", 1);
+    Require(rawVector.Count == 1 && rawVector[0].Length == 2,
+        "raw numeric vector is accepted for one input");
+
+    var nestedVectors = Parse("""[[1,2],[3,4]]""", 2);
+    Require(nestedVectors.Count == 2,
+        "root nested-vector array is accepted");
+
+    var rootObjects = Parse("""
+        [{"index":0,"embedding":[1,2]},{"index":1,"embedding":[3,4]}]
+        """, 2);
+    Require(rootObjects.Count == 2,
+        "root embedding-object array is accepted");
+
+    Require(Parse("""{"data":[{"index":0,"embedding":[1,2]},{"index":0,"embedding":[3,4]}]}""", 2).Count == 0,
+        "duplicate embedding indices are rejected");
+    Require(Parse("""[[1,2],[3]]""", 2).Count == 0,
+        "inconsistent embedding dimensions are rejected");
+    Require(Parse("""[1,"invalid"]""", 1).Count == 0,
+        "mixed root vectors are rejected");
+    Require(Parse("""{"embeddings":[[1,2]]}""", 2).Count == 0,
+        "embedding count mismatches are rejected");
+}
 
 static void ConfigureValidTestRuntime()
 {

@@ -139,39 +139,145 @@ public sealed class PulseAiPrivateEmbeddingClient
         JsonElement root,
         int expectedCount)
     {
-        if (!root.TryGetProperty("data", out var data)
-            || data.ValueKind != JsonValueKind.Array)
+        if (expectedCount <= 0) return [];
+
+        return root.ValueKind switch
         {
-            return [];
+            JsonValueKind.Object => ParseObjectEnvelope(root, expectedCount),
+            JsonValueKind.Array => ParseArrayEnvelope(root, expectedCount),
+            _ => []
+        };
+    }
+
+    private static IReadOnlyList<double[]> ParseObjectEnvelope(
+        JsonElement root,
+        int expectedCount)
+    {
+        if (root.TryGetProperty("data", out var data))
+        {
+            return ParseEmbeddingItems(data, expectedCount);
         }
 
+        if (root.TryGetProperty("embeddings", out var embeddings))
+        {
+            return ParseArrayEnvelope(embeddings, expectedCount);
+        }
+
+        if (root.TryGetProperty("embedding", out var embedding)
+            && expectedCount == 1
+            && TryReadVector(embedding, out var vector))
+        {
+            return [vector];
+        }
+
+        return [];
+    }
+
+    private static IReadOnlyList<double[]> ParseArrayEnvelope(
+        JsonElement array,
+        int expectedCount)
+    {
+        if (array.ValueKind != JsonValueKind.Array) return [];
+        var items = array.EnumerateArray().ToArray();
+        if (items.Length == 0) return [];
+
+        if (items.All(item => item.ValueKind == JsonValueKind.Number))
+        {
+            return expectedCount == 1 && TryReadVector(array, out var vector)
+                ? [vector]
+                : [];
+        }
+
+        if (items.All(item => item.ValueKind == JsonValueKind.Array))
+        {
+            if (items.Length != expectedCount) return [];
+            var vectors = new List<double[]>(items.Length);
+            foreach (var item in items)
+            {
+                if (!TryReadVector(item, out var vector)) return [];
+                vectors.Add(vector);
+            }
+            return HasConsistentDimension(vectors) ? vectors : [];
+        }
+
+        if (items.All(item => item.ValueKind == JsonValueKind.Object))
+        {
+            return ParseEmbeddingItems(array, expectedCount);
+        }
+
+        return [];
+    }
+
+    private static IReadOnlyList<double[]> ParseEmbeddingItems(
+        JsonElement items,
+        int expectedCount)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return [];
         var indexed = new SortedDictionary<int, double[]>();
         var fallbackIndex = 0;
-        foreach (var item in data.EnumerateArray())
+
+        foreach (var item in items.EnumerateArray())
         {
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("embedding", out var embedding)
+                || !TryReadVector(embedding, out var vector))
+            {
+                return [];
+            }
+
             var index = item.TryGetProperty("index", out var indexProperty)
+                && indexProperty.ValueKind == JsonValueKind.Number
                 && indexProperty.TryGetInt32(out var parsedIndex)
                 ? parsedIndex
                 : fallbackIndex;
             fallbackIndex++;
-            if (!item.TryGetProperty("embedding", out var embedding)
-                || embedding.ValueKind != JsonValueKind.Array)
+
+            if (index < 0 || index >= expectedCount || !indexed.TryAdd(index, vector))
             {
                 return [];
             }
-            var values = embedding
-                .EnumerateArray()
-                .Select(value => value.GetDouble())
-                .ToArray();
-            if (values.Length == 0 || values.Any(value => double.IsNaN(value) || double.IsInfinity(value)))
-            {
-                return [];
-            }
-            indexed[index] = values;
         }
 
         if (indexed.Count != expectedCount) return [];
-        return indexed.OrderBy(pair => pair.Key).Select(pair => pair.Value).ToArray();
+        for (var index = 0; index < expectedCount; index++)
+        {
+            if (!indexed.ContainsKey(index)) return [];
+        }
+
+        var ordered = indexed.Values.ToArray();
+        return HasConsistentDimension(ordered) ? ordered : [];
+    }
+
+    private static bool TryReadVector(
+        JsonElement element,
+        out double[] vector)
+    {
+        vector = [];
+        if (element.ValueKind != JsonValueKind.Array) return false;
+
+        var values = new List<double>();
+        foreach (var value in element.EnumerateArray())
+        {
+            if (value.ValueKind != JsonValueKind.Number
+                || !value.TryGetDouble(out var parsed)
+                || double.IsNaN(parsed)
+                || double.IsInfinity(parsed))
+            {
+                return false;
+            }
+            values.Add(parsed);
+        }
+
+        if (values.Count == 0) return false;
+        vector = values.ToArray();
+        return true;
+    }
+
+    private static bool HasConsistentDimension(IReadOnlyList<double[]> vectors)
+    {
+        if (vectors.Count == 0 || vectors[0].Length == 0) return false;
+        var dimension = vectors[0].Length;
+        return vectors.All(vector => vector.Length == dimension);
     }
 
     private static PulseAiPrivateEmbeddingResult Failure(

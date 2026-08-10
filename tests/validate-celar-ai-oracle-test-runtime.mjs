@@ -16,6 +16,7 @@ const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeCont
 const services = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs')
 const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs')
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
+const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs')
 const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const openCloud = read('deployment/environments/opencloud-template.yml')
@@ -53,6 +54,19 @@ requireText(scanner, 'MaximumGatewayResponseBytes', 'bounded scanner response')
 requireText(runtime, 'authenticated Test-only HTTPS malware scanning gateway', 'runtime readiness evidence')
 
 for (const marker of [
+  'ParseObjectEnvelope',
+  'ParseArrayEnvelope',
+  'ParseEmbeddingItems',
+  'TryReadVector',
+  'HasConsistentDimension',
+  'JsonValueKind.Number',
+  'double.IsNaN',
+  'double.IsInfinity',
+  '!indexed.TryAdd(index, vector)',
+]) requireText(embeddings, marker, 'fail-closed Oracle embedding response compatibility')
+rejectText(embeddings, 'indexed[index] = values', 'duplicate-index overwrite')
+
+for (const marker of [
   'workflow_dispatch:',
   'DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST',
   'environment: test',
@@ -65,6 +79,9 @@ for (const marker of [
   'https://celarai.onenecklab.com/v1/scan',
   'https://celarai.onenecklab.com/health',
   '129.213.82.144',
+  'ORACLE_EMBEDDING_RESPONSE=VALID',
+  'math.isfinite',
+  'bash scripts/build-pr55-acr-image.sh',
   'Rollback protected Test API configuration on failure',
   'MIGRATIONS_APPLIED=NONE',
   'PRODUCTION_MUTATION=NONE',
