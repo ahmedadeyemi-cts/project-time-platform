@@ -99,7 +99,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.0.5",
-    "postcss": "8.5.25",
+    "postcss": "8.5.26",
     "vite": "8.2.0"
   },
   "overrides": {
