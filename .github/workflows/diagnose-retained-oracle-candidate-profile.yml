@@ -1,0 +1,438 @@
+name: Diagnose Retained Oracle Candidate In-Process Profile
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/diagnose-retained-oracle-candidate-profile.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-retained-oracle-candidate-profile.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate retained-candidate profile diagnostic
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact pull-request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard read-only diagnostic source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORKFLOW='.github/workflows/diagnose-retained-oracle-candidate-profile.yml'
+          test -f "$WORKFLOW"
+          test -f scripts/wait-containerapp-ready-revision.sh
+          bash -n scripts/wait-containerapp-ready-revision.sh
+          ! grep -Eq 'az containerapp (update|create|delete)|az containerapp secret|az keyvault|psql|migration|workflow dispatch|gh workflow run' "$WORKFLOW"
+          ! grep -Eq 'cat .*PROFILE_RAW|cat .*PROBE_RAW|set -x|printenv|env >' "$WORKFLOW"
+          grep -Fq 'az containerapp revision activate' "$WORKFLOW"
+          grep -Fq 'activeRevisionBefore' "$WORKFLOW"
+          grep -Fq 'secretMaterialRecorded:false' "$WORKFLOW"
+          grep -Fq 'productionMutation:false' "$WORKFLOW"
+          git diff --check
+
+      - name: Install checksum-pinned actionlint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose \
+            .github/workflows/diagnose-retained-oracle-candidate-profile.yml
+
+      - name: Publish validation boundary
+        shell: bash
+        run: |
+          echo 'RETAINED_ORACLE_CANDIDATE_DIAGNOSTIC=VALIDATED'
+          echo 'TEST_REVISION_ACTIVATION=TEMPORARY_AND_REVERSIBLE'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'SECRET_VALUES_READ=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+  diagnose:
+    name: Temporarily reactivate candidate, capture safe profile, and restore Test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      id-token: write
+      contents: read
+      statuses: write
+    env:
+      CANDIDATE_REVISION: ca-phd-test-api-westus3--caor-31426428559-1
+      EXPECTED_SOURCE_COMMIT: 4134c234dd7f6a373c433f706783ff98683b7a4b
+      EVIDENCE_DIR: /tmp/retained-oracle-candidate-profile
+
+    steps:
+      - name: Check out exact merged diagnostic control
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact Test-only and reversible boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_EVENT_NAME" == push ]] || fail 'This diagnostic executes only after merge.'
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may run the protected Test diagnostic.'
+          [[ "$CANDIDATE_REVISION" == 'ca-phd-test-api-westus3--caor-31426428559-1' ]] || fail 'Candidate revision is not the approved retained revision.'
+          [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'Expected source commit is invalid.'
+          test -f scripts/wait-containerapp-ready-revision.sh
+          install -d -m 0700 "$EVIDENCE_DIR"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'DATABASE_MUTATION=NONE'
+          echo 'SECRET_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot active Test revision and validate retained candidate
+        id: snapshot
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          env_value() {
+            local file="$1" name="$2"
+            jq -r --arg name "$name" \
+              '[.properties.template.containers[0].env[]? | select(.name == $name) | .value // empty] |
+               if length == 1 then .[0] else empty end' "$file"
+          }
+
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] \
+            || fail 'Azure login is outside protected Test.'
+
+          APP_JSON="$EVIDENCE_DIR/api-app-before.json"
+          REVISION_LIST="$EVIDENCE_DIR/api-revisions-before.json"
+          az containerapp show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors > "$APP_JSON"
+          az containerapp revision list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            -o json --only-show-errors > "$REVISION_LIST"
+
+          [[ "$(jq -r '.tags.environment // empty' "$APP_JSON")" == test ]] || fail 'The API target is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' "$APP_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] \
+            || fail 'The API must use single-revision mode.'
+
+          ACTIVE_JSON="$(jq '[.[] | select(.properties.active == true)]' "$REVISION_LIST")"
+          [[ "$(jq 'length' <<<"$ACTIVE_JSON")" == 1 ]] || fail 'Protected Test does not have exactly one active API revision.'
+          ACTIVE_BEFORE="$(jq -r '.[0].name' <<<"$ACTIVE_JSON")"
+          [[ "$ACTIVE_BEFORE" != "$CANDIDATE_REVISION" ]] || fail 'The retained candidate is already active; refusing to alter state.'
+
+          CANDIDATE_COUNT="$(jq --arg revision "$CANDIDATE_REVISION" '[.[] | select(.name == $revision)] | length' "$REVISION_LIST")"
+          [[ "$CANDIDATE_COUNT" == 1 ]] || fail 'The exact retained Oracle candidate revision is unavailable or ambiguous.'
+
+          ACTIVE_FILE="$EVIDENCE_DIR/active-before.json"
+          CANDIDATE_FILE="$EVIDENCE_DIR/candidate-before.json"
+          az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$ACTIVE_BEFORE" \
+            -o json --only-show-errors > "$ACTIVE_FILE"
+          az containerapp revision show \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            -o json --only-show-errors > "$CANDIDATE_FILE"
+
+          CANDIDATE_SOURCE="$(env_value "$CANDIDATE_FILE" PROJECTPULSE_SOURCE_COMMIT)"
+          [[ "$CANDIDATE_SOURCE" == "$EXPECTED_SOURCE_COMMIT" ]] || fail 'The retained candidate source marker is not exact.'
+          CANDIDATE_IMAGE="$(jq -r '.properties.template.containers[0].image' "$CANDIDATE_FILE")"
+          ACTIVE_IMAGE="$(jq -r '.properties.template.containers[0].image' "$ACTIVE_FILE")"
+          [[ "$CANDIDATE_IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]] || fail 'Candidate image is not an immutable Test ACR digest.'
+          [[ "$ACTIVE_IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]] || fail 'Active image is not an immutable Test ACR digest.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'Public origin is not protected Test.'
+          SESSION_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/session-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$SESSION_STATUS" == 200 ]] || fail 'The protected Test UAT session is expired or unauthorized.'
+
+          {
+            echo "active_before=$ACTIVE_BEFORE"
+            echo "active_image=$ACTIVE_IMAGE"
+            echo "candidate_image=$CANDIDATE_IMAGE"
+            echo "base=$BASE"
+          } >> "$GITHUB_OUTPUT"
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg activeRevisionBefore "$ACTIVE_BEFORE" \
+            --arg activeImageBefore "$ACTIVE_IMAGE" \
+            --arg candidateRevision "$CANDIDATE_REVISION" \
+            --arg candidateImage "$CANDIDATE_IMAGE" \
+            --arg candidateSourceCommit "$CANDIDATE_SOURCE" \
+            '{
+              status:"validated",
+              observedAt:$observedAt,
+              environment:"test",
+              activeRevisionBefore:$activeRevisionBefore,
+              activeImageBefore:$activeImageBefore,
+              candidateRevision:$candidateRevision,
+              candidateImage:$candidateImage,
+              candidateSourceCommit:$candidateSourceCommit,
+              uatSessionValidated:true,
+              secretMaterialRecorded:false,
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/snapshot.json"
+
+      - name: Publish pending diagnostic status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending \
+            -f context='projectpulse/oracle-retained-candidate-diagnostic' \
+            -f description='Temporarily probing retained Oracle candidate in protected Test' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Temporarily activate exact retained candidate
+        id: activate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp revision activate \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$CANDIDATE_REVISION" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            "$CANDIDATE_REVISION" \
+            '${{ steps.snapshot.outputs.candidate_image }}' \
+            60 5
+          ACTIVE_NOW="$(az containerapp revision list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query '[?properties.active==`true`].name' \
+            -o json --only-show-errors)"
+          [[ "$(jq 'length' <<<"$ACTIVE_NOW")" == 1 ]]
+          [[ "$(jq -r '.[0]' <<<"$ACTIVE_NOW")" == "$CANDIDATE_REVISION" ]]
+          echo 'RETAINED_ORACLE_CANDIDATE=TEMPORARILY_ACTIVE'
+
+      - name: Capture sanitized in-process profile and private-model probe
+        id: capture
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          BASE: ${{ steps.snapshot.outputs.base }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          AUTH=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011' -H 'Cache-Control: no-cache')
+
+          READY=false
+          for attempt in $(seq 1 24); do
+            if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health?oracle_candidate_profile=$GITHUB_RUN_ID-$attempt" >/dev/null; then
+              READY=true
+              break
+            fi
+            sleep 5
+          done
+          [[ "$READY" == true ]] || fail 'The temporarily active candidate did not become publicly healthy.'
+
+          PROFILE_RAW="$RUNNER_TEMP/oracle-private-model-profile-raw.json"
+          PROFILE_SAFE="$EVIDENCE_DIR/private-model-profile.json"
+          PROFILE_STATUS="$(curl -sS --max-time 90 -o "$PROFILE_RAW" -w '%{http_code}' \
+            "${AUTH[@]}" -H "Origin: $BASE" "$BASE/api/ai-configuration/private-model")"
+          [[ "$PROFILE_STATUS" == 200 ]] || fail "Private-model profile returned HTTP $PROFILE_STATUS."
+          jq -e . "$PROFILE_RAW" >/dev/null || fail 'Private-model profile returned invalid JSON.'
+          jq --argjson httpStatus "$PROFILE_STATUS" '
+            (.privateModel // .profile // .) as $profile |
+            {
+              httpStatus:$httpStatus,
+              status:(.status // null),
+              enabled:($profile.enabled // null),
+              configured:($profile.configured // null),
+              authenticationConfigured:($profile.authenticationConfigured // null),
+              ready:($profile.ready // null),
+              source:($profile.source // null),
+              endpoint:($profile.endpoint // null),
+              model:($profile.model // null),
+              authenticationMode:($profile.authenticationMode // $profile.authMode // null),
+              hostAllowlist:($profile.hostAllowlist // []),
+              resolvedHosts:($profile.resolvedHosts // []),
+              endpointPolicy:($profile.endpointPolicy // null),
+              externalHttpsRuntime:($profile.externalHttpsRuntime // null),
+              secretMaterialRecorded:false
+            }
+          ' "$PROFILE_RAW" > "$PROFILE_SAFE"
+
+          PROBE_RAW="$RUNNER_TEMP/oracle-private-model-probe-raw.json"
+          PROBE_SAFE="$EVIDENCE_DIR/private-model-probe.json"
+          PROBE_STATUS="$(curl -sS --max-time 600 -o "$PROBE_RAW" -w '%{http_code}' \
+            "${AUTH[@]}" -H 'Content-Type: application/json' -H "Origin: $BASE" \
+            -d '{}' "$BASE/api/ai-configuration/private-model/test" || true)"
+          if [[ -s "$PROBE_RAW" ]] && jq -e . "$PROBE_RAW" >/dev/null 2>&1; then
+            jq --arg status "${PROBE_STATUS:-transport_error}" '{
+              httpStatus:$status,
+              status:(.status // null),
+              configured:(.configured // null),
+              available:(.available // null),
+              diagnostic:(.diagnostic // null),
+              targetId:(.targetId // null),
+              targetKind:(.targetKind // null),
+              privacyBoundary:(.privacyBoundary // null),
+              secretMaterialRecorded:false
+            }' "$PROBE_RAW" > "$PROBE_SAFE"
+          else
+            jq -n --arg status "${PROBE_STATUS:-transport_error}" '{
+              httpStatus:$status,
+              status:"invalid_or_empty_response",
+              configured:null,
+              available:false,
+              diagnostic:null,
+              targetId:null,
+              targetKind:null,
+              privacyBoundary:null,
+              secretMaterialRecorded:false
+            }' > "$PROBE_SAFE"
+          fi
+
+          jq -n \
+            --arg capturedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg candidateRevision "$CANDIDATE_REVISION" \
+            --arg sourceCommit "$EXPECTED_SOURCE_COMMIT" \
+            --slurpfile profile "$PROFILE_SAFE" \
+            --slurpfile probe "$PROBE_SAFE" \
+            '{
+              status:"captured",
+              capturedAt:$capturedAt,
+              environment:"test",
+              candidateRevision:$candidateRevision,
+              sourceCommit:$sourceCommit,
+              privateModelProfile:($profile[0] // {}),
+              privateModelProbe:($probe[0] // {}),
+              secretMaterialRecorded:false,
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/diagnostic-summary.json"
+
+          echo '--- sanitized private-model profile ---'
+          jq . "$PROFILE_SAFE"
+          echo '--- sanitized private-model probe ---'
+          jq . "$PROBE_SAFE"
+          echo 'ORACLE_INPROCESS_PROFILE_DIAGNOSTIC=CAPTURED'
+
+      - name: Restore exact previously active Test revision
+        id: restore
+        if: ${{ always() && steps.snapshot.outcome == 'success' && steps.activate.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ACTIVE_BEFORE='${{ steps.snapshot.outputs.active_before }}'
+          ACTIVE_IMAGE='${{ steps.snapshot.outputs.active_image }}'
+          [[ -n "$ACTIVE_BEFORE" && -n "$ACTIVE_IMAGE" ]]
+          az containerapp revision activate \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --revision "$ACTIVE_BEFORE" \
+            --output none --only-show-errors
+          bash scripts/wait-containerapp-ready-revision.sh \
+            '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            '${{ vars.AZURE_API_APP }}' \
+            "$ACTIVE_BEFORE" \
+            "$ACTIVE_IMAGE" \
+            60 5
+          ACTIVE_AFTER="$(az containerapp revision list \
+            -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            -n '${{ vars.AZURE_API_APP }}' \
+            --query '[?properties.active==`true`].name' \
+            -o json --only-show-errors)"
+          [[ "$(jq 'length' <<<"$ACTIVE_AFTER")" == 1 ]]
+          [[ "$(jq -r '.[0]' <<<"$ACTIVE_AFTER")" == "$ACTIVE_BEFORE" ]]
+          jq -n \
+            --arg restoredAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg activeRevisionBefore "$ACTIVE_BEFORE" \
+            --arg activeRevisionAfter "$(jq -r '.[0]' <<<"$ACTIVE_AFTER")" \
+            --arg activeImage "$ACTIVE_IMAGE" \
+            '{
+              status:"restored",
+              restoredAt:$restoredAt,
+              activeRevisionBefore:$activeRevisionBefore,
+              activeRevisionAfter:$activeRevisionAfter,
+              activeImage:$activeImage,
+              candidateLeftActive:false,
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/restoration.json"
+          echo 'PROTECTED_TEST_ACTIVE_REVISION=RESTORED'
+
+      - name: Upload immutable sanitized diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retained-oracle-candidate-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/retained-oracle-candidate-profile
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish final diagnostic status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          STATE=failure
+          DESCRIPTION='Oracle candidate diagnostic failed or Test restoration is incomplete'
+          if [[ '${{ steps.capture.outcome }}' == success && '${{ steps.restore.outcome }}' == success ]] \
+            && [[ -s "$EVIDENCE_DIR/diagnostic-summary.json" ]] \
+            && [[ -s "$EVIDENCE_DIR/restoration.json" ]]; then
+            STATE=success
+            DESCRIPTION='Safe Oracle profile captured; exact Test revision restored'
+          fi
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$STATE" \
+            -f context='projectpulse/oracle-retained-candidate-diagnostic' \
+            -f description="$DESCRIPTION" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+          [[ "$STATE" == success ]]
