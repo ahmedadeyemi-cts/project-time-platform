@@ -170,7 +170,7 @@ public static class ProjectRiskRegisterModule
         {
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
             var authorization = await RequireAccessAsync(context, connection, false); if (authorization.Error is not null) return authorization.Error;
-            var sql = ScopedProjectsCte + RiskSelect + $"""
+            var sql = ScopedProjectsCte + RiskSelect + "\n" + $"""
                 WHERE (@project_id IS NULL OR risk.project_id=@project_id)
                   AND (@search='' OR risk.risk_title ILIKE '%'||@search||'%' OR risk.description ILIKE '%'||@search||'%' OR risk.trigger_indicator ILIKE '%'||@search||'%')
                   AND (@owner='' OR owner.display_name ILIKE '%'||@owner||'%' OR owner.email ILIKE '%'||@owner||'%')
