@@ -1,0 +1,131 @@
+name: Apply PR602 Protected Test Release Controller Target
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/prepare-pr600-pr601-test-release-controller.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-pr602-test-release-controller-target
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply and validate the exact PR602 controller from trusted main
+    if: github.event.pull_request.number == 602 && github.event.pull_request.head.ref == 'release/test-pr600-pr601-1d1afbdc-20260810' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact same-repository PR602 branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: release/test-pr600-pr601-1d1afbdc-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply the bounded Test controller update
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/projectpulse-deploy-test.yml')
+          source = path.read_text(encoding='utf-8')
+
+          old_full = 'b0aedc706c3fe33b97b91a1b0074a20578c82b64'
+          new_full = '1d1afbdc6b6e34190087287325806ed274c822c9'
+          old_short = 'b0aedc70'
+          new_short = '1d1afbdc'
+
+          full_count = source.count(old_full)
+          if full_count < 2:
+              raise SystemExit(f'Expected at least two old release SHA references, found {full_count}.')
+          source = source.replace(old_full, new_full)
+
+          short_count = source.count(old_short)
+          if short_count < 3:
+              raise SystemExit(f'Expected at least three old short release labels, found {short_count}.')
+          source = source.replace(old_short, new_short)
+
+          old_name = 'name: ProjectPulse Test-Only Module 081/082 and Theme Recovery 1d1afbdc'
+          new_name = 'name: ProjectPulse Test Release 1d1afbdc - Enterprise Governance and Oracle Bridge'
+          if source.count(old_name) != 1:
+              raise SystemExit('Expected one Test release workflow name anchor.')
+          source = source.replace(old_name, new_name, 1)
+
+          permission_block = 'permissions:\n  id-token: write\n  contents: read'
+          replacement_permissions = 'permissions:\n  id-token: write\n  contents: read\n  actions: write'
+          if source.count(permission_block) != 1:
+              raise SystemExit('Expected one Test controller permissions block.')
+          source = source.replace(permission_block, replacement_permissions, 1)
+
+          rollback_anchor = '\n      - name: Restore prior images and source marker on failure\n'
+          if source.count(rollback_anchor) != 1:
+              raise SystemExit('Expected one Test rollback anchor.')
+
+          dispatch_step = '''
+      - name: Queue protected Oracle runtime activation
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh workflow run celar-ai-oracle-test-runtime-deploy.yml \\
+            --repo "$GITHUB_REPOSITORY" \\
+            --ref main \\
+            -f release_commit="$GITHUB_SHA" \\
+            -f approval_reference="ORACLE-TEST-PR600-PR601-20260810" \\
+            -f confirmation="DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST"
+          echo 'ORACLE_RUNTIME_WORKFLOW_QUEUED=true'
+'''
+          source = source.replace(rollback_anchor, '\n' + dispatch_step + rollback_anchor, 1)
+
+          for marker in (
+              new_full,
+              'actions: write',
+              'celar-ai-oracle-test-runtime-deploy.yml',
+              'ORACLE-TEST-PR600-PR601-20260810',
+              'DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST',
+              'ORACLE_RUNTIME_WORKFLOW_QUEUED=true',
+              'MIGRATIONS_APPLIED=NONE',
+              'MIGRATION_081=NOT_APPLIED',
+              'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED',
+          ):
+              if marker not in source:
+                  raise SystemExit(f'Missing required Test controller marker: {marker}')
+          if old_full in source or old_short in source:
+              raise SystemExit('The old pinned release remains in the Test controller.')
+          if source.count('Queue protected Oracle runtime activation') != 1:
+              raise SystemExit('Oracle activation must be queued exactly once.')
+          if 'environment: production' in source:
+              raise SystemExit('The Test controller must not bind Production.')
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          rm -f .github/workflows/prepare-pr600-pr601-test-release-controller.yml
+          grep -Fq 'TARGET_RELEASE_COMMIT: 1d1afbdc6b6e34190087287325806ed274c822c9' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'actions: write' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'gh workflow run celar-ai-oracle-test-runtime-deploy.yml' .github/workflows/projectpulse-deploy-test.yml
+          grep -Fq 'ORACLE-TEST-PR600-PR601-20260810' .github/workflows/projectpulse-deploy-test.yml
+          ! grep -Fq 'b0aedc706c3fe33b97b91a1b0074a20578c82b64' .github/workflows/projectpulse-deploy-test.yml
+          git diff --check
+
+      - name: Commit the validated PR602 controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name 'Pulse Test Release Automation'
+          git config user.email 'pulse-test-release-automation@users.noreply.github.com'
+          git commit -m 'ci: deploy merged enterprise and Oracle runtime release to Test'
+          git push origin HEAD:release/test-pr600-pr601-1d1afbdc-20260810
