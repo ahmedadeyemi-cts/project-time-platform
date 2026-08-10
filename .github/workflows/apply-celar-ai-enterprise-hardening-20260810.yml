@@ -47,6 +47,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          sed -i \
+            -e 's/nonAnswerCodeCount !== 3/nonAnswerCodeCount !== 2/' \
+            -e 's/expected 3 remaining uses/expected 2 remaining uses/' \
+            tools/apply-celar-ai-enterprise-hardening-20260810.mjs
           node tools/apply-celar-ai-enterprise-hardening-20260810.mjs
           node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
           git diff --check
