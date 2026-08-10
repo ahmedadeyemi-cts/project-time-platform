@@ -1,0 +1,99 @@
+name: Apply Celar AI Enterprise Runtime Routing and Theme Hardening
+
+on:
+  push:
+    branches:
+      - fix/celar-ai-enterprise-runtime-routing-theme-20260810
+    paths:
+      - tools/apply-celar-ai-enterprise-hardening-20260810.mjs
+      - .github/workflows/apply-celar-ai-enterprise-hardening-20260810.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: celar-ai-enterprise-hardening-20260810
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply, build, validate, and commit the enterprise correction
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out the exact correction branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/celar-ai-enterprise-runtime-routing-theme-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard the source-only branch boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/fix/celar-ai-enterprise-runtime-routing-theme-20260810 ]]
+          test -f tools/apply-celar-ai-enterprise-hardening-20260810.mjs
+          test -f .github/workflows/apply-celar-ai-enterprise-hardening-20260810.yml
+          echo 'DEPLOYMENT_EXECUTED=NONE'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'SECRET_VALUES_READ=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Apply the bounded source correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tools/apply-celar-ai-enterprise-hardening-20260810.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
+          git diff --check
+
+      - name: Compile the backend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+
+      - name: Build the complete frontend
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run build
+
+      - name: Re-run focused enterprise validation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+
+      - name: Remove one-time patch controls and commit the validated source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f tools/apply-celar-ai-enterprise-hardening-20260810.mjs
+          rm -f .github/workflows/apply-celar-ai-enterprise-hardening-20260810.yml
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No source changes were produced.' >&2
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: complete Celar AI runtime routing and theme hardening'
+          git push origin HEAD:fix/celar-ai-enterprise-runtime-routing-theme-20260810
+
+      - name: Publish completion boundary
+        shell: bash
+        run: |
+          echo 'CELAR_AI_ENTERPRISE_HARDENING=COMMITTED'
+          echo 'DEPLOYMENT_EXECUTED=NONE'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
