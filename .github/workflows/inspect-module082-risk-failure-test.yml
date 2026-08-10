@@ -1,0 +1,183 @@
+name: Diagnose Module 082 on Exact Protected Test Candidate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/inspect-module082-risk-failure-test.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Capture Module 082 response and exception, then restore Test
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module082-risk-logs-20260810'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_COMMIT: 2ac05ec4544f2e096fd6675f3d05ab18f8b82b4f
+      CANDIDATE_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:b14fd4dac8d648ccc40ce279bdb04d4d598e342976ae15a183c31eb1474cfad0
+      EVIDENCE_DIR: /tmp/module082-live-diagnostic
+
+    steps:
+      - name: Check out diagnostic controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot Test API and validate refreshed UAT session
+        id: contract
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Current Test image is outside the approved ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail 'Could not resolve current Test image digest.'
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ -n "$UAT_SESSION" ]] || fail 'The Test UAT session is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]]
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]]
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]]
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/preflight.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$STATUS" == 200 ]] || fail "The refreshed Test UAT session failed with HTTP $STATUS."
+
+          OLD_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$API_JSON")"
+          OLD_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")")"
+          echo "old_source=$OLD_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "old_image=$OLD_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact API candidate for bounded diagnosis
+        id: deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image "$CANDIDATE_API_IMAGE" \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$RELEASE_COMMIT" \
+            --revision-suffix "m82diag-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" "$CANDIDATE_API_IMAGE" 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Capture Module 082 response and active revision logs
+        id: probe
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          BASE: ${{ steps.contract.outputs.base }}
+          REVISION: ${{ steps.deploy.outputs.revision }}
+        run: |
+          set -Eeuo pipefail
+          auth=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 082' -H 'Cache-Control: no-cache')
+          ACCESS_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/module-082-access.json" -w '%{http_code}' "${auth[@]}" "$BASE/api/project-risk-register/access")"
+          RISKS_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/module-082-risks.json" -w '%{http_code}' "${auth[@]}" "$BASE/api/project-risk-register/risks?limit=5")"
+          printf '%s\n' "$ACCESS_STATUS" > "$EVIDENCE_DIR/module-082-access.status"
+          printf '%s\n' "$RISKS_STATUS" > "$EVIDENCE_DIR/module-082-risks.status"
+          echo "risks_status=$RISKS_STATUS" >> "$GITHUB_OUTPUT"
+
+          sleep 5
+          az containerapp replica list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --revision "$REVISION" -o json --only-show-errors > "$EVIDENCE_DIR/replicas.json" || true
+          REPLICA="$(jq -r '[.[] | select((.properties.runningState // "") == "Running")][0].name // .[0].name // empty' "$EVIDENCE_DIR/replicas.json" 2>/dev/null || true)"
+          if [[ -n "$REPLICA" ]]; then
+            az containerapp logs show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --revision "$REVISION" --replica "$REPLICA" --container '${{ vars.AZURE_API_APP }}' \
+              --type console --tail 300 --format text > "$EVIDENCE_DIR/console-raw.log" 2>&1 || true
+          else
+            printf '%s\n' 'No active replica name was returned.' > "$EVIDENCE_DIR/console-raw.log"
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('/tmp/module082-live-diagnostic')
+          source = (root / 'console-raw.log').read_text(encoding='utf-8', errors='replace')
+          for pattern, replacement in [
+              (r'(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._~+\/-]+', r'\1[REDACTED]'),
+              (r'(?i)(x-projectpulse-session:\s*)[A-Za-z0-9._~+\/-]+', r'\1[REDACTED]'),
+              (r'(?i)(password|secret|api[_-]?key|sessiontoken|accesstoken)(["=: ]+)[^ ,;"}]+', r'\1\2[REDACTED]')]:
+              source = re.sub(pattern, replacement, source)
+          (root / 'console.log').write_text(source, encoding='utf-8')
+          (root / 'console-raw.log').unlink(missing_ok=True)
+          PY
+
+          echo "MODULE_082_ACCESS_HTTP=$ACCESS_STATUS"
+          echo "MODULE_082_RISKS_HTTP=$RISKS_STATUS"
+          echo '--- MODULE 082 RISKS RESPONSE ---'
+          cat "$EVIDENCE_DIR/module-082-risks.json" || true
+          echo
+          echo '--- MODULE 082 EXCEPTION LOGS ---'
+          grep -Ein 'project-risk-register|list risks|Module 082|Npgsql|Postgres|InvalidCast|DBNull|Json|exception|error|fail|Correlation' "$EVIDENCE_DIR/console.log" | tail -n 200 || true
+
+      - name: Restore prior Test API image and source marker
+        if: always() && steps.deploy.outputs.started == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.contract.outputs.old_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT='${{ steps.contract.outputs.old_source }}' \
+            --revision-suffix "m82rb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.contract.outputs.old_image }}' 60 10
+          echo 'TEST_API_RESTORED=TRUE'
+
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: module-082-live-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/module082-live-diagnostic
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish diagnostic outcome
+        if: always()
+        shell: bash
+        run: |
+          echo "MODULE_082_RISKS_STATUS=${{ steps.probe.outputs.risks_status }}"
+          echo 'PRODUCTION_CHANGES=NONE'
+          echo 'MIGRATIONS_APPLIED=NONE'
