@@ -14,6 +14,7 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
+      - 'tests/test-module-083-autonomous-control-plane-migration-083.sh'
       - 'schemas/full-future-loop/**'
       - 'config/full-future-loop/**'
       - 'database/migrations/083_module_083_autonomous_control_plane.sql'
@@ -34,6 +35,7 @@ on:
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
+      - 'tests/test-module-083-autonomous-control-plane-migration-083.sh'
       - 'schemas/full-future-loop/**'
       - 'config/full-future-loop/**'
       - 'database/migrations/083_module_083_autonomous_control_plane.sql'
@@ -52,7 +54,7 @@ jobs:
   validate:
     name: Validate bounded enterprise autonomy
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
 
     steps:
       - name: Check out exact source
@@ -90,6 +92,7 @@ jobs:
             src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs \
             tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
             tests/FullFutureLoopAutomationPolicyTests/Program.cs \
+            tests/test-module-083-autonomous-control-plane-migration-083.sh \
             schemas/full-future-loop/automation-policy.schema.json \
             schemas/full-future-loop/release-manifest.schema.json \
             config/full-future-loop/automation-policy.example.json \
@@ -100,6 +103,7 @@ jobs:
             test -f "$required"
           done
 
+          bash -n tests/test-module-083-autonomous-control-plane-migration-083.sh
           ! grep -RInE 'azure/login@|az containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up' \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
@@ -112,6 +116,7 @@ jobs:
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
             src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx \
             tests/FullFutureLoopAutomationPolicyTests \
+            tests/test-module-083-autonomous-control-plane-migration-083.sh \
             config/full-future-loop \
             schemas/full-future-loop \
             database/migrations/083_module_083_autonomous_control_plane.sql \
@@ -127,7 +132,7 @@ jobs:
 
           echo 'MODULE_083_AUTONOMY_SOURCE_BOUNDARY=PASSED'
           echo 'EXTERNAL_MUTATIONS=NONE'
-          echo 'MIGRATION_EXECUTION=NONE'
+          echo 'TARGET_ENVIRONMENT_MIGRATION_EXECUTION=NONE'
           echo 'SECRETS_REQUIRED=NONE'
 
       - name: Install frontend dependencies
@@ -154,6 +159,12 @@ jobs:
             --project tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
             --configuration Release
 
+      - name: Validate migration 083 apply, constraints, guards, and rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-module-083-autonomous-control-plane-migration-083.sh
+
       - name: Compile complete API with autonomous orchestration
         shell: bash
         run: |
@@ -173,4 +184,5 @@ jobs:
           git diff --exit-code
           echo 'MODULE_083_AUTONOMOUS_CONTROL_PLANE_ORCHESTRATION=PASSED'
           echo 'MODULE_083_AUTONOMOUS_OPERATOR_INTERFACE=PASSED'
+          echo 'MODULE_083_AUTONOMOUS_MIGRATION_083=PASSED'
           echo 'EXTERNAL_EXECUTION_ENABLED=FALSE'
