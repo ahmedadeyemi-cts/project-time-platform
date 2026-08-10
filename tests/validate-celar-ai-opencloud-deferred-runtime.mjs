@@ -11,25 +11,31 @@ function requireMarker(text, marker, context) {
   }
 }
 
-// OpenCloud remains the future destination and stays disabled. The temporary
-// Oracle bridge is a separate, manual, protected-Test-only activation path.
+requireMarker(workflow, "workflow_dispatch:", workflowPath);
+requireMarker(workflow, "DEPLOY-CELAR-AI-OPENCLOUD-RUNTIME-TO-TEST", workflowPath);
+
+if (/^\s{2}push:\s*$/m.test(workflow)) {
+  throw new Error(`${workflowPath} must not automatically deploy the deferred private runtime from a main push.`);
+}
+
+for (const prohibited of [
+  "environment: test",
+  "id-token: write",
+  "azure/login@",
+  "az containerapp",
+  "az acr",
+]) {
+  if (workflow.includes(prohibited)) {
+    throw new Error(`${workflowPath} is deferred and must not contain active Azure mutation capability: ${prohibited}`);
+  }
+}
+
+requireMarker(workflow, "OPEN_CLOUD_PRIVATE_RUNTIME_DEPLOYMENT=DISABLED", workflowPath);
+requireMarker(workflow, "AZURE_PRIVATE_RUNTIME_MUTATION=NONE", workflowPath);
+
 requireMarker(architecture, "status: deferred-until-opencloud", architecturePath);
 requireMarker(architecture, "topology: shared-private-runtime-vm", architecturePath);
 requireMarker(architecture, "enabled: false", architecturePath);
 requireMarker(architecture, "flowhive-sow-grounded-plan-passes", architecturePath);
 
-requireMarker(workflow, "workflow_dispatch:", workflowPath);
-requireMarker(workflow, "DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST", workflowPath);
-requireMarker(workflow, "environment: test", workflowPath);
-requireMarker(workflow, "PRODUCTION_MUTATION=NONE", workflowPath);
-requireMarker(workflow, "OPEN_CLOUD_RUNTIME_MUTATION=NONE", workflowPath);
-requireMarker(workflow, "https://celarai.onenecklab.com/health", workflowPath);
-
-if (/^\s{2}push:\s*$/m.test(workflow)) {
-  throw new Error(`${workflowPath} must not automatically deploy the Oracle bridge from a main push.`);
-}
-if (workflow.includes("environment: production")) {
-  throw new Error(`${workflowPath} must never bind the temporary Oracle bridge to Production.`);
-}
-
-console.log("Celar AI OpenCloud deferral and temporary Oracle Test boundary passed.");
+console.log("Celar AI OpenCloud deferred-runtime contract passed.");
