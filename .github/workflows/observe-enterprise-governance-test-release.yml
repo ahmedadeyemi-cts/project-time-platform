@@ -1,4 +1,4 @@
-name: Observe Fixed Enterprise Governance Protected Test Release
+name: Observe Fixed-v2 Enterprise Governance Protected Test Release
 
 on:
   pull_request:
@@ -17,17 +17,17 @@ concurrency:
 
 jobs:
   observe:
-    name: Verify exact fixed Test release and Oracle activation
+    name: Verify exact fixed-v2 Test release and Oracle activation
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'diagnostic/observe-enterprise-governance-test-release-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 210
     env:
-      TARGET_CONTROL_COMMIT: 39e03363bbd6f2a2c35c9172cdcfc6090ba71ee4
-      NORMAL_WORKFLOW_PATH: .github/workflows/projectpulse-promote-enterprise-governance-test.yml
+      TARGET_CONTROL_COMMIT: 00403d52e8f339ff7604f7b89445035742812aff
+      NORMAL_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-enterprise-governance-fixed-v2-test.yml
       ORACLE_WORKFLOW_PATH: .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
-      NORMAL_ARTIFACT_PREFIX: enterprise-governance-fixed-
+      NORMAL_ARTIFACT_PREFIX: enterprise-governance-fixed-v2-
       ORACLE_ARTIFACT_PREFIX: celar-ai-oracle-test-runtime-
 
     steps:
@@ -49,7 +49,7 @@ jobs:
             [[ -n "$RUN_ID" ]] && break
             sleep 10
           done
-          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Exact fixed Test release run was not found.' >&2; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Exact fixed-v2 Test release run was not found.' >&2; exit 1; }
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "NORMAL_RUN_ID=$RUN_ID"
 
@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo 'FIXED_ENTERPRISE_GOVERNANCE_TEST_RELEASE=PASSED'
+          echo 'FIXED_V2_ENTERPRISE_GOVERNANCE_TEST_RELEASE=PASSED'
           echo 'MODULE_082_RISKS_UAT=PASSED'
           echo 'ORACLE_CELAR_AI_TEST_ACTIVATION=PASSED'
           echo "NORMAL_EVIDENCE_ARTIFACT=${{ steps.normal.outputs.normal_artifact }}"
