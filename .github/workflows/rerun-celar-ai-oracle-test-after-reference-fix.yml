@@ -1,0 +1,172 @@
+name: Rerun Celar AI Oracle Test After Container Apps Reference Fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rerun-celar-ai-oracle-test-after-reference-fix
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate one-time Oracle Test dispatch controller
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact pull request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact corrected source and Test-only dispatch boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_EVENT_NAME" == pull_request ]] || fail 'Validation is pull-request-only.'
+          git merge-base --is-ancestor a7d90572569aad6b70229ec0ec32413eacf4ee46 HEAD \
+            || fail 'The merged Oracle Container Apps reference correction is missing.'
+          test -f .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          test -f .github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml
+          test -f src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs
+          test -f tests/validate-celar-ai-oracle-test-runtime.mjs
+
+          grep -Fq "TOKEN_REFERENCE=\"github-environment://test/celar-ai-oracle-runtime-token@\$TARGET_RELEASE_COMMIT\"" \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN=\"secretref:\$TOKEN_SECRET_NAME\"" \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          grep -Fq 'github-environment://' \
+            src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+          git diff --check
+
+          echo 'ORACLE_TEST_DISPATCH_CONTROLLER=VALID'
+          echo 'TEST_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Install checksum-pinned actionlint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose \
+            .github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml
+
+      - name: Prove validation did not rewrite tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code
+
+  dispatch:
+    name: Dispatch the corrected Oracle activation against exact current main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      actions: write
+      contents: read
+      statuses: write
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact current main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact source and dispatch the protected Oracle Test activation
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_EVENT_NAME" == push ]] || fail 'Dispatch is push-triggered only.'
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may dispatch the protected Test workflow.'
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || fail 'Checkout does not match the workflow commit.'
+          git merge-base --is-ancestor a7d90572569aad6b70229ec0ec32413eacf4ee46 "$GITHUB_SHA" \
+            || fail 'The corrected Oracle reference merge is missing.'
+
+          grep -Fq "TOKEN_REFERENCE=\"github-environment://test/celar-ai-oracle-runtime-token@\$TARGET_RELEASE_COMMIT\"" \
+            .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+
+          SEARCH_AFTER="$(date -u -d '-2 minutes' +'%Y-%m-%dT%H:%M:%SZ')"
+          gh workflow run celar-ai-oracle-test-runtime-deploy.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_commit="$GITHUB_SHA" \
+            -f approval_reference="ORACLE-TEST-CONTAINERAPP-REFERENCE-FIX-20260810" \
+            -f confirmation="DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST"
+
+          ORACLE_RUN_ID=''
+          ORACLE_RUN_URL=''
+          for _attempt in $(seq 1 40); do
+            RUNS="$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/celar-ai-oracle-test-runtime-deploy.yml/runs?event=workflow_dispatch&branch=main&per_page=30")"
+            ORACLE_RUN_ID="$(jq -r \
+              --arg sha "$GITHUB_SHA" \
+              --arg after "$SEARCH_AFTER" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $after)] | sort_by(.created_at) | last | .id // empty' \
+              <<<"$RUNS")"
+            ORACLE_RUN_URL="$(jq -r \
+              --argjson id "${ORACLE_RUN_ID:-0}" \
+              '.workflow_runs[] | select(.id == $id) | .html_url // empty' \
+              <<<"$RUNS")"
+            [[ "$ORACLE_RUN_ID" =~ ^[0-9]+$ && "$ORACLE_RUN_URL" == https://github.com/* ]] && break
+            sleep 3
+          done
+
+          [[ "$ORACLE_RUN_ID" =~ ^[0-9]+$ ]] || fail 'Could not locate the exact Oracle activation run.'
+          {
+            echo "run_id=$ORACLE_RUN_ID"
+            echo "run_url=$ORACLE_RUN_URL"
+          } >> "$GITHUB_OUTPUT"
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending \
+            -f context='projectpulse/oracle-runtime-activation' \
+            -f description="Corrected Oracle activation queued as run $ORACLE_RUN_ID." \
+            -f target_url="$ORACLE_RUN_URL" >/dev/null
+
+          echo "ORACLE_RUNTIME_WORKFLOW_RUN_ID=$ORACLE_RUN_ID"
+          echo "ORACLE_RUNTIME_WORKFLOW_URL=$ORACLE_RUN_URL"
+          echo 'TEST_MUTATION=DISPATCHED_TO_GUARDED_WORKFLOW'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Publish exact Oracle activation reference
+        shell: bash
+        run: |
+          {
+            echo '## Corrected Oracle Test activation dispatched'
+            echo
+            echo "- Release commit: \`$GITHUB_SHA\`"
+            echo "- Workflow run: ${{ steps.dispatch.outputs.run_url }}"
+            echo '- Environment: protected Test only'
+            echo '- Production changes: none'
+          } >> "$GITHUB_STEP_SUMMARY"
