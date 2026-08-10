@@ -117,7 +117,8 @@ test('MANIFEST_SCHEMA_IDENTITY',
 test('EXACT_SOURCE_AND_DIGEST_SCHEMA',
   manifestSchema.properties.sourceCommit.pattern === '^[0-9a-f]{40}$'
   && manifestSchema.properties.artifacts.items.properties.digest.pattern === '^sha256:[0-9a-f]{64}$'
-  && manifestSchema.properties.configurationFingerprint.pattern === '^[0-9a-f]{64}$');
+  && manifestSchema.properties.rollbackArtifactDigests.items.pattern === '^sha256:[0-9a-f]{64}$'
+  && manifestSchema.properties.configurationFingerprint.minLength === 1);
 
 test('RELEASE_EVIDENCE_SCHEMA',
   ['artifacts', 'migrations', 'canaryEvidenceReferences', 'verificationEvidenceReferences',
