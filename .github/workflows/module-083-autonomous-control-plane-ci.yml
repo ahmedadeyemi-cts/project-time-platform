@@ -1,0 +1,104 @@
+name: Validate Module 083 Autonomous Control Plane
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/module-083-autonomous-control-plane-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
+      - 'tests/FullFutureLoopAutomationPolicyTests/**'
+      - 'schemas/full-future-loop/**'
+      - 'config/full-future-loop/**'
+      - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md'
+  push:
+    branches:
+      - feature/module-083-autonomous-control-plane-20260809
+    paths:
+      - '.github/workflows/module-083-autonomous-control-plane-ci.yml'
+      - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
+      - 'tests/FullFutureLoopAutomationPolicyTests/**'
+      - 'schemas/full-future-loop/**'
+      - 'config/full-future-loop/**'
+      - 'docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-083-autonomous-control-plane-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate bounded enterprise autonomy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Guard source-only boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          test -f src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs
+          test -f src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs
+          test -f tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj
+          test -f tests/FullFutureLoopAutomationPolicyTests/Program.cs
+          test -f schemas/full-future-loop/automation-policy.schema.json
+          test -f schemas/full-future-loop/release-manifest.schema.json
+          test -f config/full-future-loop/automation-policy.example.json
+          test -f docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md
+
+          ! grep -RInE 'azure/login@|az containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up' \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
+            tests/FullFutureLoopAutomationPolicyTests \
+            config/full-future-loop \
+            schemas/full-future-loop
+          ! grep -RInE '(BEGIN (RSA |OPENSSH )?PRIVATE KEY|ghp_[A-Za-z0-9]+|github_pat_|Bearer [A-Za-z0-9._-]{20,})' \
+            src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
+            tests/FullFutureLoopAutomationPolicyTests \
+            config/full-future-loop \
+            schemas/full-future-loop \
+            docs/modules/module-083-full-future-loop/AUTONOMOUS-CONTROL-PLANE.md
+
+          echo 'MODULE_083_AUTONOMY_SOURCE_BOUNDARY=PASSED'
+          echo 'EXTERNAL_MUTATIONS=NONE'
+          echo 'SECRETS_REQUIRED=NONE'
+          echo 'PR_600_MUTATION=NONE'
+
+      - name: Validate policy, manifest, and architecture contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs
+
+      - name: Verify .NET 10 SDK is available
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet --info
+          dotnet --list-sdks | grep -Eq '^10\.'
+
+      - name: Compile and execute deterministic policy tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run \
+            --project tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
+            --configuration Release
+
+      - name: Prove validators do not rewrite tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code
+          echo 'MODULE_083_AUTONOMOUS_CONTROL_PLANE_FOUNDATION=PASSED'
