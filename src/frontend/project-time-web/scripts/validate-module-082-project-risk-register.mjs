@@ -1,3 +1,4 @@
+// Prevent PostgreSQL from receiving the invalid ON TRUEWHERE token sequence in Module 082 risk queries.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
