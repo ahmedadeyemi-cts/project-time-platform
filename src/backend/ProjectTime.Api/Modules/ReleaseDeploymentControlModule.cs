@@ -18,10 +18,11 @@ public static class ReleaseDeploymentControlModule
         group.MapPost("/releases/{id}/verify", (Delegate)LockedAsync);
         group.MapPost("/releases/{id}/rollback", (Delegate)LockedAsync);
 
-        // Module 083 extends the platform-operations lifecycle from the already
-        // registered Module 077 endpoint bridge. The Full Future Loop remains a
-        // sandbox and does not unlock any Module 077 deployment mutation.
+        // Module 083 extends the registered Module 077 platform-operations bridge.
+        // The sandbox lifecycle and durable autonomous orchestration remain
+        // fail-closed and do not unlock any Module 077 external mutation.
         endpoints.MapFullFutureLoopEndpoints();
+        endpoints.MapFullFutureLoopAutomationEndpoints();
         return endpoints;
     }
 
@@ -37,5 +38,4 @@ public static class ReleaseDeploymentControlModule
         if (GovernedOperationsReadModule.IsViewAs(context)) return Task.FromResult(Results.Forbid());
         return Task.FromResult(Results.Json(new { code = "MODULE_077_OPERATION_LOCKED", requestBodyRead = false, message = "Deployment promotion, rollback, pipeline, repository, cloud execution, notifications, and persistence are not authorized." }, statusCode: StatusCodes.Status423Locked));
     }
-
 }
