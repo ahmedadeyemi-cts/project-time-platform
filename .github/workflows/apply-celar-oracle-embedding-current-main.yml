@@ -1,9 +1,9 @@
 name: Apply Celar Oracle Embedding Compatibility on Current Main
 
 on:
-  push:
-    branches:
-      - fix/celar-oracle-embedding-current-main-20260810
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/apply-celar-oracle-embedding-current-main.yml'
       - 'scripts/patch-celar-oracle-workflow-current-main.py'
@@ -16,14 +16,15 @@ permissions:
 
 concurrency:
   group: apply-celar-oracle-embedding-current-main
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   finalize:
     name: Patch, validate, and commit Oracle compatibility
     if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/fix/celar-oracle-embedding-current-main-20260810'
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/celar-oracle-embedding-current-main-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
