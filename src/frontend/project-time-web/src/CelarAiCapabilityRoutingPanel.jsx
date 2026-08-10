@@ -370,7 +370,11 @@ export default function CelarAiCapabilityRoutingPanel() {
               autoComplete="off"
               disabled={deploymentManaged}
             />
-            <small>The endpoint must use a private IP, loopback, or approved private DNS suffix. The saved value is never returned.</small>
+            <small>
+              {deploymentManaged
+                ? 'This protected endpoint is deployment-managed. Its raw URL and credential remain hidden; the configured state and fingerprint above are authoritative.'
+                : 'The endpoint must use a private IP, loopback, or approved private DNS suffix. The saved value is never returned.'}
+            </small>
           </label>
           <label>
             <span>Private model or deployment name</span>

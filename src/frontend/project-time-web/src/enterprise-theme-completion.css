@@ -1,0 +1,234 @@
+/* Final semantic light/dark contract for shared Pulse surfaces.
+   Loaded last so legacy component literals cannot create unreadable islands. */
+:root {
+  --pulse-theme-canvas: var(--uss-app-canvas, #eef4f8);
+  --pulse-theme-surface: var(--uss-app-surface, #ffffff);
+  --pulse-theme-raised: var(--uss-app-surface-raised, #ffffff);
+  --pulse-theme-subtle: var(--uss-app-surface-subtle, #f4f7fb);
+  --pulse-theme-control: var(--uss-app-control, #ffffff);
+  --pulse-theme-border: var(--uss-app-border, #ced9e3);
+  --pulse-theme-border-strong: var(--uss-app-border-strong, #8798aa);
+  --pulse-theme-text: var(--uss-app-text, #172033);
+  --pulse-theme-muted: var(--uss-app-muted, #52627a);
+  --pulse-theme-link: var(--uss-app-link, #005ea8);
+}
+
+:root[data-theme='dark'],
+body[data-theme='dark'] {
+  --pulse-theme-canvas: #07111f;
+  --pulse-theme-surface: #111f33;
+  --pulse-theme-raised: #14243a;
+  --pulse-theme-subtle: #18283d;
+  --pulse-theme-control: #111f33;
+  --pulse-theme-border: #33475e;
+  --pulse-theme-border-strong: #71839c;
+  --pulse-theme-text: #f4f8ff;
+  --pulse-theme-muted: #b8c4d6;
+  --pulse-theme-link: #75c2ff;
+}
+
+:where(
+  .group7-provider-readiness,
+  .ai-provider-center__notice,
+  .ai-provider-center__automatic-health,
+  .ai-provider-center__execution-policy,
+  .ai-provider-center__state,
+  .ai-provider-center__section,
+  .ai-provider-center__locked,
+  .ai-provider-center__summary article,
+  .ai-provider-center__provider,
+  .ai-provider-center__routes article,
+  .celar-ai-routing__private-model,
+  .celar-ai-routing__production-readiness,
+  .celar-ai-routing__knowledge-fabric,
+  .celar-ai-routing__route-card,
+  .celar-ai-routing__consumer-table,
+  .celar-ai-provider-bridge,
+  .celar-ai-provider-bridge article,
+  .enterprise-status-card,
+  .enterprise-warning
+) {
+  border-color: var(--pulse-theme-border) !important;
+  background-color: var(--pulse-theme-surface) !important;
+  color: var(--pulse-theme-text) !important;
+}
+
+:where(
+  .group7-provider-readiness__provider,
+  .celar-ai-routing__private-summary article,
+  .celar-ai-routing__knowledge-grid article,
+  .celar-ai-routing__architecture article,
+  .celar-ai-provider-bridge__summary article,
+  .celar-ai-provider-bridge__architecture article,
+  .celar-ai-provider-bridge__route-grid article
+) {
+  border-color: var(--pulse-theme-border) !important;
+  background-color: var(--pulse-theme-raised) !important;
+  color: var(--pulse-theme-text) !important;
+}
+
+:where(
+  .group7-provider-readiness,
+  .ai-provider-center,
+  .celar-ai-routing,
+  .celar-ai-provider-bridge,
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page
+) :is(h1, h2, h3, h4, strong, dt, dd, label, legend) {
+  color: var(--pulse-theme-text) !important;
+}
+
+:where(
+  .group7-provider-readiness,
+  .ai-provider-center,
+  .celar-ai-routing,
+  .celar-ai-provider-bridge,
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page
+) :is(p, small, span, .muted, .subtitle, .helper-text, .supporting-text) {
+  color: var(--pulse-theme-muted);
+}
+
+:where(
+  .group7-provider-readiness,
+  .ai-provider-center,
+  .celar-ai-routing,
+  .celar-ai-provider-bridge,
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page
+) :is(input, select, textarea) {
+  border-color: var(--pulse-theme-border-strong) !important;
+  background: var(--pulse-theme-control) !important;
+  color: var(--pulse-theme-text) !important;
+  opacity: 1 !important;
+}
+
+:where(
+  .group7-provider-readiness,
+  .ai-provider-center,
+  .celar-ai-routing,
+  .celar-ai-provider-bridge,
+  .projectpulse-module-standard,
+  .uss-enterprise-module-page
+) :is(input, textarea)::placeholder {
+  color: var(--pulse-theme-muted) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme='dark'] :where(
+  .ai-provider-center__notice,
+  .ai-provider-center__automatic-health,
+  .ai-provider-center__execution-policy,
+  .ai-provider-center__state,
+  .ai-provider-center__locked
+),
+body[data-theme='dark'] :where(
+  .ai-provider-center__notice,
+  .ai-provider-center__automatic-health,
+  .ai-provider-center__execution-policy,
+  .ai-provider-center__state,
+  .ai-provider-center__locked
+) {
+  background-image: none !important;
+  background-color: var(--pulse-theme-raised) !important;
+  color: var(--pulse-theme-text) !important;
+}
+
+:root[data-theme='dark'] :where(
+  .group7-provider-readiness__provider,
+  .ai-provider-center__provider,
+  .celar-ai-routing__route-card,
+  .celar-ai-routing__consumer-table [role='row']
+),
+body[data-theme='dark'] :where(
+  .group7-provider-readiness__provider,
+  .ai-provider-center__provider,
+  .celar-ai-routing__route-card,
+  .celar-ai-routing__consumer-table [role='row']
+) {
+  background: var(--pulse-theme-raised) !important;
+  color: var(--pulse-theme-text) !important;
+}
+
+:root[data-theme='dark'] :where(
+  .group7-provider-readiness__provider dt,
+  .group7-provider-readiness__provider dd,
+  .group7-provider-readiness__provider > div strong,
+  .group7-provider-readiness__provider > div span,
+  .ai-provider-center__secret-form small,
+  .ai-provider-center__model-form small,
+  .ai-provider-center__enable-control small
+),
+body[data-theme='dark'] :where(
+  .group7-provider-readiness__provider dt,
+  .group7-provider-readiness__provider dd,
+  .group7-provider-readiness__provider > div strong,
+  .group7-provider-readiness__provider > div span,
+  .ai-provider-center__secret-form small,
+  .ai-provider-center__model-form small,
+  .ai-provider-center__enable-control small
+) {
+  color: var(--pulse-theme-text) !important;
+}
+
+:root[data-theme='dark'] .ai-provider-center__status--inactive,
+body[data-theme='dark'] .ai-provider-center__status--inactive {
+  background: #27364a !important;
+  color: #e5edf8 !important;
+}
+
+:root[data-theme='dark'] .ai-provider-center__status--checking,
+body[data-theme='dark'] .ai-provider-center__status--checking {
+  background: #173d67 !important;
+  color: #d8ecff !important;
+}
+
+:root[data-theme='dark'] .ai-provider-center__status--healthy,
+body[data-theme='dark'] .ai-provider-center__status--healthy {
+  background: #183f31 !important;
+  color: #d9f8e7 !important;
+}
+
+:root[data-theme='dark'] .ai-provider-center__status--degraded,
+body[data-theme='dark'] .ai-provider-center__status--degraded {
+  background: #4b3513 !important;
+  color: #ffedc4 !important;
+}
+
+.enterprise-top-bar .pulse-header-theme-switcher,
+:root[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher,
+body[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher {
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  border-color: rgba(0, 75, 141, 0.28) !important;
+  background: #f4f9fe !important;
+}
+
+.enterprise-top-bar .pulse-header-theme-switcher button,
+:root[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button,
+body[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button {
+  color: #31546f !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: currentColor;
+}
+
+.enterprise-top-bar .pulse-header-theme-switcher button.active,
+.enterprise-top-bar .pulse-header-theme-switcher button[aria-pressed='true'],
+:root[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button.active,
+:root[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button[aria-pressed='true'],
+body[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button.active,
+body[data-theme='dark'] .enterprise-top-bar .pulse-header-theme-switcher button[aria-pressed='true'] {
+  background: #004b8d !important;
+  color: #ffffff !important;
+}
+
+:where(.projectpulse-module-standard, .uss-enterprise-module-page) a {
+  color: var(--pulse-theme-link);
+}
+
+:where(.projectpulse-module-standard, .uss-enterprise-module-page)
+  :is(button, input, select, textarea, a, summary):focus-visible {
+  outline: 3px solid var(--uss-app-focus, #70d7ff) !important;
+  outline-offset: 2px;
+}
