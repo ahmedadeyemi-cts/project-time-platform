@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_commit:
-        description: Exact current main commit already deployed to protected Test
+        description: Exact merged application commit already deployed to protected Test and contained in current main
         required: true
         type: string
       approval_reference:
@@ -66,9 +66,12 @@ jobs:
           [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may activate protected Test.'
           [[ "$DISPATCH_CONFIRMATION" == ACTIVATE-CELAR-AI-ORACLE-ON-TEST ]] || fail 'The exact confirmation phrase is required.'
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'release_commit must be one exact SHA.'
-          [[ "$RELEASE_COMMIT" == "$GITHUB_SHA" ]] || fail 'The selected workflow commit must equal release_commit.'
           [[ "$APPROVAL_REFERENCE" =~ ^ORACLE-TEST-[A-Za-z0-9][A-Za-z0-9._-]{7,119}$ ]] || fail 'approval_reference is invalid.'
           [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]] || fail 'Checkout mismatch.'
+          git rev-parse --verify origin/main >/dev/null || fail 'Current main was not fetched for ancestry verification.'
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || fail 'The workflow ref does not match current main.'
+          git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA" \
+            || fail 'release_commit must be an ancestor of the selected current-main workflow revision.'
           install -d -m 0700 "$EVIDENCE_DIR"
           echo 'MIGRATIONS_APPLIED=NONE'
           echo 'PRODUCTION_MUTATION=NONE'
