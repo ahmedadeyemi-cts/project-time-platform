@@ -81,12 +81,49 @@ jobs:
           git diff --check
 
       - name: Commit validated permanent diagnostic
+        id: publish
         shell: bash
         run: |
-          set -Eeuo pipefail
-          git add -A
-          git diff --cached --check
-          git config user.name 'Pulse Enterprise Automation'
-          git config user.email 'pulse-enterprise-automation@users.noreply.github.com'
-          git commit -m 'diagnostic: capture Oracle in-process profile safely'
-          git push origin HEAD:diagnostic/oracle-inprocess-profile-20260810
+          set +e
+          DEBUG="$RUNNER_TEMP/oracle-finalizer-debug.txt"
+          {
+            echo 'FINALIZER_DEBUG_VERSION=1'
+            echo "BRANCH=$(git branch --show-current)"
+            echo "REMOTE=$(git remote get-url origin | sed -E 's#https://[^@]+@github.com/#https://github.com/#')"
+            git add -A
+            echo '--- staged status ---'
+            git status --short
+            echo '--- staged summary ---'
+            git diff --cached --stat
+            git diff --cached --check
+            CHECK_STATUS=$?
+            echo "DIFF_CHECK_STATUS=$CHECK_STATUS"
+            if (( CHECK_STATUS != 0 )); then
+              exit "$CHECK_STATUS"
+            fi
+            git config user.name 'Pulse Enterprise Automation'
+            git config user.email 'pulse-enterprise-automation@users.noreply.github.com'
+            git commit -m 'diagnostic: capture Oracle in-process profile safely'
+            COMMIT_STATUS=$?
+            echo "COMMIT_STATUS=$COMMIT_STATUS"
+            git rev-parse HEAD || true
+            if (( COMMIT_STATUS != 0 )); then
+              exit "$COMMIT_STATUS"
+            fi
+            git push --verbose origin HEAD:diagnostic/oracle-inprocess-profile-20260810
+            PUSH_STATUS=$?
+            echo "PUSH_STATUS=$PUSH_STATUS"
+            exit "$PUSH_STATUS"
+          } 2>&1 | tee "$DEBUG"
+          RESULT=${PIPESTATUS[0]}
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          exit "$RESULT"
+
+      - name: Upload bounded finalizer diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oracle-finalizer-debug-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/oracle-finalizer-debug.txt
+          if-no-files-found: warn
+          retention-days: 3
