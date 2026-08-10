@@ -38,11 +38,22 @@ public static class ProjectPulseAiServiceCollectionExtensions
             client.Timeout = TimeSpan.FromMinutes(5);
         })
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        services.AddHttpClient("PulseAiPrivateMalwareScan", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        services.AddHttpClient("PulseAiExternalRuntimeReadiness", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(45);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
         services.AddHttpClient("PulseAiPrivateTraining", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(10);
         })
         .ConfigurePrimaryHttpMessageHandler(() => PrivateHttpHandler());
+        services.AddHostedService<PulseAiExternalHttpsRuntimeGuard>();
         // System Intelligence forwards current-session headers only to a configured,
         // allowlisted same-origin target. Redirects and shared cookie storage stay disabled.
         services.AddHttpClient("PulseAiSystemTools", client =>
@@ -152,29 +163,42 @@ public static class ProjectPulseAiServiceCollectionExtensions
         }
 
         IPAddress[] addresses;
-        try
+        if (PulseAiExternalHttpsRuntimePolicy.TryGetPinnedAddress(
+                context.InitialRequestMessage.RequestUri,
+                out var pinnedAddress,
+                out _))
         {
-            addresses = IPAddress.TryParse(host, out var literal)
-                ? [literal]
-                : await Dns.GetHostAddressesAsync(host, cancellationToken);
+            // The endpoint adapter already revalidated live DNS. Connect only to
+            // the approved public IPv4 address while SocketsHttpHandler validates
+            // TLS against the original celarai.onenecklab.com request hostname.
+            addresses = [pinnedAddress];
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        else
         {
-            throw;
-        }
-        catch (Exception exception) when (exception is SocketException or ArgumentException)
-        {
-            throw new HttpRequestException("The private AI endpoint could not be resolved.", exception);
-        }
+            try
+            {
+                addresses = IPAddress.TryParse(host, out var literal)
+                    ? [literal]
+                    : await Dns.GetHostAddressesAsync(host, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is SocketException or ArgumentException)
+            {
+                throw new HttpRequestException("The private AI endpoint could not be resolved.", exception);
+            }
 
-        // Reject the entire answer set when even one address is unsafe. Selecting
-        // only a private member from a mixed answer would make DNS rebinding and
-        // split-horizon configuration mistakes difficult to detect.
-        if (addresses.Length == 0
-            || addresses.Any(address => !PulseAiPrivateEndpointPolicy.IsConnectablePrivateAddress(address)))
-        {
-            throw new HttpRequestException(
-                "The private AI endpoint did not resolve exclusively to private, non-loopback addresses.");
+            // Reject the entire answer set when even one address is unsafe. Selecting
+            // only a private member from a mixed answer would make DNS rebinding and
+            // split-horizon configuration mistakes difficult to detect.
+            if (addresses.Length == 0
+                || addresses.Any(address => !PulseAiPrivateEndpointPolicy.IsConnectablePrivateAddress(address)))
+            {
+                throw new HttpRequestException(
+                    "The private AI endpoint did not resolve exclusively to private, non-loopback addresses.");
+            }
         }
 
         Exception? lastFailure = null;

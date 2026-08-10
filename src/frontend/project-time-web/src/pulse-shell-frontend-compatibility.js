@@ -131,13 +131,45 @@ function synchronizeThemeButtons() {
   });
 }
 
-function applyTheme(theme) {
+function applyTheme(theme, persistProfile = false) {
   const normalized = theme === 'dark' ? 'dark' : 'light';
   try { window.localStorage.setItem(THEME_STORAGE_KEY, normalized); } catch { /* Storage can be unavailable. */ }
   document.documentElement.dataset.theme = normalized;
   if (document.body) document.body.dataset.theme = normalized;
   window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: normalized } }));
   synchronizeThemeButtons();
+  if (persistProfile) persistSignedInThemePreference(normalized);
+}
+
+let themePreferenceTimer = 0;
+function persistSignedInThemePreference(theme) {
+  window.clearTimeout(themePreferenceTimer);
+  themePreferenceTimer = window.setTimeout(async () => {
+    try {
+      const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+      const token = session?.sessionToken || session?.token || session?.accessToken || '';
+      if (!token) return;
+      const username = String(session?.username || session?.email || 'anonymous').toLowerCase();
+      const key = `projectPulseUserPreferences:${username}`;
+      let preferences = {};
+      try { preferences = JSON.parse(window.localStorage.getItem(key) || '{}') || {}; } catch { preferences = {}; }
+      const next = { ...preferences, theme };
+      window.localStorage.setItem(key, JSON.stringify(next));
+      await window.fetch('/api/profile/preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-ProjectPulse-Session': token
+        },
+        credentials: 'include',
+        cache: 'no-store',
+        body: JSON.stringify(next)
+      });
+    } catch {
+      // Browser preference remains authoritative while profile persistence is unavailable.
+    }
+  }, 180);
 }
 
 function themeButton(theme, icon, label) {
@@ -189,7 +221,7 @@ function installPresentationRuntime() {
     const button = event.target?.closest?.('[data-pulse-theme-choice]');
     if (!button) return;
     event.preventDefault();
-    applyTheme(button.dataset.pulseThemeChoice);
+    applyTheme(button.dataset.pulseThemeChoice, true);
   }, true);
 
   const start = () => {

@@ -1,0 +1,370 @@
+name: Pulse Protected Test Release - Enterprise Governance and Oracle Bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-deploy-enterprise-governance-test.yml'
+
+permissions:
+  id-token: write
+  contents: read
+  actions: write
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy merged enterprise governance release to protected Test
+    if: github.ref == 'refs/heads/main'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      REQUIRED_PR600_COMMIT: 1d1afbdc6b6e34190087287325806ed274c822c9
+      REQUIRED_PR601_COMMIT: 75150206e40a6c2fb56d0c30baa608d64d1ed858
+      EVIDENCE_DIR: /tmp/enterprise-governance-test-evidence
+
+    steps:
+      - name: Check out exact merged Test release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact source, Test-only scope, and no-migration boundary
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_EVENT_NAME" == push ]] || fail 'This controller is push-triggered only.'
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may be deployed.'
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          [[ "$RELEASE_COMMIT" == "$GITHUB_SHA" ]] || fail 'The checkout does not match the workflow commit.'
+          git merge-base --is-ancestor "$REQUIRED_PR600_COMMIT" "$RELEASE_COMMIT" || fail 'PR #600 is not present in the release.'
+          git merge-base --is-ancestor "$REQUIRED_PR601_COMMIT" "$RELEASE_COMMIT" || fail 'PR #601 is not present in the release.'
+
+          test -f src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          test -f src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          test -f src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs
+          test -f src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          test -f src/frontend/project-time-web/src/BillingReadinessCenter.jsx
+          test -f src/frontend/project-time-web/src/profile-settings-enterprise.css
+          test -f src/frontend/project-time-web/src/pulse-shell-frontend-compatibility.js
+          test -f src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+          test -f .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
+          test -f scripts/build-pr55-acr-image.sh
+          test -f scripts/wait-containerapp-ready-revision.sh
+
+          grep -Fq 'reader.IsDBNull(47) ? string.Empty : reader.GetString(47)' src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs
+          grep -Fq 'ListManagingTeamsAsync' src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs
+          grep -Fq 'Bulk upload spreadsheet' src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          grep -Fq 'Select managing team' src/frontend/project-time-web/src/LabEquipmentTrackerCenter.jsx
+          grep -Fq 'degradedSources' src/frontend/project-time-web/src/BillingReadinessCenter.jsx
+          grep -Fq 'ResolveProjectDocumentStoragePath' src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs
+          ! grep -Fq "@hide_closed_projects = FALSE OR LOWER(COALESCE(p.status" src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs
+          grep -Fq 'persistSignedInThemePreference' src/frontend/project-time-web/src/pulse-shell-frontend-compatibility.js
+          grep -Fq 'profile-settings-backdrop' src/frontend/project-time-web/src/profile-settings-enterprise.css
+          grep -Fq 'celarai.onenecklab.com' src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+
+          node src/frontend/project-time-web/scripts/validate-enterprise-ui-documents-governance.mjs
+          node src/frontend/project-time-web/scripts/validate-module-081-lab-equipment-tracker.mjs
+          node src/frontend/project-time-web/scripts/validate-module-082-project-risk-register.mjs
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n \
+            --arg releaseCommit "$RELEASE_COMMIT" \
+            --arg pr600 "$REQUIRED_PR600_COMMIT" \
+            --arg pr601 "$REQUIRED_PR601_COMMIT" \
+            '{
+              environment:"test",
+              releaseCommit:$releaseCommit,
+              requiredPr600Commit:$pr600,
+              requiredPr601Commit:$pr601,
+              migrationsApplied:[],
+              productionMutation:false,
+              oracleInfrastructureMutation:false
+            }' > "$EVIDENCE_DIR/release-boundary.json"
+
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot protected Test and validate the UAT session
+        id: contract
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Rollback image is outside the approved Test ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail "Could not resolve rollback digest for $image."
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Azure login is outside Test.'
+
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'The API target is not tagged Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_JSON")" == test ]] || fail 'The web target is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The API must use single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'The web app must use single-revision mode.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'The public origin is not protected Test.'
+          STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/preflight-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            "$BASE/api/celar-ai/v1/production/readiness")"
+          [[ "$STATUS" == 200 ]] || fail 'The Test UAT session is expired or unauthorized.'
+
+          jq '.properties.template.containers[0].env // []' <<<"$API_JSON" > "$EVIDENCE_DIR/api-env-before.json"
+          jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON" > "$EVIDENCE_DIR/source-marker-before.json"
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_EXTERNAL_HTTPS_|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$API_JSON" > "$EVIDENCE_DIR/private-runtime-before.json"
+
+          echo "old_api_image=$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")")" >> "$GITHUB_OUTPUT"
+          echo "old_web_image=$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$WEB_JSON")")" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable Test API and web images
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          API_DIGEST="$(scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:enterprise-governance-${GITHUB_SHA}-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:enterprise-governance-${GITHUB_SHA}-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          echo "api_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy immutable Test API image
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$GITHUB_SHA" \
+            --revision-suffix "egapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$GITHUB_SHA" ]]
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_EXTERNAL_HTTPS_|UPLOAD_ROOT)"))] | sort_by(.name)' <<<"$AFTER_JSON" > "$EVIDENCE_DIR/private-runtime-after-normal-deploy.json"
+          diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after-normal-deploy.json"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy immutable Test web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "egweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Run authenticated enterprise-governance Test UAT
+        id: uat
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          BASE: ${{ steps.contract.outputs.base }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          require_json() {
+            local file="$1" label="$2"
+            [[ -s "$file" ]] || fail "$label returned an empty body."
+            jq -e . "$file" >/dev/null 2>&1 || fail "$label returned invalid JSON."
+          }
+          auth081=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 081')
+          auth082=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 082')
+
+          READY=false
+          for attempt in $(seq 1 36); do
+            if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health?enterprise_governance=$GITHUB_RUN_ID-$attempt" > "$EVIDENCE_DIR/health.json"; then
+              READY=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$READY" == true ]] || fail 'The Test health endpoint did not become ready.'
+
+          curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/access" > "$EVIDENCE_DIR/module-081-access.json"
+          require_json "$EVIDENCE_DIR/module-081-access.json" 'Module 081 access'
+          jq -e '.module == "081" and .status == "ready" and .dataReady == true and .scope.isViewAs == false' "$EVIDENCE_DIR/module-081-access.json" >/dev/null
+
+          curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth081[@]}" "$BASE/api/lab-equipment-tracker/teams" > "$EVIDENCE_DIR/module-081-teams.json"
+          require_json "$EVIDENCE_DIR/module-081-teams.json" 'Module 081 teams'
+          jq -e '.module == "081" and ((.teams | type) == "array")' "$EVIDENCE_DIR/module-081-teams.json" >/dev/null
+
+          curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/access" > "$EVIDENCE_DIR/module-082-access.json"
+          require_json "$EVIDENCE_DIR/module-082-access.json" 'Module 082 access'
+          jq -e '.module == "082" and .status == "ready" and .dataReady == true and .scope.isViewAs == false' "$EVIDENCE_DIR/module-082-access.json" >/dev/null
+
+          curl -fsS --max-time 120 -H 'Cache-Control: no-cache' "${auth082[@]}" "$BASE/api/project-risk-register/risks?limit=500" > "$EVIDENCE_DIR/module-082-risks.json"
+          require_json "$EVIDENCE_DIR/module-082-risks.json" 'Module 082 risks'
+          jq -e '.module == "082" and ((.risks | type) == "array")' "$EVIDENCE_DIR/module-082-risks.json" >/dev/null
+
+          PORTAL_HTML="$EVIDENCE_DIR/test-portal.html"
+          BUNDLE="$EVIDENCE_DIR/test-portal-assets.txt"
+          curl -fsS --max-time 60 -H 'Cache-Control: no-cache' "$BASE/?enterprise_governance=$GITHUB_RUN_ID" > "$PORTAL_HTML"
+          mapfile -t ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
+          [[ "${#ASSETS[@]}" -gt 0 ]] || fail 'The Test portal exposed no frontend assets.'
+          : > "$BUNDLE"
+          for asset in "${ASSETS[@]}"; do
+            case "$asset" in
+              /assets/*) curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "$BASE$asset" >> "$BUNDLE" ;;
+              *) fail "Unexpected frontend asset path: $asset" ;;
+            esac
+          done
+
+          for marker in \
+            'Bulk upload spreadsheet' \
+            'Select managing team' \
+            'billing-source-warning' \
+            'profile-settings-backdrop' \
+            '/api/profile/preferences' \
+            'data-pulse-theme-choice' \
+            'ptp-theme' \
+            'enterprise-top-bar' \
+            '/api/project-risk-register'; do
+            grep -Fq "$marker" "$BUNDLE" || fail "Missing deployed frontend marker: $marker"
+          done
+
+          jq -n \
+            --arg releaseCommit "$GITHUB_SHA" \
+            --arg apiImage '${{ steps.build.outputs.api_image }}' \
+            --arg webImage '${{ steps.build.outputs.web_image }}' \
+            --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
+            --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
+            --argjson frontendAssetCount "${#ASSETS[@]}" \
+            '{
+              status:"passed",
+              environment:"test",
+              releaseCommit:$releaseCommit,
+              apiImage:$apiImage,
+              webImage:$webImage,
+              apiRevision:$apiRevision,
+              webRevision:$webRevision,
+              frontendAssetCount:$frontendAssetCount,
+              module081Ready:true,
+              module081TeamsVerified:true,
+              module082Ready:true,
+              module082RisksVerified:true,
+              enterpriseThemeVerified:true,
+              profilePreferenceSyncVerified:true,
+              module039DegradedSourceUxVerified:true,
+              migrationsApplied:[],
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/final-uat-summary.json"
+
+      - name: Upload protected Test deployment evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: enterprise-governance-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/enterprise-governance-test-evidence
+          retention-days: 30
+
+      - name: Queue the protected Oracle Celar AI runtime activation
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh workflow run celar-ai-oracle-test-runtime-deploy.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_commit="$GITHUB_SHA" \
+            -f approval_reference='ORACLE-TEST-PR600-PR601-20260810' \
+            -f confirmation='DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST'
+          echo 'ORACLE_RUNTIME_ACTIVATION_QUEUED=true'
+
+      - name: Restore prior Test images and source marker on failure
+        if: ${{ failure() && steps.contract.outcome == 'success' && steps.deploy_api.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          SOURCE_ROW="$(cat "$EVIDENCE_DIR/source-marker-before.json" 2>/dev/null)"
+          if [[ -n "$SOURCE_ROW" && "$SOURCE_ROW" != null ]]; then
+            SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
+            SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
+            if [[ -n "$SOURCE_SECRET" ]]; then
+              SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET"
+            else
+              SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"
+            fi
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.contract.outputs.old_api_image }}' \
+              --set-env-vars "$SOURCE_ARG" \
+              --revision-suffix "egrbapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+          else
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+              --image '${{ steps.contract.outputs.old_api_image }}' \
+              --remove-env-vars PROJECTPULSE_SOURCE_COMMIT \
+              --revision-suffix "egrbapi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+          fi
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.contract.outputs.old_web_image }}' \
+              --revision-suffix "egrbweb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+          fi
+          echo 'TEST_IMAGES_ROLLED_BACK=true'
+
+      - name: Publish release summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Pulse protected Test enterprise-governance release'
+            echo
+            echo "- Workflow commit: \`$GITHUB_SHA\`"
+            echo '- Environment: Test only'
+            echo '- Migrations: none'
+            echo '- Production changes: none'
+            if [[ -f "$EVIDENCE_DIR/final-uat-summary.json" ]]; then
+              echo '- Enterprise UAT: passed'
+              echo '- Oracle runtime activation: queued'
+            else
+              echo '- Enterprise UAT: failed or incomplete; inspect rollback and evidence'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

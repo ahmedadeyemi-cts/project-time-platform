@@ -21,6 +21,9 @@ public static class LabEquipmentTrackerModule
         group.MapGet(
             "/summary",
             (Func<HttpContext, Task<IResult>>)GetSummaryAsync);
+        group.MapGet(
+            "/teams",
+            (Func<HttpContext, Task<IResult>>)ListManagingTeamsAsync);
         group.MapGet("/equipment", ListEquipmentAsync);
         group.MapPost("/equipment", CreateEquipmentAsync);
         group.MapPut("/equipment/{equipmentId:guid}", UpdateEquipmentAsync);
@@ -131,6 +134,39 @@ public static class LabEquipmentTrackerModule
             });
         }
         catch (Exception exception) { return EnterpriseGovernanceResults.Unavailable(Module, exception, context, "load summary"); }
+    }
+
+
+    private static async Task<IResult> ListManagingTeamsAsync(HttpContext context)
+    {
+        try
+        {
+            await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted);
+            var access = await RequireAccessAsync(context, connection, manage: false);
+            if (access.Error is not null) return access.Error;
+
+            await using var command = new NpgsqlCommand("""
+                SELECT DISTINCT btrim(COALESCE(to_jsonb(app_user)->>'team_name','')) AS team_name
+                FROM app_users app_user
+                WHERE app_user.is_active=TRUE
+                  AND btrim(COALESCE(to_jsonb(app_user)->>'team_name',''))<>''
+                  AND (@broad_scope=TRUE OR lower(btrim(COALESCE(to_jsonb(app_user)->>'team_name','')))=lower(@team_name))
+                ORDER BY team_name;
+                """, connection);
+            command.Parameters.AddWithValue("broad_scope", access.Value!.IsBroadScope);
+            command.Parameters.AddWithValue("team_name", access.Value.TeamName ?? string.Empty);
+            var teams = new List<string>();
+            await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
+            while (await reader.ReadAsync(context.RequestAborted)) teams.Add(reader.GetString(0));
+            if (!string.IsNullOrWhiteSpace(access.Value.TeamName)
+                && !teams.Contains(access.Value.TeamName, StringComparer.OrdinalIgnoreCase))
+                teams.Insert(0, access.Value.TeamName);
+            return Results.Ok(new { module=Module, teams, scope=Scope(access.Value) });
+        }
+        catch (Exception exception)
+        {
+            return EnterpriseGovernanceResults.Unavailable(Module, exception, context, "list managing teams");
+        }
     }
 
     private static async Task<IResult> ListEquipmentAsync(

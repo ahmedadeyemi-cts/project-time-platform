@@ -374,7 +374,7 @@ public static class ProjectWorkspaceModule
             LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
             LEFT JOIN project_intake_documents d ON d.project_id = p.project_id
             WHERE
-                (@hide_closed_projects = FALSE OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
+                LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
                 AND (
                 @is_broad_scope = TRUE
                 OR (@can_view_managed_projects = TRUE AND p.project_manager_user_id = @user_id)
@@ -612,7 +612,7 @@ public static class ProjectWorkspaceModule
                AND used_time.task_id = pa.task_id
                AND used_time.user_id = pa.user_id
             WHERE
-                (@hide_closed_projects = FALSE OR LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived'))
+                LOWER(COALESCE(p.status, '')) NOT IN ('closed', 'completed', 'cancelled', 'canceled', 'archived')
                 AND (
                 @is_broad_scope = TRUE
                 OR pa.user_id = @user_id
@@ -829,16 +829,65 @@ public static class ProjectWorkspaceModule
         var storagePath = reader.GetString(1);
         var contentType = reader.IsDBNull(2) ? "application/octet-stream" : reader.GetString(2);
 
-        if (!File.Exists(storagePath))
+        var resolvedStoragePath = ResolveProjectDocumentStoragePath(storagePath);
+        if (resolvedStoragePath is null)
         {
             return Results.NotFound(new
             {
-                status = "file_missing",
-                message = "Document metadata exists, but the stored file was not found."
+                status = "file_reconciliation_required",
+                message = "Document metadata is available, but the stored file must be reconciled with the persistent upload volume before it can be downloaded."
             });
         }
 
-        return Results.File(storagePath, contentType, originalFileName);
+        return Results.File(resolvedStoragePath, contentType, originalFileName);
+    }
+
+
+    private static string? ResolveProjectDocumentStoragePath(string? storedPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedPath)) return null;
+        var root = ProjectTime.Api.Ai.ProjectPulseUploadStorage.ResolveRoot();
+        var candidates = new List<string>();
+        try
+        {
+            var raw = storedPath.Trim();
+            if (Path.IsPathFullyQualified(raw)) candidates.Add(Path.GetFullPath(raw));
+            else candidates.Add(Path.GetFullPath(Path.Combine(root, raw)));
+
+            var normalized = raw.Replace('\\', '/');
+            var uploadMarker = normalized.IndexOf("/uploads/", StringComparison.OrdinalIgnoreCase);
+            if (uploadMarker >= 0)
+                candidates.Add(Path.GetFullPath(Path.Combine(root, normalized[(uploadMarker + 9)..].Replace('/', Path.DirectorySeparatorChar))));
+
+            var fileName = Path.GetFileName(raw);
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                candidates.Add(Path.GetFullPath(Path.Combine(root, fileName)));
+                if (Directory.Exists(root))
+                {
+                    foreach (var match in Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories).Take(2))
+                        candidates.Add(Path.GetFullPath(match));
+                }
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        var normalizedRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!candidate.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                && !candidate.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !candidate.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!File.Exists(candidate)) continue;
+            var info = new FileInfo(candidate);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            return candidate;
+        }
+        return null;
     }
 
     private static void AddScopeParameters(NpgsqlCommand command, ProjectWorkspaceAccessContext access)
