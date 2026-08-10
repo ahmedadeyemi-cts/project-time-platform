@@ -1,0 +1,58 @@
+name: Validate Celar AI Oracle Test HTTPS Runtime
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/celar-ai-oracle-test-runtime-ci.yml'
+      - '.github/workflows/celar-ai-oracle-test-runtime-deploy.yml'
+      - '.github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'tests/CelarAiOracleExternalRuntimeTests/**'
+      - 'tests/validate-celar-ai-oracle-test-runtime.mjs'
+      - 'tests/validate-celar-ai-opencloud-deferred-runtime.mjs'
+      - 'docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md'
+      - 'docs/modules/module-011-pulse-ai/FREE-PRIVATE-RAG-ACTIVATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-oracle-test-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate the exact Oracle Test security and deployment contract
+        run: node tests/validate-celar-ai-oracle-test-runtime.mjs
+
+      - name: Verify OpenCloud remains deferred
+        run: node tests/validate-celar-ai-opencloud-deferred-runtime.mjs
+
+      - name: Verify release-scoped private runtime behavior remains intact
+        run: node src/frontend/project-time-web/scripts/validate-celar-ai-release-scoped-runtime.mjs
+
+      - name: Build API and run the Test-only external HTTPS policy behavior
+        run: dotnet run --project tests/CelarAiOracleExternalRuntimeTests/CelarAiOracleExternalRuntimeTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+
+      - name: Verify no accidental generated changes
+        run: git diff --check && git diff --exit-code
