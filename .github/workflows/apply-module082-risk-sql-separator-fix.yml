@@ -1,3 +1,4 @@
+# Second branch push intentionally triggers this one-time source applicator.
 name: Apply Module 082 Risk SQL Separator Correction
 
 on:
