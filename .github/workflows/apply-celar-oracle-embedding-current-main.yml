@@ -10,6 +10,15 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs'
       - 'tests/CelarAiOracleExternalRuntimeTests/Program.cs'
       - 'tests/validate-celar-ai-oracle-test-runtime.mjs'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/apply-celar-oracle-embedding-current-main.yml'
+      - 'scripts/patch-celar-oracle-workflow-current-main.py'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs'
+      - 'tests/CelarAiOracleExternalRuntimeTests/Program.cs'
+      - 'tests/validate-celar-ai-oracle-test-runtime.mjs'
 
 permissions:
   contents: write
@@ -21,6 +30,7 @@ concurrency:
 jobs:
   finalize:
     name: Patch, validate, and commit Oracle compatibility
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
