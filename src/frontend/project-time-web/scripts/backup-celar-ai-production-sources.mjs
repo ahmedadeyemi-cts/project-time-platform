@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
 const sourceRoot = path.join(webRoot, 'src');
 const backupRoot = path.join(webRoot, '.celar-ai-production-build-backup');
-const files = ['WorkTaskBuilderPanel.jsx', 'HelpAssistant.jsx', 'ProjectFlowHiveCenter.jsx'];
+const files = [
+  'WorkTaskBuilderPanel.jsx',
+  'HelpAssistant.jsx',
+  'ProjectFlowHiveCenter.jsx',
+  'CelarAiProductionPlatform.jsx'
+];
 
 function restoreExistingBackup() {
   if (!fs.existsSync(backupRoot)) return;
