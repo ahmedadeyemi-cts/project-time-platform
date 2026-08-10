@@ -15,6 +15,7 @@ const files = Object.freeze({
   uiStyle: 'src/frontend/project-time-web/src/full-future-loop-automation-center.css',
   migration: 'database/migrations/083_module_083_autonomous_control_plane.sql',
   rollback: 'database/rollback/083_module_083_autonomous_control_plane_rollback.sql',
+  migrationTest: 'tests/test-module-083-autonomous-control-plane-migration-083.sh',
   policySchema: 'schemas/full-future-loop/automation-policy.schema.json',
   manifestSchema: 'schemas/full-future-loop/release-manifest.schema.json',
   policyExample: 'config/full-future-loop/automation-policy.example.json',
@@ -52,6 +53,7 @@ const ui = read(files.ui);
 const uiStyle = read(files.uiStyle);
 const migration = read(files.migration);
 const rollback = read(files.rollback);
+const migrationTest = read(files.migrationTest);
 const workflow = read(files.workflow);
 const manifestSchema = read(files.manifestSchema);
 const documentation = read(files.architecture) + read(files.orchestration);
@@ -94,12 +96,19 @@ test('RBAC', [
 ].every((value) => migration.includes(value) && module.includes(value)));
 test('ROLLBACK_GUARDS', ['autonomous run evidence exists','approval evidence exists','immutable release manifests exist','append-only automation evidence exists','outbox records exist'].every((value) => rollback.includes(value)));
 test('ROLLBACK_OWNERSHIP', rollback.includes('full_future_loop_083_role_grants') && rollback.includes('full_future_loop_083_permissions_created'));
+test('MIGRATION_RUNTIME_TEST', [
+  'MODULE_083_AUTONOMOUS_CONTROL_PLANE_MIGRATION_083=PASS',
+  'guarded_rollback',
+  'active_adapter_rejected',
+  'non_dry_run_rejected',
+  'clean_rollback_removed_ledger'
+].every((value) => migrationTest.includes(value)));
 test('UI_INTEGRATION', host.includes("import FullFutureLoopAutomationCenter from './FullFutureLoopAutomationCenter.jsx';") && host.includes('<FullFutureLoopAutomationCenter authSession={authSession} selectedLoopId={loop?.loopId || null} />'));
 test('UI_CONTROL_SURFACES', ['Policy Simulator','Adapters','Runs & Manifests','Approvals','Evidence','Save governed runtime state','Create durable dry run','Register immutable manifest'].every((value) => ui.includes(value)));
 test('UI_SAFETY_BOUNDARY', ui.includes('External execution: OFF') && ui.includes('No external execution was attempted') && ui.includes('ACTIVE_ADAPTER_MODE_NOT_AUTHORIZED') === false && !/(azure\/login@|az containerapp update|Octokit|HttpClient)/.test(ui));
 test('UI_ACCESS_BOUNDARIES', ui.includes('permissions.canManage') && ui.includes('permissions.canOperateDryRuns') && ui.includes('permissions.canApprove') && ui.includes('separationOfDutiesSatisfied'));
 test('UI_THEME_AND_RESPONSIVE', uiStyle.includes("[data-theme='dark'] .ffla-center") && uiStyle.includes('@media (max-width: 900px)') && uiStyle.includes('@media (max-width: 620px)'));
-test('WORKFLOW_VALIDATION', workflow.includes('validate-module-083-autonomous-orchestration.mjs') && workflow.includes('dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj'));
+test('WORKFLOW_VALIDATION', workflow.includes('validate-module-083-autonomous-orchestration.mjs') && workflow.includes('dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj') && workflow.includes('bash tests/test-module-083-autonomous-control-plane-migration-083.sh'));
 test('WORKFLOW_FRONTEND_BUILD', workflow.includes('npm ci --no-fund') && workflow.includes('npm run build') && workflow.includes('FullFutureLoopAutomationCenter.jsx'));
 const executableWorkflow = workflow
   .split(/\r?\n/)
