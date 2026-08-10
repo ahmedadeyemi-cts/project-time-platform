@@ -14,9 +14,9 @@ def replace_once(path: str, old: str, new: str, label: str) -> None:
 
 replace_once(
     "src/backend/ProjectTime.Api/Ai/ProjectPulseAiReleaseRuntimePolicy.cs",
-    r'@"^(?:https://[a-z0-9-]+\\.vault\\.azure\\.net/secrets/[A-Za-z0-9-]+/[A-Za-z0-9-]{16,}|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",',
-    r'@"^(?:https://[a-z0-9-]+\\.vault\\.azure\\.net/secrets/[A-Za-z0-9-]+/[A-Za-z0-9-]{16,}|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,}|github-environment://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",',
-    "versioned secret-reference regex",
+    r'|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",',
+    r'|secretref://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,}|github-environment://[a-z0-9][a-z0-9._-]*/[A-Za-z0-9._-]+@[A-Za-z0-9._-]{8,})$",',
+    "versioned secret-reference regex suffix",
 )
 
 replace_once(
