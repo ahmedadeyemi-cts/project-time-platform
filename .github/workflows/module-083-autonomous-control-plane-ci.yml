@@ -8,6 +8,9 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs'
+      - 'src/frontend/project-time-web/src/FullFutureLoopCenter.jsx'
+      - 'src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx'
+      - 'src/frontend/project-time-web/src/full-future-loop-automation-center.css'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
@@ -25,6 +28,9 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs'
       - 'src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs'
+      - 'src/frontend/project-time-web/src/FullFutureLoopCenter.jsx'
+      - 'src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx'
+      - 'src/frontend/project-time-web/src/full-future-loop-automation-center.css'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs'
       - 'src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs'
       - 'tests/FullFutureLoopAutomationPolicyTests/**'
@@ -46,7 +52,7 @@ jobs:
   validate:
     name: Validate bounded enterprise autonomy
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     steps:
       - name: Check out exact source
@@ -55,6 +61,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Install .NET 10 SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
@@ -70,6 +83,9 @@ jobs:
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
             src/backend/ProjectTime.Api/Modules/ReleaseDeploymentControlModule.cs \
+            src/frontend/project-time-web/src/FullFutureLoopCenter.jsx \
+            src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx \
+            src/frontend/project-time-web/src/full-future-loop-automation-center.css \
             src/frontend/project-time-web/scripts/validate-module-083-autonomous-control-plane.mjs \
             src/frontend/project-time-web/scripts/validate-module-083-autonomous-orchestration.mjs \
             tests/FullFutureLoopAutomationPolicyTests/FullFutureLoopAutomationPolicyTests.csproj \
@@ -87,12 +103,14 @@ jobs:
           ! grep -RInE 'azure/login@|az containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up' \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
+            src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx \
             tests/FullFutureLoopAutomationPolicyTests \
             config/full-future-loop \
             schemas/full-future-loop
           ! grep -RInE '(BEGIN (RSA |OPENSSH )?PRIVATE KEY|ghp_[A-Za-z0-9]+|github_pat_|Bearer [A-Za-z0-9._-]{20,})' \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
+            src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx \
             tests/FullFutureLoopAutomationPolicyTests \
             config/full-future-loop \
             schemas/full-future-loop \
@@ -104,6 +122,7 @@ jobs:
           grep -Fq 'CHECK (dry_run_only=TRUE)' database/migrations/083_module_083_autonomous_control_plane.sql
           grep -Fq "adapter_mode IN ('disabled','dry_run')" database/migrations/083_module_083_autonomous_control_plane.sql
           grep -Fq 'externalExecutionEnabled = false' src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs
+          grep -Fq 'External execution: OFF' src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*(test|production)' .github/workflows/module-083-autonomous-control-plane-ci.yml
 
           echo 'MODULE_083_AUTONOMY_SOURCE_BOUNDARY=PASSED'
@@ -111,7 +130,11 @@ jobs:
           echo 'MIGRATION_EXECUTION=NONE'
           echo 'SECRETS_REQUIRED=NONE'
 
-      - name: Validate policy, manifest, and architecture foundation
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-fund
+
+      - name: Validate policy, manifest, architecture, and UI foundation
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -139,10 +162,15 @@ jobs:
             --configuration Release \
             --no-restore || dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
       - name: Prove validators do not rewrite tracked source
         shell: bash
         run: |
           set -Eeuo pipefail
           git diff --exit-code
           echo 'MODULE_083_AUTONOMOUS_CONTROL_PLANE_ORCHESTRATION=PASSED'
+          echo 'MODULE_083_AUTONOMOUS_OPERATOR_INTERFACE=PASSED'
           echo 'EXTERNAL_EXECUTION_ENABLED=FALSE'
