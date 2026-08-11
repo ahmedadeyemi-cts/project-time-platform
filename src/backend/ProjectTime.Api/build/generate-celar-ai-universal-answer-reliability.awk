@@ -23,6 +23,7 @@ mode == "services" {
   if ($0 ~ /services\.AddSingleton<CelarAiInternalDataService>\(\);/) {
     print "        services.AddSingleton<CelarAiUniversalAnswerReliabilityService>();"
     print "        services.AddSingleton<CelarAiDefectOrchestrationService>();"
+    print "        services.AddSingleton<CelarAiDefectQueryService>();"
     print "        services.AddHostedService<CelarAiAvailabilityMonitorService>();"
     inserted_service++
     inserted_operations_service++
@@ -49,6 +50,7 @@ mode == "production" {
   if (waiting_for_map_brace == 1 && line ~ /^[[:space:]]*\{[[:space:]]*$/) {
     print "        endpoints.MapCelarAiUniversalAnswerReliabilityEndpoints();"
     print "        endpoints.MapCelarAiOperationsEndpoints();"
+    print "        endpoints.MapCelarAiDefectQueryEndpoints();"
     inserted_map++
     waiting_for_map_brace = 0
   }
