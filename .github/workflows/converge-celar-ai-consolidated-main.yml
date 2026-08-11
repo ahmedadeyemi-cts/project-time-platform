@@ -1,0 +1,43 @@
+name: Converge Celar AI Consolidated Package onto Current Main
+
+on:
+  push:
+    branches:
+      - feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+    paths:
+      - '.github/workflows/converge-celar-ai-consolidated-main.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: converge-celar-ai-consolidated-main
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact consolidated source branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge current main and remove this one-time control
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Pulse Celar AI Consolidation Automation'
+          git config user.email 'pulse-celar-ai-consolidation@users.noreply.github.com'
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge --no-edit -X ours origin/main
+          test -z "$(git diff --name-only --diff-filter=U)"
+          rm -f .github/workflows/converge-celar-ai-consolidated-main.yml
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: converge Celar AI consolidated package onto current main'
+          fi
+          git push origin HEAD:feature/ask-celar-ai-troubleshooting-defect-automation-20260810
