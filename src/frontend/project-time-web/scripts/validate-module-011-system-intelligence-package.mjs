@@ -212,7 +212,9 @@ assert('CENTRAL_ROUTE_WITH_PRIVATE_AND_DETERMINISTIC_GROUNDING',
     '_router.GenerateAsync','TryResolveHelpCapsulePurpose',
     'PrivateTargetAllowed: privateRagRequested',
     'externalAssistance = Limit(',
-    'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+    'PublicGeneralQuestion: publicGeneralQuestion',
+    'PublicQuestion: publicGeneralQuestion ? question : null',
+    'PublicGeneralKnowledgeSystemInstruction',
     'BuildPublicGeneralKnowledgeAnswer(',
     "It did not receive the user's question, private documents, tool results, names, identifiers, retrieved text, or customer/project context"
   ])
