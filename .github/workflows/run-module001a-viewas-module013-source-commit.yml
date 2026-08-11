@@ -1,0 +1,99 @@
+name: Run Module 001A View-As and Module 013 Source Commit
+
+on:
+  push:
+    branches:
+      - fix/module001a-viewas-module013-operations-current-main-20260811
+    paths:
+      - .github/workflows/run-module001a-viewas-module013-source-commit.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run-module001a-viewas-module013-source-commit
+  cancel-in-progress: false
+
+jobs:
+  publish-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/module001a-viewas-module013-operations-current-main-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard branch and transform source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$(git branch --show-current)" == 'fix/module001a-viewas-module013-operations-current-main-20260811' ]]
+          [[ "$(git rev-parse HEAD^)" == 'ba9b5de247c5b591d5ebf769453f3b4319ee7701' ]]
+          [[ "$(git hash-object scripts/apply_module001a_viewas_module013_fix.py)" == '3a73a209b580aa73dc75acc4d1507114b3aa1369' ]]
+          python3 scripts/apply_module001a_viewas_module013_fix.py
+          node tests/validate-module001a-viewas-module013-operations.mjs
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build frontend
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit only the bounded source package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-module001a-viewas-module013-operations.mjs
+          git diff --check
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -- \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx \
+            src/frontend/project-time-web/src/PageContextGuide.jsx \
+            src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx \
+            src/frontend/project-time-web/src/approval-access-navigation-compatibility.js \
+            src/frontend/project-time-web/src/ServiceControlCenter.jsx \
+            src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs \
+            tests/validate-module001a-viewas-module013-operations.mjs
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'src/frontend/project-time-web/src/App.jsx',
+              'src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx',
+              'src/frontend/project-time-web/src/PageContextGuide.jsx',
+              'src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx',
+              'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
+              'src/frontend/project-time-web/src/ServiceControlCenter.jsx',
+              'src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs',
+              'tests/validate-module001a-viewas-module013-operations.mjs',
+          }
+          actual = set(filter(None, subprocess.check_output(
+              ['git', 'diff', '--cached', '--name-only'], text=True).splitlines()))
+          if actual != expected:
+              raise SystemExit(
+                  'Unexpected staged scope.\nExpected:\n' + '\n'.join(sorted(expected))
+                  + '\nActual:\n' + '\n'.join(sorted(actual)))
+          PY
+          git commit -m 'Fix Module 001A View-As and restore governed Module 013 operations'
+          git push origin HEAD:fix/module001a-viewas-module013-operations-current-main-20260811
