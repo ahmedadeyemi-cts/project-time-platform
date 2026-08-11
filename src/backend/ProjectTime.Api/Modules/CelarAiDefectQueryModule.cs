@@ -28,8 +28,11 @@ public static partial class CelarAiProductionPlatformModule
         if (access.Failure is not null) return access.Failure;
         try
         {
+            // Read scope follows the effective View-As identity. The actual user
+            // remains the audit actor and every mutation still requires actual
+            // and effective identities to be identical.
             var defects = await queries.ListAsync(
-                access.Actual,
+                access.Effective,
                 CanViewAllDefects(access),
                 status,
                 search,
@@ -41,7 +44,7 @@ public static partial class CelarAiProductionPlatformModule
                 feature = "ask_celar_ai_defect_inventory",
                 scope = CanViewAllDefects(access)
                     ? "all_authorized_defects"
-                    : "actual_user_reported_or_assigned_defects",
+                    : "effective_user_reported_or_assigned_defects",
                 count = defects.Count,
                 defects,
                 access = AccessResponse(access),
@@ -69,7 +72,7 @@ public static partial class CelarAiProductionPlatformModule
         try
         {
             var defects = await queries.FindMatchesAsync(
-                access.Actual,
+                access.Effective,
                 CanViewAllDefects(access),
                 environment,
                 affectedModule,
@@ -82,7 +85,7 @@ public static partial class CelarAiProductionPlatformModule
                 feature = "ask_celar_ai_defect_match",
                 scope = CanViewAllDefects(access)
                     ? "all_authorized_defects"
-                    : "actual_user_reported_or_assigned_defects",
+                    : "effective_user_reported_or_assigned_defects",
                 count = defects.Count,
                 defects,
                 duplicateAutomaticDefectCreated = false,
