@@ -11,7 +11,6 @@ const rejectText = (content, marker, label) => {
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const closeout = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
 const guide = read('src/frontend/project-time-web/src/PageContextGuide.jsx');
-const provider = read('src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx');
 const approval = read('src/frontend/project-time-web/src/approval-access-navigation-compatibility.js');
 const operationsUi = read('src/frontend/project-time-web/src/ServiceControlCenter.jsx');
 const operationsApi = read('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs');
@@ -25,7 +24,7 @@ requireText(app, '[selectedWeekStart, authSession?.sessionToken, activeRoute]', 
 requireText(closeout, 'No tasks are available for closeout', 'enterprise closeout empty state');
 requireText(closeout, 'No action is required.', 'enterprise no-action message');
 requireText(guide, 'view_as_documented_contract', 'View-As page context boundary');
-requireText(provider, 'viewAsActive()', 'View-As provider-monitoring boundary');
+requireText(app, '!localViewAsIsActive() ? <AiProviderReadinessController authSession={authSession} /> : null', 'View-As provider-monitoring boundary');
 requireText(approval, 'view_as_no_approval_authority', 'View-As approval no-authority contract');
 requireText(operationsApi, 'BuildVersionInventoryAsync', 'Module 013 version inventory');
 requireText(operationsApi, 'SHOW server_version;', 'PostgreSQL server version evidence');

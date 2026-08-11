@@ -6994,7 +6994,7 @@ Analytics - Variphy / Infortel`}
       {activeRoute === 'ai-time-entry' ? <SalesDeliveryWorkflowCenter module="028" /> : null}
       {activeRoute === 'uat-validation' ? <SalesDeliveryWorkflowCenter module="029" /> : null}
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_START */}
-      <AiProviderReadinessController authSession={authSession} />
+      {!localViewAsIsActive() ? <AiProviderReadinessController authSession={authSession} /> : null}
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_END */}
 
       {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
