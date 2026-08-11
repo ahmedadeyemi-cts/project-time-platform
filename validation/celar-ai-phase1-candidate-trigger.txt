@@ -1,0 +1,1 @@
+Temporary source-only validation trigger for the consolidated Celar AI Phase 1 package. No deployment, secret, migration application, or external mutation is authorized by this file.
