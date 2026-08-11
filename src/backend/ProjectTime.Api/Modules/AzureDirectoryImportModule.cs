@@ -81,7 +81,7 @@ public static class AzureDirectoryImportModule
                 {
                     module = ModuleNumber,
                     status = "app_users_schema_unavailable",
-                    message = "The ProjectPulse user directory schema is unavailable for import."
+                    message = "The Pulse user directory schema is unavailable for import."
                 }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
@@ -247,7 +247,7 @@ public static class AzureDirectoryImportModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 

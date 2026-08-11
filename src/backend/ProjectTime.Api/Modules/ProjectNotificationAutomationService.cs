@@ -759,7 +759,7 @@ internal static class ProjectNotificationAutomationService
             {
                 module = "041",
                 status = "project_not_found_or_outside_scope",
-                message = "The project could not be resolved from authoritative ProjectPulse data."
+                message = "The project could not be resolved from authoritative Pulse data."
             });
         }
 

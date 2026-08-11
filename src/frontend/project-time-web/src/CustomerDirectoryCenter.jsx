@@ -422,7 +422,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
           <p className="eyebrow">MODULE 021</p>
           <h2>Customer Directory</h2>
           <p className="muted">
-            Pull authoritative customer organizations from SELL, then enrich each ProjectPulse customer with locally maintained contacts, relationships, addresses, and workflow context.
+            Pull authoritative customer organizations from SELL, then enrich each Pulse customer with locally maintained contacts, relationships, addresses, and workflow context.
           </p>
         </div>
         <span className="customer-directory-status">{canManageCustomers ? 'Management enabled' : 'Read only'}</span>
@@ -437,7 +437,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
             <p className="eyebrow">SELL CUSTOMER SOURCE</p>
             <h3 id="customer-sell-sync-title">Pull customers from Module 026</h3>
             <p>
-              SELL owns the source organization identity. ProjectPulse stores the source link and keeps local contact enrichment separate, so adding a phone number, relationship, address, or primary contact here does not overwrite SELL.
+              SELL owns the source organization identity. Pulse stores the source link and keeps local contact enrichment separate, so adding a phone number, relationship, address, or primary contact here does not overwrite SELL.
             </p>
           </div>
           <div className="customer-sell-sync-actions">
@@ -468,7 +468,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
           <article>
             <span>Linked customers</span>
             <strong>{sellState.status?.linkedCustomers ?? 0}</strong>
-            <small>ProjectPulse records linked to SELL source IDs</small>
+            <small>Pulse records linked to SELL source IDs</small>
           </article>
           <article>
             <span>Last synchronization</span>
@@ -540,7 +540,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                         <th>SELL organization</th>
                         <th>Relationship</th>
                         <th>Source details</th>
-                        <th>ProjectPulse action</th>
+                        <th>Pulse action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -560,7 +560,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
                           </td>
                           <td>
                             <strong>{words(customer.importAction)}</strong>
-                            <small>{customer.localClientName ? `Matched to ${customer.localClientName}` : 'Creates a new ProjectPulse customer'}</small>
+                            <small>{customer.localClientName ? `Matched to ${customer.localClientName}` : 'Creates a new Pulse customer'}</small>
                           </td>
                         </tr>
                       ))}
@@ -730,7 +730,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
         <div className="customer-directory-layout management-layout">
           <article className="customer-directory-panel">
             <h3>{editingCustomerId ? 'Edit Customer' : 'Add Customer'}</h3>
-            <p className="muted">Manual customers remain supported. When a matching SELL organization is later imported, ProjectPulse links the existing record instead of creating a duplicate.</p>
+            <p className="muted">Manual customers remain supported. When a matching SELL organization is later imported, Pulse links the existing record instead of creating a duplicate.</p>
             <form className="customer-directory-form" onSubmit={saveCustomer}>
               <label>
                 Customer name
@@ -767,7 +767,7 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
           <article className="customer-directory-panel">
             <h3>{editingContactId ? 'Edit Contact' : 'Add Contact'}</h3>
-            <p className="muted">Selected customer: {selectedCustomer?.clientName ?? 'None selected'}. These details are local ProjectPulse enrichment and are not overwritten by SELL synchronization.</p>
+            <p className="muted">Selected customer: {selectedCustomer?.clientName ?? 'None selected'}. These details are local Pulse enrichment and are not overwritten by SELL synchronization.</p>
             <form className="customer-directory-form" onSubmit={saveContact}>
               <label>Contact name<input value={contactForm.contactName} onChange={(event) => setContactForm((current) => ({ ...current, contactName: event.target.value }))} required /></label>
               <label>Title<input value={contactForm.title} onChange={(event) => setContactForm((current) => ({ ...current, title: event.target.value }))} /></label>

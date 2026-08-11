@@ -473,7 +473,7 @@ public static class AiProviderConfigurationModule
             return Results.Json(new
             {
                 status = "session_required",
-                message = "A ProjectPulse session is required."
+                message = "A Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized);
         }
 

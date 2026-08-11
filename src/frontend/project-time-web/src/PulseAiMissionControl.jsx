@@ -11,9 +11,9 @@ const PRIMARY_INTELLIGENCE_MODES = Object.freeze([
     output: 'A reviewable description only. Celar AI cannot change hours, save, submit, approve, or create work.'
   }),
   Object.freeze({
-    code: 'ASK PROJECTPULSE',
+    code: 'ASK PULSE',
     title: 'System-wide Help and Search',
-    audience: 'Every authorized ProjectPulse user',
+    audience: 'Every authorized Pulse user',
     description:
       'Users can ask questions about how the application works or about live information already available to their role. Celar AI will search approved documentation and use permission-filtered read-only tools to answer across modules, projects, users, workflows, operations, reports, and current status.',
     sources: ['Module 999 and approved help', 'Module catalog and operating documentation', 'Current module APIs', 'Role and project scope', 'Audit and status evidence'],
@@ -41,7 +41,7 @@ const PRIMARY_INTELLIGENCE_MODES = Object.freeze([
 
 const PRIVATE_REASONING_PATH = Object.freeze([
   ['1', 'Authorize first', 'Resolve the actual and effective user, module permission, project scope, and data classification before retrieving anything.'],
-  ['2', 'Retrieve inside ProjectPulse', 'Read only approved document versions and live records the user is already allowed to see.'],
+  ['2', 'Retrieve inside Pulse', 'Read only approved document versions and live records the user is already allowed to see.'],
   ['3', 'Reason privately first', 'Use deterministic calculations, private retrieval, and a private model as the primary path.'],
   ['4', 'Measure confidence', 'Check source coverage, conflicts, freshness, calculation validity, and unsupported claims.'],
   ['5', 'Sanitize before escalation', 'When external help is allowed, create a minimal reasoning capsule with raw documents, secrets, identities, pricing, and restricted details removed.'],
@@ -114,9 +114,9 @@ export default function PulseAiMissionControl() {
       <header className="pulse-ai-mission-header">
         <div>
           <p className="pulse-ai-mission-eyebrow">Authoritative Module 011 operating mission</p>
-          <h2 id="pulse-ai-authoritative-mission-title">One private intelligence layer for the entire ProjectPulse system</h2>
+          <h2 id="pulse-ai-authoritative-mission-title">One private intelligence layer for the entire Pulse system</h2>
           <p>
-            Celar AI is not limited to model training. Its primary purpose is to understand approved internal documents and live ProjectPulse data so it can support timesheets, Help and Search, FlowHive planning, reports, financial analysis, and future role-authorized use cases.
+            Celar AI is not limited to model training. Its primary purpose is to understand approved internal documents and live Pulse data so it can support timesheets, Help and Search, FlowHive planning, reports, financial analysis, and future role-authorized use cases.
           </p>
         </div>
         <div className="pulse-ai-mission-badges" aria-label="Celar AI privacy state">

@@ -7,7 +7,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 071 migrates the established US Signal on-call schedule experience
-/// behind ProjectPulse identity and role enforcement. The first source package
+/// behind Pulse identity and role enforcement. The first source package
 /// uses the existing retired external compatibility service as its compatibility store; switching
 /// persistence providers is a separately authorized change.
 /// </summary>
@@ -74,7 +74,7 @@ public static class OnCallSchedulingModule
             access = AccessResponse(access.Context!, context),
             authorization = new
             {
-                view = "all authenticated ProjectPulse users",
+                view = "all authenticated Pulse users",
                 manage = new[]
                 {
                     "SUPER_ADMINISTRATOR",
@@ -131,7 +131,7 @@ public static class OnCallSchedulingModule
             access = AccessResponse(access.Context!, context),
             canManage = access.Context!.CanManage,
             schedule = NormalizeSchedule(upstream.Payload),
-            source = "ProjectPulse PostgreSQL native store",
+            source = "Pulse PostgreSQL native store",
             sourceMutationPerformed = false
         });
     }
@@ -548,7 +548,7 @@ public static class OnCallSchedulingModule
                 {
                     module = ModuleNumber,
                     status = "invalid_identity_id",
-                    message = "On-call userId values must be stable ProjectPulse identity GUIDs."
+                    message = "On-call userId values must be stable Pulse identity GUIDs."
                 });
             }
             userIds.Add(userId);
@@ -577,7 +577,7 @@ public static class OnCallSchedulingModule
                 {
                     module = ModuleNumber,
                     status = "inactive_or_unknown_identity",
-                    message = "Every selected on-call identity must remain active in ProjectPulse."
+                    message = "Every selected on-call identity must remain active in Pulse."
                 });
             }
             return null;
@@ -677,7 +677,7 @@ public static class OnCallSchedulingModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -733,7 +733,7 @@ public static class OnCallSchedulingModule
         canManage = access.CanManage,
         managePermission = ManagePermission,
         isViewAs = IsViewAs(context),
-        authoritySource = "actual ProjectPulse session"
+        authoritySource = "actual Pulse session"
     };
 
 

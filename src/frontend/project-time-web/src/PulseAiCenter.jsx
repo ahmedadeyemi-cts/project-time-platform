@@ -19,7 +19,7 @@ const FEATURE_TARGETS = Object.freeze([
     code: 'timesheet_description',
     name: 'Timesheet description assistance',
     owner: 'Module 001',
-    treatment: 'Live ProjectPulse context plus governed model behavior'
+    treatment: 'Live Pulse context plus governed model behavior'
   },
   {
     code: 'sow_gsd_planning',
@@ -29,8 +29,8 @@ const FEATURE_TARGETS = Object.freeze([
   },
   {
     code: 'help_assistant',
-    name: 'ProjectPulse help assistant',
-    owner: 'ProjectPulse Help',
+    name: 'Pulse help assistant',
+    owner: 'Pulse Help',
     treatment: 'User guide, module documentation, and permission-aware retrieval'
   },
   {
@@ -49,14 +49,14 @@ const FEATURE_TARGETS = Object.freeze([
 
 const KNOWLEDGE_SOURCES = Object.freeze([
   {
-    name: 'ProjectPulse module documentation',
+    name: 'Pulse module documentation',
     scope: 'Approved repository documentation',
     classification: 'Internal',
     access: 'Module permission inherited',
     state: 'Planned'
   },
   {
-    name: 'ProjectPulse complete user guide',
+    name: 'Pulse complete user guide',
     scope: 'Module 999 published guidance',
     classification: 'Internal',
     access: 'Authenticated users',
@@ -92,8 +92,8 @@ const TRAINING_STAGES = Object.freeze([
   { state: 'Draft', owner: 'Model project owner', rule: 'Business objective and expected behavior are documented.' },
   { state: 'Data review', owner: 'Dataset reviewer', rule: 'Training examples pass privacy, secret, and quality checks.' },
   { state: 'Approved', owner: 'Authorized approver', rule: 'The exact immutable dataset version is authorized.' },
-  { state: 'Queued', owner: 'Training backend', rule: 'ProjectPulse records the external job identifier and configuration.' },
-  { state: 'Training', owner: 'External GPU environment', rule: 'LoRA or QLoRA runs outside the ProjectPulse web/API process.' },
+  { state: 'Queued', owner: 'Training backend', rule: 'Pulse records the external job identifier and configuration.' },
+  { state: 'Training', owner: 'External GPU environment', rule: 'LoRA or QLoRA runs outside the Pulse web/API process.' },
   { state: 'Evaluating', owner: 'Evaluation runner', rule: 'The candidate is compared with the base and current active models.' },
   { state: 'Awaiting approval', owner: 'Model approver', rule: 'Promotion remains blocked until required gates pass.' },
   { state: 'Staged', owner: 'Deployment operator', rule: 'The model is available only in an approved non-production environment.' },
@@ -137,7 +137,7 @@ const CAPABILITIES = Object.freeze([
 const INITIAL_PROJECTS = Object.freeze([
   {
     id: 'pulse-ai-help-foundation',
-    name: 'ProjectPulse Help Assistant',
+    name: 'Pulse Help Assistant',
     objective: 'Answer product and module questions from approved documentation without revealing restricted records.',
     strategy: 'RAG first',
     ownerModule: '999',
@@ -318,7 +318,7 @@ export default function PulseAiCenter() {
             <p className="pulse-ai-eyebrow">Module 011 · Celar AI lifecycle control plane</p>
             <h1>Celar AI</h1>
             <p>
-              Prepare knowledge, datasets, evaluations, and model versions inside ProjectPulse while Module 064 remains the governed provider and inference gateway.
+              Prepare knowledge, datasets, evaluations, and model versions inside Pulse while Module 064 remains the governed provider and inference gateway.
             </p>
           </div>
         </div>
@@ -431,13 +431,13 @@ export default function PulseAiCenter() {
             <div className="pulse-ai-tab-stack">
               <SectionHeading
                 eyebrow="Operating model"
-                title="ProjectPulse controls the lifecycle; specialized compute does the training"
-                copy="Celar AI prepares and governs model work. Module 064 controls inference routing. Future GPU training runs outside the ProjectPulse API process."
+                title="Pulse controls the lifecycle; specialized compute does the training"
+                copy="Celar AI prepares and governs model work. Module 064 controls inference routing. Future GPU training runs outside the Pulse API process."
               />
               <div className="pulse-ai-architecture-grid">
                 <article>
                   <span>1</span>
-                  <h3>Authorized ProjectPulse data</h3>
+                  <h3>Authorized Pulse data</h3>
                   <p>Retrieve only records and documents the current effective user is permitted to access.</p>
                 </article>
                 <article>
@@ -494,7 +494,7 @@ export default function PulseAiCenter() {
                   </div>
                   <label>
                     Project name
-                    <input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="ProjectPulse Status Assistant" required />
+                    <input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} placeholder="Pulse Status Assistant" required />
                   </label>
                   <label>
                     Business objective
@@ -538,7 +538,7 @@ export default function PulseAiCenter() {
               <SectionHeading
                 eyebrow="Feature consumers"
                 title="Planned Module 064 routes"
-                copy="Each ProjectPulse use case remains independently governed and can be routed, evaluated, or rolled back without replacing every AI feature at once."
+                copy="Each Pulse use case remains independently governed and can be routed, evaluated, or rolled back without replacing every AI feature at once."
               />
               <div className="pulse-ai-feature-grid">
                 {FEATURE_TARGETS.map((feature) => (
@@ -600,7 +600,7 @@ export default function PulseAiCenter() {
                   <h3>Permission interpretation</h3>
                 </div>
                 <pre>{`{"messages":[
-  {"role":"system","content":"You are the ProjectPulse permissions assistant."},
+  {"role":"system","content":"You are the Pulse permissions assistant."},
   {"role":"user","content":"What does No Access mean for Module 001?"},
   {"role":"assistant","content":"The role must not see Module 001 and direct access must be denied."}
 ]}`}</pre>
@@ -622,7 +622,7 @@ export default function PulseAiCenter() {
             <div className="pulse-ai-tab-stack">
               <SectionHeading
                 eyebrow="External compute boundary"
-                title="ProjectPulse will submit and monitor jobs, not train inside the API process"
+                title="Pulse will submit and monitor jobs, not train inside the API process"
                 copy="A future training adapter can target an approved managed service, GPU virtual machine, Kubernetes job, or provider fine-tuning API."
                 action={<LockedButton>Submit training job</LockedButton>}
               />
@@ -638,7 +638,7 @@ export default function PulseAiCenter() {
                 <article><h3>Supported future methods</h3><p>Supervised fine-tuning, LoRA, QLoRA, and evaluated distillation workflows.</p></article>
                 <article><h3>Immutable input</h3><p>The job references an approved dataset version and cannot silently switch records while running.</p></article>
                 <article><h3>Sanitized logs</h3><p>Training progress may be visible, but secrets and raw restricted records may not be written to browser or audit logs.</p></article>
-                <article><h3>Artifact references</h3><p>Large adapters and models belong in approved object storage or a model registry; ProjectPulse stores metadata and checksums.</p></article>
+                <article><h3>Artifact references</h3><p>Large adapters and models belong in approved object storage or a model registry; Pulse stores metadata and checksums.</p></article>
               </div>
             </div>
           ) : null}
@@ -752,7 +752,7 @@ export default function PulseAiCenter() {
               <div className="pulse-ai-governance-rules">
                 <h3>Non-negotiable rules</h3>
                 <ul>
-                  <li>The ProjectPulse backend—not the model—enforces authorization.</li>
+                  <li>The Pulse backend—not the model—enforces authorization.</li>
                   <li>No model receives records outside the current effective user’s permission scope.</li>
                   <li>Provider keys remain write-only inside Module 064 and are never displayed here.</li>
                   <li>Conversations are not automatically converted into training data.</li>

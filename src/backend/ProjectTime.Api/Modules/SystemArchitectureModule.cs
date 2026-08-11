@@ -4,7 +4,7 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 068 publishes a versioned, administrator-only view of the
-/// ProjectPulse system architecture. The contract is intentionally read-only,
+/// Pulse system architecture. The contract is intentionally read-only,
 /// uses the actual session identity for authority, and never returns runtime
 /// secret values or raw infrastructure errors.
 /// </summary>
@@ -130,7 +130,7 @@ public static class SystemArchitectureModule
     private static ArchitectureLayer[] ArchitectureLayers() =>
     [
         new("experience", "Experience", 1,
-            "Authenticated browser and ProjectPulse application shell"),
+            "Authenticated browser and Pulse application shell"),
         new("delivery", "Web delivery", 2,
             "Static frontend delivery and API reverse-proxy boundary"),
         new("application", "Application services", 3,
@@ -147,7 +147,7 @@ public static class SystemArchitectureModule
     [
         new(
             "browser",
-            "ProjectPulse user",
+            "Pulse user",
             "experience",
             "client",
             "Authenticated, role-scoped application access",
@@ -168,14 +168,14 @@ public static class SystemArchitectureModule
             ["static assets", "HTTPS boundary", "API proxy"]),
         new(
             "projectpulse-api",
-            "ProjectPulse API",
+            "Pulse API",
             "application",
             "backend",
             "Session validation, authorization, domain workflows, and integration adapters",
             ["actual/effective session separation", "role and permission enforcement", "sanitized API contracts"]),
         new(
             "postgresql",
-            "ProjectPulse PostgreSQL",
+            "Pulse PostgreSQL",
             "data",
             "database",
             "Canonical application data and governed operational evidence",
@@ -217,7 +217,7 @@ public static class SystemArchitectureModule
             ["GitHub Actions", "OCI registry", "workload identity"]),
         new(
             "operations-centers",
-            "ProjectPulse operations centers",
+            "Pulse operations centers",
             "operations",
             "monitoring",
             "Live service, API, backup, restore, replication, and deployment status ownership",
@@ -243,7 +243,7 @@ public static class SystemArchitectureModule
         new("browser-boundary", "Browser boundary", ["browser", "react-shell"],
             "The browser never receives provider secrets, database credentials, or privileged authority from View-As."),
         new("api-authorization-boundary", "API authorization boundary", ["projectpulse-api"],
-            "Every protected endpoint validates the ProjectPulse session and enforces server-side roles or permissions."),
+            "Every protected endpoint validates the Pulse session and enforces server-side roles or permissions."),
         new("data-boundary", "Data boundary", ["postgresql", "artifact-storage"],
             "Application data and evidence remain behind backend authorization and retention controls."),
         new("provider-boundary", "External provider boundary", ["identity-provider", "business-integrations", "shared-platform-services"],
@@ -272,8 +272,8 @@ public static class SystemArchitectureModule
 
     private static DependencyStatus[] DependencyRows() =>
     [
-        new("projectpulse-session", "ProjectPulse session", "healthy", "direct", "Authenticated request accepted", null, null),
-        new("postgresql", "ProjectPulse PostgreSQL", "healthy", "direct", "Authorization and SELECT 1 completed", "#service-control", "/api/system/api-status"),
+        new("projectpulse-session", "Pulse session", "healthy", "direct", "Authenticated request accepted", null, null),
+        new("postgresql", "Pulse PostgreSQL", "healthy", "direct", "Authorization and SELECT 1 completed", "#service-control", "/api/system/api-status"),
         new("web-api-runtime", "Web and API runtime", "delegated", "live_status_owner", "Open Module 013 for current health", "#service-control", "/api/system/service-control/status"),
         new("identity", "Microsoft identity and Graph", "delegated", "live_status_owner", "Open Module 010 for current configuration and health", "#azure-admin", "/api/admin/azure/config"),
         new("backup-restore", "Backup and restore", "delegated", "live_status_owner", "Open Modules 014-016 for current evidence", "#backup-dr", "/api/system/backup-dr/status"),
@@ -306,7 +306,7 @@ public static class SystemArchitectureModule
                 {
                     module = ModuleNumber,
                     status = "session_required",
-                    message = "A valid ProjectPulse session is required."
+                    message = "A valid Pulse session is required."
                 }, statusCode: StatusCodes.Status401Unauthorized));
         }
 

@@ -575,7 +575,7 @@ public static class EntraSecretAdministrationModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -698,7 +698,7 @@ public static class EntraSecretAdministrationModule
                             : "healthy";
 
         return new(
-            Env("PROJECTPULSE_ENTRA_APPLICATION_NAME", "ProjectPulse"),
+            Env("PROJECTPULSE_ENTRA_APPLICATION_NAME", "Pulse"),
             Env("PROJECTPULSE_ENTRA_MODE", "not_configured"),
             tenantId,
             clientId,
@@ -724,7 +724,7 @@ public static class EntraSecretAdministrationModule
         canView = true,
         canRotate = gate.Enabled && !IsViewAs(context),
         isViewAs = IsViewAs(context),
-        authoritySource = "actual ProjectPulse session"
+        authoritySource = "actual Pulse session"
     };
 
     private static EntraSecretActor Actor(AccessContext access, HttpContext context) => new(

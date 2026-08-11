@@ -39,7 +39,10 @@ function unique(values) {
 }
 
 function rebrandCelarString(value) {
-  return String(value ?? '').replace(/\bPulse\s+AI\b/gi, 'Celar AI');
+  return String(value ?? '')
+    .replace(/\bPulse\s+AI\b/gi, 'Celar AI')
+    .replace(/\bProject\s+Pulse\b/gi, 'Pulse')
+    .replace(/\bProjectPulse\b/g, 'Pulse');
 }
 
 function rebrandCelarValue(value) {

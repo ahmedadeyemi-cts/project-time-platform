@@ -462,7 +462,7 @@ public static partial class ProjectFlowHiveScheduleEngine
             }
             if (assignment.ResourceUserId is null || assignment.ResourceUserId == Guid.Empty)
             {
-                Error(issues, "assignment_identity_required", $"{path}.resourceUserId", "Assignments require a Module 062-backed ProjectPulse identity ID.");
+                Error(issues, "assignment_identity_required", $"{path}.resourceUserId", "Assignments require a Module 062-backed Pulse identity ID.");
             }
             if (assignment.AllocationPercent is <= 0m or > 100m)
             {

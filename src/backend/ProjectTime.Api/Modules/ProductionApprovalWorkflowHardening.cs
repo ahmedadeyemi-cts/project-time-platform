@@ -314,7 +314,7 @@ public static class ProductionApprovalWorkflowHardening
         catch (Exception exception)
         {
             Console.Error.WriteLine(
-                $"ProjectPulse immutable approval audit readiness failed. traceId={context.TraceIdentifier} exception={exception}");
+                $"Pulse immutable approval audit readiness failed. traceId={context.TraceIdentifier} exception={exception}");
             return ImmutableAuditReadiness.Unavailable;
         }
     }
@@ -347,7 +347,7 @@ public static class ProductionApprovalWorkflowHardening
         }
 
         throw new InvalidOperationException(
-            "ProjectPulse database connection is not configured.");
+            "Pulse database connection is not configured.");
     }
 
     private sealed record ImmutableAuditReadiness(

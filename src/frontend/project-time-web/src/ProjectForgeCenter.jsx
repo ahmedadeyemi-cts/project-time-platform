@@ -711,7 +711,7 @@ export default function ProjectForgeCenter() {
 
       <main className="forge-content" id={`forge-panel-${activeTab}`} role="tabpanel" aria-labelledby={`forge-tab-${activeTab}`} tabIndex="0">
         <div className="forge-content-heading"><div><span>Workbook tab {WORKBOOK_TABS.findIndex((tab) => tab.id === activeTab) + 1} of {WORKBOOK_TABS.length}</span><h2>{WORKBOOK_TABS.find((tab) => tab.id === activeTab)?.label}</h2></div><div className="forge-content-actions">{canManage && workspace === 'canonical' && currentProjectId && NEW_TASK_TABS.has(activeTab) ? <button type="button" className="forge-create-button" onClick={openNewTask}>+ Create live task</button> : null}<button type="button" onClick={() => load({ pm: selectedPm, project: currentProjectId, workspaceValue: workspace, planIdValue: selectedPlan })} disabled={loading}>{loading ? 'Loading…' : 'Refresh live data'}</button></div></div>
-        {loading && !data ? <div className="forge-loading">Loading live ProjectPulse records…</div> : renderTab()}
+        {loading && !data ? <div className="forge-loading">Loading live Pulse records…</div> : renderTab()}
       </main>
 
       {currentActivity.length ? <footer className="forge-activity"><b>Recent Project Forge activity</b>{currentActivity.slice(0, 3).map((item) => <span key={item.activityId || item.activityEventId || item.id}>{title(item.eventCode || item.action)} · {item.summary || item.changeSummary || shortDate(item.occurredAt || item.createdAt)}</span>)}</footer> : null}

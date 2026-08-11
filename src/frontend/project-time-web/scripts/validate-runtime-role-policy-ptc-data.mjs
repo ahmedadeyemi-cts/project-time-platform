@@ -57,7 +57,7 @@ requireAll(jsonResponse, [
   'unwrapApiPayload',
   'readApiJson',
   "'data', 'Data', 'result', 'Result', 'value', 'Value', 'payload', 'Payload'",
-  'returned non-JSON content instead of ProjectPulse API data',
+  'returned non-JSON content instead of Pulse API data',
   'responsePreview'
 ], 'Strict API JSON response handling');
 

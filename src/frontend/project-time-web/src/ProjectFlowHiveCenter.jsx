@@ -674,7 +674,7 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-hero-actions">
           <div className="flowhive-user-chip">
             <IdentityAvatar profile={identityProfile} size="small" />
-            <span>{identityProfile?.displayName || portfolio?.access?.displayName || 'ProjectPulse user'}</span>
+            <span>{identityProfile?.displayName || portfolio?.access?.displayName || 'Pulse user'}</span>
           </div>
           <span className="flowhive-phase-badge">Production connected</span>
           <button type="button" onClick={loadModule} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>

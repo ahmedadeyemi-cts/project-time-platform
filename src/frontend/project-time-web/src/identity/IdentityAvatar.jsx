@@ -29,7 +29,7 @@ export default function IdentityAvatar({
     profile?.displayName
     || profile?.name
     || profile?.email
-    || 'ProjectPulse user';
+    || 'Pulse user';
 
   const photo =
     profile?.profilePhotoDataUrl

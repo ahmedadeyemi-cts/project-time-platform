@@ -230,7 +230,7 @@ if (fullRepositoryContext) {
     && publicOrigin.includes('.onenecklab.com')
     && publicOrigin.includes('.ussignal.com')
     && publicOrigin.includes('TrustedHost')
-    && publicOrigin.includes('Public ProjectPulse environments are HTTPS-only');
+    && publicOrigin.includes('Public Pulse environments are HTTPS-only');
 
   check('SSO_PUBLIC_ORIGIN', legacyOriginResolver || sharedOriginResolver,
   'Module 065 resolves a trusted browser-facing SSO callback origin through the legacy or shared fail-closed resolver');

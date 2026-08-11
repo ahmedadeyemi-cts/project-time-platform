@@ -28,7 +28,7 @@ public static class WorkRegisterSellImportModule
         if (actorUserId is null) return Results.Json(new { status = "session_required" }, statusCode: 401);
         if (string.IsNullOrWhiteSpace(request.SellRecordId) || request.SellRecordId.Trim().Length > 200)
             return Invalid("A SELL record ID of 200 characters or fewer is required.");
-        if (request.CustomerId == Guid.Empty) return Invalid("Select the ProjectPulse customer for this SELL record.");
+        if (request.CustomerId == Guid.Empty) return Invalid("Select the Pulse customer for this SELL record.");
         if (string.IsNullOrWhiteSpace(request.Reason)) return Invalid("An intake reason is required for audit history.");
 
         DateOnly? sowSignedDate = null;
@@ -197,7 +197,7 @@ public static class WorkRegisterSellImportModule
             if (rates.Count == 0) return Invalid("SELL returned no usable Actual Rate rows for Pricing / Rate Review.");
 
             var customerName = await CustomerNameAsync(connection, request.CustomerId, context.RequestAborted);
-            if (customerName is null) return Invalid("The selected ProjectPulse customer was not found.");
+            if (customerName is null) return Invalid("The selected Pulse customer was not found.");
             var contractType = CanonicalContractType(request.ContractType);
             var extracted = new
             {
@@ -221,7 +221,7 @@ public static class WorkRegisterSellImportModule
                 parserNotes = new[]
                 {
                     "Project name and Actual Rate / Pricing / Rate Review rows were imported directly from SELL and are source-locked.",
-                    "Task and assignment planning remains a ProjectPulse review step before final creation."
+                    "Task and assignment planning remains a Pulse review step before final creation."
                 }
             };
             var extractedJson = JsonSerializer.Serialize(extracted);
@@ -302,7 +302,7 @@ public static class WorkRegisterSellImportModule
         }
         catch (HttpRequestException)
         {
-            return Results.Json(new { status = "sell_connection_failed", message = "ProjectPulse could not reach SELL." }, statusCode: 502);
+            return Results.Json(new { status = "sell_connection_failed", message = "Pulse could not reach SELL." }, statusCode: 502);
         }
         finally
         {
@@ -406,7 +406,7 @@ public static class WorkRegisterSellImportModule
     private static async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)
     {
         var config = InvoiceBillingDatabaseConfig.FromEnvironment();
-        if (config.Missing.Count > 0) throw new InvalidOperationException("ProjectPulse database configuration is missing.");
+        if (config.Missing.Count > 0) throw new InvalidOperationException("Pulse database configuration is missing.");
         var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;

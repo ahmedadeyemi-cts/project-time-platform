@@ -6,7 +6,7 @@ const PROVIDER_LABELS = Object.freeze({
   celar_ai: 'Celar AI',
   claude: 'Claude',
   openai: 'OpenAI',
-  local: 'Private ProjectPulse grounding',
+  local: 'Private Pulse grounding',
   local_template: 'Governed local template fallback'
 });
 
@@ -229,7 +229,7 @@ export default function TimesheetAiDescriptionAssistant({
         {!compact ? (
           <span>
             {projectAware
-              ? 'ProjectPulse first checks the authorized documents attached to this project or service request—including SOW, GSD, design or architecture files, orders, proposals or quotes, and supporting documents—then combines that context with your rough note. Restricted documents remain permission scoped.'
+              ? 'Pulse first checks the authorized documents attached to this project or service request—including SOW, GSD, design or architecture files, orders, proposals or quotes, and supporting documents—then combines that context with your rough note. Restricted documents remain permission scoped.'
               : 'Enter a rough note using your own words. AI can suggest only the description; it cannot change hours, stop timers, submit time, create tasks, or modify allocations.'}
           </span>
         ) : projectAware ? (

@@ -169,7 +169,7 @@ public static partial class PlatformOperationsModule
             {
                 module = "013",
                 status = "origin_rejected",
-                message = "API retest requires a same-origin ProjectPulse request."
+                message = "API retest requires a same-origin Pulse request."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -415,7 +415,7 @@ public static partial class PlatformOperationsModule
         var payload = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
             new
             {
-                title = "ProjectPulse Operational Evidence Export",
+                title = "Pulse Operational Evidence Export",
                 module = "016",
                 generatedAt = DateTimeOffset.UtcNow,
                 provider = DetectAdapter().Provider,
@@ -585,7 +585,7 @@ public static partial class PlatformOperationsModule
 
             return new DependencyCheck(
                 "database",
-                "ProjectPulse database",
+                "Pulse database",
                 "healthy",
                 Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
                 DateTimeOffset.UtcNow,
@@ -597,7 +597,7 @@ public static partial class PlatformOperationsModule
             stopwatch.Stop();
             return new DependencyCheck(
                 "database",
-                "ProjectPulse database",
+                "Pulse database",
                 "failed",
                 Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
                 DateTimeOffset.UtcNow,
@@ -839,7 +839,7 @@ public static partial class PlatformOperationsModule
         {
             action = "restart_http_route",
             state = "not_supported",
-            message = "HTTP routes share the ProjectPulse API process and cannot be restarted independently."
+            message = "HTTP routes share the Pulse API process and cannot be restarted independently."
         },
         new
         {
@@ -1021,9 +1021,9 @@ public static partial class PlatformOperationsModule
     private static string[] DependenciesFor(string path)
     {
         var value = path.ToLowerInvariant();
-        var dependencies = new List<string> { "ProjectPulse API runtime" };
+        var dependencies = new List<string> { "Pulse API runtime" };
 
-        if (!IsPublicPath(path)) dependencies.Add("ProjectPulse session");
+        if (!IsPublicPath(path)) dependencies.Add("Pulse session");
         if (value.Contains("azure")
             || value.Contains("microsoft")
             || value.Contains("sso"))
@@ -1038,7 +1038,7 @@ public static partial class PlatformOperationsModule
         if (value.Contains("cicd") || value.Contains("release"))
             dependencies.Add("GitHub release controls");
         if (!value.Contains("/health"))
-            dependencies.Add("ProjectPulse database where required");
+            dependencies.Add("Pulse database where required");
 
         return dependencies
             .Distinct(StringComparer.OrdinalIgnoreCase)

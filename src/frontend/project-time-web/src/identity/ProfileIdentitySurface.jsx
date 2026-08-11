@@ -18,7 +18,7 @@ function fallbackProfile({
     || authSession?.displayName
     || authSession?.name
     || email
-    || 'ProjectPulse user';
+    || 'Pulse user';
 
   return {
     email,
@@ -188,7 +188,7 @@ export default function ProfileIdentitySurface({
         {error ? (
           <p>
             Microsoft or local profile enrichment is
-            temporarily unavailable. ProjectPulse is
+            temporarily unavailable. Pulse is
             displaying the authenticated session fallback.
           </p>
         ) : null}
@@ -196,8 +196,8 @@ export default function ProfileIdentitySurface({
         {!loading && !error ? (
           <p>
             {resolved.isMicrosoftIdentity
-              ? 'Name, job title, department, photograph, and presence are resolved from Microsoft Graph with ProjectPulse fallback.'
-              : 'This is a local ProjectPulse identity. Local profile preferences remain authoritative unless the account is later linked to Microsoft.'}
+              ? 'Name, job title, department, photograph, and presence are resolved from Microsoft Graph with Pulse fallback.'
+              : 'This is a local Pulse identity. Local profile preferences remain authoritative unless the account is later linked to Microsoft.'}
           </p>
         ) : null}
 
@@ -214,7 +214,7 @@ export default function ProfileIdentitySurface({
             <dd>
               {resolved.directoryProvider
                 || resolved.identitySource
-                || 'ProjectPulse local'}
+                || 'Pulse local'}
             </dd>
           </div>
           <div>

@@ -36,7 +36,7 @@ for (const marker of [
   'All engineers', 'All Project Managers', 'All teams', 'Preview report',
   'Run & save', 'Actual analytics results', 'Analytics run history',
   'US Signal PDF', 'Excel', 'Recurring US Signal delivery',
-  'Multiple active ProjectPulse users receive individual copies',
+  'Multiple active Pulse users receive individual copies',
   'Module 065 owns Entra Secret Administration',
   '/api/analytics/v2/overview', '/api/analytics/v2/catalog',
   '/api/analytics/v2/filter-options', '/api/analytics/v2/${persisted',
@@ -142,7 +142,7 @@ if (fullRepositoryContext) {
   for (const marker of [
     'USSNavyStacked.png', 'USSNavyStacked.jpg', 'BuildPdf', 'BuildExcel',
     'application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'US Signal · ProjectPulse Analytics Center', 'SHA256.HashData'
+    'US Signal · Pulse Analytics Center', 'SHA256.HashData'
   ]) contains(exportBuilder, marker, 'US Signal branded exports');
 
   for (const marker of [

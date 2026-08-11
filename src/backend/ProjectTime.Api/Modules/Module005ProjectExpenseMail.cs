@@ -243,7 +243,7 @@ public static partial class Module005ProjectExpenseUploadModule
         client.DefaultRequestHeaders.Add("api-key", key);
         var payload = new
         {
-            sender = new { email = sender, name = "ProjectPulse" },
+            sender = new { email = sender, name = "Pulse" },
             to = mail.To.Select(address => new { email = address }),
             cc = mail.Cc.Select(address => new { email = address }),
             subject = mail.Subject,

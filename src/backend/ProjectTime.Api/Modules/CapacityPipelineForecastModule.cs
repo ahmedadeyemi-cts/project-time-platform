@@ -215,7 +215,7 @@ public static class CapacityPipelineForecastModule
                 },
                 sourceNotes = new[]
                 {
-                    "Engineer labels are loaded on demand from the shared ProjectPulse identity source using stable user IDs.",
+                    "Engineer labels are loaded on demand from the shared Pulse identity source using stable user IDs.",
                     "Assigned capacity comes from resource_capacity_plans; future demand comes from engineering_resource_requests.",
                     "Already allocated request hours are removed from team-wide unfilled pipeline demand to reduce double counting.",
                     "An engineer view includes only that engineer's proposed or pending allocation demand; confirmed assigned work is expected in committed capacity.",
@@ -614,7 +614,7 @@ public static class CapacityPipelineForecastModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -641,7 +641,7 @@ public static class CapacityPipelineForecastModule
                 {
                     module = ModuleNumber,
                     status = "access_denied",
-                    message = "The active ProjectPulse user could not be resolved."
+                    message = "The active Pulse user could not be resolved."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new OpenOutcome(connection, access, null);

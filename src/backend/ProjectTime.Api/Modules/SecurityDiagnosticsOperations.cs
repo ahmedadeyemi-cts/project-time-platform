@@ -22,7 +22,7 @@ internal static class SecurityDiagnosticsOperations
             {
                 module,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 

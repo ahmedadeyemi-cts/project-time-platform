@@ -106,7 +106,7 @@ const optionalHelper = `async function projectPulseOptionalModuleFetch(loader, f
         contextLabel
       });
     } else {
-      console.error('[ProjectPulse optional module request]', contextLabel, error);
+      console.error('[Pulse optional module request]', contextLabel, error);
     }
     return fallback;
   }

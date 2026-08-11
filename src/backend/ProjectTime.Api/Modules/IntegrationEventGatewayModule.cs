@@ -26,7 +26,7 @@ public static class IntegrationEventGatewayModule
         if (failure is not null) return failure;
         var content = surface switch
         {
-            "overview" => ("Gateway readiness", "ProjectPulse event automation control plane.", "Register source", new object[] { new { name = "ProjectPulse application events", status = "Ready for governed registration", mode = "internal" } }),
+            "overview" => ("Gateway readiness", "Pulse event automation control plane.", "Register source", new object[] { new { name = "Pulse application events", status = "Ready for governed registration", mode = "internal" } }),
             "sources" => ("Event sources", "Systems allowed to submit governed events.", "Register source", Array.Empty<object>()),
             "contracts" => ("Event contracts", "Versioned schemas, ownership, validation, and compatibility.", "Create contract", Array.Empty<object>()),
             "deliveries" => ("Delivery history", "Attempts, outcomes, correlation IDs, and safe retry state.", "Inspect deliveries", Array.Empty<object>()),

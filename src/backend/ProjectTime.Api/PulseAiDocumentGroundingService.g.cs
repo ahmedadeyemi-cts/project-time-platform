@@ -119,7 +119,7 @@ public sealed class PulseAiDocumentGroundingService
                 ReadyCapabilities: ReadyCapabilities(privateInference, privateEmbedding, privateVectorIndex),
                 Blockers:
                 [
-                    "ProjectPulse database configuration is required before document readiness can be evaluated.",
+                    "Pulse database configuration is required before document readiness can be evaluated.",
                     "No raw document or database content was read."
                 ],
                 MissingConfiguration: missingConfiguration,
@@ -272,7 +272,7 @@ public sealed class PulseAiDocumentGroundingService
                 effectiveUserId,
                 projectCode,
                 projectName,
-                ["ProjectPulse database configuration is incomplete."],
+                ["Pulse database configuration is incomplete."],
                 diagnosticCode: "database_configuration_missing");
         }
 
@@ -312,7 +312,7 @@ public sealed class PulseAiDocumentGroundingService
                     effectiveUserId,
                     projectCode,
                     projectName,
-                    ["A unique ProjectPulse project could not be resolved from the supplied project code or name."],
+                    ["A unique Pulse project could not be resolved from the supplied project code or name."],
                     roles: access.RoleCodes.OrderBy(value => value).ToArray(),
                     accessScope: access.ScopeLabel);
             }

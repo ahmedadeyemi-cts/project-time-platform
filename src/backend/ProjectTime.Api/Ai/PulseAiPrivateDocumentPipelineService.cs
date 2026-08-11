@@ -94,7 +94,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
                 ExtractionReadyDocumentCount: 0,
                 SupportedExtensions: PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions,
                 ReadyCapabilities: ready,
-                Blockers: [.. blockers, "ProjectPulse database configuration is incomplete."],
+                Blockers: [.. blockers, "Pulse database configuration is incomplete."],
                 MissingConfiguration: missingConfiguration,
                 GeneratedAt: generatedAt,
                 DiagnosticCode: "database_configuration_missing");
@@ -113,7 +113,7 @@ public sealed class PulseAiPrivateDocumentPipelineService
             }
             if (!access.IsActive)
             {
-                blockers.Add("The effective user could not be resolved as an active ProjectPulse user.");
+                blockers.Add("The effective user could not be resolved as an active Pulse user.");
             }
 
             var counts = schema.RequiredColumnsAvailable && access.IsActive

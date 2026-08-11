@@ -500,7 +500,7 @@ internal static class EnterpriseNotificationOrchestrationService
                 "locked",
                 string.Empty,
                 "POLICY_DELIVERY_LOCKED",
-                "The enterprise notification policy or Module 065 delivery boundary is locked. The dispatch remains recorded inside ProjectPulse.");
+                "The enterprise notification policy or Module 065 delivery boundary is locked. The dispatch remains recorded inside Pulse.");
         }
 
         if (policy.DeliveryBoundary == "test_only")
@@ -512,7 +512,7 @@ internal static class EnterpriseNotificationOrchestrationService
                 "test_only",
                 string.Empty,
                 "POLICY_TEST_ONLY",
-                "The enterprise notification policy is Test-only. The dispatch is recorded in Module 032 and cannot leave ProjectPulse.");
+                "The enterprise notification policy is Test-only. The dispatch is recorded in Module 032 and cannot leave Pulse.");
         }
 
         return await Module065ProjectNotificationDelivery.DeliverAsync(

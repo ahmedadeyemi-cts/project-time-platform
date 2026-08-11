@@ -174,7 +174,7 @@ app.Use(async (context, next) =>
         await context.Response.WriteAsJsonAsync(new
         {
             status = "session_required",
-            message = validation.Message ?? "Your Project Pulse session is missing or expired. Please sign in again."
+            message = validation.Message ?? "Your Pulse session is missing or expired. Please sign in again."
         });
         return;
     }
@@ -2039,7 +2039,7 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -7544,13 +7544,13 @@ static async Task ProjectPulse055D4JNotifyProjectTeamCoordinatorsAsync(NpgsqlCon
         }
     }
 
-    var subject = $"ProjectPulse action required: Add temporary stakeholder(s) to Microsoft Entra for {projectCode}";
+    var subject = $"Pulse action required: Add temporary stakeholder(s) to Microsoft Entra for {projectCode}";
     var stakeholderLines = string.Join(Environment.NewLine, placeholderRows.Select(row =>
         $"- {row.Role}: {row.Name} ({row.Email})"
     ));
 
     var body =
-$@"ProjectPulse created one or more non-login temporary stakeholder placeholder accounts during Work Register intake final save.
+$@"Pulse created one or more non-login temporary stakeholder placeholder accounts during Work Register intake final save.
 
 Project: {projectCode} - {projectName}
 
@@ -7558,7 +7558,7 @@ Temporary stakeholder(s):
 {stakeholderLines}
 
 Action required:
-Please add or sync these users through Microsoft Entra using their official @ussignal.com accounts. After Entra sync, ProjectPulse can link future records to the official account instead of the temporary @ussignal.cloud placeholder.
+Please add or sync these users through Microsoft Entra using their official @ussignal.com accounts. After Entra sync, Pulse can link future records to the official account instead of the temporary @ussignal.cloud placeholder.
 
 Security note:
 The @ussignal.cloud placeholder accounts are created with login_enabled = false and are only for tracking/reporting until the official Entra account exists.";
@@ -7847,7 +7847,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-i
         return Results.Json(new
         {
             status = "session_required",
-            message = "Missing ProjectPulse session token."
+            message = "Missing Pulse session token."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -8016,7 +8016,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/billing-i
         return Results.Json(new
         {
             status = "session_required",
-            message = "Missing ProjectPulse session token."
+            message = "Missing Pulse session token."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -8174,7 +8174,7 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/commit", 
         return Results.Json(new
         {
             status = "session_required",
-            message = "Missing ProjectPulse session token."
+            message = "Missing Pulse session token."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -11489,7 +11489,7 @@ app.MapPost("/api/work-register/projects/update", async (HttpContext httpContext
         return Results.Json(new
         {
             status = "session_required",
-            message = "Missing ProjectPulse session token."
+            message = "Missing Pulse session token."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -11666,7 +11666,7 @@ app.MapPost("/api/work-register/projects/lifecycle", async (HttpContext httpCont
         return Results.Json(new
         {
             status = "session_required",
-            message = "Missing ProjectPulse session token."
+            message = "Missing Pulse session token."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -16063,7 +16063,7 @@ app.MapPost("/api/holidays/import-text", async (HolidayCsvImportRequest request,
             batchCommand.Parameters.AddWithValue("original_filename", string.IsNullOrWhiteSpace(request.Filename) ? $"holiday-upload-{DateTime.UtcNow:yyyyMMddHHmmss}.csv" : request.Filename.Trim());
             batchCommand.Parameters.AddWithValue("uploaded_by_user_id", userId);
             batchCommand.Parameters.AddWithValue("row_count", rows.Count);
-            batchCommand.Parameters.AddWithValue("notes", "Uploaded through Project Pulse holiday admin UI");
+            batchCommand.Parameters.AddWithValue("notes", "Uploaded through Pulse holiday admin UI");
             batchId = (Guid)(await batchCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create holiday upload batch."));
         }
 
@@ -16510,7 +16510,7 @@ app.MapGet("/api/security/context", async (HttpContext httpContext) =>
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -16600,7 +16600,7 @@ app.MapGet("/api/security/effective-session", async (HttpContext httpContext) =>
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -16716,7 +16716,7 @@ app.MapGet("/api/security/role-enforcement-smoke", async (HttpContext httpContex
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -16749,7 +16749,7 @@ app.MapGet("/api/security/role-enforcement-smoke", async (HttpContext httpContex
             new
             {
                 check = "session_required",
-                expected = "401 without a valid ProjectPulse session",
+                expected = "401 without a valid Pulse session",
                 endpoint = "/api/security/effective-session"
             },
             new
@@ -16798,7 +16798,7 @@ app.MapPost("/api/security/role-enforcement-smoke/write-attempt", async (HttpCon
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -17322,7 +17322,7 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, 
                 """, connection, transaction);
             assignCommand.Parameters.AddWithValue("user_id", targetUserId);
             assignCommand.Parameters.AddWithValue("assigned_by_user_id", adminUserId);
-            assignCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Role updated from Project Pulse role administration" : request.Reason.Trim());
+            assignCommand.Parameters.AddWithValue("assignment_reason", string.IsNullOrWhiteSpace(request.Reason) ? "Role updated from Pulse role administration" : request.Reason.Trim());
             assignCommand.Parameters.AddWithValue("role_code", roleCode);
             await assignCommand.ExecuteNonQueryAsync();
         }
@@ -17336,7 +17336,7 @@ app.MapPost("/api/admin/users/roles", async (UserRoleAssignmentRequest request, 
             targetUserId,
             "user_roles_updated_legacy",
             string.IsNullOrWhiteSpace(request.Reason)
-                ? "Role updated from Project Pulse role administration"
+                ? "Role updated from Pulse role administration"
                 : request.Reason.Trim(),
             previousRoleCodes,
             currentRoleCodesByUser[targetUserId],
@@ -18107,10 +18107,10 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
             username = cleanedUsername,
             loginMethod = "local",
             provider = "LOCAL",
-            displayName = "Project Pulse local administrator login",
+            displayName = "Pulse local administrator login",
             requiresPassword = true,
             message = exists
-                ? "Local administrator account requires Project Pulse password authentication."
+                ? "Local administrator account requires Pulse password authentication."
                 : "No active local account was found for this username."
         });
     }
@@ -18119,7 +18119,7 @@ app.MapGet("/api/auth/login/route", async (string? username) =>
     {
         status = "unsupported_login_domain",
         username = cleanedUsername,
-        message = $"Use an approved Microsoft Entra domain ({string.Join(", ", ProjectPulseConfiguredSsoDomains())}) or a Project Pulse .local administrator account."
+        message = $"Use an approved Microsoft Entra domain ({string.Join(", ", ProjectPulseConfiguredSsoDomains())}) or a Pulse .local administrator account."
     });
 });
 
@@ -18141,7 +18141,7 @@ app.MapPost("/api/auth/password-reset/request", async (PasswordResetRequest requ
         return Results.BadRequest(new
         {
             status = "sso_account_reset_not_supported_here",
-            message = "US Signal SSO users must reset passwords through Microsoft Entra ID. This Project Pulse reset workflow is only for .local administrator accounts."
+            message = "US Signal SSO users must reset passwords through Microsoft Entra ID. This Pulse reset workflow is only for .local administrator accounts."
         });
     }
 
@@ -18234,7 +18234,7 @@ app.MapPost("/api/auth/password-reset/request", async (PasswordResetRequest requ
                 """, connection, transaction);
 
             notifyCommand.Parameters.AddWithValue("recipient_email", recipient);
-            notifyCommand.Parameters.AddWithValue("subject", "Project Pulse local administrator password reset approval required");
+            notifyCommand.Parameters.AddWithValue("subject", "Pulse local administrator password reset approval required");
             notifyCommand.Parameters.AddWithValue("body", $"A password reset was requested for local administrator account {username} ({displayName}). Approval is required before reset can continue.");
             notifyCommand.Parameters.AddWithValue("related_entity_id", resetRequestId);
             await notifyCommand.ExecuteNonQueryAsync();
@@ -18477,7 +18477,7 @@ app.MapGet("/api/auth/password-reset/approvals", async (HttpContext httpContext)
             approvalTitle = "Local administrator password reset",
             approvalDescription = reader.GetString(3) == "approved"
                 ? "Approval is complete. Set a temporary password to finish the reset."
-                : "Approve or decline a password reset request for a Project Pulse local administrator account."
+                : "Approve or decline a password reset request for a Pulse local administrator account."
         });
     }
 
@@ -18576,7 +18576,7 @@ app.MapPost("/api/auth/password-reset/approve", async (PasswordResetApprovalActi
                 """, connection, transaction);
 
             notifyCommand.Parameters.AddWithValue("recipient_email", recipient);
-            notifyCommand.Parameters.AddWithValue("subject", "Project Pulse local administrator password reset approved");
+            notifyCommand.Parameters.AddWithValue("subject", "Pulse local administrator password reset approved");
             notifyCommand.Parameters.AddWithValue("body", $"Password reset request for {accountEmail} was approved by {approvedByEmail}. The next step is to set a temporary password once local password hashing is enabled.");
             notifyCommand.Parameters.AddWithValue("related_entity_id", resetRequestId);
             await notifyCommand.ExecuteNonQueryAsync();
@@ -18693,7 +18693,7 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
         return Results.NotFound(new
         {
             status = "sso_user_not_found",
-            message = "No active Project Pulse user was found for this US Signal SSO account."
+            message = "No active Pulse user was found for this US Signal SSO account."
         });
     }
 
@@ -18708,7 +18708,7 @@ app.MapPost("/api/auth/sso/dev-login", async (SsoDevelopmentLoginRequest request
         return Results.Json(new
         {
             status = "no_active_project_pulse_role",
-            message = "Your account exists in Project Pulse, but no active role has been assigned. Contact a Project Pulse administrator."
+            message = "Your account exists in Pulse, but no active role has been assigned. Contact a Pulse administrator."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -18918,7 +18918,7 @@ app.MapPost("/api/auth/local/login", async (LocalLoginRequest request, HttpReque
         return Results.Json(new
         {
             status = "no_active_project_pulse_role",
-            message = "This local account exists but has no active Project Pulse role assigned."
+            message = "This local account exists but has no active Pulse role assigned."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -19052,7 +19052,7 @@ app.MapPost("/api/auth/session/extend", async (HttpRequest httpRequest) =>
         expiresAt = newExpiresAt,
         sessionMinutes = ProjectPulseSessionMinutes,
         warningMinutes = ProjectPulseSessionWarningMinutes,
-        message = "Your Project Pulse session has been extended."
+        message = "Your Pulse session has been extended."
     });
 });
 
@@ -19081,7 +19081,7 @@ app.MapPost("/api/auth/session/logout", async (HttpRequest httpRequest) =>
     return Results.Ok(new
     {
         status = "signed_out",
-        message = "Signed out of Project Pulse."
+        message = "Signed out of Pulse."
     });
 });
 
@@ -21816,7 +21816,7 @@ app.MapPost("/api/admin/user-admin/users/delete", async (UserAdminUserLifecycleR
                 status = "user_safe_deactivated",
                 dependencyCount = blockingDependencies.Count,
                 dependencies = blockingDependencies.Take(10).ToList(),
-                message = $"{targetEmail} has history in Project Pulse, so the account was safely deactivated instead of hard deleted."
+                message = $"{targetEmail} has history in Pulse, so the account was safely deactivated instead of hard deleted."
             });
         }
 
@@ -22136,15 +22136,15 @@ var projectPulseManagedServices = new Dictionary<string, object>
     {
         serviceKey = "projectpulse-api",
         systemdName = "projecttime-api.service",
-        displayName = "ProjectPulse API",
+        displayName = "Pulse API",
         description = "ASP.NET backend API service for authentication, timesheets, approvals, audit, integrations, and administration."
     },
     ["projectpulse-frontend"] = new
     {
         serviceKey = "projectpulse-frontend",
         systemdName = "projecttime-frontend-public.service",
-        displayName = "ProjectPulse Frontend",
-        description = "Restricted public frontend service that serves the ProjectPulse web application."
+        displayName = "Pulse Frontend",
+        description = "Restricted public frontend service that serves the Pulse web application."
     },
     ["nginx"] = new
     {
@@ -22158,7 +22158,7 @@ var projectPulseManagedServices = new Dictionary<string, object>
         serviceKey = "postgresql",
         systemdName = "postgresql.service",
         displayName = "PostgreSQL Database",
-        description = "Primary PostgreSQL database service for ProjectPulse."
+        description = "Primary PostgreSQL database service for Pulse."
     }
 };
 
@@ -22895,8 +22895,8 @@ app.MapPost("/api/system/restore-validation/settings", async (HttpContext httpCo
     {
         status = "restore_validation_settings_saved",
         message = string.IsNullOrWhiteSpace(selectedBackup)
-            ? "Restore point selection saved. ProjectPulse will validate the latest backup."
-            : "Restore point selection saved. ProjectPulse will validate the selected backup.",
+            ? "Restore point selection saved. Pulse will validate the latest backup."
+            : "Restore point selection saved. Pulse will validate the selected backup.",
         selectedBackup
     });
 });
@@ -23317,7 +23317,7 @@ app.MapGet("/api/system/backup-dr/status", async (HttpContext httpContext) =>
 
     await AddCommandCheckAsync(
         "backup-directory",
-        "ProjectPulse Backup Directory",
+        "Pulse Backup Directory",
         "Backups",
         "test -d /opt/project-time-platform/backups && find /opt/project-time-platform/backups -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM|%s|%p\\n' 2>/dev/null | sort -r | head -25",
         requireOutput: false,
@@ -23361,7 +23361,7 @@ app.MapGet("/api/system/backup-dr/status", async (HttpContext httpContext) =>
         "Configuration",
         "systemctl list-unit-files 'projecttime*' 'projectpulse*' --no-pager 2>/dev/null",
         requireOutput: true,
-        actionRequiredMessage: "ProjectPulse systemd unit files were not detected.");
+        actionRequiredMessage: "Pulse systemd unit files were not detected.");
 
     await AddCommandCheckAsync(
         "nginx-config",
@@ -23817,8 +23817,8 @@ app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
     items.Add(new
     {
         key = "projectpulse-api-runtime",
-        name = "ProjectPulse API Runtime",
-        category = "ProjectPulse",
+        name = "Pulse API Runtime",
+        category = "Pulse",
         status = "detected",
         version = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
         checkedAt,
@@ -23832,8 +23832,8 @@ app.MapGet("/api/system/version-inventory", async (HttpContext httpContext) =>
         }
     });
 
-    versionTasks.Add(AddShellVersionAsync("projectpulse-api-service", "ProjectPulse API Service", "ProjectPulse", "systemctl show projecttime-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
-    versionTasks.Add(AddShellVersionAsync("projectpulse-frontend-service", "ProjectPulse Frontend Service", "ProjectPulse", "systemctl show projecttime-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
+    versionTasks.Add(AddShellVersionAsync("projectpulse-api-service", "Pulse API Service", "Pulse", "systemctl show projecttime-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-api.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
+    versionTasks.Add(AddShellVersionAsync("projectpulse-frontend-service", "Pulse Frontend Service", "Pulse", "systemctl show projecttime-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page || systemctl show projectpulse-frontend-public.service --property=Id,Description,ActiveState,SubState,FragmentPath,ExecMainPID --no-page"));
 
     versionTasks.Add(AddShellVersionAsync("operating-system", "Operating System", "Host", "source /etc/os-release && echo \"$PRETTY_NAME\""));
     versionTasks.Add(AddShellVersionAsync("linux-kernel", "Linux Kernel", "Host", "uname -r"));
@@ -23915,7 +23915,7 @@ app.MapPost("/api/system/service-control/restart", async (ServiceRestartRequest 
         return Results.BadRequest(new
         {
             status = "invalid_service",
-            message = "The requested service is not allowlisted for Project Pulse service control."
+            message = "The requested service is not allowlisted for Pulse service control."
         });
     }
 
@@ -26611,7 +26611,7 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
             tokenErrorMessage = $"token_exchange_failed: HTTP {(int)tokenResponse.StatusCode}";
         }
 
-        Console.Error.WriteLine($"Project Pulse Entra token exchange failed: {tokenErrorMessage}");
+        Console.Error.WriteLine($"Pulse Entra token exchange failed: {tokenErrorMessage}");
         var encodedTokenError = Uri.EscapeDataString(tokenErrorMessage);
         return Results.Redirect($"/#login?ssoError={encodedTokenError}");
     }
@@ -26745,10 +26745,10 @@ app.MapGet("/api/auth/sso/callback", async (HttpContext httpContext, string? cod
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Project Pulse SSO</title>
+  <title>Pulse SSO</title>
 </head>
 <body>
-  <p>Completing Project Pulse sign-in...</p>
+  <p>Completing Pulse sign-in...</p>
   <script>
     window.localStorage.setItem('projectPulseAuthSession', {sessionJsonLiteral});
     window.location.replace('/#dashboard');
@@ -27703,7 +27703,7 @@ app.MapGet("/api/workflow/ptc-time-entry-corrections", async (
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -27938,7 +27938,7 @@ app.MapPost("/api/workflow/ptc-time-entry-corrections/action", async (
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -32484,7 +32484,7 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         var recipientEmail = submission.TryGetProperty("email", out var emailElement) ? emailElement.GetString() ?? "" : "";
         var recipientName = submission.TryGetProperty("displayName", out var nameElement) ? nameElement.GetString() ?? "" : "";
         var managerEmail = submission.TryGetProperty("managerEmail", out var managerElement) ? managerElement.GetString() ?? "" : "";
-        var subject = submission.TryGetProperty("subject", out var subjectElement) ? subjectElement.GetString() ?? "" : "Project Pulse time compliance reminder";
+        var subject = submission.TryGetProperty("subject", out var subjectElement) ? subjectElement.GetString() ?? "" : "Pulse time compliance reminder";
         var body = submission.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() ?? "" : "";
 
         var ccEmails = new List<string>();
@@ -32624,7 +32624,7 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         updateRunCommand.Parameters.AddWithValue("run_message",
             deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
                 ? "Notification run recorded in outbox-only mode. No email was sent."
-                : $"Automatic engineer notification send attempted through shared ProjectPulse email provider: {deliveryMode}.");
+                : $"Automatic engineer notification send attempted through shared Pulse email provider: {deliveryMode}.");
         await updateRunCommand.ExecuteNonQueryAsync();
     }
 
@@ -32642,13 +32642,13 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
         skippedCount,
         message = deliveryMode.Equals("outbox_only", StringComparison.OrdinalIgnoreCase)
             ? "Automatic engineer notification run was recorded in outbox-only mode. No email was sent."
-            : $"Automatic engineer notification send completed through shared ProjectPulse email provider: {deliveryMode}."
+            : $"Automatic engineer notification send completed through shared Pulse email provider: {deliveryMode}."
     });
 });
 // 019M-CJ Time Compliance Automatic Engineer Email Notifications - END
 
 
-// 019M-CK Shared ProjectPulse Email Provider - START
+// 019M-CK Shared Pulse Email Provider - START
 app.MapGet("/api/system/email-provider/summary", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
@@ -32703,7 +32703,7 @@ app.MapGet("/api/system/email-provider/summary", async (HttpContext httpContext)
 
     return Results.Ok(new
     {
-        module = "019M-CK Shared ProjectPulse Email Provider",
+        module = "019M-CK Shared Pulse Email Provider",
         summary = new
         {
             provider = provider.Provider,
@@ -32745,7 +32745,7 @@ static (
     var brevoSenderName =
         Environment.GetEnvironmentVariable("PROJECTPULSE_BREVO_SENDER_NAME") ??
         Environment.GetEnvironmentVariable("PROJECTPULSE_EMAIL_DEFAULT_SENDER_NAME") ??
-        "Project Pulse";
+        "Pulse";
 
     var sendmailAvailable = File.Exists("/usr/sbin/sendmail") || File.Exists("/usr/lib/sendmail");
 
@@ -32874,7 +32874,7 @@ static async Task<(string Status, string FailureMessage)> SendProjectPulseEmailT
 
             var emailBody = body.Replace(
                 "Notification preview only. No email was sent.",
-                "Automatic Project Pulse time-compliance notification."
+                "Automatic Pulse time-compliance notification."
             );
 
             var brevoPayload = new
@@ -32930,7 +32930,7 @@ static async Task<(string Status, string FailureMessage)> SendProjectPulseEmailT
 
     return ("outbox_only", "");
 }
-// 019M-CK Shared ProjectPulse Email Provider - END
+// 019M-CK Shared Pulse Email Provider - END
 
 
 // 019M-CL Shared Email Provider Test Harness - START
@@ -33099,9 +33099,9 @@ app.MapPost("/api/system/email-provider/test-send", async (HttpContext httpConte
         actorEmail = (await userCommand.ExecuteScalarAsync())?.ToString() ?? "";
     }
 
-    var subject = $"ProjectPulse email provider test - {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC";
+    var subject = $"Pulse email provider test - {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC";
     var body = $"""
-ProjectPulse shared email provider test
+Pulse shared email provider test
 
 Provider: {provider.Provider}
 Preferred delivery mode: {provider.PreferredDeliveryMode}
@@ -33110,7 +33110,7 @@ Recipient: {recipientEmail}
 Requested by: {actorEmail}
 Generated UTC: {DateTimeOffset.UtcNow:O}
 
-This is a controlled single-recipient test email. It confirms that ProjectPulse can send through the shared global email provider configuration.
+This is a controlled single-recipient test email. It confirms that Pulse can send through the shared global email provider configuration.
 """;
 
     var result = await SendProjectPulseEmailThroughSharedProviderAsync(
@@ -33982,7 +33982,7 @@ app.MapGet("/api/production/notifications/summary", async (HttpContext httpConte
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to view production notifications."
+            message = "A Pulse session is required to view production notifications."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -34027,7 +34027,7 @@ app.MapGet("/api/production/notifications", async (HttpContext httpContext) =>
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to view production notifications."
+            message = "A Pulse session is required to view production notifications."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -34223,7 +34223,7 @@ app.MapPost("/api/production/notifications/acknowledge", async (HttpContext http
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to acknowledge production notifications."
+            message = "A Pulse session is required to acknowledge production notifications."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -34439,7 +34439,7 @@ app.MapGet("/api/production/notifications/preferences/summary", async (HttpConte
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to view production notification preferences."
+            message = "A Pulse session is required to view production notification preferences."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -34486,7 +34486,7 @@ app.MapGet("/api/production/notifications/routing-rules", async (HttpContext htt
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to view production notification routing rules."
+            message = "A Pulse session is required to view production notification routing rules."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -34512,7 +34512,7 @@ app.MapPost("/api/production/notifications/preferences", async (HttpContext http
         return Results.Json(new
         {
             status = "session_required",
-            message = "A ProjectPulse session is required to update production notification preferences."
+            message = "A Pulse session is required to update production notification preferences."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
@@ -38393,7 +38393,7 @@ static async Task<Guid> GetOrCreateDevelopmentManagerUserIdAsync(NpgsqlConnectio
 {
     const string sql = """
         INSERT INTO app_users (email, display_name, job_title, department, is_active)
-        VALUES ('ahmed.adeyemi@ussignal.local', 'Ahmed Adeyemi', 'Development Manager', 'Project Pulse', TRUE)
+        VALUES ('ahmed.adeyemi@ussignal.local', 'Ahmed Adeyemi', 'Development Manager', 'Pulse', TRUE)
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
             updated_at = NOW()
@@ -40112,9 +40112,9 @@ static async Task<int> QueueProjectCostAlertNotificationsAsync(
         return 0;
     }
 
-    var subject = $"Project Pulse Cost Alert: {projectCode} - {alertSeverity.ToUpperInvariant()}";
+    var subject = $"Pulse Cost Alert: {projectCode} - {alertSeverity.ToUpperInvariant()}";
     var body = $"""
-Project Pulse detected a project cost/readiness alert.
+Pulse detected a project cost/readiness alert.
 
 Project: {projectCode} - {projectName}
 Customer: {clientName}
@@ -40127,7 +40127,7 @@ Assigned Hours: {assignedHours:N2}
 Used Hours: {usedHours:N2}
 Over Assigned Hours: {overAssignedHours:N2}
 
-Please review project assignment, time usage, and cost plan readiness in Project Pulse.
+Please review project assignment, time usage, and cost plan readiness in Pulse.
 """;
 
     foreach (var recipient in recipients)

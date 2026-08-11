@@ -635,7 +635,7 @@ export default function UserAdministrationPanel() {
                   <div>
                     <p className="eyebrow">Individual user</p>
                     <h2>{profileDraft.displayName || profileDraft.email}</h2>
-                    <span>{userIsLocal(selectedUser) ? 'Local ProjectPulse account' : 'Azure / Entra account'}</span>
+                    <span>{userIsLocal(selectedUser) ? 'Local Pulse account' : 'Azure / Entra account'}</span>
                   </div>
                   <button type="button" className="primary-action" onClick={saveProfile}>Save user</button>
                 </div>
@@ -754,7 +754,7 @@ export default function UserAdministrationPanel() {
       {activeTab === 'create' ? (
         <section className="user-admin-v2-tab-panel">
           <div className="user-admin-v2-panel-heading">
-            <div><p className="eyebrow">Local account</p><h2>Create one local ProjectPulse user</h2><p>Local creation is restricted to @ussignal.local. Azure / Entra users remain owned by Module 010 import.</p></div>
+            <div><p className="eyebrow">Local account</p><h2>Create one local Pulse user</h2><p>Local creation is restricted to @ussignal.local. Azure / Entra users remain owned by Module 010 import.</p></div>
             <button type="button" className="primary-action" onClick={createLocalUser}>Create local user</button>
           </div>
           <div className="user-admin-v2-create-grid">

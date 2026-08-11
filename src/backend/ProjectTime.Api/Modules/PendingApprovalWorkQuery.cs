@@ -198,7 +198,7 @@ public static partial class PendingApprovalWorkModule
         await using var command = new NpgsqlCommand("""
             SELECT
                 COALESCE(user_row.email, ''),
-                COALESCE(NULLIF(user_row.display_name, ''), user_row.email, 'ProjectPulse user'),
+                COALESCE(NULLIF(user_row.display_name, ''), user_row.email, 'Pulse user'),
                 COALESCE(
                     ARRAY_AGG(DISTINCT UPPER(role_row.role_code))
                         FILTER (WHERE role_row.role_code IS NOT NULL),
@@ -352,7 +352,7 @@ public static partial class PendingApprovalWorkModule
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
 
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     private sealed record BulkCompleteRequest(

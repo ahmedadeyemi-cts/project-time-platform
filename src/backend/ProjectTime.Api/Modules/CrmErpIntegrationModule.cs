@@ -432,7 +432,7 @@ public static class CrmErpIntegrationModule
         }
 
         var redirectUri = PublicCallbackUri(context);
-        if (redirectUri is null) return Invalid("A valid HTTPS ProjectPulse public base URL is required for the OAuth callback.");
+        if (redirectUri is null) return Invalid("A valid HTTPS Pulse public base URL is required for the OAuth callback.");
         var state = Base64Url(RandomNumberGenerator.GetBytes(32));
         var stateHash = Sha256(state);
         await using (var command = new NpgsqlCommand("""
@@ -467,7 +467,7 @@ public static class CrmErpIntegrationModule
             authorizationUrl = $"{authorizationUri}{separator}{query}",
             expiresInSeconds = 600,
             callbackUri = redirectUri,
-            message = "Complete consent with the provider. ProjectPulse will store returned tokens encrypted and will not display them."
+            message = "Complete consent with the provider. Pulse will store returned tokens encrypted and will not display them."
         });
     }
 
@@ -479,7 +479,7 @@ public static class CrmErpIntegrationModule
         if (string.IsNullOrWhiteSpace(state)) return OAuthPage(false, "The OAuth state is missing or invalid.");
 
         await using var connection = await OpenConnectionAsync(context);
-        if (connection is null) return OAuthPage(false, "ProjectPulse integration storage is unavailable.");
+        if (connection is null) return OAuthPage(false, "Pulse integration storage is unavailable.");
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return OAuthPage(false, "Module 026 migration 034 has not been applied.");
 
         OAuthState? oauthState;
@@ -510,7 +510,7 @@ public static class CrmErpIntegrationModule
         if (!await IsSafeExternalUriAsync(tokenUri!, context.RequestAborted)) return OAuthPage(false, "The provider token endpoint is not an approved public HTTPS address.");
 
         var encryptionKey = ReadEncryptionKey();
-        if (encryptionKey is null) return OAuthPage(false, "The ProjectPulse integration encryption key is unavailable.");
+        if (encryptionKey is null) return OAuthPage(false, "The Pulse integration encryption key is unavailable.");
         try
         {
             var clientSecret = await LoadCredentialAsync(connection, oauthState.ProviderKey, "oauth_client_secret", encryptionKey, context.RequestAborted);
@@ -580,7 +580,7 @@ public static class CrmErpIntegrationModule
         catch (Exception exception)
         {
             LogFailure(context, exception, "complete OAuth connection");
-            return OAuthPage(false, "ProjectPulse could not complete the OAuth connection.");
+            return OAuthPage(false, "Pulse could not complete the OAuth connection.");
         }
         finally
         {

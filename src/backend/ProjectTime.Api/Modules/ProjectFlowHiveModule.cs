@@ -430,7 +430,7 @@ public static class ProjectFlowHiveModule
                 return Results.Json(new
                 {
                     status = "access_denied",
-                    message = "The active ProjectPulse user could not be resolved for Project FlowHive."
+                    message = "The active Pulse user could not be resolved for Project FlowHive."
                 }, statusCode: StatusCodes.Status403Forbidden);
             }
 
@@ -1006,7 +1006,7 @@ public static class ProjectFlowHiveModule
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 

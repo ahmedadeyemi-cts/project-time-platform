@@ -63,7 +63,7 @@ check('MODULES_064_074_NATIVE_ENDPOINTS', [
   '/api/native-administration/{moduleNumber}/history',
   '/api/native-administration/{moduleNumber}/history/{revisionId:guid}/restore'
 ].every((route) => backend.includes(route)), 'schema, document, history, and restore routes');
-check('MODULES_064_074_NATIVE_WRITE_AUTHORITY', backend.includes('SUPER_ADMINISTRATOR') && backend.includes('ADMINISTRATOR') && backend.includes('actual ProjectPulse session'), 'platform administrators and actual-session authority');
+check('MODULES_064_074_NATIVE_WRITE_AUTHORITY', backend.includes('SUPER_ADMINISTRATOR') && backend.includes('ADMINISTRATOR') && backend.includes('actual Pulse session'), 'platform administrators and actual-session authority');
 check('MODULES_064_074_NATIVE_VIEW_AS_BLOCK', backend.includes('actual_session_required') && backend.includes('IsViewAs(context)'), 'View-As mutation blocked');
 check('MODULES_064_074_NATIVE_OPTIMISTIC_CONCURRENCY', backend.includes('expectedRevision') && backend.includes('revision_conflict') && backend.includes('FOR UPDATE'), 'revision conflict protection');
 check('MODULES_064_074_NATIVE_AUDIT', backend.includes('projectpulse_module_audit_events') && backend.includes('native_administration_document'), 'shared sanitized audit evidence');

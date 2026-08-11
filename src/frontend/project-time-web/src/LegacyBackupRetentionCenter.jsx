@@ -154,7 +154,7 @@ export default function LegacyBackupRetentionCenter({ authSession }) {
 
       {status ? (
         <>
-          <section className="backup-retention-mode-banner"><div><span>Safe deletion controls</span><h2>Manual cleanup with restore-point protection</h2><p>ProjectPulse protects the last remaining backup and the restore point currently selected in Restore Validation.</p></div><StatusBadge status={status.backupCount > 0 ? 'ready' : 'warning'} /></section>
+          <section className="backup-retention-mode-banner"><div><span>Safe deletion controls</span><h2>Manual cleanup with restore-point protection</h2><p>Pulse protects the last remaining backup and the restore point currently selected in Restore Validation.</p></div><StatusBadge status={status.backupCount > 0 ? 'ready' : 'warning'} /></section>
           <section className="backup-retention-summary-grid">
             <SummaryCard title="Backup points" value={String(status.backupCount ?? 0)} detail={status.canDelete ? 'Old backup points can be deleted.' : 'At least two backups are required before deletion is allowed.'} status={status.backupCount > 0 ? 'ready' : 'warning'} />
             <SummaryCard title="Newest backup" value={newestBackup?.name} detail={newestBackup ? `${newestBackup.ageHours} hours old · ${formatBytes(newestBackup.sizeBytes)}` : 'No backups found.'} status={newestBackup ? 'ready' : 'warning'} />

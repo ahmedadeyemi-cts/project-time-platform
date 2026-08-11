@@ -152,7 +152,7 @@ public static class SecurityOperationsResponseModule
                 derived = authenticationSignals.Count,
                 liveCountAuthoritative = true
             },
-            statement = "Persisted alerts and live ProjectPulse authentication signals are shown separately; derived signals do not claim compromise without analyst confirmation."
+            statement = "Persisted alerts and live Pulse authentication signals are shown separately; derived signals do not claim compromise without analyst confirmation."
         });
     }
 
@@ -713,7 +713,7 @@ public static class SecurityOperationsResponseModule
     {
         var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
         await using var connection = outcome.Connection!;
-        return Results.Ok(new { module = ModuleNumber, status = "threat_intelligence_policy_loaded", sources = ThreatSources(), statement = "ProjectPulse native signals are active. External intelligence feeds remain unconfigured and never trigger automatic containment." });
+        return Results.Ok(new { module = ModuleNumber, status = "threat_intelligence_policy_loaded", sources = ThreatSources(), statement = "Pulse native signals are active. External intelligence feeds remain unconfigured and never trigger automatic containment." });
     }
 
     private static async Task<IResult> GetControlPostureAsync(HttpContext context)
@@ -734,7 +734,7 @@ public static class SecurityOperationsResponseModule
     {
         var outcome = await AuthorizeAsync(context); if (outcome.Failure is not null) return outcome.Failure;
         await using var connection = outcome.Connection!;
-        return Results.Ok(new { module = ModuleNumber, status = "security_reporting_policy_loaded", timelineEvidenceEnabled = true, auditEvidenceEnabled = true, exportEnabled = false, externalNotificationEnabled = false, classification = "restricted_security_metadata", statement = "Evidence is retained in ProjectPulse; external export and notification require separately approved encrypted adapters." });
+        return Results.Ok(new { module = ModuleNumber, status = "security_reporting_policy_loaded", timelineEvidenceEnabled = true, auditEvidenceEnabled = true, exportEnabled = false, externalNotificationEnabled = false, classification = "restricted_security_metadata", statement = "Evidence is retained in Pulse; external export and notification require separately approved encrypted adapters." });
     }
 
     private static async Task<IResult> GetIntegrationPolicyAsync(HttpContext context)
@@ -770,7 +770,7 @@ public static class SecurityOperationsResponseModule
 
     private static object[] OperatingDomains() =>
     [
-        new { id = "identity", name = "Identity & access", owner = "ProjectPulse authentication", status = "native_signal_active" },
+        new { id = "identity", name = "Identity & access", owner = "Pulse authentication", status = "native_signal_active" },
         new { id = "application", name = "Application security", owner = "Modules 997 and 998", status = "native_operations_active" },
         new { id = "data", name = "Data protection & resilience", owner = "Modules 014-017", status = "delegated" },
         new { id = "delivery", name = "Software supply chain", owner = "Module 058", status = "delegated" },
@@ -779,7 +779,7 @@ public static class SecurityOperationsResponseModule
 
     private static object[] ThreatSources() =>
     [
-        new { code = "internal_telemetry", name = "ProjectPulse authentication and audit telemetry", status = "connected", execution = true },
+        new { code = "internal_telemetry", name = "Pulse authentication and audit telemetry", status = "connected", execution = true },
         new { code = "vendor_intelligence", name = "Licensed vendor intelligence", status = "not_configured", execution = false },
         new { code = "government_advisories", name = "Government advisories", status = "not_configured", execution = false },
         new { code = "analyst_observation", name = "Governed analyst observation", status = "incident_workflow_active", execution = true }
@@ -823,7 +823,7 @@ public static class SecurityOperationsResponseModule
     private static string[] Guardrails() =>
     [
         "Actual-session authority is required; View-As never grants response authority.",
-        "ProjectPulse authentication and audit telemetry is live; missing external telemetry remains explicit.",
+        "Pulse authentication and audit telemetry is live; missing external telemetry remains explicit.",
         "Incident mutations and response requests are durable and audited.",
         "A requester cannot approve their own containment request.",
         "Only approved native session revocation can execute without an external adapter.",

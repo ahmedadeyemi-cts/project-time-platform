@@ -19,7 +19,7 @@ public static class WorkRegisterPurchaseOrderModule
     }
 
     private static Guid? UserId(HttpContext c) => c.Items.TryGetValue("ProjectPulseSessionUserId", out var v) && v is Guid g ? g : null;
-    private static IResult SessionRequired() => Results.Json(new { status = "session_required", message = "A valid ProjectPulse session is required." }, statusCode: 401);
+    private static IResult SessionRequired() => Results.Json(new { status = "session_required", message = "A valid Pulse session is required." }, statusCode: 401);
 
     private static async Task<IResult> GetProjectsAsync(HttpContext context)
     {

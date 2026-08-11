@@ -101,7 +101,7 @@ export default function GlobalMailConfigurationCenter({ authSession }) {
           <p className="eyebrow">Module 067 · Administrator-only configuration</p>
           <h1 id="global-mail-title">Global Mail Configuration Center</h1>
           <p>
-            One non-secret view of ProjectPulse outbound-mail configuration,
+            One non-secret view of Pulse outbound-mail configuration,
             Microsoft 365 migration readiness, shared consumers, and the controls
             that must pass before an authorized provider cutover.
           </p>

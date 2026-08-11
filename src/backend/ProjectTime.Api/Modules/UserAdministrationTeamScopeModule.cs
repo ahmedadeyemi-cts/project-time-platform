@@ -7,7 +7,7 @@ namespace ProjectTime.Api.Modules;
 /// Module 009 manager-to-multiple-team administration. A team has at most one
 /// active manager assignment, while a manager may own multiple teams. Saving
 /// scope reconciles each active team member's manager_email so existing manager
-/// authorization continues to use authoritative ProjectPulse user data.
+/// authorization continues to use authoritative Pulse user data.
 /// </summary>
 public static class UserAdministrationTeamScopeModule
 {
@@ -166,7 +166,7 @@ public static class UserAdministrationTeamScopeModule
             {
                 module = ModuleNumber,
                 status = "manager_not_found",
-                message = "The selected active ProjectPulse manager was not found."
+                message = "The selected active Pulse manager was not found."
             });
         }
 
@@ -413,7 +413,7 @@ public static class UserAdministrationTeamScopeModule
             SELECT
                 u.user_id,
                 COALESCE(u.email, ''),
-                COALESCE(u.display_name, u.email, 'ProjectPulse manager'),
+                COALESCE(u.display_name, u.email, 'Pulse manager'),
                 COALESCE(
                     array_agg(DISTINCT r.role_code)
                         FILTER (WHERE r.role_code IS NOT NULL),

@@ -257,7 +257,8 @@ const approvedCelarMigrations = new Set([
   'database/migrations/061_celar_ai_capability_routing.sql',
   'database/migrations/072_celar_ai_conversation_attachments.sql',
   'database/migrations/080_celar_ai_internal_data_intelligence.sql',
-  'database/migrations/081_celar_ai_private_runtime_activation.sql'
+  'database/migrations/081_celar_ai_private_runtime_activation.sql',
+  'database/migrations/082_pulse_celar_ai_canonical_labels.sql'
 ]);
 const approvedCelarRollbacks = new Set([
   'database/rollback/061_celar_ai_capability_routing_rollback.sql',
@@ -271,12 +272,21 @@ const unexpectedCelarMigrations = celarMigrations.filter((relative) => !approved
 const unexpectedCelarRollbacks = celarRollbacks.filter((relative) => !approvedCelarRollbacks.has(relative));
 const presentApprovedCelarMigrations = celarMigrations.filter((relative) => approvedCelarMigrations.has(relative));
 const presentApprovedCelarRollbacks = celarRollbacks.filter((relative) => approvedCelarRollbacks.has(relative));
+const canonicalLabelsMigrationPath = 'database/migrations/082_pulse_celar_ai_canonical_labels.sql';
+const canonicalLabelsMigration = exists(canonicalLabelsMigrationPath) ? read(canonicalLabelsMigrationPath) : '';
+const migration082Rollbacks = walk('database/rollback').filter((relative) => path.basename(relative).startsWith('082_'));
 
 assert(
-  'NO_CELAR_DATABASE_MIGRATION',
-  unexpectedCelarMigrations.length === 0 && unexpectedCelarRollbacks.length === 0,
-  unexpectedCelarMigrations.length === 0 && unexpectedCelarRollbacks.length === 0
-    ? `no unapproved Celar database object rename or duplication; approved capability-routing artifacts present=${presentApprovedCelarMigrations.length + presentApprovedCelarRollbacks.length}`
+  'FORWARD_ONLY_LABEL_MIGRATION_BOUNDARY',
+  unexpectedCelarMigrations.length === 0
+    && unexpectedCelarRollbacks.length === 0
+    && migration082Rollbacks.length === 0
+    && canonicalLabelsMigration.includes("WHERE migration_id = '075_pulse_product_rebrand'")
+    && canonicalLabelsMigration.includes("('crm_integration_field_mappings', 'projectpulse_destination')")
+    && canonicalLabelsMigration.includes("current_setting('projectpulse.project_number_issuance'")
+    && canonicalLabelsMigration.includes("'082_pulse_celar_ai_canonical_labels'"),
+  unexpectedCelarMigrations.length === 0 && unexpectedCelarRollbacks.length === 0 && migration082Rollbacks.length === 0
+    ? 'migration 082 is forward-only, allowlisted to mutable labels, and preserves ProjectPulse compatibility identifiers'
     : `unexpected Celar database paths: ${[...unexpectedCelarMigrations, ...unexpectedCelarRollbacks].join(', ')}`
 );
 

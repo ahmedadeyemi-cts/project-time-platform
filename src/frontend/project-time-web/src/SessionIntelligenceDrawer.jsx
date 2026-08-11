@@ -337,7 +337,7 @@ export default function SessionIntelligenceDrawer({ authSession }) {
         </div>
 
         <footer className="uss-si-footer">
-          <span>US Signal • ProjectPulse</span>
+          <span>US Signal • Pulse</span>
           <span>Module 059</span>
         </footer>
       </aside>

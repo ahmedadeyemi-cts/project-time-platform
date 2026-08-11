@@ -33,7 +33,7 @@ public static partial class ScopedRolePolicyModule
                 await context.Response.WriteAsJsonAsync(new
                 {
                     status = "session_required",
-                    message = "A valid ProjectPulse session is required."
+                    message = "A valid Pulse session is required."
                 });
                 return;
             }

@@ -13,7 +13,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -46,7 +46,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -106,7 +106,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -166,7 +166,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -249,7 +249,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -348,7 +348,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("071", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("071", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -446,7 +446,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("072", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("072", "Pulse database configuration is unavailable.");
         }
 
         try
@@ -493,7 +493,7 @@ internal static class Module071072NativePersistence
         var connectionString = BuildConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return Unavailable("072", "ProjectPulse database configuration is unavailable.");
+            return Unavailable("072", "Pulse database configuration is unavailable.");
         }
 
         try

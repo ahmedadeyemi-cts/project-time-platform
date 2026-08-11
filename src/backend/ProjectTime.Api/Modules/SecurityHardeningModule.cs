@@ -222,7 +222,7 @@ public static class SecurityHardeningModule
                         context,
                         StatusCodes.Status401Unauthorized,
                         "session_required",
-                        "A valid Project Pulse session is required.");
+                        "A valid Pulse session is required.");
                     return;
                 }
 
@@ -368,7 +368,7 @@ public static class SecurityHardeningModule
             username,
             loginMethod = "local",
             provider = "LOCAL",
-            displayName = "Project Pulse local administrator login",
+            displayName = "Pulse local administrator login",
             requiresPassword = true,
             message = "Local administrator credentials are required."
         });

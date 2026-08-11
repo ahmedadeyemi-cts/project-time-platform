@@ -616,7 +616,7 @@ export default function MicrosoftIntegrationDualConnectionPortal() {
       {loading ? <div className="microsoft-integration-empty">Loading Microsoft Integration…</div> : null}
 
       {!loading ? <>
-        <div className="microsoft-integration-banner">Test and Production maintain independent SSO, services, directory-sync, sender, provider, SMTP, and recipient-boundary settings. Module 065 is the authoritative source for every ProjectPulse Microsoft and mail runtime.</div>
+        <div className="microsoft-integration-banner">Test and Production maintain independent SSO, services, directory-sync, sender, provider, SMTP, and recipient-boundary settings. Module 065 is the authoritative source for every Pulse Microsoft and mail runtime.</div>
         <div className="microsoft-environment-switcher" role="tablist" aria-label="Microsoft environment">
           {ENVIRONMENTS.map((environmentMode) => <button type="button" key={environmentMode} className={activeTenant.environmentMode === environmentMode ? 'active' : ''} onClick={() => selectEnvironment(environmentMode)}>{environmentLabel(environmentMode)}</button>)}
         </div>

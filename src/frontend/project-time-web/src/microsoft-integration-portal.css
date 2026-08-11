@@ -129,7 +129,7 @@ a[href="#global-mail-configuration"],
 }
 
 .route-azure-admin #azure-admin > .section-heading .section-copy::after {
-  content: 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in ProjectPulse. Tenant, identity, synchronization, and Microsoft mail configuration are managed in Module 065.';
+  content: 'Preview Entra directory users, filter the list, select the people to import, and confirm that imported users appear in Pulse. Tenant, identity, synchronization, and Microsoft mail configuration are managed in Module 065.';
   display: block;
   font-size: 0.95rem;
   line-height: 1.55;

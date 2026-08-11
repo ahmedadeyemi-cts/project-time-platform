@@ -34,7 +34,7 @@ internal static class AnalyticsCenterDirectoryLoader
                     "healthy",
                     false,
                     customers.Length + teams.Length,
-                    "Filter choices were loaded from the role-scoped ProjectPulse customer and team directories.",
+                    "Filter choices were loaded from the role-scoped Pulse customer and team directories.",
                     string.Empty,
                     DateTimeOffset.UtcNow));
         }

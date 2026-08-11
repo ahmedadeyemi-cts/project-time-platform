@@ -6,7 +6,7 @@ public sealed class PulseAiQuestionPlanner
     [
         new(
             Code: "product_knowledge",
-            DisplayName: "ProjectPulse product and operating knowledge",
+            DisplayName: "Pulse product and operating knowledge",
             Domain: "help_and_documentation",
             OwningModules: ["011", "029", "076", "999", "all_registered_modules"],
             Routes: ["/api/celar-ai/v1/help-search/plan", "#user-guide", "#defect-tracker"],
@@ -18,7 +18,7 @@ public sealed class PulseAiQuestionPlanner
             EvidencePolicy: "cite_module_number_route_documentation_section_and_as_of_time",
             SupportedQuestions:
             [
-                "How do I perform a ProjectPulse workflow?",
+                "How do I perform a Pulse workflow?",
                 "What does a module, page, field, button, status, or permission mean?",
                 "Where should I navigate to complete a task?"
             ]),
@@ -335,7 +335,7 @@ public sealed class PulseAiQuestionPlanner
             PrivacyControls:
             [
                 "The model receives only information authorized for the current effective user.",
-                "Raw SOW, GSD, architecture, contract, customer, rate, and financial content remains inside the private ProjectPulse boundary by default.",
+                "Raw SOW, GSD, architecture, contract, customer, rate, and financial content remains inside the private Pulse boundary by default.",
                 "External providers receive only a separately approved sanitized reasoning capsule; they receive no document bytes or unrestricted retrieved context.",
                 "The model cannot generate arbitrary SQL or use unrestricted database credentials.",
                 "Read-only questions cannot mutate timesheets, plans, assignments, permissions, rates, expenses, invoices, deployments, or security state."
@@ -375,8 +375,8 @@ public sealed class PulseAiQuestionPlanner
         if (ContainsAny(normalized, "no access", "permission", "role", "403", "denied", "why can i not see"))
         {
             return new PulseAiKnowledgeAnswer(
-                "Understand ProjectPulse access and permissions",
-                "ProjectPulse evaluates the signed-in user, any authorized View-As identity, the current module, the requested action, and record-level scope. No Access means the module should be hidden and direct access denied. View permits authorized read access only; it does not automatically grant create, edit, delete, approve, administer, export, or cross-project access.",
+                "Understand Pulse access and permissions",
+                "Pulse evaluates the signed-in user, any authorized View-As identity, the current module, the requested action, and record-level scope. No Access means the module should be hidden and direct access denied. View permits authorized read access only; it does not automatically grant create, edit, delete, approve, administer, export, or cross-project access.",
                 [
                     "Confirm the active account and whether Administrator View-As is enabled.",
                     "Identify the module number, page route, and exact action that was attempted.",
@@ -397,7 +397,7 @@ public sealed class PulseAiQuestionPlanner
         if (ContainsAny(normalized, "create project", "new project", "gsd creation", "sell creation"))
         {
             return new PulseAiKnowledgeAnswer(
-                "Create and maintain a ProjectPulse project",
+                "Create and maintain a Pulse project",
                 "Module 055D is the authoritative new-project workflow. Module 055C is the authoritative existing-project workspace. Project Intake and signed handoff establish upstream readiness, but the retired Work Task Builder no longer owns project or task creation.",
                 [
                     "Confirm that Project Intake or the applicable Sales/Signed Handoff workflow has the required customer, commercial, ownership, and signed-date information.",
@@ -430,7 +430,7 @@ public sealed class PulseAiQuestionPlanner
                     "Re-index or retire the old version when a replacement becomes authoritative. Permission removal must also remove the document from retrieval results."
                 ],
                 [
-                    "Raw SOW and GSD content remains inside the private ProjectPulse boundary by default.",
+                    "Raw SOW and GSD content remains inside the private Pulse boundary by default.",
                     "Uploading a file does not automatically approve it for AI retrieval or training.",
                     "A document may be visible in Project Workspace but still unavailable to a specific AI use case until processing and policy requirements pass."
                 ],
@@ -471,7 +471,7 @@ public sealed class PulseAiQuestionPlanner
                     "Apply the published formula for planned cost, actual cost, forecasted final cost, current variance, budget status, and margin only when authoritative revenue and rate data are available.",
                     "Separate known values, unknown values, stale values, and unavailable optional sources. Do not silently treat missing data as zero.",
                     "Explain the portfolio or project result, the largest drivers, exceptions, trend direction, operational causes, business risk, and recommended follow-up.",
-                    "Display the contract version, currency, filters, record counts, data-as-of time, and links to the relevant ProjectPulse financial modules."
+                    "Display the contract version, currency, filters, record counts, data-as-of time, and links to the relevant Pulse financial modules."
                 ],
                 [
                     "Celar AI cannot use arbitrary generated SQL or unrestricted database credentials.",
@@ -507,7 +507,7 @@ public sealed class PulseAiQuestionPlanner
         if (ContainsAny(normalized, "defect", "bug", "report a problem", "broken"))
         {
             return new PulseAiKnowledgeAnswer(
-                "Report and investigate a ProjectPulse defect",
+                "Report and investigate a Pulse defect",
                 "Module 076 is the governed defect intake and resolution tracker. A useful report identifies the affected module or route, expected behavior, observed behavior, impact, priority, user and environment scope, reproducible steps, evidence, ownership, and resolution history.",
                 [
                     "Open Module 076 from Help or the module navigation.",

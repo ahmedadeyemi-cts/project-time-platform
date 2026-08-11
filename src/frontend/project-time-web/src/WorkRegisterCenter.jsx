@@ -569,7 +569,7 @@ const updateIntakeForm = (field, value) => {
       projectName: payload.projectName || payload.project_name || payload.name || identity.projectName
     };
 
-    console.info('ProjectPulse edit-save payload', mergedPayload);
+    console.info('Pulse edit-save payload', mergedPayload);
 
     return mergedPayload;
   }
@@ -1867,7 +1867,7 @@ function updateRosterEngineer(task, index, field, value) {
       }
 
       if (!safeReference) {
-        setDocumentStatus('Blocked an unsafe document reference. Only relative Project Pulse routes and HTTPS links are allowed.');
+        setDocumentStatus('Blocked an unsafe document reference. Only relative Pulse routes and HTTPS links are allowed.');
         return;
       }
 
@@ -3313,7 +3313,7 @@ async function createWorkRegisterFromReviewedIntake() {
       return;
     }
     if (!intakeForm.customerId) {
-      setIntakeWizardStatus('Select the matching ProjectPulse customer.');
+      setIntakeWizardStatus('Select the matching Pulse customer.');
       return;
     }
     if (!String(intakeForm.reason || '').trim()) {

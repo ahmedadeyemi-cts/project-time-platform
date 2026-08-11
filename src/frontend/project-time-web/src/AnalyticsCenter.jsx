@@ -442,7 +442,7 @@ function ScheduleEditor({
       <div className="analytics-recipient-chips">
         {draft.recipients.map((recipient) => <span key={`${recipient.userId ?? 'email'}-${recipient.email}`}>{recipient.displayName || recipient.email}<button type="button" onClick={() => set('recipients', draft.recipients.filter((item) => item.email !== recipient.email))}>×</button></span>)}
       </div>
-      <p className="analytics-schedule-note">ⓘ Multiple active ProjectPulse users receive individual copies generated under each recipient’s own authorization scope. Module 065 owns Entra Secret Administration, SMTP/Graph configuration, sender identity, delivery boundaries, and transmission.</p>
+      <p className="analytics-schedule-note">ⓘ Multiple active Pulse users receive individual copies generated under each recipient’s own authorization scope. Module 065 owns Entra Secret Administration, SMTP/Graph configuration, sender identity, delivery boundaries, and transmission.</p>
       <div className="analytics-format-choice">
         <span>Format</span>
         <label><input type="radio" name="schedule-format" checked={draft.exportFormat === 'pdf'} onChange={() => set('exportFormat', 'pdf')} /> US Signal PDF</label>
@@ -731,7 +731,7 @@ export default function AnalyticsCenter({ authSession }) {
   const reportWorkspace = (
     <div className="analytics-report-workspace-grid">
       <section className="analytics-report-library analytics-build-layout">
-        <div className="analytics-library-heading"><div><h2>Report Library</h2><p>Explore and run analytics across every authorized area of ProjectPulse.</p></div><input type="search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Search reports…" /></div>
+        <div className="analytics-library-heading"><div><h2>Report Library</h2><p>Explore and run analytics across every authorized area of Pulse.</p></div><input type="search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Search reports…" /></div>
         <div className="analytics-library-body">
           <aside className="analytics-report-categories">
             {categories.map((category) => {
@@ -783,7 +783,7 @@ export default function AnalyticsCenter({ authSession }) {
       <main className="analytics-main">
         <header className="analytics-topbar">
           <div><h1>Analytics Center</h1><p>Data-driven insights across your projects, people, financials, and performance.</p></div>
-          <div className="analytics-topbar-actions"><label><span>⌕</span><input type="search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Search reports, dashboards, and more…" /></label><button type="button" onClick={bootstrap}>↻ Refresh</button><div className="analytics-profile"><span>{(overview?.access?.displayName ?? authSession?.displayName ?? 'User').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><div><strong>{overview?.access?.displayName ?? authSession?.displayName ?? 'ProjectPulse User'}</strong><small>{(overview?.access?.roles ?? []).map(words).join(', ') || 'Authorized user'}</small></div></div></div>
+          <div className="analytics-topbar-actions"><label><span>⌕</span><input type="search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Search reports, dashboards, and more…" /></label><button type="button" onClick={bootstrap}>↻ Refresh</button><div className="analytics-profile"><span>{(overview?.access?.displayName ?? authSession?.displayName ?? 'User').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><div><strong>{overview?.access?.displayName ?? authSession?.displayName ?? 'Pulse User'}</strong><small>{(overview?.access?.roles ?? []).map(words).join(', ') || 'Authorized user'}</small></div></div></div>
         </header>
         {message.text ? <div className={`analytics-message ${message.type}`} role="status"><span>{message.type === 'critical' ? '!' : message.type === 'healthy' ? '✓' : 'i'}</span><p>{message.text}</p><button type="button" onClick={() => setMessage({ type: '', text: '' })}>×</button></div> : null}
         {loading.bootstrap ? <div className="analytics-loading">Loading role-scoped Analytics Center data…</div> : null}

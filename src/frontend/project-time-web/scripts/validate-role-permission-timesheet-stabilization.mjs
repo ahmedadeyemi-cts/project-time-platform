@@ -52,7 +52,7 @@ if (support) {
     'PTP_DB_NAME',
     'PTP_DB_USER',
     'PTP_DB_PASSWORD',
-    'ProjectPulse PTP database configuration is incomplete',
+    'Pulse PTP database configuration is incomplete',
     'ConnectionStrings__DefaultConnection'
   ], 'Unified scoped-role database resolver');
   const ptpPosition = support.indexOf('PTP_DB_HOST');

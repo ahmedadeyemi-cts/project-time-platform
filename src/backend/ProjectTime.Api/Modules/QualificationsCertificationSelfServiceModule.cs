@@ -387,7 +387,7 @@ public static class QualificationsCertificationSelfServiceModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 
@@ -436,7 +436,7 @@ public static class QualificationsCertificationSelfServiceModule
                 {
                     module = ModuleNumber,
                     status = "active_user_required",
-                    message = "The active ProjectPulse user could not be resolved."
+                    message = "The active Pulse user could not be resolved."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
 

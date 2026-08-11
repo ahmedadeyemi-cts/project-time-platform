@@ -480,7 +480,7 @@ public sealed class PulseAiEscalationSanitizer
             if (!request.AcknowledgePreviewOnly)
                 blockers.Add("The caller did not acknowledge that this is a preview-only operation.");
             if (!Boolean("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", false))
-                blockers.Add("Sanitized external escalation is disabled by ProjectPulse runtime policy.");
+                blockers.Add("Sanitized external escalation is disabled by Pulse runtime policy.");
             if (classification.Contains("financial", StringComparison.OrdinalIgnoreCase))
                 blockers.Add("Financial and commercial context is blocked from external escalation by default.");
             if (classification is "restricted" or "confidential")
@@ -493,7 +493,7 @@ public sealed class PulseAiEscalationSanitizer
             if (!request.AcknowledgePreviewOnly)
                 blockers.Add("The caller did not explicitly acknowledge sanitized external execution.");
             if (!Boolean("PROJECTPULSE_AI_ALLOW_SANITIZED_EXTERNAL_ESCALATION", false))
-                blockers.Add("Sanitized external escalation is disabled by ProjectPulse runtime policy.");
+                blockers.Add("Sanitized external escalation is disabled by Pulse runtime policy.");
             if (classification is not ("public" or "internal_generic" or "generic"))
                 blockers.Add("Only public or internal-generic problem statements are eligible for sanitized external execution.");
             if (invalidSensitiveTermInventory)

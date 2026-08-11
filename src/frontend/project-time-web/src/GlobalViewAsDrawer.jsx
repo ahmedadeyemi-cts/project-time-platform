@@ -255,7 +255,7 @@ export default function GlobalViewAsDrawer() {
                 <option key={user.userId} value={user.userId}>{userOptionLabel(user)}</option>
               ))}
             </select>
-            <small>Selecting a user reloads ProjectPulse in read-only preview mode.</small>
+            <small>Selecting a user reloads Pulse in read-only preview mode.</small>
           </label>
 
           {activeViewAs ? (
@@ -281,7 +281,7 @@ export default function GlobalViewAsDrawer() {
         </div>
 
         <footer className="projectpulse-view-as-drawer__footer">
-          <span>ProjectPulse access preview</span>
+          <span>Pulse access preview</span>
           <span>{activeViewAs ? 'Read only' : 'Administrator'}</span>
         </footer>
       </aside>

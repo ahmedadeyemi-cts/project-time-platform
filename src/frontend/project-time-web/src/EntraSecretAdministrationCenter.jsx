@@ -100,7 +100,7 @@ export default function EntraSecretAdministrationCenter({ authSession }) {
           <div>
             <p>Module 065 · Identity security</p>
             <h1 id="entra-secret-title">Entra Secret Administration</h1>
-            <span>Credential metadata, expiration health, and a governed rotation state machine built around the existing ProjectPulse identity platform.</span>
+            <span>Credential metadata, expiration health, and a governed rotation state machine built around the existing Pulse identity platform.</span>
           </div>
         </div>
         <div className={`entra-secret-health ${health}`}>

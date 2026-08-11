@@ -70,7 +70,7 @@ internal static class ProjectFlowHiveAiRequestFactory
             guardrails = new[]
             {
                 "The preview calls no model or provider.",
-                "Detailed project-document context remains inside the private ProjectPulse boundary.",
+                "Detailed project-document context remains inside the private Pulse boundary.",
                 "Module 064 may receive only an approved abstract capsule and cannot receive unrestricted document context.",
                 "AI output is a draft and cannot establish a baseline, assign resources, reserve capacity, or commit customer dates.",
                 "A safety refusal ends routing and cannot be bypassed through another provider."
@@ -79,7 +79,7 @@ internal static class ProjectFlowHiveAiRequestFactory
     }
 
     private static string PrivateSystemPrompt() =>
-        "You are the private ProjectPulse FlowHive planning assistant. Produce a detailed cited draft only. " +
+        "You are the private Pulse FlowHive planning assistant. Produce a detailed cited draft only. " +
         "Extract scope, exclusions, deliverables, responsibilities, prerequisites, acceptance criteria, constraints, quantities, risks, dependencies, milestones, and open questions. " +
         "Preserve WBS hierarchy and delegate schedule calculations to the deterministic FlowHive engine. Do not approve, baseline, assign, publish, or commit a customer date.";
 

@@ -54,7 +54,7 @@ internal static class EnterpriseNotificationRecipientResolver
         var evidence = new List<string>();
 
         // Signed producer contracts may provide user IDs and, only where an
-        // approved upstream system has no ProjectPulse identity, explicit email
+        // approved upstream system has no Pulse identity, explicit email
         // recipients. The signed-ingestion endpoint validates the producer before
         // these fields can reach recipient resolution.
         await AddPayloadUsersAsync(
@@ -245,7 +245,7 @@ internal static class EnterpriseNotificationRecipientResolver
                 Array.Empty<ProjectNotificationUser>(),
                 "suppressed",
                 "NO_AUTHORIZED_RECIPIENTS",
-                "No active, authorized recipient could be derived from ProjectPulse data or the signed producer contract.",
+                "No active, authorized recipient could be derived from Pulse data or the signed producer contract.",
                 evidence.ToArray());
         }
 

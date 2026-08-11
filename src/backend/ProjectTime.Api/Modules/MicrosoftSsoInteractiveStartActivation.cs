@@ -52,7 +52,7 @@ public static class MicrosoftSsoInteractiveStartActivation
                         module = "065",
                         status = "sso_interactive_start_failed",
                         correlationId = context.TraceIdentifier,
-                        message = "ProjectPulse could not start Microsoft sign-in. Verify the active Module 065 Test or Production SSO profile and try again."
+                        message = "Pulse could not start Microsoft sign-in. Verify the active Module 065 Test or Production SSO profile and try again."
                     }, statusCode: StatusCodes.Status503ServiceUnavailable).ExecuteAsync(context);
                 }
             }
@@ -92,7 +92,7 @@ public static class MicrosoftSsoInteractiveStartActivation
                 module = "065",
                 status = "microsoft_environment_unresolved",
                 correlationId = context.TraceIdentifier,
-                message = "ProjectPulse could not determine whether this is the Test or Production Microsoft environment."
+                message = "Pulse could not determine whether this is the Test or Production Microsoft environment."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -119,7 +119,7 @@ public static class MicrosoftSsoInteractiveStartActivation
                 environmentMode,
                 configuredRedirectUri = profile.RedirectUri,
                 correlationId = context.TraceIdentifier,
-                message = "ProjectPulse could not resolve an approved public HTTPS callback origin for this environment."
+                message = "Pulse could not resolve an approved public HTTPS callback origin for this environment."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -133,7 +133,7 @@ public static class MicrosoftSsoInteractiveStartActivation
                 configuredRedirectUri = profile.RedirectUri,
                 expectedRedirectUri = expectedRedirect,
                 correlationId = context.TraceIdentifier,
-                message = "The Module 065 redirect URI must exactly match this ProjectPulse environment and the Entra App Registration redirect URI."
+                message = "The Module 065 redirect URI must exactly match this Pulse environment and the Entra App Registration redirect URI."
             }, statusCode: StatusCodes.Status409Conflict);
         }
 

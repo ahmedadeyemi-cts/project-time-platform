@@ -48,7 +48,7 @@ check('OFFICIAL_BRANDING',
     && frontend.includes('Export branded architecture'),
   'approved US Signal branding and export action are visible');
 check('PROVIDER_ADAPTER_PRESENTATION',
-  frontend.includes('ProjectPulse Platform Operations')
+  frontend.includes('Pulse Platform Operations')
     && frontend.includes('Azure adapter')
     && frontend.includes('OpenCloud adapter')
     && frontend.includes('Other provider adapter'),

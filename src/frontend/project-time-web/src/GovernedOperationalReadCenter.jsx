@@ -43,7 +43,7 @@ export default function GovernedOperationalReadCenter({ module, title, subtitle,
 
   return (
     <section className="governed-operations-center" data-module={module}>
-      <header className="governed-operations-hero"><img src={logo} alt="US Signal" /><div><span>ProjectPulse · Module {module}</span><h1>{title}</h1><p>{subtitle}</p></div><div className="governed-operations-score"><strong>{readyCount}/{surfaces.length}</strong><span>live surfaces</span></div></header>
+      <header className="governed-operations-hero"><img src={logo} alt="US Signal" /><div><span>Pulse · Module {module}</span><h1>{title}</h1><p>{subtitle}</p></div><div className="governed-operations-score"><strong>{readyCount}/{surfaces.length}</strong><span>live surfaces</span></div></header>
       <aside><strong>Review before execution:</strong> Every section is selectable now. Readiness, owner, permissions, missing adapters, setup steps, and history remain visible even when an external connector is not yet authorized.</aside>
       <div className="governed-operations-layout">
         <nav aria-label={`${title} sections`}>{surfaces.map((key) => { const surface = data[key]; const error = errors[key]; return <button type="button" key={key} className={selected === key ? 'is-active' : ''} onClick={() => setSelected(key)}><span><strong>{surface?.title || words(key)}</strong><small>{surface?.description || (error ? error : 'Open setup and readiness')}</small></span><b className={error ? 'is-error' : surface?.liveData ? 'is-ready' : 'is-setup'}>{error ? 'Error' : surface?.liveData ? 'Live' : 'Setup'}</b></button>; })}</nav>

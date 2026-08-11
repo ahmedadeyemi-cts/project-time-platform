@@ -64,7 +64,7 @@ function sourceFromLocation() {
 
 function sourceLabel(source) {
   return {
-    help: 'ProjectPulse Help',
+    help: 'Pulse Help',
     tracker: 'Module 076 Tracker',
     github: 'GitHub',
     claude_github: 'Claude through GitHub',
@@ -187,14 +187,14 @@ export default function DefectTrackerCenter({ authSession }) {
       <header className="defect-tracker-hero">
         <div className="defect-brand-lockup">
           <img src={usSignalLogoUrl} alt="US Signal" />
-          <span>ProjectPulse quality operations</span>
+          <span>Pulse quality operations</span>
         </div>
         <div className="defect-hero-content">
           <div>
             <p className="defect-eyebrow">Module 076</p>
             <h1 id="defect-tracker-title">Defect Intake &amp; Resolution Tracker</h1>
             <p>
-              One governed queue for defects raised from ProjectPulse Help, GitHub,
+              One governed queue for defects raised from Pulse Help, GitHub,
               Claude through GitHub, and ChatGPT through GitHub.
             </p>
           </div>
@@ -373,7 +373,7 @@ export default function DefectTrackerCenter({ authSession }) {
           </div>
           <ul className="defect-channel-list">
             {(integrationPolicy?.integrations || [
-              { channel: 'help', state: 'source_connected', mechanism: 'ProjectPulse Help opens this intake route.' },
+              { channel: 'help', state: 'source_connected', mechanism: 'Pulse Help opens this intake route.' },
               { channel: 'github', state: 'issue_form_present_webhook_locked', mechanism: 'GitHub issue form with signed webhook pending.' },
               { channel: 'claude_github', state: 'contract_ready_webhook_locked', mechanism: 'Claude reports through GitHub.' },
               { channel: 'chatgpt_github', state: 'contract_ready_webhook_locked', mechanism: 'ChatGPT reports through GitHub.' }

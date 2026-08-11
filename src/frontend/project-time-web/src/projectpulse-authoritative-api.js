@@ -265,7 +265,7 @@ function waitForUsableSession(timeoutMs = SESSION_WAIT_MS) {
 function createSessionNotReadyResponse(path) {
   return new Response(JSON.stringify({
     status: 'session_not_ready',
-    message: 'ProjectPulse session is not ready yet.',
+    message: 'Pulse session is not ready yet.',
     path
   }), {
     status: SESSION_NOT_READY_STATUS,
@@ -318,7 +318,7 @@ function publishDiagnostic(diagnostic) {
   };
   window.dispatchEvent(new CustomEvent(DIAGNOSTIC_EVENT, { detail: diagnostic }));
   if (!diagnostic.ok && shouldPublishError(diagnostic)) {
-    console.error('[ProjectPulse authoritative API]', diagnostic);
+    console.error('[Pulse authoritative API]', diagnostic);
   }
 }
 
@@ -349,7 +349,7 @@ function globalXhrBridgeCanSupplyToken(token) {
 }
 
 function sessionNotReadyError(path) {
-  const error = new Error('ProjectPulse session is not ready yet.');
+  const error = new Error('Pulse session is not ready yet.');
   error.status = SESSION_NOT_READY_STATUS;
   error.code = 'session_not_ready';
   error.path = path;
@@ -358,7 +358,7 @@ function sessionNotReadyError(path) {
 }
 
 function sessionTransportConflictError(path) {
-  const error = new Error('ProjectPulse session transport is waiting for stale browser session state to be replaced.');
+  const error = new Error('Pulse session transport is waiting for stale browser session state to be replaced.');
   error.status = SESSION_NOT_READY_STATUS;
   error.code = 'session_transport_conflict';
   error.path = path;
@@ -518,7 +518,7 @@ export async function authoritativeApi(path, options = {}) {
       try {
         rawPayload = raw ? JSON.parse(raw) : {};
       } catch {
-        finishError(`${path} returned non-JSON content instead of ProjectPulse API data.`, request.status, null, raw, {
+        finishError(`${path} returned non-JSON content instead of Pulse API data.`, request.status, null, raw, {
           transport: 'xhr',
           rawResponseType: 'non-json'
         });

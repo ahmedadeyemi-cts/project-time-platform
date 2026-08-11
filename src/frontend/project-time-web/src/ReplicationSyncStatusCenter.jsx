@@ -260,8 +260,8 @@ export default function ReplicationSyncStatusCenter({ authSession }) {
               <h2>{peerConfigured ? 'Peer-aware DR mode' : 'Single-server readiness mode'}</h2>
               <p>
                 {peerConfigured
-                  ? 'A peer server is configured. ProjectPulse will evaluate peer reachability and future sync readiness.'
-                  : 'No redundant ProjectPulse server is configured yet. This is expected until the second or third server is built.'}
+                  ? 'A peer server is configured. Pulse will evaluate peer reachability and future sync readiness.'
+                  : 'No redundant Pulse server is configured yet. This is expected until the second or third server is built.'}
               </p>
             </div>
             <StatusBadge status={peerConfigured ? status.peer?.status : 'not_configured'} />

@@ -106,7 +106,7 @@ export default function CrmErpTokenPersistencePanel({ provider, canManage, onRef
           <p>Persistent connection service</p>
           <h3>Automatic OAuth token renewal</h3>
           <span>
-            ProjectPulse renews enabled OAuth connections server-side before access tokens expire. Refresh tokens, client secrets, and access tokens are never displayed, logged, or returned here.
+            Pulse renews enabled OAuth connections server-side before access tokens expire. Refresh tokens, client secrets, and access tokens are never displayed, logged, or returned here.
           </span>
         </div>
         <span className={`crm-token-persistence__service ${state.payload?.backgroundRefreshEnabled ? 'ready' : 'attention'}`}>

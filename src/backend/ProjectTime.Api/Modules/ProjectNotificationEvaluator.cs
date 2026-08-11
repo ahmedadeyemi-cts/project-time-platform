@@ -424,7 +424,7 @@ internal static class ProjectNotificationEvaluator
         + $"Uploaded expenses: {Money(project.UploadedExpenses)}\n"
         + $"Forecasted final cost: {Money(project.ForecastedFinalCost)}\n"
         + $"Current variance: {Money(project.CurrentVariance)}\n\n"
-        + "Open ProjectPulse to review the authoritative calculation and source evidence.";
+        + "Open Pulse to review the authoritative calculation and source evidence.";
 
     internal static string BuildCloseoutBody(ProjectNotificationFinancialSnapshot project) =>
         $"Project {project.ProjectCode} — {project.ProjectName} for {project.CustomerName} is ready for closeout communication.\n\n"
@@ -449,7 +449,7 @@ internal static class ProjectNotificationEvaluator
         + $"Remaining hours: {project.RemainingHours:0.##}\n"
         + $"Forecasted final cost: {Money(project.ForecastedFinalCost)}\n"
         + $"Current variance: {Money(project.CurrentVariance)}\n\n"
-        + "Review the authoritative ProjectPulse financial workspace and resolve missing information before the next governed reminder.";
+        + "Review the authoritative Pulse financial workspace and resolve missing information before the next governed reminder.";
 
     internal static string Html(string text) =>
         "<div style=\"font-family:Arial,sans-serif;line-height:1.5\">"

@@ -77,7 +77,7 @@ public static class MicrosoftDirectorySyncModule
             {
                 module = ModuleNumber,
                 status = "origin_rejected",
-                message = "Directory synchronization requires a same-origin ProjectPulse request."
+                message = "Directory synchronization requires a same-origin Pulse request."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -113,7 +113,7 @@ public static class MicrosoftDirectorySyncModule
                 module = ModuleNumber,
                 status = "microsoft_environment_unresolved",
                 correlationId = context.TraceIdentifier,
-                message = "ProjectPulse could not determine the Test or Production Microsoft environment."
+                message = "Pulse could not determine the Test or Production Microsoft environment."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         if (!environmentMode.Equals(runtimeEnvironment, StringComparison.OrdinalIgnoreCase))
@@ -124,7 +124,7 @@ public static class MicrosoftDirectorySyncModule
                 status = "directory_sync_environment_not_active",
                 requestedEnvironment = environmentMode,
                 runtimeEnvironment,
-                message = "Directory synchronization can run only in the matching ProjectPulse environment."
+                message = "Directory synchronization can run only in the matching Pulse environment."
             }, statusCode: StatusCodes.Status409Conflict);
         }
 
@@ -152,7 +152,7 @@ public static class MicrosoftDirectorySyncModule
             {
                 module = ModuleNumber,
                 status = "microsoft_environment_unresolved",
-                message = "ProjectPulse could not determine the Test or Production Microsoft environment."
+                message = "Pulse could not determine the Test or Production Microsoft environment."
             }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -318,7 +318,7 @@ public static class MicrosoftDirectorySyncModule
                     trigger,
                     correlationId,
                     "directory_sync_already_running",
-                    "Another ProjectPulse API instance is already synchronizing this Entra environment.",
+                    "Another Pulse API instance is already synchronizing this Entra environment.",
                     alreadyRunning: true);
             }
 
@@ -479,7 +479,7 @@ public static class MicrosoftDirectorySyncModule
                     connection,
                     runId,
                     "directory_sync_failed",
-                    "ProjectPulse could not complete the Entra directory synchronization.",
+                    "Pulse could not complete the Entra directory synchronization.",
                     environmentMode,
                     correlationId,
                     CancellationToken.None);
@@ -489,7 +489,7 @@ public static class MicrosoftDirectorySyncModule
                     correlationId,
                     runId,
                     "directory_sync_failed",
-                    "ProjectPulse could not complete the Entra directory synchronization.",
+                    "Pulse could not complete the Entra directory synchronization.",
                     StatusCodes.Status502BadGateway);
             }
         }
@@ -649,7 +649,7 @@ public static class MicrosoftDirectorySyncModule
         {
             throw new SyncFailure(
                 "directory_user_schema_unavailable",
-                "The ProjectPulse user or role-assignment schema is unavailable for synchronization.",
+                "The Pulse user or role-assignment schema is unavailable for synchronization.",
                 StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -1144,7 +1144,7 @@ public static class MicrosoftDirectorySyncModule
             {
                 module = ModuleNumber,
                 status = "session_required",
-                message = "A valid ProjectPulse session is required."
+                message = "A valid Pulse session is required."
             }, statusCode: StatusCodes.Status401Unauthorized));
         }
 

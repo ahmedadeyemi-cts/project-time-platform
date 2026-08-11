@@ -30,7 +30,7 @@ public static partial class CrmErpIntegrationModule
             "Bearer",
             "https://api.getbase.com/v2/deals/{recordId}",
             "{\"projectNamePath\":\"data.name\",\"quoteNumberPath\":\"data.id\",\"customerNamePath\":\"data.organization_name\",\"contractedAmountPath\":\"data.value\",\"rateLinesPath\":\"data.custom_fields.pricing_rate_review\",\"rateCodePath\":\"sku\",\"descriptionPath\":\"description\",\"unitRatePath\":\"unit_rate\",\"laborCategoryPath\":\"labor_category\",\"timeTypePath\":\"time_type\",\"unitTypePath\":\"unit_type\",\"billablePath\":\"billable\"}",
-            "Authoritative customer, organization, deal, quote, and pricing source for ProjectPulse."),
+            "Authoritative customer, organization, deal, quote, and pricing source for Pulse."),
         new(
             "salesforce",
             "Salesforce",
@@ -307,7 +307,7 @@ public static partial class CrmErpIntegrationModule
             return new ManageAuthority(
                 true,
                 "legacy_role_or_permission",
-                "Your actual ProjectPulse session can manage Module 026 integrations.");
+                "Your actual Pulse session can manage Module 026 integrations.");
         }
 
         return new ManageAuthority(

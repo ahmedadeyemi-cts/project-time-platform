@@ -34,7 +34,7 @@ export async function readApiJson(response, path, expectedKeys = []) {
   } catch {
     const error = new Error(
       response.ok
-        ? `${path} returned non-JSON content instead of ProjectPulse API data. Refresh the page after the API deployment completes.`
+        ? `${path} returned non-JSON content instead of Pulse API data. Refresh the page after the API deployment completes.`
         : `${path} failed with HTTP ${response.status}.`
     );
     error.status = response.status;

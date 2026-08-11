@@ -182,7 +182,7 @@ internal static class ProjectNotificationProcessingService
                     sourceFailureRule.AlertSeverity,
                     "022",
                     "financial_data_source_unavailable",
-                    "ProjectPulse project financial refresh requires attention",
+                    "Pulse project financial refresh requires attention",
                     textBody,
                     ProjectNotificationEvaluator.Html(textBody),
                     effectiveBoundary,
@@ -587,7 +587,7 @@ internal static class ProjectNotificationProcessingService
         Guid.Empty,
         Guid.Empty,
         "projectpulse-scheduler@system.local",
-        "ProjectPulse Notification Scheduler",
+        "Pulse Notification Scheduler",
         new HashSet<string>(["SUPER_ADMINISTRATOR"], StringComparer.OrdinalIgnoreCase),
         new HashSet<string>(["MANAGE_ALL"], StringComparer.OrdinalIgnoreCase),
         false);

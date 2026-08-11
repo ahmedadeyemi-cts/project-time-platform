@@ -72,7 +72,7 @@ public static partial class ScopedRolePolicyModule
     private static IResult SessionRequired() => Results.Json(new
     {
         status = "session_required",
-        message = "A valid ProjectPulse session is required."
+        message = "A valid Pulse session is required."
     }, statusCode: StatusCodes.Status401Unauthorized);
 
     private static Guid? ReadGuid(object? value)
@@ -133,7 +133,7 @@ public static partial class ScopedRolePolicyModule
             if (missing.Length > 0)
             {
                 throw new InvalidOperationException(
-                    $"ProjectPulse PTP database configuration is incomplete: {string.Join(", ", missing)}.");
+                    $"Pulse PTP database configuration is incomplete: {string.Join(", ", missing)}.");
             }
 
             var builder = new NpgsqlConnectionStringBuilder
@@ -163,7 +163,7 @@ public static partial class ScopedRolePolicyModule
             var value = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(value)) return value;
         }
-        throw new InvalidOperationException("ProjectPulse database connection is not configured.");
+        throw new InvalidOperationException("Pulse database connection is not configured.");
     }
 
     public sealed record ActorContext(

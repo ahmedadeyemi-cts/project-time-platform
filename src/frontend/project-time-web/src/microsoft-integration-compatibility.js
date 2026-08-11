@@ -139,7 +139,7 @@ async function applyStoredServicesProfile(previousFetch, init) {
       || String(applyPayload?.runtimeEnvironment || '').toLowerCase() !== profile.environmentMode) {
     return responseFailure(409, {
       status: 'module_065_services_profile_not_active',
-      message: 'Module 010 preview requires the Module 065 services profile for the currently running ProjectPulse environment.'
+      message: 'Module 010 preview requires the Module 065 services profile for the currently running Pulse environment.'
     }, '', {
       selectedEnvironment: profile.environmentMode,
       returnedRuntimeEnvironment: applyPayload?.runtimeEnvironment || '',

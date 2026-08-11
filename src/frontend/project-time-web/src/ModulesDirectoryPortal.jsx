@@ -526,7 +526,7 @@ export default function ModulesDirectoryPortal() {
     <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title">
       <header className="modules-directory-hero">
         <div>
-          <p className="eyebrow">ProjectPulse workspace directory</p>
+          <p className="eyebrow">Pulse workspace directory</p>
           <h1 id="modules-directory-title">Modules</h1>
           <p>Open the modules authorized for your current role or View-As identity.</p>
         </div>

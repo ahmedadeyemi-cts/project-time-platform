@@ -176,7 +176,7 @@ export default function ServiceControlCenter({ authSession }) {
           <h1>System Health &amp; API Diagnostics</h1>
           <p>
             Provider-neutral visibility into the active platform, resource use, dependencies, integrations,
-            workers, deployments, and every API registered in the running ProjectPulse application.
+            workers, deployments, and every API registered in the running Pulse application.
           </p>
         </div>
         <div className="service-control-hero-actions">

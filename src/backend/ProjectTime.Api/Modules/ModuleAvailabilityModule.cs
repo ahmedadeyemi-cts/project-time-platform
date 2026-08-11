@@ -5,7 +5,7 @@ using Npgsql;
 namespace ProjectTime.Api.Modules;
 
 /// <summary>
-/// Persistent, audited availability controls for registered ProjectPulse modules.
+/// Persistent, audited availability controls for registered Pulse modules.
 /// Missing rows are treated as enabled so introduction of this feature never hides a module by default.
 /// </summary>
 public static class ModuleAvailabilityModule

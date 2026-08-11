@@ -80,7 +80,7 @@ public static class InvoiceBillingModule
             return Results.Json(new
             {
                 status = "access_denied",
-                message = "Invoice and billing data requires an active ProjectPulse role."
+                message = "Invoice and billing data requires an active Pulse role."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -224,7 +224,7 @@ public static class InvoiceBillingModule
             return Results.Json(new
             {
                 status = "access_denied",
-                message = "Invoice and billing data requires an active ProjectPulse role."
+                message = "Invoice and billing data requires an active Pulse role."
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
@@ -488,7 +488,7 @@ public static class InvoiceBillingModule
 
             var immutableSnapshot = JsonSerializer.Serialize(new
             {
-                source = "ProjectPulse Module 042",
+                source = "Pulse Module 042",
                 projectId,
                 identity.InvoiceNumber,
                 invoiceType,
@@ -2152,7 +2152,7 @@ public static class InvoiceBillingModule
         return Results.Json(new
         {
             status = "session_required",
-            message = "A valid ProjectPulse session is required."
+            message = "A valid Pulse session is required."
         }, statusCode: StatusCodes.Status401Unauthorized);
     }
 

@@ -65,8 +65,8 @@ internal static class AnalyticsCenterScheduleService
                 multipleRecipientsAllowed = AnalyticsCenterExperienceScope.CanDeliverMultiple(actor),
                 selfOnly = !AnalyticsCenterExperienceScope.CanDeliverMultiple(actor),
                 rule = AnalyticsCenterExperienceScope.CanDeliverMultiple(actor)
-                    ? "Authorized schedule managers can select multiple active ProjectPulse users or governed @ussignal.com recipients. Each active ProjectPulse user receives a report generated under that recipient's own role scope."
-                    : "This role can schedule delivery only to the signed-in user's active ProjectPulse email address."
+                    ? "Authorized schedule managers can select multiple active Pulse users or governed @ussignal.com recipients. Each active Pulse user receives a report generated under that recipient's own role scope."
+                    : "This role can schedule delivery only to the signed-in user's active Pulse email address."
             });
         }
         catch (Exception exception)
@@ -432,9 +432,9 @@ internal static class AnalyticsCenterScheduleService
                         ? $"US Signal Analytics: {report.Definition.Name}"
                         : schedule.EmailSubject;
                     var text = string.IsNullOrWhiteSpace(schedule.EmailMessage)
-                        ? $"Your scheduled US Signal Analytics Center report, {report.Definition.Name}, is attached. The report was generated under your current ProjectPulse access scope."
+                        ? $"Your scheduled US Signal Analytics Center report, {report.Definition.Name}, is attached. The report was generated under your current Pulse access scope."
                         : schedule.EmailMessage;
-                    var html = $"<p>{Web(text)}</p><p><strong>Report:</strong> {Web(report.Definition.Name)}<br/><strong>Generated:</strong> {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC<br/><strong>Rows:</strong> {report.Result.RowCount}</p><p>This individualized report was generated under the recipient's current ProjectPulse authorization scope.</p>";
+                    var html = $"<p>{Web(text)}</p><p><strong>Report:</strong> {Web(report.Definition.Name)}<br/><strong>Generated:</strong> {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC<br/><strong>Rows:</strong> {report.Result.RowCount}</p><p>This individualized report was generated under the recipient's current Pulse authorization scope.</p>";
                     delivery = await Module065AnalyticsAttachmentDelivery.DeliverAsync(
                         subject,
                         text,

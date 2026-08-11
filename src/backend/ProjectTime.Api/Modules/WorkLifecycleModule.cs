@@ -120,7 +120,7 @@ public static class WorkLifecycleModule
         if (sessionAccess.ActualUserId == Guid.Empty)
         {
             return Results.Json(
-                new { status = "session_required", message = "A valid ProjectPulse session is required." },
+                new { status = "session_required", message = "A valid Pulse session is required." },
                 statusCode: StatusCodes.Status401Unauthorized);
         }
 
@@ -2063,7 +2063,7 @@ public static class WorkLifecycleModule
     private static async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)
     {
         var connectionString = BuildConnectionString()
-            ?? throw new InvalidOperationException("ProjectPulse database configuration is missing.");
+            ?? throw new InvalidOperationException("Pulse database configuration is missing.");
         var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         return connection;

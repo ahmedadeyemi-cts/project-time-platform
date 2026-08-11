@@ -45,7 +45,7 @@ check('NATIVE_REVISIONS', native.includes('projectpulse_oneassist_route_revision
 check('AUDIT', native.includes('projectpulse_module_audit_events') && migration.includes('projectpulse_module_audit_events'), 'sanitized audit evidence');
 check('PIN_CONTRACT', backend.includes('Length: 5') && migration.includes("routing_pin ~ '^[0-9]{5}$'") && migration.includes('ux_projectpulse_oneassist_active_pin'), 'five-digit unique routing PIN');
 check('NO_EXTERNAL_ADAPTER', forbidden.every((token) => !backend.includes(token) && !frontend.includes(token) && !docs.includes(token)), 'external compatibility removed');
-check('FRONTEND_NATIVE', frontend.includes('data-persistence="projectpulse-postgresql"') && frontend.includes('ProjectPulse PostgreSQL application database'), 'native storage visible');
+check('FRONTEND_NATIVE', frontend.includes('data-persistence="projectpulse-postgresql"') && frontend.includes('Pulse PostgreSQL application database'), 'native storage visible');
 check('IMPORT_PREVIEW', backend.includes('PreviewImportAsync') && frontend.includes('Apply to unsaved directory'), 'preview-first import preserved');
 check('IMPORT_FILE_INPUT_PERSISTENT', frontend.indexOf('id="oneassist-import-file"') < frontend.indexOf("{tab === 'directory' ? (") && frontend.includes('htmlFor="oneassist-import-file"'), 'file input remains mounted across Directory and Import preview tabs');
 check('IMPORT_FILE_INPUT_ACCESSIBLE', stylesheet.includes('.oneassist-file-input') && stylesheet.includes('clip-path: inset(50%)') && !frontend.includes('type="file" accept=".csv,.xlsx" hidden'), 'native picker uses an accessible visually hidden input');
