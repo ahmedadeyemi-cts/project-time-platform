@@ -1,0 +1,606 @@
+name: Deploy PR 627 Celar AI Enterprise Release to Protected Test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/projectpulse-deploy-pr627-celar-ai-enterprise-test.yml'
+      - '.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/projectpulse-deploy-pr627-celar-ai-enterprise-test.yml'
+      - '.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate exact-release Test controller and activation-v2 handoff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TARGET_RELEASE_COMMIT: 016810826d122b400950e9463f4221c9a024be6f
+
+    steps:
+      - name: Check out exact pull request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact release, Test-only scope, and activation-v2 contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_EVENT_NAME" == pull_request ]] || fail 'Validation is pull-request-only.'
+          [[ "$TARGET_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'The target release is not an exact commit.'
+          git merge-base --is-ancestor "$TARGET_RELEASE_COMMIT" HEAD \
+            || fail 'PR #627 merge commit is not an ancestor of this controller.'
+
+          CONTROLLER='.github/workflows/projectpulse-deploy-pr627-celar-ai-enterprise-test.yml'
+          ACTIVATION='.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml'
+          test -f "$CONTROLLER"
+          test -f "$ACTIVATION"
+          test -f scripts/build-pr55-acr-image.sh
+          test -f scripts/wait-containerapp-ready-revision.sh
+          test -f src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs
+          test -f src/frontend/project-time-web/src/enterprise-theme-completion.css
+          test -f src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
+
+          grep -Fq "environment: test" "$ACTIVATION"
+          grep -Fq "if: github.ref == 'refs/heads/main'" "$ACTIVATION"
+          # shellcheck disable=SC2016
+          grep -Fq 'git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA"' "$ACTIVATION"
+          grep -Fq 'X-ProjectPulse-Module-Number: 064' "$ACTIVATION"
+          grep -Fq 'AUTH_011=' "$ACTIVATION"
+          grep -Fq 'private-model-probe-safe.json' "$ACTIVATION"
+          grep -Fq 'Restore exact prior Test API on failure' "$ACTIVATION"
+          grep -Fq "environment: test" "$CONTROLLER"
+          grep -Fq "echo 'MIGRATIONS_APPLIED=NONE'" "$CONTROLLER"
+          grep -Fq "echo 'PRODUCTION_MUTATION=NONE'" "$CONTROLLER"
+
+          node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs
+          node tests/validate-celar-ai-internal-data-intelligence.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs
+          git diff --check
+
+          echo 'TARGET_APPLICATION_RELEASE=016810826d122b400950e9463f4221c9a024be6f'
+          echo 'DEPLOYMENT_EXECUTED=NONE'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Install checksum-pinned actionlint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors \
+            -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose \
+            .github/workflows/projectpulse-deploy-pr627-celar-ai-enterprise-test.yml \
+            .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+
+      - name: Prove validation did not rewrite tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code
+
+  deploy:
+    name: Build, deploy, verify, and queue Oracle activation v2
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+      statuses: write
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      TARGET_RELEASE_COMMIT: 016810826d122b400950e9463f4221c9a024be6f
+      EVIDENCE_DIR: /tmp/pr627-celar-ai-enterprise-test-evidence
+      APPLICATION_STATUS_CONTEXT: projectpulse/pr627-protected-test-release
+      ACTIVATION_STATUS_CONTEXT: projectpulse/oracle-activation-v2
+
+    steps:
+      - name: Check out deployment controls from exact current main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out exact PR 627 application release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 016810826d122b400950e9463f4221c9a024be6f
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Publish pending exact-release status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$TARGET_RELEASE_COMMIT" \
+            -f state=pending \
+            -f context="$APPLICATION_STATUS_CONTEXT" \
+            -f description='Exact PR #627 release is entering protected Test deployment.' \
+            -f target_url="$RUN_URL" >/dev/null
+
+      - name: Guard exact source, Test-only scope, and no-migration boundary
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_EVENT_NAME" == push ]] || fail 'Deployment is push-triggered only.'
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only current main may deploy protected Test.'
+          CONTROL_COMMIT="$(git -C control rev-parse HEAD)"
+          RELEASE_COMMIT="$(git -C release rev-parse HEAD)"
+          [[ "$CONTROL_COMMIT" == "$GITHUB_SHA" ]] || fail 'Control checkout does not match this workflow revision.'
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Application checkout does not match PR #627 merge commit.'
+          git -C control merge-base --is-ancestor "$TARGET_RELEASE_COMMIT" "$CONTROL_COMMIT" \
+            || fail 'PR #627 merge commit is not contained in current main.'
+
+          test -f control/.github/workflows/projectpulse-deploy-pr627-celar-ai-enterprise-test.yml
+          test -f control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          test -f control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+          test -f release/src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs
+          test -f release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          test -f release/src/frontend/project-time-web/src/enterprise-theme-completion.css
+          test -f release/src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+
+          # shellcheck disable=SC2016
+          grep -Fq 'git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA"' \
+            control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          grep -Fq 'X-ProjectPulse-Module-Number: 064' \
+            control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          grep -Fq 'AUTH_011=' \
+            control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          grep -Fq 'US Signal' release/src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs
+          grep -Fq 'public_general_question_low_confidence_answer' release/src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+          grep -Fq 'enterprise-theme-completion.css' release/src/frontend/project-time-web/src/main.jsx
+          grep -Fq 'This protected endpoint is deployment-managed' release/src/frontend/project-time-web/src/CelarAiCapabilityRoutingPanel.jsx
+
+          (cd release && node src/frontend/project-time-web/scripts/validate-celar-ai-enterprise-hardening.mjs)
+          (cd release && node tests/validate-celar-ai-internal-data-intelligence.mjs)
+          (cd release && node src/frontend/project-time-web/scripts/validate-celar-ai-production-readiness.mjs)
+          (cd release && node src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs)
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n \
+            --arg controlCommit "$CONTROL_COMMIT" \
+            --arg releaseCommit "$RELEASE_COMMIT" \
+            '{
+              environment:"test",
+              controlCommit:$controlCommit,
+              applicationRelease:$releaseCommit,
+              migrationsApplied:[],
+              productionMutation:false,
+              oracleInfrastructureMutation:false
+            }' > "$EVIDENCE_DIR/release-boundary.json"
+
+          echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+
+      - name: Sign in to the protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot protected Test and validate the UAT session
+        id: contract
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          resolve_digest() {
+            local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
+            case "$image" in
+              "$registry"*@sha256:*) printf '%s\n' "$image"; return ;;
+              "$registry"*:*) ;;
+              *) fail "Image is outside the approved Test ACR: $image" ;;
+            esac
+            relative="${image#"$registry"}"
+            repository="${relative%:*}"
+            digest="$(az acr repository show --name '${{ vars.AZURE_ACR_NAME }}' --image "$relative" --query digest -o tsv --only-show-errors)"
+            [[ "$digest" == sha256:* ]] || fail "Could not resolve digest for $image."
+            printf '%s%s@%s\n' "$registry" "$repository" "$digest"
+          }
+
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] \
+            || fail 'Azure login is outside the protected Test subscription.'
+
+          API_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] || fail 'API is not tagged Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_JSON")" == test ]] || fail 'Web app is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] \
+            || fail 'API must use single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] \
+            || fail 'Web app must use single-revision mode.'
+
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'Public origin is not protected Test.'
+          STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/preflight-readiness.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' \
+            -H "Origin: $BASE" \
+            "$BASE/api/celar-ai/v1/production/readiness" || true)"
+          [[ "$STATUS" == 200 ]] || fail "Protected Test UAT session failed with HTTP $STATUS."
+          jq -e . "$EVIDENCE_DIR/preflight-readiness.json" >/dev/null
+
+          OLD_SOURCE_ROW="$(jq -c '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT")] | if length == 1 then .[0] else null end' <<<"$API_JSON")"
+          OLD_API_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$API_JSON")")"
+          OLD_WEB_IMAGE="$(resolve_digest "$(jq -r '.properties.template.containers[0].image' <<<"$WEB_JSON")")"
+          printf '%s\n' "$OLD_SOURCE_ROW" > "$EVIDENCE_DIR/source-marker-before.json"
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)"))] | sort_by(.name)' \
+            <<<"$API_JSON" > "$EVIDENCE_DIR/private-runtime-before.json"
+
+          {
+            echo "base=$BASE"
+            echo "old_api_image=$OLD_API_IMAGE"
+            echo "old_web_image=$OLD_WEB_IMAGE"
+          } >> "$GITHUB_OUTPUT"
+
+          jq -n \
+            --arg base "$BASE" \
+            --arg oldApiImage "$OLD_API_IMAGE" \
+            --arg oldWebImage "$OLD_WEB_IMAGE" \
+            '{base:$base,oldApiImage:$oldApiImage,oldWebImage:$oldWebImage,uatSessionValidated:true}' \
+            > "$EVIDENCE_DIR/test-contract.json"
+
+      - name: Build immutable API and web images from exact PR 627 release
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          API_DIGEST="$(bash ../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-api:pr627-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/api/Dockerfile .)"
+          WEB_DIGEST="$(bash ../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' "project-health-dashboard-web:pr627-celar-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" deployment/containers/web/Dockerfile .)"
+          [[ "$API_DIGEST" == sha256:* ]]
+          [[ "$WEB_DIGEST" == sha256:* ]]
+          API_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@'"$API_DIGEST"
+          WEB_IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-web@'"$WEB_DIGEST"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "web_image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" '{apiImage:$api,webImage:$web}' \
+            > "$EVIDENCE_DIR/immutable-images.json"
+
+      - name: Deploy immutable Test API image
+        id: deploy_api
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.api_image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
+            --revision-suffix "pr627api-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$REVISION" '${{ steps.build.outputs.api_image }}' 60 10
+          AFTER_JSON="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          SOURCE_AFTER="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
+          [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
+          jq '[.properties.template.containers[0].env[]? | select(.name | test("^PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)"))] | sort_by(.name)' \
+            <<<"$AFTER_JSON" > "$EVIDENCE_DIR/private-runtime-after-normal-release.json"
+          diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after-normal-release.json"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy immutable Test web image
+        id: deploy_web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+            --image '${{ steps.build.outputs.web_image }}' \
+            --revision-suffix "pr627web-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$REVISION" '${{ steps.build.outputs.web_image }}' 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Run authenticated Celar AI enterprise Test UAT
+        id: uat
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          BASE: ${{ steps.contract.outputs.base }}
+          API_REVISION: ${{ steps.deploy_api.outputs.revision }}
+          WEB_REVISION: ${{ steps.deploy_web.outputs.revision }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          probe_json() {
+            local label="$1" module="$2" path="$3" file="$4" status='000'
+            local -a auth=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H "X-ProjectPulse-Module-Number: $module" -H "Origin: $BASE")
+            for attempt in $(seq 1 30); do
+              status="$(curl -sS --max-time 90 -o "$file" -w '%{http_code}' -H 'Cache-Control: no-cache' "${auth[@]}" "$BASE$path" || true)"
+              if [[ "$status" == 200 ]] && jq -e . "$file" >/dev/null 2>&1; then
+                echo "$label passed on attempt $attempt."
+                return 0
+              fi
+              echo "$label attempt $attempt returned HTTP $status."
+              sleep 5
+            done
+            head -c 2048 "$file" >&2 || true
+            fail "$label did not return valid HTTP 200 JSON."
+          }
+
+          READY=false
+          for attempt in $(seq 1 42); do
+            if curl -fsS --max-time 30 -H 'Cache-Control: no-cache' "$BASE/health?pr627=$GITHUB_RUN_ID-$attempt" > "$EVIDENCE_DIR/health.json"; then READY=true; break; fi
+            sleep 5
+          done
+          [[ "$READY" == true ]] || fail 'Protected Test health did not become ready.'
+
+          probe_json 'Celar AI production readiness' 011 '/api/celar-ai/v1/production/readiness' "$EVIDENCE_DIR/production-readiness.json"
+          probe_json 'Celar AI document pipeline readiness' 011 '/api/celar-ai/v1/documents/pipeline/readiness' "$EVIDENCE_DIR/pipeline-readiness-before-activation.json"
+          probe_json 'Celar AI document runtime readiness' 011 '/api/celar-ai/v1/documents/runtime/readiness' "$EVIDENCE_DIR/runtime-readiness-before-activation.json"
+          probe_json 'Module 064 sanitized configuration' 064 '/api/ai-configuration' "$EVIDENCE_DIR/module-064-configuration.json"
+          probe_json 'Module 064 provider health' 064 '/api/ai-configuration/health' "$EVIDENCE_DIR/module-064-health.json"
+
+          jq -e 'type == "object"' "$EVIDENCE_DIR/module-064-configuration.json" >/dev/null
+          jq -e 'type == "object"' "$EVIDENCE_DIR/module-064-health.json" >/dev/null
+
+          PORTAL_HTML="$EVIDENCE_DIR/test-portal.html"
+          FRONTEND_BUNDLE="$EVIDENCE_DIR/test-portal-assets.txt"
+          PORTAL_STATUS='000'
+          for attempt in $(seq 1 30); do
+            PORTAL_STATUS="$(curl -sS --max-time 60 -o "$PORTAL_HTML" -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?pr627=$GITHUB_RUN_ID-$attempt" || true)"
+            [[ "$PORTAL_STATUS" == 200 ]] && break
+            sleep 5
+          done
+          [[ "$PORTAL_STATUS" == 200 ]] || fail 'Protected Test portal did not return HTTP 200.'
+
+          mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
+          (( ${#FRONTEND_ASSETS[@]} > 0 )) || fail 'Protected Test portal exposed no frontend assets.'
+          : > "$FRONTEND_BUNDLE"
+          index=0
+          for asset in "${FRONTEND_ASSETS[@]}"; do
+            case "$asset" in
+              /assets/*)
+                index=$((index + 1))
+                asset_file="$EVIDENCE_DIR/frontend-asset-$index"
+                asset_status='000'
+                for attempt in $(seq 1 20); do
+                  asset_status="$(curl -sS --max-time 90 -o "$asset_file" -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE$asset" || true)"
+                  [[ "$asset_status" == 200 ]] && break
+                  sleep 3
+                done
+                [[ "$asset_status" == 200 ]] || fail "Frontend asset failed: $asset"
+                cat "$asset_file" >> "$FRONTEND_BUNDLE"
+                ;;
+              *) fail "Unexpected frontend asset path: $asset" ;;
+            esac
+          done
+
+          grep -Fq 'pulse-header-theme-switcher' "$FRONTEND_BUNDLE" || fail 'The Light/Dark header switcher is absent.'
+          grep -Fq 'group7-provider-readiness' "$FRONTEND_BUNDLE" || fail 'Provider readiness theme contract is absent.'
+          grep -Fq 'ai-provider-center__provider' "$FRONTEND_BUNDLE" || fail 'Module 064 provider theme contract is absent.'
+          grep -Fq 'celar-ai-routing__route-card' "$FRONTEND_BUNDLE" || fail 'Celar AI routing theme contract is absent.'
+          grep -Fq 'This protected endpoint is deployment-managed' "$FRONTEND_BUNDLE" || fail 'Deployment-managed endpoint explanation is absent.'
+
+          jq -n \
+            --arg controlCommit "$GITHUB_SHA" \
+            --arg applicationRelease "$TARGET_RELEASE_COMMIT" \
+            --arg apiRevision "$API_REVISION" \
+            --arg webRevision "$WEB_REVISION" \
+            --arg apiImage '${{ steps.build.outputs.api_image }}' \
+            --arg webImage '${{ steps.build.outputs.web_image }}' \
+            --argjson frontendAssetCount "${#FRONTEND_ASSETS[@]}" \
+            '{
+              status:"passed",
+              environment:"test",
+              controlCommit:$controlCommit,
+              applicationRelease:$applicationRelease,
+              apiRevision:$apiRevision,
+              webRevision:$webRevision,
+              apiImage:$apiImage,
+              webImage:$webImage,
+              frontendAssetCount:$frontendAssetCount,
+              module011Ready:true,
+              module064Ready:true,
+              enterpriseThemePresent:true,
+              migrationsApplied:[],
+              productionMutation:false
+            }' > "$EVIDENCE_DIR/final-uat-summary.json"
+          echo 'passed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Oracle activation v2 for exact deployed release
+        id: oracle
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          SEARCH_AFTER="$(date -u -d '-2 minutes' +'%Y-%m-%dT%H:%M:%SZ')"
+          gh workflow run celar-ai-oracle-test-runtime-activation-v2.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_commit="$TARGET_RELEASE_COMMIT" \
+            -f approval_reference="ORACLE-TEST-PR627-ENTERPRISE-HARDENING-20260810" \
+            -f confirmation="ACTIVATE-CELAR-AI-ORACLE-ON-TEST"
+
+          ORACLE_RUN_ID=''
+          ORACLE_RUN_URL=''
+          for _attempt in $(seq 1 40); do
+            RUNS="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/celar-ai-oracle-test-runtime-activation-v2.yml/runs?event=workflow_dispatch&branch=main&per_page=30")"
+            ORACLE_RUN_ID="$(jq -r \
+              --arg sha "$GITHUB_SHA" \
+              --arg after "$SEARCH_AFTER" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $after)] | sort_by(.created_at) | last | .id // empty' \
+              <<<"$RUNS")"
+            ORACLE_RUN_URL="$(jq -r \
+              --argjson id "${ORACLE_RUN_ID:-0}" \
+              '.workflow_runs[] | select(.id == $id) | .html_url // empty' \
+              <<<"$RUNS")"
+            [[ "$ORACLE_RUN_ID" =~ ^[0-9]+$ && "$ORACLE_RUN_URL" == https://github.com/* ]] && break
+            sleep 3
+          done
+          [[ "$ORACLE_RUN_ID" =~ ^[0-9]+$ ]] || fail 'Could not locate the exact activation-v2 run.'
+
+          {
+            echo "run_id=$ORACLE_RUN_ID"
+            echo "run_url=$ORACLE_RUN_URL"
+            echo 'queued=true'
+          } >> "$GITHUB_OUTPUT"
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$TARGET_RELEASE_COMMIT" \
+            -f state=pending \
+            -f context="$ACTIVATION_STATUS_CONTEXT" \
+            -f description="Oracle activation v2 queued as run $ORACLE_RUN_ID." \
+            -f target_url="$ORACLE_RUN_URL" >/dev/null
+
+          jq -n --arg runId "$ORACLE_RUN_ID" --arg runUrl "$ORACLE_RUN_URL" \
+            '{queued:true,runId:$runId,runUrl:$runUrl,environment:"test",productionMutation:false}' \
+            > "$EVIDENCE_DIR/oracle-activation-dispatch.json"
+          echo "ORACLE_ACTIVATION_V2_RUN_ID=$ORACLE_RUN_ID"
+          echo "ORACLE_ACTIVATION_V2_RUN_URL=$ORACLE_RUN_URL"
+
+      - name: Restore prior Test images and source marker on pre-UAT failure
+        if: ${{ failure() && steps.contract.outcome == 'success' && steps.uat.outputs.passed != 'true' && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
+        shell: bash
+        run: |
+          set +e
+          SOURCE_ROW="$(cat "$EVIDENCE_DIR/source-marker-before.json" 2>/dev/null || printf 'null')"
+          if [[ '${{ steps.deploy_api.outputs.started }}' == true ]]; then
+            if [[ -n "$SOURCE_ROW" && "$SOURCE_ROW" != null ]]; then
+              SOURCE_SECRET="$(jq -r '.secretRef // empty' <<<"$SOURCE_ROW")"
+              SOURCE_VALUE="$(jq -r '.value // empty' <<<"$SOURCE_ROW")"
+              if [[ -n "$SOURCE_SECRET" ]]; then
+                SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=secretref:$SOURCE_SECRET"
+              else
+                SOURCE_ARG="PROJECTPULSE_SOURCE_COMMIT=$SOURCE_VALUE"
+              fi
+              az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+                --image '${{ steps.contract.outputs.old_api_image }}' \
+                --set-env-vars "$SOURCE_ARG" \
+                --revision-suffix "pr627rba-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --output none --only-show-errors
+            else
+              az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+                --image '${{ steps.contract.outputs.old_api_image }}' \
+                --remove-env-vars PROJECTPULSE_SOURCE_COMMIT \
+                --revision-suffix "pr627rba-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --output none --only-show-errors
+            fi
+            API_ROLLBACK_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' "$API_ROLLBACK_REVISION" '${{ steps.contract.outputs.old_api_image }}' 60 10
+          fi
+
+          if [[ '${{ steps.deploy_web.outputs.started }}' == true ]]; then
+            az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' \
+              --image '${{ steps.contract.outputs.old_web_image }}' \
+              --revision-suffix "pr627rbw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output none --only-show-errors
+            WEB_ROLLBACK_REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+            bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_WEB_APP }}' "$WEB_ROLLBACK_REVISION" '${{ steps.contract.outputs.old_web_image }}' 60 10
+          fi
+
+          jq -n '{status:"rolled_back",migrationsApplied:[],productionMutation:false}' \
+            > "$EVIDENCE_DIR/rollback-summary.json"
+          echo 'TEST_IMAGES_ROLLED_BACK=true'
+
+      - name: Upload immutable protected-Test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr627-celar-ai-enterprise-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr627-celar-ai-enterprise-test-evidence
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish final release and activation statuses
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UAT_PASSED: ${{ steps.uat.outputs.passed }}
+          ORACLE_QUEUED: ${{ steps.oracle.outputs.queued }}
+          ORACLE_RUN_URL: ${{ steps.oracle.outputs.run_url }}
+        run: |
+          set +e
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ "$UAT_PASSED" == true ]]; then
+            APP_STATE=success
+            APP_DESCRIPTION='Exact PR #627 release passed protected Test UAT.'
+          else
+            APP_STATE=failure
+            APP_DESCRIPTION='Exact PR #627 protected Test release failed or rolled back.'
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$TARGET_RELEASE_COMMIT" \
+            -f state="$APP_STATE" \
+            -f context="$APPLICATION_STATUS_CONTEXT" \
+            -f description="$APP_DESCRIPTION" \
+            -f target_url="$RUN_URL" >/dev/null
+
+          if [[ "$UAT_PASSED" == true && "$ORACLE_QUEUED" != true ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$TARGET_RELEASE_COMMIT" \
+              -f state=failure \
+              -f context="$ACTIVATION_STATUS_CONTEXT" \
+              -f description='Application deployed, but activation v2 was not queued.' \
+              -f target_url="$RUN_URL" >/dev/null
+          elif [[ "$ORACLE_QUEUED" == true && -n "$ORACLE_RUN_URL" ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$TARGET_RELEASE_COMMIT" \
+              -f state=pending \
+              -f context="$ACTIVATION_STATUS_CONTEXT" \
+              -f description='Oracle activation v2 is queued behind the Test deployment lock.' \
+              -f target_url="$ORACLE_RUN_URL" >/dev/null
+          fi
+
+          {
+            echo '## PR #627 protected Test release'
+            echo
+            echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
+            echo "- Deployment controller: \`$GITHUB_SHA\`"
+            echo '- Environment: protected Test only'
+            echo '- Migrations: none'
+            echo '- Production changes: none'
+            if [[ "$UAT_PASSED" == true ]]; then
+              echo '- Application deployment and authenticated UAT: passed'
+            else
+              echo '- Application deployment: failed or rolled back; inspect evidence'
+            fi
+            if [[ "$ORACLE_QUEUED" == true ]]; then
+              echo "- Oracle activation v2: $ORACLE_RUN_URL"
+            else
+              echo '- Oracle activation v2: not queued'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

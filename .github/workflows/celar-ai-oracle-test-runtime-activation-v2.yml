@@ -1,0 +1,261 @@
+name: Activate Celar AI Oracle Runtime on Protected Test v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact merged application commit already deployed to protected Test and contained in current main
+        required: true
+        type: string
+      approval_reference:
+        description: Approved ORACLE-TEST reference
+        required: true
+        type: string
+      confirmation:
+        description: Enter ACTIVATE-CELAR-AI-ORACLE-ON-TEST
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    name: Configure and prove the Oracle Celar AI runtime on protected Test
+    if: github.ref == 'refs/heads/main'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUNTIME_HOST: celarai.onenecklab.com
+      RUNTIME_IP: 129.213.82.144
+      READINESS_ENDPOINT: https://celarai.onenecklab.com/health
+      INFERENCE_ENDPOINT: https://celarai.onenecklab.com/v1/chat/completions
+      EMBEDDING_ENDPOINT: https://celarai.onenecklab.com/v1/embeddings
+      OCR_ENDPOINT: https://celarai.onenecklab.com/v1/extract
+      MALWARE_ENDPOINT: https://celarai.onenecklab.com/v1/scan
+      GENERATION_MODEL: gemma3:4b
+      EMBEDDING_MODEL: embeddinggemma
+      OCR_MODEL: tesseract-5-eng
+      TOKEN_SECRET_NAME: celar-ai-oracle-runtime-bearer
+      EVIDENCE_DIR: /tmp/celar-ai-oracle-activation-v2
+
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact source and Test-only boundary
+        shell: bash
+        env:
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || fail 'Manual dispatch is required.'
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may activate protected Test.'
+          [[ "$DISPATCH_CONFIRMATION" == ACTIVATE-CELAR-AI-ORACLE-ON-TEST ]] || fail 'The exact confirmation phrase is required.'
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'release_commit must be one exact SHA.'
+          [[ "$APPROVAL_REFERENCE" =~ ^ORACLE-TEST-[A-Za-z0-9][A-Za-z0-9._-]{7,119}$ ]] || fail 'approval_reference is invalid.'
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]] || fail 'Checkout mismatch.'
+          git rev-parse --verify origin/main >/dev/null || fail 'Current main was not fetched for ancestry verification.'
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || fail 'The workflow ref does not match current main.'
+          git merge-base --is-ancestor "$RELEASE_COMMIT" "$GITHUB_SHA" \
+            || fail 'release_commit must be an ancestor of the selected current-main workflow revision.'
+          grep -Fq 'PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED' \
+            src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+          grep -Fq 'PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION' \
+            src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs
+          install -d -m 0700 "$EVIDENCE_DIR"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+
+      - name: Prove authenticated Oracle services before Azure mutation
+        shell: bash
+        env:
+          RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ ${#RUNTIME_TOKEN} -ge 32 ]] || fail 'The protected Oracle runtime token is missing or too short.'
+          mapfile -t RESOLVED < <(getent ahostsv4 "$RUNTIME_HOST" | awk '{print $1}' | sort -u)
+          (( ${#RESOLVED[@]} == 1 )) || fail 'Oracle runtime DNS must resolve to one IPv4 address.'
+          [[ "${RESOLVED[0]}" == "$RUNTIME_IP" ]] || fail 'Oracle runtime DNS does not match the approved IP pin.'
+          AUTH=(-H "Authorization: Bearer $RUNTIME_TOKEN" -H 'X-Pulse-AI-Privacy-Boundary: private_pulse_runtime_only')
+          curl -fsS --max-time 45 "${AUTH[@]}" "$READINESS_ENDPOINT" > "$EVIDENCE_DIR/oracle-health-private.json"
+          jq -e --arg g "$GENERATION_MODEL" --arg e "$EMBEDDING_MODEL" --arg o "$OCR_MODEL" '
+            .status == "ready" and .ollamaReady == true and .generationModelReady == true and
+            .embeddingModelReady == true and .tesseractReady == true and .clamavReady == true and
+            .generationModel == $g and .embeddingModel == $e and .ocrModel == $o and
+            .rawDocumentContentLogged == false' "$EVIDENCE_DIR/oracle-health-private.json" >/dev/null
+          curl -fsS --max-time 600 "${AUTH[@]}" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg model "$GENERATION_MODEL" '{model:$model,messages:[{role:"user",content:"Return only: CELAR ORACLE OK"}],stream:false,temperature:0,max_tokens:32}')" \
+            "$INFERENCE_ENDPOINT" | jq -e '.choices[0].message.content | length > 0' >/dev/null
+          curl -fsS --max-time 180 "${AUTH[@]}" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg model "$EMBEDDING_MODEL" '{model:$model,input:["Celar AI Test embedding proof"],encoding_format:"float"}')" \
+            "$EMBEDDING_ENDPOINT" | jq -e 'if type == "array" then length == 1 else (.data | length == 1) or (.embeddings | length == 1) end' >/dev/null
+          CLEAN_FILE="$RUNNER_TEMP/celar-oracle-clean.txt"
+          printf 'Celar AI protected Test clean-file validation.\n' > "$CLEAN_FILE"
+          curl -fsS --max-time 180 "${AUTH[@]}" -F "file=@$CLEAN_FILE;filename=celar-oracle-clean.txt" "$MALWARE_ENDPOINT" \
+            | jq -e '.status == "clean" and .clean == true and .scanner == "clamav"' >/dev/null
+
+      - name: Sign in to protected Test
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Snapshot active Test API and configuration
+        id: snapshot
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'; APP='${{ vars.AZURE_API_APP }}'; BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'Public URL is not protected Test.'
+          [[ -n "$UAT_SESSION" ]] || fail 'The protected Test UAT session is required.'
+          APP_JSON="$(az containerapp show -g "$RG" -n "$APP" -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$APP_JSON")" == test ]] || fail 'Target is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$APP_JSON" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'Single-revision mode is required.'
+          IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$APP_JSON")"
+          SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_SOURCE_COMMIT") | .value] | if length == 1 then .[0] else empty end' <<<"$APP_JSON")"
+          [[ "$SOURCE" == "$RELEASE_COMMIT" ]] || fail 'The exact release is not yet deployed to Test.'
+          TRAINING_CONFIG_COUNT="$(jq '[.properties.template.containers[0].env[]? | select(.name == "PROJECTPULSE_CELAR_AI_TRAINING_ENDPOINT" or .name == "PROJECTPULSE_CELAR_AI_TRAINING_HOST_ALLOWLIST" or .name == "PROJECTPULSE_CELAR_AI_TRAINING_BEARER_TOKEN")] | length' <<<"$APP_JSON")"
+          [[ "$TRAINING_CONFIG_COUNT" == 0 ]] || fail 'Temporary external Oracle activation requires empty training endpoint, allowlist, and bearer-token settings.'
+          jq '.properties.template.containers[0].env // []' <<<"$APP_JSON" > "$EVIDENCE_DIR/before-env.json"
+          printf '%s' "$IMAGE" > "$EVIDENCE_DIR/before-image.txt"
+          printf 'rg=%s\napp=%s\nbase=%s\nimage=%s\n' "$RG" "$APP" "$BASE" "$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Oracle runtime and activate a Test revision
+        id: activate
+        shell: bash
+        env:
+          RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          RG='${{ steps.snapshot.outputs.rg }}'; APP='${{ steps.snapshot.outputs.app }}'; IMAGE='${{ steps.snapshot.outputs.image }}'
+          TOKEN_REFERENCE="github-environment://test/celar-ai-oracle-runtime-token@$RELEASE_COMMIT"
+          MALWARE_SIGNATURE_EVIDENCE="oracle-clamav-live-scan-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          az containerapp secret set -g "$RG" -n "$APP" --secrets "$TOKEN_SECRET_NAME=$RUNTIME_TOKEN" --output none --only-show-errors
+          unset RUNTIME_TOKEN
+          az containerapp update -g "$RG" -n "$APP" --image "$IMAGE" --set-env-vars \
+            PROJECTPULSE_ENVIRONMENT=test \
+            PROJECTPULSE_CELAR_AI_ENABLED=true PROJECTPULSE_CELAR_AI_DEPLOYMENT_MANAGED=true PROJECTPULSE_CELAR_AI_TRAINING_ENABLED=false \
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED=true PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_HOST="$RUNTIME_HOST" \
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_EXPECTED_IP="$RUNTIME_IP" \
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_APPROVAL_REFERENCE="$APPROVAL_REFERENCE" \
+            PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_READINESS_ENDPOINT="$READINESS_ENDPOINT" \
+            PROJECTPULSE_PULSE_AI_PRIVATE_RAG_ENABLED=true PROJECTPULSE_PRIVATE_INFERENCE_REQUIRED_FOR_DOCUMENTS=true \
+            PROJECTPULSE_PRIVATE_INFERENCE_ENDPOINT="$INFERENCE_ENDPOINT" PROJECTPULSE_PRIVATE_INFERENCE_MODEL="$GENERATION_MODEL" \
+            PROJECTPULSE_PRIVATE_INFERENCE_AUTH_MODE=bearer PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME" \
+            PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN_SECRET_REFERENCE="$TOKEN_REFERENCE" \
+            PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT="$EMBEDDING_ENDPOINT" PROJECTPULSE_PRIVATE_EMBEDDING_MODEL="$EMBEDDING_MODEL" \
+            PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME" PROJECTPULSE_PRIVATE_EMBEDDING_BEARER_TOKEN_SECRET_REFERENCE="$TOKEN_REFERENCE" \
+            PROJECTPULSE_PRIVATE_OCR_ENDPOINT="$OCR_ENDPOINT" PROJECTPULSE_PRIVATE_OCR_MODEL="$OCR_MODEL" \
+            PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME" PROJECTPULSE_PRIVATE_OCR_BEARER_TOKEN_SECRET_REFERENCE="$TOKEN_REFERENCE" \
+            PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT="$MALWARE_ENDPOINT" PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME" \
+            PROJECTPULSE_PRIVATE_MALWARE_SCAN_BEARER_TOKEN_SECRET_REFERENCE="$TOKEN_REFERENCE" PROJECTPULSE_PRIVATE_ENDPOINT_HOST_ALLOWLIST="$RUNTIME_HOST" \
+            PROJECTPULSE_PRIVATE_VECTOR_INDEX=projectpulse_postgresql_hybrid PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE=celar_https_gateway \
+            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED=true PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION="$MALWARE_SIGNATURE_EVIDENCE" \
+            PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_APPROVAL_REFERENCE="$APPROVAL_REFERENCE" \
+            PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED=true \
+            --revision-suffix "caorv2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors
+          REVISION="$(az containerapp show -g "$RG" -n "$APP" --query properties.latestRevisionName -o tsv --only-show-errors)"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          bash scripts/wait-containerapp-ready-revision.sh "$RG" "$APP" "$REVISION" "$IMAGE" 60 10
+
+      - name: Prove Module 064 and private document runtime
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          BASE='${{ steps.snapshot.outputs.base }}'
+          AUTH_064=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Cache-Control: no-cache')
+          AUTH_011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011' -H 'Cache-Control: no-cache')
+          PROBE_FILE="$EVIDENCE_DIR/private-model-probe.json"
+          STATUS="$(curl -sS --max-time 600 -o "$PROBE_FILE" -w '%{http_code}' "${AUTH_064[@]}" -H 'Content-Type: application/json' -d '{}' "$BASE/api/ai-configuration/private-model/test" || true)"
+          if [[ "$STATUS" != 200 ]] || ! jq -e '.status == "private_model_available" and .configured == true and .available == true' "$PROBE_FILE" >/dev/null 2>&1; then
+            jq --arg httpStatus "$STATUS" '{httpStatus:$httpStatus,status:(.status // null),configured:(.configured // null),available:(.available // false),diagnosticCode:(.diagnosticCode // null),endpointReturned:false,tokenReturned:false}' "$PROBE_FILE" > "$EVIDENCE_DIR/private-model-probe-safe.json" 2>/dev/null || true
+            exit 1
+          fi
+          curl -fsS --max-time 90 "${AUTH_011[@]}" "$BASE/api/celar-ai/v1/documents/pipeline/readiness" > "$EVIDENCE_DIR/pipeline.json"
+          curl -fsS --max-time 90 "${AUTH_011[@]}" "$BASE/api/celar-ai/v1/documents/runtime/readiness" > "$EVIDENCE_DIR/runtime.json"
+          jq -e '.readiness.malwareScanAttested and .readiness.ocrEndpointConfigured and .readiness.privateEmbeddingEndpointConfigured and .readiness.privateVectorIndexConfigured' "$EVIDENCE_DIR/pipeline.json" >/dev/null
+          jq -e '.readiness.clamAvConfigured and .readiness.malwareScannerEndpointPrivate and .readiness.ocrConfigured and .readiness.ocrEndpointPrivate and .readiness.embeddingConfigured and .readiness.embeddingEndpointPrivate' "$EVIDENCE_DIR/runtime.json" >/dev/null
+
+      - name: Capture sanitized candidate startup evidence on failure
+        if: ${{ failure() && steps.activate.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          RG='${{ steps.snapshot.outputs.rg }}'; APP='${{ steps.snapshot.outputs.app }}'; REVISION='${{ steps.activate.outputs.revision }}'
+          if [[ -n "$REVISION" ]]; then
+            az containerapp replica list -g "$RG" -n "$APP" --revision "$REVISION" -o json --only-show-errors > "$EVIDENCE_DIR/failure-replicas.json" 2>&1 || true
+            az containerapp logs show -g "$RG" -n "$APP" --revision "$REVISION" --type console --tail 300 --format text > "$EVIDENCE_DIR/failure-console-raw.log" 2>&1 || true
+          fi
+          az containerapp logs show -g "$RG" -n "$APP" --type system --tail 300 > "$EVIDENCE_DIR/failure-system-raw.log" 2>&1 || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('/tmp/celar-ai-oracle-activation-v2')
+          patterns = [
+              (re.compile(r'(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+'), r'\1[REDACTED]'),
+              (re.compile(r'(?i)(x-projectpulse-session\s*:\s*)[^\s,;]+'), r'\1[REDACTED]'),
+              (re.compile(r'(?i)(password|client[_-]?secret|api[_-]?key|access[_-]?token|session[_-]?token)(\s*[=:]\s*)[^\s,;"}]+'), r'\1\2[REDACTED]'),
+          ]
+          for raw in root.glob('*-raw.log'):
+              text = raw.read_text(encoding='utf-8', errors='replace')
+              for pattern, replacement in patterns:
+                  text = pattern.sub(replacement, text)
+              target = raw.with_name(raw.name.replace('-raw.log', '.log'))
+              target.write_text(text, encoding='utf-8')
+              raw.unlink(missing_ok=True)
+          PY
+
+      - name: Restore exact prior Test API on failure
+        if: ${{ failure() && steps.activate.outputs.started == 'true' }}
+        shell: bash
+        run: |
+          set +e
+          RG='${{ steps.snapshot.outputs.rg }}'; APP='${{ steps.snapshot.outputs.app }}'; IMAGE="$(cat "$EVIDENCE_DIR/before-image.txt")"
+          RESTORE=(); REMOVE=()
+          mapfile -t CURRENT_NAMES < <(az containerapp show -g "$RG" -n "$APP" --query 'properties.template.containers[0].env[].name' -o tsv --only-show-errors)
+          while IFS= read -r name; do
+            row="$(jq -c --arg name "$name" '[.[] | select(.name == $name)] | if length == 1 then .[0] else empty end' "$EVIDENCE_DIR/before-env.json")"
+            if [[ -z "$row" ]]; then REMOVE+=("$name"); continue; fi
+            secret="$(jq -r '.secretRef // empty' <<<"$row")"; value="$(jq -r '.value // empty' <<<"$row")"
+            if [[ -n "$secret" ]]; then RESTORE+=("$name=secretref:$secret"); else RESTORE+=("$name=$value"); fi
+          done < <(printf '%s\n' "${CURRENT_NAMES[@]}" | sort -u)
+          UPDATE=(-g "$RG" -n "$APP" --image "$IMAGE" --revision-suffix "caorv2rb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --output none --only-show-errors)
+          (( ${#RESTORE[@]} > 0 )) && UPDATE+=(--set-env-vars "${RESTORE[@]}")
+          (( ${#REMOVE[@]} > 0 )) && UPDATE+=(--remove-env-vars "${REMOVE[@]}")
+          az containerapp update "${UPDATE[@]}"
+          az containerapp secret remove -g "$RG" -n "$APP" --secret-names "$TOKEN_SECRET_NAME" --output none --only-show-errors || true
+
+      - name: Publish sanitized activation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: celar-ai-oracle-activation-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/celar-ai-oracle-activation-v2
+          if-no-files-found: warn
+          retention-days: 14

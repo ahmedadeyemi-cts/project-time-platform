@@ -1875,6 +1875,35 @@ internal static class CelarAiExternalAnswerQuality
             || opening.StartsWith("check your organization's", StringComparison.OrdinalIgnoreCase)
             || opening.StartsWith("check your organisation's", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static readonly string[] PublicAnswerLowConfidenceSignals =
+    [
+        "i am not sure", "i'm not sure", "i cannot verify", "i can't verify",
+        "i do not know", "i don't know", "insufficient information",
+        "insufficient evidence", "unable to confirm", "cannot confirm",
+        "may or may not", "might be", "possibly", "it appears that"
+    ];
+
+    public static bool TryRejectPublicAnswer(string? content, out string decisionCode)
+    {
+        if (LooksLikeNonAnswer(content))
+        {
+            decisionCode = "public_general_question_semantic_non_answer";
+            return true;
+        }
+
+        var normalized = Regex.Replace(content ?? string.Empty, @"\s+", " ").Trim();
+        var wordCount = Regex.Matches(normalized, @"\S+").Count;
+        if (wordCount < 7 || PublicAnswerLowConfidenceSignals.Any(signal =>
+                normalized.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+        {
+            decisionCode = "public_general_question_low_confidence_answer";
+            return true;
+        }
+
+        decisionCode = "public_general_question_answer_quality_passed";
+        return false;
+    }
 }
 
 public sealed class CelarAiCapabilityRouter
@@ -2465,6 +2494,31 @@ public sealed class CelarAiCapabilityRouter
                 }
                 if (privateResult.IsSuccess && !string.IsNullOrWhiteSpace(privateResult.Content))
                 {
+                    if (execution.PublicGeneralQuestion
+                        && CelarAiExternalAnswerQuality.TryRejectPublicAnswer(
+                            privateResult.Content,
+                            out var privatePublicQualityCode))
+                    {
+                        // Transport and privacy succeeded, but the answer did not
+                        // meet the enterprise public-answer confidence floor. Keep
+                        // the provider healthy and continue to Claude/OpenAI in the
+                        // persisted route instead of displaying a weak answer.
+                        _health.RecordSuccess(
+                            CelarAiCapabilityTargets.CelarAi,
+                            privateResult.Usage,
+                            privateResult.RequestId,
+                            privatePublicQualityCode,
+                            privateResult.RateLimits);
+                        _assurance.Record(
+                            feature,
+                            CelarAiCapabilityTargets.CelarAi,
+                            ProjectPulseAiOutcomes.Unavailable,
+                            execution.CorrelationId);
+                        failed.Add(target);
+                        decisions.Add(new(target, "failed", privatePublicQualityCode));
+                        continue;
+                    }
+
                     RecordAlreadyExecutedPrivateAttempt(
                         feature,
                         execution.CorrelationId,
@@ -2585,9 +2639,10 @@ public sealed class CelarAiCapabilityRouter
                 // public-general-knowledge path; safety refusals and every private
                 // or enterprise-context route retain their existing behavior.
                 if (execution.PublicGeneralQuestion
-                    && CelarAiExternalAnswerQuality.LooksLikeNonAnswer(result.Content))
+                    && CelarAiExternalAnswerQuality.TryRejectPublicAnswer(
+                        result.Content,
+                        out var publicAnswerQualityCode))
                 {
-                    const string nonAnswerCode = "public_general_question_semantic_non_answer";
                     // The provider transport and privacy boundary succeeded, so
                     // keep provider health available and reset any stale circuit
                     // failures. Consumer assurance separately records that this
@@ -2596,7 +2651,7 @@ public sealed class CelarAiCapabilityRouter
                         target,
                         result.Usage,
                         result.RequestId,
-                        nonAnswerCode,
+                        publicAnswerQualityCode,
                         result.RateLimits);
                     _assurance.Record(
                         feature,
@@ -2604,7 +2659,7 @@ public sealed class CelarAiCapabilityRouter
                         ProjectPulseAiOutcomes.Unavailable,
                         execution.CorrelationId);
                     failed.Add(target);
-                    decisions.Add(new(target, "failed", nonAnswerCode));
+                    decisions.Add(new(target, "failed", publicAnswerQualityCode));
                     continue;
                 }
 
