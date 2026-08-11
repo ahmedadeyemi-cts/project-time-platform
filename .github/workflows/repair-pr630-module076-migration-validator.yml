@@ -1,0 +1,127 @@
+name: Repair PR 630 Module 076 Migration Validator
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/repair-pr630-module076-migration-validator.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr630-module076-migration-validator
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Approve only Migration 084 and remove this workflow
+    if: >-
+      github.event.pull_request.number == 630 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_PARENT: 9aafb855a81f62df7f17106b092dfb7cc229a582
+      HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact repository and parent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+
+      - name: Permit exact Migration 084 while preserving deployment lock
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs')
+          text = validator.read_text(encoding='utf-8')
+          old = '''const prohibitedArtifacts = [
+  ...filesBelow(path.join(repositoryRoot, 'database')),
+  ...filesBelow(path.join(repositoryRoot, 'deployment'))
+].filter((filePath) => /(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath)));
+
+assertInvariant(
+  'MODULE_076_NO_DATABASE_OR_DEPLOYMENT_ARTIFACT',
+  prohibitedArtifacts.length === 0,
+  prohibitedArtifacts.length === 0
+    ? 'no Module 076 database or deployment artifact exists'
+    : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
+);'''
+          new = '''const approvedModule076DatabaseArtifacts = new Set([
+  'database/migrations/084_module_076_celar_ai_defect_operations.sql',
+  'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
+]);
+const prohibitedArtifacts = [
+  ...filesBelow(path.join(repositoryRoot, 'database')),
+  ...filesBelow(path.join(repositoryRoot, 'deployment'))
+].filter((filePath) => {
+  const relative = path.relative(repositoryRoot, filePath).replaceAll('\\\\', '/');
+  if (!/(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath))) return false;
+  return !approvedModule076DatabaseArtifacts.has(relative);
+});
+
+assertInvariant(
+  'MODULE_076_NO_UNAPPROVED_DATABASE_OR_DEPLOYMENT_ARTIFACT',
+  prohibitedArtifacts.length === 0
+    && [...approvedModule076DatabaseArtifacts].every((relative) => fs.existsSync(path.join(repositoryRoot, relative))),
+  prohibitedArtifacts.length === 0
+    ? 'only the reviewed Migration 084 forward/rollback pair exists; no Module 076 deployment artifact exists'
+    : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
+);'''
+          if text.count(old) != 1:
+              raise SystemExit(f'{validator}: expected one legacy artifact gate, found {text.count(old)}')
+          validator.write_text(text.replace(old, new), encoding='utf-8')
+
+          consolidated = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
+          text = consolidated.read_text(encoding='utf-8')
+          old_exact = '''const allowedExact = new Set([
+  'src/backend/ProjectTime.Api/Directory.Build.targets',
+  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
+]);'''
+          new_exact = '''const allowedExact = new Set([
+  'src/backend/ProjectTime.Api/Directory.Build.targets',
+  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs',
+  'src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs'
+]);'''
+          if text.count(old_exact) != 1:
+              raise SystemExit(f'{consolidated}: expected one exact-scope allowlist, found {text.count(old_exact)}')
+          consolidated.write_text(text.replace(old_exact, new_exact), encoding='utf-8')
+          PY
+
+          node src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          rm -- .github/workflows/repair-pr630-module076-migration-validator.yml
+          git diff --check
+          git diff --exit-code -- . \
+            ':!src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs' \
+            ':!tests/validate-celar-ai-pr630-consolidated.mjs' \
+            ':!.github/workflows/repair-pr630-module076-migration-validator.yml'
+
+      - name: Commit bounded validator correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -- \
+            src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs \
+            tests/validate-celar-ai-pr630-consolidated.mjs \
+            .github/workflows/repair-pr630-module076-migration-validator.yml
+          git commit -m 'Approve only Module 076 Migration 084 in legacy validation'
+          git push origin "HEAD:${HEAD_BRANCH}"
