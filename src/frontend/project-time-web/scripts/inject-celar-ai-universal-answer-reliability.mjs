@@ -54,3 +54,4 @@ console.log('CELAR_AI_UNIVERSAL_ANSWER_UI_TAB=INJECTED');
 console.log('CELAR_AI_UNIVERSAL_ANSWER_UI_MOUNT=INJECTED');
 
 await import('./inject-celar-ai-ask-operations.mjs');
+await import('./inject-module-076-celar-ai-operations.mjs');
