@@ -98,6 +98,15 @@ internal static class ReleaseRuntimeBehavior
         Require(!CelarAiPrivateGenerationTarget.ResponseMatchesDerivedContentChallenge(
                 betaContext, "alpha|alpha|alpha"),
             "derived private SOW challenge response is content-dependent");
+        Require(CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                "CELAR PRIVATE MODEL READY\n"),
+            "Module 064 readiness accepts insignificant surrounding whitespace");
+        Require(!CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                "celar private model ready"),
+            "Module 064 readiness remains ordinal and case-sensitive");
+        Require(!CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                "CELAR PRIVATE MODEL READY plus prose"),
+            "Module 064 readiness rejects extra model prose");
 
         var touched = ProjectPulseAiDatabaseConnection.DirectAliases
             .Concat(new[]

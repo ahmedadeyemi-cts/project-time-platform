@@ -68,12 +68,14 @@ if (privateTargetStart < 0 || privateTargetEnd <= privateTargetStart) {
 }
 const privateTarget = capabilityRouting.slice(privateTargetStart, privateTargetEnd)
 const markerCount = (content, value) => content.split(value).length - 1
+// Module 064 provider readiness uses a fixed identity-free phrase, while
+// release-candidate verification retains the separate content-derived SOW challenge.
 for (const [marker, expected] of [
-  ['X-Pulse-AI-Privacy-Boundary', 2],
-  ['PulseAiPrivateRagPolicy.PrivacyBoundary', 2],
-  ['X-Pulse-AI-Feature', 2],
-  ['X-Pulse-AI-Correlation-Id', 2],
-  ['X-Pulse-AI-External-Escalation', 2],
+  ['X-Pulse-AI-Privacy-Boundary', 3],
+  ['PulseAiPrivateRagPolicy.PrivacyBoundary', 3],
+  ['X-Pulse-AI-Feature', 3],
+  ['X-Pulse-AI-Correlation-Id', 3],
+  ['X-Pulse-AI-External-Escalation', 3],
 ]) {
   const actual = markerCount(privateTarget, marker)
   if (actual !== expected) {
@@ -86,6 +88,15 @@ requireText(
   'exact private-model attestation feature',
 )
 requireText(privateTarget, 'request.Feature', 'runtime private-generation feature')
+for (const marker of [
+  'PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY"',
+  'ProbeReadinessPhraseAsync',
+  'module_064_private_model_readiness',
+  'ResponseMatchesReadinessPhrase(content)',
+  'readiness_phrase_and_model_verified',
+  'DeriveContentChallenge(privateContext)',
+  'exact_response_and_model_verified',
+]) requireText(privateTarget, marker, 'separate reliable readiness and exact-SOW attestations')
 rejectText(
   privateTarget,
   'X-Celar-AI-Private-Boundary',
