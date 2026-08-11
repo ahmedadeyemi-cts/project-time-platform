@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 9aafb855a81f62df7f17106b092dfb7cc229a582
+      EXPECTED_PARENT: 3895a7d5eef94625cbba3d01eeb49db3c51c18df
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
@@ -34,15 +34,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Guard exact repository and parent
+      - name: Guard exact repository, branch, and parent
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
 
-      - name: Permit exact Migration 084 while preserving deployment lock
+      - name: Permit only the reviewed Migration 084 pair
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -51,57 +52,55 @@ jobs:
 
           validator = Path('src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs')
           text = validator.read_text(encoding='utf-8')
-          old = '''const prohibitedArtifacts = [
-  ...filesBelow(path.join(repositoryRoot, 'database')),
-  ...filesBelow(path.join(repositoryRoot, 'deployment'))
-].filter((filePath) => /(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath)));
+          start_marker = 'const prohibitedArtifacts = ['
+          end_marker = 'const failed = assertions.filter((assertion) => !assertion.condition);'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Module 076 legacy artifact-gate anchors were not found')
+          existing = text[start:end]
+          required = (
+              "filesBelow(path.join(repositoryRoot, 'database'))",
+              "filesBelow(path.join(repositoryRoot, 'deployment'))",
+              'MODULE_076_NO_DATABASE_OR_DEPLOYMENT_ARTIFACT',
+          )
+          if not all(value in existing for value in required):
+              raise SystemExit('Module 076 legacy artifact gate did not match the reviewed contract')
+          replacement = r'''const approvedModule076DatabaseArtifacts = new Set([
+            'database/migrations/084_module_076_celar_ai_defect_operations.sql',
+            'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
+          ]);
+          const prohibitedArtifacts = [
+            ...filesBelow(path.join(repositoryRoot, 'database')),
+            ...filesBelow(path.join(repositoryRoot, 'deployment'))
+          ].filter((filePath) => {
+            const relative = path.relative(repositoryRoot, filePath).replaceAll('\\', '/');
+            if (!/(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath))) return false;
+            return !approvedModule076DatabaseArtifacts.has(relative);
+          });
 
-assertInvariant(
-  'MODULE_076_NO_DATABASE_OR_DEPLOYMENT_ARTIFACT',
-  prohibitedArtifacts.length === 0,
-  prohibitedArtifacts.length === 0
-    ? 'no Module 076 database or deployment artifact exists'
-    : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
-);'''
-          new = '''const approvedModule076DatabaseArtifacts = new Set([
-  'database/migrations/084_module_076_celar_ai_defect_operations.sql',
-  'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
-]);
-const prohibitedArtifacts = [
-  ...filesBelow(path.join(repositoryRoot, 'database')),
-  ...filesBelow(path.join(repositoryRoot, 'deployment'))
-].filter((filePath) => {
-  const relative = path.relative(repositoryRoot, filePath).replaceAll('\\\\', '/');
-  if (!/(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath))) return false;
-  return !approvedModule076DatabaseArtifacts.has(relative);
-});
+          assertInvariant(
+            'MODULE_076_NO_UNAPPROVED_DATABASE_OR_DEPLOYMENT_ARTIFACT',
+            prohibitedArtifacts.length === 0
+              && [...approvedModule076DatabaseArtifacts].every((relative) => fs.existsSync(path.join(repositoryRoot, relative))),
+            prohibitedArtifacts.length === 0
+              ? 'only the reviewed Migration 084 forward/rollback pair exists; no Module 076 deployment artifact exists'
+              : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
+          );
 
-assertInvariant(
-  'MODULE_076_NO_UNAPPROVED_DATABASE_OR_DEPLOYMENT_ARTIFACT',
-  prohibitedArtifacts.length === 0
-    && [...approvedModule076DatabaseArtifacts].every((relative) => fs.existsSync(path.join(repositoryRoot, relative))),
-  prohibitedArtifacts.length === 0
-    ? 'only the reviewed Migration 084 forward/rollback pair exists; no Module 076 deployment artifact exists'
-    : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
-);'''
-          if text.count(old) != 1:
-              raise SystemExit(f'{validator}: expected one legacy artifact gate, found {text.count(old)}')
-          validator.write_text(text.replace(old, new), encoding='utf-8')
+          '''
+          validator.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
 
           consolidated = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
           text = consolidated.read_text(encoding='utf-8')
-          old_exact = '''const allowedExact = new Set([
-  'src/backend/ProjectTime.Api/Directory.Build.targets',
-  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
-]);'''
-          new_exact = '''const allowedExact = new Set([
-  'src/backend/ProjectTime.Api/Directory.Build.targets',
-  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs',
-  'src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs'
-]);'''
-          if text.count(old_exact) != 1:
-              raise SystemExit(f'{consolidated}: expected one exact-scope allowlist, found {text.count(old_exact)}')
-          consolidated.write_text(text.replace(old_exact, new_exact), encoding='utf-8')
+          approved_line = "  'src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs'"
+          if approved_line not in text:
+              anchor = "  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'\n]);"
+              replacement = "  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs',\n" + approved_line + "\n]);"
+              if text.count(anchor) != 1:
+                  raise SystemExit('PR630 exact-source allowlist anchor did not match exactly')
+              text = text.replace(anchor, replacement)
+          consolidated.write_text(text, encoding='utf-8')
           PY
 
           node src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs
