@@ -44,7 +44,75 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in script.splitlines()
           )
-          exec(compile(script, str(controller), 'exec'), {'__name__': '__main__'})
+
+          # The original controller used global exact replacements for a few
+          # private-generation statements that also occur in probe methods.
+          # Remove that one block and apply the same reviewed change only inside
+          # CelarAiPrivateGenerationTarget.GenerateAsync below.
+          routing_start = script.index("\nrouting = 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'\n")
+          routing_end = script.index("\ntests = 'tests/CelarAiInternalDataTests/Program.cs'\n", routing_start)
+          script = script[:routing_start] + '\n' + script[routing_end:]
+
+          namespace = {'__name__': '__main__'}
+          exec(compile(script, str(controller), 'exec'), namespace)
+
+          routing = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
+          content = routing.read_text(encoding='utf-8')
+
+          def one(value: str, old: str, new: str, label: str) -> str:
+              count = value.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one replacement, found {count}')
+              return value.replace(old, new, 1)
+
+          content = one(
+              content,
+              '''public sealed class CelarAiPrivateGenerationTarget\n{\n    private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";\n''',
+              '''public sealed class CelarAiPrivateGenerationTarget\n{\n    private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";\n    private const int DefaultHelpAssistantGenerationTimeoutSeconds = 75;\n    private const int MinimumHelpAssistantGenerationTimeoutSeconds = 20;\n    private const int MaximumHelpAssistantGenerationTimeoutSeconds = 180;\n''',
+              'private generation constants')
+
+          method_start = content.index(
+              '    public async Task<ProjectPulseAiProviderResult> GenerateAsync(',
+              content.index('public sealed class CelarAiPrivateGenerationTarget'))
+          method_end = content.index(
+              '    public async Task<ProjectPulseAiProbeResult> ProbeAsync(',
+              method_start)
+          method = content[method_start:method_end]
+
+          method = one(
+              method,
+              '''        try\n        {\n            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)\n''',
+              '''        using var boundedGeneration = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);\n        if (string.Equals(\n                request.Feature,\n                CelarAiCapabilityCatalog.HelpAssistant,\n                StringComparison.OrdinalIgnoreCase))\n        {\n            boundedGeneration.CancelAfter(TimeSpan.FromSeconds(EnvironmentInteger(\n                "PROJECTPULSE_CELAR_AI_HELP_GENERATION_TIMEOUT_SECONDS",\n                DefaultHelpAssistantGenerationTimeoutSeconds,\n                MinimumHelpAssistantGenerationTimeoutSeconds,\n                MaximumHelpAssistantGenerationTimeoutSeconds)));\n        }\n        var generationToken = boundedGeneration.Token;\n\n        try\n        {\n            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)\n''',
+              'private generation timeout scope')
+          method = one(
+              method,
+              '            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);\n',
+              '            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, generationToken);\n',
+              'private generation send token')
+          method = one(
+              method,
+              '''                        response,\n                        cancellationToken))\n''',
+              '''                        response,\n                        generationToken))\n''',
+              'private generation refusal token')
+          method = one(
+              method,
+              '''            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(\n                response.Content,\n                cancellationToken);\n''',
+              '''            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(\n                response.Content,\n                generationToken);\n''',
+              'private generation response token')
+          method = one(
+              method,
+              '''        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)\n        {\n            throw;\n        }\n        catch (Exception exception)\n        {\n            _logger.LogWarning(\n                exception,\n                "Celar AI private generation failed without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_transport_failure");\n        }\n    }\n\n''',
+              '''        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)\n        {\n            _logger.LogWarning(\n                "Celar AI private generation reached its bounded timeout without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_generation_timeout");\n        }\n        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)\n        {\n            throw;\n        }\n        catch (Exception exception)\n        {\n            _logger.LogWarning(\n                exception,\n                "Celar AI private generation failed without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_transport_failure");\n        }\n    }\n\n''',
+              'private generation timeout catch')
+
+          content = content[:method_start] + method + content[method_end:]
+          content = one(
+              content,
+              '    private static string ReadContent(JsonElement root)\n',
+              '''    private static int EnvironmentInteger(\n        string name,\n        int fallback,\n        int minimum,\n        int maximum) =>\n        int.TryParse(Environment.GetEnvironmentVariable(name), out var value)\n            ? Math.Clamp(value, minimum, maximum)\n            : fallback;\n\n    private static string ReadContent(JsonElement root)\n''',
+              'private generation environment integer')
+          routing.write_text(content, encoding='utf-8')
+          print('CELAR_PRIVATE_GENERATION_METHOD_SCOPED_PATCH=APPLIED')
           PY
 
       - name: Set up .NET 10
