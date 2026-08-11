@@ -1,0 +1,158 @@
+name: Observe PR 634 Protected Test API and Oracle Activation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/observe-pr634-test-release.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr634-protected-test-release
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/observe-pr634-test-release-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CONTROLLER_MERGE_COMMIT: 2cce574ac61c01b96d0619251ff8a03de32f57b0
+      APPLICATION_RELEASE_COMMIT: 1b667086dbaffff61890ce36d5680dadc8349bfa
+      DEPLOYMENT_WORKFLOW: projectpulse-deploy-pr634-oracle-boundary-api-test.yml
+      ACTIVATION_WORKFLOW: celar-ai-oracle-test-runtime-activation-v2.yml
+      EVIDENCE_DIR: /tmp/pr634-test-release-observer
+    steps:
+      - name: Observe exact deployment and activation runs
+        id: observe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          workflow_run_id() {
+            local workflow="$1" event="$2" sha="$3" not_before="${4:-1970-01-01T00:00:00Z}"
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=main&event=$event&per_page=50" \
+              | jq -r --arg sha "$sha" --arg notBefore "$not_before" \
+                '.workflow_runs
+                 | map(select(.head_sha == $sha and .created_at >= $notBefore))
+                 | sort_by(.created_at)
+                 | last
+                 | .id // empty'
+          }
+
+          wait_for_run_to_exist() {
+            local workflow="$1" event="$2" sha="$3" not_before="$4" run_id=''
+            for _attempt in $(seq 1 90); do
+              run_id="$(workflow_run_id "$workflow" "$event" "$sha" "$not_before")"
+              if [[ "$run_id" =~ ^[0-9]+$ ]]; then
+                printf '%s' "$run_id"
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          wait_for_terminal_run() {
+            local run_id="$1" output="$2" status=''
+            for _attempt in $(seq 1 360); do
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$output"
+              status="$(jq -r '.status // empty' "$output")"
+              if [[ "$status" == completed ]]; then
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          DEPLOYMENT_RUN_ID="$(wait_for_run_to_exist \
+            "$DEPLOYMENT_WORKFLOW" push "$CONTROLLER_MERGE_COMMIT" '2026-08-11T04:53:00Z')"
+          wait_for_terminal_run "$DEPLOYMENT_RUN_ID" "$EVIDENCE_DIR/deployment-run.json"
+          DEPLOYMENT_CONCLUSION="$(jq -r '.conclusion // empty' "$EVIDENCE_DIR/deployment-run.json")"
+          DEPLOYMENT_CREATED_AT="$(jq -r '.created_at' "$EVIDENCE_DIR/deployment-run.json")"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID/artifacts" \
+            | jq '[.artifacts[] | {id,name,sizeInBytes:.size_in_bytes,digest,expired,createdAt:.created_at,expiresAt:.expires_at}]' \
+            > "$EVIDENCE_DIR/deployment-artifacts.json"
+
+          ACTIVATION_RUN_ID=''
+          ACTIVATION_CONCLUSION='not_started'
+          if [[ "$DEPLOYMENT_CONCLUSION" == success ]]; then
+            ACTIVATION_RUN_ID="$(wait_for_run_to_exist \
+              "$ACTIVATION_WORKFLOW" workflow_dispatch "$CONTROLLER_MERGE_COMMIT" "$DEPLOYMENT_CREATED_AT")"
+            wait_for_terminal_run "$ACTIVATION_RUN_ID" "$EVIDENCE_DIR/activation-run.json"
+            ACTIVATION_CONCLUSION="$(jq -r '.conclusion // empty' "$EVIDENCE_DIR/activation-run.json")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACTIVATION_RUN_ID/artifacts" \
+              | jq '[.artifacts[] | {id,name,sizeInBytes:.size_in_bytes,digest,expired,createdAt:.created_at,expiresAt:.expires_at}]' \
+              > "$EVIDENCE_DIR/activation-artifacts.json"
+          else
+            printf '[]\n' > "$EVIDENCE_DIR/activation-artifacts.json"
+          fi
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg controllerCommit "$CONTROLLER_MERGE_COMMIT" \
+            --arg applicationRelease "$APPLICATION_RELEASE_COMMIT" \
+            --arg deploymentRunId "$DEPLOYMENT_RUN_ID" \
+            --arg deploymentConclusion "$DEPLOYMENT_CONCLUSION" \
+            --arg deploymentUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID" \
+            --arg activationRunId "$ACTIVATION_RUN_ID" \
+            --arg activationConclusion "$ACTIVATION_CONCLUSION" \
+            --arg activationUrl "$(if [[ -n "$ACTIVATION_RUN_ID" ]]; then printf '%s/%s/actions/runs/%s' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$ACTIVATION_RUN_ID"; fi)" \
+            --slurpfile deploymentArtifacts "$EVIDENCE_DIR/deployment-artifacts.json" \
+            --slurpfile activationArtifacts "$EVIDENCE_DIR/activation-artifacts.json" \
+            '{
+              environment:"test",
+              observedAt:$observedAt,
+              controllerCommit:$controllerCommit,
+              applicationReleaseCommit:$applicationRelease,
+              deployment:{runId:($deploymentRunId|tonumber),runUrl:$deploymentUrl,conclusion:$deploymentConclusion,artifacts:$deploymentArtifacts[0]},
+              activation:{runId:(if $activationRunId == "" then null else ($activationRunId|tonumber) end),runUrl:(if $activationUrl == "" then null else $activationUrl end),conclusion:$activationConclusion,artifacts:$activationArtifacts[0]},
+              mutationPerformed:false,
+              productionMutation:false,
+              secretValuesRead:false
+            }' > "$EVIDENCE_DIR/observer-summary.json"
+
+          echo "DEPLOYMENT_RUN_ID=$DEPLOYMENT_RUN_ID"
+          echo "DEPLOYMENT_CONCLUSION=$DEPLOYMENT_CONCLUSION"
+          echo "ACTIVATION_RUN_ID=${ACTIVATION_RUN_ID:-none}"
+          echo "ACTIVATION_CONCLUSION=$ACTIVATION_CONCLUSION"
+          echo 'OBSERVER_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+          [[ "$DEPLOYMENT_CONCLUSION" == success ]]
+          [[ "$ACTIVATION_CONCLUSION" == success ]]
+
+      - name: Upload immutable observer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr634-test-release-observer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr634-test-release-observer
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish observer summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## PR #634 protected-Test observer'
+            echo
+            echo '- Read-only repository Actions observation'
+            echo '- Protected Test deployment mutation by observer: none'
+            echo '- Production mutation: none'
+            if [[ -f "$EVIDENCE_DIR/observer-summary.json" ]]; then
+              jq -r '"- Deployment run: " + (.deployment.runUrl // "not found") + " — " + (.deployment.conclusion // "unknown")' "$EVIDENCE_DIR/observer-summary.json"
+              jq -r '"- Activation run: " + (.activation.runUrl // "not found") + " — " + (.activation.conclusion // "unknown")' "$EVIDENCE_DIR/observer-summary.json"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
