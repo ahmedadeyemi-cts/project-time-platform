@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 2bac2f49ef8e931328f07247e58cd151f43c04c6
+      EXPECTED_PARENT: 63b7de56d24985ad1ebee989a5a4efa31883a527
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
