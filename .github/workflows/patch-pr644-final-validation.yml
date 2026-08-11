@@ -63,7 +63,9 @@ jobs:
               "          elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<\"$CHANGED\"; then\n")
           replace_once(
               enterprise,
+              "          PROHIBITED=\"$(grep -E '^(deployment/|scripts/.*deploy|\\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\\.cs|src/backend/ProjectTime\\.Api/Modules/AiProviderConfigurationModule\\.cs)' <<<\"$CHANGED\" || true)\"\n"
               "          if [[ \"$HEAD_BRANCH\" == security/celar-ai-production-readiness-* ]]; then\n",
+              "          PROHIBITED=\"$(grep -E '^(deployment/|scripts/.*deploy|\\.github/workflows/projectpulse-deploy-|src/backend/ProjectTime\\.Api/Ai/(ProjectPulseAiConfiguration|ProjectPulseAiRemoteProviders|ProjectPulseAiSecretStore)\\.cs|src/backend/ProjectTime\\.Api/Modules/AiProviderConfigurationModule\\.cs)' <<<\"$CHANGED\" || true)\"\n"
               "          if [[ \"$HEAD_BRANCH\" == fix/ask-celar-ai-public-questions-resilience-* ]]; then\n"
               "            PROHIBITED=\"$(grep -Fvx '.github/workflows/celar-ai-ask-operations-ci.yml' <<<\"$PROHIBITED\" || true)\"\n"
               "            grep -Fxq '.github/workflows/celar-ai-ask-operations-ci.yml' <<<\"$CHANGED\"\n"
