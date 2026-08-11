@@ -382,8 +382,16 @@ export default function EngineerTaskCloseoutCenter({ authSession }) {
         ) : filteredItems.length === 0 ? (
           <div className="engineer-closeout-empty">
             <span className="engineer-closeout-empty__icon"><CloseoutIcon name={tab === 'active' ? 'check' : 'history'} /></span>
-            <h2>{tab === 'active' ? 'No active tasks match this view' : 'No historical tasks match this view'}</h2>
-            <p>{tab === 'active' ? 'When eligible work is assigned, it will appear here for closeout.' : 'Closed task evidence will remain available here for review.'}</p>
+            <h2>{tab === 'active'
+              ? (sourceItems.length === 0 ? 'No tasks are available for closeout' : 'No tasks match the selected filters')
+              : (sourceItems.length === 0 ? 'No closeout history is available' : 'No historical tasks match the selected filters')}</h2>
+            <p>{tab === 'active'
+              ? (sourceItems.length === 0
+                ? 'This engineer currently has no Service Request, Pre-Sales, or Internal assignment eligible for closeout. No action is required.'
+                : 'Adjust the search or request-type filter to review the engineer’s eligible assignments.')
+              : (sourceItems.length === 0
+                ? 'Completed closeout evidence will appear here after an engineer closes an eligible assignment.'
+                : 'Adjust the search or request-type filter to review retained closeout evidence.')}</p>
           </div>
         ) : (
           <div className="engineer-closeout-task-list">

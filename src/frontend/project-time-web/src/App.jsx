@@ -4462,7 +4462,9 @@ export default function App() {
           fetchJson('/api/users/timesheet-preferences', authSession),
           fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`, authSession),
           fetchJson('/api/project-intake/summary', authSession),
-          fetchJson('/api/project-management/summary', authSession),
+          (activeRoute === 'engineer-task-closeout'
+            ? Promise.resolve({ skipped: 'module001a_owns_route_data' })
+            : fetchJson('/api/project-management/summary', authSession)),
           fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`, authSession),
           (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/expenses/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
           (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/invoicing/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
@@ -4533,7 +4535,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedWeekStart, authSession?.sessionToken]);
+  }, [selectedWeekStart, authSession?.sessionToken, activeRoute]);
 
   useEffect(() => {
     let cancelled = false;
@@ -8560,8 +8562,12 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {(activeRoute === 'engineer-task-closeout' && canUseEngineerTaskCloseout) ? (
-        <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
+      {activeRoute === 'engineer-task-closeout' ? (
+        <section
+          id="engineer-task-closeout"
+          className="panel engineer-task-closeout-route-panel"
+          data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+        >
           <EngineerTaskCloseoutCenter authSession={authSession} />
         </section>
       ) : null}

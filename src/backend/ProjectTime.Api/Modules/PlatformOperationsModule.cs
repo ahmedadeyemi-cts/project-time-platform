@@ -56,6 +56,14 @@ public static partial class PlatformOperationsModule
             access = AccessContract(context),
             platform = snapshot.Platform,
             runtime = snapshot.Runtime,
+            versions = await BuildVersionInventoryAsync(connection, context.RequestAborted),
+            serviceOperations = new
+            {
+                controlSurface = "#system-diagnostics",
+                workflow = "diagnose_prepare_separate_approve_stage_execute_verify",
+                directProcessRestartEnabled = false,
+                viewAsReadOnly = IsViewAs(context)
+            },
             resources = snapshot.Resources,
             dependencies = snapshot.Dependencies,
             integrations = snapshot.Integrations,
@@ -504,6 +512,62 @@ public static partial class PlatformOperationsModule
             adapter.Replicas,
             Capabilities(adapter),
             adapter.ProviderSpecificDetails);
+    }
+
+    private static async Task<object[]> BuildVersionInventoryAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var databaseVersion = "not_reported";
+        try
+        {
+            await using var command = new NpgsqlCommand("SHOW server_version;", connection);
+            databaseVersion = Convert.ToString(
+                    await command.ExecuteScalarAsync(cancellationToken))?.Trim()
+                ?? "not_reported";
+        }
+        catch
+        {
+            databaseVersion = "not_reported";
+        }
+
+        static string Setting(string name, string fallback = "not_reported")
+        {
+            var value = Environment.GetEnvironmentVariable(name)?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        }
+
+        static bool Enabled(string name) =>
+            bool.TryParse(
+                Environment.GetEnvironmentVariable(name)?.Trim(),
+                out var enabled)
+            && enabled;
+
+        var inferenceModel = Setting("PROJECTPULSE_PRIVATE_INFERENCE_MODEL");
+        var embeddingModel = Setting("PROJECTPULSE_PRIVATE_EMBEDDING_MODEL");
+        var ocrModel = Setting("PROJECTPULSE_PRIVATE_OCR_MODEL");
+        var scannerMode = Setting(
+            "PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE");
+        var signatureVersion = Setting(
+            "PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION");
+        var externalRuntime = Enabled(
+            "PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED");
+
+        return
+        [
+            new { key = "pulse_api", component = "Pulse API", version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "not_recorded", status = "running", source = "assembly", detail = "Current API application assembly." },
+            new { key = "pulse_release", component = "Pulse release", version = ReleaseSha(), status = "running", source = "deployment", detail = "Immutable source marker for the active API revision." },
+            new { key = "dotnet", component = ".NET runtime", version = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, status = "running", source = "runtime", detail = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString() },
+            new { key = "operating_system", component = "Operating system", version = System.Runtime.InteropServices.RuntimeInformation.OSDescription, status = "running", source = "runtime", detail = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString() },
+            new { key = "postgresql", component = "PostgreSQL", version = databaseVersion, status = databaseVersion == "not_reported" ? "not_reported" : "running", source = "database", detail = "Server-reported database version." },
+            new { key = "private_inference", component = "Ollama private inference model", version = inferenceModel, status = inferenceModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Availability remains governed by Module 064 live health." },
+            new { key = "private_embeddings", component = "Ollama embedding model", version = embeddingModel, status = embeddingModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Expected vector dimension remains 768." },
+            new { key = "ocr", component = "Private OCR", version = ocrModel, status = ocrModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Tesseract engine readiness remains governed by the authenticated private runtime." },
+            new { key = "malware_scanning", component = "Private malware scanning", version = signatureVersion, status = scannerMode == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = $"Mode: {scannerMode}. Exact engine version is shown only when reported by the private runtime." },
+            new { key = "private_gateway", component = "Celar AI HTTPS gateway", version = Setting("PROJECTPULSE_CELAR_AI_GATEWAY_VERSION"), status = externalRuntime ? "configured" : "not_configured", source = "deployment_configuration", detail = "Raw endpoint and credential values are not returned." },
+            new { key = "caddy", component = "Caddy TLS gateway", version = Setting("PROJECTPULSE_CELAR_AI_CADDY_VERSION"), status = externalRuntime ? "configured" : "not_configured", source = "deployment_configuration", detail = "Exact version is displayed only when the runtime publishes approved non-secret metadata." },
+            new { key = "clamav", component = "ClamAV engine", version = Setting("PROJECTPULSE_CELAR_AI_CLAMAV_VERSION", signatureVersion), status = scannerMode == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Signature evidence is shown when an engine version is not separately reported." }
+        ];
     }
 
     private static List<ApiInventoryItem> BuildApiInventory(HttpContext context)

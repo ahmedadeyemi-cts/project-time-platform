@@ -101,11 +101,15 @@ export default function ServiceControlCenter({ authSession }) {
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const [overview, inventory] = await Promise.all([
+      const [overview, inventory, operationsAdapter, remediationPolicy] = await Promise.all([
         readJson('/api/platform-operations/overview', authSession),
-        readJson('/api/platform-operations/apis', authSession)
+        readJson('/api/platform-operations/apis', authSession),
+        readJson('/api/system-diagnostics/operations-adapter-readiness', authSession)
+          .catch((error) => ({ ready: false, enabled: false, allowedTargets: [], message: error?.message ?? 'Controlled restart readiness is unavailable.' })),
+        readJson('/api/system-diagnostics/remediation-policy', authSession)
+          .catch((error) => ({ execution: {}, message: error?.message ?? 'Remediation policy is unavailable.' }))
       ]);
-      setState({ loading: false, overview, inventory, error: '' });
+      setState({ loading: false, overview, inventory, operationsAdapter, remediationPolicy, error: '' });
     } catch (error) {
       setState((current) => ({ ...current, loading: false, error: error?.message ?? 'System health is unavailable.' }));
     }
@@ -167,6 +171,11 @@ export default function ServiceControlCenter({ authSession }) {
   const drives = Array.isArray(resources.drives) ? resources.drives : [];
   const dependencies = overview.dependencies ?? {};
   const inventorySummary = state.inventory?.summary ?? {};
+  const versions = Array.isArray(overview.versions) ? overview.versions : [];
+  const operationsAdapter = state.operationsAdapter ?? {};
+  const remediationPolicy = state.remediationPolicy ?? {};
+  const restartTargets = Array.isArray(operationsAdapter.allowedTargets) ? operationsAdapter.allowedTargets : [];
+  const isViewAs = overview.access?.isViewAs === true;
 
   return (
     <section id="service-control-center" className="panel service-control-center" data-module="013" data-contract="provider-neutral">
@@ -196,6 +205,34 @@ export default function ServiceControlCenter({ authSession }) {
         <article><span>Release</span><strong title={runtime.releaseSha}>{runtime.releaseSha?.slice(0, 12) ?? 'Not recorded'}</strong><small>Version {runtime.applicationVersion ?? 'Not recorded'}</small></article>
         <article><span>Uptime</span><strong>{duration(runtime.uptimeSeconds)}</strong><small>Started {dateTime(runtime.processStartedAt)}</small></article>
         <article><span>Deployment</span><strong>{runtime.deployment ?? 'Not reported'}</strong><small>{runtime.lastDeploymentAt ? dateTime(runtime.lastDeploymentAt) : 'Deployment time not reported'}</small></article>
+      </section>
+
+      <section className="service-control-card" data-module-013-version-inventory="live">
+        <div className="service-control-card-header">
+          <div>
+            <p className="eyebrow">Runtime versions</p>
+            <h2>Version inventory</h2>
+            <p>Server-reported versions and deployment-managed component identities. Missing values remain visibly not reported rather than being inferred.</p>
+          </div>
+          <span>{versions.length} components</span>
+        </div>
+        <div className="platform-table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th>Version or model</th><th>Status</th><th>Evidence source</th><th>Operational detail</th></tr></thead>
+            <tbody>
+              {versions.map((item) => (
+                <tr key={item.key}>
+                  <td><strong>{item.component}</strong></td>
+                  <td><code>{item.version || 'not_reported'}</code></td>
+                  <td><Status value={item.status} /></td>
+                  <td>{title(item.source)}</td>
+                  <td>{item.detail}</td>
+                </tr>
+              ))}
+              {!versions.length ? <tr><td colSpan="5">Version inventory is not available from the active API revision.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="service-control-card">
@@ -266,6 +303,47 @@ export default function ServiceControlCenter({ authSession }) {
           </div>
         </section>
       </div>
+
+      <section className="service-control-card" data-module-013-controlled-restart="module-998-governed">
+        <div className="service-control-card-header">
+          <div>
+            <p className="eyebrow">Controlled service operations</p>
+            <h2>Restart and remediation</h2>
+            <p>Authorized administrators can restart an exact allowlisted Azure Container App through the governed Module 998 lifecycle: diagnose, prepare, separate approval, stage, execute, and verify.</p>
+          </div>
+          <Status value={operationsAdapter.ready ? 'healthy' : 'adapter_required'} />
+        </div>
+        <div className="dependency-list">
+          <article>
+            <div><strong>Azure Container Apps restart adapter</strong><Status value={operationsAdapter.ready ? 'configured' : 'adapter_required'} /></div>
+            <p>{operationsAdapter.ready
+              ? 'Managed identity and the bounded restart adapter are ready.'
+              : (operationsAdapter.message || 'The restart adapter requires approved managed-identity configuration and an exact target allowlist.')}</p>
+            <small>Authentication: {title(operationsAdapter.authentication || 'managed_identity_no_client_secret')}</small>
+          </article>
+          <article>
+            <div><strong>Allowed restart targets</strong><span>{restartTargets.length}</span></div>
+            <p>{restartTargets.length ? restartTargets.join(' · ') : 'No Container App target is currently approved for restart.'}</p>
+            <small>HTTP routes cannot be restarted independently; they share the complete API application process.</small>
+          </article>
+          <article>
+            <div><strong>Governance lifecycle</strong><span>Separate approval required</span></div>
+            <p>{overview.serviceOperations?.workflow?.replaceAll('_', ' → ') || 'Diagnose → prepare → approve → stage → execute → verify'}</p>
+            <small>{isViewAs ? 'View-As is read-only. Exit View-As before preparing or executing a remediation.' : 'Every accepted action writes audit evidence and requires post-action verification.'}</small>
+          </article>
+        </div>
+        <div className="service-control-card-header">
+          <div><p>Direct process-kill and arbitrary service-name actions remain prohibited.</p></div>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => { window.location.hash = '#system-diagnostics'; }}
+          >
+            Open controlled restart workspace
+          </button>
+        </div>
+        {remediationPolicy.message ? <div className="service-control-alert warning">{remediationPolicy.message}</div> : null}
+      </section>
 
       <section className="service-control-card api-inventory-card">
         <div className="service-control-card-header">
