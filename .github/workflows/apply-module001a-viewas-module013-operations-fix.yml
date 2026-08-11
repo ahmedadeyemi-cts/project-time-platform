@@ -1,0 +1,553 @@
+name: Apply Module 001A View-As and Module 013 Operations Fix
+
+on:
+  push:
+    branches:
+      - fix/module001a-viewas-module013-operations-current-main-20260811
+    paths:
+      - .github/workflows/apply-module001a-viewas-module013-operations-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-module001a-viewas-module013-operations-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/module001a-viewas-module013-operations-current-main-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact parent and apply bounded correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$(git rev-parse HEAD^)" == '5b3d987e9cf78db5b0924bad379d26be7608b04c' ]]
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one anchor in {path}, found {count}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          app = Path('src/frontend/project-time-web/src/App.jsx')
+          text = app.read_text(encoding='utf-8')
+          old_route = '''      {(activeRoute === 'engineer-task-closeout' && canUseEngineerTaskCloseout) ? (
+                <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
+                  <EngineerTaskCloseoutCenter authSession={authSession} />
+                </section>
+              ) : null}'''
+          if old_route not in text:
+              old_route = '''      {(activeRoute === 'engineer-task-closeout' && canUseEngineerTaskCloseout) ? (
+        <section id="engineer-task-closeout" className="panel engineer-task-closeout-route-panel">
+          <EngineerTaskCloseoutCenter authSession={authSession} />
+        </section>
+      ) : null}'''
+          new_route = '''      {activeRoute === 'engineer-task-closeout' ? (
+        <section
+          id="engineer-task-closeout"
+          className="panel engineer-task-closeout-route-panel"
+          data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+        >
+          <EngineerTaskCloseoutCenter authSession={authSession} />
+        </section>
+      ) : null}'''
+          if text.count(old_route) != 1:
+              raise SystemExit(f'App Module 001A route anchor count={text.count(old_route)}')
+          text = text.replace(old_route, new_route, 1)
+          summary_call = "          fetchJson('/api/project-management/summary', authSession),"
+          summary_replacement = "          (activeRoute === 'engineer-task-closeout'\n            ? Promise.resolve({ skipped: 'module001a_owns_route_data' })\n            : fetchJson('/api/project-management/summary', authSession)),"
+          if text.count(summary_call) != 1:
+              raise SystemExit(f'App project-management summary anchor count={text.count(summary_call)}')
+          text = text.replace(summary_call, summary_replacement, 1)
+          load_start = text.find('async function loadStatus()')
+          if load_start < 0:
+              raise SystemExit('App loadStatus was not found')
+          dependency = '}, [selectedWeekStart, authSession?.sessionToken]);'
+          dependency_at = text.find(dependency, load_start)
+          if dependency_at >= 0:
+              text = text[:dependency_at] + '}, [selectedWeekStart, authSession?.sessionToken, activeRoute]);' + text[dependency_at + len(dependency):]
+          app.write_text(text, encoding='utf-8')
+
+          replace_once(
+              'src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx',
+              '''            <h2>{tab === 'active' ? 'No active tasks match this view' : 'No historical tasks match this view'}</h2>
+            <p>{tab === 'active' ? 'When eligible work is assigned, it will appear here for closeout.' : 'Closed task evidence will remain available here for review.'}</p>''',
+              '''            <h2>{tab === 'active'
+              ? (sourceItems.length === 0 ? 'No tasks are available for closeout' : 'No tasks match the selected filters')
+              : (sourceItems.length === 0 ? 'No closeout history is available' : 'No historical tasks match the selected filters')}</h2>
+            <p>{tab === 'active'
+              ? (sourceItems.length === 0
+                ? 'This engineer currently has no Service Request, Pre-Sales, or Internal assignment eligible for closeout. No action is required.'
+                : 'Adjust the search or request-type filter to review the engineer’s eligible assignments.')
+              : (sourceItems.length === 0
+                ? 'Completed closeout evidence will appear here after an engineer closes an eligible assignment.'
+                : 'Adjust the search or request-type filter to review retained closeout evidence.')}</p>''',
+              'Module 001A enterprise empty state')
+
+          page = Path('src/frontend/project-time-web/src/PageContextGuide.jsx')
+          text = page.read_text(encoding='utf-8')
+          helper_anchor = 'function getContext(route, module) {'
+          helper = '''function activeViewAsUser() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return value?.userId ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+'''
+          if text.count(helper_anchor) != 1:
+              raise SystemExit('PageContextGuide helper anchor did not match')
+          text = text.replace(helper_anchor, helper + helper_anchor, 1)
+          old_effect = '''    if (!module) {
+      setApiEvidence({ status: 'not_applicable', apis: [] });
+      return () => { active = false; };
+    }
+    setApiEvidence({ status: 'loading', apis: [] });'''
+          new_effect = '''    if (!module) {
+      setApiEvidence({ status: 'not_applicable', apis: [] });
+      return () => { active = false; };
+    }
+    if (activeViewAsUser()) {
+      setApiEvidence({ status: 'view_as_documented_contract', apis: [] });
+      return () => { active = false; };
+    }
+    setApiEvidence({ status: 'loading', apis: [] });'''
+          if text.count(old_effect) != 1:
+              raise SystemExit('PageContextGuide effect anchor did not match')
+          text = text.replace(old_effect, new_effect, 1)
+          permission_line = "            {apiEvidence.status === 'permission_limited' ? <small>Exact live API inventory requires the API inventory permission; the documented module contract is shown.</small> : null}"
+          permission_new = permission_line + "\n            {apiEvidence.status === 'view_as_documented_contract' ? <small>View-As uses the effective user’s documented module contract and does not request administrator-only API inventory.</small> : null}"
+          if text.count(permission_line) != 1:
+              raise SystemExit('PageContextGuide status message anchor did not match')
+          page.write_text(text.replace(permission_line, permission_new, 1), encoding='utf-8')
+
+          Path('src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx').write_text('''import { useEffect, useState } from 'react';
+import {
+  startAiProviderReadinessMonitoring,
+  stopAiProviderReadinessMonitoring
+} from './ai-provider-readiness-store.js';
+
+function sessionToken(authSession) {
+  return authSession?.sessionToken
+    ?? authSession?.token
+    ?? authSession?.accessToken
+    ?? '';
+}
+
+function viewAsActive() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return Boolean(value?.userId);
+  } catch {
+    return false;
+  }
+}
+
+export default function AiProviderReadinessController({ authSession }) {
+  const token = sessionToken(authSession);
+  const [authorityVersion, setAuthorityVersion] = useState(0);
+
+  useEffect(() => {
+    const refreshAuthority = () => setAuthorityVersion((value) => value + 1);
+    window.addEventListener('projectpulse:view-as-changed', refreshAuthority);
+    window.addEventListener('storage', refreshAuthority);
+    return () => {
+      window.removeEventListener('projectpulse:view-as-changed', refreshAuthority);
+      window.removeEventListener('storage', refreshAuthority);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!token || viewAsActive()) {
+      stopAiProviderReadinessMonitoring();
+      return undefined;
+    }
+
+    const stop = startAiProviderReadinessMonitoring();
+    return () => stop?.();
+  }, [token, authorityVersion]);
+
+  return null;
+}
+''', encoding='utf-8')
+
+          approval = Path('src/frontend/project-time-web/src/approval-access-navigation-compatibility.js')
+          text = approval.read_text(encoding='utf-8')
+          approval_anchor = 'function normalizeApprovalAccess(payload) {'
+          approval_helpers = '''function readViewAsUser() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return value?.userId ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function viewAsHasApprovalAuthority(user) {
+  const allowed = new Set([
+    'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
+    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT'
+  ]);
+  return roleCodes(user?.roleCodes ?? user?.roles ?? user?.roleCode).some((role) => allowed.has(role));
+}
+
+function viewAsReadOnlyApprovalAccess(user) {
+  return {
+    userId: user?.userId ?? null,
+    email: cleanText(user?.email),
+    displayName: cleanText(user?.displayName ?? user?.email),
+    roleCodes: roleCodes(user?.roleCodes ?? user?.roles ?? user?.roleCode),
+    canViewTimeApprovals: false,
+    canViewPasswordResetApprovals: false,
+    canViewAllTimeApprovals: false,
+    canResolveStaleApprovals: false,
+    scope: 'view_as_no_approval_authority',
+    scopeLabel: 'No approval queue for this effective user',
+    primaryRoleLabel: cleanText(user?.roleCodes ?? user?.roleCode)
+  };
+}
+
+'''
+          if text.count(approval_anchor) != 1:
+              raise SystemExit('Approval compatibility helper anchor did not match')
+          text = text.replace(approval_anchor, approval_helpers + approval_anchor, 1)
+          access_anchor = '''    const summaryPayload = await jsonPayload(summaryResponse);
+    let access = null;
+
+    try {'''
+          access_replacement = '''    const summaryPayload = await jsonPayload(summaryResponse);
+    let access = null;
+    const viewAsUser = readViewAsUser();
+    if (viewAsUser && !viewAsHasApprovalAuthority(viewAsUser)) {
+      return responseWithJson(summaryResponse, {
+        ...summaryPayload,
+        access: viewAsReadOnlyApprovalAccess(viewAsUser)
+      });
+    }
+
+    try {'''
+          if text.count(access_anchor) != 1:
+              raise SystemExit('Approval compatibility access anchor did not match')
+          approval.write_text(text.replace(access_anchor, access_replacement, 1), encoding='utf-8')
+
+          platform = Path('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs')
+          text = platform.read_text(encoding='utf-8')
+          overview_anchor = '            runtime = snapshot.Runtime,\n            resources = snapshot.Resources,'
+          overview_replacement = '            runtime = snapshot.Runtime,\n            versions = await BuildVersionInventoryAsync(connection, context.RequestAborted),\n            serviceOperations = new\n            {\n                controlSurface = "#system-diagnostics",\n                workflow = "diagnose_prepare_separate_approve_stage_execute_verify",\n                directProcessRestartEnabled = false,\n                viewAsReadOnly = IsViewAs(context)\n            },\n            resources = snapshot.Resources,'
+          if text.count(overview_anchor) != 1:
+              raise SystemExit('Platform overview version anchor did not match')
+          text = text.replace(overview_anchor, overview_replacement, 1)
+          method_anchor = '    private static List<ApiInventoryItem> BuildApiInventory(HttpContext context)\n    {'
+          version_method = '''    private static async Task<object[]> BuildVersionInventoryAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var databaseVersion = "not_reported";
+        try
+        {
+            await using var command = new NpgsqlCommand("SHOW server_version;", connection);
+            databaseVersion = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken))?.Trim()
+                ?? "not_reported";
+        }
+        catch
+        {
+            databaseVersion = "not_reported";
+        }
+
+        static string Setting(string name, string fallback = "not_reported")
+        {
+            var value = Environment.GetEnvironmentVariable(name)?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        }
+
+        static bool Enabled(string name) =>
+            bool.TryParse(Environment.GetEnvironmentVariable(name)?.Trim(), out var enabled) && enabled;
+
+        var inferenceModel = Setting("PROJECTPULSE_PRIVATE_INFERENCE_MODEL");
+        var embeddingModel = Setting("PROJECTPULSE_PRIVATE_EMBEDDING_MODEL");
+        var ocrModel = Setting("PROJECTPULSE_PRIVATE_OCR_MODEL");
+        var scannerMode = Setting("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE");
+        var signatureVersion = Setting("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION");
+        var externalRuntime = Enabled("PROJECTPULSE_CELAR_AI_EXTERNAL_HTTPS_RUNTIME_ENABLED");
+
+        return
+        [
+            new { key = "pulse_api", component = "Pulse API", version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "not_recorded", status = "running", source = "assembly", detail = "Current API application assembly." },
+            new { key = "pulse_release", component = "Pulse release", version = ReleaseSha(), status = "running", source = "deployment", detail = "Immutable source marker for the active API revision." },
+            new { key = "dotnet", component = ".NET runtime", version = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, status = "running", source = "runtime", detail = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString() },
+            new { key = "operating_system", component = "Operating system", version = System.Runtime.InteropServices.RuntimeInformation.OSDescription, status = "running", source = "runtime", detail = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString() },
+            new { key = "postgresql", component = "PostgreSQL", version = databaseVersion, status = databaseVersion == "not_reported" ? "not_reported" : "running", source = "database", detail = "Server-reported database version." },
+            new { key = "private_inference", component = "Ollama private inference model", version = inferenceModel, status = inferenceModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Availability remains governed by Module 064 live health." },
+            new { key = "private_embeddings", component = "Ollama embedding model", version = embeddingModel, status = embeddingModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Expected vector dimension remains 768." },
+            new { key = "ocr", component = "Private OCR", version = ocrModel, status = ocrModel == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Tesseract engine readiness remains governed by the authenticated private runtime." },
+            new { key = "malware_scanning", component = "Private malware scanning", version = signatureVersion, status = scannerMode == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = $"Mode: {scannerMode}. Exact engine version is shown only when reported by the private runtime." },
+            new { key = "private_gateway", component = "Celar AI HTTPS gateway", version = Setting("PROJECTPULSE_CELAR_AI_GATEWAY_VERSION"), status = externalRuntime ? "configured" : "not_configured", source = "deployment_configuration", detail = "Raw endpoint and credential values are not returned." },
+            new { key = "caddy", component = "Caddy TLS gateway", version = Setting("PROJECTPULSE_CELAR_AI_CADDY_VERSION"), status = externalRuntime ? "configured" : "not_configured", source = "deployment_configuration", detail = "Exact version is displayed when the runtime publishes approved non-secret metadata." },
+            new { key = "clamav", component = "ClamAV engine", version = Setting("PROJECTPULSE_CELAR_AI_CLAMAV_VERSION", signatureVersion), status = scannerMode == "not_reported" ? "not_configured" : "configured", source = "deployment_configuration", detail = "Signature evidence is shown when an engine version is not separately reported." }
+        ];
+    }
+
+'''
+          if text.count(method_anchor) != 1:
+              raise SystemExit('Platform version method anchor did not match')
+          platform.write_text(text.replace(method_anchor, version_method + method_anchor, 1), encoding='utf-8')
+
+          service = Path('src/frontend/project-time-web/src/ServiceControlCenter.jsx')
+          text = service.read_text(encoding='utf-8')
+          old_load = '''      const [overview, inventory] = await Promise.all([
+        readJson('/api/platform-operations/overview', authSession),
+        readJson('/api/platform-operations/apis', authSession)
+      ]);
+      setState({ loading: false, overview, inventory, error: '' });'''
+          new_load = '''      const [overview, inventory, operationsAdapter, remediationPolicy] = await Promise.all([
+        readJson('/api/platform-operations/overview', authSession),
+        readJson('/api/platform-operations/apis', authSession),
+        readJson('/api/system-diagnostics/operations-adapter-readiness', authSession)
+          .catch((error) => ({ ready: false, enabled: false, allowedTargets: [], message: error?.message ?? 'Controlled restart readiness is unavailable.' })),
+        readJson('/api/system-diagnostics/remediation-policy', authSession)
+          .catch((error) => ({ execution: {}, message: error?.message ?? 'Remediation policy is unavailable.' }))
+      ]);
+      setState({ loading: false, overview, inventory, operationsAdapter, remediationPolicy, error: '' });'''
+          if text.count(old_load) != 1:
+              raise SystemExit('ServiceControl load anchor did not match')
+          text = text.replace(old_load, new_load, 1)
+          data_anchor = '''  const dependencies = overview.dependencies ?? {};
+  const inventorySummary = state.inventory?.summary ?? {};'''
+          data_new = '''  const dependencies = overview.dependencies ?? {};
+  const inventorySummary = state.inventory?.summary ?? {};
+  const versions = Array.isArray(overview.versions) ? overview.versions : [];
+  const operationsAdapter = state.operationsAdapter ?? {};
+  const remediationPolicy = state.remediationPolicy ?? {};
+  const restartTargets = Array.isArray(operationsAdapter.allowedTargets) ? operationsAdapter.allowedTargets : [];
+  const isViewAs = overview.access?.isViewAs === true;'''
+          if text.count(data_anchor) != 1:
+              raise SystemExit('ServiceControl data anchor did not match')
+          text = text.replace(data_anchor, data_new, 1)
+          identity_end = '''      </section>
+
+      <section className="service-control-card">
+        <div className="service-control-card-header">
+          <div><p className="eyebrow">Resource usage</p><h2>Compute, memory, and storage</h2></div>'''
+          version_section = '''      </section>
+
+      <section className="service-control-card" data-module-013-version-inventory="live">
+        <div className="service-control-card-header">
+          <div>
+            <p className="eyebrow">Runtime versions</p>
+            <h2>Version inventory</h2>
+            <p>Server-reported versions and deployment-managed component identities. Missing versions remain visibly not reported rather than being inferred.</p>
+          </div>
+          <span>{versions.length} components</span>
+        </div>
+        <div className="platform-table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th>Version or model</th><th>Status</th><th>Evidence source</th><th>Operational detail</th></tr></thead>
+            <tbody>
+              {versions.map((item) => (
+                <tr key={item.key}>
+                  <td><strong>{item.component}</strong></td>
+                  <td><code>{item.version || 'not_reported'}</code></td>
+                  <td><Status value={item.status} /></td>
+                  <td>{title(item.source)}</td>
+                  <td>{item.detail}</td>
+                </tr>
+              ))}
+              {!versions.length ? <tr><td colSpan="5">Version inventory is not available from the active API revision.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="service-control-card">
+        <div className="service-control-card-header">
+          <div><p className="eyebrow">Resource usage</p><h2>Compute, memory, and storage</h2></div>'''
+          if text.count(identity_end) != 1:
+              raise SystemExit('ServiceControl identity section anchor did not match')
+          text = text.replace(identity_end, version_section, 1)
+          api_anchor = '      <section className="service-control-card api-inventory-card">'
+          operations_section = '''      <section className="service-control-card" data-module-013-controlled-restart="module-998-governed">
+        <div className="service-control-card-header">
+          <div>
+            <p className="eyebrow">Controlled service operations</p>
+            <h2>Restart and remediation</h2>
+            <p>Authorized administrators can restart an exact allowlisted Azure Container App through the governed Module 998 lifecycle: diagnose, prepare, separate approval, stage, execute, and verify.</p>
+          </div>
+          <Status value={operationsAdapter.ready ? 'healthy' : 'adapter_required'} />
+        </div>
+        <div className="dependency-list">
+          <article>
+            <div><strong>Azure Container Apps restart adapter</strong><Status value={operationsAdapter.ready ? 'configured' : 'adapter_required'} /></div>
+            <p>{operationsAdapter.ready
+              ? 'Managed identity and the bounded restart adapter are ready.'
+              : (operationsAdapter.message || 'The restart adapter requires approved managed-identity configuration and an exact target allowlist.')}</p>
+            <small>Authentication: {title(operationsAdapter.authentication || 'managed_identity_no_client_secret')}</small>
+          </article>
+          <article>
+            <div><strong>Allowed restart targets</strong><span>{restartTargets.length}</span></div>
+            <p>{restartTargets.length ? restartTargets.join(' · ') : 'No Container App target is currently approved for restart.'}</p>
+            <small>HTTP routes cannot be restarted independently; they share the complete API application process.</small>
+          </article>
+          <article>
+            <div><strong>Governance lifecycle</strong><span>Separate approval required</span></div>
+            <p>{overview.serviceOperations?.workflow?.replaceAll('_', ' → ') || 'Diagnose → prepare → approve → stage → execute → verify'}</p>
+            <small>{isViewAs ? 'View-As is read-only. Exit View-As before preparing or executing a remediation.' : 'Every accepted action writes audit evidence and requires post-action verification.'}</small>
+          </article>
+        </div>
+        <div className="service-control-card-header">
+          <div><p>Direct process-kill and arbitrary service-name actions remain prohibited.</p></div>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => { window.location.hash = '#system-diagnostics'; }}
+          >
+            Open controlled restart workspace
+          </button>
+        </div>
+        {remediationPolicy.message ? <div className="service-control-alert warning">{remediationPolicy.message}</div> : null}
+      </section>
+
+'''
+          if text.count(api_anchor) != 1:
+              raise SystemExit('ServiceControl API section anchor did not match')
+          service.write_text(text.replace(api_anchor, operations_section + api_anchor, 1), encoding='utf-8')
+
+          validator = Path('tests/validate-module001a-viewas-module013-operations.mjs')
+          validator.write_text('''import fs from 'node:fs';
+
+const read = (path) => fs.readFileSync(path, 'utf8');
+const requireText = (content, marker, label) => {
+  if (!content.includes(marker)) throw new Error(`${label}: missing ${marker}`);
+};
+const rejectText = (content, marker, label) => {
+  if (content.includes(marker)) throw new Error(`${label}: forbidden ${marker}`);
+};
+
+const app = read('src/frontend/project-time-web/src/App.jsx');
+const closeout = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
+const guide = read('src/frontend/project-time-web/src/PageContextGuide.jsx');
+const provider = read('src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx');
+const approval = read('src/frontend/project-time-web/src/approval-access-navigation-compatibility.js');
+const operationsUi = read('src/frontend/project-time-web/src/ServiceControlCenter.jsx');
+const operationsApi = read('src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs');
+const remediationApi = read('src/backend/ProjectTime.Api/Modules/SystemDiagnosticRemediationModule.cs');
+
+requireText(app, "activeRoute === 'engineer-task-closeout' ? (", 'Module 001A direct route');
+rejectText(app, "activeRoute === 'engineer-task-closeout' && canUseEngineerTaskCloseout", 'client-only Module 001A route gate');
+requireText(app, "module001a_owns_route_data", 'Module 001A route-owned data boundary');
+requireText(closeout, 'No tasks are available for closeout', 'enterprise closeout empty state');
+requireText(closeout, 'No action is required.', 'enterprise no-action message');
+requireText(guide, 'view_as_documented_contract', 'View-As page context boundary');
+requireText(provider, 'viewAsActive()', 'View-As provider-monitoring boundary');
+requireText(approval, 'view_as_no_approval_authority', 'View-As approval no-authority contract');
+requireText(operationsApi, 'BuildVersionInventoryAsync', 'Module 013 version inventory');
+requireText(operationsApi, 'SHOW server_version;', 'PostgreSQL server version evidence');
+requireText(operationsApi, 'secretValuesReturned = false', 'Module 013 security contract');
+requireText(operationsUi, 'Version inventory', 'Module 013 version inventory UI');
+requireText(operationsUi, 'Open controlled restart workspace', 'Module 013 controlled restart entry');
+requireText(operationsUi, '/api/system-diagnostics/operations-adapter-readiness', 'Module 998 restart readiness');
+requireText(remediationApi, 'restart_service', 'governed restart implementation');
+requireText(remediationApi, 'separate approval', 'restart separation of duties');
+rejectText(operationsUi, 'Process.Start', 'arbitrary process execution');
+rejectText(operationsUi, '/restart?service=', 'arbitrary restart target');
+
+console.log('MODULE_001A_VIEW_AS_ROUTE=PASS');
+console.log('MODULE_001A_ENTERPRISE_EMPTY_STATE=PASS');
+console.log('MODULE_001A_PRIVILEGED_BACKGROUND_ISOLATION=PASS');
+console.log('MODULE_013_VERSION_INVENTORY=PASS');
+console.log('MODULE_013_GOVERNED_RESTART_ENTRY=PASS');
+console.log('PRODUCTION_MUTATIONS=0');
+''', encoding='utf-8')
+
+          ci = Path('.github/workflows/validate-module001a-viewas-module013-operations.yml')
+          ci.write_text('''name: Validate Module 001A View-As and Module 013 Operations
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - src/frontend/project-time-web/src/App.jsx
+      - src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+      - src/frontend/project-time-web/src/PageContextGuide.jsx
+      - src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx
+      - src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+      - src/frontend/project-time-web/src/ServiceControlCenter.jsx
+      - src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs
+      - tests/validate-module001a-viewas-module013-operations.mjs
+      - .github/workflows/validate-module001a-viewas-module013-operations.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate bounded contracts
+        run: node tests/validate-module001a-viewas-module013-operations.mjs
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+      - name: Build frontend
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci
+          npm run build
+      - name: Verify clean source
+        run: |
+          git diff --check
+          git status --short
+''', encoding='utf-8')
+
+          Path('.github/workflows/apply-module001a-viewas-module013-operations-fix.yml').unlink()
+          PY
+
+          git diff --check
+          node tests/validate-module001a-viewas-module013-operations.mjs
+
+      - name: Commit bounded source package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -- \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx \
+            src/frontend/project-time-web/src/PageContextGuide.jsx \
+            src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx \
+            src/frontend/project-time-web/src/approval-access-navigation-compatibility.js \
+            src/frontend/project-time-web/src/ServiceControlCenter.jsx \
+            src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs \
+            tests/validate-module001a-viewas-module013-operations.mjs \
+            .github/workflows/validate-module001a-viewas-module013-operations.yml \
+            .github/workflows/apply-module001a-viewas-module013-operations-fix.yml
+          git commit -m 'Fix Module 001A View-As and restore governed Module 013 operations'
+          git push origin HEAD:fix/module001a-viewas-module013-operations-current-main-20260811
