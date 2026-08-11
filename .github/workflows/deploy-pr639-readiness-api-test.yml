@@ -1,0 +1,333 @@
+name: Deploy PR 639 Readiness API to Protected Test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/deploy-pr639-readiness-api-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-pr639-readiness-api-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_RELEASE_COMMIT: b204b002286d2a9fe2958073c7d0a99168d75401
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate exact API-only release controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git merge-base --is-ancestor "$TARGET_RELEASE_COMMIT" HEAD
+          test -f scripts/build-pr55-acr-image.sh
+          test -f scripts/wait-containerapp-ready-revision.sh
+          test -f .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs').read_text()
+          start = source.index('public sealed class CelarAiPrivateGenerationTarget')
+          end = source.index('public sealed record CelarAiPrivateProbeAttestation', start)
+          block = source[start:end]
+          required = (
+              'PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY"',
+              'ProbeReadinessPhraseAsync',
+              'module_064_private_model_readiness',
+              'ResponseMatchesReadinessPhrase(content)',
+              'readiness_phrase_and_model_verified',
+              'DeriveContentChallenge(privateContext)',
+              'exact_response_and_model_verified',
+          )
+          for marker in required:
+              assert marker in block, marker
+          for marker in (
+              'X-Pulse-AI-Privacy-Boundary',
+              'PulseAiPrivateRagPolicy.PrivacyBoundary',
+              'X-Pulse-AI-Feature',
+              'X-Pulse-AI-Correlation-Id',
+              'X-Pulse-AI-External-Escalation',
+          ):
+              assert block.count(marker) == 3, (marker, block.count(marker))
+          assert 'X-Celar-AI-Private-Boundary' not in block
+          assert 'X-Celar-AI-Feature' not in block
+          workflow = Path('.github/workflows/deploy-pr639-readiness-api-test.yml').read_text()
+          for marker in (
+              'environment: test',
+              'MIGRATIONS_APPLIED=NONE',
+              'WEB_IMAGE_CHANGED=NO',
+              'PRODUCTION_MUTATION=NONE',
+              'ORACLE_INFRASTRUCTURE_MUTATION=NONE',
+              '.profile.endpointReturned == false',
+              '.profile.bearerTokenReturned == false',
+              '.secureStore.endpointReturned == false',
+              '.secureStore.tokenReturned == false',
+          ):
+              assert marker in workflow, marker
+          assert ('deployment/containers/' + 'api/Dockerfile .') in workflow
+          assert ('deployment/containers/' + 'web/Dockerfile') not in workflow
+          print('PR639_API_RELEASE_CONTROLLER=PASS')
+          PY
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+          git diff --check
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'WEB_IMAGE_CHANGED=NO'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+      - name: Actionlint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fsSL --retry 4 --retry-all-errors -o "$RUNNER_TEMP/actionlint.tgz" \
+            'https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz'
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -verbose \
+            .github/workflows/deploy-pr639-readiness-api-test.yml \
+            .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_RELEASE_COMMIT: b204b002286d2a9fe2958073c7d0a99168d75401
+      EVIDENCE_DIR: /tmp/pr639-readiness-api-test
+    steps:
+      - name: Check out current release controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out exact PR 639 application release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b204b002286d2a9fe2958073c7d0a99168d75401
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard exact release and Test-only scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git -C control rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git -C release rev-parse HEAD)" == "$TARGET_RELEASE_COMMIT" ]]
+          git -C control merge-base --is-ancestor "$TARGET_RELEASE_COMMIT" "$GITHUB_SHA"
+          test -f control/scripts/build-pr55-acr-image.sh
+          test -f control/scripts/wait-containerapp-ready-revision.sh
+          test -f control/.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          (cd release && node tests/validate-celar-ai-oracle-test-runtime.mjs)
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n --arg controller "$GITHUB_SHA" --arg release "$TARGET_RELEASE_COMMIT" \
+            '{environment:"test",controllerCommit:$controller,applicationReleaseCommit:$release,scope:"api_only",webImageChanged:false,migrations:[],productionMutation:false,oracleInfrastructureMutation:false}' \
+            > "$EVIDENCE_DIR/boundary.json"
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'WEB_IMAGE_CHANGED=NO'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
+      - name: Sign in to protected Test
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Snapshot protected Test and validate UAT session
+        id: before
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Wrong Azure subscription.'
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'Wrong protected-Test origin.'
+          API_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_APP")" == test ]] || fail 'API is not tagged Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_APP")" == test ]] || fail 'Web is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_APP" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'API must use single-revision mode.'
+          STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/preflight.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 011' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/celar-ai/v1/production/readiness" || true)"
+          [[ "$STATUS" == 200 ]] || fail "Protected Test UAT session returned HTTP $STATUS."
+          OLD_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_APP")"
+          OLD_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name=="PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length==1 then .[0] else empty end' <<<"$API_APP")"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_APP")"
+          WEB_REVISION="$(jq -r '.properties.latestReadyRevisionName // empty' <<<"$WEB_APP")"
+          [[ "$OLD_API_IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]] || fail 'Rollback API image is not immutable.'
+          [[ "$WEB_IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]] || fail 'Web image is not immutable.'
+          {
+            echo "base=$BASE"
+            echo "old_api_image=$OLD_API_IMAGE"
+            echo "old_source=$OLD_SOURCE"
+            echo "web_image=$WEB_IMAGE"
+            echo "web_revision=$WEB_REVISION"
+          } >> "$GITHUB_OUTPUT"
+          jq -n --arg base "$BASE" --arg api "$OLD_API_IMAGE" --arg source "$OLD_SOURCE" --arg web "$WEB_IMAGE" --arg webRevision "$WEB_REVISION" \
+            '{base:$base,previousApiImage:$api,previousSourceCommit:$source,unchangedWebImage:$web,unchangedWebRevision:$webRevision,uatSessionValidated:true}' \
+            > "$EVIDENCE_DIR/before.json"
+      - name: Build immutable PR 639 API image
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          DIGEST="$(bash ../control/scripts/build-pr55-acr-image.sh '${{ vars.AZURE_ACR_NAME }}' \
+            "project-health-dashboard-api:pr639-readiness-$TARGET_RELEASE_COMMIT-${GITHUB_RUN_ID}" \
+            deployment/containers/api/Dockerfile .)"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          IMAGE='${{ vars.AZURE_ACR_NAME }}.azurecr.io/project-health-dashboard-api@'"$DIGEST"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          jq -n --arg image "$IMAGE" --arg digest "$DIGEST" '{apiImage:$image,apiDigest:$digest,webImageBuilt:false}' > "$EVIDENCE_DIR/image.json"
+      - name: Deploy exact PR 639 API image
+        id: deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image '${{ steps.build.outputs.image }}' \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
+            --revision-suffix "pr639api-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors
+          REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
+          bash control/scripts/wait-containerapp-ready-revision.sh '${{ vars.AZURE_RESOURCE_GROUP }}' '${{ vars.AZURE_API_APP }}' \
+            "$REVISION" '${{ steps.build.outputs.image }}' 60 10
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+      - name: Run authenticated PR 639 API UAT
+        id: uat
+        shell: bash
+        env:
+          BASE: ${{ steps.before.outputs.base }}
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          HEALTH_STATUS=''
+          for attempt in $(seq 1 36); do
+            HEALTH_STATUS="$(curl -sS --max-time 30 -o "$EVIDENCE_DIR/health.json" -w '%{http_code}' \
+              "$BASE/health?pr639=$GITHUB_RUN_ID-$attempt" || true)"
+            [[ "$HEALTH_STATUS" == 200 ]] && break
+            sleep 5
+          done
+          [[ "$HEALTH_STATUS" == 200 ]] || fail "Health returned HTTP $HEALTH_STATUS."
+          jq -e '.status == "healthy"' "$EVIDENCE_DIR/health.json" >/dev/null || fail 'Health payload is not healthy.'
+          AUTH=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Cache-Control: no-cache')
+          PROFILE_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/private-model-before-activation.json" -w '%{http_code}' \
+            "${AUTH[@]}" "$BASE/api/ai-configuration/private-model" || true)"
+          [[ "$PROFILE_STATUS" == 200 ]] || fail "Module 064 profile returned HTTP $PROFILE_STATUS."
+          jq -e '
+            .module == "064" and
+            .profile.endpointReturned == false and
+            .profile.bearerTokenReturned == false and
+            .secureStore.endpointReturned == false and
+            .secureStore.tokenReturned == false and
+            .stateChanged == false
+          ' "$EVIDENCE_DIR/private-model-before-activation.json" >/dev/null || fail 'Module 064 safe projection contract failed.'
+          API_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          ACTIVE_API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_APP")"
+          ACTIVE_SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name=="PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length==1 then .[0] else empty end' <<<"$API_APP")"
+          ACTIVE_WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_APP")"
+          [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.image }}' ]] || fail 'Active API image mismatch.'
+          [[ "$ACTIVE_SOURCE" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Active source marker mismatch.'
+          [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.before.outputs.web_image }}' ]] || fail 'Web image changed unexpectedly.'
+          echo 'passed=true' >> "$GITHUB_OUTPUT"
+          jq -n --arg source "$ACTIVE_SOURCE" --arg api "$ACTIVE_API_IMAGE" --arg revision '${{ steps.deploy.outputs.revision }}' --arg web "$ACTIVE_WEB_IMAGE" \
+            '{status:"passed",sourceCommit:$source,apiImage:$api,apiRevision:$revision,webImage:$web,webImageChanged:false,module064SafeProjection:true,privateValuesReturned:false}' \
+            > "$EVIDENCE_DIR/uat.json"
+      - name: Dispatch Oracle activation v2
+        id: activation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          WORKFLOW='celar-ai-oracle-test-runtime-activation-v2.yml'
+          START="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref main \
+            -f release_commit="$TARGET_RELEASE_COMMIT" \
+            -f approval_reference='ORACLE-TEST-PR639-RELIABLE-READINESS-20260811' \
+            -f confirmation='ACTIVATE-CELAR-AI-ORACLE-ON-TEST'
+          RUN_ID=''
+          for poll in $(seq 1 30); do
+            RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=main&per_page=20&poll=$poll" \
+              | jq -r --arg start "$START" '.workflow_runs | map(select(.created_at >= $start)) | sort_by(.created_at) | reverse | .[0].id // empty')"
+            [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+            sleep 3
+          done
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+          {
+            echo 'queued=true'
+            echo "run_id=$RUN_ID"
+            echo "run_url=$URL"
+          } >> "$GITHUB_OUTPUT"
+          jq -n --arg id "$RUN_ID" --arg url "$URL" --arg release "$TARGET_RELEASE_COMMIT" \
+            '{status:"queued",runId:($id|tonumber),runUrl:$url,releaseCommit:$release}' > "$EVIDENCE_DIR/activation.json"
+      - name: Restore prior API on pre-activation failure
+        if: failure() && steps.deploy.outputs.started == 'true' && steps.activation.outputs.queued != 'true'
+        shell: bash
+        run: |
+          set +e
+          OLD_IMAGE='${{ steps.before.outputs.old_api_image }}'
+          OLD_SOURCE='${{ steps.before.outputs.old_source }}'
+          ARGS=(-g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
+            --image "$OLD_IMAGE" --revision-suffix "pr639rb-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --output none --only-show-errors)
+          if [[ -n "$OLD_SOURCE" ]]; then
+            ARGS+=(--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$OLD_SOURCE")
+          else
+            ARGS+=(--remove-env-vars PROJECTPULSE_SOURCE_COMMIT)
+          fi
+          az containerapp update "${ARGS[@]}"
+      - name: Upload immutable release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr639-readiness-api-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr639-readiness-api-test
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish release summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## PR #639 protected-Test API release'
+            echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
+            echo "- API digest: \`${{ steps.build.outputs.digest || 'not built' }}\`"
+            echo '- Web image changed: no'
+            echo '- Migrations: none'
+            echo '- Production: untouched'
+            echo '- Oracle infrastructure: untouched'
+            echo "- API UAT passed: ${{ steps.uat.outputs.passed || 'false' }}"
+            echo "- Oracle activation: ${{ steps.activation.outputs.run_url || 'not queued' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
