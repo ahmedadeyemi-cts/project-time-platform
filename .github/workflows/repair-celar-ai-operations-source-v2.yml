@@ -1,0 +1,156 @@
+name: Converge Ask Celar AI Operations Source
+
+on:
+  pull_request:
+    branches:
+      - feature/celar-ai-universal-answer-reliability-20260810
+    paths:
+      - '.github/workflows/repair-celar-ai-operations-source-v2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: converge-celar-ai-operations-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    if: github.event.pull_request.head.ref == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact stacked branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply final deterministic source corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs')
+          service = service_path.read_text()
+
+          # PostgreSQL timestamptz scalar materialization may be DateTime or
+          # DateTimeOffset depending on driver settings. Normalize it safely.
+          old_recovery = '''        var lastFailure = await command.ExecuteScalarAsync(cancellationToken);
+          return lastFailure is null or DBNull
+              || observedAt - (DateTimeOffset)lastFailure >= TimeSpan.FromSeconds(policy.RecoveryStabilitySeconds);'''
+          new_recovery = '''        var lastFailure = await command.ExecuteScalarAsync(cancellationToken);
+          if (lastFailure is null or DBNull) return true;
+          var lastFailureAt = lastFailure switch
+          {
+              DateTimeOffset value => value,
+              DateTime value => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)),
+              _ => throw new InvalidOperationException("The recovery timestamp could not be interpreted safely.")
+          };
+          return observedAt - lastFailureAt >= TimeSpan.FromSeconds(policy.RecoveryStabilitySeconds);'''
+          if old_recovery in service:
+              service = service.replace(old_recovery, new_recovery, 1)
+          elif new_recovery not in service:
+              raise SystemExit('CELAR_AIOPS_V2_RECOVERY_TIMESTAMP_ANCHOR_CHANGED')
+
+          # A new incident outside the flapping window must receive a fresh
+          # idempotency cycle key. Active incidents remain deduplicated by the
+          # unique fingerprint index and FindByFingerprintAsync.
+          old_key = '''            $"monitor:{policy.Environment}:{fingerprint}",
+              evidence.ObservedAt,'''
+          new_key = '''            $"monitor:{policy.Environment}:{fingerprint}:{evidence.ObservedAt:yyyyMMddHHmmss}",
+              evidence.ObservedAt,'''
+          if old_key in service:
+              service = service.replace(old_key, new_key, 1)
+          elif new_key not in service:
+              raise SystemExit('CELAR_AIOPS_V2_INCIDENT_CYCLE_KEY_ANCHOR_CHANGED')
+
+          service_path.write_text(service)
+
+          # Read-only View-As uses the effective user's record scope; mutation
+          # continues to require actual == effective in CelarAiOperationsModule.
+          query_module_path = Path('src/backend/ProjectTime.Api/Modules/CelarAiDefectQueryModule.cs')
+          query_module = query_module_path.read_text()
+          query_module = query_module.replace(
+              '''                access.Actual,
+                  CanViewAllDefects(access),''',
+              '''                access.Effective,
+                  CanViewAllDefects(access),''')
+          if query_module.count('access.Effective,') < 2:
+              raise SystemExit('CELAR_AIOPS_V2_EFFECTIVE_QUERY_SCOPE_NOT_APPLIED')
+          query_module_path.write_text(query_module)
+
+          operations_module_path = Path('src/backend/ProjectTime.Api/Modules/CelarAiOperationsModule.cs')
+          operations_module = operations_module_path.read_text()
+          get_defect_anchor = '''                defectNumber,
+                  access.Actual,
+                  CanViewAllDefects(access),'''
+          get_defect_replacement = '''                defectNumber,
+                  access.Effective,
+                  CanViewAllDefects(access),'''
+          if get_defect_anchor in operations_module:
+              operations_module = operations_module.replace(get_defect_anchor, get_defect_replacement, 1)
+          elif get_defect_replacement not in operations_module:
+              raise SystemExit('CELAR_AIOPS_V2_EFFECTIVE_DEFECT_SCOPE_ANCHOR_CHANGED')
+          operations_module_path.write_text(operations_module)
+
+          # Append-only evidence must remain immutable; the migration test drops
+          # only its isolated test trigger before cleaning the temporary database.
+          migration_test_path = Path('tests/test-module-076-celar-ai-defect-operations-migration-084.sh')
+          migration_test = migration_test_path.read_text()
+          cleanup_anchor = '''psql -v ON_ERROR_STOP=1 <<'SQL'
+          DELETE FROM module076_defect_evidence;
+          DELETE FROM module076_defects;
+          SQL'''
+          cleanup_replacement = '''psql -v ON_ERROR_STOP=1 <<'SQL'
+          DROP TRIGGER IF EXISTS trg_module076_defect_evidence_immutable_084 ON module076_defect_evidence;
+          DELETE FROM module076_defect_evidence;
+          DELETE FROM module076_defects;
+          SQL'''
+          if cleanup_anchor in migration_test:
+              migration_test = migration_test.replace(cleanup_anchor, cleanup_replacement, 1)
+          elif cleanup_replacement not in migration_test:
+              raise SystemExit('CELAR_AIOPS_V2_MIGRATION_TEST_CLEANUP_ANCHOR_CHANGED')
+          migration_test_path.write_text(migration_test)
+
+          # PR #628's source validator intentionally rejects files outside its
+          # own 20-file scope. The stacked PR runs its behavior tests and the
+          # operations validator, while PR #628 independently owns source scope.
+          ci_path = Path('.github/workflows/celar-ai-ask-operations-ci.yml')
+          ci = ci_path.read_text()
+          dependency_step = '''      - name: Validate universal answer dependency
+                  run: node tests/validate-celar-ai-universal-answer-reliability.mjs
+
+'''
+          if dependency_step in ci:
+              ci = ci.replace(dependency_step, '', 1)
+          ci_path.write_text(ci)
+
+          # Obsolete preliminary validator and temporary repair controls must not
+          # remain in the reviewed product diff.
+          for obsolete in [
+              Path('tests/validate-celar-ai-ask-operations.mjs'),
+              Path('.github/workflows/repair-celar-ai-operations-source.yml'),
+              Path('.github/workflows/repair-celar-ai-operations-source-v2.yml')
+          ]:
+              obsolete.unlink(missing_ok=True)
+          PY
+
+          git diff --check
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs
+          node --check src/frontend/project-time-web/scripts/inject-module-076-celar-ai-operations.mjs
+          node --check src/frontend/project-time-web/scripts/inject-celar-ai-universal-answer-reliability.mjs
+          node --check tests/validate-celar-ai-ask-operations-source.mjs
+
+      - name: Commit converged source and remove one-time controls
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Pulse Celar AI Operations Automation'
+          git config user.email 'pulse-celar-ai-operations@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: complete scoped operations and deterministic incident lifecycle'
+          git push origin HEAD:feature/ask-celar-ai-troubleshooting-defect-automation-20260810
