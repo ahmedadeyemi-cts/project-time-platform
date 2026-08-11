@@ -1,0 +1,161 @@
+name: Prepare Module 001A View-As and Module 013 Operations Fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/prepare-module001a-viewas-module013-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-module001a-viewas-module013-fix
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.event.pull_request.number == 645 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module001a-viewas-module013-operations-current-main-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EXPECTED_PARENT: 91f06297c1fde18a06e872b88540b69f9cd95ed8
+      HEAD_BRANCH: fix/module001a-viewas-module013-operations-current-main-20260811
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact repository, branch, and parent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply bounded source correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/apply_module001a_viewas_module013_fix.py
+          node tests/validate-module001a-viewas-module013-operations.mjs
+          git diff --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              '.github/workflows/apply-module001a-viewas-module013-operations-fix.yml',
+              '.github/workflows/validate-module001a-viewas-module013-operations.yml',
+              'scripts/apply_module001a_viewas_module013_fix.py',
+              'src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs',
+              'src/frontend/project-time-web/src/App.jsx',
+              'src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx',
+              'src/frontend/project-time-web/src/PageContextGuide.jsx',
+              'src/frontend/project-time-web/src/ServiceControlCenter.jsx',
+              'src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx',
+              'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
+              'tests/validate-module001a-viewas-module013-operations.mjs',
+          }
+          actual = set(filter(None, subprocess.check_output(
+              ['git', 'diff', '--name-only'], text=True).splitlines()))
+          if actual != expected:
+              raise SystemExit(
+                  'Unexpected source-transform scope.\nExpected: '
+                  + '\n'.join(sorted(expected))
+                  + '\nActual: '
+                  + '\n'.join(sorted(actual)))
+          PY
+
+      - name: Build complete API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run build
+
+      - name: Verify build preserved bounded source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-module001a-viewas-module013-operations.mjs
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              '.github/workflows/apply-module001a-viewas-module013-operations-fix.yml',
+              '.github/workflows/validate-module001a-viewas-module013-operations.yml',
+              'scripts/apply_module001a_viewas_module013_fix.py',
+              'src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs',
+              'src/frontend/project-time-web/src/App.jsx',
+              'src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx',
+              'src/frontend/project-time-web/src/PageContextGuide.jsx',
+              'src/frontend/project-time-web/src/ServiceControlCenter.jsx',
+              'src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx',
+              'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
+              'tests/validate-module001a-viewas-module013-operations.mjs',
+          }
+          actual = set(filter(None, subprocess.check_output(
+              ['git', 'status', '--porcelain=v1'], text=True).splitlines()))
+          paths = set()
+          for row in actual:
+              value = row[3:]
+              if ' -> ' in value:
+                  value = value.split(' -> ', 1)[1]
+              paths.add(value)
+          if paths != expected:
+              raise SystemExit(
+                  'Build changed files outside the bounded package.\nExpected: '
+                  + '\n'.join(sorted(expected))
+                  + '\nActual: '
+                  + '\n'.join(sorted(paths)))
+          PY
+
+      - name: Commit prepared package to PR 645
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -A -- \
+            .github/workflows/apply-module001a-viewas-module013-operations-fix.yml \
+            .github/workflows/validate-module001a-viewas-module013-operations.yml \
+            scripts/apply_module001a_viewas_module013_fix.py \
+            src/backend/ProjectTime.Api/Modules/PlatformOperationsModule.cs \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx \
+            src/frontend/project-time-web/src/PageContextGuide.jsx \
+            src/frontend/project-time-web/src/ServiceControlCenter.jsx \
+            src/frontend/project-time-web/src/ai/AiProviderReadinessController.jsx \
+            src/frontend/project-time-web/src/approval-access-navigation-compatibility.js \
+            tests/validate-module001a-viewas-module013-operations.mjs
+          git commit -m 'Fix Module 001A View-As and restore governed Module 013 operations'
+          git push origin "HEAD:${HEAD_BRANCH}"
