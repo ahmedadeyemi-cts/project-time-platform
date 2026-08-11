@@ -18,6 +18,7 @@ const services = read('src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceColle
 const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs')
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs')
+const capabilityRouting = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
 const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const openCloud = read('deployment/environments/opencloud-template.yml')
@@ -54,6 +55,47 @@ requireText(scanner, 'scanner_response_invalid', 'fail-closed malformed response
 requireText(scanner, 'X-Pulse-AI-Privacy-Boundary', 'privacy boundary header')
 requireText(scanner, 'MaximumGatewayResponseBytes', 'bounded scanner response')
 requireText(runtime, 'authenticated Test-only HTTPS malware scanning gateway', 'runtime readiness evidence')
+
+const privateTargetStart = capabilityRouting.indexOf(
+  'public sealed class CelarAiPrivateGenerationTarget',
+)
+const privateTargetEnd = capabilityRouting.indexOf(
+  'public sealed record CelarAiPrivateProbeAttestation',
+  privateTargetStart,
+)
+if (privateTargetStart < 0 || privateTargetEnd <= privateTargetStart) {
+  throw new Error('Could not isolate CelarAiPrivateGenerationTarget.')
+}
+const privateTarget = capabilityRouting.slice(privateTargetStart, privateTargetEnd)
+const markerCount = (content, value) => content.split(value).length - 1
+for (const [marker, expected] of [
+  ['X-Pulse-AI-Privacy-Boundary', 2],
+  ['PulseAiPrivateRagPolicy.PrivacyBoundary', 2],
+  ['X-Pulse-AI-Feature', 2],
+  ['X-Pulse-AI-Correlation-Id', 2],
+  ['X-Pulse-AI-External-Escalation', 2],
+]) {
+  const actual = markerCount(privateTarget, marker)
+  if (actual !== expected) {
+    throw new Error(`Expected ${expected} ${marker} markers; found ${actual}.`)
+  }
+}
+requireText(
+  privateTarget,
+  'release_candidate_exact_sow_attestation',
+  'exact private-model attestation feature',
+)
+requireText(privateTarget, 'request.Feature', 'runtime private-generation feature')
+rejectText(
+  privateTarget,
+  'X-Celar-AI-Private-Boundary',
+  'legacy private-boundary header',
+)
+rejectText(
+  privateTarget,
+  'X-Celar-AI-Feature',
+  'legacy private-feature header',
+)
 
 for (const marker of [
   'ParseObjectEnvelope',

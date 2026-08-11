@@ -1446,8 +1446,19 @@ public sealed class CelarAiPrivateGenerationTarget
             };
             if (!string.IsNullOrWhiteSpace(profile.BearerToken))
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", profile.BearerToken);
-            message.Headers.Add("X-Celar-AI-Private-Boundary", "true");
-            message.Headers.Add("X-Celar-AI-Feature", request.Feature);
+            message.Headers.Add(
+                "X-Pulse-AI-Privacy-Boundary",
+                PulseAiPrivateRagPolicy.PrivacyBoundary);
+            message.Headers.Add(
+                "X-Pulse-AI-Feature",
+                request.Feature);
+            message.Headers.Add(
+                "X-Pulse-AI-Correlation-Id",
+                Activity.Current?.TraceId.ToString()
+                    ?? Guid.NewGuid().ToString("N"));
+            message.Headers.Add(
+                "X-Pulse-AI-External-Escalation",
+                "false");
             var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
             using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             var requestId = response.Headers.TryGetValues("x-request-id", out var values)
@@ -1564,8 +1575,19 @@ public sealed class CelarAiPrivateGenerationTarget
                 Content = JsonContent.Create(payload)
             };
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", profile.BearerToken);
-            message.Headers.Add("X-Celar-AI-Private-Boundary", "true");
-            message.Headers.Add("X-Celar-AI-Feature", "release_candidate_exact_sow_attestation");
+            message.Headers.Add(
+                "X-Pulse-AI-Privacy-Boundary",
+                PulseAiPrivateRagPolicy.PrivacyBoundary);
+            message.Headers.Add(
+                "X-Pulse-AI-Feature",
+                "release_candidate_exact_sow_attestation");
+            message.Headers.Add(
+                "X-Pulse-AI-Correlation-Id",
+                Activity.Current?.TraceId.ToString()
+                    ?? Guid.NewGuid().ToString("N"));
+            message.Headers.Add(
+                "X-Pulse-AI-External-Escalation",
+                "false");
             var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
             using var response = await client.SendAsync(
                 message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
