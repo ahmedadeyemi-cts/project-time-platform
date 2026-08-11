@@ -52,3 +52,5 @@ fs.writeFileSync(productionPath, source, 'utf8');
 console.log('CELAR_AI_UNIVERSAL_ANSWER_UI_IMPORT=INJECTED');
 console.log('CELAR_AI_UNIVERSAL_ANSWER_UI_TAB=INJECTED');
 console.log('CELAR_AI_UNIVERSAL_ANSWER_UI_MOUNT=INJECTED');
+
+await import('./inject-celar-ai-ask-operations.mjs');
