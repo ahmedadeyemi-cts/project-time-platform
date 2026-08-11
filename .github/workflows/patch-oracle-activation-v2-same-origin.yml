@@ -6,6 +6,11 @@ on:
       - fix/celar-oracle-activation-v2-same-origin-20260811
     paths:
       - '.github/workflows/patch-oracle-activation-v2-same-origin.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - '.github/workflows/patch-oracle-activation-v2-same-origin.yml'
 
 permissions:
   contents: write
@@ -17,7 +22,11 @@ concurrency:
 jobs:
   patch:
     name: Apply bounded same-origin probe correction
-    if: github.ref == 'refs/heads/fix/celar-oracle-activation-v2-same-origin-20260811'
+    if: >-
+      github.ref == 'refs/heads/fix/celar-oracle-activation-v2-same-origin-20260811' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'fix/celar-oracle-activation-v2-same-origin-20260811')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
