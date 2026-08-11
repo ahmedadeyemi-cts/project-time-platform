@@ -1,9 +1,9 @@
 name: Repair PR 630 API Compile Contracts
 
 on:
-  push:
-    branches:
-      - feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - .github/workflows/repair-pr630-api-compile.yml
 
@@ -17,25 +17,30 @@ concurrency:
 jobs:
   repair:
     name: Apply bounded compiler corrections and remove this workflow
+    if: >-
+      github.event.pull_request.number == 630 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 077aabac565ce1f4baf0c7f1b8be80720c948182
+      EXPECTED_PARENT: 47221dea13afc6abc04a391bee42fc0e22ab8b7d
+      HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
-      - name: Check out exact repair commit
+      - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Guard exact branch and parent
+      - name: Guard exact repository, branch, and parent
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
-          [[ "$GITHUB_REF_NAME" == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810' ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
 
       - name: Correct the three compiler failures
         shell: bash
@@ -95,4 +100,4 @@ jobs:
             src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs \
             .github/workflows/repair-pr630-api-compile.yml
           git commit -m 'Fix Ask Celar AI API compile contracts'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${HEAD_BRANCH}"
