@@ -9,7 +9,8 @@ const files = [
   'WorkTaskBuilderPanel.jsx',
   'HelpAssistant.jsx',
   'ProjectFlowHiveCenter.jsx',
-  'CelarAiProductionPlatform.jsx'
+  'CelarAiProductionPlatform.jsx',
+  'DefectTrackerCenter.jsx'
 ];
 
 function restoreExistingBackup() {
