@@ -15,6 +15,26 @@ import {
 const cases = [];
 const test = (name, run) => cases.push({ name, run });
 
+const withFixedLocalDate = (value, run) => {
+  const RealDate = globalThis.Date;
+  const [year, month, day] = value.split('-').map(Number);
+  const fixedTime = new RealDate(year, month - 1, day, 12, 0, 0, 0).getTime();
+  globalThis.Date = class FixedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixedTime]));
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  };
+  try {
+    return run();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+};
+
 test('all six Kanban lanes map to a consistent canonical status and progress', () => {
   assert.deepEqual(statusForKanban('backlog', 75), { status: 'not_started', taskStatus: 'not_started', percentComplete: 75 });
   assert.deepEqual(statusForKanban('ready', 100), { status: 'not_started', taskStatus: 'not_started', percentComplete: 0 });
@@ -45,14 +65,16 @@ test('calendar movement preserves the task span in the client preview', () => {
 });
 
 test('recurrence preview is bounded and never creates persisted task identities', () => {
-  assert.deepEqual(
-    projectedOccurrenceDates({
-      taskType: 'recurring',
-      startDate: '2026-08-03',
-      recurrenceRule: { frequency: 'weekly', interval: 1, endDate: '2026-08-31', active: true }
-    }),
-    ['2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31']
-  );
+  withFixedLocalDate('2026-08-09', () => {
+    assert.deepEqual(
+      projectedOccurrenceDates({
+        taskType: 'recurring',
+        startDate: '2026-08-03',
+        recurrenceRule: { frequency: 'weekly', interval: 1, endDate: '2026-08-31', active: true }
+      }),
+      ['2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31']
+    );
+  });
 });
 
 test('live and review-plan task identities remain explicit', () => {
