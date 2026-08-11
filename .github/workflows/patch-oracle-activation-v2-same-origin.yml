@@ -1,11 +1,6 @@
-name: Patch Oracle activation v2 same-origin UAT
+name: Prepare Oracle activation v2 same-origin correction
 
 on:
-  push:
-    branches:
-      - fix/celar-oracle-activation-v2-same-origin-20260811
-    paths:
-      - '.github/workflows/patch-oracle-activation-v2-same-origin.yml'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize]
@@ -13,20 +8,18 @@ on:
       - '.github/workflows/patch-oracle-activation-v2-same-origin.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: patch-oracle-activation-v2-same-origin
-  cancel-in-progress: false
+  group: prepare-oracle-activation-v2-same-origin
+  cancel-in-progress: true
 
 jobs:
-  patch:
-    name: Apply bounded same-origin probe correction
+  prepare:
+    name: Build exact corrected activation workflow artifact
     if: >-
-      github.ref == 'refs/heads/fix/celar-oracle-activation-v2-same-origin-20260811' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.head.ref == 'fix/celar-oracle-activation-v2-same-origin-20260811')
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/celar-oracle-activation-v2-same-origin-20260811'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -36,7 +29,7 @@ jobs:
         with:
           ref: fix/celar-oracle-activation-v2-same-origin-20260811
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Patch only the Module 064 UAT browser-origin header
         shell: bash
@@ -59,15 +52,25 @@ jobs:
           grep -Fq 'requireSameOrigin: true' src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
           grep -Fq 'Sec-Fetch-Site' src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
           git diff --check
+          git diff --numstat -- .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml | grep -Eq '^1[[:space:]]+1[[:space:]]+'
 
-      - name: Remove the one-time patch controller and publish the reviewed change
+      - name: Upload exact corrected workflow
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: corrected-oracle-activation-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Publish bounded preparation summary
         shell: bash
         run: |
-          set -Eeuo pipefail
-          rm -f .github/workflows/patch-oracle-activation-v2-same-origin.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml .github/workflows/patch-oracle-activation-v2-same-origin.yml
-          git diff --cached --check
-          git commit -m 'fix: send same-origin metadata in Oracle activation UAT'
-          git push origin HEAD:fix/celar-oracle-activation-v2-same-origin-20260811
+          {
+            echo '## Oracle activation-v2 same-origin correction prepared'
+            echo
+            echo '- Changed workflow: `celar-ai-oracle-test-runtime-activation-v2.yml`'
+            echo '- Functional change: one same-origin browser metadata header'
+            echo '- API authorization changes: none'
+            echo '- Test mutation: none'
+            echo '- Production mutation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
