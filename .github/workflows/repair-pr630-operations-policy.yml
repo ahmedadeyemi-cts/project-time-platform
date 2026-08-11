@@ -1,9 +1,9 @@
 name: Repair PR 630 Operations Policy
 
 on:
-  push:
-    branches:
-      - feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
     paths:
       - .github/workflows/repair-pr630-operations-policy.yml
 
@@ -17,16 +17,20 @@ concurrency:
 jobs:
   repair:
     name: Correct intent and credential redaction, then remove this workflow
+    if: >-
+      github.event.pull_request.number == 630 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      EXPECTED_PARENT: c6251525ca790099357528f8f3eb0da03929f922
+      EXPECTED_PARENT: 2a36b6d2cc77fc538b4c9dccee6e90924d08fceb
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
-      - name: Check out exact branch head
+      - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
           persist-credentials: true
 
@@ -35,9 +39,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
-          [[ "$GITHUB_REF_NAME" == "$HEAD_BRANCH" ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
-          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
 
       - name: Correct deterministic troubleshooting and redaction policy
         shell: bash
@@ -117,7 +120,7 @@ jobs:
             ':!src/backend/ProjectTime.Api/Ai/CelarAiOperationsContracts.cs' \
             ':!.github/workflows/repair-pr630-operations-policy.yml'
 
-      - name: Validate focused policy tests
+      - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v5
         with:
           dotnet-version: '10.0.x'
