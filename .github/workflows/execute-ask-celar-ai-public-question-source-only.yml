@@ -1,0 +1,78 @@
+name: Publish Validated Ask Celar AI Public Question Source
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/execute-ask-celar-ai-public-question-source-only.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: execute-ask-celar-ai-public-question-repair
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.head_ref == 'fix/ask-celar-ai-public-questions-resilience-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/ask-celar-ai-public-questions-resilience-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply the reviewed bounded source patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          executor = Path('.github/workflows/execute-ask-celar-ai-public-question-repair-pr.yml')
+          text = executor.read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = text.index(start_marker) + len(start_marker)
+          end = text.index(end_marker, start)
+          script = text[start:end]
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in script.splitlines()
+          )
+          exec(compile(script, str(executor), 'exec'), {'__name__': '__main__'})
+          PY
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate focused routing and contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-public-question-resilience.mjs
+          dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+          git diff --check
+
+      - name: Commit and push source, tests, and documentation only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Pulse Celar AI Repair Automation'
+          git config user.email 'pulse-celar-ai-repair@users.noreply.github.com'
+          git add \
+            docs/modules/module-011-pulse-ai/ASK-CELAR-AI-PUBLIC-QUESTION-RESILIENCE.md \
+            src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs \
+            src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs \
+            src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs \
+            tests/CelarAiInternalDataTests/Program.cs \
+            tests/validate-celar-ai-public-question-resilience.mjs
+          git diff --cached --check
+          git commit -m 'Fix Ask Celar AI public question routing and resilience'
+          git push origin HEAD:fix/ask-celar-ai-public-questions-resilience-20260811
