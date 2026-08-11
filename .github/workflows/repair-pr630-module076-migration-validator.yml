@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 3895a7d5eef94625cbba3d01eeb49db3c51c18df
+      EXPECTED_PARENT: 1c160ceaa4788f0798bd80385357321b3ddf736e
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
@@ -104,8 +104,8 @@ jobs:
           PY
 
           node src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs
-          node tests/validate-celar-ai-pr630-consolidated.mjs
           rm -- .github/workflows/repair-pr630-module076-migration-validator.yml
+          node tests/validate-celar-ai-pr630-consolidated.mjs
           git diff --check
           git diff --exit-code -- . \
             ':!src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs' \
