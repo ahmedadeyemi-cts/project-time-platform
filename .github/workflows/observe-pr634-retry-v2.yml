@@ -1,0 +1,163 @@
+name: Observe PR 634 API Retry v2 and Oracle Activation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/observe-pr634-retry-v2.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr634-retry-v2
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/observe-pr634-test-release-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CONTROLLER_MERGE_COMMIT: b948264e8b060a1e2a975213fbc9b5e2c233e36e
+      APPLICATION_RELEASE_COMMIT: 1b667086dbaffff61890ce36d5680dadc8349bfa
+      RETRY_WORKFLOW: retry-pr634-api-uat-oracle-v2.yml
+      ACTIVATION_WORKFLOW: celar-ai-oracle-test-runtime-activation-v2.yml
+      EVIDENCE_DIR: /tmp/pr634-retry-v2-observer
+    steps:
+      - name: Observe retry and activation runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          find_run() {
+            local workflow="$1" event="$2" head_sha="$3" not_before="$4"
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=main&event=$event&per_page=50" \
+              | jq -r --arg sha "$head_sha" --arg notBefore "$not_before" '
+                  .workflow_runs
+                  | map(select(.created_at >= $notBefore))
+                  | map(select(($sha == "") or (.head_sha == $sha)))
+                  | sort_by(.created_at)
+                  | last
+                  | .id // empty'
+          }
+
+          wait_for_run() {
+            local workflow="$1" event="$2" head_sha="$3" not_before="$4" run_id=''
+            for attempt in $(seq 1 120); do
+              run_id="$(find_run "$workflow" "$event" "$head_sha" "$not_before")"
+              if [[ "$run_id" =~ ^[0-9]+$ ]]; then
+                printf '%s' "$run_id"
+                return 0
+              fi
+              echo "WAIT_RUN workflow=$workflow attempt=$attempt" >&2
+              sleep 10
+            done
+            return 1
+          }
+
+          wait_terminal() {
+            local run_id="$1" output="$2" status=''
+            for attempt in $(seq 1 420); do
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$output"
+              status="$(jq -r '.status // empty' "$output")"
+              if [[ "$status" == completed ]]; then
+                return 0
+              fi
+              echo "WAIT_TERMINAL run=$run_id status=$status attempt=$attempt" >&2
+              sleep 10
+            done
+            return 1
+          }
+
+          RETRY_RUN_ID="$(wait_for_run "$RETRY_WORKFLOW" push "$CONTROLLER_MERGE_COMMIT" '2026-08-11T05:09:00Z')" \
+            || fail 'The exact PR #637 retry run was not found.'
+          wait_terminal "$RETRY_RUN_ID" "$EVIDENCE_DIR/retry-run.json" \
+            || fail 'The PR #637 retry run did not reach a terminal state.'
+          RETRY_CONCLUSION="$(jq -r '.conclusion // empty' "$EVIDENCE_DIR/retry-run.json")"
+          RETRY_CREATED_AT="$(jq -r '.created_at' "$EVIDENCE_DIR/retry-run.json")"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RETRY_RUN_ID/artifacts" \
+            | jq '[.artifacts[] | {id,name,sizeInBytes:.size_in_bytes,digest,expired,createdAt:.created_at,expiresAt:.expires_at}]' \
+            > "$EVIDENCE_DIR/retry-artifacts.json"
+
+          ACTIVATION_RUN_ID=''
+          ACTIVATION_CONCLUSION='not_started'
+          if [[ "$RETRY_CONCLUSION" == success ]]; then
+            ACTIVATION_RUN_ID="$(wait_for_run "$ACTIVATION_WORKFLOW" workflow_dispatch '' "$RETRY_CREATED_AT")" \
+              || fail 'The Oracle activation-v2 run was not found after the successful retry.'
+            wait_terminal "$ACTIVATION_RUN_ID" "$EVIDENCE_DIR/activation-run.json" \
+              || fail 'The Oracle activation-v2 run did not reach a terminal state.'
+            ACTIVATION_CONCLUSION="$(jq -r '.conclusion // empty' "$EVIDENCE_DIR/activation-run.json")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACTIVATION_RUN_ID/artifacts" \
+              | jq '[.artifacts[] | {id,name,sizeInBytes:.size_in_bytes,digest,expired,createdAt:.created_at,expiresAt:.expires_at}]' \
+              > "$EVIDENCE_DIR/activation-artifacts.json"
+          else
+            printf '[]\n' > "$EVIDENCE_DIR/activation-artifacts.json"
+          fi
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg controllerCommit "$CONTROLLER_MERGE_COMMIT" \
+            --arg applicationReleaseCommit "$APPLICATION_RELEASE_COMMIT" \
+            --arg retryRunId "$RETRY_RUN_ID" \
+            --arg retryConclusion "$RETRY_CONCLUSION" \
+            --arg retryUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RETRY_RUN_ID" \
+            --arg activationRunId "$ACTIVATION_RUN_ID" \
+            --arg activationConclusion "$ACTIVATION_CONCLUSION" \
+            --arg activationUrl "$(if [[ -n "$ACTIVATION_RUN_ID" ]]; then printf '%s/%s/actions/runs/%s' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$ACTIVATION_RUN_ID"; fi)" \
+            --slurpfile retryArtifacts "$EVIDENCE_DIR/retry-artifacts.json" \
+            --slurpfile activationArtifacts "$EVIDENCE_DIR/activation-artifacts.json" \
+            '{
+              environment:"test",
+              observedAt:$observedAt,
+              controllerCommit:$controllerCommit,
+              applicationReleaseCommit:$applicationReleaseCommit,
+              retry:{runId:($retryRunId|tonumber),runUrl:$retryUrl,conclusion:$retryConclusion,artifacts:$retryArtifacts[0]},
+              activation:{runId:(if $activationRunId == "" then null else ($activationRunId|tonumber) end),runUrl:(if $activationUrl == "" then null else $activationUrl end),conclusion:$activationConclusion,artifacts:$activationArtifacts[0]},
+              observerMutation:false,
+              testMutationByObserver:false,
+              productionMutation:false,
+              secretValuesRead:false
+            }' > "$EVIDENCE_DIR/observer-summary.json"
+
+          echo "RETRY_RUN_ID=$RETRY_RUN_ID"
+          echo "RETRY_CONCLUSION=$RETRY_CONCLUSION"
+          echo "ACTIVATION_RUN_ID=${ACTIVATION_RUN_ID:-none}"
+          echo "ACTIVATION_CONCLUSION=$ACTIVATION_CONCLUSION"
+          echo 'OBSERVER_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+          [[ "$RETRY_CONCLUSION" == success ]]
+          [[ "$ACTIVATION_CONCLUSION" == success ]]
+
+      - name: Upload immutable observer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr634-retry-v2-observer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr634-retry-v2-observer
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish observer summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## PR #634 API retry v2 observer'
+            echo '- Read-only GitHub Actions observation'
+            echo '- Test mutation by observer: none'
+            echo '- Production mutation: none'
+            if [[ -f "$EVIDENCE_DIR/observer-summary.json" ]]; then
+              jq -r '"- Retry run: " + (.retry.runUrl // "not found") + " — " + (.retry.conclusion // "unknown")' "$EVIDENCE_DIR/observer-summary.json"
+              jq -r '"- Activation run: " + (.activation.runUrl // "not found") + " — " + (.activation.conclusion // "unknown")' "$EVIDENCE_DIR/observer-summary.json"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
