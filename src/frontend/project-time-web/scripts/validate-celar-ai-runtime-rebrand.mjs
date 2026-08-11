@@ -257,13 +257,15 @@ const approvedCelarMigrations = new Set([
   'database/migrations/061_celar_ai_capability_routing.sql',
   'database/migrations/072_celar_ai_conversation_attachments.sql',
   'database/migrations/080_celar_ai_internal_data_intelligence.sql',
-  'database/migrations/081_celar_ai_private_runtime_activation.sql'
+  'database/migrations/081_celar_ai_private_runtime_activation.sql',
+  'database/migrations/084_module_076_celar_ai_defect_operations.sql'
 ]);
 const approvedCelarRollbacks = new Set([
   'database/rollback/061_celar_ai_capability_routing_rollback.sql',
   'database/rollback/072_celar_ai_conversation_attachments_rollback.sql',
   'database/rollback/080_celar_ai_internal_data_intelligence_rollback.sql',
-  'database/rollback/081_celar_ai_private_runtime_activation_rollback.sql'
+  'database/rollback/081_celar_ai_private_runtime_activation_rollback.sql',
+  'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
 ]);
 const celarMigrations = walk('database/migrations').filter((relative) => /celar[-_]?ai/i.test(relative));
 const celarRollbacks = walk('database/rollback').filter((relative) => /celar[-_]?ai/i.test(relative));
