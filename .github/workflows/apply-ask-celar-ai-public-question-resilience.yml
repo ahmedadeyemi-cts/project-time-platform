@@ -1,0 +1,215 @@
+name: Apply Ask Celar AI Public Question Resilience Repair
+
+on:
+  push:
+    branches:
+      - fix/ask-celar-ai-public-questions-resilience-20260811
+    paths:
+      - '.github/workflows/apply-ask-celar-ai-public-question-resilience.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-ask-celar-ai-public-question-resilience
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/ask-celar-ai-public-questions-resilience-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded source, test, and CI corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path.cwd()
+
+          def read(path: str) -> str:
+              return (ROOT / path).read_text(encoding='utf-8')
+
+          def write(path: str, content: str) -> None:
+              (ROOT / path).write_text(content, encoding='utf-8')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              content = read(path)
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one exact replacement, found {count}')
+              write(path, content.replace(old, new, 1))
+
+          def regex_once(path: str, pattern: str, replacement: str, flags: int = 0) -> None:
+              content = read(path)
+              updated, count = re.subn(pattern, replacement, content, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one regex replacement, found {count}')
+              write(path, updated)
+
+          registry = 'src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs'
+          replace_once(
+              registry,
+              'using System.Text.RegularExpressions;\n',
+              'using System.Globalization;\nusing System.Text.RegularExpressions;\n')
+          replace_once(
+              registry,
+              '    private static readonly Regex PublicFactCue = new(\n',
+              '''    private static readonly Lazy<IReadOnlyList<string>> DefaultApprovedCountries =\n        new(BuildApprovedCountries);\n\n    private static IReadOnlyList<string> BuildApprovedCountries()\n    {\n        var countries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)\n        {\n            "United States", "United States of America", "USA", "U.S.", "US",\n            "United Kingdom", "UK", "U.K.",\n            "South Korea", "North Korea", "Russia", "Czechia", "Czech Republic",\n            "Ivory Coast", "Côte d'Ivoire", "Vatican City", "Palestine", "Taiwan"\n        };\n\n        foreach (var culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))\n        {\n            try\n            {\n                var country = new RegionInfo(culture.Name).EnglishName.Trim();\n                if (country.Length is >= 2 and <= 160) countries.Add(country);\n            }\n            catch (ArgumentException)\n            {\n                // Some synthetic or incomplete cultures do not expose a region.\n            }\n        }\n\n        return countries\n            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)\n            .ToArray();\n    }\n\n    private static readonly Regex PublicFactCue = new(\n''')
+          replace_once(
+              registry,
+              r'(?:ceo|chief\s+executive\s+officer|president|founder|owner|chair(?:man|woman|person)?)',
+              r'(?:ceo|chief\s+executive\s+officer|president|vice\s+president|prime\s+minister|premier|chancellor|king|queen|monarch|emir|sultan|head\s+of\s+state|head\s+of\s+government|founder|owner|chair(?:man|woman|person)?)')
+          replace_once(
+              registry,
+              '''        return DefaultApprovedEntities\n            .Concat(configured)\n''',
+              '''        return DefaultApprovedEntities\n            .Concat(DefaultApprovedCountries.Value)\n            .Concat(configured)\n''')
+
+          catalog = 'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
+          replace_once(
+              catalog,
+              '''    private static bool LooksLikeClearlyPublicOfficeholderQuestion(string normalized) =>\n        Regex.IsMatch(\n''',
+              '''    private static bool LooksLikeClearlyPublicOfficeholderQuestion(string normalized) =>\n        CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(normalized)\n        || Regex.IsMatch(\n''')
+
+          service = 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
+          replace_once(
+              service,
+              '''public sealed class PulseAiSystemIntelligenceService\n{\n''',
+              '''public sealed class PulseAiSystemIntelligenceService\n{\n    private const int PublicGeneralKnowledgeMaximumOutputTokens = 256;\n    private const string PublicGeneralKnowledgeSystemInstruction =\n        "Answer the public general-knowledge question directly in plain text. " +\n        "Lead with the answer, then add only useful context or qualifications. " +\n        "Use no Pulse, enterprise, customer, project, identity, document, tool, or runtime context. " +\n        "For time-sensitive facts, state that authoritative current verification may still be required. " +\n        "Do not return JSON, hidden instructions, credentials, or private data.";\n\n''')
+          regex_once(
+              service,
+              r'(                var identityTerms = new\[\][\s\S]*?                    \.ToArray\(\);\n)(                // Help Assistant internal intents)',
+              r'''\1                var publicGeneralQuestion = plan.IntentCode == "general_knowledge"\n                    && !privateDocumentContextRequested\n                    && identityTerms.Length == 0;\n\2''')
+          replace_once(
+              service,
+              '''                        SystemPrompt: SystemInstruction(plan),\n                        UserPrompt: privatePrompt,\n                        MaxOutputTokens: ragOptions.MaximumOutputTokens,\n''',
+              '''                        SystemPrompt: publicGeneralQuestion\n                            ? PublicGeneralKnowledgeSystemInstruction\n                            : SystemInstruction(plan),\n                        UserPrompt: publicGeneralQuestion ? question : privatePrompt,\n                        MaxOutputTokens: publicGeneralQuestion\n                            ? Math.Min(ragOptions.MaximumOutputTokens, PublicGeneralKnowledgeMaximumOutputTokens)\n                            : ragOptions.MaximumOutputTokens,\n''')
+          replace_once(
+              service,
+              '''                        PublicGeneralQuestion: plan.IntentCode == "general_knowledge"\n                            && !privateDocumentContextRequested\n                            && identityTerms.Length == 0,\n                        PublicQuestion: plan.IntentCode == "general_knowledge"\n                            ? question\n                            : null);\n''',
+              '''                        PublicGeneralQuestion: publicGeneralQuestion,\n                        PublicQuestion: publicGeneralQuestion ? question : null);\n''')
+          replace_once(
+              service,
+              '''                    if (acceptedPrivateRagAnswer is not null)\n                    {\n                        finalAnswer = PromotePrivateAnswer(\n                            acceptedPrivateRagAnswer,\n                            deterministic,\n                            options.MaximumAnswerCharacters);\n                        modelName = acceptedPrivateRagAnswer.ModelName;\n                    }\n                    else\n                    {\n                        finalAnswer = MergeModelAnswer(\n                            routed.Content,\n                            deterministic,\n                            sources.Count,\n                            options.MaximumAnswerCharacters);\n                        modelName = ragOptions.InferenceModel;\n                    }\n''',
+              '''                    if (acceptedPrivateRagAnswer is not null)\n                    {\n                        finalAnswer = PromotePrivateAnswer(\n                            acceptedPrivateRagAnswer,\n                            deterministic,\n                            options.MaximumAnswerCharacters);\n                        modelName = acceptedPrivateRagAnswer.ModelName;\n                    }\n                    else if (plan.IntentCode == "general_knowledge")\n                    {\n                        finalAnswer = BuildPublicGeneralKnowledgeAnswer(\n                            routed.Content,\n                            routed.Provider,\n                            options.MaximumAnswerCharacters);\n                        sources =\n                        [\n                            new PulseAiSystemSourceEvidence(\n                                SourceId: 1,\n                                SourceType: "governed_private_ai",\n                                SourceCode: routed.Provider,\n                                SourceName: "Module 064 governed private Celar AI response",\n                                ModuleCode: "064",\n                                Method: "INTERNAL",\n                                Path: "module064:public-general-knowledge-private",\n                                Status: "succeeded",\n                                StatusCode: 200,\n                                ObservedAt: finalAnswer.DataAsOf,\n                                Freshness: "private_model_knowledge_not_live_web_verified",\n                                EvidenceScope: "Public question only; no Pulse or private enterprise context")\n                        ];\n                        warnings.Add(\n                            "This general-knowledge answer used only the public question through the private Celar AI runtime. No Pulse record, private document, attachment text, tool result, identity, customer/project context, financial record, or internal technical inventory was included.");\n                        modelName = ragOptions.InferenceModel;\n                    }\n                    else\n                    {\n                        finalAnswer = MergeModelAnswer(\n                            routed.Content,\n                            deterministic,\n                            sources.Count,\n                            options.MaximumAnswerCharacters);\n                        modelName = ragOptions.InferenceModel;\n                    }\n''')
+          replace_once(
+              service,
+              '''                if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);\n            }\n\n            finalAnswer = SuppressApiDetailUnlessRequested(\n''',
+              '''                if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);\n            }\n\n            if (plan.IntentCode == "general_knowledge"\n                && string.Equals(\n                    modelProvider,\n                    CelarAiCapabilityTargets.Local,\n                    StringComparison.OrdinalIgnoreCase)\n                && routeOutcome == ProjectPulseAiOutcomes.Success)\n            {\n                finalAnswer = PublicKnowledgeUnavailableAnswer(correlationId);\n                sources = [];\n            }\n\n            finalAnswer = SuppressApiDetailUnlessRequested(\n''')
+          replace_once(
+              service,
+              '''    private static bool LooksLikeExternalProviderNonAnswer(string value) =>\n        CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value);\n''',
+              '''    private static PulseAiSystemDetailedAnswer PublicKnowledgeUnavailableAnswer(\n        string correlationId) =>\n        new(\n            DirectConclusion: "I could not verify that public fact because none of the configured governed AI targets completed the request.",\n            ExecutiveSummary: "The request completed safely without using Pulse records or private enterprise data. Try again shortly; use Troubleshoot with Ask Celar AI if the same question continues to fail.",\n            ScopeAndFilters: ["Public general-knowledge question.", $"Correlation ID: {correlationId}"],\n            CurrentState: ["The configured provider route reached the governed local fallback without a validated public answer."],\n            DetailedAnalysis: [],\n            ApiFindings: [],\n            TroubleshootingFindings: [],\n            RootCauseHypotheses: [],\n            DiagnosticSteps: [],\n            SourceEvidence: [],\n            KnownUnknownAndStaleValues: ["The requested public fact was not verified by an available provider."],\n            Assumptions: [],\n            Conflicts: [],\n            Limitations: ["Celar AI intentionally did not fabricate an answer."],\n            RisksAndImplications: [],\n            RecommendedActions: ["Try the question again shortly.", "Use Troubleshoot with Ask Celar AI if the failure repeats."],\n            FutureEnhancementBlueprint: null,\n            NavigationTargets: [],\n            CitationIds: [],\n            Confidence: 0m,\n            ConfidenceExplanation: "No configured provider returned a validated public answer.",\n            DataAsOf: DateTimeOffset.UtcNow);\n\n    private static bool LooksLikeExternalProviderNonAnswer(string value) =>\n        CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value);\n''')
+
+          routing = 'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs'
+          replace_once(
+              routing,
+              '''public sealed class CelarAiPrivateGenerationTarget\n{\n    private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";\n''',
+              '''public sealed class CelarAiPrivateGenerationTarget\n{\n    private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";\n    private const int DefaultHelpAssistantGenerationTimeoutSeconds = 75;\n    private const int MinimumHelpAssistantGenerationTimeoutSeconds = 20;\n    private const int MaximumHelpAssistantGenerationTimeoutSeconds = 180;\n''')
+          replace_once(
+              routing,
+              '''        try\n        {\n            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)\n''',
+              '''        using var boundedGeneration = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);\n        if (string.Equals(\n                request.Feature,\n                CelarAiCapabilityCatalog.HelpAssistant,\n                StringComparison.OrdinalIgnoreCase))\n        {\n            boundedGeneration.CancelAfter(TimeSpan.FromSeconds(EnvironmentInteger(\n                "PROJECTPULSE_CELAR_AI_HELP_GENERATION_TIMEOUT_SECONDS",\n                DefaultHelpAssistantGenerationTimeoutSeconds,\n                MinimumHelpAssistantGenerationTimeoutSeconds,\n                MaximumHelpAssistantGenerationTimeoutSeconds)));\n        }\n        var generationToken = boundedGeneration.Token;\n\n        try\n        {\n            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)\n''')
+          replace_once(
+              routing,
+              '''            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);\n''',
+              '''            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, generationToken);\n''')
+          replace_once(
+              routing,
+              '''                        response,\n                        cancellationToken))\n''',
+              '''                        response,\n                        generationToken))\n''')
+          replace_once(
+              routing,
+              '''            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(\n                response.Content,\n                cancellationToken);\n''',
+              '''            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(\n                response.Content,\n                generationToken);\n''')
+          replace_once(
+              routing,
+              '''        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)\n        {\n            throw;\n        }\n        catch (Exception exception)\n        {\n            _logger.LogWarning(\n                exception,\n                "Celar AI private generation failed without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_transport_failure");\n        }\n    }\n\n    public async Task<ProjectPulseAiProbeResult> ProbeAsync(\n''',
+              '''        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)\n        {\n            _logger.LogWarning(\n                "Celar AI private generation reached its bounded timeout without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_generation_timeout");\n        }\n        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)\n        {\n            throw;\n        }\n        catch (Exception exception)\n        {\n            _logger.LogWarning(\n                exception,\n                "Celar AI private generation failed without logging prompt, endpoint, token, or source content. Feature={Feature}",\n                request.Feature);\n            return Unavailable("celar_ai_private_transport_failure");\n        }\n    }\n\n    public async Task<ProjectPulseAiProbeResult> ProbeAsync(\n''')
+          replace_once(
+              routing,
+              '''    private static string ReadContent(JsonElement root)\n''',
+              '''    private static int EnvironmentInteger(\n        string name,\n        int fallback,\n        int minimum,\n        int maximum) =>\n        int.TryParse(Environment.GetEnvironmentVariable(name), out var value)\n            ? Math.Clamp(value, minimum, maximum)\n            : fallback;\n\n    private static string ReadContent(JsonElement root)\n''')
+
+          tests = 'tests/CelarAiInternalDataTests/Program.cs'
+          replace_once(
+              tests,
+              '''Require(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),\n    "spelled-out public officeholder question is external eligible");\n''',
+              '''Require(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),\n    "spelled-out public officeholder question is external eligible");\nRequire(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Jordan?"),\n    "country officeholder question is external eligible");\nRequire(\n    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Jordan?").IntentCode == "general_knowledge",\n    "country officeholder question resolves to general knowledge");\nRequire(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the king of Jordan?"),\n    "country monarch question is external eligible");\nRequire(\n    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the prime minister of Canada?"),\n    "country prime-minister question is external eligible");\nRequire(\n    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Project Jordan?"),\n    "project-named officeholder question remains internal");\n''')
+
+          internal_workflow = '.github/workflows/celar-ai-internal-data-intelligence-ci.yml'
+          replace_once(
+              internal_workflow,
+              '''      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'\n''',
+              '''      - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'\n      - 'src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs'\n''')
+
+          operations_workflow = '.github/workflows/celar-ai-ask-operations-ci.yml'
+          replace_once(
+              operations_workflow,
+              '''          POSTGRES_USER: postgres\n          POSTGRES_DB: postgres\n          POSTGRES_HOST_AUTH_METHOD: trust\n''',
+              '''          POSTGRES_USER: postgres\n          POSTGRES_PASSWORD: projectpulse\n          POSTGRES_DB: postgres\n''')
+          replace_once(
+              operations_workflow,
+              '''      PGUSER: postgres\n      PGDATABASE: postgres\n''',
+              '''      PGUSER: postgres\n      PGPASSWORD: projectpulse\n      PGDATABASE: postgres\n''')
+          replace_once(
+              operations_workflow,
+              '''      - 'tests/validate-celar-ai-pr630-consolidated.mjs'\n''',
+              '''      - 'tests/validate-celar-ai-pr630-consolidated.mjs'\n      - 'tests/validate-celar-ai-public-question-resilience.mjs'\n''')
+          replace_once(
+              operations_workflow,
+              '''      - name: Validate consolidated source and privacy contracts\n        run: node tests/validate-celar-ai-pr630-consolidated.mjs\n''',
+              '''      - name: Validate consolidated source and privacy contracts\n        run: |\n          node tests/validate-celar-ai-pr630-consolidated.mjs\n          node tests/validate-celar-ai-public-question-resilience.mjs\n''')
+
+          enterprise_workflow = '.github/workflows/celar-ai-enterprise-platform-ci.yml'
+          replace_once(
+              enterprise_workflow,
+              '''      - 'database/rollback/073_module_033_project_forge_interactive_rollback.sql'\n''',
+              '''      - 'database/rollback/073_module_033_project_forge_interactive_rollback.sql'\n      - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'\n      - 'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'\n      - 'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'\n''')
+          replace_once(
+              enterprise_workflow,
+              '''          elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then\n''',
+              '''          elif grep -Eq '^database/(migrations/084_module_076_celar_ai_defect_operations\\.sql|rollback/084_module_076_celar_ai_defect_operations_rollback\\.sql)$' <<<"$CHANGED"; then\n            ALLOWED_DATABASE='^(database/migrations/084_module_076_celar_ai_defect_operations\\.sql|database/rollback/084_module_076_celar_ai_defect_operations_rollback\\.sql)$'\n            test -f database/migrations/084_module_076_celar_ai_defect_operations.sql\n            test -f database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql\n            test -f tests/test-module-076-celar-ai-defect-operations-migration-084.sh\n            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_076_CELAR_AI_DEFECT_OPERATIONS' >> "$GITHUB_ENV"\n          elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<"$CHANGED"; then\n''')
+
+          validator = ROOT / 'tests/validate-celar-ai-public-question-resilience.mjs'
+          validator.write_text('''import fs from 'node:fs';\n\nconst files = {\n  registry: fs.readFileSync('src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs', 'utf8'),\n  catalog: fs.readFileSync('src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs', 'utf8'),\n  service: fs.readFileSync('src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs', 'utf8'),\n  routing: fs.readFileSync('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs', 'utf8'),\n  tests: fs.readFileSync('tests/CelarAiInternalDataTests/Program.cs', 'utf8'),\n  operations: fs.readFileSync('.github/workflows/celar-ai-ask-operations-ci.yml', 'utf8'),\n  enterprise: fs.readFileSync('.github/workflows/celar-ai-enterprise-platform-ci.yml', 'utf8')\n};\n\nfunction requireMarker(name, condition) {\n  if (!condition) throw new Error(`${name}=FAILED`);\n  console.log(`${name}=PASSED`);\n}\n\nrequireMarker('CELAR_PUBLIC_COUNTRY_REGISTRY', files.registry.includes('CultureTypes.SpecificCultures') && files.registry.includes('DefaultApprovedCountries'));\nrequireMarker('CELAR_PUBLIC_OFFICEHOLDER_ROLES', files.registry.includes('prime\\\\s+minister') && files.registry.includes('king|queen|monarch'));\nrequireMarker('CELAR_JORDAN_CLASSIFICATION_TEST', files.tests.includes('Who is the president of Jordan?') && files.tests.includes('Who is the king of Jordan?'));\nrequireMarker('CELAR_PUBLIC_PRIVATE_PROMPT', files.service.includes('PublicGeneralKnowledgeSystemInstruction') && files.service.includes('PublicGeneralKnowledgeMaximumOutputTokens = 256'));\nrequireMarker('CELAR_PUBLIC_PRIVATE_EVIDENCE', files.service.includes('module064:public-general-knowledge-private') && files.service.includes('governed_private_ai'));\nrequireMarker('CELAR_PUBLIC_GRACEFUL_FALLBACK', files.service.includes('PublicKnowledgeUnavailableAnswer') && files.service.includes('intentionally did not fabricate an answer'));\nrequireMarker('CELAR_PUBLIC_GENERATION_TIMEOUT', files.routing.includes('PROJECTPULSE_CELAR_AI_HELP_GENERATION_TIMEOUT_SECONDS') && files.routing.includes('celar_ai_private_generation_timeout'));\nrequireMarker('CELAR_MIGRATION_084_PASSWORD_CI', files.operations.includes('POSTGRES_PASSWORD: projectpulse') && files.operations.includes('PGPASSWORD: projectpulse') && !files.operations.includes('POSTGRES_HOST_AUTH_METHOD: trust'));\nrequireMarker('CELAR_MIGRATION_084_ENTERPRISE_MODE', files.enterprise.includes('CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_076_CELAR_AI_DEFECT_OPERATIONS'));\nrequireMarker('CELAR_PUBLIC_POLICY_REUSE', files.catalog.includes('CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(normalized)'));\nconsole.log('CELAR_AI_PUBLIC_QUESTION_RESILIENCE=PASS');\n''', encoding='utf-8')
+
+          docs = ROOT / 'docs/modules/module-011-pulse-ai/ASK-CELAR-AI-PUBLIC-QUESTION-RESILIENCE.md'
+          docs.write_text('''# Ask Celar AI public-question resilience\n\nAsk Celar AI classifies country officeholder questions such as `Who is the president of Jordan?` as public general knowledge rather than as an internal named-record question. Country names are derived from the .NET region catalog and combined with a closed set of common aliases. Questions containing Pulse, project, customer, employee, private-document, financial, or internal-record context remain inside the governed Pulse boundary.\n\nThe private Oracle Celar AI target receives only the public question and a concise public-answer instruction. It does not receive Pulse records, private documents, attachments, identities, tool results, customer/project context, financial values, or internal runtime evidence. Public generation is capped at 256 output tokens and the Help Assistant private target has a bounded timeout so the router can continue to Claude, OpenAI, and the governed local fallback instead of allowing the browser request to terminate as a supporting-service error.\n\nA successful private or external public answer is represented through the same public-answer contract and records a sanitized Module 064 evidence source. If every governed target is unavailable, Ask Celar AI returns an evidence-limited HTTP-success response with its correlation ID and troubleshooting action instead of fabricating an answer or surfacing a generic service outage.\n\nThis source package also corrects the disposable Migration 084 PostgreSQL password contract and adds a narrow enterprise-validation mode that permits only the reviewed Migration 084 forward/rollback pair. It does not apply a migration, deploy an environment, enable automatic defects, change Oracle, or modify Production.\n''', encoding='utf-8')
+
+          print('ASK_CELAR_AI_PUBLIC_QUESTION_PATCH=APPLIED')
+          PY
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate focused routing and static contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-public-question-resilience.mjs
+          dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+          git diff --check
+
+      - name: Commit permanent repair and remove controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/apply-ask-celar-ai-public-question-resilience.yml
+          git diff --check
+          git config user.name 'Pulse Celar AI Repair Automation'
+          git config user.email 'pulse-celar-ai-repair@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Ask Celar AI public questions and final validation gates'
+          git push origin HEAD:fix/ask-celar-ai-public-questions-resilience-20260811
