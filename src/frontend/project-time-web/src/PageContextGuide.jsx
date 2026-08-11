@@ -197,6 +197,15 @@ function authenticationHeaders() {
   }
 }
 
+function activeViewAsUser() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return value?.userId ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function getContext(route, module) {
   const configured = routeContext[route] || {};
   if (!module) return {
@@ -222,6 +231,10 @@ export default function PageContextGuide({ activeRoute }) {
     let active = true;
     if (!module) {
       setApiEvidence({ status: 'not_applicable', apis: [] });
+      return () => { active = false; };
+    }
+    if (activeViewAsUser()) {
+      setApiEvidence({ status: 'view_as_documented_contract', apis: [] });
       return () => { active = false; };
     }
     setApiEvidence({ status: 'loading', apis: [] });
@@ -268,6 +281,7 @@ export default function PageContextGuide({ activeRoute }) {
             <p><code>{backendSummary}</code></p>
             {apiRoutes.length ? <details className="page-context-api-list"><summary>Show exact API routes</summary><ul>{apiRoutes.map((route) => <li key={route}><code>{route}</code></li>)}</ul></details> : null}
             {apiEvidence.status === 'permission_limited' ? <small>Exact live API inventory requires the API inventory permission; the documented module contract is shown.</small> : null}
+            {apiEvidence.status === 'view_as_documented_contract' ? <small>View-As uses the effective user’s documented module contract and does not request administrator-only API inventory.</small> : null}
           </div>
 
           <div>

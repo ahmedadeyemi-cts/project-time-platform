@@ -40,6 +40,40 @@ function roleCodes(value) {
     .filter(Boolean);
 }
 
+function readViewAsUser() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return value?.userId ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function viewAsHasApprovalAuthority(user) {
+  const allowed = new Set([
+    'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
+    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT'
+  ]);
+  return roleCodes(user?.roleCodes ?? user?.roles ?? user?.roleCode)
+    .some((role) => allowed.has(role));
+}
+
+function viewAsReadOnlyApprovalAccess(user) {
+  return {
+    userId: user?.userId ?? null,
+    email: cleanText(user?.email),
+    displayName: cleanText(user?.displayName ?? user?.email),
+    roleCodes: roleCodes(user?.roleCodes ?? user?.roles ?? user?.roleCode),
+    canViewTimeApprovals: false,
+    canViewPasswordResetApprovals: false,
+    canViewAllTimeApprovals: false,
+    canResolveStaleApprovals: false,
+    scope: 'view_as_no_approval_authority',
+    scopeLabel: 'No approval queue for this effective user',
+    primaryRoleLabel: cleanText(user?.roleCodes ?? user?.roleCode)
+  };
+}
+
 function normalizeApprovalAccess(payload) {
   const source = property(payload, 'access', 'Access', 'approvalAccess', 'ApprovalAccess') ?? payload;
   if (!source || typeof source !== 'object') return null;
@@ -141,6 +175,13 @@ function installApprovalAccessCompatibility() {
 
     const summaryPayload = await jsonPayload(summaryResponse);
     let access = null;
+    const viewAsUser = readViewAsUser();
+    if (viewAsUser && !viewAsHasApprovalAuthority(viewAsUser)) {
+      return responseWithJson(summaryResponse, {
+        ...summaryPayload,
+        access: viewAsReadOnlyApprovalAccess(viewAsUser)
+      });
+    }
 
     try {
       const accessUrl = cacheBustedUrl(APPROVAL_ACCESS_PATH, marker).toString();
