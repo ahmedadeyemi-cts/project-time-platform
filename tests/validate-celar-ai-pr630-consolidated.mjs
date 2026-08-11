@@ -133,7 +133,10 @@ const allowedPrefixes = [
   'tests/test-module-076-',
   'tests/validate-celar-ai-'
 ];
-const allowedExact = new Set(['src/backend/ProjectTime.Api/Directory.Build.targets']);
+const allowedExact = new Set([
+  'src/backend/ProjectTime.Api/Directory.Build.targets',
+  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'
+]);
 const unexpected = changed.filter((file) => !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix)));
 requireValue(unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 requireValue(changed.includes(requiredFiles[0]) && changed.includes(requiredFiles[1]), 'CELAR_PR630_MIGRATION_SCOPE', 'Migration 084 and guarded rollback');
