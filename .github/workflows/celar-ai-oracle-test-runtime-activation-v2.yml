@@ -189,7 +189,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           BASE='${{ steps.snapshot.outputs.base }}'
-          AUTH_064=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Cache-Control: no-cache')
+          AUTH_064=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Cache-Control: no-cache')
           AUTH_011=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 011' -H 'Cache-Control: no-cache')
           PROBE_FILE="$EVIDENCE_DIR/private-model-probe.json"
           STATUS="$(curl -sS --max-time 600 -o "$PROBE_FILE" -w '%{http_code}' "${AUTH_064[@]}" -H 'Content-Type: application/json' -d '{}' "$BASE/api/ai-configuration/private-model/test" || true)"
