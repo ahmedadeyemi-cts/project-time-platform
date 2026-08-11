@@ -41,12 +41,11 @@ jobs:
           test -f .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
           grep -Fq 'environment: test' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml
           grep -Fq 'MIGRATIONS_APPLIED=NONE' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml
-          if grep -Fq 'deployment/containers/web/Dockerfile' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml; then
-            echo 'The PR #634 controller must remain API-only.' >&2
-            exit 1
-          fi
           python3 - <<'PY'
           from pathlib import Path
+          workflow = Path('.github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml').read_text()
+          assert 'deployment/containers/' + 'api/Dockerfile .' in workflow
+          assert 'deployment/containers/' + 'web/Dockerfile' not in workflow
           source = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs').read_text()
           block = source[source.index('public sealed class CelarAiPrivateGenerationTarget'):source.index('public sealed record CelarAiPrivateProbeAttestation')]
           for marker in ('X-Pulse-AI-Privacy-Boundary','PulseAiPrivateRagPolicy.PrivacyBoundary','X-Pulse-AI-Feature','X-Pulse-AI-Correlation-Id','X-Pulse-AI-External-Escalation'):
