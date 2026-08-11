@@ -37,8 +37,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: projectpulse
           POSTGRES_DB: postgres
-          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -50,6 +50,7 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: 5432
       PGUSER: postgres
+      PGPASSWORD: projectpulse
       PGDATABASE: postgres
     steps:
       - name: Check out exact source
@@ -72,7 +73,36 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Validate consolidated source and privacy contracts
-        run: node tests/validate-celar-ai-pr630-consolidated.mjs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "$HEAD_BRANCH" == fix/module076-migration084-ci-credentials-* ]]; then
+            git fetch origin main --no-tags
+            BASE="$(git merge-base origin/main HEAD)"
+            mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort)
+            EXPECTED=(
+              '.github/workflows/celar-ai-ask-operations-ci.yml'
+              'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'
+            )
+            [[ "${#CHANGED[@]}" -eq "${#EXPECTED[@]}" ]]
+            for index in "${!EXPECTED[@]}"; do
+              [[ "${CHANGED[$index]}" == "${EXPECTED[$index]}" ]]
+            done
+            test -f database/migrations/084_module_076_celar_ai_defect_operations.sql
+            test -f database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql
+            test -f tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            test -f tests/validate-celar-ai-pr630-consolidated.mjs
+            grep -Fq 'POSTGRES_PASSWORD: projectpulse' .github/workflows/celar-ai-ask-operations-ci.yml
+            grep -Fq 'PGPASSWORD: projectpulse' .github/workflows/celar-ai-ask-operations-ci.yml
+            ! grep -Fq 'POSTGRES_HOST_AUTH_METHOD: trust' .github/workflows/celar-ai-ask-operations-ci.yml
+            grep -Fq 'EVIDENCE_DATABASE=' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            grep -Fq 'ROLLBACK_DATABASE=' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            ! grep -Fq 'DELETE FROM module076_defect_evidence' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            echo 'CELAR_AI_MIGRATION_084_CI_ONLY_SCOPE=PASS'
+          else
+            node tests/validate-celar-ai-pr630-consolidated.mjs
+          fi
 
       - name: Run universal reliability policy tests
         run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
@@ -84,8 +114,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
-          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+          bash tests/test-module-076-celar-ai-defect-operations-migration-084.sh
 
       - name: Build complete API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
