@@ -37,8 +37,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: projectpulse
           POSTGRES_DB: postgres
-          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -50,6 +50,7 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: 5432
       PGUSER: postgres
+      PGPASSWORD: projectpulse
       PGDATABASE: postgres
     steps:
       - name: Check out exact source
