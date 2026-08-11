@@ -1387,6 +1387,7 @@ public sealed class CelarAiCapabilityRoutingLoader(
 
 public sealed class CelarAiPrivateGenerationTarget
 {
+    private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";
     private const int MaximumAttestationContextCharacters = 12_000;
     private const int MaximumAttestationTokens = 64;
     private static readonly Regex AttestationTokenPattern = new(
@@ -1516,17 +1517,116 @@ public sealed class CelarAiPrivateGenerationTarget
         CelarAiPrivateModelProfile profile,
         CancellationToken cancellationToken)
     {
-        var attestation = await ProbeExactAsync(
-            profile,
-            "This is a private release readiness probe.",
-            cancellationToken);
+        var attestation = await ProbeReadinessPhraseAsync(profile, cancellationToken);
         return new ProjectPulseAiProbeResult(
             CelarAiCapabilityTargets.CelarAi,
             attestation.Ready,
             attestation.DiagnosticCode,
-            attestation.Ready ? "Celar AI exact private generation and model identity are verified." : "Celar AI private generation attestation is unavailable.",
+            attestation.Ready
+                ? "Celar AI private readiness phrase and model identity are verified."
+                : "Celar AI private readiness attestation is unavailable.",
             attestation.HttpStatusCode,
             attestation.RequestId);
+    }
+
+    private async Task<CelarAiPrivateProbeAttestation> ProbeReadinessPhraseAsync(
+        CelarAiPrivateModelProfile profile,
+        CancellationToken cancellationToken)
+    {
+        if (!profile.Enabled || !profile.Configured || !profile.AuthenticationConfigured)
+            return CelarAiPrivateProbeAttestation.Failed("private_profile_not_ready");
+
+        var resolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+            profile.Endpoint,
+            profile.PrivateHostAllowlist,
+            requireHttps: true,
+            allowLoopback: false,
+            cancellationToken: cancellationToken);
+        if (!resolution.Approved || resolution.Endpoint is null)
+            return CelarAiPrivateProbeAttestation.Failed($"private_endpoint_{resolution.Reason}");
+
+        var payload = new
+        {
+            model = profile.Model,
+            messages = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = "Return exactly the requested readiness phrase and no other characters."
+                },
+                new { role = "user", content = $"Return only: {PrivateReadinessPhrase}" }
+            },
+            temperature = 0,
+            max_tokens = 64
+        };
+
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, resolution.Endpoint)
+            {
+                Content = JsonContent.Create(payload)
+            };
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", profile.BearerToken);
+            message.Headers.Add(
+                "X-Pulse-AI-Privacy-Boundary",
+                PulseAiPrivateRagPolicy.PrivacyBoundary);
+            message.Headers.Add(
+                "X-Pulse-AI-Feature",
+                "module_064_private_model_readiness");
+            message.Headers.Add(
+                "X-Pulse-AI-Correlation-Id",
+                Activity.Current?.TraceId.ToString()
+                    ?? Guid.NewGuid().ToString("N"));
+            message.Headers.Add(
+                "X-Pulse-AI-External-Escalation",
+                "false");
+
+            var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
+            using var response = await client.SendAsync(
+                message,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            var requestId = response.Headers.TryGetValues("x-request-id", out var values)
+                ? values.FirstOrDefault()
+                : null;
+            if (!response.IsSuccessStatusCode)
+                return CelarAiPrivateProbeAttestation.Failed(
+                    $"private_http_{(int)response.StatusCode}",
+                    requestId,
+                    (int)response.StatusCode);
+
+            using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
+                response.Content,
+                cancellationToken);
+            var content = ReadContent(json.RootElement);
+            var reportedModel = json.RootElement.TryGetProperty("model", out var modelElement)
+                && modelElement.ValueKind == JsonValueKind.String
+                    ? modelElement.GetString()?.Trim() ?? string.Empty
+                    : string.Empty;
+            var responseExact = ResponseMatchesReadinessPhrase(content);
+            var modelExact = string.Equals(reportedModel, profile.Model, StringComparison.Ordinal);
+            return new CelarAiPrivateProbeAttestation(
+                responseExact && modelExact,
+                responseExact,
+                modelExact,
+                responseExact && modelExact
+                    ? "readiness_phrase_and_model_verified"
+                    : "private_probe_attestation_mismatch",
+                requestId ?? string.Empty,
+                (int)response.StatusCode);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Celar AI private readiness probe failed without logging output, endpoint, model, or token.");
+            return CelarAiPrivateProbeAttestation.Failed("private_probe_transport_failure");
+        }
     }
 
     /// <summary>
@@ -1630,6 +1730,9 @@ public sealed class CelarAiPrivateGenerationTarget
     /// Executable test seam that discloses only a match decision. The derived
     /// SOW challenge and expected answer remain inside the private boundary.
     /// </summary>
+    public static bool ResponseMatchesReadinessPhrase(string response) =>
+        string.Equals(response?.Trim(), PrivateReadinessPhrase, StringComparison.Ordinal);
+
     public static bool ResponseMatchesDerivedContentChallenge(string privateContext, string response)
     {
         var challenge = DeriveContentChallenge(privateContext);
