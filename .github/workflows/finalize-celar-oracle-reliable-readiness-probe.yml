@@ -1,0 +1,330 @@
+name: Finalize Celar AI Oracle Reliable Readiness Probe
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/finalize-celar-oracle-reliable-readiness-probe.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-celar-oracle-reliable-readiness-probe
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/celar-oracle-reliable-readiness-probe-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply the bounded readiness-probe correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
+          test_path = Path('tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs')
+          validator_path = Path('tests/validate-celar-ai-oracle-test-runtime.mjs')
+
+          source = source_path.read_text()
+          constants_old = '''public sealed class CelarAiPrivateGenerationTarget
+          {
+              private const int MaximumAttestationContextCharacters = 12_000;
+              private const int MaximumAttestationTokens = 64;'''
+          constants_new = '''public sealed class CelarAiPrivateGenerationTarget
+          {
+              private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";
+              private const int MaximumAttestationContextCharacters = 12_000;
+              private const int MaximumAttestationTokens = 64;'''
+          if source.count(constants_old) != 1:
+              raise SystemExit('The private-target constant anchor did not match exactly once.')
+          source = source.replace(constants_old, constants_new, 1)
+
+          probe_old = '''    public async Task<ProjectPulseAiProbeResult> ProbeAsync(
+                  CelarAiPrivateModelProfile profile,
+                  CancellationToken cancellationToken)
+              {
+                  var attestation = await ProbeExactAsync(
+                      profile,
+                      "This is a private release readiness probe.",
+                      cancellationToken);
+                  return new ProjectPulseAiProbeResult(
+                      CelarAiCapabilityTargets.CelarAi,
+                      attestation.Ready,
+                      attestation.DiagnosticCode,
+                      attestation.Ready ? "Celar AI exact private generation and model identity are verified." : "Celar AI private generation attestation is unavailable.",
+                      attestation.HttpStatusCode,
+                      attestation.RequestId);
+              }
+          '''
+          probe_new = '''    public async Task<ProjectPulseAiProbeResult> ProbeAsync(
+                  CelarAiPrivateModelProfile profile,
+                  CancellationToken cancellationToken)
+              {
+                  var attestation = await ProbeReadinessPhraseAsync(profile, cancellationToken);
+                  return new ProjectPulseAiProbeResult(
+                      CelarAiCapabilityTargets.CelarAi,
+                      attestation.Ready,
+                      attestation.DiagnosticCode,
+                      attestation.Ready
+                          ? "Celar AI private readiness phrase and model identity are verified."
+                          : "Celar AI private readiness attestation is unavailable.",
+                      attestation.HttpStatusCode,
+                      attestation.RequestId);
+              }
+
+              private async Task<CelarAiPrivateProbeAttestation> ProbeReadinessPhraseAsync(
+                  CelarAiPrivateModelProfile profile,
+                  CancellationToken cancellationToken)
+              {
+                  if (!profile.Enabled || !profile.Configured || !profile.AuthenticationConfigured)
+                      return CelarAiPrivateProbeAttestation.Failed("private_profile_not_ready");
+
+                  var resolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
+                      profile.Endpoint,
+                      profile.PrivateHostAllowlist,
+                      requireHttps: true,
+                      allowLoopback: false,
+                      cancellationToken: cancellationToken);
+                  if (!resolution.Approved || resolution.Endpoint is null)
+                      return CelarAiPrivateProbeAttestation.Failed($"private_endpoint_{resolution.Reason}");
+
+                  var payload = new
+                  {
+                      model = profile.Model,
+                      messages = new object[]
+                      {
+                          new
+                          {
+                              role = "system",
+                              content = "Return exactly the requested readiness phrase and no other characters."
+                          },
+                          new { role = "user", content = $"Return only: {PrivateReadinessPhrase}" }
+                      },
+                      temperature = 0,
+                      max_tokens = 64
+                  };
+
+                  try
+                  {
+                      using var message = new HttpRequestMessage(HttpMethod.Post, resolution.Endpoint)
+                      {
+                          Content = JsonContent.Create(payload)
+                      };
+                      message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", profile.BearerToken);
+                      message.Headers.Add(
+                          "X-Pulse-AI-Privacy-Boundary",
+                          PulseAiPrivateRagPolicy.PrivacyBoundary);
+                      message.Headers.Add(
+                          "X-Pulse-AI-Feature",
+                          "module_064_private_model_readiness");
+                      message.Headers.Add(
+                          "X-Pulse-AI-Correlation-Id",
+                          Activity.Current?.TraceId.ToString()
+                              ?? Guid.NewGuid().ToString("N"));
+                      message.Headers.Add(
+                          "X-Pulse-AI-External-Escalation",
+                          "false");
+
+                      var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
+                      using var response = await client.SendAsync(
+                          message,
+                          HttpCompletionOption.ResponseHeadersRead,
+                          cancellationToken);
+                      var requestId = response.Headers.TryGetValues("x-request-id", out var values)
+                          ? values.FirstOrDefault()
+                          : null;
+                      if (!response.IsSuccessStatusCode)
+                          return CelarAiPrivateProbeAttestation.Failed(
+                              $"private_http_{(int)response.StatusCode}",
+                              requestId,
+                              (int)response.StatusCode);
+
+                      using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
+                          response.Content,
+                          cancellationToken);
+                      var content = ReadContent(json.RootElement);
+                      var reportedModel = json.RootElement.TryGetProperty("model", out var modelElement)
+                          && modelElement.ValueKind == JsonValueKind.String
+                              ? modelElement.GetString()?.Trim() ?? string.Empty
+                              : string.Empty;
+                      var responseExact = ResponseMatchesReadinessPhrase(content);
+                      var modelExact = string.Equals(reportedModel, profile.Model, StringComparison.Ordinal);
+                      return new CelarAiPrivateProbeAttestation(
+                          responseExact && modelExact,
+                          responseExact,
+                          modelExact,
+                          responseExact && modelExact
+                              ? "readiness_phrase_and_model_verified"
+                              : "private_probe_attestation_mismatch",
+                          requestId ?? string.Empty,
+                          (int)response.StatusCode);
+                  }
+                  catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                  {
+                      throw;
+                  }
+                  catch (Exception exception)
+                  {
+                      _logger.LogWarning(
+                          exception,
+                          "Celar AI private readiness probe failed without logging output, endpoint, model, or token.");
+                      return CelarAiPrivateProbeAttestation.Failed("private_probe_transport_failure");
+                  }
+              }
+          '''
+          if source.count(probe_old) != 1:
+              raise SystemExit('The Module 064 probe anchor did not match exactly once.')
+          source = source.replace(probe_old, probe_new, 1)
+
+          seam_anchor = '''    public static bool ResponseMatchesDerivedContentChallenge(string privateContext, string response)
+              {'''
+          seam_insert = '''    public static bool ResponseMatchesReadinessPhrase(string response) =>
+                  string.Equals(response?.Trim(), PrivateReadinessPhrase, StringComparison.Ordinal);
+
+              public static bool ResponseMatchesDerivedContentChallenge(string privateContext, string response)
+              {'''
+          if source.count(seam_anchor) != 1:
+              raise SystemExit('The readiness test-seam anchor did not match exactly once.')
+          source = source.replace(seam_anchor, seam_insert, 1)
+
+          private_start = source.index('public sealed class CelarAiPrivateGenerationTarget')
+          private_end = source.index('public sealed record CelarAiPrivateProbeAttestation', private_start)
+          private_target = source[private_start:private_end]
+          for marker in (
+              'PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY"',
+              'ProbeReadinessPhraseAsync',
+              'module_064_private_model_readiness',
+              'ResponseMatchesReadinessPhrase(content)',
+              'readiness_phrase_and_model_verified',
+              'DeriveContentChallenge(privateContext)',
+              'exact_response_and_model_verified',
+          ):
+              if marker not in private_target:
+                  raise SystemExit(f'Missing private-target marker: {marker}')
+          if private_target.count('X-Pulse-AI-Privacy-Boundary') != 3:
+              raise SystemExit('Expected canonical privacy boundary on generation, readiness, and exact-SOW requests.')
+          if 'X-Celar-AI-Private-Boundary' in private_target:
+              raise SystemExit('Legacy private-boundary header remains.')
+          source_path.write_text(source)
+
+          tests = test_path.read_text()
+          test_anchor = '''        Require(!CelarAiPrivateGenerationTarget.ResponseMatchesDerivedContentChallenge(
+                          betaContext, "alpha|alpha|alpha"),
+                      "derived private SOW challenge response is content-dependent");
+          '''
+          test_insert = test_anchor + '''        Require(CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                          "CELAR PRIVATE MODEL READY\\n"),
+                      "Module 064 readiness accepts only insignificant surrounding whitespace");
+                  Require(!CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                          "celar private model ready"),
+                      "Module 064 readiness remains ordinal and case-sensitive");
+                  Require(!CelarAiPrivateGenerationTarget.ResponseMatchesReadinessPhrase(
+                          "CELAR PRIVATE MODEL READY plus prose"),
+                      "Module 064 readiness rejects extra model prose");
+          '''
+          if tests.count(test_anchor) != 1:
+              raise SystemExit('The production-hardening test anchor did not match exactly once.')
+          tests = tests.replace(test_anchor, test_insert, 1)
+          test_path.write_text(tests)
+
+          validator = validator_path.read_text()
+          import_anchor = "const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs')\n"
+          import_line = "const capabilityRouting = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')\n"
+          if import_line not in validator:
+              if validator.count(import_anchor) != 1:
+                  raise SystemExit('The Oracle validator import anchor did not match exactly once.')
+              validator = validator.replace(import_anchor, import_anchor + import_line, 1)
+
+          validation_anchor = "rejectText(embeddings, 'indexed[index] = values', 'duplicate-index overwrite')\n"
+          validation_block = r'''
+          const privateTargetStart = capabilityRouting.indexOf(
+            'public sealed class CelarAiPrivateGenerationTarget',
+          )
+          const privateTargetEnd = capabilityRouting.indexOf(
+            'public sealed record CelarAiPrivateProbeAttestation',
+            privateTargetStart,
+          )
+          if (privateTargetStart < 0 || privateTargetEnd <= privateTargetStart) {
+            throw new Error('Could not isolate CelarAiPrivateGenerationTarget.')
+          }
+          const privateTarget = capabilityRouting.slice(privateTargetStart, privateTargetEnd)
+          for (const marker of [
+            'PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY"',
+            'ProbeReadinessPhraseAsync',
+            'module_064_private_model_readiness',
+            'ResponseMatchesReadinessPhrase(content)',
+            'readiness_phrase_and_model_verified',
+            'DeriveContentChallenge(privateContext)',
+            'exact_response_and_model_verified',
+          ]) requireText(privateTarget, marker, 'separate reliable readiness and exact-SOW attestations')
+          rejectText(privateTarget, 'X-Celar-AI-Private-Boundary', 'legacy private-boundary header')
+          '''
+          if 'separate reliable readiness and exact-SOW attestations' not in validator:
+              if validator.count(validation_anchor) != 1:
+                  raise SystemExit('The Oracle validator assertion anchor did not match exactly once.')
+              validator = validator.replace(validation_anchor, validation_anchor + validation_block, 1)
+          validator_path.write_text(validator)
+
+          print('CELAR_ORACLE_RELIABLE_READINESS_SOURCE_PATCH=PASS')
+          PY
+
+      - name: Validate source and complete API Release build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-oracle-test-runtime.mjs
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore --nologo
+          git diff --check
+          mapfile -t CHANGED < <(git diff --name-only)
+          EXPECTED=(
+            src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+            tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs
+            tests/validate-celar-ai-oracle-test-runtime.mjs
+            .github/workflows/finalize-celar-oracle-reliable-readiness-probe.yml
+          )
+          [[ "${CHANGED[*]}" == "${EXPECTED[*]}" ]] || {
+            printf 'Unexpected changed files:\n%s\n' "${CHANGED[*]}" >&2
+            exit 1
+          }
+
+      - name: Remove one-time finalizer and publish the validated source
+        shell: bash
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/finalize-celar-oracle-reliable-readiness-probe.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs \
+            tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs \
+            tests/validate-celar-ai-oracle-test-runtime.mjs \
+            .github/workflows/finalize-celar-oracle-reliable-readiness-probe.yml
+          git diff --cached --check
+          mapfile -t STAGED < <(git diff --cached --name-only)
+          EXPECTED=(
+            src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs
+            tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs
+            tests/validate-celar-ai-oracle-test-runtime.mjs
+            .github/workflows/finalize-celar-oracle-reliable-readiness-probe.yml
+          )
+          [[ "${STAGED[*]}" == "${EXPECTED[*]}" ]]
+          git commit -m 'Fix Celar AI Module 064 readiness attestation'
+          git push origin "HEAD:$BRANCH"
