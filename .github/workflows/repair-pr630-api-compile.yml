@@ -1,0 +1,98 @@
+name: Repair PR 630 API Compile Contracts
+
+on:
+  push:
+    branches:
+      - feature/ask-celar-ai-troubleshooting-defect-automation-20260810
+    paths:
+      - .github/workflows/repair-pr630-api-compile.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr630-api-compile
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Apply bounded compiler corrections and remove this workflow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_PARENT: 077aabac565ce1f4baf0c7f1b8be80720c948182
+    steps:
+      - name: Check out exact repair commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Guard exact branch and parent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$GITHUB_REF_NAME" == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810' ]]
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
+
+      - name: Correct the three compiler failures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          exact_replacements = {
+              Path('src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs'): (
+                  'endpointCheck.Allowed',
+                  'endpointCheck.Approved',
+              ),
+              Path('src/backend/ProjectTime.Api/Ai/CelarAiRealProbeService.cs'): (
+                  'endpointCheck.Allowed',
+                  'endpointCheck.Approved',
+              ),
+          }
+          for file, (old, new) in exact_replacements.items():
+              text = file.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{file}: expected exactly one {old!r}, found {text.count(old)}')
+              file.write_text(text.replace(old, new), encoding='utf-8')
+
+          governance = Path('src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs')
+          text = governance.read_text(encoding='utf-8')
+          old = '''        var values = element.EnumerateArray().Take(25)
+              .Select(item => Read(item, depth + 1, ref propertyCount))
+              .ToArray();
+          if (element.GetArrayLength() > 25)
+              throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
+          return values;'''
+          new = '''        if (element.GetArrayLength() > 25)
+              throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
+
+          var values = new List<object?>(element.GetArrayLength());
+          foreach (var item in element.EnumerateArray())
+              values.Add(Read(item, depth + 1, ref propertyCount));
+          return values;'''
+          if text.count(old) != 1:
+              raise SystemExit(f'{governance}: expected exactly one ref-capturing array block, found {text.count(old)}')
+          governance.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          rm -- .github/workflows/repair-pr630-api-compile.yml
+          git diff --check
+          git diff --exit-code -- . ':!src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs' ':!src/backend/ProjectTime.Api/Ai/CelarAiRealProbeService.cs' ':!src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs' ':!.github/workflows/repair-pr630-api-compile.yml'
+
+      - name: Commit bounded corrections to PR 630
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -- \
+            src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs \
+            src/backend/ProjectTime.Api/Ai/CelarAiRealProbeService.cs \
+            src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs \
+            .github/workflows/repair-pr630-api-compile.yml
+          git commit -m 'Fix Ask Celar AI API compile contracts'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
