@@ -25,8 +25,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -38,7 +38,6 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: 5432
       PGUSER: postgres
-      PGPASSWORD: postgres
       PGDATABASE: postgres
       CELAR_AI_CONSOLIDATED_PACKAGE: '1'
       GH_TOKEN: ${{ github.token }}
@@ -90,7 +89,7 @@ The branch was not deployed or merged. The source publisher stopped at the first
 """
           pathlib.Path('/tmp/pr-comment.json').write_text(json.dumps({'body': body}))
           PY
-            gh api -X POST repos/ahmedadeyemi-cts/project-time-platform/issues/630 --input /tmp/pr-comment.json >/dev/null || true
+            gh api -X POST repos/ahmedadeyemi-cts/project-time-platform/issues/630/comments --input /tmp/pr-comment.json >/dev/null || true
             exit "$code"
           }
           trap report_failure EXIT
