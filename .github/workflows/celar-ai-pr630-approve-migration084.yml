@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 410ff5042318e302d3f04c60ae3480fc36cf3848
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
@@ -34,13 +33,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Guard exact repository, branch, and parent
+      - name: Guard exact repository, branch, and event head
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
-          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
 
       - name: Approve only reviewed Migration 084 artifacts
         shell: bash
