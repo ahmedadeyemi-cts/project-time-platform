@@ -24,6 +24,7 @@ mode == "services" {
     print "        services.AddSingleton<CelarAiUniversalAnswerReliabilityService>();"
     print "        services.AddSingleton<CelarAiDefectOrchestrationService>();"
     print "        services.AddSingleton<CelarAiDefectQueryService>();"
+    print "        services.AddSingleton<CelarAiMonitorLeadershipService>();"
     print "        services.AddHostedService<CelarAiAvailabilityMonitorService>();"
     inserted_service++
     inserted_operations_service++
