@@ -7,29 +7,21 @@ on:
       - '.github/workflows/celar-ai-ask-operations-ci.yml'
       - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'
       - 'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiOperationsContracts.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiDefectQueryService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiAvailabilityMonitorService.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiDeterministicIntentPolicy.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiOperationsIntentRouter.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiOperationsModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiDefectQueryModule.cs'
-      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
-      - 'src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAi*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAi*.cs'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-operations-governance.py'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-*.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-module-076-*.mjs'
       - 'src/frontend/project-time-web/src/CelarAiAskOperations.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-ask-operations.css'
       - 'tests/CelarAiOperationsPolicyTests/**'
       - 'tests/celar-ai-operations-evaluation-cases.json'
       - 'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'
-      - 'tests/validate-celar-ai-ask-operations-source.mjs'
+      - 'tests/validate-celar-ai-pr630-consolidated.mjs'
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 concurrency:
   group: celar-ai-ask-operations-${{ github.ref }}
@@ -59,8 +51,6 @@ jobs:
       PGPORT: 5432
       PGUSER: postgres
       PGDATABASE: postgres
-      CELAR_AI_CONSOLIDATED_PACKAGE: '1'
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -68,15 +58,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Publish validation start marker
-        if: github.event_name == 'pull_request'
-        run: |
-          python3 - <<'PY'
-          import json, pathlib
-          pathlib.Path('/tmp/start.json').write_text(json.dumps({'body': 'Ask Celar AI consolidated validation started for the latest PR #630 source head. No deployment or database mutation outside the disposable CI service is included.'}))
-          PY
-          gh api -X POST repos/ahmedadeyemi-cts/project-time-platform/issues/630/comments --input /tmp/start.json >/dev/null
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -90,97 +71,46 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Apply and validate consolidated source
+      - name: Validate consolidated source and privacy contracts
+        run: node tests/validate-celar-ai-pr630-consolidated.mjs
+
+      - name: Run universal reliability policy tests
+        run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Run operations policy tests
+        run: dotnet run --project tests/CelarAiOperationsPolicyTests/CelarAiOperationsPolicyTests.csproj --configuration Release
+
+      - name: Validate Migration 084 lifecycle
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG=/tmp/celar-pr-validation.log
-          : > "$LOG"
-          report() {
-            local code=$?
-            python3 - "$code" "$LOG" <<'PY'
-          import json, pathlib, sys
-          code = int(sys.argv[1])
-          log = pathlib.Path(sys.argv[2]).read_text(errors='replace')[-12000:]
-          state = 'passed' if code == 0 else 'failed'
-          body = f"""## Ask Celar AI consolidated validation {state}
+          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
 
-Exit code: `{code}`
+      - name: Build complete API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
-No Test or Production deployment occurred. Migration 084, when reached, ran only against the disposable PostgreSQL service in this workflow.
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
 
-<details><summary>Validation log tail</summary>
+      - name: Ensure validation restored tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
 
-```text
-{log}
-```
-</details>
-"""
-          pathlib.Path('/tmp/result.json').write_text(json.dumps({'body': body}))
-          PY
-            gh api -X POST repos/ahmedadeyemi-cts/project-time-platform/issues/630/comments --input /tmp/result.json >/dev/null || true
-            exit "$code"
-          }
-          trap report EXIT
-
-          {
-            echo '=== Prepatch deterministic planner block ==='
-            python3 - <<'PY'
-          from pathlib import Path
-          path = Path('src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs')
-          value = path.read_text()
-          start = value.find('        var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();\n')
-          end = value.find('        var deterministic = RequiresDeterministicCalculation(', start)
-          if start < 0 or end <= start:
-              raise SystemExit(f'PLANNER_BLOCK_NOT_FOUND start={start} end={end}')
-          replacement = '''        var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();
-        AddIntentDefaults(intent, normalized, matchedTools);
-        AddRequiredTools(questionClass, attachmentCount, matchedTools);
-        var selection = CelarAiDeterministicIntentPolicy.Select(
-            normalized,
-            intent,
-            questionClass,
-            attachmentCount,
-            matchedTools);
-        var tools = selection.SelectedTools.ToArray();
-'''
-          path.write_text(value[:start] + replacement + value[end:])
-          PY
-
-            echo '=== Extract and run Phase 1 patch ==='
-            awk '
-              /python3 - <<.PY./ {capture=1; next}
-              capture && /^          PY$/ {exit}
-              capture {sub(/^          /, ""); print}
-            ' .github/workflows/converge-celar-ai-consolidated-phase1.yml > /tmp/celar-phase1.py
-            python3 -m py_compile /tmp/celar-phase1.py
-            python3 /tmp/celar-phase1.py
-
-            echo '=== Syntax and source checks ==='
-            node --check src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs
-            node --check tests/validate-celar-ai-universal-answer-reliability.mjs
-            node --check tests/validate-celar-ai-ask-operations-source.mjs
-            git diff --check
-            node tests/validate-celar-ai-universal-answer-reliability.mjs
-            node tests/validate-celar-ai-ask-operations-source.mjs
-
-            echo '=== Reliability and operations behavior tests ==='
-            dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
-            dotnet run --project tests/CelarAiOperationsPolicyTests/CelarAiOperationsPolicyTests.csproj --configuration Release
-
-            echo '=== Migration 084 lifecycle tests ==='
-            chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
-            tests/test-module-076-celar-ai-defect-operations-migration-084.sh
-
-            echo '=== Full API build ==='
-            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-
-            echo '=== Full frontend build ==='
-            pushd src/frontend/project-time-web >/dev/null
-            npm ci --no-audit --no-fund
-            npm run build
-            popd >/dev/null
-          } 2>&1 | tee "$LOG"
-
-          trap - EXIT
-          report
+      - name: Publish source-only summary
+        run: |
+          echo 'CELAR_AI_ASK_OPERATIONS=SOURCE_VALIDATED'
+          echo 'CELAR_AI_ASK_OPERATIONS_EVALUATION_CASES=60'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'CELAR_AI_ASK_OPERATIONS_MIGRATION_084=DISPOSABLE_CI_ONLY'
+          echo 'CELAR_AI_ASK_OPERATIONS_TEST_DEPLOYMENTS=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_PRODUCTION_MUTATIONS=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_SECRETS_PRINTED=0'

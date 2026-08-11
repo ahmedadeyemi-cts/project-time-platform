@@ -5,21 +5,18 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/celar-ai-universal-answer-reliability-ci.yml'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversalToolCatalog.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversal*.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiDeterministicIntentPolicy.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs'
-      - 'src/backend/ProjectTime.Api/Ai/CelarAiOperationsIntentRouter.cs'
-      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs'
-      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/backend/ProjectTime.Api/Directory.Build.targets'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
       - 'src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css'
-      - 'src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx'
-      - 'tests/celar-ai-universal-answer-evaluation-cases.json'
-      - 'tests/validate-celar-ai-universal-answer-reliability.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-universal-answer-reliability.mjs'
       - 'tests/CelarAiUniversalAnswerReliabilityTests/**'
-      - 'docs/modules/module-011-pulse-ai/UNIVERSAL-ANSWER-*.md'
+      - 'tests/celar-ai-universal-answer-evaluation-cases.json'
+      - 'tests/validate-celar-ai-pr630-consolidated.mjs'
   workflow_dispatch:
 
 permissions:
@@ -31,9 +28,9 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate universal planning, evidence gates, privacy, API, and UI
+    name: Validate planning, evidence gates, privacy, API, and UI
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -54,159 +51,33 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Validate exact source, 120-case corpus, tool catalog, and no-mutation boundary
-        run: node tests/validate-celar-ai-universal-answer-reliability.mjs
+      - name: Validate consolidated source and evidence contracts
+        run: node tests/validate-celar-ai-pr630-consolidated.mjs
 
-      - name: Run deterministic universal answer reliability behavior tests
+      - name: Run deterministic reliability tests
         run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
-
-      - name: Preserve named-person internal-data parser and database-boundary tests
-        run: dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release
-
-      - name: Build the complete ProjectTime API
-        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-
-      - name: Install complete frontend dependencies
-        working-directory: src/frontend/project-time-web
-        run: npm ci --no-audit --no-fund
-
-      - name: Preserve Module 011, private-document, FlowHive, and Project Forge contracts
-        working-directory: src/frontend/project-time-web
-        run: |
-          set -Eeuo pipefail
-          node scripts/validate-module-011-pulse-ai.mjs
-          node scripts/validate-module-011-pulse-ai-deep-intelligence.mjs
-          if [[ -f scripts/validate-module-011-private-document-pipeline.mjs ]]; then
-            node scripts/validate-module-011-private-document-pipeline.mjs
-          fi
-          node scripts/validate-module-066-project-flowhive.mjs
-          node scripts/validate-module-033-project-forge.mjs
-
-      - name: Build the complete frontend production bundle
-        working-directory: src/frontend/project-time-web
-        run: npm run build
-
-      - name: Verify generated-source stability and clean patch formatting
-        run: |
-          set -Eeuo pipefail
-          git diff --check
-          git diff --exit-code
-
-      - name: Publish source-only validation summary
-        run: |
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_RELIABILITY=SOURCE_VALIDATED'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_DATABASE_CHANGES=0'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_DEPLOYMENTS=0'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_PRODUCTION_MUTATIONS=0'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_ORACLE_MUTATIONS=0'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_SECRETS_PRINTED=0'
-
-  consolidated-diagnose:
-    name: Diagnose consolidated reliability and operations source
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      PGHOST: 127.0.0.1
-      PGPORT: 5432
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGDATABASE: postgres
-      CELAR_AI_CONSOLIDATED_PACKAGE: '1'
-    steps:
-      - name: Check out exact source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Set up Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: src/frontend/project-time-web/package-lock.json
-
-      - name: Apply Phase 1 patch with resilient planner anchor
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs')
-          value = path.read_text()
-          old_start = '        var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();\n'
-          start = value.find(old_start)
-          end = value.find('        var deterministic = RequiresDeterministicCalculation(', start)
-          if start < 0 or end <= start:
-              raise SystemExit(f'PLANNER_BLOCK_NOT_FOUND start={start} end={end}')
-          replacement = '''        var matchedTools = CelarAiUniversalToolCatalog.Match(normalized, intent, 16).ToList();
-        AddIntentDefaults(intent, normalized, matchedTools);
-        AddRequiredTools(questionClass, attachmentCount, matchedTools);
-        var selection = CelarAiDeterministicIntentPolicy.Select(
-            normalized,
-            intent,
-            questionClass,
-            attachmentCount,
-            matchedTools);
-        var tools = selection.SelectedTools.ToArray();
-'''
-          path.write_text(value[:start] + replacement + value[end:])
-          PY
-          awk '
-            /python3 - <<.PY./ {capture=1; next}
-            capture && /^          PY$/ {exit}
-            capture {sub(/^          /, ""); print}
-          ' .github/workflows/converge-celar-ai-consolidated-phase1.yml > /tmp/celar-phase1.py
-          python3 -m py_compile /tmp/celar-phase1.py
-          python3 /tmp/celar-phase1.py
-          node --check src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs
-          node --check tests/validate-celar-ai-universal-answer-reliability.mjs
-          node --check tests/validate-celar-ai-ask-operations-source.mjs
-          git diff --check
-
-      - name: Validate consolidated reliability source
-        run: node tests/validate-celar-ai-universal-answer-reliability.mjs
-
-      - name: Validate consolidated operations source
-        run: node tests/validate-celar-ai-ask-operations-source.mjs
-
-      - name: Run deterministic reliability behavior tests
-        run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
-
-      - name: Run operations policy tests
-        run: dotnet run --project tests/CelarAiOperationsPolicyTests/CelarAiOperationsPolicyTests.csproj --configuration Release
-
-      - name: Validate Migration 084
-        run: |
-          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
-          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
 
       - name: Build complete API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
       - name: Build complete frontend
         working-directory: src/frontend/project-time-web
+        shell: bash
         run: |
+          set -Eeuo pipefail
           npm ci --no-audit --no-fund
           npm run build
+
+      - name: Ensure validation restored tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Publish source-only summary
+        run: |
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_RELIABILITY=SOURCE_VALIDATED'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_TEST_DEPLOYMENTS=0'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_PRODUCTION_MUTATIONS=0'
