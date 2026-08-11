@@ -1,30 +1,33 @@
 namespace ProjectTime.Api.Ai;
 
 /// <summary>
-/// Protected-Test availability worker. It performs deterministic probes through
-/// CelarAiDefectOrchestrationService and never sends prompts, private documents,
-/// tool bodies, or secrets to a model. Automatic defect creation remains off
-/// unless both the deployment-level Test flag and the per-policy flag are on.
+/// Protected-Test availability worker. Observe-only monitoring is independent
+/// from automatic defect creation. PostgreSQL advisory-lock leadership ensures
+/// that only one API replica performs a scheduled cycle while every other
+/// replica remains a healthy standby.
 /// </summary>
 public sealed class CelarAiAvailabilityMonitorService : BackgroundService
 {
     private readonly CelarAiDefectOrchestrationService _operations;
+    private readonly CelarAiMonitorLeadershipService _leadership;
     private readonly ILogger<CelarAiAvailabilityMonitorService> _logger;
 
     public CelarAiAvailabilityMonitorService(
         CelarAiDefectOrchestrationService operations,
+        CelarAiMonitorLeadershipService leadership,
         ILogger<CelarAiAvailabilityMonitorService> logger)
     {
         _operations = operations;
+        _leadership = leadership;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!CelarAiOperationsPolicy.AutomaticMonitoringEnabled)
+        if (!CelarAiOperationalFeatureFlags.MonitoringEnabled)
         {
             _logger.LogInformation(
-                "Ask Celar AI automatic defect monitoring is disabled outside its protected Test activation boundary.");
+                "Ask Celar AI monitoring is disabled. Automatic defect creation remains disabled as well.");
             return;
         }
 
@@ -39,7 +42,27 @@ public sealed class CelarAiAvailabilityMonitorService : BackgroundService
     {
         try
         {
-            await _operations.RunScheduledProbesAsync(cancellationToken);
+            await using var lease = await _leadership.TryAcquireAsync(cancellationToken);
+            if (lease is null)
+            {
+                _logger.LogDebug("Celar AI monitoring cycle skipped by a healthy standby replica.");
+                return;
+            }
+
+            try
+            {
+                await _operations.RunScheduledProbesAsync(cancellationToken);
+                await lease.CompleteCycleAsync("cycle_completed", null, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException
+                                               || !cancellationToken.IsCancellationRequested)
+            {
+                await lease.CompleteCycleAsync(
+                    "cycle_failed",
+                    exception.GetType().Name,
+                    cancellationToken);
+                throw;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -48,7 +71,7 @@ public sealed class CelarAiAvailabilityMonitorService : BackgroundService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                "Ask Celar AI automatic monitoring cycle failed ({ExceptionType}).",
+                "Ask Celar AI monitoring cycle failed ({ExceptionType}).",
                 exception.GetType().Name);
         }
     }
