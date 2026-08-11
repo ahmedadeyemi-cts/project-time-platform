@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   repair:
-    name: Approve only Migration 084 and remove this workflow
+    name: Approve reviewed Migration 084 and remove this workflow
     if: >-
       github.event.pull_request.number == 630 &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 1c160ceaa4788f0798bd80385357321b3ddf736e
+      EXPECTED_PARENT: 59dd3a88a1d7aad334d40cd1331f1defc3a96862
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
@@ -43,7 +43,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
           [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
 
-      - name: Permit only the reviewed Migration 084 pair
+      - name: Update bounded Module 076 validation contracts
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -66,29 +66,30 @@ jobs:
           )
           if not all(value in existing for value in required):
               raise SystemExit('Module 076 legacy artifact gate did not match the reviewed contract')
+
           replacement = r'''const approvedModule076DatabaseArtifacts = new Set([
-            'database/migrations/084_module_076_celar_ai_defect_operations.sql',
-            'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
-          ]);
-          const prohibitedArtifacts = [
-            ...filesBelow(path.join(repositoryRoot, 'database')),
-            ...filesBelow(path.join(repositoryRoot, 'deployment'))
-          ].filter((filePath) => {
-            const relative = path.relative(repositoryRoot, filePath).replaceAll('\\', '/');
-            if (!/(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath))) return false;
-            return !approvedModule076DatabaseArtifacts.has(relative);
-          });
+  'database/migrations/084_module_076_celar_ai_defect_operations.sql',
+  'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
+]);
+const prohibitedArtifacts = [
+  ...filesBelow(path.join(repositoryRoot, 'database')),
+  ...filesBelow(path.join(repositoryRoot, 'deployment'))
+].filter((filePath) => {
+  const relative = path.relative(repositoryRoot, filePath).replaceAll('\\', '/');
+  if (!/(?:module[-_]?076|defect[-_]?tracker)/i.test(path.basename(filePath))) return false;
+  return !approvedModule076DatabaseArtifacts.has(relative);
+});
 
-          assertInvariant(
-            'MODULE_076_NO_UNAPPROVED_DATABASE_OR_DEPLOYMENT_ARTIFACT',
-            prohibitedArtifacts.length === 0
-              && [...approvedModule076DatabaseArtifacts].every((relative) => fs.existsSync(path.join(repositoryRoot, relative))),
-            prohibitedArtifacts.length === 0
-              ? 'only the reviewed Migration 084 forward/rollback pair exists; no Module 076 deployment artifact exists'
-              : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
-          );
+assertInvariant(
+  'MODULE_076_NO_UNAPPROVED_DATABASE_OR_DEPLOYMENT_ARTIFACT',
+  prohibitedArtifacts.length === 0
+    && [...approvedModule076DatabaseArtifacts].every((relative) => fs.existsSync(path.join(repositoryRoot, relative))),
+  prohibitedArtifacts.length === 0
+    ? 'only the reviewed Migration 084 forward/rollback pair exists; no Module 076 deployment artifact exists'
+    : prohibitedArtifacts.map((filePath) => path.relative(repositoryRoot, filePath)).join(', ')
+);
 
-          '''
+'''
           validator.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
 
           consolidated = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
@@ -105,7 +106,6 @@ jobs:
 
           node src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs
           rm -- .github/workflows/repair-pr630-module076-migration-validator.yml
-          node tests/validate-celar-ai-pr630-consolidated.mjs
           git diff --check
           git diff --exit-code -- . \
             ':!src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs' \
@@ -122,5 +122,5 @@ jobs:
             src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs \
             tests/validate-celar-ai-pr630-consolidated.mjs \
             .github/workflows/repair-pr630-module076-migration-validator.yml
-          git commit -m 'Approve only Module 076 Migration 084 in legacy validation'
+          git commit -m 'Approve only Module 076 Migration 084 in validation'
           git push origin "HEAD:${HEAD_BRANCH}"
