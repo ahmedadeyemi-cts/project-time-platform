@@ -114,8 +114,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
-          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+          bash tests/test-module-076-celar-ai-defect-operations-migration-084.sh
 
       - name: Build complete API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
