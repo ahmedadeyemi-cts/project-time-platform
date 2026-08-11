@@ -1,0 +1,213 @@
+name: Verify Live Celar AI Oracle Protected Test Final State
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/verify-live-celar-oracle-test-final.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: verify-live-celar-oracle-test-final
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/observe-pr639-final-release-20260811'
+    environment: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EVIDENCE_DIR: /tmp/live-celar-oracle-test-final
+      EXPECTED_SOURCE: b204b002286d2a9fe2958073c7d0a99168d75401
+      EXPECTED_API_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-api@sha256:b3c50fcd33a96ac477482bd5c500cc811bf91a1300f52f9bcb50fff93b85b2e5
+      EXPECTED_API_REVISION: ca-phd-test-api-westus3--caorv2-31462607846-1
+      EXPECTED_WEB_IMAGE: acrphdtest7825cc.azurecr.io/project-health-dashboard-web@sha256:205a1d0ee77bf56db3a5f3635c14cbfd2403da1469349dae007d43059fcbcf68
+      EXPECTED_WEB_REVISION: ca-phd-test-web-westus3--pr627web-31452398717-1
+    steps:
+      - name: Sign in read-only to protected Test
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture and verify exact live Test state
+        shell: bash
+        env:
+          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          install -d -m 0700 "$EVIDENCE_DIR"
+          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
+          [[ "$(az account show --query id -o tsv --only-show-errors)" == '${{ vars.AZURE_SUBSCRIPTION_ID }}' ]] || fail 'Wrong Azure subscription.'
+          BASE='${{ vars.PUBLIC_URL }}'; BASE="${BASE%/}"
+          [[ "$BASE" == https://phd-west-test.onenecklab.com ]] || fail 'Wrong protected-Test origin.'
+
+          API_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_APP="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          [[ "$(jq -r '.tags.environment // empty' <<<"$API_APP")" == test ]] || fail 'API is not tagged Test.'
+          [[ "$(jq -r '.tags.environment // empty' <<<"$WEB_APP")" == test ]] || fail 'Web is not tagged Test.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$API_APP" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'API must remain in single-revision mode.'
+          [[ "$(jq -r '.properties.configuration.activeRevisionsMode' <<<"$WEB_APP" | tr '[:upper:]' '[:lower:]')" == single ]] || fail 'Web must remain in single-revision mode.'
+
+          API_REVISIONS="$(az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
+          WEB_REVISIONS="$(az containerapp revision list -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
+          ACTIVE_API_REVISIONS="$(jq '[.[] | select(.properties.active == true)]' <<<"$API_REVISIONS")"
+          ACTIVE_WEB_REVISIONS="$(jq '[.[] | select(.properties.active == true)]' <<<"$WEB_REVISIONS")"
+          [[ "$(jq 'length' <<<"$ACTIVE_API_REVISIONS")" == 1 ]] || fail 'Exactly one API revision must be active.'
+          [[ "$(jq 'length' <<<"$ACTIVE_WEB_REVISIONS")" == 1 ]] || fail 'Exactly one web revision must be active.'
+
+          API_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$API_APP")"
+          WEB_IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$WEB_APP")"
+          API_REVISION="$(jq -r '.[0].name' <<<"$ACTIVE_API_REVISIONS")"
+          WEB_REVISION="$(jq -r '.[0].name' <<<"$ACTIVE_WEB_REVISIONS")"
+          SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name=="PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length==1 then .[0] else empty end' <<<"$API_APP")"
+          [[ "$API_IMAGE" == "$EXPECTED_API_IMAGE" ]] || fail 'Active API image mismatch.'
+          [[ "$WEB_IMAGE" == "$EXPECTED_WEB_IMAGE" ]] || fail 'Active web image mismatch.'
+          [[ "$API_REVISION" == "$EXPECTED_API_REVISION" ]] || fail 'Active API revision mismatch.'
+          [[ "$WEB_REVISION" == "$EXPECTED_WEB_REVISION" ]] || fail 'Active web revision mismatch.'
+          [[ "$SOURCE" == "$EXPECTED_SOURCE" ]] || fail 'Active source marker mismatch.'
+
+          HEALTH_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/health-raw.json" -w '%{http_code}' "$BASE/health?finalOracleVerification=$GITHUB_RUN_ID" || true)"
+          [[ "$HEALTH_STATUS" == 200 ]] || fail "Health returned HTTP $HEALTH_STATUS."
+          jq -e '.status == "healthy"' "$EVIDENCE_DIR/health-raw.json" >/dev/null || fail 'Health payload is not healthy.'
+
+          AUTH_064=(
+            -H "Authorization: Bearer $UAT_SESSION"
+            -H "X-ProjectPulse-Session: $UAT_SESSION"
+            -H 'X-ProjectPulse-Module-Number: 064'
+            -H "Origin: $BASE"
+            -H 'Sec-Fetch-Site: same-origin'
+            -H 'Cache-Control: no-cache'
+          )
+          AUTH_011=(
+            -H "Authorization: Bearer $UAT_SESSION"
+            -H "X-ProjectPulse-Session: $UAT_SESSION"
+            -H 'X-ProjectPulse-Module-Number: 011'
+            -H 'Cache-Control: no-cache'
+          )
+
+          PROFILE_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/profile-raw.json" -w '%{http_code}' \
+            "${AUTH_064[@]}" "$BASE/api/ai-configuration/private-model" || true)"
+          PIPELINE_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/pipeline-raw.json" -w '%{http_code}' \
+            "${AUTH_011[@]}" "$BASE/api/celar-ai/v1/documents/pipeline/readiness" || true)"
+          RUNTIME_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/runtime-raw.json" -w '%{http_code}' \
+            "${AUTH_011[@]}" "$BASE/api/celar-ai/v1/documents/runtime/readiness" || true)"
+          PRODUCTION_STATUS="$(curl -sS --max-time 90 -o "$EVIDENCE_DIR/production-raw.json" -w '%{http_code}' \
+            "${AUTH_011[@]}" "$BASE/api/celar-ai/v1/production/readiness" || true)"
+          [[ "$PROFILE_STATUS" == 200 ]] || fail "Module 064 profile returned HTTP $PROFILE_STATUS."
+          [[ "$PIPELINE_STATUS" == 200 ]] || fail "Pipeline readiness returned HTTP $PIPELINE_STATUS."
+          [[ "$RUNTIME_STATUS" == 200 ]] || fail "Runtime readiness returned HTTP $RUNTIME_STATUS."
+          [[ "$PRODUCTION_STATUS" == 200 ]] || fail "Production readiness returned HTTP $PRODUCTION_STATUS."
+
+          jq -e '
+            .module == "064" and
+            .profile.enabled == true and
+            .profile.configured == true and
+            .profile.endpointConfigured == true and
+            .profile.authenticationConfigured == true and
+            .profile.model == "gemma3:4b" and
+            .profile.endpointReturned == false and
+            .profile.bearerTokenReturned == false and
+            .secureStore.endpointReturned == false and
+            .secureStore.tokenReturned == false and
+            .productionReadiness.privateTargetAvailability.verified == true and
+            .productionReadiness.privateTargetAvailability.probeStatus == "available" and
+            .stateChanged == false
+          ' "$EVIDENCE_DIR/profile-raw.json" >/dev/null || fail 'Module 064 live private-model contract failed.'
+
+          jq -e '
+            .readiness.malwareScanAttested == true and
+            .readiness.malwareScannerMode == "celar_https_gateway" and
+            .readiness.ocrEndpointConfigured == true and
+            .readiness.privateEmbeddingEndpointConfigured == true and
+            .readiness.privateVectorIndexConfigured == true and
+            .stateChanged == false and
+            .externalProviderCalled == false
+          ' "$EVIDENCE_DIR/pipeline-raw.json" >/dev/null || fail 'Module 011 pipeline Oracle-component contract failed.'
+
+          jq -e '
+            .readiness.clamAvConfigured == true and
+            .readiness.malwareScannerEndpointPrivate == true and
+            .readiness.ocrConfigured == true and
+            .readiness.ocrEndpointPrivate == true and
+            .readiness.embeddingConfigured == true and
+            .readiness.embeddingEndpointPrivate == true and
+            .externalProviderCalled == false and
+            .deploymentPerformed == false
+          ' "$EVIDENCE_DIR/runtime-raw.json" >/dev/null || fail 'Module 011 runtime Oracle-component contract failed.'
+
+          jq -n \
+            --arg observedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg base "$BASE" \
+            --arg source "$SOURCE" \
+            --arg apiImage "$API_IMAGE" \
+            --arg apiRevision "$API_REVISION" \
+            --arg webImage "$WEB_IMAGE" \
+            --arg webRevision "$WEB_REVISION" \
+            --arg healthStatus "$HEALTH_STATUS" \
+            --argjson profile "$(jq '{status,profile:{enabled,configured,ready,endpointConfigured,endpointHostFingerprint,model,authMode,authenticationConfigured,bearerTokenConfigured,privateHostAllowlistCount,requirePrivateModelForDocuments,revision,deploymentManaged,configurationAuthority,configurationSourceCommit,endpointPolicyStatus,confidentialContextEligible,endpointReturned,bearerTokenReturned},privateTargetAvailability:.productionReadiness.privateTargetAvailability,privateDocumentRuntimeReady:.productionReadiness.privateDocumentRuntimeReady,blockers:.productionReadiness.blockers,rawValuesReturned:(.profile.endpointReturned or .profile.bearerTokenReturned or .secureStore.endpointReturned or .secureStore.tokenReturned)}' "$EVIDENCE_DIR/profile-raw.json")" \
+            --argjson pipeline "$(jq '{status,readiness:{storageRootSharedPersistent,storageRootEphemeral,malwareScanAttested,malwareScannerMode,ocrEndpointConfigured,privateEmbeddingEndpointConfigured,privateVectorIndexConfigured,authorizedDocumentCount,supportedDocumentCount,extractionReadyDocumentCount,blockers,missingConfiguration},stateChanged,externalProviderCalled}' "$EVIDENCE_DIR/pipeline-raw.json")" \
+            --argjson runtime "$(jq '{status,readiness:{workerEnabled,automaticDocumentQueueEnabled,documentServicePrincipalConfigured,documentServicePrincipalAuthorized,uploadStorageProductionReady,clamAvConfigured,malwareScannerEndpointPrivate,ocrConfigured,ocrEndpointPrivate,embeddingConfigured,embeddingEndpointPrivate,readyDocumentCount,readySowDocumentCount,activeChunkCount,embeddedChunkCount,blockers,missingConfiguration},externalProviderCalled,deploymentPerformed}' "$EVIDENCE_DIR/runtime-raw.json")" \
+            '{
+              environment:"test",
+              observedAt:$observedAt,
+              baseUrl:$base,
+              health:{httpStatus:($healthStatus|tonumber),status:"healthy"},
+              sourceCommit:$source,
+              api:{image:$apiImage,revision:$apiRevision,activeRevisionCount:1},
+              web:{image:$webImage,revision:$webRevision,activeRevisionCount:1},
+              module064:$profile,
+              module011:{pipeline:$pipeline,runtime:$runtime},
+              oracleActivation:{inference:true,embedding:true,ocr:true,malwareScanning:true,readiness:true},
+              privateDocumentRuntimeFullyReady:($runtime.status == "private_document_runtime_ready"),
+              observerMutation:false,
+              productionMutation:false,
+              secretValuesRead:false,
+              rawEndpointOrTokenReturned:false
+            }' > "$EVIDENCE_DIR/live-final-summary.json"
+
+          rm -f "$EVIDENCE_DIR"/*-raw.json
+          echo "LIVE_SOURCE_COMMIT=$SOURCE"
+          echo "LIVE_API_IMAGE=$API_IMAGE"
+          echo "LIVE_API_REVISION=$API_REVISION"
+          echo "LIVE_WEB_IMAGE=$WEB_IMAGE"
+          echo "LIVE_WEB_REVISION=$WEB_REVISION"
+          echo 'ORACLE_COMPONENTS=ACTIVE'
+          echo 'PRIVATE_DOCUMENT_RUNTIME=PARTIALLY_READY'
+          echo 'OBSERVER_MUTATION=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Upload immutable final live evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-celar-oracle-test-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/live-celar-oracle-test-final
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish final live summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Live protected-Test Celar AI Oracle verification'
+            echo '- Observer mutation: none'
+            echo '- Production mutation: none'
+            if [[ -f "$EVIDENCE_DIR/live-final-summary.json" ]]; then
+              jq -r '"- Source: `" + .sourceCommit + "`"' "$EVIDENCE_DIR/live-final-summary.json"
+              jq -r '"- API: `" + .api.image + "` on `" + .api.revision + "`"' "$EVIDENCE_DIR/live-final-summary.json"
+              jq -r '"- Web: `" + .web.image + "` on `" + .web.revision + "`"' "$EVIDENCE_DIR/live-final-summary.json"
+              jq -r '"- Oracle components active: " + ([.oracleActivation[]] | all | tostring)' "$EVIDENCE_DIR/live-final-summary.json"
+              jq -r '"- Private document runtime fully ready: " + (.privateDocumentRuntimeFullyReady|tostring)' "$EVIDENCE_DIR/live-final-summary.json"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
