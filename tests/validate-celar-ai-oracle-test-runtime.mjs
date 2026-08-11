@@ -68,6 +68,8 @@ if (privateTargetStart < 0 || privateTargetEnd <= privateTargetStart) {
 }
 const privateTarget = capabilityRouting.slice(privateTargetStart, privateTargetEnd)
 const markerCount = (content, value) => content.split(value).length - 1
+// Module 064 provider readiness uses a fixed identity-free phrase, while
+// release-candidate verification retains the separate content-derived SOW challenge.
 for (const [marker, expected] of [
   ['X-Pulse-AI-Privacy-Boundary', 3],
   ['PulseAiPrivateRagPolicy.PrivacyBoundary', 3],
