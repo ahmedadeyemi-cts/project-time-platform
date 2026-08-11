@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 91f06297c1fde18a06e872b88540b69f9cd95ed8
+      EXPECTED_PARENT: cdcfead70eb631a771c1bd900051d49bba81408d
       HEAD_BRANCH: fix/module001a-viewas-module013-operations-current-main-20260811
     steps:
       - name: Check out exact PR head
@@ -78,8 +78,11 @@ jobs:
               'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
               'tests/validate-module001a-viewas-module013-operations.mjs',
           }
-          actual = set(filter(None, subprocess.check_output(
-              ['git', 'diff', '--name-only'], text=True).splitlines()))
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only'], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines()
+          actual = set(filter(None, tracked + untracked))
           if actual != expected:
               raise SystemExit(
                   'Unexpected source-transform scope.\nExpected: '
@@ -110,6 +113,7 @@ jobs:
           git diff --check
           python3 - <<'PY'
           import subprocess
+
           expected = {
               '.github/workflows/apply-module001a-viewas-module013-operations-fix.yml',
               '.github/workflows/validate-module001a-viewas-module013-operations.yml',
@@ -123,20 +127,17 @@ jobs:
               'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js',
               'tests/validate-module001a-viewas-module013-operations.mjs',
           }
-          actual = set(filter(None, subprocess.check_output(
-              ['git', 'status', '--porcelain=v1'], text=True).splitlines()))
-          paths = set()
-          for row in actual:
-              value = row[3:]
-              if ' -> ' in value:
-                  value = value.split(' -> ', 1)[1]
-              paths.add(value)
-          if paths != expected:
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only'], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'], text=True).splitlines()
+          actual = set(filter(None, tracked + untracked))
+          if actual != expected:
               raise SystemExit(
                   'Build changed files outside the bounded package.\nExpected: '
                   + '\n'.join(sorted(expected))
                   + '\nActual: '
-                  + '\n'.join(sorted(paths)))
+                  + '\n'.join(sorted(actual)))
           PY
 
       - name: Commit prepared package to PR 645
