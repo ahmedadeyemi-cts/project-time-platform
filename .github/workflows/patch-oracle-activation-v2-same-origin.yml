@@ -1,0 +1,64 @@
+name: Patch Oracle activation v2 same-origin UAT
+
+on:
+  push:
+    branches:
+      - fix/celar-oracle-activation-v2-same-origin-20260811
+    paths:
+      - '.github/workflows/patch-oracle-activation-v2-same-origin.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-oracle-activation-v2-same-origin
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Apply bounded same-origin probe correction
+    if: github.ref == 'refs/heads/fix/celar-oracle-activation-v2-same-origin-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the exact feature branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/celar-oracle-activation-v2-same-origin-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Patch only the Module 064 UAT browser-origin header
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''          AUTH_064=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Cache-Control: no-cache')'''
+          new = '''          AUTH_064=(-H "Authorization: Bearer $UAT_SESSION" -H "X-ProjectPulse-Session: $UAT_SESSION" -H 'X-ProjectPulse-Module-Number: 064' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' -H 'Cache-Control: no-cache')'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one Module 064 UAT header row, found {count}.')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+          grep -Fq -- "-H 'Sec-Fetch-Site: same-origin'" .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
+          grep -Fq 'requireSameOrigin: true' src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          grep -Fq 'Sec-Fetch-Site' src/backend/ProjectTime.Api/Modules/CelarAiCapabilityRoutingModule.cs
+          git diff --check
+
+      - name: Remove the one-time patch controller and publish the reviewed change
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/patch-oracle-activation-v2-same-origin.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml .github/workflows/patch-oracle-activation-v2-same-origin.yml
+          git diff --cached --check
+          git commit -m 'fix: send same-origin metadata in Oracle activation UAT'
+          git push origin HEAD:fix/celar-oracle-activation-v2-same-origin-20260811
