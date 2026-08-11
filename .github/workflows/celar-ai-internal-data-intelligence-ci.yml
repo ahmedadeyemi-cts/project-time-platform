@@ -8,6 +8,7 @@ on:
       - 'database/rollback/080_celar_ai_internal_data_intelligence_rollback.sql'
       - 'database/rollback/081_celar_ai_private_runtime_activation_rollback.sql'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiInternalDataService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceContracts.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs'
