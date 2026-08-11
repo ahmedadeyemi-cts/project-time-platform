@@ -1,0 +1,157 @@
+name: Validate Ask Celar AI Operations and Defect Automation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - feature/celar-ai-universal-answer-reliability-20260810
+    paths:
+      - '.github/workflows/celar-ai-ask-operations-ci.yml'
+      - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'
+      - 'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiOperationsContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiDefectOrchestrationService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiDefectQueryService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiAvailabilityMonitorService.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiOperationsModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiDefectQueryModule.cs'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-module-076-celar-ai-operations.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-universal-answer-reliability.mjs'
+      - 'src/frontend/project-time-web/scripts/backup-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/scripts/restore-celar-ai-production-sources.mjs'
+      - 'src/frontend/project-time-web/src/CelarAiAskOperations.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-ask-operations.css'
+      - 'tests/CelarAiOperationsPolicyTests/**'
+      - 'tests/celar-ai-operations-evaluation-cases.json'
+      - 'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'
+      - 'tests/validate-celar-ai-ask-operations-source.mjs'
+      - 'docs/modules/module-011-pulse-ai/ASK-CELAR-AI-OPERATIONS.md'
+      - 'docs/modules/module-076-defect-tracker/CELAR-AI-GUIDED-INTAKE.md'
+      - 'docs/modules/module-078-observability-slo-health/CELAR-AI-AUTOMATIC-DEFECTS.md'
+      - 'docs/modules/module-083-full-future-loop/CELAR-AI-DEFECT-ADAPTER-ACTIVATION.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-ask-operations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Ask Celar AI, Module 076, thresholds, recovery, privacy, and UI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch stacked base for source-isolation validation
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate universal answer dependency
+        run: node tests/validate-celar-ai-universal-answer-reliability.mjs
+
+      - name: Run universal answer reliability behavior tests
+        run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Validate Ask Celar AI operational source and 60-case corpus
+        run: node tests/validate-celar-ai-ask-operations-source.mjs
+
+      - name: Run deterministic operations policy tests
+        run: dotnet run --project tests/CelarAiOperationsPolicyTests/CelarAiOperationsPolicyTests.csproj --configuration Release
+
+      - name: Validate migration 084 apply, idempotency, immutability, and rollback
+        run: |
+          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+
+      - name: Build complete ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install complete frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Preserve adjacent Module 011, Module 076, Module 078, and Module 083 contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          node scripts/validate-module-011-pulse-ai.mjs
+          node scripts/validate-module-011-system-intelligence-package.mjs
+          node scripts/validate-module-076-defect-tracker.mjs
+          node scripts/validate-module-078-observability-slo-health.mjs
+          node scripts/validate-module-083-autonomous-control-plane.mjs
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Verify Ask Celar AI operational bundle markers
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          grep -R -Fq 'Troubleshoot, verify, and create a Module 076 defect' dist
+          grep -R -Fq 'Create defect in Module 076' dist
+          grep -R -Fq 'Health & automation' dist
+          grep -R -Fq 'ahmed.adeyemi@ussignal.com' dist
+
+      - name: Verify generated-source restoration and clean patch formatting
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Publish source-validation summary
+        run: |
+          echo 'CELAR_AI_ASK_OPERATIONS=SOURCE_VALIDATED'
+          echo 'CELAR_AI_ASK_OPERATIONS_PRIMARY_SURFACE=ASK_CELAR_AI'
+          echo 'CELAR_AI_ASK_OPERATIONS_DURABLE_SYSTEM=MODULE_076'
+          echo 'CELAR_AI_ASK_OPERATIONS_EVALUATION_CASES=60'
+          echo 'CELAR_AI_ASK_OPERATIONS_MIGRATION=084'
+          echo 'CELAR_AI_ASK_OPERATIONS_DEFAULT_ASSIGNEE=ahmed.adeyemi@ussignal.com'
+          echo 'CELAR_AI_ASK_OPERATIONS_TEST_DEPLOYMENT=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_PRODUCTION_CHANGES=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_ORACLE_CHANGES=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_GITHUB_MUTATIONS=0'
