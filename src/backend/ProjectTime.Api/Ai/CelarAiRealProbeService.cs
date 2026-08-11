@@ -569,7 +569,7 @@ public sealed class CelarAiRealProbeService
         var endpointCheck = await PulseAiExternalHttpsRuntimePolicy.VerifyEndpointAsync(
             request.RequestUri?.ToString(), cancellationToken);
         if (request.RequestUri?.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase) != true
-            && !endpointCheck.Allowed)
+            && !endpointCheck.Approved)
         {
             throw new InvalidOperationException($"The private endpoint failed exact-host and IP-pin validation: {endpointCheck.Reason}.");
         }

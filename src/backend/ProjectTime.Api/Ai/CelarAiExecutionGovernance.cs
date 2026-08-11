@@ -394,12 +394,13 @@ public static class CelarAiTypedEvidencePolicy
         int depth,
         ref int propertyCount)
     {
-        var values = element.EnumerateArray().Take(25)
-            .Select(item => Read(item, depth + 1, ref propertyCount))
-            .ToArray();
         if (element.GetArrayLength() > 25)
-            throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
-        return values;
+    throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
+
+var values = new List<object?>(element.GetArrayLength());
+foreach (var item in element.EnumerateArray())
+    values.Add(Read(item, depth + 1, ref propertyCount));
+return values;
     }
 
     private static string ReadString(string? value)

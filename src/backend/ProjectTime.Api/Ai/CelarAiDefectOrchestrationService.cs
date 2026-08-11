@@ -1003,7 +1003,7 @@ public sealed class CelarAiDefectOrchestrationService
         var endpointCheck = await PulseAiExternalHttpsRuntimePolicy.VerifyEndpointAsync(
             snapshot.ReadinessEndpoint.ToString(),
             cancellationToken);
-        if (!endpointCheck.Allowed)
+        if (!endpointCheck.Approved)
         {
             return Probe("oracle_runtime", "all_ai_targets", "Celar AI private runtime", "failed", null, Elapsed(started), endpointCheck.Reason, "The readiness endpoint failed exact-host and IP-pin validation.", "external_runtime_policy", DateTimeOffset.UtcNow);
         }
