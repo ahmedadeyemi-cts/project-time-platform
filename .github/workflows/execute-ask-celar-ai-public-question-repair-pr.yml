@@ -1,0 +1,75 @@
+name: Execute Ask Celar AI Public Question Repair
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apply-ask-celar-ai-public-question-resilience.yml'
+      - '.github/workflows/execute-ask-celar-ai-public-question-repair-pr.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: execute-ask-celar-ai-public-question-repair
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'fix/ask-celar-ai-public-questions-resilience-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/ask-celar-ai-public-questions-resilience-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Execute bounded patch embedded in the reviewed controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          controller = Path('.github/workflows/apply-ask-celar-ai-public-question-resilience.yml')
+          text = controller.read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = text.index(start_marker) + len(start_marker)
+          end = text.index(end_marker, start)
+          script = text[start:end]
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in script.splitlines()
+          )
+          exec(compile(script, str(controller), 'exec'), {'__name__': '__main__'})
+          PY
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate focused routing and static contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-public-question-resilience.mjs
+          dotnet run --project tests/CelarAiInternalDataTests/CelarAiInternalDataTests.csproj --configuration Release -p:ProjectPulseSourceRevision=1111111111111111111111111111111111111111
+          git diff --check
+
+      - name: Commit permanent repair and remove temporary controllers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/workflows/apply-ask-celar-ai-public-question-resilience.yml \
+            .github/workflows/execute-ask-celar-ai-public-question-repair-pr.yml
+          git diff --check
+          git config user.name 'Pulse Celar AI Repair Automation'
+          git config user.email 'pulse-celar-ai-repair@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Ask Celar AI public questions and final validation gates'
+          git push origin HEAD:fix/ask-celar-ai-public-questions-resilience-20260811
