@@ -1,0 +1,617 @@
+.celar-ask-operations {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482600;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  color: var(--text-primary, #10243e);
+}
+
+.celar-ops-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 22, 40, .66);
+  backdrop-filter: blur(7px);
+}
+
+.celar-ops-shell {
+  position: relative;
+  width: min(1180px, calc(100vw - 2.5rem));
+  max-height: min(900px, calc(100vh - 2.5rem));
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border-color, #c7d3df);
+  border-radius: 1.15rem;
+  background: var(--surface-primary, #ffffff);
+  box-shadow: 0 30px 90px rgba(7, 28, 52, .36);
+}
+
+.celar-ops-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  background:
+    radial-gradient(circle at 88% -35%, rgba(46, 175, 220, .3), transparent 46%),
+    linear-gradient(135deg, #061f3a 0%, #0c456c 62%, #126d92 100%);
+  color: #fff;
+}
+
+.celar-ops-header span {
+  display: block;
+  margin-bottom: .32rem;
+  color: #7bd8fa;
+  font-size: .74rem;
+  font-weight: 850;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.celar-ops-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+  line-height: 1.2;
+}
+
+.celar-ops-header p {
+  max-width: 760px;
+  margin: .45rem 0 0;
+  color: #d8edf8;
+  line-height: 1.5;
+}
+
+.celar-ops-header > button {
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, .34);
+  border-radius: .65rem;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  font-size: 1.55rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.celar-ops-tabs {
+  display: flex;
+  gap: .35rem;
+  overflow-x: auto;
+  padding: .65rem .85rem;
+  border-bottom: 1px solid var(--border-color, #d7e0e8);
+  background: var(--surface-secondary, #f4f7fa);
+}
+
+.celar-ops-tabs button {
+  min-width: max-content;
+  border: 1px solid transparent;
+  border-radius: .65rem;
+  padding: .65rem .9rem;
+  background: transparent;
+  color: var(--text-secondary, #52667a);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.celar-ops-tabs button:hover,
+.celar-ops-tabs button.is-active {
+  border-color: var(--border-color, #bfd0de);
+  background: var(--surface-primary, #fff);
+  color: var(--accent, #0677a8);
+  box-shadow: 0 3px 12px rgba(17, 48, 76, .07);
+}
+
+.celar-ops-banner {
+  margin: .75rem .95rem 0;
+  border: 1px solid #97bed1;
+  border-radius: .65rem;
+  padding: .7rem .85rem;
+  background: color-mix(in srgb, #0f7da8 8%, var(--surface-primary, #fff));
+  color: inherit;
+}
+
+.celar-ops-banner.is-error {
+  border-color: #d26475;
+  background: color-mix(in srgb, #cf3d57 8%, var(--surface-primary, #fff));
+}
+
+.celar-ops-content {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.celar-ops-card,
+.celar-ops-questionnaire,
+.celar-ops-conclusion,
+.celar-ops-created,
+.celar-ops-health-summary,
+.celar-ops-defect-card {
+  border: 1px solid var(--border-color, #cbd7e2);
+  border-radius: .9rem;
+  background: var(--surface-primary, #fff);
+  box-shadow: 0 8px 24px rgba(12, 40, 66, .07);
+}
+
+.celar-ops-card,
+.celar-ops-questionnaire,
+.celar-ops-created {
+  padding: 1rem;
+}
+
+.celar-ops-card-heading,
+.celar-ops-probe header,
+.celar-ops-defect-card header,
+.celar-ops-policy-list article > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.celar-ops-card-heading span,
+.celar-ops-created > span,
+.celar-ops-conclusion > span {
+  display: block;
+  margin-bottom: .25rem;
+  color: var(--accent, #0677a8);
+  font-size: .72rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.celar-ops-card h3,
+.celar-ops-questionnaire h3,
+.celar-ops-created h3,
+.celar-ops-conclusion h3 {
+  margin: 0;
+  color: inherit;
+}
+
+.celar-ops-card > p,
+.celar-ops-questionnaire > section > p,
+.celar-ops-conclusion p,
+.celar-ops-created p,
+.celar-ops-policy-list p,
+.celar-ops-defect-card p {
+  color: var(--text-secondary, #52667a);
+  line-height: 1.5;
+}
+
+.celar-ops-card textarea,
+.celar-ops-card input,
+.celar-ops-card select,
+.celar-ops-questionnaire textarea,
+.celar-ops-questionnaire input,
+.celar-ops-questionnaire select,
+.celar-ops-synthetic-row select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color, #bfcdda);
+  border-radius: .65rem;
+  padding: .7rem .75rem;
+  background: var(--surface-secondary, #f5f8fb);
+  color: inherit;
+  font: inherit;
+}
+
+.celar-ops-card textarea,
+.celar-ops-questionnaire textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.celar-ops-card label,
+.celar-ops-questionnaire label {
+  display: grid;
+  gap: .38rem;
+  margin-top: .75rem;
+  color: inherit;
+  font-size: .88rem;
+  font-weight: 750;
+}
+
+.celar-ops-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 .85rem;
+}
+
+.celar-ops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  margin-top: .9rem;
+}
+
+.celar-ops-actions button,
+.celar-ops-defect-card button,
+.celar-ops-policy-list button,
+.celar-ops-synthetic-row button {
+  border: 1px solid var(--border-color, #b9c9d7);
+  border-radius: .65rem;
+  padding: .64rem .85rem;
+  background: var(--surface-secondary, #f4f7fa);
+  color: inherit;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.celar-ops-actions button.is-primary,
+.celar-ops-defect-card button,
+.celar-ops-synthetic-row button {
+  border-color: var(--accent, #0677a8);
+  background: var(--accent, #0677a8);
+  color: #fff;
+}
+
+.celar-ops-actions button:disabled,
+.celar-ops-policy-list button:disabled,
+.celar-ops-synthetic-row button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.celar-ops-conclusion {
+  padding: 1rem;
+  border-left: 5px solid #64819d;
+}
+
+.celar-ops-conclusion.is-failed_checks_detected {
+  border-left-color: #ce3e59;
+  background: color-mix(in srgb, #ce3e59 5%, var(--surface-primary, #fff));
+}
+
+.celar-ops-conclusion.is-degraded_evidence {
+  border-left-color: #d88719;
+  background: color-mix(in srgb, #d88719 6%, var(--surface-primary, #fff));
+}
+
+.celar-ops-conclusion.is-checks_completed {
+  border-left-color: #16825c;
+  background: color-mix(in srgb, #16825c 5%, var(--surface-primary, #fff));
+}
+
+.celar-ops-probe-grid,
+.celar-ops-defect-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.celar-ops-probe {
+  min-width: 0;
+  border: 1px solid var(--border-color, #cbd7e2);
+  border-top: 4px solid #71869c;
+  border-radius: .8rem;
+  padding: .8rem;
+  background: var(--surface-primary, #fff);
+}
+
+.celar-ops-probe.is-healthy { border-top-color: #16825c; }
+.celar-ops-probe.is-degraded { border-top-color: #d88719; }
+.celar-ops-probe.is-failed { border-top-color: #ce3e59; }
+
+.celar-ops-probe header span,
+.celar-ops-defect-card header span,
+.celar-ops-policy-list article > div span {
+  border-radius: 999px;
+  padding: .22rem .48rem;
+  background: var(--surface-secondary, #eef3f7);
+  color: var(--text-secondary, #52667a);
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.celar-ops-probe p {
+  min-height: 2.8rem;
+  margin: .55rem 0;
+  color: var(--text-secondary, #52667a);
+  font-size: .84rem;
+  line-height: 1.45;
+}
+
+.celar-ops-probe dl,
+.celar-ops-created dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .4rem;
+  margin: 0;
+}
+
+.celar-ops-probe dl div,
+.celar-ops-created dl div {
+  min-width: 0;
+  border-radius: .5rem;
+  padding: .45rem;
+  background: var(--surface-secondary, #f3f6f9);
+}
+
+.celar-ops-probe dt,
+.celar-ops-created dt {
+  color: var(--text-secondary, #627487);
+  font-size: .65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.celar-ops-probe dd,
+.celar-ops-created dd {
+  overflow-wrap: anywhere;
+  margin: .18rem 0 0;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.celar-ops-defect-card {
+  padding: .85rem;
+}
+
+.celar-ops-defect-card h4 {
+  margin: .6rem 0 .25rem;
+}
+
+.celar-ops-defect-card small {
+  display: block;
+  color: var(--text-secondary, #52667a);
+  line-height: 1.4;
+}
+
+.celar-ops-stepper {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.celar-ops-stepper li {
+  display: grid;
+  justify-items: center;
+  gap: .35rem;
+  min-width: 0;
+  text-align: center;
+}
+
+.celar-ops-stepper li span {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--border-color, #c6d2de);
+  border-radius: 50%;
+  background: var(--surface-primary, #fff);
+  color: var(--text-secondary, #586d82);
+  font-weight: 850;
+}
+
+.celar-ops-stepper li.is-active span,
+.celar-ops-stepper li.is-complete span {
+  border-color: var(--accent, #0677a8);
+  background: var(--accent, #0677a8);
+  color: #fff;
+}
+
+.celar-ops-stepper small {
+  color: var(--text-secondary, #52667a);
+  font-size: .7rem;
+  line-height: 1.25;
+}
+
+.celar-ops-questionnaire {
+  min-height: 360px;
+}
+
+.celar-ops-questionnaire > section {
+  animation: celar-ops-step-in .16s ease-out;
+}
+
+@keyframes celar-ops-step-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.celar-ops-help,
+.celar-ops-empty,
+.celar-ops-confirmation {
+  border-radius: .65rem;
+  padding: .75rem;
+  background: var(--surface-secondary, #f4f7fa);
+  color: var(--text-secondary, #52667a);
+  line-height: 1.5;
+}
+
+.celar-ops-confirmation {
+  border-left: 4px solid var(--accent, #0677a8);
+}
+
+.celar-ops-review-grid,
+.celar-ops-health-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+.celar-ops-review-grid > div,
+.celar-ops-health-summary > div {
+  min-width: 0;
+  border: 1px solid var(--border-color, #d4dde6);
+  border-radius: .65rem;
+  padding: .75rem;
+  background: var(--surface-secondary, #f5f8fb);
+}
+
+.celar-ops-review-grid span,
+.celar-ops-health-summary span {
+  display: block;
+  margin-bottom: .25rem;
+  color: var(--text-secondary, #617488);
+  font-size: .7rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.celar-ops-review-grid strong,
+.celar-ops-health-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.celar-ops-health-summary {
+  padding: .8rem;
+}
+
+.celar-ops-policy-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin-top: .8rem;
+}
+
+.celar-ops-policy-list article {
+  border: 1px solid var(--border-color, #d0dae4);
+  border-radius: .7rem;
+  padding: .75rem;
+  background: var(--surface-secondary, #f5f8fb);
+}
+
+.celar-ops-policy-list p {
+  margin: .45rem 0;
+  font-size: .82rem;
+}
+
+.celar-ops-synthetic-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .65rem;
+  align-items: center;
+}
+
+.celar-ops-card pre {
+  max-height: 16rem;
+  overflow: auto;
+  border-radius: .65rem;
+  padding: .75rem;
+  background: #071a2d;
+  color: #d9efff;
+  font-size: .75rem;
+}
+
+.celar-ops-created {
+  text-align: center;
+}
+
+.celar-ops-created h3 {
+  color: var(--accent, #0677a8);
+  font-size: 2rem;
+}
+
+.celar-ops-created dl {
+  max-width: 780px;
+  margin: 1rem auto;
+  text-align: left;
+}
+
+.celar-ops-created .celar-ops-actions {
+  justify-content: center;
+}
+
+html[data-theme='dark'] .celar-ops-shell,
+body.dark .celar-ops-shell {
+  --surface-primary: #102238;
+  --surface-secondary: #162b43;
+  --text-primary: #edf6ff;
+  --text-secondary: #b6c8d8;
+  --border-color: #36516c;
+  --accent: #55bce7;
+  color-scheme: dark;
+}
+
+html[data-theme='dark'] .celar-ops-header,
+body.dark .celar-ops-header {
+  background:
+    radial-gradient(circle at 88% -35%, rgba(55, 189, 232, .22), transparent 46%),
+    linear-gradient(135deg, #07192b 0%, #0c3150 62%, #0e4e6d 100%);
+}
+
+html[data-theme='dark'] .celar-ops-probe,
+html[data-theme='dark'] .celar-ops-card,
+html[data-theme='dark'] .celar-ops-questionnaire,
+html[data-theme='dark'] .celar-ops-defect-card,
+html[data-theme='dark'] .celar-ops-created,
+body.dark .celar-ops-probe,
+body.dark .celar-ops-card,
+body.dark .celar-ops-questionnaire,
+body.dark .celar-ops-defect-card,
+body.dark .celar-ops-created {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+
+@media (max-width: 920px) {
+  .celar-ops-probe-grid,
+  .celar-ops-defect-grid,
+  .celar-ops-review-grid,
+  .celar-ops-health-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .celar-ops-policy-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .celar-ask-operations {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .celar-ops-shell {
+    width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .celar-ops-header {
+    padding: .9rem;
+  }
+
+  .celar-ops-header p {
+    display: none;
+  }
+
+  .celar-ops-content {
+    padding: .75rem;
+  }
+
+  .celar-ops-form-grid,
+  .celar-ops-probe-grid,
+  .celar-ops-defect-grid,
+  .celar-ops-review-grid,
+  .celar-ops-health-summary,
+  .celar-ops-synthetic-row {
+    grid-template-columns: 1fr;
+  }
+
+  .celar-ops-stepper {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: .7rem;
+  }
+
+  .celar-ops-probe dl,
+  .celar-ops-created dl {
+    grid-template-columns: 1fr;
+  }
+}

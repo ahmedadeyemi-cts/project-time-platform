@@ -1,0 +1,383 @@
+.celar-reliability-workbench {
+  display: grid;
+  gap: 1.25rem;
+  color: var(--text-primary, #10243e);
+}
+
+.celar-reliability-heading,
+.celar-reliability-tool-matrix > div:first-child,
+.celar-reliability-gates > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.celar-reliability-heading p,
+.celar-reliability-tool-matrix > div:first-child p,
+.celar-reliability-gates > div:first-child p,
+.celar-reliability-planner > div:first-child p,
+.celar-reliability-plan > div:first-child p {
+  margin: 0 0 .3rem;
+  color: var(--accent, #0677a8);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.celar-reliability-heading h2,
+.celar-reliability-tool-matrix h3,
+.celar-reliability-gates h3,
+.celar-reliability-planner h3,
+.celar-reliability-plan h3 {
+  margin: 0;
+  color: inherit;
+}
+
+.celar-reliability-heading span,
+.celar-reliability-tool-matrix > div:first-child span,
+.celar-reliability-planner > div:first-child span,
+.celar-reliability-plan > div:first-child span {
+  display: block;
+  margin-top: .45rem;
+  color: var(--text-secondary, #51657c);
+  line-height: 1.55;
+}
+
+.celar-reliability-heading button,
+.celar-reliability-planner > button {
+  border: 0;
+  border-radius: .7rem;
+  padding: .72rem 1rem;
+  background: var(--accent, #0677a8);
+  color: #fff;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.celar-reliability-heading button:disabled,
+.celar-reliability-planner > button:disabled {
+  cursor: progress;
+  opacity: .58;
+}
+
+.celar-reliability-error {
+  display: grid;
+  gap: .25rem;
+  border: 1px solid #ce3a54;
+  border-radius: .75rem;
+  padding: .9rem 1rem;
+  background: color-mix(in srgb, #ce3a54 8%, var(--surface-primary, #fff));
+}
+
+.celar-reliability-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.celar-reliability-metric {
+  min-width: 0;
+  display: grid;
+  gap: .35rem;
+  border: 1px solid var(--border-color, #cad5e1);
+  border-radius: .8rem;
+  padding: .9rem;
+  background: var(--surface-primary, #fff);
+  box-shadow: 0 7px 20px rgba(18, 38, 62, .06);
+}
+
+.celar-reliability-metric span {
+  color: var(--text-secondary, #5c6d80);
+  font-size: .78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.celar-reliability-metric strong {
+  font-size: 1.25rem;
+}
+
+.celar-reliability-metric small {
+  color: var(--text-secondary, #5c6d80);
+  line-height: 1.4;
+}
+
+.celar-reliability-metric.is-ready { border-top: 4px solid #17825d; }
+.celar-reliability-metric.is-warning { border-top: 4px solid #d78316; }
+.celar-reliability-metric.is-neutral { border-top: 4px solid #64809d; }
+
+.celar-reliability-principles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.celar-reliability-principles article,
+.celar-reliability-planner,
+.celar-reliability-plan,
+.celar-reliability-tool-matrix,
+.celar-reliability-gates {
+  border: 1px solid var(--border-color, #cad5e1);
+  border-radius: .9rem;
+  background: var(--surface-primary, #fff);
+  box-shadow: 0 8px 24px rgba(18, 38, 62, .06);
+}
+
+.celar-reliability-principles article {
+  padding: 1rem;
+}
+
+.celar-reliability-principles strong {
+  color: var(--accent, #0677a8);
+}
+
+.celar-reliability-principles p {
+  margin: .45rem 0 0;
+  color: var(--text-secondary, #51657c);
+  line-height: 1.5;
+}
+
+.celar-reliability-layout {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+}
+
+.celar-reliability-planner,
+.celar-reliability-plan,
+.celar-reliability-tool-matrix,
+.celar-reliability-gates {
+  padding: 1rem;
+}
+
+.celar-reliability-planner {
+  display: grid;
+  align-content: start;
+  gap: .9rem;
+}
+
+.celar-reliability-planner label {
+  display: grid;
+  gap: .35rem;
+  font-weight: 750;
+}
+
+.celar-reliability-planner textarea {
+  width: 100%;
+  min-height: 8rem;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--border-color, #bdcad7);
+  border-radius: .65rem;
+  padding: .75rem;
+  background: var(--surface-secondary, #f5f8fb);
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+}
+
+.celar-reliability-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.celar-reliability-samples button {
+  border: 1px solid var(--border-color, #bdcad7);
+  border-radius: 999px;
+  padding: .42rem .65rem;
+  background: var(--surface-secondary, #f5f8fb);
+  color: inherit;
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+}
+
+.celar-reliability-plan {
+  display: grid;
+  align-content: start;
+  gap: .9rem;
+}
+
+.celar-reliability-plan dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+  margin: 0;
+}
+
+.celar-reliability-plan dl div {
+  border: 1px solid var(--border-color, #d5dee7);
+  border-radius: .65rem;
+  padding: .65rem;
+  background: var(--surface-secondary, #f6f8fb);
+}
+
+.celar-reliability-plan dt {
+  color: var(--text-secondary, #5c6d80);
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.celar-reliability-plan dd {
+  margin: .25rem 0 0;
+  font-weight: 750;
+}
+
+.celar-reliability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+}
+
+.celar-reliability-tags strong {
+  width: 100%;
+}
+
+.celar-reliability-tags span,
+.celar-reliability-state {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: .28rem .52rem;
+  background: color-mix(in srgb, var(--accent, #0677a8) 11%, var(--surface-primary, #fff));
+  color: var(--accent, #0677a8);
+  font-size: .74rem;
+  font-weight: 750;
+}
+
+.celar-reliability-state.is-gap {
+  background: color-mix(in srgb, #d78316 12%, var(--surface-primary, #fff));
+  color: #9b5a06;
+}
+
+.celar-reliability-state.is-ready {
+  background: color-mix(in srgb, #17825d 12%, var(--surface-primary, #fff));
+  color: #126346;
+}
+
+.celar-reliability-clarifications,
+.celar-reliability-fail-closed,
+.celar-reliability-empty,
+.celar-reliability-boundary {
+  border-radius: .7rem;
+  padding: .8rem;
+  background: var(--surface-secondary, #f5f8fb);
+}
+
+.celar-reliability-clarifications ul,
+.celar-reliability-gates ul {
+  margin: .5rem 0 0;
+  padding-left: 1.15rem;
+}
+
+.celar-reliability-clarifications li,
+.celar-reliability-gates li {
+  margin: .35rem 0;
+  line-height: 1.45;
+}
+
+.celar-reliability-fail-closed {
+  border-left: 4px solid #d78316;
+}
+
+.celar-reliability-fail-closed p,
+.celar-reliability-empty p {
+  margin: .4rem 0 0;
+  color: var(--text-secondary, #51657c);
+}
+
+.celar-reliability-tool-matrix,
+.celar-reliability-gates {
+  display: grid;
+  gap: .8rem;
+}
+
+.celar-reliability-tool-matrix details {
+  border: 1px solid var(--border-color, #d5dee7);
+  border-radius: .7rem;
+  overflow: hidden;
+}
+
+.celar-reliability-tool-matrix summary {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .75rem .85rem;
+  background: var(--surface-secondary, #f5f8fb);
+  cursor: pointer;
+}
+
+.celar-reliability-table-wrap {
+  overflow-x: auto;
+}
+
+.celar-reliability-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 920px;
+}
+
+.celar-reliability-table-wrap th,
+.celar-reliability-table-wrap td {
+  padding: .7rem;
+  border-top: 1px solid var(--border-color, #dbe3eb);
+  text-align: left;
+  vertical-align: top;
+}
+
+.celar-reliability-table-wrap th {
+  color: var(--text-secondary, #5c6d80);
+  font-size: .72rem;
+  text-transform: uppercase;
+}
+
+.celar-reliability-table-wrap td strong,
+.celar-reliability-table-wrap td code,
+.celar-reliability-table-wrap td small {
+  display: block;
+}
+
+.celar-reliability-table-wrap td code,
+.celar-reliability-table-wrap td small {
+  margin-top: .3rem;
+  color: var(--text-secondary, #5c6d80);
+}
+
+.celar-reliability-boundary {
+  display: grid;
+  gap: .3rem;
+  border-left: 4px solid #64809d;
+}
+
+@media (max-width: 1100px) {
+  .celar-reliability-metrics,
+  .celar-reliability-principles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .celar-reliability-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .celar-reliability-heading,
+  .celar-reliability-tool-matrix > div:first-child,
+  .celar-reliability-gates > div:first-child { flex-direction: column; }
+  .celar-reliability-metrics,
+  .celar-reliability-principles,
+  .celar-reliability-plan dl { grid-template-columns: 1fr; }
+  .celar-reliability-heading button { width: 100%; }
+}
+
+html[data-theme='dark'] .celar-reliability-workbench,
+body.dark .celar-reliability-workbench {
+  --surface-primary: #122238;
+  --surface-secondary: #192b43;
+  --border-color: #36506e;
+  --text-primary: #edf5ff;
+  --text-secondary: #b8c8da;
+  --accent: #67c7ef;
+  color: var(--text-primary);
+}

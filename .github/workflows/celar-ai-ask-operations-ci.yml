@@ -1,0 +1,116 @@
+name: Validate Ask Celar AI Operations and Defect Automation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/celar-ai-ask-operations-ci.yml'
+      - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'
+      - 'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAi*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAi*.cs'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-operations-governance.py'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-*.mjs'
+      - 'src/frontend/project-time-web/scripts/inject-module-076-*.mjs'
+      - 'src/frontend/project-time-web/src/CelarAiAskOperations.jsx'
+      - 'src/frontend/project-time-web/src/celar-ai-ask-operations.css'
+      - 'tests/CelarAiOperationsPolicyTests/**'
+      - 'tests/celar-ai-operations-evaluation-cases.json'
+      - 'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'
+      - 'tests/validate-celar-ai-pr630-consolidated.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celar-ai-ask-operations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate consolidated reliability and Module 076 operations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGDATABASE: postgres
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate consolidated source and privacy contracts
+        run: node tests/validate-celar-ai-pr630-consolidated.mjs
+
+      - name: Run universal reliability policy tests
+        run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Run operations policy tests
+        run: dotnet run --project tests/CelarAiOperationsPolicyTests/CelarAiOperationsPolicyTests.csproj --configuration Release
+
+      - name: Validate Migration 084 lifecycle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+          tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+
+      - name: Build complete API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Ensure validation restored tracked source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          git diff --exit-code
+
+      - name: Publish source-only summary
+        run: |
+          echo 'CELAR_AI_ASK_OPERATIONS=SOURCE_VALIDATED'
+          echo 'CELAR_AI_ASK_OPERATIONS_EVALUATION_CASES=60'
+          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'CELAR_AI_ASK_OPERATIONS_MIGRATION_084=DISPOSABLE_CI_ONLY'
+          echo 'CELAR_AI_ASK_OPERATIONS_TEST_DEPLOYMENTS=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_PRODUCTION_MUTATIONS=0'
+          echo 'CELAR_AI_ASK_OPERATIONS_SECRETS_PRINTED=0'
