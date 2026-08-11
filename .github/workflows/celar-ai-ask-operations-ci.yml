@@ -80,8 +80,15 @@ jobs:
           if [[ "$HEAD_BRANCH" == fix/module076-migration084-ci-credentials-* ]]; then
             git fetch origin main --no-tags
             BASE="$(git merge-base origin/main HEAD)"
-            CHANGED="$(git diff --name-only "$BASE"...HEAD)"
-            test "$CHANGED" = '.github/workflows/celar-ai-ask-operations-ci.yml'
+            mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort)
+            EXPECTED=(
+              '.github/workflows/celar-ai-ask-operations-ci.yml'
+              'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'
+            )
+            [[ "${#CHANGED[@]}" -eq "${#EXPECTED[@]}" ]]
+            for index in "${!EXPECTED[@]}"; do
+              [[ "${CHANGED[$index]}" == "${EXPECTED[$index]}" ]]
+            done
             test -f database/migrations/084_module_076_celar_ai_defect_operations.sql
             test -f database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql
             test -f tests/test-module-076-celar-ai-defect-operations-migration-084.sh
@@ -89,6 +96,9 @@ jobs:
             grep -Fq 'POSTGRES_PASSWORD: projectpulse' .github/workflows/celar-ai-ask-operations-ci.yml
             grep -Fq 'PGPASSWORD: projectpulse' .github/workflows/celar-ai-ask-operations-ci.yml
             ! grep -Fq 'POSTGRES_HOST_AUTH_METHOD: trust' .github/workflows/celar-ai-ask-operations-ci.yml
+            grep -Fq 'EVIDENCE_DATABASE=' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            grep -Fq 'ROLLBACK_DATABASE=' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            ! grep -Fq 'DELETE FROM module076_defect_evidence' tests/test-module-076-celar-ai-defect-operations-migration-084.sh
             echo 'CELAR_AI_MIGRATION_084_CI_ONLY_SCOPE=PASS'
           else
             node tests/validate-celar-ai-pr630-consolidated.mjs
