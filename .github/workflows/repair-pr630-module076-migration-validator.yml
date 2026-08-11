@@ -1,9 +1,9 @@
 name: Repair PR 630 Module 076 Migration Validator
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     paths:
       - .github/workflows/repair-pr630-module076-migration-validator.yml
 
@@ -17,21 +17,17 @@ concurrency:
 jobs:
   repair:
     name: Approve reviewed Migration 084 and remove this workflow
-    if: >-
-      github.event.pull_request.number == 630 &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'feature/ask-celar-ai-troubleshooting-defect-automation-20260810'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 59dd3a88a1d7aad334d40cd1331f1defc3a96862
+      EXPECTED_PARENT: 76343f84c99c36f74e963c9e37d858e68eb3b6e2
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
-      - name: Check out exact PR head
+      - name: Check out exact branch head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 2
           persist-credentials: true
 
       - name: Guard exact repository, branch, and parent
@@ -39,9 +35,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$GITHUB_REF_NAME" == "$HEAD_BRANCH" ]]
           [[ "$(git rev-parse HEAD^)" == "$EXPECTED_PARENT" ]]
-          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
-          [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
 
       - name: Update bounded Module 076 validation contracts
         shell: bash
@@ -97,15 +93,16 @@ assertInvariant(
           approved_line = "  'src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs'"
           if approved_line not in text:
               anchor = "  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs'\n]);"
-              replacement = "  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs',\n" + approved_line + "\n]);"
+              updated = "  'src/frontend/project-time-web/scripts/validate-celar-ai-runtime-rebrand.mjs',\n" + approved_line + "\n]);"
               if text.count(anchor) != 1:
                   raise SystemExit('PR630 exact-source allowlist anchor did not match exactly')
-              text = text.replace(anchor, replacement)
+              text = text.replace(anchor, updated)
           consolidated.write_text(text, encoding='utf-8')
           PY
 
           node src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs
           rm -- .github/workflows/repair-pr630-module076-migration-validator.yml
+          node tests/validate-celar-ai-pr630-consolidated.mjs
           git diff --check
           git diff --exit-code -- . \
             ':!src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs' \
