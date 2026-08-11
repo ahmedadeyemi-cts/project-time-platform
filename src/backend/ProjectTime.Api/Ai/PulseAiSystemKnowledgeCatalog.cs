@@ -472,7 +472,8 @@ public static class PulseAiSystemKnowledgeCatalog
     }
 
     private static bool LooksLikeClearlyPublicOfficeholderQuestion(string normalized) =>
-        Regex.IsMatch(
+        CelarAiPublicEntityRegistry.IsGovernedPublicQuestion(normalized)
+        || Regex.IsMatch(
             normalized,
             @"^who\s+(?:is|are|was|were)\s+(?:the\s+)?(?:current\s+)?(?:(?:(?:u\.?\s*s\.?|united\s+states)\s+)?(?:president|vice\s+president)|(?:president|vice\s+president)\s+of\s+(?:the\s+)?(?:u\.?\s*s\.?|united\s+states))\s*\??$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);

@@ -1388,6 +1388,9 @@ public sealed class CelarAiCapabilityRoutingLoader(
 public sealed class CelarAiPrivateGenerationTarget
 {
     private const string PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY";
+    private const int DefaultHelpAssistantGenerationTimeoutSeconds = 75;
+    private const int MinimumHelpAssistantGenerationTimeoutSeconds = 20;
+    private const int MaximumHelpAssistantGenerationTimeoutSeconds = 180;
     private const int MaximumAttestationContextCharacters = 12_000;
     private const int MaximumAttestationTokens = 64;
     private static readonly Regex AttestationTokenPattern = new(
@@ -1439,6 +1442,20 @@ public sealed class CelarAiPrivateGenerationTarget
             temperature = request.Temperature,
             max_tokens = request.MaxOutputTokens
         };
+        using var boundedGeneration = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (string.Equals(
+                request.Feature,
+                CelarAiCapabilityCatalog.HelpAssistant,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            boundedGeneration.CancelAfter(TimeSpan.FromSeconds(EnvironmentInteger(
+                "PROJECTPULSE_CELAR_AI_HELP_GENERATION_TIMEOUT_SECONDS",
+                DefaultHelpAssistantGenerationTimeoutSeconds,
+                MinimumHelpAssistantGenerationTimeoutSeconds,
+                MaximumHelpAssistantGenerationTimeoutSeconds)));
+        }
+        var generationToken = boundedGeneration.Token;
+
         try
         {
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -1461,7 +1478,7 @@ public sealed class CelarAiPrivateGenerationTarget
                 "X-Pulse-AI-External-Escalation",
                 "false");
             var client = _httpClientFactory.CreateClient("PulseAiPrivateInference");
-            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, generationToken);
             var requestId = response.Headers.TryGetValues("x-request-id", out var values)
                 ? values.FirstOrDefault()
                 : null;
@@ -1469,7 +1486,7 @@ public sealed class CelarAiPrivateGenerationTarget
             {
                 if (await PulseAiPrivateModelResponsePolicy.IsSafetyRefusalErrorAsync(
                         response,
-                        cancellationToken))
+                        generationToken))
                     return Refusal(requestId, (int)response.StatusCode);
                 return new ProjectPulseAiProviderResult(
                     CelarAiCapabilityTargets.CelarAi,
@@ -1483,7 +1500,7 @@ public sealed class CelarAiPrivateGenerationTarget
             }
             using var json = await PulseAiPrivateModelResponsePolicy.ReadBoundedJsonAsync(
                 response.Content,
-                cancellationToken);
+                generationToken);
             if (PulseAiPrivateModelResponsePolicy.IsSafetyRefusal(json.RootElement))
                 return Refusal(requestId, (int)response.StatusCode);
             var content = ReadContent(json.RootElement).Trim();
@@ -1498,6 +1515,13 @@ public sealed class CelarAiPrivateGenerationTarget
                 requestId,
                 null,
                 (int)response.StatusCode);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Celar AI private generation reached its bounded timeout without logging prompt, endpoint, token, or source content. Feature={Feature}",
+                request.Feature);
+            return Unavailable("celar_ai_private_generation_timeout");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1772,6 +1796,15 @@ public sealed class CelarAiPrivateGenerationTarget
         string BoundedContext,
         IReadOnlyList<int> TokenOrdinals,
         string ExpectedAnswer);
+
+    private static int EnvironmentInteger(
+        string name,
+        int fallback,
+        int minimum,
+        int maximum) =>
+        int.TryParse(Environment.GetEnvironmentVariable(name), out var value)
+            ? Math.Clamp(value, minimum, maximum)
+            : fallback;
 
     private static string ReadContent(JsonElement root)
     {
