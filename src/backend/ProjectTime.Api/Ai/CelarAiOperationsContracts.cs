@@ -49,11 +49,14 @@ public static class CelarAiOperationsPolicy
             normalized,
             "troubleshoot",
             "diagnose",
+            "diagnostic",
+            "diagnostics",
             "why is",
             "why did",
             "not working",
             "unavailable",
             "timeout",
+            "timed out",
             "failed",
             "broken",
             "error",
@@ -104,12 +107,17 @@ public static class CelarAiOperationsPolicy
         if (clean.Length == 0) return string.Empty;
         clean = Regex.Replace(
             clean,
-            @"(?i)(authorization|proxy-authorization|cookie|set-cookie|x-projectpulse-session|api[-_ ]?key|token|password|secret)\s*[:=]\s*[^\s,;]+",
+            @"(?i)\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+",
             "$1=[REDACTED]",
             RegexOptions.CultureInvariant);
         clean = Regex.Replace(
             clean,
-            @"(?i)bearer\s+[a-z0-9._~+/=-]{8,}",
+            @"(?i)\b(cookie|set-cookie|x-projectpulse-session|api[-_ ]?key|token|password|secret)\s*[:=]\s*[^\s,;]+",
+            "$1=[REDACTED]",
+            RegexOptions.CultureInvariant);
+        clean = Regex.Replace(
+            clean,
+            @"(?i)\bbearer\s+[a-z0-9._~+/=-]{8,}",
             "Bearer [REDACTED]",
             RegexOptions.CultureInvariant);
         clean = Regex.Replace(
