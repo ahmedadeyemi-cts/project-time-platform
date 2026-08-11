@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 47221dea13afc6abc04a391bee42fc0e22ab8b7d
+      EXPECTED_PARENT: 90a483fdff6271184e8b9a05782c2813605b4e2f
       HEAD_BRANCH: feature/ask-celar-ai-troubleshooting-defect-automation-20260810
     steps:
       - name: Check out exact PR head
@@ -67,22 +67,31 @@ jobs:
 
           governance = Path('src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs')
           text = governance.read_text(encoding='utf-8')
-          old = '''        var values = element.EnumerateArray().Take(25)
-              .Select(item => Read(item, depth + 1, ref propertyCount))
-              .ToArray();
-          if (element.GetArrayLength() > 25)
-              throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
-          return values;'''
-          new = '''        if (element.GetArrayLength() > 25)
+          start_marker = '        var values = element.EnumerateArray().Take(25)'
+          end_marker = '        return values;'
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit(f'{governance}: ref-capturing array start was not found')
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit(f'{governance}: ref-capturing array end was not found')
+          end += len(end_marker)
+          existing = text[start:end]
+          required_fragments = (
+              '.Select(item => Read(item, depth + 1, ref propertyCount))',
+              'if (element.GetArrayLength() > 25)',
+              'Evidence metadata arrays are limited to 25 values.',
+          )
+          if not all(fragment in existing for fragment in required_fragments):
+              raise SystemExit(f'{governance}: the bounded array block did not match the expected contract')
+          replacement = '''        if (element.GetArrayLength() > 25)
               throw new InvalidOperationException("Evidence metadata arrays are limited to 25 values.");
 
           var values = new List<object?>(element.GetArrayLength());
           foreach (var item in element.EnumerateArray())
               values.Add(Read(item, depth + 1, ref propertyCount));
           return values;'''
-          if text.count(old) != 1:
-              raise SystemExit(f'{governance}: expected exactly one ref-capturing array block, found {text.count(old)}')
-          governance.write_text(text.replace(old, new), encoding='utf-8')
+          governance.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
           PY
           rm -- .github/workflows/repair-pr630-api-compile.yml
           git diff --check
