@@ -56,6 +56,19 @@ jobs:
           namespace = {'__name__': '__main__'}
           exec(compile(script, str(controller), 'exec'), namespace)
 
+          registry = Path('src/backend/ProjectTime.Api/Ai/CelarAiPublicEntityRegistry.cs')
+          registry_content = registry.read_text(encoding='utf-8')
+          registry_old = 'flowhive|project\\s+forge|our|my'
+          registry_new = 'flowhive|project\\s+forge|project|our|my'
+          registry_count = registry_content.count(registry_old)
+          if registry_count != 1:
+              raise SystemExit(
+                  f'public entity internal-project guard: expected one replacement, found {registry_count}')
+          registry.write_text(
+              registry_content.replace(registry_old, registry_new, 1),
+              encoding='utf-8')
+          print('CELAR_PUBLIC_INTERNAL_PROJECT_GUARD=APPLIED')
+
           routing = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
           content = routing.read_text(encoding='utf-8')
 
