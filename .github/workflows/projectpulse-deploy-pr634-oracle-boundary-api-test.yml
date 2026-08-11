@@ -41,7 +41,10 @@ jobs:
           test -f .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
           grep -Fq 'environment: test' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml
           grep -Fq 'MIGRATIONS_APPLIED=NONE' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml
-          ! grep -Fq 'deployment/containers/web/Dockerfile' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml
+          if grep -Fq 'deployment/containers/web/Dockerfile' .github/workflows/projectpulse-deploy-pr634-oracle-boundary-api-test.yml; then
+            echo 'The PR #634 controller must remain API-only.' >&2
+            exit 1
+          fi
           python3 - <<'PY'
           from pathlib import Path
           source = Path('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs').read_text()
@@ -143,9 +146,11 @@ jobs:
           IMAGE="$(jq -r '.properties.template.containers[0].image' <<<"$APP")"
           [[ "$IMAGE" == '${{ vars.AZURE_ACR_NAME }}.azurecr.io/'*@sha256:* ]] || fail 'Rollback image is not digest-pinned in the Test ACR.'
           SOURCE="$(jq -r '[.properties.template.containers[0].env[]? | select(.name=="PROJECTPULSE_SOURCE_COMMIT") | .value // empty] | if length==1 then .[0] else empty end' <<<"$APP")"
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          {
+            echo "base=$BASE"
+            echo "image=$IMAGE"
+            echo "source=$SOURCE"
+          } >> "$GITHUB_OUTPUT"
           jq -n --arg base "$BASE" --arg image "$IMAGE" --arg source "$SOURCE" \
             '{base:$base,previousApiImage:$image,previousSourceCommit:$source,uatSessionValidated:true}' > "$EVIDENCE_DIR/before.json"
       - name: Build immutable API image
@@ -214,7 +219,7 @@ jobs:
             -f approval_reference='ORACLE-TEST-PR634-CANONICAL-BOUNDARY-20260811' \
             -f confirmation='ACTIVATE-CELAR-AI-ORACLE-ON-TEST'
           RUN_ID=''
-          for attempt in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=main&per_page=20" \
               | jq -r --arg start "$START" '.workflow_runs | map(select(.created_at >= $start)) | sort_by(.created_at) | reverse | .[0].id // empty')"
             [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
@@ -222,9 +227,11 @@ jobs:
           done
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
-          echo 'queued=true' >> "$GITHUB_OUTPUT"
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "run_url=$URL" >> "$GITHUB_OUTPUT"
+          {
+            echo 'queued=true'
+            echo "run_id=$RUN_ID"
+            echo "run_url=$URL"
+          } >> "$GITHUB_OUTPUT"
           jq -n --arg id "$RUN_ID" --arg url "$URL" --arg release "$TARGET_RELEASE_COMMIT" \
             '{status:"queued",runId:($id|tonumber),runUrl:$url,releaseCommit:$release}' > "$EVIDENCE_DIR/activation.json"
       - name: Roll back API on pre-activation failure
