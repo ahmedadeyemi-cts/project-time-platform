@@ -9,6 +9,7 @@ on:
       - 'scripts/release-test/apply-085.sh'
       - 'scripts/release-test/reconcile-module019-document-uploads.sh'
       - 'tests/test-module019-document-access-repair-085.sh'
+      - 'tests/test-module019-document-access-migration-085.sh'
       - '.github/workflows/module019-document-access-repair-ci.yml'
   workflow_dispatch:
 
@@ -19,15 +20,22 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Validate Module 019 repair contract
         run: bash tests/test-module019-document-access-repair-085.sh
+
+  migration-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Apply migration 085 twice on PostgreSQL 16
+        run: bash tests/test-module019-document-access-migration-085.sh
 
   backend-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
       - name: Restore backend
