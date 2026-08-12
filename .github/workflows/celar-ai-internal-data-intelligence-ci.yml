@@ -28,68 +28,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: celar-ai-internal-data-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  repair-public-question-validator:
-    if: github.event_name == 'pull_request' && github.head_ref == 'fix/ask-celar-ai-public-questions-resilience-20260811'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Check out exact repair branch
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: fix/ask-celar-ai-public-questions-resilience-20260811
-          fetch-depth: 2
-          persist-credentials: true
-
-      - name: Align privacy validation with governed public-only routing
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs')
-          text = path.read_text(encoding='utf-8')
-          old = (
-              "    'PublicGeneralQuestion: plan.IntentCode == \"general_knowledge\"',\n"
-              "    'PublicQuestion: plan.IntentCode == \"general_knowledge\"',\n"
-          )
-          new = (
-              "    'var publicGeneralQuestion = plan.IntentCode == \"general_knowledge\"',\n"
-              "    'SystemPrompt: publicGeneralQuestion',\n"
-              "    'UserPrompt: publicGeneralQuestion ? question : privatePrompt',\n"
-              "    'MaxOutputTokens: publicGeneralQuestion',\n"
-              "    'PublicGeneralQuestion: publicGeneralQuestion',\n"
-              "    'PublicQuestion: publicGeneralQuestion ? question : null',\n"
-              "    'This general-knowledge answer used only the public question through the private Celar AI runtime.',\n"
-          )
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'expected one legacy public-question privacy marker block, found {count}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          print('CELAR_PUBLIC_QUESTION_PRIVACY_VALIDATOR=UPDATED')
-          PY
-
-          node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
-          git diff --check
-
-      - name: Publish validator source only
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git config user.name 'Pulse Celar AI Repair Automation'
-          git config user.email 'pulse-celar-ai-repair@users.noreply.github.com'
-          git add src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
-          git diff --cached --check
-          git commit -m 'Align public-question privacy validation with governed routing'
-          git push origin HEAD:fix/ask-celar-ai-public-questions-resilience-20260811
-
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
