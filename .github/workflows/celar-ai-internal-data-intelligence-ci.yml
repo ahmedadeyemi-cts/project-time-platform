@@ -56,17 +56,19 @@ jobs:
 
           path = Path('src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs')
           text = path.read_text(encoding='utf-8')
-          old = '''    'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
-    'PublicQuestion: plan.IntentCode == "general_knowledge"',
-'''
-          new = '''    'var publicGeneralQuestion = plan.IntentCode == "general_knowledge"',
-    'SystemPrompt: publicGeneralQuestion',
-    'UserPrompt: publicGeneralQuestion ? question : privatePrompt',
-    'MaxOutputTokens: publicGeneralQuestion',
-    'PublicGeneralQuestion: publicGeneralQuestion',
-    'PublicQuestion: publicGeneralQuestion ? question : null',
-    'This general-knowledge answer used only the public question through the private Celar AI runtime.',
-'''
+          old = (
+              "    'PublicGeneralQuestion: plan.IntentCode == \"general_knowledge\"',\n"
+              "    'PublicQuestion: plan.IntentCode == \"general_knowledge\"',\n"
+          )
+          new = (
+              "    'var publicGeneralQuestion = plan.IntentCode == \"general_knowledge\"',\n"
+              "    'SystemPrompt: publicGeneralQuestion',\n"
+              "    'UserPrompt: publicGeneralQuestion ? question : privatePrompt',\n"
+              "    'MaxOutputTokens: publicGeneralQuestion',\n"
+              "    'PublicGeneralQuestion: publicGeneralQuestion',\n"
+              "    'PublicQuestion: publicGeneralQuestion ? question : null',\n"
+              "    'This general-knowledge answer used only the public question through the private Celar AI runtime.',\n"
+          )
           count = text.count(old)
           if count != 1:
               raise SystemExit(f'expected one legacy public-question privacy marker block, found {count}')
