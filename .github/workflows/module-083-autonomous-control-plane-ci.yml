@@ -104,7 +104,8 @@ jobs:
           done
 
           bash -n tests/test-module-083-autonomous-control-plane-migration-083.sh
-          ! grep -RInE 'azure/login@|az containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up' \
+          DEPLOYMENT_MUTATION_PATTERN='azure/login@|az[[:space:]]+containerapp (update|create|delete)|kubectl (apply|delete)|terraform apply|pulumi up'
+          ! grep -RInE "$DEPLOYMENT_MUTATION_PATTERN" \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationFoundation.cs \
             src/backend/ProjectTime.Api/Modules/FullFutureLoopAutomationModule.cs \
             src/frontend/project-time-web/src/FullFutureLoopAutomationCenter.jsx \
