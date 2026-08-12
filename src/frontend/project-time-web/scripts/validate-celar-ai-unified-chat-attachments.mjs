@@ -147,7 +147,9 @@ check(
       'public_general_question_sensitive_content_blocked'
     ])
     && all(systemService, [
-      'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
+      'var publicGeneralQuestion = plan.IntentCode == "general_knowledge"',
+      'PublicGeneralQuestion: publicGeneralQuestion',
+      'PublicQuestion: publicGeneralQuestion ? question : null',
       'BuildPublicGeneralKnowledgeAnswer(',
       'Public question only; no Pulse or private context'
     ]),
@@ -230,8 +232,9 @@ check(
     && !externalPreparation.includes('request.UserPrompt')
     && all(systemService, [
       'const string externalProblemStatement = "";',
-      'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"',
-      'PublicQuestion: plan.IntentCode == "general_knowledge"',
+      'var publicGeneralQuestion = plan.IntentCode == "general_knowledge"',
+      'PublicGeneralQuestion: publicGeneralQuestion',
+      'PublicQuestion: publicGeneralQuestion ? question : null',
       'ContainsPrivateDocuments: privateDocumentContextRequested',
       'ContainsPeopleRecords: ContainsPeopleContext(plan)',
       'ContainsFinancialValues:',
