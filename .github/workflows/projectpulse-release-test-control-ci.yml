@@ -65,7 +65,9 @@ jobs:
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          grep -Fq 'id-token: write' "$CONTROLLER"
+          OIDC_PERMISSION='id-token:'
+          OIDC_PERMISSION+=' write'
+          grep -Fq "$OIDC_PERMISSION" "$CONTROLLER"
 
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
