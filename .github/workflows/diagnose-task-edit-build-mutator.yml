@@ -1,0 +1,170 @@
+name: Diagnose TaskEdit Build Mutator
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/diagnose-task-edit-build-mutator.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diagnose-task-edit-build-mutator
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Locate first build command that creates TaskEdit sources
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/task-edit-build-mutator-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Execute the frontend build chain one command at a time
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run prebuild
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { execSync } = require('node:child_process');
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const commands = packageJson.scripts.build.split(' && ');
+          const diagnosisPath = path.join(process.env.RUNNER_TEMP, 'task-edit-diagnosis.json');
+          const drawerPath = path.join('src', 'TaskEditDrawer.jsx');
+          const supportPath = path.join('src', 'TaskEditSupport.js');
+
+          const state = () => ({
+            drawer: fs.existsSync(drawerPath),
+            support: fs.existsSync(supportPath),
+            drawerBytes: fs.existsSync(drawerPath) ? fs.statSync(drawerPath).size : 0,
+            supportBytes: fs.existsSync(supportPath) ? fs.statSync(supportPath).size : 0,
+          });
+          const save = (value) => fs.writeFileSync(diagnosisPath, JSON.stringify(value, null, 2));
+
+          const initial = state();
+          console.log(`TASK_EDIT_INITIAL drawer=${initial.drawer} support=${initial.support}`);
+          if (initial.drawer || initial.support) {
+            save({ status: 'present_after_prebuild', initial });
+            process.exit(0);
+          }
+
+          for (let index = 0; index < commands.length; index += 1) {
+            const command = commands[index].trim();
+            const before = state();
+            console.log(`BUILD_CHAIN_STEP=${index + 1} COMMAND=${command}`);
+            try {
+              execSync(command, {
+                cwd: process.cwd(),
+                env: process.env,
+                shell: '/bin/bash',
+                stdio: 'inherit',
+              });
+            } catch (error) {
+              const after = state();
+              save({
+                status: 'command_failed',
+                step: index + 1,
+                command,
+                exitStatus: Number.isInteger(error.status) ? error.status : null,
+                before,
+                after,
+              });
+              console.log(`TASK_EDIT_FIRST_EVENT_STEP=${index + 1}`);
+              console.log(`TASK_EDIT_FIRST_EVENT_COMMAND=${command}`);
+              console.log(`TASK_EDIT_FIRST_EVENT_STATUS=command_failed`);
+              console.log(`TASK_EDIT_STATE drawer=${after.drawer} support=${after.support}`);
+              if (after.drawer || after.support) process.exit(0);
+              process.exit(Number.isInteger(error.status) && error.status > 0 ? error.status : 1);
+            }
+
+            const after = state();
+            console.log(`TASK_EDIT_STATE_AFTER_STEP=${index + 1} drawer=${after.drawer} support=${after.support}`);
+            if (after.drawer || after.support) {
+              save({
+                status: 'sources_created',
+                step: index + 1,
+                command,
+                before,
+                after,
+              });
+              console.log(`TASK_EDIT_FIRST_EVENT_STEP=${index + 1}`);
+              console.log(`TASK_EDIT_FIRST_EVENT_COMMAND=${command}`);
+              console.log(`TASK_EDIT_FIRST_EVENT_STATUS=sources_created`);
+              process.exit(0);
+            }
+          }
+
+          save({ status: 'not_created', commandsExecuted: commands.length, final: state() });
+          console.error('ERROR: The complete build chain finished without creating TaskEdit sources.');
+          process.exit(2);
+          NODE
+
+      - name: Export diagnosis and generated source blobs
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          create_blob() {
+            local file="$1" response sha local_sha
+            response="$(jq -Rs '{content:.,encoding:"utf-8"}' < "$file" \
+              | curl -fsSL --retry 4 --retry-all-errors -X POST \
+                  -H 'Accept: application/vnd.github+json' \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H 'X-GitHub-Api-Version: 2022-11-28' \
+                  "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs" \
+                  --data-binary @-)"
+            sha="$(jq -r '.sha // empty' <<<"$response")"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "GitHub did not return a valid blob SHA for $file."
+            local_sha="$(git hash-object "$file")"
+            [[ "$sha" == "$local_sha" ]] || fail "Remote blob differs from $file."
+            printf '%s\n' "$sha"
+          }
+
+          DIAGNOSIS="$RUNNER_TEMP/task-edit-diagnosis.json"
+          [[ -s "$DIAGNOSIS" ]] || fail 'TaskEdit diagnosis was not produced.'
+          DIAGNOSIS_SHA="$(create_blob "$DIAGNOSIS")"
+          echo "TASK_EDIT_DIAGNOSIS_BLOB_SHA=$DIAGNOSIS_SHA"
+
+          if [[ -s src/TaskEditDrawer.jsx ]]; then
+            DRAWER_SHA="$(create_blob src/TaskEditDrawer.jsx)"
+            echo "TASK_EDIT_DRAWER_BLOB_SHA=$DRAWER_SHA"
+          else
+            echo 'TASK_EDIT_DRAWER_BLOB_SHA=ABSENT'
+          fi
+
+          if [[ -s src/TaskEditSupport.js ]]; then
+            SUPPORT_SHA="$(create_blob src/TaskEditSupport.js)"
+            echo "TASK_EDIT_SUPPORT_BLOB_SHA=$SUPPORT_SHA"
+          else
+            echo 'TASK_EDIT_SUPPORT_BLOB_SHA=ABSENT'
+          fi
+
+          echo 'ENVIRONMENT_MUTATION=NONE'
+          echo 'DEPLOYMENT_ATTEMPTED=NO'
