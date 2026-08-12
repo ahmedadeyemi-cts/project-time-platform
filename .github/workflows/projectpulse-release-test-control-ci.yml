@@ -98,8 +98,9 @@ jobs:
             'private-runtime-before.json' \
             'private-runtime-after.json' \
             'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"' \
-            'X-ProjectPulse-Module-Number: 081' \
-            'X-ProjectPulse-Module-Number: 082' \
+            'X-ProjectPulse-Module-Number: $module' \
+            '081|module081-access.json|/api/lab-equipment-tracker/access' \
+            '082|module082-access.json|/api/project-risk-register/access' \
             '/api/lab-equipment-tracker/access' \
             '/api/project-risk-register/access' \
             '/api/lab-equipment-tracker/summary' \
