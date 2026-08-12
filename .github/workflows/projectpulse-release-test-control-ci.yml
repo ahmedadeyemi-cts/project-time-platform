@@ -1,7 +1,8 @@
-name: Validate Test-Only Module 081/082 and Theme Recovery b0aedc70
+name: Validate Current Pulse Main Protected-Test Controller
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
@@ -11,126 +12,125 @@ permissions:
 
 jobs:
   validate:
-    name: Validate exact b0aedc70 Test release controller
-    runs-on: ubuntu-latest
+    name: Validate exact 654af0e protected-Test controller
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - name: Check out proposed release controls
+      - name: Check out exact proposed release controls
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate source pin, no-migration boundary, UAT, and rollback
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Validate exact source, Test-only boundary, UAT, and rollback
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='b0aedc706c3fe33b97b91a1b0074a20578c82b64'
+          SOURCE='654af0e469f1fba348f7f7dcbac0fde4c5346a59'
 
+          [[ -n "$BASE_REF" ]] || fail 'The pull-request base branch is unavailable.'
           git fetch origin "$BASE_REF" --no-tags
+
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
-          git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
           LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
+          git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
           diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
 
+          test -f "$CONTROLLER"
+          test -f "$VALIDATOR"
+
+          grep -Fq 'name: Deploy Pulse Current Main 654af0e to Protected Test' "$CONTROLLER"
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
           grep -Fq "'.github/workflows/projectpulse-deploy-test.yml'" "$CONTROLLER"
+          grep -Fq "if: github.ref == 'refs/heads/main'" "$CONTROLLER"
+          grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          grep -Fq 'environment: test' "$CONTROLLER"
-          grep -Fq 'MIGRATIONS_APPLIED=NONE' "$CONTROLLER"
-          grep -Fq 'MIGRATION_081=NOT_APPLIED' "$CONTROLLER"
-          grep -Fq 'OPEN_CLOUD_PRIVATE_RUNTIME=DEFERRED' "$CONTROLLER"
-          grep -Fq 'Deploy API image without migrations or private-runtime activation' "$CONTROLLER"
-          grep -Fq 'privateRuntimeConfigurationChanged:false' "$CONTROLLER"
-          grep -Fq 'migrationsApplied:[]' "$CONTROLLER"
-          grep -Fq 'migration081:"not_applied"' "$CONTROLLER"
-          grep -Fq 'openCloudPrivateRuntime:"deferred"' "$CONTROLLER"
+          grep -Fq 'id-token: write' "$CONTROLLER"
+
+          grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
-          grep -Fq 'X-ProjectPulse-Module-Number: 081' "$CONTROLLER"
-          grep -Fq 'X-ProjectPulse-Module-Number: 082' "$CONTROLLER"
+          grep -Fq 'Azure login is outside the protected Test subscription.' "$CONTROLLER"
+          grep -Fq 'API is not tagged Test.' "$CONTROLLER"
+          grep -Fq 'Web app is not tagged Test.' "$CONTROLLER"
+          grep -Fq 'API must use single-revision mode.' "$CONTROLLER"
+          grep -Fq 'Web app must use single-revision mode.' "$CONTROLLER"
+
+          grep -Fq 'validate-module001a-viewas-module013-operations.mjs' "$CONTROLLER"
+          grep -Fq 'validate-celar-ai-public-question-resilience.mjs' "$CONTROLLER"
+          grep -Fq 'validate-celar-ai-pr630-consolidated.mjs' "$CONTROLLER"
+          grep -Fq 'validate-celar-ai-external-deidentification.mjs' "$CONTROLLER"
+          grep -Fq 'validate-module-083-autonomous-control-plane.mjs' "$CONTROLLER"
+          grep -Fq 'validate-module-083-autonomous-orchestration.mjs' "$CONTROLLER"
+          grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$CONTROLLER"
+          grep -Fq 'bash tests/test-projectpulse-api-startup.sh' "$CONTROLLER"
+          grep -Fq 'npm ci --no-audit --no-fund' "$CONTROLLER"
+          grep -Fq 'npm run build' "$CONTROLLER"
+
+          grep -Fq 'build-pr55-acr-image.sh' "$CONTROLLER"
+          grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
+          grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
+          grep -Fq -- '--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"' "$CONTROLLER"
+          grep -Fq 'private-runtime-before.json' "$CONTROLLER"
+          grep -Fq 'private-runtime-after.json' "$CONTROLLER"
+          grep -Fq 'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"' "$CONTROLLER"
+
           grep -Fq '/api/lab-equipment-tracker/access' "$CONTROLLER"
           grep -Fq '/api/project-risk-register/access' "$CONTROLLER"
-          grep -Fq '/api/lab-equipment-tracker/summary' "$CONTROLLER"
-          grep -Fq '/api/project-risk-register/summary' "$CONTROLLER"
-          grep -Fq '081-enterprise-v1' "$CONTROLLER"
-          grep -Fq '082-enterprise-v1' "$CONTROLLER"
-          grep -Fq '.permissions.canManage == true' "$CONTROLLER"
-          grep -Fq "LAB_MODULE='release/src/backend/ProjectTime.Api/Modules/LabEquipmentTrackerModule.cs'" "$CONTROLLER"
-          grep -Fq "RISK_MODULE='release/src/backend/ProjectTime.Api/Modules/ProjectRiskRegisterModule.cs'" "$CONTROLLER"
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetAccessAsync' "$CONTROLLER"
-          grep -Fq '(Func<HttpContext, Task<IResult>>)GetSummaryAsync' "$CONTROLLER"
-          grep -Fq 'require_json_file "$MODULE_081_ACCESS_FILE"' "$CONTROLLER"
-          grep -Fq 'require_json_file "$MODULE_082_ACCESS_FILE"' "$CONTROLLER"
-          grep -Fq 'require_json_file "$RUNNER_TEMP/module-081-summary.json"' "$CONTROLLER"
-          grep -Fq 'require_json_file "$RUNNER_TEMP/module-082-summary.json"' "$CONTROLLER"
-          grep -Fq 'HTTP 200 with an empty response body.' "$CONTROLLER"
-          grep -Fq 'HTTP 200 with an invalid JSON response body.' "$CONTROLLER"
+          grep -Fq '/api/platform-operations/overview' "$CONTROLLER"
           grep -Fq 'projectpulse-floating-theme-toggle' "$CONTROLLER"
-          grep -Fq 'ptp-theme' "$CONTROLLER"
-          grep -Fq 'projectpulse-theme-control' "$CONTROLLER"
-          grep -Fq 'module081Access:$module081Access' "$CONTROLLER"
-          grep -Fq 'module082Access:$module082Access' "$CONTROLLER"
-          grep -Fq 'themeRecovery:$themeRecovery' "$CONTROLLER"
-          grep -Fq 'celar-readiness-summary.json' "$CONTROLLER"
-          grep -Fq 'public-officeholder and default-route contract' "$CONTROLLER"
-          grep -Fq 'public-president-summary.json' "$CONTROLLER"
-          grep -Fq 'public_general_question_semantic_non_answer' "$CONTROLLER"
-          grep -Fq 'validate-module-011-managed-architecture.mjs' "$CONTROLLER"
-          grep -Fq 'validate-view-as-module-navigation.mjs' "$CONTROLLER"
-          grep -Fq '"usePrivateModelWhenAvailable":false' "$CONTROLLER"
-          grep -Fq 'Who is the US President?' "$CONTROLLER"
-          grep -Fq 'Who is the president of Acme Corp?' "$CONTROLLER"
-          grep -Fq 'Working on training' "$CONTROLLER"
-          grep -Fq 'project_flowhive_plan' "$CONTROLLER"
-          grep -Fq 'project_forge_plan_estimate' "$CONTROLLER"
-          grep -Fq 'projectEvidenceReady == true' "$CONTROLLER"
-          grep -Fq 'for week_offset in 0 1 -1 2 -2 3 -3 4 -4 5 -5 6 -6' "$CONTROLLER"
-          grep -Fq 'timers/targets?weekStart=$WEEK_START' "$CONTROLLER"
-          grep -Fq '.targets | type == "array"' "$CONTROLLER"
-          grep -Fq 'select((.targetType // "") == "assignment")' "$CONTROLLER"
-          grep -Fq 'assignmentId: (.assignmentId // .projectAssignmentId // .targetId' "$CONTROLLER"
-          grep -Fq 'bounded Test window' "$CONTROLLER"
-          grep -Fq 'continue-on-error: true' "$CONTROLLER"
-          grep -Fq 'releaseBlocking:false' "$CONTROLLER"
-          grep -Fq 'no_authoritative_assignment_targets' "$CONTROLLER"
-          grep -Fq 'no_citation_ready_sow_assignment' "$CONTROLLER"
-          grep -Fq 'Assignment-dependent AI diagnostics did not complete' "$CONTROLLER"
-          grep -Fq 'assignmentDiagnostics:$assignmentDiagnostics' "$CONTROLLER"
-          grep -Fq 'Enforce any observed assigned-SOW privacy breach' "$CONTROLLER"
-          grep -Fq 'observed_private_data_boundary_breach' "$CONTROLLER"
-          grep -Fq 'assignment-privacy-breach' "$CONTROLLER"
-          ! grep -Fq '[[ "${#TASK_ROWS[@]}" -gt 0 ]] || fail' "$CONTROLLER"
-          grep -Fq 'uatWeekStart' "$CONTROLLER"
-          ! grep -Fq 'assignments/available-tasks' "$CONTROLLER"
-          grep -Fq 'every(.result.flowHivePlan.tasks[]; (.citationIds | length) > 0)' "$CONTROLLER"
-          grep -Fq 'rawPrivateContextSentToExternalProvider == false' "$CONTROLLER"
-          grep -Fq 'externalProviderReceivesPrivateDocumentText == false' "$CONTROLLER"
-          grep -Fq 'Restore prior images and source marker on failure' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_SOURCE_COMMIT did not match the pinned combined release.' "$CONTROLLER"
+          grep -Fq 'module001a_owns_route_data' "$CONTROLLER"
+          grep -Fq 'External execution: OFF' "$CONTROLLER"
 
-          ! grep -Eq 'run-migration-job|apply-celar-ai|psql|database/migrations|\.sql' "$CONTROLLER"
-          ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+          grep -Fq 'What is the capital of Jordan?' "$CONTROLLER"
+          grep -Fq 'contains("amman")' "$CONTROLLER"
+          grep -Fq 'rawPrivateContextSentToExternalProvider == false' "$CONTROLLER"
+          grep -Fq 'externalProviderReceivedAttachmentContent == false' "$CONTROLLER"
+          grep -Fq 'publicExternalModelUsedForPrivateContext == false' "$CONTROLLER"
+
+          grep -Fq 'MIGRATIONS_APPLIED=NONE' "$CONTROLLER"
+          grep -Fq 'PRODUCTION_MUTATION=NONE' "$CONTROLLER"
+          grep -Fq 'migrationsApplied:[]' "$CONTROLLER"
+          grep -Fq 'productionMutation:false' "$CONTROLLER"
+          grep -Fq 'privateRuntimeConfigurationMutation:false' "$CONTROLLER"
+          grep -Fq 'Restore exact prior Test images after failure' "$CONTROLLER"
+          grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
+          grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
+          grep -Fq 'steps.contract.outputs.old_source' "$CONTROLLER"
+
+          ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
+          ! grep -Eq 'run-migration-job|apply-celar-ai|psql|database/migrations|database/rollback|\.sql' "$CONTROLLER"
           ! grep -Fq 'az keyvault' "$CONTROLLER"
           ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
-          ! grep -Fq 'PROJECTPULSE_PRIVATE_MODEL_ENDPOINT' "$CONTROLLER"
-          ! grep -Fq 'PROJECTPULSE_PULSE_AI_CLAMAV' "$CONTROLLER"
-          ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
-          ! grep -Fq '.competency.currentPassRate == 1' "$CONTROLLER"
+          ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+          ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
+          ! grep -Fq 'az network dns' "$CONTROLLER"
 
-          git merge-base --is-ancestor "$SOURCE" HEAD
-          node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
-          node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
+          git merge-base --is-ancestor "$SOURCE" HEAD \
+            || fail 'The exact application release is not an ancestor of the controller.'
           git diff --check "origin/$BASE_REF...HEAD"
-          echo 'MODULES_081_082_THEME_B0AEDC70_TEST_CONTROL=PASSED'
+
+          echo 'CURRENT_MAIN_654AF0E_PROTECTED_TEST_CONTROL=PASSED'
+          echo 'EXPECTED_CHANGED_FILES=2'
+          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'ORACLE_RUNTIME_MUTATION=NONE'
