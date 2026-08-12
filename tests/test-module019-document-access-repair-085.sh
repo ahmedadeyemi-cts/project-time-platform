@@ -5,17 +5,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODULE="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs"
 WRAPPER="$ROOT/src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs"
 MIGRATION="$ROOT/database/migrations/085_module_019_document_access_storage_repair.sql"
+MIGRATION_TEST="$ROOT/tests/test-module019-document-access-migration-085.sh"
 REPORT="$ROOT/scripts/release-test/reconcile-module019-document-uploads.sh"
 APPLY="$ROOT/scripts/release-test/apply-085.sh"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-for file in "$MODULE" "$WRAPPER" "$MIGRATION" "$REPORT" "$APPLY"; do
+for file in "$MODULE" "$WRAPPER" "$MIGRATION" "$MIGRATION_TEST" "$REPORT" "$APPLY"; do
   [[ -s "$file" ]] || fail "Missing required repair artifact: $file"
 done
 
 bash -n "$REPORT"
 bash -n "$APPLY"
+bash -n "$MIGRATION_TEST"
 
 grep -q 'scope.direct_project_assignment' "$MODULE" || fail "Direct project assignment scope is missing."
 grep -q 'scope.direct_service_request_assignment' "$MODULE" || fail "Direct SR assignment scope is missing."
@@ -33,6 +35,8 @@ grep -q 'BEFORE INSERT OR UPDATE OF storage_path' "$MIGRATION" || fail "055D can
 grep -q 'projectpulse085_normalize_upload_path' "$MIGRATION" || fail "Database path normalizer is missing."
 [[ "$(grep -c '^BEGIN;$' "$MIGRATION")" == 1 ]] || fail "Migration must have one top-level BEGIN."
 [[ "$(grep -c '^COMMIT;$' "$MIGRATION")" == 1 ]] || fail "Migration must have one top-level COMMIT."
+grep -q 'postgres:16-alpine' "$MIGRATION_TEST" || fail "PostgreSQL 16 migration execution coverage is missing."
+grep -q 'MODULE019_DOCUMENT_ACCESS_MIGRATION_085=PASS' "$MIGRATION_TEST" || fail "Migration test pass attestation is missing."
 
 grep -qi 'restricted to the Test environment' "$REPORT" || fail "Reconciliation report lacks a Test guard."
 grep -q 'MODULE019_RECONCILIATION_MODE=READ_ONLY' "$REPORT" || fail "Read-only report attestation is missing."
