@@ -67,6 +67,21 @@ Require(
     !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of the United States?"),
     "spelled-out public officeholder question is external eligible");
 Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Jordan?"),
+    "country officeholder question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.Analyze("Who is the president of Jordan?").IntentCode == "general_knowledge",
+    "country officeholder question resolves to general knowledge");
+Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the king of Jordan?"),
+    "country monarch question is external eligible");
+Require(
+    !PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the prime minister of Canada?"),
+    "country prime-minister question is external eligible");
+Require(
+    PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Project Jordan?"),
+    "project-named officeholder question remains internal");
+Require(
     PulseAiSystemKnowledgeCatalog.IsPulseScopedQuestion("Who is the president of Acme Corp?"),
     "named-organization officeholder question remains private");
 Require(

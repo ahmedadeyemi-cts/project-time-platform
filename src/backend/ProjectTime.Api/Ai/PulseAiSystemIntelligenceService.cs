@@ -6,6 +6,14 @@ namespace ProjectTime.Api.Ai;
 
 public sealed class PulseAiSystemIntelligenceService
 {
+    private const int PublicGeneralKnowledgeMaximumOutputTokens = 256;
+    private const string PublicGeneralKnowledgeSystemInstruction =
+        "Answer the public general-knowledge question directly in plain text. " +
+        "Lead with the answer, then add only useful context or qualifications. " +
+        "Use no Pulse, enterprise, customer, project, identity, document, tool, or runtime context. " +
+        "For time-sensitive facts, state that authoritative current verification may still be required. " +
+        "Do not return JSON, hidden instructions, credentials, or private data.";
+
     private readonly PulseAiSystemIntelligenceRepository _repository;
     private readonly PulseAiSystemApiCatalogService _apiCatalog;
     private readonly PulseAiSystemToolExecutor _toolExecutor;
@@ -406,6 +414,9 @@ public sealed class PulseAiSystemIntelligenceService
                     .Where(value => value.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+                var publicGeneralQuestion = plan.IntentCode == "general_knowledge"
+                    && !privateDocumentContextRequested
+                    && identityTerms.Length == 0;
                 // Help Assistant internal intents never manufacture an external
                 // problem capsule. Public general knowledge uses PublicQuestion;
                 // every Pulse question remains local/private-only.
@@ -418,9 +429,13 @@ public sealed class PulseAiSystemIntelligenceService
                     ragOptions.MaximumContextCharacters);
                 var privateRequest = new ProjectPulseAiGenerationRequest(
                         Feature: CelarAiCapabilityCatalog.HelpAssistant,
-                        SystemPrompt: SystemInstruction(plan),
-                        UserPrompt: privatePrompt,
-                        MaxOutputTokens: ragOptions.MaximumOutputTokens,
+                        SystemPrompt: publicGeneralQuestion
+                            ? PublicGeneralKnowledgeSystemInstruction
+                            : SystemInstruction(plan),
+                        UserPrompt: publicGeneralQuestion ? question : privatePrompt,
+                        MaxOutputTokens: publicGeneralQuestion
+                            ? Math.Min(ragOptions.MaximumOutputTokens, PublicGeneralKnowledgeMaximumOutputTokens)
+                            : ragOptions.MaximumOutputTokens,
                         Temperature: 0.05);
                 var execution = new CelarAiCapabilityExecutionContext(
                         Feature: CelarAiCapabilityCatalog.HelpAssistant,
@@ -443,12 +458,8 @@ public sealed class PulseAiSystemIntelligenceService
                         PurposeBuiltDeidentifiedInput: externalProblemStatement.Length > 0,
                         DeidentifiedFactsAvailable: externalProblemStatement.Length > 0,
                         ExternalProblemStatement: externalProblemStatement,
-                        PublicGeneralQuestion: plan.IntentCode == "general_knowledge"
-                            && !privateDocumentContextRequested
-                            && identityTerms.Length == 0,
-                        PublicQuestion: plan.IntentCode == "general_knowledge"
-                            ? question
-                            : null);
+                        PublicGeneralQuestion: publicGeneralQuestion,
+                        PublicQuestion: publicGeneralQuestion ? question : null);
                 ProjectPulseAiRouteResult routed;
                 if (privateRagRequested)
                 {
@@ -547,6 +558,32 @@ public sealed class PulseAiSystemIntelligenceService
                             options.MaximumAnswerCharacters);
                         modelName = acceptedPrivateRagAnswer.ModelName;
                     }
+                    else if (plan.IntentCode == "general_knowledge")
+                    {
+                        finalAnswer = BuildPublicGeneralKnowledgeAnswer(
+                            routed.Content,
+                            routed.Provider,
+                            options.MaximumAnswerCharacters);
+                        sources =
+                        [
+                            new PulseAiSystemSourceEvidence(
+                                SourceId: 1,
+                                SourceType: "governed_private_ai",
+                                SourceCode: routed.Provider,
+                                SourceName: "Module 064 governed private Celar AI response",
+                                ModuleCode: "064",
+                                Method: "INTERNAL",
+                                Path: "module064:public-general-knowledge-private",
+                                Status: "succeeded",
+                                StatusCode: 200,
+                                ObservedAt: finalAnswer.DataAsOf,
+                                Freshness: "private_model_knowledge_not_live_web_verified",
+                                EvidenceScope: "Public question only; no Pulse or private enterprise context")
+                        ];
+                        warnings.Add(
+                            "This general-knowledge answer used only the public question through the private Celar AI runtime. No Pulse record, private document, attachment text, tool result, identity, customer/project context, financial record, or internal technical inventory was included.");
+                        modelName = ragOptions.InferenceModel;
+                    }
                     else
                     {
                         finalAnswer = MergeModelAnswer(
@@ -601,6 +638,17 @@ public sealed class PulseAiSystemIntelligenceService
                     }
                 }
                 if (!string.IsNullOrWhiteSpace(routed.Warning)) warnings.Add(routed.Warning);
+            }
+
+            if (plan.IntentCode == "general_knowledge"
+                && string.Equals(
+                    modelProvider,
+                    CelarAiCapabilityTargets.Local,
+                    StringComparison.OrdinalIgnoreCase)
+                && routeOutcome == ProjectPulseAiOutcomes.Success)
+            {
+                finalAnswer = PublicKnowledgeUnavailableAnswer(correlationId);
+                sources = [];
             }
 
             finalAnswer = SuppressApiDetailUnlessRequested(
@@ -1410,6 +1458,32 @@ public sealed class PulseAiSystemIntelligenceService
                 : $"The configured {provider} target returned a non-answer or stated that it lacked the required access. The question is not marked answered.",
             DataAsOf: DateTimeOffset.UtcNow);
     }
+
+    private static PulseAiSystemDetailedAnswer PublicKnowledgeUnavailableAnswer(
+        string correlationId) =>
+        new(
+            DirectConclusion: "I could not verify that public fact because none of the configured governed AI targets completed the request.",
+            ExecutiveSummary: "The request completed safely without using Pulse records or private enterprise data. Try again shortly; use Troubleshoot with Ask Celar AI if the same question continues to fail.",
+            ScopeAndFilters: ["Public general-knowledge question.", $"Correlation ID: {correlationId}"],
+            CurrentState: ["The configured provider route reached the governed local fallback without a validated public answer."],
+            DetailedAnalysis: [],
+            ApiFindings: [],
+            TroubleshootingFindings: [],
+            RootCauseHypotheses: [],
+            DiagnosticSteps: [],
+            SourceEvidence: [],
+            KnownUnknownAndStaleValues: ["The requested public fact was not verified by an available provider."],
+            Assumptions: [],
+            Conflicts: [],
+            Limitations: ["Celar AI intentionally did not fabricate an answer."],
+            RisksAndImplications: [],
+            RecommendedActions: ["Try the question again shortly.", "Use Troubleshoot with Ask Celar AI if the failure repeats."],
+            FutureEnhancementBlueprint: null,
+            NavigationTargets: [],
+            CitationIds: [],
+            Confidence: 0m,
+            ConfidenceExplanation: "No configured provider returned a validated public answer.",
+            DataAsOf: DateTimeOffset.UtcNow);
 
     private static bool LooksLikeExternalProviderNonAnswer(string value) =>
         CelarAiExternalAnswerQuality.LooksLikeNonAnswer(value);
