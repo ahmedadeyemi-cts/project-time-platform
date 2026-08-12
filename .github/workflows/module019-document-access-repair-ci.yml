@@ -1,0 +1,36 @@
+name: Module 019 document access repair CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs'
+      - 'database/migrations/085_module_019_document_access_storage_repair.sql'
+      - 'scripts/release-test/apply-085.sh'
+      - 'scripts/release-test/reconcile-module019-document-uploads.sh'
+      - 'tests/test-module019-document-access-repair-085.sh'
+      - '.github/workflows/module019-document-access-repair-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Module 019 repair contract
+        run: bash tests/test-module019-document-access-repair-085.sh
+
+  backend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore backend
+        run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+      - name: Build backend
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
