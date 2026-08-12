@@ -6,6 +6,7 @@ const originalExecFileSync = childProcess.execFileSync;
 const compatibilityFilteredPaths = new Set([
   'src/frontend/project-time-web/scripts/validate-module-076-defect-tracker.mjs',
   'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs',
+  'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
   'tests/CelarAiInternalDataTests/Program.cs'
