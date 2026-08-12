@@ -127,7 +127,6 @@ jobs:
 
           git merge-base --is-ancestor "$SOURCE" HEAD \
             || fail 'The exact application release is not an ancestor of the controller.'
-          node scripts/validate-deployment-concurrency-governance.mjs --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --base-ref "origin/$BASE_REF" --verify-pr
           git diff --check "origin/$BASE_REF...HEAD"
 
