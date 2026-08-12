@@ -90,9 +90,30 @@ jobs:
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web
+        shell: bash
         run: |
+          set -Eeuo pipefail
           npm ci --no-audit --no-fund
-          npm run build
+          if ! npm run build; then
+            echo '===== GENERATED_TASK_EDIT_DRAWER_START ====='
+            if [[ -f src/TaskEditDrawer.jsx ]]; then
+              nl -ba src/TaskEditDrawer.jsx | sed -n '1,320p'
+            else
+              echo 'TaskEditDrawer.jsx was not generated.'
+            fi
+            echo '===== GENERATED_TASK_EDIT_DRAWER_END ====='
+            echo '===== GENERATED_TASK_EDIT_SUPPORT_START ====='
+            if [[ -f src/TaskEditSupport.js ]]; then
+              nl -ba src/TaskEditSupport.js | sed -n '1,360p'
+            else
+              echo 'TaskEditSupport.js was not generated.'
+            fi
+            echo '===== GENERATED_TASK_EDIT_SUPPORT_END ====='
+            echo '===== GENERATED_TASK_EDIT_REFERENCES_START ====='
+            grep -RIn --exclude-dir=node_modules --exclude-dir=dist -E 'isAssigneeEligible|TaskEditDrawer|TaskEditSupport' src scripts || true
+            echo '===== GENERATED_TASK_EDIT_REFERENCES_END ====='
+            exit 1
+          fi
 
       - name: Prove validation did not mutate tracked source
         run: git diff --exit-code
