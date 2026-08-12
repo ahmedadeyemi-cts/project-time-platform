@@ -114,19 +114,10 @@ ON project_intake_documents
 FOR EACH ROW
 EXECUTE FUNCTION projectpulse085_normalize_intake_upload_path();
 
--- Touch only rows whose approved path can be normalized. Updating the Work
--- Register source first lets the existing migration-079 bridge receive the
--- canonical relative path through its governed AFTER trigger.
-UPDATE work_register_documents
-SET stored_file_path = projectpulse085_normalize_upload_path(stored_file_path)
-WHERE COALESCE(stored_file_path, '') <> ''
-  AND stored_file_path IS DISTINCT FROM projectpulse085_normalize_upload_path(stored_file_path);
-
-UPDATE project_intake_documents
-SET storage_path = projectpulse085_normalize_upload_path(storage_path)
-WHERE COALESCE(storage_path, '') <> ''
-  AND storage_path IS DISTINCT FROM projectpulse085_normalize_upload_path(storage_path);
-
+-- Build supporting indexes before canonicalizing legacy rows. Existing Test
+-- data can produce deferred constraint or bridge trigger events on
+-- project_intake_documents. PostgreSQL refuses CREATE INDEX while those events
+-- remain pending in the same transaction.
 CREATE INDEX IF NOT EXISTS ix_piw085_project_assignment_user_dates
     ON project_assignments(project_id, user_id, effective_start_date, effective_end_date);
 
@@ -143,6 +134,19 @@ CREATE INDEX IF NOT EXISTS ix_piw085_resource_request_project_intake
 
 CREATE INDEX IF NOT EXISTS ix_piw085_resource_assignment_user_request
     ON engineering_resource_request_assignments(user_id, engineering_resource_request_id);
+
+-- Touch only rows whose approved path can be normalized. Updating the Work
+-- Register source first lets the existing migration-079 bridge receive the
+-- canonical relative path through its governed AFTER trigger.
+UPDATE work_register_documents
+SET stored_file_path = projectpulse085_normalize_upload_path(stored_file_path)
+WHERE COALESCE(stored_file_path, '') <> ''
+  AND stored_file_path IS DISTINCT FROM projectpulse085_normalize_upload_path(stored_file_path);
+
+UPDATE project_intake_documents
+SET storage_path = projectpulse085_normalize_upload_path(storage_path)
+WHERE COALESCE(storage_path, '') <> ''
+  AND storage_path IS DISTINCT FROM projectpulse085_normalize_upload_path(storage_path);
 
 INSERT INTO schema_migrations(migration_id, description, applied_at)
 VALUES (
