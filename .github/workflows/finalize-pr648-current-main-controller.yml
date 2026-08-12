@@ -1,4 +1,4 @@
-name: Finalize PR 648 Current-Main Protected-Test Controller
+name: Finalize Current-Main Protected-Test Controller
 
 on:
   pull_request:
@@ -11,20 +11,19 @@ permissions:
   contents: write
 
 concurrency:
-  group: finalize-pr648-current-main-controller
+  group: finalize-current-main-protected-test-controller
   cancel-in-progress: false
 
 jobs:
   finalize:
     name: Replace broken repair helpers with one exact release controller
     if: >-
-      github.event.pull_request.number == 648 &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release/deploy-pr645-module001a-module013-test-20260811'
+      github.event.pull_request.head.ref == 'release/deploy-current-main-protected-test-20260811'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      HEAD_BRANCH: release/deploy-pr645-module001a-module013-test-20260811
+      HEAD_BRANCH: release/deploy-current-main-protected-test-20260811
       OLD_CONTROLLER: .github/workflows/deploy-pr645-module001a-module013-test.yml
       CONTROLLER: .github/workflows/deploy-current-main-protected-test.yml
       BROKEN_HELPER: .github/workflows/repair-pr648-current-main-test.yml
@@ -48,8 +47,8 @@ jobs:
 
           [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]] || fail 'Unexpected repository.'
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]] || fail 'Checkout is not the exact PR head.'
-          [[ -f "$OLD_CONTROLLER" ]] || fail 'Original PR 648 deployment controller is missing.'
-          [[ -f "$BROKEN_HELPER" ]] || fail 'Broken PR 648 helper is missing.'
+          [[ -f "$OLD_CONTROLLER" ]] || fail 'Original deployment controller is missing.'
+          [[ -f "$BROKEN_HELPER" ]] || fail 'Broken repair helper is missing.'
           [[ -f "$SELF" ]] || fail 'Finalizer workflow is missing.'
 
           git config user.name 'ahmedadeyemi-cts'
