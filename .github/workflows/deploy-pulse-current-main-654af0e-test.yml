@@ -70,7 +70,10 @@ jobs:
           test -f scripts/wait-containerapp-ready-revision.sh
           node tests/validate-module001a-viewas-module013-operations.mjs
           node tests/validate-celar-ai-public-question-resilience.mjs
-          node tests/validate-celar-ai-pr630-consolidated.mjs
+          PR630_WORKTREE="$RUNNER_TEMP/pr630-release"
+          git worktree add --detach "$PR630_WORKTREE" "$TARGET_RELEASE_COMMIT"
+          (cd "$PR630_WORKTREE" && node tests/validate-celar-ai-pr630-consolidated.mjs)
+          git worktree remove "$PR630_WORKTREE" --force
           node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
           git diff --check
           echo 'ENVIRONMENT_SCOPE=PROTECTED_TEST_ONLY'
