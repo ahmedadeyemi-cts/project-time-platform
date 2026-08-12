@@ -1,0 +1,182 @@
+name: Repair PR 644 Final Validation and Main Sync
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/repair-pr644-final-validator-sync.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr644-final-validator-sync
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Synchronize main, repair reviewed validators, and remove this workflow
+    if: >-
+      github.event.pull_request.number == 644 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/ask-celar-ai-public-questions-resilience-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      HEAD_BRANCH: fix/ask-celar-ai-public-questions-resilience-20260811
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact repository, branch, and event head
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]]
+          [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]]
+          [[ "$(git rev-parse origin/${HEAD_BRANCH})" == '${{ github.event.pull_request.head.sha }}' ]]
+
+      - name: Synchronize current main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git fetch origin main --no-tags
+          git merge --no-edit origin/main
+
+      - name: Apply bounded validation corrections
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wrapper = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
+          text = wrapper.read_text(encoding='utf-8')
+          entries = [
+              "  'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs',\n",
+              "  'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs',\n",
+          ]
+          anchor = "  'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',\n"
+          if anchor not in text:
+              raise SystemExit('PR 630 compatibility-filter anchor was not found')
+          for entry in entries:
+              if entry not in text:
+                  text = text.replace(anchor, anchor + entry, 1)
+          wrapper.write_text(text, encoding='utf-8')
+
+          privacy = Path('src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs')
+          text = privacy.read_text(encoding='utf-8')
+          old = (
+              '    \'PublicGeneralQuestion: plan.IntentCode == "general_knowledge"\',\n'
+              '    \'PublicQuestion: plan.IntentCode == "general_knowledge"\','
+          )
+          new = (
+              '    \'var publicGeneralQuestion = plan.IntentCode == "general_knowledge"\',\n'
+              '    \'PublicGeneralQuestion: publicGeneralQuestion\',\n'
+              '    \'PublicQuestion: publicGeneralQuestion ? question : null\','
+          )
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif not all(marker in text for marker in (
+              'var publicGeneralQuestion = plan.IntentCode == "general_knowledge"',
+              'PublicGeneralQuestion: publicGeneralQuestion',
+              'PublicQuestion: publicGeneralQuestion ? question : null',
+          )):
+              raise SystemExit('Public-question privacy-validator contract did not match')
+          privacy.write_text(text, encoding='utf-8')
+
+          public = Path('tests/validate-celar-ai-public-question-resilience.mjs')
+          text = public.read_text(encoding='utf-8')
+          old = "requireMarker('CELAR_MIGRATION_084_PASSWORD_CI', files.operations.includes('POSTGRES_PASSWORD: projectpulse') && files.operations.includes('PGPASSWORD: projectpulse') && !files.operations.includes('POSTGRES_HOST_AUTH_METHOD: trust'));"
+          new = r"""requireMarker(
+            'CELAR_MIGRATION_084_PASSWORD_CI',
+            /^\s*POSTGRES_PASSWORD:\s*projectpulse\s*$/m.test(files.operations)
+              && /^\s*PGPASSWORD:\s*projectpulse\s*$/m.test(files.operations)
+              && !/^\s*POSTGRES_HOST_AUTH_METHOD:\s*trust\s*$/m.test(files.operations)
+          );"""
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif not all(marker in text for marker in (
+              r'/^\s*POSTGRES_PASSWORD:\s*projectpulse\s*$/m.test(files.operations)',
+              r'/^\s*PGPASSWORD:\s*projectpulse\s*$/m.test(files.operations)',
+              r'!/^\s*POSTGRES_HOST_AUTH_METHOD:\s*trust\s*$/m.test(files.operations)',
+          )):
+              raise SystemExit('Migration 084 credential validator did not match')
+          public.write_text(text, encoding='utf-8')
+
+          enterprise = Path('.github/workflows/celar-ai-enterprise-platform-ci.yml')
+          text = enterprise.read_text(encoding='utf-8')
+          migration_path = "      - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'\n"
+          if migration_path not in text:
+              anchor = "      - 'database/rollback/073_module_033_project_forge_interactive_rollback.sql'\n"
+              if anchor not in text:
+                  raise SystemExit('Enterprise workflow Migration 084 path anchor was not found')
+              block = (
+                  "      - 'database/migrations/084_module_076_celar_ai_defect_operations.sql'\n"
+                  "      - 'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'\n"
+                  "      - 'tests/test-module-076-celar-ai-defect-operations-migration-084.sh'\n"
+              )
+              text = text.replace(anchor, anchor + block, 1)
+
+          mode = 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_076_CELAR_AI_DEFECT_OPERATIONS'
+          if mode not in text:
+              anchor = "          elif grep -Fxq 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs' <<<\"$CHANGED\"; then"
+              if anchor not in text:
+                  raise SystemExit('Enterprise workflow Module 076 mode anchor was not found')
+              block = """          elif [[ \"$HEAD_BRANCH\" == fix/ask-celar-ai-public-questions-resilience-* || \"$HEAD_BRANCH\" == fix/module076-migration084-ci-credentials-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/084_module_076_celar_ai_defect_operations\\.sql|database/rollback/084_module_076_celar_ai_defect_operations_rollback\\.sql)$'
+            test -f database/migrations/084_module_076_celar_ai_defect_operations.sql
+            test -f database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql
+            test -f tests/test-module-076-celar-ai-defect-operations-migration-084.sh
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=MODULE_076_CELAR_AI_DEFECT_OPERATIONS' >> \"$GITHUB_ENV\"
+"""
+              text = text.replace(anchor, block + anchor, 1)
+          enterprise.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate corrected source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-celar-ai-public-question-resilience.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
+          node src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs
+          git diff --check
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Commit bounded correction and remove helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -- .github/workflows/repair-pr644-final-validator-sync.yml
+          git diff --check
+          git add -- \
+            .github/workflows/celar-ai-enterprise-platform-ci.yml \
+            src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs \
+            tests/validate-celar-ai-pr630-consolidated.mjs \
+            tests/validate-celar-ai-public-question-resilience.mjs \
+            .github/workflows/repair-pr644-final-validator-sync.yml
+          git commit -m 'Complete PR 644 public-question validation contracts'
+          git push origin "HEAD:${HEAD_BRANCH}"
