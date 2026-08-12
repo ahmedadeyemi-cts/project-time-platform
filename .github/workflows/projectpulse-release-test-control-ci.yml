@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate exact 3c10a8f Module 019 Test controller
+    name: Validate exact e6719b6 Module 019 Test controller
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -42,7 +42,7 @@ jobs:
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='3c10a8f5b192ccf66c6c2eb58d97741204df0b2c'
+          SOURCE='e6719b67dfb6e96c04358dbf43423ade4e0053e8'
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
             || fail 'The pull-request base SHA is unavailable.'
@@ -61,7 +61,7 @@ jobs:
           test -f "$CONTROLLER"
           test -f "$VALIDATOR"
 
-          grep -Fq 'name: Deploy Module 019 Repair 3c10a8f to Protected Test' "$CONTROLLER"
+          grep -Fq 'name: Deploy Module 019 Repair e6719b6 to Protected Test' "$CONTROLLER"
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
