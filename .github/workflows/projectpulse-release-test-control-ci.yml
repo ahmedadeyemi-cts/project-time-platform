@@ -1,4 +1,4 @@
-name: Validate Current Pulse Main Protected-Test Controller
+name: Validate Module 019 Protected-Test Release Controller
 
 on:
   pull_request:
@@ -10,9 +10,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: module019-protected-test-controller-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    name: Validate exact 0a8ae39 protected-Test controller
+    name: Validate exact 9018ee6 Module 019 Test controller
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -28,74 +32,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate exact source, Test-only boundary, UAT, and rollback
+      - name: Validate exact source, Migration 085, Test-only UAT, and rollback
         shell: bash
         env:
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='0a8ae393393a2c22990a25ac905053030bb98c4e'
+          SOURCE='9018ee655143f17300c1d784e9bfc11ff6e4a03d'
 
-          [[ -n "$BASE_REF" ]] || fail 'The pull-request base branch is unavailable.'
-          git fetch origin "$BASE_REF" --no-tags
-
-          if [[ "$HEAD_BRANCH" == cleanup/remove-stale-test-controls-and-restore-governance-* ]]; then
-            cat > "$RUNNER_TEMP/expected-cleanup-files" <<'EOF'
-          .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml
-          .github/workflows/celar-ai-oracle-test-runtime-deploy.yml
-          .github/workflows/inspect-module082-risk-failure-test.yml
-          .github/workflows/module-083-autonomous-control-plane-ci.yml
-          .github/workflows/projectpulse-deploy-enterprise-governance-fixed-v2-test.yml
-          .github/workflows/projectpulse-deploy-enterprise-governance-test.yml
-          .github/workflows/projectpulse-promote-enterprise-governance-test-v2.yml
-          .github/workflows/projectpulse-promote-enterprise-governance-test.yml
-          .github/workflows/projectpulse-release-test-control-ci.yml
-          .github/workflows/repair-pr644-final-validation-v2.yml
-          .github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml
-          tests/validate-celar-ai-oracle-test-runtime.mjs
-          EOF
-            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-cleanup-files"
-            LC_ALL=C sort -o "$RUNNER_TEMP/expected-cleanup-files" "$RUNNER_TEMP/expected-cleanup-files"
-            git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-cleanup-files"
-            diff -u "$RUNNER_TEMP/expected-cleanup-files" "$RUNNER_TEMP/actual-cleanup-files"
-
-            for retired in \
-              .github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml \
-              .github/workflows/celar-ai-oracle-test-runtime-deploy.yml \
-              .github/workflows/inspect-module082-risk-failure-test.yml \
-              .github/workflows/projectpulse-deploy-enterprise-governance-fixed-v2-test.yml \
-              .github/workflows/projectpulse-deploy-enterprise-governance-test.yml \
-              .github/workflows/projectpulse-promote-enterprise-governance-test-v2.yml \
-              .github/workflows/projectpulse-promote-enterprise-governance-test.yml \
-              .github/workflows/repair-pr644-final-validation-v2.yml \
-              .github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml; do
-              [[ ! -e "$retired" ]] || fail "Completed workflow remains present: $retired"
-            done
-
-            test -f "$CONTROLLER"
-            test -f "$VALIDATOR"
-            test -f .github/workflows/module-083-autonomous-control-plane-ci.yml
-            test -f tests/validate-celar-ai-oracle-test-runtime.mjs
-            grep -Fq "DEPLOYMENT_MUTATION_PATTERN='azure/login@|az[[:space:]]+containerapp" \
-              .github/workflows/module-083-autonomous-control-plane-ci.yml
-            grep -Fq "OIDC_PERMISSION='id-token:'" "$VALIDATOR"
-            grep -Fq "OIDC_PERMISSION+=' write'" "$VALIDATOR"
-            node tests/validate-celar-ai-oracle-test-runtime.mjs
-            git diff --check "origin/$BASE_REF...HEAD"
-
-            echo 'COMPLETED_TEST_CONTROLLERS_REMOVED=PASSED'
-            echo 'CURRENT_PROTECTED_TEST_CONTROLLER=PRESERVED'
-            echo 'MODULE_083_SOURCE_VALIDATION=PRESERVED'
-            echo 'ORACLE_RUNTIME_BINDING=PRESERVED_BY_CURRENT_CONTROLLER'
-            echo 'MIGRATIONS_APPLIED=NONE'
-            echo 'PRODUCTION_MUTATION=NONE'
-            exit 0
-          fi
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || fail 'The pull-request base SHA is unavailable.'
+          git cat-file -e "$BASE_SHA^{commit}" \
+            || fail 'The exact pull-request base commit is unavailable.'
 
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
@@ -103,13 +55,13 @@ jobs:
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
           LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
-          git diff --name-only "origin/$BASE_REF...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
+          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
           diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
 
           test -f "$CONTROLLER"
           test -f "$VALIDATOR"
 
-          grep -Fq 'name: Deploy Pulse Current Main 0a8ae39 to Protected Test' "$CONTROLLER"
+          grep -Fq 'name: Deploy Module 019 Repair 9018ee6 to Protected Test' "$CONTROLLER"
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
@@ -131,62 +83,84 @@ jobs:
           grep -Fq 'API must use single-revision mode.' "$CONTROLLER"
           grep -Fq 'Web app must use single-revision mode.' "$CONTROLLER"
 
-          grep -Fq 'validate-module001a-viewas-module013-operations.mjs' "$CONTROLLER"
-          grep -Fq 'validate-celar-ai-public-question-resilience.mjs' "$CONTROLLER"
-          grep -Fq 'validate-celar-ai-pr630-consolidated.mjs' "$CONTROLLER"
-          grep -Fq 'validate-celar-ai-external-deidentification.mjs' "$CONTROLLER"
-          grep -Fq 'validate-module-083-autonomous-control-plane.mjs' "$CONTROLLER"
-          grep -Fq 'validate-module-083-autonomous-orchestration.mjs' "$CONTROLLER"
+          grep -Fq 'test-module019-document-access-repair-085.sh' "$CONTROLLER"
+          grep -Fq 'test-module019-document-access-migration-085.sh' "$CONTROLLER"
+          grep -Fq 'validate-project-workspace-document-download.mjs' "$CONTROLLER"
           grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$CONTROLLER"
           grep -Fq 'bash tests/test-projectpulse-api-startup.sh' "$CONTROLLER"
           grep -Fq 'npm ci --no-audit --no-fund' "$CONTROLLER"
           grep -Fq 'npm run build' "$CONTROLLER"
 
-          grep -Fq 'build-pr55-acr-image.sh' "$CONTROLLER"
+          grep -Fq '085_module_019_document_access_storage_repair.sql' "$CONTROLLER"
+          grep -Fq 'scripts/release-test/apply-085.sh' "$CONTROLLER"
+          grep -Fq 'scripts/release-test/run-migration-job.sh' "$CONTROLLER"
+          grep -Fq 'MAIN_RELEASE_MIGRATION_MODE: apply' "$CONTROLLER"
+          grep -Fq "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
+          grep -Fq 'MAIN_RELEASE_MIGRATION_SCOPE: module019-085-protected-test' "$CONTROLLER"
+          grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' "$CONTROLLER"
+          grep -Fq 'AZURE_KEY_VAULT_URI' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_HOST' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_PORT' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_TEST_DATABASE_USER' "$CONTROLLER"
+          grep -Fq 'FROM postgres:16-alpine' "$CONTROLLER"
+          grep -Fq 'export PROJECTPULSE_ENVIRONMENT=Test' "$CONTROLLER"
+          grep -Fq 'migration085:"applied_and_verified"' "$CONTROLLER"
+
+          grep -Fq 'az acr build' "$CONTROLLER"
+          grep -Fq 'ACR cloud build failed twice' "$CONTROLLER"
+          grep -Fq 'docker build' "$CONTROLLER"
+          grep -Fq 'docker push' "$CONTROLLER"
+          grep -Fq 'project-health-dashboard-api@' "$CONTROLLER"
+          grep -Fq 'project-health-dashboard-web@' "$CONTROLLER"
+          grep -Fq 'project-health-dashboard-module019-migrator@' "$CONTROLLER"
+
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq -- '--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"' "$CONTROLLER"
-          grep -Fq 'private-runtime-before.json' "$CONTROLLER"
-          grep -Fq 'private-runtime-after.json' "$CONTROLLER"
-          grep -Fq 'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"' "$CONTROLLER"
+          grep -Fq 'runtime-contract-before.json' "$CONTROLLER"
+          grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
+          grep -Fq 'uploadVolumeContractCaptured:true' "$CONTROLLER"
+          grep -Fq 'diff -u' "$CONTROLLER"
 
-          grep -Fq '/api/lab-equipment-tracker/access' "$CONTROLLER"
-          grep -Fq '/api/project-risk-register/access' "$CONTROLLER"
-          grep -Fq '/api/platform-operations/overview' "$CONTROLLER"
-          grep -Fq 'projectpulse-floating-theme-toggle' "$CONTROLLER"
-          grep -Fq 'module001a_owns_route_data' "$CONTROLLER"
-          grep -Fq 'External execution: OFF' "$CONTROLLER"
+          grep -Fq '/api/project-workspace/overview' "$CONTROLLER"
+          grep -Fq '/api/project-workspace/view-as/users' "$CONTROLLER"
+          grep -Fq '/api/project-workspace/documents/' "$CONTROLLER"
+          grep -Fq 'assignment_and_role_scope_enforced' "$CONTROLLER"
+          grep -Fq 'administrator_view_as_preview' "$CONTROLLER"
+          grep -Fq 'X-ProjectPulse-View-As-User' "$CONTROLLER"
+          grep -Fq 'file_reconciliation_required' "$CONTROLLER"
+          grep -Fq 'listed correctly, but its physical file still requires persistent-volume reconciliation' "$CONTROLLER"
+          grep -Fq 'workspace-download-status' "$CONTROLLER"
+          grep -Fq 'This project document does not have a download URL.' "$CONTROLLER"
+          grep -Fq 'uploadVolumeContractPreserved:true' "$CONTROLLER"
 
-          grep -Fq 'What is the capital of Jordan?' "$CONTROLLER"
-          grep -Fq 'contains("amman")' "$CONTROLLER"
-          grep -Fq 'rawPrivateContextSentToExternalProvider == false' "$CONTROLLER"
-          grep -Fq 'externalProviderReceivedAttachmentContent == false' "$CONTROLLER"
-          grep -Fq 'publicExternalModelUsedForPrivateContext == false' "$CONTROLLER"
-
-          grep -Fq 'MIGRATIONS_APPLIED=NONE' "$CONTROLLER"
-          grep -Fq 'PRODUCTION_MUTATION=NONE' "$CONTROLLER"
-          grep -Fq 'migrationsApplied:[]' "$CONTROLLER"
-          grep -Fq 'productionMutation:false' "$CONTROLLER"
-          grep -Fq 'privateRuntimeConfigurationMutation:false' "$CONTROLLER"
-          grep -Fq 'Restore exact prior Test images after failure' "$CONTROLLER"
+          grep -Fq 'Restore exact prior Test images and source after failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_source' "$CONTROLLER"
+          grep -Fq 'migration085RemainsAdditiveAndIdempotent:true' "$CONTROLLER"
+          grep -Fq 'Production mutation: none' "$CONTROLLER"
+          grep -Fq 'Oracle/private AI runtime mutation: none' "$CONTROLLER"
 
           ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
-          ! grep -Eq 'run-migration-job|apply-celar-ai|psql|database/migrations|database/rollback|\.sql' "$CONTROLLER"
-          ! grep -Fq 'az keyvault' "$CONTROLLER"
-          ! grep -Fq 'PROJECTPULSE_TEST_DATABASE_URL' "$CONTROLLER"
-          ! grep -Fq '081_celar_ai_private_runtime_activation' "$CONTROLLER"
+          ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
+          ! grep -Eq 'az[[:space:]]+network|az[[:space:]]+keyvault|az[[:space:]]+postgres' "$CONTROLLER"
+          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER"
           ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
-          ! grep -Fq 'az network dns' "$CONTROLLER"
+          ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
 
           git merge-base --is-ancestor "$SOURCE" HEAD \
-            || fail 'The exact application release is not an ancestor of the controller.'
-          git diff --check "origin/$BASE_REF...HEAD"
+            || fail 'The exact Module 019 application release is not an ancestor of the controller.'
+          node scripts/validate-deployment-concurrency-governance.mjs \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$BASE_SHA...HEAD"
 
-          echo 'CURRENT_MAIN_0A8AE39_PROTECTED_TEST_CONTROL=PASSED'
+          echo 'MODULE019_9018EE6_PROTECTED_TEST_CONTROL=PASSED'
           echo 'EXPECTED_CHANGED_FILES=2'
-          echo 'MIGRATIONS_APPLIED=NONE'
+          echo 'MIGRATION_085=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'
