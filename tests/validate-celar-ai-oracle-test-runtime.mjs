@@ -3,7 +3,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
+const resolvePath = (relative) => path.join(root, relative)
+const read = (relative) => fs.readFileSync(resolvePath(relative), 'utf8')
+const exists = (relative) => fs.existsSync(resolvePath(relative))
 const requireText = (content, value, evidence) => {
   if (!content.includes(value)) throw new Error(`Missing ${evidence}: ${value}`)
 }
@@ -19,7 +21,7 @@ const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanne
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs')
 const capabilityRouting = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
-const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml')
+const controller = read('.github/workflows/projectpulse-deploy-test.yml')
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const openCloud = read('deployment/environments/opencloud-template.yml')
 
@@ -56,9 +58,7 @@ requireText(scanner, 'X-Pulse-AI-Privacy-Boundary', 'privacy boundary header')
 requireText(scanner, 'MaximumGatewayResponseBytes', 'bounded scanner response')
 requireText(runtime, 'authenticated Test-only HTTPS malware scanning gateway', 'runtime readiness evidence')
 
-const privateTargetStart = capabilityRouting.indexOf(
-  'public sealed class CelarAiPrivateGenerationTarget',
-)
+const privateTargetStart = capabilityRouting.indexOf('public sealed class CelarAiPrivateGenerationTarget')
 const privateTargetEnd = capabilityRouting.indexOf(
   'public sealed record CelarAiPrivateProbeAttestation',
   privateTargetStart,
@@ -68,8 +68,6 @@ if (privateTargetStart < 0 || privateTargetEnd <= privateTargetStart) {
 }
 const privateTarget = capabilityRouting.slice(privateTargetStart, privateTargetEnd)
 const markerCount = (content, value) => content.split(value).length - 1
-// Module 064 provider readiness uses a fixed identity-free phrase, while
-// release-candidate verification retains the separate content-derived SOW challenge.
 for (const [marker, expected] of [
   ['X-Pulse-AI-Privacy-Boundary', 3],
   ['PulseAiPrivateRagPolicy.PrivacyBoundary', 3],
@@ -82,13 +80,9 @@ for (const [marker, expected] of [
     throw new Error(`Expected ${expected} ${marker} markers; found ${actual}.`)
   }
 }
-requireText(
-  privateTarget,
-  'release_candidate_exact_sow_attestation',
-  'exact private-model attestation feature',
-)
-requireText(privateTarget, 'request.Feature', 'runtime private-generation feature')
 for (const marker of [
+  'release_candidate_exact_sow_attestation',
+  'request.Feature',
   'PrivateReadinessPhrase = "CELAR PRIVATE MODEL READY"',
   'ProbeReadinessPhraseAsync',
   'module_064_private_model_readiness',
@@ -97,16 +91,8 @@ for (const marker of [
   'DeriveContentChallenge(privateContext)',
   'exact_response_and_model_verified',
 ]) requireText(privateTarget, marker, 'separate reliable readiness and exact-SOW attestations')
-rejectText(
-  privateTarget,
-  'X-Celar-AI-Private-Boundary',
-  'legacy private-boundary header',
-)
-rejectText(
-  privateTarget,
-  'X-Celar-AI-Feature',
-  'legacy private-feature header',
-)
+rejectText(privateTarget, 'X-Celar-AI-Private-Boundary', 'legacy private-boundary header')
+rejectText(privateTarget, 'X-Celar-AI-Feature', 'legacy private-feature header')
 
 for (const marker of [
   'ParseObjectEnvelope',
@@ -121,36 +107,51 @@ for (const marker of [
 ]) requireText(embeddings, marker, 'fail-closed Oracle embedding response compatibility')
 rejectText(embeddings, 'indexed[index] = values', 'duplicate-index overwrite')
 
+// Oracle/private runtime configuration is already attached to protected Test. The
+// consolidated release controller must preserve it byte-for-byte rather than carry
+// a second, unregistered deployment path that can reconfigure credentials/endpoints.
 for (const marker of [
-  'workflow_dispatch:',
-  'DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST',
-  'environment: test',
+  'name: Deploy Pulse Current Main 654af0e to Protected Test',
+  'branches: [main]',
+  "'.github/workflows/projectpulse-deploy-test.yml'",
   'id-token: write',
+  'environment: test',
+  'TARGET_RELEASE_COMMIT: 654af0e469f1fba348f7f7dcbac0fde4c5346a59',
+  'ref: 654af0e469f1fba348f7f7dcbac0fde4c5346a59',
   'azure/login@',
-  'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN',
-  'https://celarai.onenecklab.com/v1/chat/completions',
-  'https://celarai.onenecklab.com/v1/embeddings',
-  'https://celarai.onenecklab.com/v1/extract',
-  'https://celarai.onenecklab.com/v1/scan',
-  'https://celarai.onenecklab.com/health',
-  '129.213.82.144',
-  'ORACLE_EMBEDDING_RESPONSE=VALID',
-  'math.isfinite',
-  'bash scripts/build-pr55-acr-image.sh',
-  'Rollback protected Test API configuration on failure',
-  'MIGRATIONS_APPLIED=NONE',
+  'PROJECTPULSE_TEST_UAT_SESSION',
+  'private-runtime-before.json',
+  'private-runtime-after.json',
+  'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"',
+  'privateRuntimeConfigurationMutation:false',
+  'migrationsApplied:[]',
   'PRODUCTION_MUTATION=NONE',
-]) requireText(workflow, marker, 'guarded Oracle Test deployment workflow')
+  'Restore exact prior Test images after failure',
+]) requireText(controller, marker, 'registered protected-Test release controller')
 
-if (/^\s{2}push:\s*$/m.test(workflow)) {
-  throw new Error('The Oracle runtime deployment workflow must remain manual-only.')
+for (const obsolete of [
+  '.github/workflows/celar-ai-oracle-test-runtime-deploy.yml',
+  '.github/workflows/celar-ai-oracle-test-runtime-activation-v2.yml',
+  '.github/workflows/rerun-celar-ai-oracle-test-after-reference-fix.yml',
+]) {
+  if (exists(obsolete)) {
+    throw new Error(`Obsolete unregistered Oracle deployment workflow remains: ${obsolete}`)
+  }
 }
-rejectText(workflow, 'environment: production', 'Production environment binding')
-rejectText(workflow, '--insecure', 'TLS verification bypass')
-requireText(workflow, 'github-environment://test/celar-ai-oracle-runtime-token@', 'literal GitHub Environment token provenance')
-requireText(workflow, 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME"', 'native Container Apps token binding')
-rejectText(workflow, 'curl -k', 'TLS verification bypass')
-rejectText(workflow, 'TOKEN_REFERENCE="secretref://', 'Azure-reserved secretref metadata prefix')
+
+rejectText(controller, 'workflow_dispatch:', 'manual deployment trigger')
+rejectText(controller, 'environment: production', 'Production environment binding')
+rejectText(controller, '--insecure', 'TLS verification bypass')
+rejectText(controller, 'curl -k', 'TLS verification bypass')
+rejectText(controller, 'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN', 'Oracle credential mutation')
+rejectText(controller, 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN=', 'private token mutation')
+rejectText(controller, 'PROJECTPULSE_PRIVATE_MODEL_ENDPOINT=', 'private inference endpoint mutation')
+rejectText(controller, 'PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT=', 'private embedding endpoint mutation')
+rejectText(controller, 'PROJECTPULSE_PRIVATE_OCR_ENDPOINT=', 'private OCR endpoint mutation')
+rejectText(controller, 'PROJECTPULSE_PRIVATE_MALWARE_SCAN_ENDPOINT=', 'private malware endpoint mutation')
+rejectText(controller, 'az keyvault', 'Key Vault mutation')
+rejectText(controller, 'psql', 'database mutation')
+rejectText(controller, 'database/migrations', 'migration execution')
 
 for (const marker of [
   'Settings → Environments → test → Environment secrets',
@@ -162,4 +163,4 @@ for (const marker of [
 requireText(openCloud, 'status: deferred-until-opencloud', 'OpenCloud deferral')
 requireText(openCloud, 'enabled: false', 'OpenCloud disabled state')
 
-console.log('CELAR_AI_ORACLE_TEST_EXTERNAL_HTTPS_RUNTIME_STATIC_CONTRACT=PASS')
+console.log('CELAR_AI_ORACLE_TEST_EXTERNAL_HTTPS_RUNTIME_PRESERVATION_CONTRACT=PASS')
