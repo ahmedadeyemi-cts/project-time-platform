@@ -1,4 +1,4 @@
-name: Deploy Module 019 Repair 7f8e730 to Protected Test
+name: Deploy Module 019 Repair 3c10a8f to Protected Test
 
 on:
   push:
@@ -17,14 +17,14 @@ concurrency:
 
 jobs:
   deploy:
-    name: Validate, migrate, deploy, and verify Module 019 repair 7f8e730
+    name: Validate, migrate, deploy, and verify Module 019 repair 3c10a8f
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      TARGET_RELEASE_COMMIT: 7f8e730c4f995081a3422100dee0f9bc624e0759
-      EVIDENCE_DIR: /tmp/module019-7f8e730-test-evidence
+      TARGET_RELEASE_COMMIT: 3c10a8f5b192ccf66c6c2eb58d97741204df0b2c
+      EVIDENCE_DIR: /tmp/module019-3c10a8f-test-evidence
       MIGRATION_SCOPE: module019-085-protected-test
 
     steps:
@@ -39,7 +39,7 @@ jobs:
       - name: Check out exact Module 019 application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 7f8e730c4f995081a3422100dee0f9bc624e0759
+          ref: 3c10a8f5b192ccf66c6c2eb58d97741204df0b2c
           path: release
           fetch-depth: 0
           persist-credentials: false
@@ -393,7 +393,7 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
           PROJECTPULSE_TEST_DATABASE_USER: ${{ vars.PROJECTPULSE_TEST_DATABASE_USER }}
           MAIN_RELEASE_CONTROL_SHA: ${{ github.sha }}
-          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: 7f8e730c4f995081a3422100dee0f9bc624e0759
+          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: 3c10a8f5b192ccf66c6c2eb58d97741204df0b2c
           MAIN_RELEASE_MIGRATION_SCOPE: module019-085-protected-test
         run: |
           set -Eeuo pipefail
