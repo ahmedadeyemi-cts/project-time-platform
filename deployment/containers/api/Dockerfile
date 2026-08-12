@@ -1,6 +1,15 @@
 # syntax=docker/dockerfile:1
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+USER root
+
+# Directory.Build.targets invokes a Python 3 source generator during publish.
+# Keep Python in the disposable SDK build stage only; it is not copied into runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && python3 --version \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 
 COPY src/backend/ProjectTime.Api/ProjectTime.Api.csproj src/backend/ProjectTime.Api/
