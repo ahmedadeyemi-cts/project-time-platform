@@ -19,7 +19,11 @@ const scanner = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanne
 const runtime = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs')
 const embeddings = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateEmbeddingClient.cs')
 const capabilityRouting = read('src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs')
-const workflow = read('.github/workflows/celar-ai-oracle-test-runtime-deploy.yml')
+const currentTestController = read('.github/workflows/projectpulse-deploy-test.yml')
+const retiredActivationWorkflow = path.join(
+  root,
+  '.github/workflows/celar-ai-oracle-test-runtime-deploy.yml',
+)
 const docs = read('docs/modules/module-011-pulse-ai/ORACLE-TEST-EXTERNAL-HTTPS-RUNTIME.md')
 const openCloud = read('deployment/environments/opencloud-template.yml')
 
@@ -121,36 +125,40 @@ for (const marker of [
 ]) requireText(embeddings, marker, 'fail-closed Oracle embedding response compatibility')
 rejectText(embeddings, 'indexed[index] = values', 'duplicate-index overwrite')
 
+if (fs.existsSync(retiredActivationWorkflow)) {
+  throw new Error(
+    'The completed one-time Oracle Test activation controller must remain retired; ' +
+    'the current protected-Test controller preserves the already-approved runtime binding.',
+  )
+}
+
 for (const marker of [
-  'workflow_dispatch:',
-  'DEPLOY-CELAR-AI-ORACLE-RUNTIME-TO-TEST',
   'environment: test',
-  'id-token: write',
-  'azure/login@',
-  'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN',
-  'https://celarai.onenecklab.com/v1/chat/completions',
-  'https://celarai.onenecklab.com/v1/embeddings',
-  'https://celarai.onenecklab.com/v1/extract',
-  'https://celarai.onenecklab.com/v1/scan',
-  'https://celarai.onenecklab.com/health',
-  '129.213.82.144',
-  'ORACLE_EMBEDDING_RESPONSE=VALID',
-  'math.isfinite',
-  'bash scripts/build-pr55-acr-image.sh',
-  'Rollback protected Test API configuration on failure',
+  'group: projectpulse-deploy-test',
+  'cancel-in-progress: false',
+  'private-runtime-before.json',
+  'private-runtime-after.json',
+  'diff -u "$EVIDENCE_DIR/private-runtime-before.json" "$EVIDENCE_DIR/private-runtime-after.json"',
+  'PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"',
   'MIGRATIONS_APPLIED=NONE',
   'PRODUCTION_MUTATION=NONE',
-]) requireText(workflow, marker, 'guarded Oracle Test deployment workflow')
+  'privateRuntimeConfigurationMutation:false',
+  'Restore exact prior Test images after failure',
+]) requireText(currentTestController, marker, 'current protected-Test runtime-preservation controller')
 
-if (/^\s{2}push:\s*$/m.test(workflow)) {
-  throw new Error('The Oracle runtime deployment workflow must remain manual-only.')
-}
-rejectText(workflow, 'environment: production', 'Production environment binding')
-rejectText(workflow, '--insecure', 'TLS verification bypass')
-requireText(workflow, 'github-environment://test/celar-ai-oracle-runtime-token@', 'literal GitHub Environment token provenance')
-requireText(workflow, 'PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN="secretref:$TOKEN_SECRET_NAME"', 'native Container Apps token binding')
-rejectText(workflow, 'curl -k', 'TLS verification bypass')
-rejectText(workflow, 'TOKEN_REFERENCE="secretref://', 'Azure-reserved secretref metadata prefix')
+for (const marker of [
+  'PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)',
+  'CELAR_AI_',
+]) requireText(currentTestController, marker, 'private-runtime environment preservation allowlist')
+
+rejectText(currentTestController, 'environment: production', 'Production environment binding')
+rejectText(currentTestController, 'workflow_dispatch:', 'manual deployment bypass')
+rejectText(currentTestController, 'az keyvault', 'unapproved key-vault access')
+rejectText(currentTestController, 'PROJECTPULSE_TEST_DATABASE_URL', 'database-secret access')
+rejectText(currentTestController, 'celarai.onenecklab.com', 'Oracle runtime endpoint mutation')
+rejectText(currentTestController, 'PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN', 'Oracle runtime token mutation')
+rejectText(currentTestController, '--insecure', 'TLS verification bypass')
+rejectText(currentTestController, 'curl -k', 'TLS verification bypass')
 
 for (const marker of [
   'Settings → Environments → test → Environment secrets',
@@ -163,3 +171,5 @@ requireText(openCloud, 'status: deferred-until-opencloud', 'OpenCloud deferral')
 requireText(openCloud, 'enabled: false', 'OpenCloud disabled state')
 
 console.log('CELAR_AI_ORACLE_TEST_EXTERNAL_HTTPS_RUNTIME_STATIC_CONTRACT=PASS')
+console.log('CELAR_AI_ORACLE_TEST_ONE_TIME_ACTIVATION_CONTROLLER=RETIRED')
+console.log('CELAR_AI_ORACLE_TEST_CURRENT_CONTROLLER=PRIVATE_RUNTIME_PRESERVING')
