@@ -16,14 +16,13 @@ concurrency:
 
 jobs:
   finalize:
-    name: Publish one exact current-main release controller
+    name: Export one exact current-main release controller
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'release/deploy-current-main-protected-test-20260811'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      HEAD_BRANCH: release/deploy-current-main-protected-test-20260811
       SOURCE_CONTROLLER_COMMIT: b46903c70e86e02fe30884cf7e536d2acafa69a4
       SOURCE_CONTROLLER_PATH: .github/workflows/deploy-pr645-module001a-module013-test.yml
       CONTROLLER: .github/workflows/deploy-current-main-protected-test.yml
@@ -37,9 +36,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Build and publish the single protected-Test controller
+      - name: Build, validate, and export the protected-Test controller blob
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,11 +52,8 @@ jobs:
           [[ ! -e "$CONTROLLER" ]] || fail 'Final controller already exists unexpectedly.'
           [[ -n "$GH_TOKEN" ]] || fail 'GitHub workflow token is unavailable.'
 
-          git config user.name 'ahmedadeyemi-cts'
-          git config user.email 'ahmedadeyemi@gmail.com'
           git fetch origin main --no-tags
           [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Main moved; refusing to pin an obsolete release.'
-          git merge --no-edit origin/main
 
           SOURCE_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/contents/$SOURCE_CONTROLLER_PATH?ref=$SOURCE_CONTROLLER_COMMIT"
           curl -fsSL --retry 4 --retry-all-errors \
@@ -152,15 +148,25 @@ jobs:
           new_path.write_text(text, encoding='utf-8')
           PY
 
-          rm -f "$SELF"
-          git add -A
-          git diff --cached --check
+          git diff --check -- "$CONTROLLER"
+          [[ "$(grep -Fc "$TARGET_RELEASE_COMMIT" "$CONTROLLER")" -eq 4 ]] || fail 'Current-main release pin cardinality is incorrect.'
+          [[ "$(grep -Fc 'validate-celar-ai-public-question-resilience.mjs' "$CONTROLLER")" -eq 2 ]] || fail 'Public-question validator cardinality is incorrect.'
+          [[ "$(grep -Fc 'validate-celar-ai-pr630-consolidated.mjs' "$CONTROLLER")" -eq 2 ]] || fail 'Consolidated validator cardinality is incorrect.'
+          [[ "$(grep -Fc 'validate-celar-ai-external-deidentification.mjs' "$CONTROLLER")" -eq 2 ]] || fail 'Privacy validator cardinality is incorrect.'
 
-          mapfile -t changed < <(git diff --cached --name-only origin/main | sed '/^$/d')
-          printf 'FINAL_PR_DIFF=%s\n' "${changed[*]}"
-          [[ "${#changed[@]}" -eq 1 ]] || fail "Expected one final PR file; found ${#changed[@]}."
-          [[ "${changed[0]}" == "$CONTROLLER" ]] || fail 'Final PR file is not the protected-Test controller.'
-          [[ ! -e "$SELF" ]] || fail 'Finalizer did not remove itself.'
+          LOCAL_BLOB_SHA="$(git hash-object "$CONTROLLER")"
+          REMOTE_BLOB_SHA="$(jq -Rs '{content:.,encoding:"utf-8"}' < "$CONTROLLER" \
+            | curl -fsSL --retry 4 --retry-all-errors -X POST \
+                -H 'Accept: application/vnd.github+json' \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs" \
+                --data-binary @- \
+            | jq -r '.sha')"
+          [[ "$REMOTE_BLOB_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'GitHub did not return a valid controller blob SHA.'
+          [[ "$REMOTE_BLOB_SHA" == "$LOCAL_BLOB_SHA" ]] || fail 'Remote controller blob differs from the validated local file.'
 
-          git commit -m 'Publish exact current-main protected Test controller'
-          git push origin "HEAD:${HEAD_BRANCH}"
+          echo "CONTROLLER_BLOB_SHA=$REMOTE_BLOB_SHA"
+          echo "CONTROLLER_PATH=$CONTROLLER"
+          echo "TARGET_RELEASE_COMMIT=$TARGET_RELEASE_COMMIT"
+          echo 'FINAL_PR_DIFF_EXPECTED=.github/workflows/deploy-current-main-protected-test.yml'
