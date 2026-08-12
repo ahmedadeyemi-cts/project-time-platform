@@ -79,15 +79,13 @@ jobs:
           node src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
           git diff --check
 
-      - name: Restore permanent workflow and publish repair
+      - name: Publish validator source only
         shell: bash
         run: |
           set -Eeuo pipefail
-          git show HEAD^:.github/workflows/celar-ai-internal-data-intelligence-ci.yml > .github/workflows/celar-ai-internal-data-intelligence-ci.yml
-          rm -f .github/workflows/patch-pr644-external-deidentification-validator.yml
           git config user.name 'Pulse Celar AI Repair Automation'
           git config user.email 'pulse-celar-ai-repair@users.noreply.github.com'
-          git add -A
+          git add src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs
           git diff --cached --check
           git commit -m 'Align public-question privacy validation with governed routing'
           git push origin HEAD:fix/ask-celar-ai-public-questions-resilience-20260811
