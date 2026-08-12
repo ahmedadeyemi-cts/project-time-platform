@@ -1,4 +1,4 @@
-name: Deploy Pulse Current Main 654af0e to Protected Test
+name: Deploy Pulse Current Main 0a8ae39 to Protected Test
 
 on:
   push:
@@ -17,14 +17,14 @@ concurrency:
 
 jobs:
   deploy:
-    name: Validate, deploy, and verify Pulse current main 654af0e
+    name: Validate, deploy, and verify Pulse current main 0a8ae39
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      TARGET_RELEASE_COMMIT: 654af0e469f1fba348f7f7dcbac0fde4c5346a59
-      EVIDENCE_DIR: /tmp/pulse-current-main-654af0e-test-evidence
+      TARGET_RELEASE_COMMIT: 0a8ae393393a2c22990a25ac905053030bb98c4e
+      EVIDENCE_DIR: /tmp/pulse-current-main-0a8ae39-test-evidence
 
     steps:
       - name: Check out deployment controls
@@ -38,7 +38,7 @@ jobs:
       - name: Check out exact application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 654af0e469f1fba348f7f7dcbac0fde4c5346a59
+          ref: 0a8ae393393a2c22990a25ac905053030bb98c4e
           path: release
           fetch-depth: 0
           persist-credentials: false
