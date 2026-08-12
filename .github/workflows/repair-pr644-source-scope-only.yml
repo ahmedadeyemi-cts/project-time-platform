@@ -1,0 +1,74 @@
+name: Repair PR 644 Source Scope Only
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/repair-pr644-source-scope-only.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: repair-pr644-source-scope-only
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: >-
+      github.event.pull_request.number == 644 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/ask-celar-ai-public-questions-resilience-20260811'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_BRANCH: fix/ask-celar-ai-public-questions-resilience-20260811
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Add the exact compatibility-filter path
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git fetch origin main --no-tags
+          git merge --no-edit origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
+          s = p.read_text(encoding='utf-8')
+          entry = "  'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs',\n"
+          if entry not in s:
+              anchor = "  'src/frontend/project-time-web/scripts/validate-module-011-system-intelligence-package.mjs',\n"
+              if anchor not in s:
+                  anchor = "  'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',\n"
+              if anchor not in s:
+                  raise SystemExit('compatibility-filter anchor not found')
+              s = s.replace(anchor, anchor + entry, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          rm -f \
+            .github/workflows/repair-pr644-final-validator-sync.yml \
+            .github/workflows/repair-pr644-complete-and-automerge.yml \
+            .github/workflows/repair-pr644-source-scope-only.yml
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          git diff --check
+          git add -A
+          git diff --cached --check
+          git commit -m 'Complete PR 644 compatibility source scope'
+          git push origin "HEAD:${HEAD_BRANCH}"
+
+      - name: Mark ready and request merge on green
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr ready 644 --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge 644 --repo "$GITHUB_REPOSITORY" --merge --auto || true
