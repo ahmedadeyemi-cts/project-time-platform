@@ -41,6 +41,8 @@ jobs:
 
       - name: Build and publish the single protected-Test controller
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -49,6 +51,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == '${{ github.event.pull_request.head.sha }}' ]] || fail 'Checkout is not the exact PR head.'
           [[ -f "$SELF" ]] || fail 'Finalizer workflow is missing.'
           [[ ! -e "$CONTROLLER" ]] || fail 'Final controller already exists unexpectedly.'
+          [[ -n "$GH_TOKEN" ]] || fail 'GitHub workflow token is unavailable.'
 
           git config user.name 'ahmedadeyemi-cts'
           git config user.email 'ahmedadeyemi@gmail.com'
@@ -56,8 +59,19 @@ jobs:
           [[ "$(git rev-parse origin/main)" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Main moved; refusing to pin an obsolete release.'
           git merge --no-edit origin/main
 
-          git cat-file -e "$SOURCE_CONTROLLER_COMMIT^{commit}" || fail 'Reviewed source-controller commit is unavailable.'
-          git show "$SOURCE_CONTROLLER_COMMIT:$SOURCE_CONTROLLER_PATH" > "$RUNNER_TEMP/source-controller.yml"
+          SOURCE_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/contents/$SOURCE_CONTROLLER_PATH?ref=$SOURCE_CONTROLLER_COMMIT"
+          curl -fsSL --retry 4 --retry-all-errors \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$SOURCE_URL" \
+            | jq -r '.content' \
+            | tr -d '\n' \
+            | base64 --decode \
+            > "$RUNNER_TEMP/source-controller.yml"
+          [[ -s "$RUNNER_TEMP/source-controller.yml" ]] || fail 'Reviewed source controller could not be retrieved.'
+          grep -Fq 'name: Deploy PR 645 Module 001A and Module 013 to Protected Test' "$RUNNER_TEMP/source-controller.yml" \
+            || fail 'Retrieved source controller is not the reviewed deployment workflow.'
 
           python3 - <<'PY'
           import os
