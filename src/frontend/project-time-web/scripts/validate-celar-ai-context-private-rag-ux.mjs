@@ -21,7 +21,10 @@ function walk(relative) {
 
 const help = read('src/frontend/project-time-web/src/HelpAssistant.jsx');
 const chatCss = read('src/frontend/project-time-web/src/celar-ai-contextual-chat.css');
-const projectWorkspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs');
+const projectWorkspace = [
+  read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule.cs'),
+  read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs'),
+].join('\n');
 const ragService = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
 const platform = read('src/frontend/project-time-web/src/CelarAiProductionPlatform.jsx');
 const pipeline = read('src/frontend/project-time-web/src/PulseAiPrivateDocumentPipelineWorkbench.jsx');
