@@ -86,6 +86,25 @@ CREATE TABLE engineering_resource_request_assignments(
   user_id UUID NOT NULL
 );
 
+-- Reproduce the protected-Test schema behavior that exposed the original
+-- migration defect: an UPDATE queues a deferred trigger event on the intake
+-- document table. Any CREATE INDEX attempted afterward in the same transaction
+-- would fail with "pending trigger events".
+CREATE OR REPLACE FUNCTION test_module019_deferred_intake_event()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $test_module019_deferred_intake_event_body$
+BEGIN
+  RETURN NEW;
+END;
+$test_module019_deferred_intake_event_body$;
+
+CREATE CONSTRAINT TRIGGER trg_test_module019_deferred_intake_event
+AFTER UPDATE ON project_intake_documents
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION test_module019_deferred_intake_event();
+
 INSERT INTO work_register_documents(work_register_document_id, stored_file_path) VALUES
   ('10000000-0000-0000-0000-000000000001', '/opt/project-time-platform/uploads/work-register/20000000/doc-a.pdf'),
   ('10000000-0000-0000-0000-000000000002', 'uploads/project-intake/30000000/doc-b.pdf'),
