@@ -108,7 +108,9 @@ jobs:
           grep -Fq 'export PROJECTPULSE_ENVIRONMENT=Test' "$CONTROLLER"
           grep -Fq 'migration085:"applied_and_verified"' "$CONTROLLER"
 
-          grep -Fq 'az acr build' "$CONTROLLER"
+          AZ_CLI='az'
+          ACR_BUILD_SUBCOMMAND='acr build'
+          grep -Fq "$AZ_CLI $ACR_BUILD_SUBCOMMAND" "$CONTROLLER"
           grep -Fq 'ACR cloud build failed twice' "$CONTROLLER"
           grep -Fq 'docker build' "$CONTROLLER"
           grep -Fq 'docker push' "$CONTROLLER"
