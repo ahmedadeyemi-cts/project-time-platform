@@ -352,17 +352,19 @@ assertInvariant(
     contracts.includes('string? Comments = null') &&
     contracts.includes('string? Notes = null') &&
     artifacts.includes('ProjectFlowHiveBrandAssets.LogoJpeg') &&
-    artifacts.includes('INTERNAL DRAFT — NOT A CUSTOMER BASELINE') &&
-    backend.includes('customer_export_locked'),
+    artifacts.includes('PROJECT MANAGEMENT WORKING PLAN — REVIEW REQUIRED') &&
+    backend.includes('MapProjectFlowHiveEnterpriseEndpoints'),
   'US Signal branded internal PDF/XLSX source, exact Planner columns, and customer lock'
 );
 
 assertInvariant(
-  'MODULE_066_NO_EXTERNAL_CUSTOMER_LINK',
-  !/Map(?:Post|Put|Patch)\([^\n]+(?:share|customer-link|public-link|token)/i.test(backend) &&
-    backend.includes('customerSharingEnabled = false') &&
-    artifactsDoc.includes('There is no customer token'),
-  'no customer link/token/delivery endpoint'
+  'MODULE_066_GOVERNED_CUSTOMER_SHARING',
+  backend.includes('customerSharingEnabled = true') &&
+    backend.includes('customerSharingRequiresReviewedBaseline = true') &&
+    fs.readFileSync(path.join(backendDirectory, 'ProjectFlowHiveEnterpriseModule.cs'), 'utf8').includes('/api/project-flowhive/share/{token}') &&
+    fs.readFileSync(path.join(backendDirectory, 'ProjectFlowHiveEnterpriseModule.cs'), 'utf8').includes('token_sha256') &&
+    fs.readFileSync(path.join(backendDirectory, 'ProjectFlowHiveEnterpriseModule.cs'), 'utf8').includes('reviewed_baseline_required'),
+  'customer links are expiring, revocable, token-hashed, customer-safe, and tied to exact reviewed baselines'
 );
 
 assertInvariant(
@@ -431,12 +433,12 @@ assertInvariant(
     frontend.includes('projectEndDate') &&
     frontend.includes('Approved SOW Scope of Services located') &&
     frontend.includes('Ordered work steps') &&
-    frontend.includes('<th>WBS</th><th>Task Name</th><th>Start Date</th><th>End Date</th><th>Duration in Days</th><th>Progress</th><th>Predecessor</th><th>Type</th><th>Comments</th><th>Notes</th><th>Assigned Identity</th>') &&
+    frontend.includes('dependencyTypeHelp.FS') && frontend.includes('title=\"Work Breakdown Structure number') &&
     frontend.includes("updateTask(index, 'comments'") &&
     frontend.includes("updateTask(index, 'notes'") &&
     frontend.includes('excludeNotes: false') &&
-    frontend.includes('<th>Progress</th>') &&
-    frontend.includes('<th>Type</th>') &&
+    frontend.includes('>Progress</th>') &&
+    frontend.includes('>Type</th>') &&
     frontend.includes("updateDependencyForTask(index, 'lagWorkingDays'") &&
     stylesheet.includes('.flowhive-smartsheet-table') &&
     stylesheet.includes('.flowhive-phase-row.phase-release') &&
@@ -633,13 +635,80 @@ assertInvariant(
   'private cited scope survives private-model unavailability while only identity-free generic guidance may use Claude/OpenAI'
 );
 
+
+const enterpriseBackend = readRequired('ENTERPRISE_BACKEND', path.join(backendDirectory, 'ProjectFlowHiveEnterpriseModule.cs'));
+const enterpriseHelpers = readRequired('ENTERPRISE_HELPERS', path.join(repositoryRoot, 'src/frontend/project-time-web/src/flowhive-enterprise-helpers.js'));
+const enterprisePanels = readRequired('ENTERPRISE_PANELS', path.join(repositoryRoot, 'src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx'));
+const enterpriseMigration = readRequired('MIGRATION_086', path.join(repositoryRoot, 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'));
+const enterpriseRollback = readRequired('ROLLBACK_086', path.join(repositoryRoot, 'database/rollback/086_module_066_flowhive_enterprise_pm_rollback.sql'));
+const enterpriseMigrationTest = readRequired('MIGRATION_086_TEST', path.join(repositoryRoot, 'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh'));
+
+assertInvariant(
+  'MODULE_066_ENTERPRISE_PM_PERSISTENCE',
+  enterpriseMigration.includes('project_flowhive_working_copies') &&
+    enterpriseMigration.includes('project_flowhive_project_controls') &&
+    enterpriseMigration.includes('project_flowhive_raid_items') &&
+    enterpriseMigration.includes('project_flowhive_status_reports') &&
+    enterpriseMigration.includes('project_flowhive_customer_shares') &&
+    enterpriseRollback.includes('Rollback refused: Project FlowHive enterprise PM records exist.') &&
+    enterpriseMigrationTest.includes('MODULE_066_FLOWHIVE_ENTERPRISE_PM_MIGRATION_086=PASS'),
+  'working copies, financial controls, RAID, immutable status reports, customer shares, and guarded rollback'
+);
+
+assertInvariant(
+  'MODULE_066_PHASE_TASK_CRUD_AND_REORDER',
+  frontend.includes('Add {phase.name} task') &&
+    frontend.includes('deleteTask(task.wbsNumber)') &&
+    frontend.includes('draggable={Boolean(enterprise?.access?.canManage)}') &&
+    frontend.includes('dropTask(task.wbsNumber') &&
+    enterpriseHelpers.includes('deleteFlowHiveTask') &&
+    enterpriseHelpers.includes('moveFlowHiveTask') &&
+    enterpriseHelpers.includes('renumberFlowHivePlan'),
+  'Plan, Design, Implement, Validate, and Release task add, delete, drag/drop, keyboard movement, and WBS renumbering'
+);
+
+assertInvariant(
+  'MODULE_066_ENTERPRISE_PM_SCOPE',
+  enterpriseBackend.includes('Only the assigned Project Manager can manage') &&
+    enterpriseBackend.includes('IsProjectManagerOwner') &&
+    enterpriseBackend.includes('ProjectPulseActualSessionAuthority.IsViewAs') &&
+    enterpriseBackend.includes('working_copy_version_conflict'),
+  'PM ownership, non-transferable administrator support, View-As write blocking, and optimistic concurrency'
+);
+
+assertInvariant(
+  'MODULE_066_FINANCIAL_STATUS_AND_AI_EVIDENCE',
+  frontend.includes("id: 'financials'") &&
+    frontend.includes("id: 'status'") &&
+    frontend.includes('/api/project-financials/projects/') &&
+    enterprisePanels.includes('Fixed Price') &&
+    enterprisePanels.includes('Time and Materials') &&
+    enterprisePanels.includes('RAID register') &&
+    enterprisePanels.includes('Executive summary') &&
+    enterpriseBackend.includes('sowEvidenceSummary') &&
+    enterpriseBackend.includes('flowhive_sow_processing_queued'),
+  'authoritative financials, contract type, RAID, executive status reporting, and actionable SOW evidence readiness'
+);
+
+assertInvariant(
+  'MODULE_066_PROFESSIONAL_ARTIFACT_AND_HEADER_HELP',
+  artifacts.includes('PROJECT MANAGEMENT WORKING PLAN — REVIEW REQUIRED') &&
+    artifacts.includes('Executive summary') &&
+    frontend.includes('Project Management working plan') &&
+    frontend.includes('dependencyTypeHelp.FS') &&
+    frontend.includes('Start No Earlier Than constraint') &&
+    stylesheet.includes('.flowhive-save-bar') &&
+    stylesheet.includes('.flowhive-financial-grid'),
+  'professional PM export, executive summary, dependency explanations, editable schedule constraints, and responsive enterprise styling'
+);
+
 const failed = assertions.filter((assertion) => !assertion.condition);
 console.log('');
 console.log(`MODULE_066_VALIDATION_CHECKS=${assertions.length}`);
 console.log('MODULE_066_IMPLEMENTATION_PHASES=066A.1_066B_066C_066D_066E');
 console.log('MODULE_066_PERSISTENCE=IMMUTABLE_VERSIONED');
 console.log('MODULE_066_AI_EXECUTION=CELAR_MODULE_064_ROUTED');
-console.log('MODULE_066_CUSTOMER_SHARING=LOCKED');
+console.log('MODULE_066_CUSTOMER_SHARING=REVIEWED_BASELINE_GOVERNED');
 console.log('MODULE_066_SHARED_INTEGRATION=PRODUCTION_PACKAGE');
 
 if (failed.length) {

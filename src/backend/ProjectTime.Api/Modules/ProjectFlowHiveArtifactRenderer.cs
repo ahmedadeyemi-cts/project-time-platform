@@ -6,7 +6,7 @@ namespace ProjectTime.Api.Modules;
 
 internal static class ProjectFlowHiveArtifactRenderer
 {
-    private const string DraftLabel = "INTERNAL DRAFT — NOT A CUSTOMER BASELINE";
+    private const string DraftLabel = "PROJECT MANAGEMENT WORKING PLAN — REVIEW REQUIRED";
     private sealed record ArtifactTaskRow(
         string Wbs,
         string TaskName,
@@ -52,10 +52,15 @@ internal static class ProjectFlowHiveArtifactRenderer
         summary.Cell("B9").Value = $"{FormatDate(schedule.ProjectStartDate)} through {FormatDate(schedule.ProjectFinishDate)}";
         summary.Cell("A10").Value = "Critical tasks";
         summary.Cell("B10").Value = schedule.CriticalTaskCount;
-        summary.Cell("A11").Value = "Logo checksum";
-        summary.Cell("B11").Value = ProjectFlowHiveBrandAssets.LogoSha256;
-        summary.Range("A5:A11").Style.Font.Bold = true;
+        summary.Cell("A11").Value = "Executive summary";
+        summary.Cell("B11").Value = ExecutiveSummary(request.Plan);
+        summary.Cell("B11").Style.Alignment.WrapText = true;
+        summary.Cell("A12").Value = "Logo checksum";
+        summary.Cell("B12").Value = ProjectFlowHiveBrandAssets.LogoSha256;
+        summary.Range("A5:A12").Style.Font.Bold = true;
+        summary.Row(11).Height = 72;
         summary.Columns("A:D").AdjustToContents();
+        summary.Column("B").Width = Math.Max(summary.Column("B").Width, 72d);
         summary.SheetView.FreezeRows(4);
 
         var taskRows = BuildArtifactTaskRows(request, schedule);
@@ -136,7 +141,7 @@ internal static class ProjectFlowHiveArtifactRenderer
         ProjectFlowHiveArtifactRequest request,
         ProjectFlowHiveScheduleResult schedule)
     {
-        const int rowsPerPage = 18;
+        const int rowsPerPage = 16;
         var taskPages = BuildArtifactTaskRows(request, schedule)
             .Chunk(rowsPerPage)
             .Select(chunk => chunk.ToArray())
@@ -164,17 +169,18 @@ internal static class ProjectFlowHiveArtifactRenderer
         PdfText(content, 36, 480, 8, $"Customer: {request.Plan?.CustomerName ?? "Not specified"}", false, "0.18 0.25 0.34");
         PdfText(content, 560, 494, 8, $"Schedule: {FormatDate(schedule.ProjectStartDate)} - {FormatDate(schedule.ProjectFinishDate)}", false, "0.18 0.25 0.34");
         PdfText(content, 560, 480, 8, $"Tasks: {tasks.Count} on this page | Critical tasks: {schedule.CriticalTaskCount}", false, "0.18 0.25 0.34");
+        PdfText(content, 36, 462, 7, $"Executive summary: {Truncate(ExecutiveSummary(request.Plan), 150)}", false, "0.18 0.25 0.34");
 
-        content.Append("0.04 0.17 0.29 rg 36 444 936 24 re f\n");
+        content.Append("0.04 0.17 0.29 rg 36 430 936 24 re f\n");
         var headings = new[]
         {
             ("WBS", 42), ("TASK NAME", 78), ("START DATE", 220), ("END DATE", 278),
             ("DURATION IN DAYS", 336), ("PROGRESS", 410), ("PREDECESSOR", 466), ("TYPE", 536),
             ("COMMENTS", 570), ("NOTES", 690), ("ASSIGNED IDENTITY", 815)
         };
-        foreach (var (label, x) in headings) PdfText(content, x, 453, 5.8, label, true, "1 1 1");
+        foreach (var (label, x) in headings) PdfText(content, x, 439, 5.8, label, true, "1 1 1");
 
-        var y = 425;
+        var y = 411;
         for (var index = 0; index < tasks.Count; index++)
         {
             var task = tasks[index];
@@ -332,6 +338,17 @@ internal static class ProjectFlowHiveArtifactRenderer
     {
         var clean = value?.Trim() ?? string.Empty;
         return clean.Length <= length ? clean : $"{clean[..Math.Max(1, length - 1)]}…";
+    }
+
+    private static string ExecutiveSummary(ProjectFlowHivePlanRequest? plan)
+    {
+        if (!string.IsNullOrWhiteSpace(plan?.Notes)) return Truncate(plan.Notes, 900);
+        var tasks = (plan?.Tasks ?? []).Where(task => !task.IsSummary).ToArray();
+        var complete = tasks.Count(task => task.Status?.Equals("complete", StringComparison.OrdinalIgnoreCase) == true
+            || task.PercentComplete >= 100m);
+        var blocked = tasks.Count(task => task.Status?.Equals("blocked", StringComparison.OrdinalIgnoreCase) == true);
+        var progress = tasks.Length == 0 ? 0m : tasks.Average(task => Math.Clamp(task.PercentComplete, 0m, 100m));
+        return $"This Project Management working plan contains {tasks.Length} executable task(s) across Plan, Design, Implement, Validate, and Release. {complete} task(s) are complete, {blocked} are blocked, and average task progress is {Math.Round(progress, 0, MidpointRounding.AwayFromZero)}%. Review scope, dependencies, assignments, RAID, financials, and schedule evidence before establishing a customer baseline.";
     }
 
     private static string Join(string? code, string? name) =>

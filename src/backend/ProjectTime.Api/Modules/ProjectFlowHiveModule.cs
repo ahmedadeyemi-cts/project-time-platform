@@ -52,6 +52,8 @@ public static class ProjectFlowHiveModule
             "/api/project-flowhive/artifacts/excel-preview",
             (Func<ProjectFlowHiveArtifactRequest, HttpContext, IResult>)BuildExcelPreview);
 
+        app.MapProjectFlowHiveEnterpriseEndpoints();
+
         return app;
     }
 
@@ -79,8 +81,9 @@ public static class ProjectFlowHiveModule
             aiExecutionEnabled = true,
             deterministicPlanningEnabled = true,
             internalDraftArtifactEnabled = true,
-            customerExportEnabled = false,
-            customerSharingEnabled = false,
+            customerExportEnabled = true,
+            customerSharingEnabled = true,
+            customerSharingRequiresReviewedBaseline = true,
             capabilities = CapabilityRows(),
             integration = new
             {
@@ -97,7 +100,7 @@ public static class ProjectFlowHiveModule
                 aiProviderOrder = "database_managed_per_capability",
                 identityProfile = "module_062_available",
                 approvalCenter = "module_002_preserved_on_current_main",
-                brandedPdfAndExcel = "internal_draft_available",
+                brandedPdfAndExcel = "professional_working_plan_available",
                 logoSha256 = ProjectFlowHiveBrandAssets.LogoSha256,
                 sharedRegistration = "production_registered"
             }
@@ -303,7 +306,7 @@ public static class ProjectFlowHiveModule
         {
             module = "066",
             phase = "066E",
-            status = "internal_preview_ready_customer_sharing_locked",
+            status = "professional_working_plan_ready_reviewed_customer_sharing_available",
             formats = new[] { "pdf", "xlsx" },
             branding = new
             {
@@ -314,10 +317,10 @@ public static class ProjectFlowHiveModule
             },
             restrictions = new[]
             {
-                "Artifacts are marked as internal drafts.",
-                "No external link is created.",
-                "Customer baseline export remains locked.",
-                "Delivery and customer access require separate authorization."
+                "Working-plan artifacts are clearly marked as requiring review until a baseline is established.",
+                "Artifact download alone does not create a customer link.",
+                "Customer links require an exact reviewer-approved baseline version.",
+                "Customer access requires PM ownership, explicit project enablement, expiration, and immutable access audit."
             }
         });
     }
@@ -330,7 +333,7 @@ public static class ProjectFlowHiveModule
         var prepared = PrepareArtifact(request);
         if (prepared.Error is not null) return prepared.Error;
         var bytes = ProjectFlowHiveArtifactRenderer.BuildPdf(request, prepared.Schedule!);
-        return Results.File(bytes, "application/pdf", $"{SafeFileName(request.Plan?.PlanName)}-internal-draft.pdf");
+        return Results.File(bytes, "application/pdf", $"{SafeFileName(request.Plan?.PlanName)}-project-management-plan.pdf");
     }
 
     private static IResult BuildExcelPreview(
@@ -344,7 +347,7 @@ public static class ProjectFlowHiveModule
         return Results.File(
             bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            $"{SafeFileName(request.Plan?.PlanName)}-internal-draft.xlsx");
+            $"{SafeFileName(request.Plan?.PlanName)}-project-management-plan.xlsx");
     }
 
     private static (ProjectFlowHiveScheduleResult? Schedule, IResult? Error) PrepareArtifact(
@@ -491,7 +494,7 @@ public static class ProjectFlowHiveModule
                     collaborationHistoryAvailable = persistence.Ready,
                     aiExecutionAvailable = true,
                     internalBrandedArtifactsAvailable = true,
-                    customerSharingAvailable = false,
+                    customerSharingAvailable = true,
                     explanation = "Canonical records remain read only while FlowHive drafts, immutable versions, schedules, and reviewer-approved baselines are stored separately."
                 },
                 guardrails = new[]
@@ -503,7 +506,7 @@ public static class ProjectFlowHiveModule
                     "Task codes remain canonical references until a validated local planning preview assigns controlled draft WBS values.",
                     "Schedule calculations are weekday-only previews until Module 057 calendar authority is integrated.",
                     "Celar AI execution is routed through Module 064; direct provider clients are prohibited.",
-                    "PDF and Excel previews are US Signal branded internal drafts; customer sharing remains disabled."
+                    "PDF and Excel outputs are US Signal branded Project Management working plans; customer links require an exact reviewed baseline, explicit project enablement, expiration, and audit."
                 }
             });
         }
@@ -536,7 +539,7 @@ public static class ProjectFlowHiveModule
             new { code = "collaboration", priority = "P0", status = "production_ready", evidence = "Immutable version and review history" },
             new { code = "ai_plan_generation", priority = "P1", status = "production_ready", evidence = "Comprehensive Celar AI generation through the stored Module 064 order" },
             new { code = "internal_exports", priority = "P1", status = "production_ready", evidence = "US Signal logo embedded in internal review PDF and Excel artifacts" },
-            new { code = "customer_sharing", priority = "P1", status = "locked", evidence = "No customer link, token, delivery, or external state change" }
+            new { code = "customer_sharing", priority = "P1", status = "production_ready", evidence = "Expiring, revocable, token-hashed customer-safe links tied to exact reviewed baselines" }
         ];
     }
 
