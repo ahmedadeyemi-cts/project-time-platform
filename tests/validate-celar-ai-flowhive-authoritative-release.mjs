@@ -19,6 +19,7 @@ const generator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-univ
 const reliabilityGenerator = read('src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability-service.py');
 const publicFacts = read('src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs');
 const operationsIntent = read('src/backend/ProjectTime.Api/Modules/CelarAiOperationsIntentModule.cs');
+const projectSummaryPatch = read('deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh');
 
 if (main.indexOf("import './runtime-browser-compatibility.js';") > main.indexOf("import React from 'react';")) {
   throw new Error('Browser compatibility must load before React.');
@@ -26,7 +27,8 @@ if (main.indexOf("import './runtime-browser-compatibility.js';") > main.indexOf(
 requireMarker(main, "ProjectForgeFlowHiveSyncPortal", 'Project Forge portal mount');
 requireMarker(portal, 'loadSequenceRef', 'refresh race guard');
 requireMarker(portal, 'editRevisionRef', 'edit revision guard');
-requireMarker(portal, 'responseIsCurrent', 'stale refresh rejection');
+requireMarker(portal, 'const current = sequence === loadSequenceRef.current', 'stale refresh rejection');
+requireMarker(portal, 'newer PM edits were preserved', 'refresh/edit race preservation');
 requireMarker(portal, 'newer local edits remain unsaved', 'save race preservation');
 requireMarker(portal, '#project-flowhive?projectId=', 'selected project navigation');
 requireMarker(repair, "new URLSearchParams(hashQuery).get('projectId')", 'FlowHive project consumption');
@@ -69,9 +71,16 @@ for (const prohibited of [
 
 requireMarker(operationsIntent, '/api/celar-ai/v1/operations/intent', 'operations-intent route');
 requireMarker(operationsIntent, 'serverAuthoritative = true', 'server intent authority');
+requireMarker(projectSummaryPatch, 'pr.probability_score', 'Migration 077 probability compatibility');
+requireMarker(projectSummaryPatch, 'pr.overall_impact_score', 'Migration 077 impact compatibility');
+requireMarker(projectSummaryPatch, 'pr.mitigation_actions', 'Migration 077 mitigation compatibility');
+requireMarker(projectSummaryPatch, 'pr.response_plan', 'Migration 077 response-plan compatibility');
+forbidMarker(projectSummaryPatch, 'pr.probability, pr.impact', 'retired Migration 011 risk fields');
+forbidMarker(projectSummaryPatch, 'pr.mitigation_plan', 'retired Migration 011 mitigation field');
 
 console.log('FLOWHIVE_ENTERPRISE_UI_CURRENT_MAIN=PASS');
 console.log('PROJECT_FORGE_REFRESH_RACE_GUARD=PASS');
 console.log('PROJECT_FORGE_SELECTED_PROJECT_BRIDGE=PASS');
 console.log('CELAR_AI_AUTHORITATIVE_PUBLIC_FACT_PACKAGE=PASS');
 console.log('CELAR_AI_OPERATIONS_INTENT_REGISTRATION=PASS');
+console.log('PROJECT_MANAGEMENT_MIGRATION_077_COMPATIBILITY=PASS');
