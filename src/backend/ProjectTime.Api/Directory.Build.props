@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    Compatibility repairs in this file run only against ignored compiler copies.
+    Canonical oversized sources remain reviewable, while the compiled Program
+    consumes the authoritative Migration 077 enterprise risk schema.
+  -->
+  <Target Name="RepairCelarAiOperationalGeneratedSources"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <CelarAiProjectSummarySchemaRepair>$(MSBuildProjectDirectory)/build/repair-project-management-summary-schema.py</CelarAiProjectSummarySchemaRepair>
+    </PropertyGroup>
+    <Exec Command="python3 &quot;$(CelarAiProjectSummarySchemaRepair)&quot; --input &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.probability_score' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.overall_impact_score' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.mitigation_actions' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.response_plan' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+  </Target>
+</Project>

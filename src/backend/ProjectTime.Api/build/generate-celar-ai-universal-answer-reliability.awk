@@ -51,6 +51,7 @@ mode == "production" {
   if (waiting_for_map_brace == 1 && line ~ /^[[:space:]]*\{[[:space:]]*$/) {
     print "        endpoints.MapCelarAiUniversalAnswerReliabilityEndpoints();"
     print "        endpoints.MapCelarAiOperationsEndpoints();"
+    print "        endpoints.MapCelarAiOperationsIntentEndpoints();"
     print "        endpoints.MapCelarAiDefectQueryEndpoints();"
     inserted_map++
     waiting_for_map_brace = 0
