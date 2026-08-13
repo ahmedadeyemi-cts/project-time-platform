@@ -35,12 +35,12 @@ requireMarker(repair, "new URLSearchParams(hashQuery).get('projectId')", 'FlowHi
 requireMarker(repair, "setActiveView('planner')", 'FlowHive planner activation');
 
 for (const marker of [
-  "['financials', 'Financials']",
-  "['raid', 'Status & RAID']",
+  "{ id: 'financials', label: 'Financials' }",
+  "{ id: 'status', label: 'Status & RAID' }",
   'FlowHiveSaveBar',
   '>Add task</button>',
   '>Delete</button>',
-  'moveTaskByOffset',
+  'moveFlowHiveTaskByOffset',
   'Move to phase',
   'draggable={!task.isSummary}'
 ]) requireMarker(flowHive, marker, 'Module 066 enterprise UI');
