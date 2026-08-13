@@ -30,6 +30,7 @@ import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.j
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
+import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
@@ -61,6 +62,7 @@ createRoot(document.getElementById('root')).render(
       <Module005ExperienceCompatibility />
       <MicrosoftIntegrationDualConnectionPortal />
       <MicrosoftMailTransportReadinessPanel />
+      <ProjectForgeFlowHiveSyncPortal />
       <AuthenticatedHelpAssistant />
     </ApplicationErrorBoundary>
   </React.StrictMode>
