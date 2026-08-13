@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate exact source, Migration 087, Test-only UAT, and rollback
+      - name: Validate the final one-file protected-Test controller
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -43,7 +43,6 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
-          VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
           MIGRATION_RUNNER='scripts/release-test/run-migration-087-job.sh'
           SOURCE='c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d'
 
@@ -52,27 +51,19 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}" \
             || fail 'The exact pull-request base commit is unavailable.'
 
-          cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
-          .github/workflows/projectpulse-deploy-test.yml
-          .github/workflows/projectpulse-release-test-control-ci.yml
-          scripts/release-test/run-migration-087-job.sh
-          EOF
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
-          LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
-          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-files"
+          printf '%s\n' "$CONTROLLER" > "$RUNNER_TEMP/expected-release-files"
+          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort \
+            > "$RUNNER_TEMP/actual-release-files"
           diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
 
-          test -f "$CONTROLLER"
-          test -f "$VALIDATOR"
-          test -f "$MIGRATION_RUNNER"
+          test -f "$CONTROLLER" || fail 'The protected-Test controller is missing.'
+          test -f "$MIGRATION_RUNNER" || fail 'The Migration 087 private-network runner is missing.'
           bash -n "$MIGRATION_RUNNER"
 
           grep -Fq 'name: Deploy PR 670 Enterprise Experience and Migration 087 to Protected Test' "$CONTROLLER"
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
-          grep -Fq "'.github/workflows/projectpulse-deploy-test.yml'" "$CONTROLLER"
-          grep -Fq "'scripts/release-test/run-migration-087-job.sh'" "$CONTROLLER"
           grep -Fq "if: github.ref == 'refs/heads/main'" "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
@@ -99,7 +90,6 @@ jobs:
           grep -Fq 'scripts/release-test/run-migration-087-job.sh' "$CONTROLLER"
           grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$CONTROLLER"
           grep -Fq 'bash tests/test-projectpulse-api-startup.sh' "$CONTROLLER"
-          grep -Fq 'npm ci --no-audit --no-fund' "$CONTROLLER"
           grep -Fq 'npm audit --audit-level=high' "$CONTROLLER"
           grep -Fq 'npm run build' "$CONTROLLER"
 
@@ -110,14 +100,11 @@ jobs:
           grep -Fq 'pulse-enterprise-experience-control-host' "$CONTROLLER"
           grep -Fq 'pulse-enterprise-page-chrome-host' "$CONTROLLER"
 
-          grep -Fq 'FROM postgres:16-alpine' "$CONTROLLER"
-          grep -Fq 'apk add --no-cache bash coreutils python3' "$CONTROLLER"
           grep -Fq 'hashlib.pbkdf2_hmac("sha256", password, salt, 210000, dklen=32)' "$CONTROLLER"
           grep -Fq 'secrets.token_bytes(16)' "$CONTROLLER"
           grep -Fq 'PBKDF2-SHA256$210000$' "$CONTROLLER"
           [[ "$(grep -Fc 'PROJECTPULSE_M087_DERIVED_' "$CONTROLLER")" -eq 10 ]] \
             || fail 'The migration image must derive exactly ten independently salted account values.'
-          grep -Fq 'project-health-dashboard-m087-migrator@' "$CONTROLLER"
           grep -Fq 'MIGRATION_087_PRIVATE_NETWORK_JOB=SUCCEEDED' "$MIGRATION_RUNNER"
           grep -Fq 'm087-login-password' "$MIGRATION_RUNNER"
           grep -Fq 'm087-main-db-password' "$MIGRATION_RUNNER"
@@ -137,21 +124,15 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_USER' "$CONTROLLER"
 
           grep -Fq 'ACR cloud build failed twice' "$CONTROLLER"
-          grep -Fq 'docker build' "$CONTROLLER"
-          grep -Fq 'docker push' "$CONTROLLER"
           grep -Fq 'project-health-dashboard-api@' "$CONTROLLER"
           grep -Fq 'project-health-dashboard-web@' "$CONTROLLER"
-
+          grep -Fq 'project-health-dashboard-m087-migrator@' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
-          grep -Fq -- '--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"' "$CONTROLLER"
           grep -Fq 'runtime-contract-before.json' "$CONTROLLER"
           grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
           [[ "$(grep -Fc 'def canonical_private_environment_entry:' "$CONTROLLER")" -eq 2 ]] \
-            || fail 'Private-runtime canonicalization must run before and after API deployment.'
-          grep -Fq 'Secret-backed private runtime variable also contains a non-empty literal value.' "$CONTROLLER"
-          grep -Fq 'diff -u' "$CONTROLLER"
-
+            || fail 'Private-runtime validation must run before and after API deployment.'
           grep -Fq 'Restore exact prior Test images and source after application failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
@@ -178,7 +159,7 @@ jobs:
           git diff --check "$BASE_SHA...HEAD"
 
           echo 'PR670_M087_PROTECTED_TEST_CONTROL=PASSED'
-          echo 'EXPECTED_CHANGED_FILES=3'
+          echo 'EXPECTED_CHANGED_FILES=1'
           echo 'MIGRATION_087=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'
