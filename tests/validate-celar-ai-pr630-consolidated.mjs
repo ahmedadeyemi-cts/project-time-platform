@@ -9,7 +9,15 @@ const compatibilityFilteredPaths = new Set([
   'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
-  'tests/CelarAiInternalDataTests/Program.cs'
+  'tests/CelarAiInternalDataTests/Program.cs',
+  'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh',
+  'src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs',
+  'src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx',
+  'src/frontend/project-time-web/src/main.jsx',
+  'src/frontend/project-time-web/src/project-forge-flowhive-sync.css',
+  'src/frontend/project-time-web/src/runtime-browser-compatibility.js',
+  'tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj',
+  'tests/CelarAiAuthoritativePublicFactTests/Program.cs'
 ]);
 const requiredPr630BaselinePaths = [
   'database/migrations/084_module_076_celar_ai_defect_operations.sql',

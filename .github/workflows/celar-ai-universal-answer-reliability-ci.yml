@@ -6,17 +6,29 @@ on:
     paths:
       - '.github/workflows/celar-ai-universal-answer-reliability-ci.yml'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversal*.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiDeterministicIntentPolicy.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiOperationsIntentModule.cs'
       - 'src/backend/ProjectTime.Api/Directory.Build.targets'
       - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability-service.py'
+      - 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh'
       - 'src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css'
+      - 'src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/src/project-forge-flowhive-sync.css'
+      - 'src/frontend/project-time-web/src/runtime-browser-compatibility.js'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-universal-answer-reliability.mjs'
+      - 'src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs'
       - 'tests/CelarAiUniversalAnswerReliabilityTests/**'
+      - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/celar-ai-universal-answer-evaluation-cases.json'
       - 'tests/validate-celar-ai-pr630-consolidated.mjs'
+      - 'tests/validate-celar-ai-flowhive-authoritative-release.mjs'
   workflow_dispatch:
 
 permissions:
@@ -28,9 +40,9 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate planning, evidence gates, privacy, API, and UI
+    name: Validate planning, evidence gates, privacy, FlowHive, API, and UI
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -54,19 +66,29 @@ jobs:
       - name: Validate consolidated source and evidence contracts
         run: node tests/validate-celar-ai-pr630-consolidated.mjs
 
-      - name: Run deterministic reliability tests
+      - name: Validate authoritative evidence and FlowHive source contract
+        run: node tests/validate-celar-ai-flowhive-authoritative-release.mjs
+
+      - name: Run deterministic universal reliability tests
         run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Run authoritative public-fact behavioral tests
+        run: dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
 
       - name: Build complete API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
-      - name: Build complete frontend
+      - name: Install and audit frontend dependencies
         working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set -Eeuo pipefail
           npm ci --no-audit --no-fund
-          npm run build
+          npm audit --audit-level=high
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build
 
       - name: Ensure validation restored tracked source
         shell: bash
@@ -78,6 +100,9 @@ jobs:
       - name: Publish source-only summary
         run: |
           echo 'CELAR_AI_UNIVERSAL_ANSWER_RELIABILITY=SOURCE_VALIDATED'
+          echo 'CELAR_AI_AUTHORITATIVE_PUBLIC_FACTS=SOURCE_VALIDATED'
           echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'FLOWHIVE_ENTERPRISE_UI=SOURCE_VALIDATED'
+          echo 'PROJECT_FORGE_FLOWHIVE_SYNC=SOURCE_VALIDATED'
           echo 'CELAR_AI_UNIVERSAL_ANSWER_TEST_DEPLOYMENTS=0'
           echo 'CELAR_AI_UNIVERSAL_ANSWER_PRODUCTION_MUTATIONS=0'
