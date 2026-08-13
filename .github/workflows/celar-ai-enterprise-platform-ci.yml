@@ -118,6 +118,10 @@ jobs:
             ALLOWED_DATABASE='^(database/migrations/079_coordinated_runtime_ai_document_rbac_repair\.sql|database/rollback/079_coordinated_runtime_ai_document_rbac_repair_rollback\.sql)$'
             test -f tests/test-coordinated-document-bridge-migration-079.sh
             echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=COORDINATED_FLOWHIVE_DOCUMENT_BRIDGE' >> "$GITHUB_ENV"
+          elif [[ "$HEAD_BRANCH" == feature/module-066-flowhive-enterprise-pm-* ]]; then
+            ALLOWED_DATABASE='^(database/migrations/086_module_066_flowhive_enterprise_pm\.sql|database/rollback/086_module_066_flowhive_enterprise_pm_rollback\.sql)$'
+            test -f tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
+            echo 'CELAR_AI_ENTERPRISE_VALIDATION_MODE=FLOWHIVE_ENTERPRISE_PM' >> "$GITHUB_ENV"
           elif [[ "$HEAD_BRANCH" == feature/celar-ai-internal-data-intelligence-* ]]; then
             ALLOWED_DATABASE='^(database/migrations/(080_celar_ai_internal_data_intelligence|081_celar_ai_private_runtime_activation)\.sql|database/rollback/(080_celar_ai_internal_data_intelligence_rollback|081_celar_ai_private_runtime_activation_rollback)\.sql)$'
             test -f tests/test-celar-ai-internal-data-migration-080.sh
