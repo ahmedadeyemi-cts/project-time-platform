@@ -202,11 +202,19 @@ jobs:
           [[ "$OLD_SOURCE" =~ ^[0-9a-f]{40}$ ]] \
             || fail 'Existing Test source marker is missing or invalid; refusing mutation.'
 
-          jq '{
-            privateEnvironment: [
-              .properties.template.containers[0].env[]?
-              | select(.name | test("^(PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)|PROJECT_PULSE_UPLOAD_ROOT|CELAR_AI_)"))
-            ] | sort_by(.name),
+          jq '
+            def canonical_private_env:
+              if ((.secretRef // "") | length) > 0 then
+                {name: .name, secretRef: .secretRef}
+              else
+                {name: .name, value: (.value // "")}
+              end;
+            {
+              privateEnvironment: [
+                .properties.template.containers[0].env[]?
+                | select(.name | test("^(PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)|PROJECT_PULSE_UPLOAD_ROOT|CELAR_AI_)"))
+                | canonical_private_env
+              ] | sort_by(.name),
             volumes: (.properties.template.volumes // []),
             volumeMounts: (.properties.template.containers[0].volumeMounts // [])
           }' <<<"$API_JSON" > "$EVIDENCE_DIR/runtime-contract-before.json"
@@ -441,11 +449,19 @@ jobs:
             ] | if length == 1 then .[0] else empty end' <<<"$AFTER_JSON")"
           [[ "$SOURCE_AFTER" == "$TARGET_RELEASE_COMMIT" ]]
 
-          jq '{
-            privateEnvironment: [
-              .properties.template.containers[0].env[]?
-              | select(.name | test("^(PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)|PROJECT_PULSE_UPLOAD_ROOT|CELAR_AI_)"))
-            ] | sort_by(.name),
+          jq '
+            def canonical_private_env:
+              if ((.secretRef // "") | length) > 0 then
+                {name: .name, secretRef: .secretRef}
+              else
+                {name: .name, value: (.value // "")}
+              end;
+            {
+              privateEnvironment: [
+                .properties.template.containers[0].env[]?
+                | select(.name | test("^(PROJECTPULSE_(PRIVATE_|PULSE_AI_PRIVATE_|PULSE_AI_DOCUMENT_|PULSE_AI_CLAMAV|CELAR_AI_|UPLOAD_ROOT)|PROJECT_PULSE_UPLOAD_ROOT|CELAR_AI_)"))
+                | canonical_private_env
+              ] | sort_by(.name),
             volumes: (.properties.template.volumes // []),
             volumeMounts: (.properties.template.containers[0].volumeMounts // [])
           }' <<<"$AFTER_JSON" > "$EVIDENCE_DIR/runtime-contract-after.json"

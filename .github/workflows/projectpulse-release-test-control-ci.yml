@@ -123,6 +123,39 @@ jobs:
           grep -Fq -- '--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"' "$CONTROLLER"
           grep -Fq 'runtime-contract-before.json' "$CONTROLLER"
           grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
+          test "$(grep -Fc 'def canonical_private_env:' "$CONTROLLER")" -eq 2
+          test "$(grep -Fc '| canonical_private_env' "$CONTROLLER")" -eq 2
+          test "$(grep -Fc '{name: .name, secretRef: .secretRef}' "$CONTROLLER")" -eq 2
+          test "$(grep -Fc '{name: .name, value: (.value // "")}' "$CONTROLLER")" -eq 2
+
+          cat > "$RUNNER_TEMP/runtime-secret-before.json" <<'JSON'
+          {
+            "name": "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN",
+            "secretRef": "celar-ai-oracle-runtime-bearer"
+          }
+          JSON
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/runtime-secret-before.json"
+
+          cat > "$RUNNER_TEMP/runtime-secret-after.json" <<'JSON'
+          {
+            "name": "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN",
+            "secretRef": "celar-ai-oracle-runtime-bearer",
+            "value": ""
+          }
+          JSON
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/runtime-secret-after.json"
+
+          for runtime_fixture in before after; do
+            jq -S '
+              if ((.secretRef // "") | length) > 0 then
+                {name: .name, secretRef: .secretRef}
+              else
+                {name: .name, value: (.value // "")}
+              end
+            ' "$RUNNER_TEMP/runtime-secret-$runtime_fixture.json"               > "$RUNNER_TEMP/runtime-secret-$runtime_fixture.normalized.json"
+          done
+
+          diff -u             "$RUNNER_TEMP/runtime-secret-before.normalized.json"             "$RUNNER_TEMP/runtime-secret-after.normalized.json"
           grep -Fq 'uploadVolumeContractCaptured:true' "$CONTROLLER"
           grep -Fq 'diff -u' "$CONTROLLER"
 
