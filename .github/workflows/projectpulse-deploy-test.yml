@@ -164,11 +164,11 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Snapshot protected Test and validate UAT session
+      - name: Snapshot protected Test and preserve rollback contract
         id: contract
         shell: bash
-        env:
-          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+        # PROJECTPULSE_TEST_UAT_SESSION is intentionally not reused. Authenticated
+        # UAT obtains a fresh session after Migration 087 rotates Test credentials.
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -191,7 +191,6 @@ jobs:
             printf '%s%s@%s\n' "$registry" "$repository" "$digest"
           }
 
-          [[ -n "$UAT_SESSION" ]] || fail 'PROJECTPULSE_TEST_UAT_SESSION is required.'
           CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
           [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] \
             || fail 'Azure login is outside the protected Test subscription.'
@@ -224,19 +223,6 @@ jobs:
             || fail "Protected Test health returned HTTP $HEALTH_STATUS before deployment."
           jq -e '.status == "healthy"' "$EVIDENCE_DIR/preflight-health.json" >/dev/null \
             || fail 'Protected Test was not healthy before deployment.'
-
-          SESSION_STATUS="$(curl -sS --max-time 60 \
-            -o "$EVIDENCE_DIR/preflight-session.json" -w '%{http_code}' \
-            -H 'Cache-Control: no-cache' \
-            -H "Authorization: Bearer $UAT_SESSION" \
-            -H "X-ProjectPulse-Session: $UAT_SESSION" \
-            -H 'X-ProjectPulse-Module-Number: 019' \
-            -H "Origin: $BASE" \
-            -H 'Sec-Fetch-Site: same-origin' \
-            "$BASE/api/project-workspace/overview" || true)"
-          [[ "$SESSION_STATUS" == 200 ]] \
-            || fail "Protected Test UAT session returned HTTP $SESSION_STATUS."
-          jq -e . "$EVIDENCE_DIR/preflight-session.json" >/dev/null
 
           OLD_SOURCE="$(jq -r '[
               .properties.template.containers[0].env[]?
@@ -290,7 +276,8 @@ jobs:
               oldSource:$oldSource,
               oldApiImage:$oldApiImage,
               oldWebImage:$oldWebImage,
-              uatSessionValidated:true,
+              preDeploymentHealthValidated:true,
+              authenticatedUatDeferredUntilAfterMigration087:true,
               runtimeContractCaptured:true
             }' > "$EVIDENCE_DIR/test-contract.json"
 
@@ -596,7 +583,7 @@ jobs:
         id: uat
         shell: bash
         env:
-          UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
           BASE: ${{ steps.contract.outputs.base }}
         run: |
           set -Eeuo pipefail
@@ -619,11 +606,54 @@ jobs:
           [[ "$READY" == true ]] \
             || fail "Protected Test health did not become ready; last HTTP status was $LAST_STATUS."
 
+          LOGIN_USERNAME='demo.manager@ussignal.local'
+          LOGIN_PAYLOAD="$RUNNER_TEMP/pr670-m087-fresh-login-payload.json"
+          LOGIN_RESPONSE="$RUNNER_TEMP/pr670-m087-fresh-login-response.json"
+          install -m 0600 /dev/null "$LOGIN_PAYLOAD"
+          install -m 0600 /dev/null "$LOGIN_RESPONSE"
+          jq -n \
+            --arg username "$LOGIN_USERNAME" \
+            --arg password "$M087_PASSWORD" \
+            '{username:$username,password:$password}' > "$LOGIN_PAYLOAD"
+          LOGIN_STATUS="$(curl -sS --max-time 90 \
+            -o "$LOGIN_RESPONSE" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$LOGIN_PAYLOAD" \
+            "$BASE/api/auth/local/login" || true)"
+          rm -f "$LOGIN_PAYLOAD"
+          if [[ "$LOGIN_STATUS" != 200 ]]; then
+            jq 'del(.sessionToken)' "$LOGIN_RESPONSE" \
+              > "$EVIDENCE_DIR/post-deploy-login-failure.json" 2>/dev/null || true
+            rm -f "$LOGIN_RESPONSE"
+            unset M087_PASSWORD
+            fail "Fresh Migration 087 Test login returned HTTP $LOGIN_STATUS."
+          fi
+          if ! jq -e '
+            .provider == "LOCAL"
+            and .mustChangePassword == false
+            and (.sessionToken | type == "string" and length > 0)
+          ' "$LOGIN_RESPONSE" >/dev/null; then
+            jq 'del(.sessionToken)' "$LOGIN_RESPONSE" \
+              > "$EVIDENCE_DIR/post-deploy-login-invalid.json" 2>/dev/null || true
+            rm -f "$LOGIN_RESPONSE"
+            unset M087_PASSWORD
+            fail 'Fresh Migration 087 login response did not satisfy the local-session contract.'
+          fi
+          FRESH_UAT_SESSION="$(jq -r '.sessionToken' "$LOGIN_RESPONSE")"
+          echo "::add-mask::$FRESH_UAT_SESSION"
+          jq 'del(.sessionToken)' "$LOGIN_RESPONSE" \
+            > "$EVIDENCE_DIR/post-deploy-login-redacted.json"
+          rm -f "$LOGIN_RESPONSE"
+          unset M087_PASSWORD
+
           SESSION_STATUS="$(curl -sS --max-time 90 \
             -o "$EVIDENCE_DIR/post-deploy-session.json" -w '%{http_code}' \
             -H 'Cache-Control: no-cache' \
-            -H "Authorization: Bearer $UAT_SESSION" \
-            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H "Authorization: Bearer $FRESH_UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $FRESH_UAT_SESSION" \
             -H 'X-ProjectPulse-Module-Number: 019' \
             -H "Origin: $BASE" \
             -H 'Sec-Fetch-Site: same-origin' \
@@ -631,6 +661,7 @@ jobs:
           [[ "$SESSION_STATUS" == 200 ]] \
             || fail "Post-deployment authenticated UAT returned HTTP $SESSION_STATUS."
           jq -e . "$EVIDENCE_DIR/post-deploy-session.json" >/dev/null
+          unset FRESH_UAT_SESSION
 
           PORTAL_HTML="$RUNNER_TEMP/pulse-pr670-test-portal.html"
           FRONTEND_BUNDLE="$RUNNER_TEMP/pulse-pr670-test-assets.txt"
@@ -712,6 +743,7 @@ jobs:
               classicAlternate:true,
               lightDarkIndependent:true,
               authenticatedUat:true,
+              freshSessionIssuedAfterMigration087:true,
               runtimeContractPreserved:true
             }' > "$EVIDENCE_DIR/uat-summary.json"
 
@@ -801,7 +833,7 @@ jobs:
             fi
             if [[ -f "$EVIDENCE_DIR/uat-summary.json" ]]; then
               echo '- Enterprise/Classic UI UAT: passed'
-              echo '- Authenticated API UAT: passed'
+              echo '- Authenticated API UAT: passed with a fresh Migration 087 session'
             else
               echo '- Protected-Test UAT: not completed'
             fi
