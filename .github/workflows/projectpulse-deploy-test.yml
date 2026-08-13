@@ -1,10 +1,11 @@
-name: Deploy Module 019 Repair e6719b6 to Protected Test
+name: Deploy PR 670 Enterprise Experience and Migration 087 to Protected Test
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
+      - 'scripts/release-test/run-migration-087-job.sh'
 
 permissions:
   id-token: write
@@ -17,15 +18,15 @@ concurrency:
 
 jobs:
   deploy:
-    name: Validate, migrate, deploy, and verify Module 019 repair e6719b6
+    name: Validate, migrate, deploy, and verify PR 670 in Test
     if: github.ref == 'refs/heads/main'
     environment: test
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      TARGET_RELEASE_COMMIT: e6719b67dfb6e96c04358dbf43423ade4e0053e8
-      EVIDENCE_DIR: /tmp/module019-e6719b6-test-evidence
-      MIGRATION_SCOPE: module019-085-protected-test
+      TARGET_RELEASE_COMMIT: c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d
+      EVIDENCE_DIR: /tmp/pr670-m087-test-evidence
+      MIGRATION_SCOPE: pr670-m087-protected-test
 
     steps:
       - name: Check out deployment controls
@@ -36,13 +37,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out exact Module 019 application release
+      - name: Check out exact PR 670 application release
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: e6719b67dfb6e96c04358dbf43423ade4e0053e8
+          ref: c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d
           path: release
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Require protected Test-only credential
+        shell: bash
+        env:
+          M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#M087_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: The Test environment secret PROJECTPULSE_M087_PASSWORD is required before Migration 087 may run.' >&2
+            exit 1
+          }
+          unset M087_PASSWORD
+          echo 'MIGRATION_087_PASSWORD_SECRET=AVAILABLE'
 
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -56,7 +70,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Guard exact source and validate the complete Module 019 release
+      - name: Guard exact source and validate the combined release
         id: release
         shell: bash
         run: |
@@ -68,30 +82,47 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == push ]] || fail 'Deployment must be triggered by a main-branch push.'
           [[ "$GITHUB_REF" == refs/heads/main ]] || fail 'Only main may deploy protected Test.'
           [[ "$CONTROL_COMMIT" == "$GITHUB_SHA" ]] || fail 'Control checkout is not the exact workflow revision.'
-          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Application checkout is not the exact pinned release.'
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Application checkout is not the exact pinned PR 670 release.'
           git -C control merge-base --is-ancestor "$TARGET_RELEASE_COMMIT" "$CONTROL_COMMIT" \
-            || fail 'Pinned application release is not contained in current main.'
+            || fail 'Pinned PR 670 release is not contained in current main.'
 
           for required in \
-            control/scripts/release-test/run-migration-job.sh \
+            control/scripts/release-test/run-migration-087-job.sh \
             control/scripts/wait-containerapp-ready-revision.sh \
-            release/database/migrations/085_module_019_document_access_storage_repair.sql \
-            release/scripts/release-test/apply-085.sh \
-            release/scripts/release-test/reconcile-module019-document-uploads.sh \
-            release/tests/test-module019-document-access-repair-085.sh \
-            release/tests/test-module019-document-access-migration-085.sh \
-            release/src/frontend/project-time-web/scripts/validate-project-workspace-document-download.mjs \
+            release/database/migrations/087_activate_approved_local_logins.sql \
+            release/database/rollback/087_activate_approved_local_logins_rollback.sql \
+            release/scripts/release-test/apply-087-approved-local-logins.sh \
+            release/tests/test-activate-approved-local-logins-migration-087.sh \
+            release/src/frontend/project-time-web/src/EnterpriseExperienceController.jsx \
+            release/src/frontend/project-time-web/src/enterprise-experience-system.css \
+            release/src/frontend/project-time-web/src/enterprise-module-management.css \
+            release/src/frontend/project-time-web/src/main.jsx \
             release/tests/test-projectpulse-api-startup.sh \
             release/deployment/containers/api/Dockerfile \
             release/deployment/containers/web/Dockerfile; do
             test -f "$required" || fail "Required release artifact is missing: $required"
           done
 
+          bash -n control/scripts/release-test/run-migration-087-job.sh
+          bash -n release/scripts/release-test/apply-087-approved-local-logins.sh
+
           (
             cd release
-            bash tests/test-module019-document-access-repair-085.sh
-            bash tests/test-module019-document-access-migration-085.sh
-            node src/frontend/project-time-web/scripts/validate-project-workspace-document-download.mjs
+            bash tests/test-activate-approved-local-logins-migration-087.sh
+            grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" \
+              src/frontend/project-time-web/src/EnterpriseExperienceController.jsx
+            grep -Fq "const CLASSIC_EXPERIENCE = 'classic';" \
+              src/frontend/project-time-web/src/EnterpriseExperienceController.jsx
+            grep -Fq 'Module Management' \
+              src/frontend/project-time-web/src/EnterpriseExperienceController.jsx
+            grep -Fq 'Customer Pipelines' \
+              src/frontend/project-time-web/src/EnterpriseExperienceController.jsx
+            grep -Fq "data-pulse-experience='enterprise'" \
+              src/frontend/project-time-web/src/enterprise-experience-system.css
+            grep -Fq "data-theme='dark'" \
+              src/frontend/project-time-web/src/enterprise-experience-system.css
+            grep -Fq 'EnterpriseExperienceController' \
+              src/frontend/project-time-web/src/main.jsx
             dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
             bash tests/test-projectpulse-api-startup.sh
           )
@@ -99,6 +130,7 @@ jobs:
           (
             cd release/src/frontend/project-time-web
             npm ci --no-audit --no-fund
+            npm audit --audit-level=high
             npm run build
           )
 
@@ -111,8 +143,10 @@ jobs:
               environment:"test",
               controlCommit:$controlCommit,
               applicationRelease:$releaseCommit,
-              migrations:["085_module_019_document_access_storage_repair"],
+              migrations:["087_activate_approved_local_logins"],
               migrationScope:$migrationScope,
+              enterpriseExperience:true,
+              classicAlternate:true,
               productionMutation:false,
               privateRuntimeConfigurationMutation:false
             }' > "$EVIDENCE_DIR/release-boundary.json"
@@ -120,7 +154,7 @@ jobs:
           echo "control_commit=$CONTROL_COMMIT" >> "$GITHUB_OUTPUT"
           echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
           echo 'ENVIRONMENT_SCOPE=PROTECTED_TEST_ONLY'
-          echo 'MIGRATION_085=SOURCE_VALIDATED'
+          echo 'MIGRATION_087=SOURCE_VALIDATED'
           echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Sign in to protected Test
@@ -130,7 +164,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Snapshot protected Test, upload volume contract, and UAT session
+      - name: Snapshot protected Test and validate UAT session
         id: contract
         shell: bash
         env:
@@ -138,6 +172,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
+
           resolve_digest() {
             local image="$1" registry='${{ vars.AZURE_ACR_NAME }}.azurecr.io/' relative repository digest
             case "$image" in
@@ -181,8 +216,17 @@ jobs:
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]] \
             || fail 'Configured public origin is not protected Test.'
 
-          PREFLIGHT_STATUS="$(curl -sS --max-time 60 \
-            -o "$EVIDENCE_DIR/preflight-module019.json" -w '%{http_code}' \
+          HEALTH_STATUS="$(curl -sS --max-time 60 \
+            -o "$EVIDENCE_DIR/preflight-health.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            "$BASE/health?preflight=$GITHUB_RUN_ID" || true)"
+          [[ "$HEALTH_STATUS" == 200 ]] \
+            || fail "Protected Test health returned HTTP $HEALTH_STATUS before deployment."
+          jq -e '.status == "healthy"' "$EVIDENCE_DIR/preflight-health.json" >/dev/null \
+            || fail 'Protected Test was not healthy before deployment.'
+
+          SESSION_STATUS="$(curl -sS --max-time 60 \
+            -o "$EVIDENCE_DIR/preflight-session.json" -w '%{http_code}' \
             -H 'Cache-Control: no-cache' \
             -H "Authorization: Bearer $UAT_SESSION" \
             -H "X-ProjectPulse-Session: $UAT_SESSION" \
@@ -190,9 +234,9 @@ jobs:
             -H "Origin: $BASE" \
             -H 'Sec-Fetch-Site: same-origin' \
             "$BASE/api/project-workspace/overview" || true)"
-          [[ "$PREFLIGHT_STATUS" == 200 ]] \
-            || fail "Protected Test UAT session returned HTTP $PREFLIGHT_STATUS."
-          jq -e . "$EVIDENCE_DIR/preflight-module019.json" >/dev/null
+          [[ "$SESSION_STATUS" == 200 ]] \
+            || fail "Protected Test UAT session returned HTTP $SESSION_STATUS."
+          jq -e . "$EVIDENCE_DIR/preflight-session.json" >/dev/null
 
           OLD_SOURCE="$(jq -r '[
               .properties.template.containers[0].env[]?
@@ -200,7 +244,7 @@ jobs:
               | .value // empty
             ] | if length == 1 then .[0] else empty end' <<<"$API_JSON")"
           [[ "$OLD_SOURCE" =~ ^[0-9a-f]{40}$ ]] \
-            || fail 'Existing Test source marker is missing or invalid; refusing mutation.'
+            || fail 'Existing Test source marker is missing or invalid.'
 
           jq '
             def canonical_private_environment_entry:
@@ -247,10 +291,10 @@ jobs:
               oldApiImage:$oldApiImage,
               oldWebImage:$oldWebImage,
               uatSessionValidated:true,
-              uploadVolumeContractCaptured:true
+              runtimeContractCaptured:true
             }' > "$EVIDENCE_DIR/test-contract.json"
 
-      - name: Build immutable API, web, and Migration 085 images
+      - name: Build immutable API, web, and Migration 087 images
         id: build
         shell: bash
         working-directory: release
@@ -259,7 +303,7 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
           ACR='${{ vars.AZURE_ACR_NAME }}'
           SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
-          UNIQUE_TAG="m019-${SHORT_RELEASE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          UNIQUE_TAG="pr670-${SHORT_RELEASE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           resolve_digest() {
             local image="$1" digest='' attempt
@@ -303,13 +347,10 @@ jobs:
               (( attempt < 2 )) && sleep $((attempt * 20))
             done
 
-            echo "ACR cloud build failed twice; attempting an authenticated local Docker build and push for $image." >&2
+            echo "ACR cloud build failed twice; using authenticated local Docker fallback for $image." >&2
             az acr login --name "$ACR" --only-show-errors >&2
             local full_image="$ACR.azurecr.io/$image"
-            docker build \
-              --file "$dockerfile" \
-              --tag "$full_image" \
-              "$context" >&2
+            docker build --file "$dockerfile" --tag "$full_image" "$context" >&2
             docker push "$full_image" >&2
             digest="$(resolve_digest "$image" || true)"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
@@ -317,14 +358,14 @@ jobs:
             printf '%s\n' "$digest"
           }
 
-          MIGRATION_CONTEXT="$RUNNER_TEMP/module019-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          MIGRATION_CONTEXT="$RUNNER_TEMP/pr670-m087-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           install -d -m 0700 "$MIGRATION_CONTEXT/database/migrations"
           install -m 0644 \
-            database/migrations/085_module_019_document_access_storage_repair.sql \
-            "$MIGRATION_CONTEXT/database/migrations/085_module_019_document_access_storage_repair.sql"
+            database/migrations/087_activate_approved_local_logins.sql \
+            "$MIGRATION_CONTEXT/database/migrations/087_activate_approved_local_logins.sql"
           install -m 0555 \
-            scripts/release-test/apply-085.sh \
-            "$MIGRATION_CONTEXT/apply-085.sh"
+            scripts/release-test/apply-087-approved-local-logins.sh \
+            "$MIGRATION_CONTEXT/apply-087-approved-local-logins.sh"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
 
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
@@ -336,26 +377,65 @@ jobs:
             echo "ERROR: Migration image release identity does not match the requested release." >&2
             exit 1
           }
+          M087_PASSWORD="${PROJECTPULSE_M087_PASSWORD:-}"
+          [[ ${#M087_PASSWORD} -ge 12 ]] || {
+            echo "ERROR: Protected Migration 087 login password is unavailable." >&2
+            exit 1
+          }
+
+          eval "$(
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import os
+          import secrets
+
+          password = os.environ["PROJECTPULSE_M087_PASSWORD"].encode("utf-8")
+          variables = [
+              "PROJECTPULSE_M087_DERIVED_JEREMY_HOLT",
+              "PROJECTPULSE_M087_DERIVED_DARREN_OLSON",
+              "PROJECTPULSE_M087_DERIVED_DEMO_ENGINEER",
+              "PROJECTPULSE_M087_DERIVED_DEMO_MANAGER",
+              "PROJECTPULSE_M087_DERIVED_HEATHER_SCHROCK",
+              "PROJECTPULSE_M087_DERIVED_JASON_MOSIER",
+              "PROJECTPULSE_M087_DERIVED_JULI_CAMBRON",
+              "PROJECTPULSE_M087_DERIVED_KEVIN_DAMISCH",
+              "PROJECTPULSE_M087_DERIVED_PROJECT_TEAM_COORDINATOR",
+              "PROJECTPULSE_M087_DERIVED_STEVE_KOPISCHKE",
+          ]
+          for variable in variables:
+              salt = secrets.token_bytes(16)
+              digest = hashlib.pbkdf2_hmac("sha256", password, salt, 210000, dklen=32)
+              value = (
+                  "PBKDF2-SHA256$210000$"
+                  + base64.b64encode(salt).decode("ascii")
+                  + "$"
+                  + base64.b64encode(digest).decode("ascii")
+              )
+              print(f"export {variable}='{value}'")
+          PY
+          )"
+          unset PROJECTPULSE_M087_PASSWORD M087_PASSWORD
           export PROJECTPULSE_ENVIRONMENT=Test
-          exec /usr/local/bin/apply-085.sh "$ROOT"
+          exec /usr/local/bin/apply-087-approved-local-logins.sh
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
 
           cat > "$MIGRATION_CONTEXT/Dockerfile" <<'DOCKERFILE'
           FROM postgres:16-alpine
-          RUN apk add --no-cache bash coreutils
+          RUN apk add --no-cache bash coreutils python3
           WORKDIR /opt/projectpulse/release
           COPY release-commit .projectpulse-release-commit
           COPY database/ database/
-          COPY apply-085.sh /usr/local/bin/apply-085.sh
-          COPY entrypoint.sh /usr/local/bin/module019-migration-entrypoint.sh
+          COPY apply-087-approved-local-logins.sh /usr/local/bin/apply-087-approved-local-logins.sh
+          COPY entrypoint.sh /usr/local/bin/pr670-m087-entrypoint.sh
           RUN chmod 0555 \
-                /usr/local/bin/apply-085.sh \
-                /usr/local/bin/module019-migration-entrypoint.sh \
+                /usr/local/bin/apply-087-approved-local-logins.sh \
+                /usr/local/bin/pr670-m087-entrypoint.sh \
               && chmod 0444 \
                 .projectpulse-release-commit \
-                database/migrations/085_module_019_document_access_storage_repair.sql
-          ENTRYPOINT ["/usr/local/bin/module019-migration-entrypoint.sh"]
+                database/migrations/087_activate_approved_local_logins.sql
+          ENTRYPOINT ["/usr/local/bin/pr670-m087-entrypoint.sh"]
           DOCKERFILE
 
           API_DIGEST="$(build_image \
@@ -367,13 +447,13 @@ jobs:
             deployment/containers/web/Dockerfile \
             .)"
           MIGRATION_DIGEST="$(build_image \
-            project-health-dashboard-module019-migrator \
+            project-health-dashboard-m087-migrator \
             "$MIGRATION_CONTEXT/Dockerfile" \
             "$MIGRATION_CONTEXT")"
 
           API_IMAGE="$ACR.azurecr.io/project-health-dashboard-api@$API_DIGEST"
           WEB_IMAGE="$ACR.azurecr.io/project-health-dashboard-web@$WEB_DIGEST"
-          MIGRATION_IMAGE="$ACR.azurecr.io/project-health-dashboard-module019-migrator@$MIGRATION_DIGEST"
+          MIGRATION_IMAGE="$ACR.azurecr.io/project-health-dashboard-m087-migrator@$MIGRATION_DIGEST"
 
           {
             echo "api_image=$API_IMAGE"
@@ -388,16 +468,16 @@ jobs:
             '{apiImage:$api,webImage:$web,migrationImage:$migration}' \
             > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migration 085 inside the protected Test private network
+      - name: Apply and verify Migration 087 inside the Test private network
         id: migration
         shell: bash
         env:
+          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-          MAIN_RELEASE_MIGRATION_IMAGE: ${{ steps.build.outputs.migration_image }}
-          MAIN_RELEASE_MIGRATION_JOB_NAME: m019-${{ github.run_id }}-${{ github.run_attempt }}
-          MAIN_RELEASE_MIGRATION_MODE: apply
+          M087_MIGRATION_IMAGE: ${{ steps.build.outputs.migration_image }}
+          M087_MIGRATION_JOB_NAME: m087-${{ github.run_id }}-${{ github.run_attempt }}
           AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
           AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
           PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME }}
@@ -405,18 +485,23 @@ jobs:
           PROJECTPULSE_TEST_DATABASE_PORT: ${{ vars.PROJECTPULSE_TEST_DATABASE_PORT }}
           PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
           PROJECTPULSE_TEST_DATABASE_USER: ${{ vars.PROJECTPULSE_TEST_DATABASE_USER }}
-          MAIN_RELEASE_CONTROL_SHA: ${{ github.sha }}
-          MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: e6719b67dfb6e96c04358dbf43423ade4e0053e8
-          MAIN_RELEASE_MIGRATION_SCOPE: module019-085-protected-test
+          M087_CONTROL_SHA: ${{ github.sha }}
+          M087_RELEASE_COMMIT: c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d
+          M087_MIGRATION_SCOPE: pr670-m087-protected-test
         run: |
           set -Eeuo pipefail
-          bash control/scripts/release-test/run-migration-job.sh
+          bash control/scripts/release-test/run-migration-087-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
           jq -n \
-            --arg migration '085_module_019_document_access_storage_repair' \
+            --arg migration '087_activate_approved_local_logins' \
             --arg image '${{ steps.build.outputs.migration_image }}' \
-            '{status:"applied_and_verified",migration:$migration,image:$image}' \
-            > "$EVIDENCE_DIR/migration-085.json"
+            '{
+              status:"applied_and_verified",
+              migration:$migration,
+              image:$image,
+              accountsActivated:10,
+              mustChangePassword:false
+            }' > "$EVIDENCE_DIR/migration-087.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -429,7 +514,7 @@ jobs:
             -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
             --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" \
-            --revision-suffix "m019a-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "pr670a-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
 
           REVISION="$(az containerapp show \
@@ -491,7 +576,7 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.build.outputs.web_image }}' \
-            --revision-suffix "m019w-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "pr670w-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
 
           REVISION="$(az containerapp show \
@@ -507,7 +592,7 @@ jobs:
             60 10
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Run authenticated Module 019 protected-Test UAT
+      - name: Run protected-Test enterprise and account UAT
         id: uat
         shell: bash
         env:
@@ -516,23 +601,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
-          require_json() {
-            local file="$1" label="$2"
-            [[ -s "$file" ]] || fail "$label returned an empty response."
-            jq -e . "$file" >/dev/null 2>&1 || fail "$label returned invalid JSON."
-          }
-          request() {
-            local module="$1" output="$2" url="$3"
-            shift 3
-            curl -sS --max-time 180 -o "$output" -w '%{http_code}' \
-              -H 'Cache-Control: no-cache' \
-              -H "Authorization: Bearer $UAT_SESSION" \
-              -H "X-ProjectPulse-Session: $UAT_SESSION" \
-              -H "X-ProjectPulse-Module-Number: $module" \
-              -H "Origin: $BASE" \
-              -H 'Sec-Fetch-Site: same-origin' \
-              "$@" "$url" || true
-          }
 
           READY=false
           LAST_STATUS='000'
@@ -551,120 +619,21 @@ jobs:
           [[ "$READY" == true ]] \
             || fail "Protected Test health did not become ready; last HTTP status was $LAST_STATUS."
 
-          OVERVIEW_STATUS="$(request \
-            019 \
-            "$EVIDENCE_DIR/module019-admin-overview.json" \
-            "$BASE/api/project-workspace/overview")"
-          [[ "$OVERVIEW_STATUS" == 200 ]] \
-            || fail "Module 019 overview returned HTTP $OVERVIEW_STATUS."
-          require_json "$EVIDENCE_DIR/module019-admin-overview.json" 'Module 019 overview'
-          jq -e '
-            .module == "019" and
-            .mode == "assignment_and_role_scope_enforced" and
-            (.projects | type == "array") and
-            (.documents | type == "array") and
-            (.assignments | type == "array") and
-            (.resourceRequests | type == "array") and
-            (.guardrails | type == "array") and
-            any(.guardrails[]; contains("listing and document download use the same authorization predicates"))
-          ' "$EVIDENCE_DIR/module019-admin-overview.json" >/dev/null \
-            || fail 'Module 019 overview contract is incomplete.'
+          SESSION_STATUS="$(curl -sS --max-time 90 \
+            -o "$EVIDENCE_DIR/post-deploy-session.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' \
+            -H "Authorization: Bearer $UAT_SESSION" \
+            -H "X-ProjectPulse-Session: $UAT_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 019' \
+            -H "Origin: $BASE" \
+            -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/project-workspace/overview" || true)"
+          [[ "$SESSION_STATUS" == 200 ]] \
+            || fail "Post-deployment authenticated UAT returned HTTP $SESSION_STATUS."
+          jq -e . "$EVIDENCE_DIR/post-deploy-session.json" >/dev/null
 
-          jq -e '
-            [.projects[]?.status | ascii_downcase]
-            | all(. != "closed" and . != "completed" and . != "cancelled" and . != "canceled" and . != "archived")
-          ' "$EVIDENCE_DIR/module019-admin-overview.json" >/dev/null \
-            || fail 'Module 019 returned closed or archived project work.'
-
-          VIEW_AS_STATUS="$(request \
-            019 \
-            "$EVIDENCE_DIR/module019-view-as-users.json" \
-            "$BASE/api/project-workspace/view-as/users")"
-          [[ "$VIEW_AS_STATUS" == 200 ]] \
-            || fail "Module 019 View-As users returned HTTP $VIEW_AS_STATUS."
-          require_json "$EVIDENCE_DIR/module019-view-as-users.json" 'Module 019 View-As users'
-          jq -e '.mode == "administrator_view_as_preview" and (.users | type == "array")' \
-            "$EVIDENCE_DIR/module019-view-as-users.json" >/dev/null \
-            || fail 'Module 019 View-As contract is incomplete.'
-
-          ENGINEER_ID="$(jq -r '
-            [
-              .users[]
-              | select((.assignmentCount // 0) > 0)
-              | select((.roleCodes // "" | ascii_downcase) | test("engineer|engineering"))
-              | .userId
-            ][0] // empty
-          ' "$EVIDENCE_DIR/module019-view-as-users.json")"
-          if [[ -z "$ENGINEER_ID" ]]; then
-            ENGINEER_ID="$(jq -r '
-              [.users[] | select((.assignmentCount // 0) > 0) | .userId][0] // empty
-            ' "$EVIDENCE_DIR/module019-view-as-users.json")"
-          fi
-
-          PREVIEW_USED=false
-          PREVIEW_FILE="$EVIDENCE_DIR/module019-admin-overview.json"
-          if [[ "$ENGINEER_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
-            PREVIEW_STATUS="$(request \
-              019 \
-              "$EVIDENCE_DIR/module019-engineer-preview.json" \
-              "$BASE/api/project-workspace/overview" \
-              -H "X-ProjectPulse-View-As-User: $ENGINEER_ID")"
-            [[ "$PREVIEW_STATUS" == 200 ]] \
-              || fail "Module 019 assigned-user preview returned HTTP $PREVIEW_STATUS."
-            require_json "$EVIDENCE_DIR/module019-engineer-preview.json" 'Module 019 assigned-user preview'
-            jq -e --arg userId "$ENGINEER_ID" '
-              .module == "019" and
-              .mode == "assignment_and_role_scope_enforced" and
-              .access.isViewAs == true and
-              ((.access.userId | ascii_downcase) == ($userId | ascii_downcase)) and
-              (.projects | type == "array") and
-              (.documents | type == "array") and
-              (.assignments | type == "array")
-            ' "$EVIDENCE_DIR/module019-engineer-preview.json" >/dev/null \
-              || fail 'Module 019 assigned-user preview did not enforce the effective identity.'
-            jq -e '
-              [.projects[]?.status | ascii_downcase]
-              | all(. != "closed" and . != "completed" and . != "cancelled" and . != "canceled" and . != "archived")
-            ' "$EVIDENCE_DIR/module019-engineer-preview.json" >/dev/null \
-              || fail 'Assigned-user preview returned closed or archived work.'
-            PREVIEW_USED=true
-            PREVIEW_FILE="$EVIDENCE_DIR/module019-engineer-preview.json"
-          fi
-
-          DOCUMENT_URL="$(jq -r '.documents[0].downloadUrl // empty' "$PREVIEW_FILE")"
-          DOWNLOAD_STATUS='not_applicable'
-          DOWNLOAD_RESULT='no_document_sample'
-          if [[ "$DOCUMENT_URL" == /api/project-workspace/documents/*/download ]]; then
-            DOWNLOAD_ARGS=()
-            if [[ "$PREVIEW_USED" == true ]]; then
-              DOWNLOAD_ARGS=(-H "X-ProjectPulse-View-As-User: $ENGINEER_ID")
-            fi
-            DOWNLOAD_STATUS="$(request \
-              019 \
-              "$EVIDENCE_DIR/module019-download-probe.bin" \
-              "$BASE$DOCUMENT_URL" \
-              "${DOWNLOAD_ARGS[@]}")"
-            case "$DOWNLOAD_STATUS" in
-              200)
-                DOWNLOAD_RESULT='download_succeeded'
-                ;;
-              404)
-                if jq -e '.status == "file_reconciliation_required"' \
-                  "$EVIDENCE_DIR/module019-download-probe.bin" >/dev/null 2>&1; then
-                  DOWNLOAD_RESULT='authorized_metadata_requires_physical_file_reconciliation'
-                  echo "::warning::The selected authorized Module 019 document is listed correctly, but its physical file still requires persistent-volume reconciliation."
-                else
-                  fail 'A listed Module 019 document returned an authorization/not-found response instead of a reconciliation response.'
-                fi
-                ;;
-              *)
-                fail "Module 019 listed-document download returned unexpected HTTP $DOWNLOAD_STATUS."
-                ;;
-            esac
-          fi
-
-          PORTAL_HTML="$RUNNER_TEMP/pulse-module019-test-portal.html"
-          FRONTEND_BUNDLE="$RUNNER_TEMP/pulse-module019-test-assets.txt"
+          PORTAL_HTML="$RUNNER_TEMP/pulse-pr670-test-portal.html"
+          FRONTEND_BUNDLE="$RUNNER_TEMP/pulse-pr670-test-assets.txt"
           PORTAL_STATUS="$(curl -sS --max-time 60 \
             -o "$PORTAL_HTML" -w '%{http_code}' \
             -H 'Cache-Control: no-cache' \
@@ -692,13 +661,14 @@ jobs:
                 ;;
             esac
           done
+
           for marker in \
-            '/api/project-workspace/overview' \
-            'workspace-download-status' \
-            'X-ProjectPulse-View-As-User' \
-            'This project document does not have a download URL.'; do
+            'pulse-enterprise-experience-control-host' \
+            'Module Management' \
+            'Customer Pipelines' \
+            'pulse-enterprise-page-chrome-host'; do
             grep -Fq "$marker" "$FRONTEND_BUNDLE" \
-              || fail "Deployed frontend bundle is missing Module 019 marker: $marker"
+              || fail "Deployed frontend bundle is missing PR 670 marker: $marker"
           done
 
           API_AFTER="$(az containerapp show \
@@ -716,11 +686,11 @@ jobs:
             ] | if length == 1 then .[0] else empty end' <<<"$API_AFTER")"
 
           [[ "$ACTIVE_API_IMAGE" == '${{ steps.build.outputs.api_image }}' ]] \
-            || fail 'Active API image does not match the immutable release.'
+            || fail 'Active API image does not match the immutable PR 670 release.'
           [[ "$ACTIVE_WEB_IMAGE" == '${{ steps.build.outputs.web_image }}' ]] \
-            || fail 'Active web image does not match the immutable release.'
+            || fail 'Active web image does not match the immutable PR 670 release.'
           [[ "$ACTIVE_SOURCE" == "$TARGET_RELEASE_COMMIT" ]] \
-            || fail 'Active source marker does not match the pinned release.'
+            || fail 'Active source marker does not match the pinned PR 670 release.'
 
           jq -n \
             --arg source "$ACTIVE_SOURCE" \
@@ -728,10 +698,6 @@ jobs:
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg apiRevision '${{ steps.deploy_api.outputs.revision }}' \
             --arg webRevision '${{ steps.deploy_web.outputs.revision }}' \
-            --arg engineerUserId "$ENGINEER_ID" \
-            --arg downloadStatus "$DOWNLOAD_STATUS" \
-            --arg downloadResult "$DOWNLOAD_RESULT" \
-            --argjson previewUsed "$PREVIEW_USED" \
             '{
               status:"passed",
               sourceCommit:$source,
@@ -739,27 +705,28 @@ jobs:
               webImage:$webImage,
               apiRevision:$apiRevision,
               webRevision:$webRevision,
-              migration085:"applied_and_verified",
-              module019Overview:true,
-              module019ViewAs:true,
-              assignedUserPreviewUsed:$previewUsed,
-              assignedUserId:$engineerUserId,
-              documentDownloadHttpStatus:$downloadStatus,
-              documentDownloadResult:$downloadResult,
-              uploadVolumeContractPreserved:true
+              migration087:"applied_and_verified",
+              accountsActivated:10,
+              forcedPasswordChange:false,
+              enterpriseExperience:true,
+              classicAlternate:true,
+              lightDarkIndependent:true,
+              authenticatedUat:true,
+              runtimeContractPreserved:true
             }' > "$EVIDENCE_DIR/uat-summary.json"
 
-      - name: Restore exact prior Test images and source after failure
+      - name: Restore exact prior Test images and source after application failure
         if: ${{ failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') }}
         shell: bash
         run: |
           set -Eeuo pipefail
+
           az containerapp update \
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.contract.outputs.old_api_image }}' \
             --set-env-vars PROJECTPULSE_SOURCE_COMMIT='${{ steps.contract.outputs.old_source }}' \
-            --revision-suffix "m019ra-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "pr670ra-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
 
           API_REVISION="$(az containerapp show \
@@ -778,7 +745,7 @@ jobs:
             -g '${{ vars.AZURE_RESOURCE_GROUP }}' \
             -n '${{ vars.AZURE_WEB_APP }}' \
             --image '${{ steps.contract.outputs.old_web_image }}' \
-            --revision-suffix "m019rw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --revision-suffix "pr670rw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
 
           WEB_REVISION="$(az containerapp show \
@@ -802,34 +769,45 @@ jobs:
               apiImage:$apiImage,
               webImage:$webImage,
               sourceCommit:$source,
-              migration085RemainsAdditiveAndIdempotent:true
+              migration087RemainsApplied:true
             }' > "$EVIDENCE_DIR/rollback.json"
 
-      - name: Publish Module 019 protected-Test release evidence
+      - name: Upload protected-Test deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr670-m087-protected-test-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr670-m087-test-evidence
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish protected-Test release summary
         if: always()
         shell: bash
         run: |
           {
-            echo '## Module 019 protected-Test release evidence'
+            echo '## PR 670 protected-Test release evidence'
             echo
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo "- Control commit: \`${{ steps.release.outputs.control_commit }}\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            if [[ -f "$EVIDENCE_DIR/migration-085.json" ]]; then
-              echo '- Migration 085: applied and verified'
+            if [[ -f "$EVIDENCE_DIR/migration-087.json" ]]; then
+              echo '- Migration 087: applied and verified'
+              echo '- Local accounts activated: 10'
+              echo '- Forced password change: disabled'
             else
-              echo '- Migration 085: not completed'
+              echo '- Migration 087: not completed'
             fi
             if [[ -f "$EVIDENCE_DIR/uat-summary.json" ]]; then
-              echo '- Authenticated Module 019 UAT: passed'
-              echo "- Document download probe: \`$(jq -r '.documentDownloadResult' "$EVIDENCE_DIR/uat-summary.json")\`"
+              echo '- Enterprise/Classic UI UAT: passed'
+              echo '- Authenticated API UAT: passed'
             else
-              echo '- Authenticated Module 019 UAT: not completed'
+              echo '- Protected-Test UAT: not completed'
             fi
             if [[ -f "$EVIDENCE_DIR/rollback.json" ]]; then
               echo '- Application image rollback: completed'
-              echo '- Migration 085 remains applied because it is additive and idempotent'
+              echo '- Migration 087 remains applied because credential activation is additive'
             fi
             echo '- Production mutation: none'
             echo '- Oracle/private AI runtime mutation: none'
