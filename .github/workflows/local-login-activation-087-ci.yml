@@ -1,0 +1,49 @@
+name: Validate Migration 087 Local Login Activation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'database/migrations/087_activate_approved_local_logins.sql'
+      - 'database/rollback/087_activate_approved_local_logins_rollback.sql'
+      - 'scripts/release-test/apply-087-approved-local-logins.sh'
+      - 'tests/test-activate-approved-local-logins-migration-087.sh'
+      - '.github/workflows/local-login-activation-087-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'database/migrations/087_activate_approved_local_logins.sql'
+      - 'database/rollback/087_activate_approved_local_logins_rollback.sql'
+      - 'scripts/release-test/apply-087-approved-local-logins.sh'
+      - 'tests/test-activate-approved-local-logins-migration-087.sh'
+      - '.github/workflows/local-login-activation-087-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-login-activation-087-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate secret injection, aliases, roles, and rollback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate Migration 087 contracts
+        shell: bash
+        run: bash tests/test-activate-approved-local-logins-migration-087.sh
+
+      - name: Check repository patch formatting
+        shell: bash
+        run: git diff --check

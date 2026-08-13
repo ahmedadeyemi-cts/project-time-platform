@@ -1,0 +1,113 @@
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .tabs,
+  [class$='-tabs'],
+  [role='tablist']
+):not([class*='celar-ai']) {
+  scrollbar-width: thin;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .tabs button,
+  [class$='-tabs'] button,
+  [role='tab']
+):not([class*='celar-ai']) {
+  border-radius: var(--pulse-enterprise-radius-sm);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .tabs button.active,
+  [class$='-tabs'] button.active,
+  [role='tab'][aria-selected='true']
+):not([class*='celar-ai']) {
+  border-color: var(--pulse-enterprise-blue);
+  background: color-mix(in srgb, var(--pulse-enterprise-blue) 10%, var(--pulse-enterprise-surface));
+  color: var(--pulse-enterprise-blue);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  table
+):not([class*='celar-ai']) {
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--pulse-enterprise-text);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  thead th
+):not([class*='celar-ai'] *) {
+  border-color: var(--pulse-enterprise-border);
+  background: var(--pulse-enterprise-navy);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] main.app-shell.enterprise-nav-enabled :where(
+  thead th
+):not([class*='celar-ai'] *) {
+  background: #173c5a;
+  color: #ffffff;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  tbody td
+):not([class*='celar-ai'] *) {
+  border-color: var(--pulse-enterprise-border);
+  background: var(--pulse-enterprise-surface);
+  color: var(--pulse-enterprise-text);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  tbody tr:nth-child(even) td
+):not([class*='celar-ai'] *) {
+  background: var(--pulse-enterprise-surface-soft);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .table-wrap,
+  [class*='table-wrap'],
+  [class*='table-container']
+):not([class*='celar-ai']) {
+  max-width: 100%;
+  overflow: auto;
+  border-color: var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-md);
+  box-shadow: var(--pulse-enterprise-shadow-sm);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  [role='alert'],
+  .warning,
+  .error-banner,
+  .success-banner,
+  [class*='notice'],
+  [class*='banner']
+):not([class*='celar-ai']):not(.enterprise-top-bar *) {
+  border-radius: var(--pulse-enterprise-radius-sm);
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] main.app-shell.enterprise-nav-enabled :where(
+  .panel,
+  .status-card,
+  .module-card,
+  .target-card,
+  [class$='-panel'],
+  [class$='-card'],
+  [class*='summary-card'],
+  [class*='metric-card'],
+  [class*='kpi-card']
+):not(.profile-card):not([class*='celar-ai']):not([class*='assistant']) {
+  background-color: var(--pulse-enterprise-surface);
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] main.app-shell.enterprise-nav-enabled :where(
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea
+):not([class*='celar-ai'] *) {
+  background: var(--pulse-enterprise-surface-soft);
+  color: var(--pulse-enterprise-text);
+}

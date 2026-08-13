@@ -1,0 +1,66 @@
+name: Enterprise Experience System CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/enterprise-experience-system-ci.yml'
+      - 'docs/architecture/PULSE-ENTERPRISE-EXPERIENCE-AUDIT.md'
+      - 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+      - 'src/frontend/project-time-web/src/enterprise-experience-system.css'
+      - 'src/frontend/project-time-web/src/enterprise-experience-components.css'
+      - 'src/frontend/project-time-web/src/enterprise-experience-data.css'
+      - 'src/frontend/project-time-web/src/enterprise-module-management.css'
+      - 'src/frontend/project-time-web/src/enterprise-module-cards.css'
+      - 'src/frontend/project-time-web/src/enterprise-overlay-responsive.css'
+      - 'src/frontend/project-time-web/src/main.jsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-experience-system-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate enterprise and classic presentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate presentation source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTROLLER='src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+          SYSTEM_CSS='src/frontend/project-time-web/src/enterprise-experience-system.css'
+          MODULE_CSS='src/frontend/project-time-web/src/enterprise-module-management.css'
+          MAIN='src/frontend/project-time-web/src/main.jsx'
+          grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" "$CONTROLLER"
+          grep -Fq "const CLASSIC_EXPERIENCE = 'classic';" "$CONTROLLER"
+          grep -Fq 'Module Management' "$CONTROLLER"
+          grep -Fq 'Customer Pipelines' "$CONTROLLER"
+          grep -Fq "data-pulse-experience='enterprise'" "$SYSTEM_CSS"
+          grep -Fq "data-theme='dark'" "$SYSTEM_CSS"
+          grep -Fq 'repeat(6, minmax(0, 1fr))' "$MODULE_CSS"
+          grep -Fq 'EnterpriseExperienceController' "$MAIN"
+          echo 'PULSE_ENTERPRISE_EXPERIENCE_SCOPE=PASS'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+
+      - name: Run complete frontend production build
+        working-directory: src/frontend/project-time-web
+        run: npm run build
