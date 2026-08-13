@@ -1,102 +1,131 @@
-name: Bootstrap encrypted Migration 087 Test envelope
+# Serialized branch publication; source and artifact validation remain deterministic.
+# Branch-only trigger merge emits the single publication push event.
+name: Publish US Signal Pulse AI Architecture v1.1
 
 on:
   push:
     branches:
-      - security/m087-test-envelope-bootstrap-20260813
+      - docs/pulse-ai-architecture-v1-1-20260729
     paths:
       - .github/workflows/publish-pulse-ai-architecture-v1-1.yml
+      - docs/modules/module-011-pulse-ai/architecture/v1.1/source/**
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: m087-test-envelope-bootstrap
+  group: publish-pulse-ai-architecture-v1-1-docs-branch
   cancel-in-progress: false
 
 jobs:
-  bootstrap:
-    name: Generate public envelope key without exposing Test secrets
-    if: github.actor != 'github-actions[bot]' && github.ref == 'refs/heads/security/m087-test-envelope-bootstrap-20260813'
-    environment: test
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
-      TARGET_BRANCH: security/m087-test-envelope-bootstrap-20260813
-      ENVELOPE_KEY: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+      TARGET_BRANCH: docs/pulse-ai-architecture-v1-1-20260729
 
     steps:
-      - name: Check out exact bootstrap branch
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          ref: ${{ github.sha }}
 
-      - name: Generate and protect the one-time RSA envelope
+      - name: Enforce documentation branch and source boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          fail() { echo "ERROR: $*" >&2; exit 1; }
-          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]] || fail 'Unauthorized bootstrap branch.'
-          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || fail 'Bootstrap checkout is not the exact triggering commit.'
-          [[ -n "$ENVELOPE_KEY" ]] || fail 'The protected Test envelope key is unavailable.'
-          command -v openssl >/dev/null || fail 'OpenSSL is required.'
+          [[ "$GITHUB_REF" == "refs/heads/$TARGET_BRANCH" ]]
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg
+          test -s docs/modules/module-011-pulse-ai/architecture/v1.1/source/generate_pulse_architecture_v1_1.py
+          file docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | grep -qi 'jpeg image data'
+          echo "PULSE_AI_SUPPLIED_LOGO_SHA256=$(sha256sum docs/modules/module-011-pulse-ai/architecture/v1.1/source/US_Signal_Logo.jpg | awk '{print $1}')"
 
-          umask 077
-          ROOT='.release-security/m087'
-          WORK="$RUNNER_TEMP/m087-envelope"
-          install -d -m 0700 "$ROOT" "$WORK"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-          openssl genpkey \
-            -algorithm RSA \
-            -pkeyopt rsa_keygen_bits:3072 \
-            -out "$WORK/private.pem" \
-            >/dev/null 2>&1
-          openssl pkey \
-            -in "$WORK/private.pem" \
-            -pubout \
-            -out "$ROOT/public.pem"
-          openssl enc \
-            -aes-256-cbc \
-            -salt \
-            -pbkdf2 \
-            -iter 600000 \
-            -in "$WORK/private.pem" \
-            -out "$ROOT/private.pem.enc" \
-            -pass env:ENVELOPE_KEY
-
-          unset ENVELOPE_KEY
-          rm -f "$WORK/private.pem"
-          rmdir "$WORK"
-          chmod 0644 "$ROOT/public.pem" "$ROOT/private.pem.enc"
-          openssl pkey -pubin -in "$ROOT/public.pem" -noout
-          [[ -s "$ROOT/private.pem.enc" ]] || fail 'Encrypted private envelope was not created.'
-          ! find "$ROOT" -type f -name 'private.pem' -print -quit | grep -q . \
-            || fail 'Unencrypted private key material remains.'
-
-      - name: Restore the permanent publisher and commit only encrypted artifacts
+      - name: Install document-generation dependencies
         shell: bash
         run: |
           set -Eeuo pipefail
-          git show origin/main:.github/workflows/publish-pulse-ai-architecture-v1-1.yml \
-            > .github/workflows/publish-pulse-ai-architecture-v1-1.yml
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0
+          python -m pip install --upgrade pip
+          python -m pip install python-docx reportlab cairosvg pillow pypdf
 
+      - name: Generate the US Signal architecture package
+        shell: bash
+        working-directory: docs/modules/module-011-pulse-ai/architecture/v1.1/source
+        run: |
+          set -Eeuo pipefail
+          python generate_pulse_architecture_v1_1.py | tee ../generation.log
+
+      - name: Validate the generated documents and diagrams
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
+          FILES=(
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+            'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+            'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+            'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+            'SHA256SUMS.txt'
+          )
+          for file in "${FILES[@]}"; do
+            test -s "$ROOT/$file"
+          done
+          ! find "$ROOT" -maxdepth 1 -type f -name '*v1.0*' -print -quit | grep -q .
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          from PIL import Image
+          from pypdf import PdfReader
+
+          root = Path('docs/modules/module-011-pulse-ai/architecture/v1.1')
+          main_pdf = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.pdf'
+          diagrams_pdf = root / 'US_Signal_Pulse_AI_Architecture_Diagrams_v1.1.pdf'
+          docx = root / 'US_Signal_Pulse_AI_Private_Intelligence_Architecture_v1.1.docx'
+          logical = root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.png'
+          deployment = root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.png'
+
+          assert len(PdfReader(str(main_pdf)).pages) >= 20
+          assert len(PdfReader(str(diagrams_pdf)).pages) == 2
+          with ZipFile(docx) as archive:
+              assert '[Content_Types].xml' in archive.namelist()
+              assert 'word/document.xml' in archive.namelist()
+          assert Image.open(logical).width >= 2000
+          assert Image.open(deployment).width >= 2400
+          for svg in [
+              root / 'US_Signal_Pulse_AI_Logical_Architecture_v1.1.svg',
+              root / 'US_Signal_Pulse_AI_Deployment_Network_Architecture_v1.1.svg'
+          ]:
+              text = svg.read_text(encoding='utf-8')
+              assert 'US Signal' in text
+              assert 'Pulse' in text
+              assert 'data:image/jpeg;base64,' in text
+          print('PULSE_AI_ARCHITECTURE_DOCUMENT_VALIDATION=PASSED')
+          PY
+          (cd "$ROOT" && sha256sum --check SHA256SUMS.txt)
+          git diff --check -- . ':(exclude,glob)**/*.pdf'
+
+      - name: Commit the generated architecture artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT='docs/modules/module-011-pulse-ai/architecture/v1.1'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            .github/workflows/publish-pulse-ai-architecture-v1-1.yml \
-            .release-security/m087/public.pem \
-            .release-security/m087/private.pem.enc
-
-          mapfile -t changed < <(git diff --cached --name-only | sort)
-          [[ ${#changed[@]} -eq 3 ]] || {
-            printf 'Unexpected staged file: %s\n' "${changed[@]}" >&2
-            exit 1
-          }
-          [[ "${changed[0]}" == '.github/workflows/publish-pulse-ai-architecture-v1-1.yml' ]]
-          [[ "${changed[1]}" == '.release-security/m087/private.pem.enc' ]]
-          [[ "${changed[2]}" == '.release-security/m087/public.pem' ]]
-          git diff --cached --check
-          git commit -m 'Generate encrypted Migration 087 Test credential envelope'
-          git push origin "HEAD:$TARGET_BRANCH"
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_ALREADY_CURRENT=YES'
+            exit 0
+          fi
+          git commit -m 'Publish US Signal Pulse AI architecture package v1.1'
+          git push origin "HEAD:${TARGET_BRANCH}"
+          echo 'PULSE_AI_ARCHITECTURE_ARTIFACTS_PUBLISHED=YES'
