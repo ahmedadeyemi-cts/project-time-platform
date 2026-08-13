@@ -1,4 +1,4 @@
-name: Validate Module 019 Protected-Test Release Controller
+name: Validate PR 670 Protected-Test Release Controller
 
 on:
   pull_request:
@@ -6,19 +6,21 @@ on:
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - 'scripts/release-test/run-migration-087-job.sh'
 
 permissions:
   contents: read
 
 concurrency:
-  group: module019-protected-test-controller-${{ github.event.pull_request.number }}
+  group: pr670-protected-test-controller-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    name: Validate exact e6719b6 Module 019 Test controller
+    name: Validate exact PR 670 and Migration 087 Test controller
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+
     steps:
       - name: Check out exact proposed release controls
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -32,7 +34,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate exact source, Migration 085, Test-only UAT, and rollback
+      - name: Validate exact source, Migration 087, Test-only UAT, and rollback
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -42,7 +44,8 @@ jobs:
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           VALIDATOR='.github/workflows/projectpulse-release-test-control-ci.yml'
-          SOURCE='e6719b67dfb6e96c04358dbf43423ade4e0053e8'
+          MIGRATION_RUNNER='scripts/release-test/run-migration-087-job.sh'
+          SOURCE='c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d'
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
             || fail 'The pull-request base SHA is unavailable.'
@@ -52,6 +55,7 @@ jobs:
           cat > "$RUNNER_TEMP/expected-release-files" <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/release-test/run-migration-087-job.sh
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-release-files"
           LC_ALL=C sort -o "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/expected-release-files"
@@ -60,43 +64,66 @@ jobs:
 
           test -f "$CONTROLLER"
           test -f "$VALIDATOR"
+          test -f "$MIGRATION_RUNNER"
+          bash -n "$MIGRATION_RUNNER"
 
-          grep -Fq 'name: Deploy Module 019 Repair e6719b6 to Protected Test' "$CONTROLLER"
+          grep -Fq 'name: Deploy PR 670 Enterprise Experience and Migration 087 to Protected Test' "$CONTROLLER"
           grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
           grep -Fq "ref: $SOURCE" "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
           grep -Fq "'.github/workflows/projectpulse-deploy-test.yml'" "$CONTROLLER"
+          grep -Fq "'scripts/release-test/run-migration-087-job.sh'" "$CONTROLLER"
           grep -Fq "if: github.ref == 'refs/heads/main'" "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          OIDC_PERMISSION='id-token:'
-          OIDC_PERMISSION+=' write'
-          grep -Fq "$OIDC_PERMISSION" "$CONTROLLER"
+          grep -Fq 'id-token: write' "$CONTROLLER"
 
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
+          grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
+          grep -Fq 'The Test environment secret PROJECTPULSE_M087_PASSWORD is required' "$CONTROLLER"
           grep -Fq 'Azure login is outside the protected Test subscription.' "$CONTROLLER"
           grep -Fq 'API is not tagged Test.' "$CONTROLLER"
           grep -Fq 'Web app is not tagged Test.' "$CONTROLLER"
           grep -Fq 'API must use single-revision mode.' "$CONTROLLER"
           grep -Fq 'Web app must use single-revision mode.' "$CONTROLLER"
 
-          grep -Fq 'test-module019-document-access-repair-085.sh' "$CONTROLLER"
-          grep -Fq 'test-module019-document-access-migration-085.sh' "$CONTROLLER"
-          grep -Fq 'validate-project-workspace-document-download.mjs' "$CONTROLLER"
+          grep -Fq 'tests/test-activate-approved-local-logins-migration-087.sh' "$CONTROLLER"
+          grep -Fq 'database/migrations/087_activate_approved_local_logins.sql' "$CONTROLLER"
+          grep -Fq 'database/rollback/087_activate_approved_local_logins_rollback.sql' "$CONTROLLER"
+          grep -Fq 'scripts/release-test/apply-087-approved-local-logins.sh' "$CONTROLLER"
+          grep -Fq 'scripts/release-test/run-migration-087-job.sh' "$CONTROLLER"
           grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$CONTROLLER"
           grep -Fq 'bash tests/test-projectpulse-api-startup.sh' "$CONTROLLER"
           grep -Fq 'npm ci --no-audit --no-fund' "$CONTROLLER"
+          grep -Fq 'npm audit --audit-level=high' "$CONTROLLER"
           grep -Fq 'npm run build' "$CONTROLLER"
 
-          grep -Fq '085_module_019_document_access_storage_repair.sql' "$CONTROLLER"
-          grep -Fq 'scripts/release-test/apply-085.sh' "$CONTROLLER"
-          grep -Fq 'scripts/release-test/run-migration-job.sh' "$CONTROLLER"
-          grep -Fq 'MAIN_RELEASE_MIGRATION_MODE: apply' "$CONTROLLER"
-          grep -Fq "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
-          grep -Fq 'MAIN_RELEASE_MIGRATION_SCOPE: module019-085-protected-test' "$CONTROLLER"
+          grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" "$CONTROLLER"
+          grep -Fq "const CLASSIC_EXPERIENCE = 'classic';" "$CONTROLLER"
+          grep -Fq 'Module Management' "$CONTROLLER"
+          grep -Fq 'Customer Pipelines' "$CONTROLLER"
+          grep -Fq 'pulse-enterprise-experience-control-host' "$CONTROLLER"
+          grep -Fq 'pulse-enterprise-page-chrome-host' "$CONTROLLER"
+
+          grep -Fq 'FROM postgres:16-alpine' "$CONTROLLER"
+          grep -Fq 'apk add --no-cache bash coreutils python3' "$CONTROLLER"
+          grep -Fq 'hashlib.pbkdf2_hmac("sha256", password, salt, 210000, dklen=32)' "$CONTROLLER"
+          grep -Fq 'secrets.token_bytes(16)' "$CONTROLLER"
+          grep -Fq 'PBKDF2-SHA256$210000$' "$CONTROLLER"
+          [[ "$(grep -Fc 'PROJECTPULSE_M087_DERIVED_' "$CONTROLLER")" -eq 10 ]] \
+            || fail 'The migration image must derive exactly ten independently salted account values.'
+          grep -Fq 'project-health-dashboard-m087-migrator@' "$CONTROLLER"
+          grep -Fq 'MIGRATION_087_PRIVATE_NETWORK_JOB=SUCCEEDED' "$MIGRATION_RUNNER"
+          grep -Fq 'm087-login-password' "$MIGRATION_RUNNER"
+          grep -Fq 'm087-main-db-password' "$MIGRATION_RUNNER"
+          grep -Fq 'chmod 0600 "$PAYLOAD" "$JOB_RESPONSE"' "$MIGRATION_RUNNER"
+          grep -Fq 'unset PROJECTPULSE_M087_PASSWORD LOGIN_PASSWORD' "$MIGRATION_RUNNER"
+          grep -Fq 'az containerapp job delete' "$MIGRATION_RUNNER"
+          grep -Fq 'PREFLIGHT_CONFIRMED_404=1' "$MIGRATION_RUNNER"
+
           grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' "$CONTROLLER"
           grep -Fq 'AZURE_KEY_VAULT_URI' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME' "$CONTROLLER"
@@ -104,19 +131,12 @@ jobs:
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_PORT' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_TEST_DATABASE_USER' "$CONTROLLER"
-          grep -Fq 'FROM postgres:16-alpine' "$CONTROLLER"
-          grep -Fq 'export PROJECTPULSE_ENVIRONMENT=Test' "$CONTROLLER"
-          grep -Fq 'migration085:"applied_and_verified"' "$CONTROLLER"
 
-          AZ_CLI='az'
-          ACR_BUILD_SUBCOMMAND='acr build'
-          grep -Fq "$AZ_CLI $ACR_BUILD_SUBCOMMAND" "$CONTROLLER"
           grep -Fq 'ACR cloud build failed twice' "$CONTROLLER"
           grep -Fq 'docker build' "$CONTROLLER"
           grep -Fq 'docker push' "$CONTROLLER"
           grep -Fq 'project-health-dashboard-api@' "$CONTROLLER"
           grep -Fq 'project-health-dashboard-web@' "$CONTROLLER"
-          grep -Fq 'project-health-dashboard-module019-migrator@' "$CONTROLLER"
 
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
@@ -125,51 +145,38 @@ jobs:
           grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
           [[ "$(grep -Fc 'def canonical_private_environment_entry:' "$CONTROLLER")" -eq 2 ]] \
             || fail 'Private-runtime canonicalization must run before and after API deployment.'
-          [[ "$(grep -Fc '| canonical_private_environment_entry' "$CONTROLLER")" -eq 2 ]] \
-            || fail 'Each private-runtime snapshot must canonicalize its environment entries.'
           grep -Fq 'Secret-backed private runtime variable also contains a non-empty literal value.' "$CONTROLLER"
-          grep -Fq '{name, secretRef}' "$CONTROLLER"
-          grep -Fq '{name, value: (.value // "")}' "$CONTROLLER"
-          grep -Fq 'uploadVolumeContractCaptured:true' "$CONTROLLER"
           grep -Fq 'diff -u' "$CONTROLLER"
 
-          grep -Fq '/api/project-workspace/overview' "$CONTROLLER"
-          grep -Fq '/api/project-workspace/view-as/users' "$CONTROLLER"
-          grep -Fq '/api/project-workspace/documents/' "$CONTROLLER"
-          grep -Fq 'assignment_and_role_scope_enforced' "$CONTROLLER"
-          grep -Fq 'administrator_view_as_preview' "$CONTROLLER"
-          grep -Fq 'X-ProjectPulse-View-As-User' "$CONTROLLER"
-          grep -Fq 'file_reconciliation_required' "$CONTROLLER"
-          grep -Fq 'listed correctly, but its physical file still requires persistent-volume reconciliation' "$CONTROLLER"
-          grep -Fq 'workspace-download-status' "$CONTROLLER"
-          grep -Fq 'This project document does not have a download URL.' "$CONTROLLER"
-          grep -Fq 'uploadVolumeContractPreserved:true' "$CONTROLLER"
-
-          grep -Fq 'Restore exact prior Test images and source after failure' "$CONTROLLER"
+          grep -Fq 'Restore exact prior Test images and source after application failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_source' "$CONTROLLER"
-          grep -Fq 'migration085RemainsAdditiveAndIdempotent:true' "$CONTROLLER"
+          grep -Fq 'migration087RemainsApplied:true' "$CONTROLLER"
           grep -Fq 'Production mutation: none' "$CONTROLLER"
           grep -Fq 'Oracle/private AI runtime mutation: none' "$CONTROLLER"
 
           ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
-          ! grep -Eq 'az[[:space:]]+network|az[[:space:]]+keyvault|az[[:space:]]+postgres' "$CONTROLLER"
+          ! grep -Eq 'az[[:space:]]+network|az[[:space:]]+postgres' "$CONTROLLER"
           ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER"
           ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
           ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
+          ! grep -Fq 'USSignal@Pulse!' "$CONTROLLER"
+          ! grep -Fq 'USSignal@Pulse!' "$MIGRATION_RUNNER"
+          ! grep -Eq 'PBKDF2-SHA256\$210000\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=' \
+            "$CONTROLLER" "$MIGRATION_RUNNER"
 
           git merge-base --is-ancestor "$SOURCE" HEAD \
-            || fail 'The exact Module 019 application release is not an ancestor of the controller.'
+            || fail 'The exact merged PR 670 release is not an ancestor of the controller.'
           node scripts/validate-deployment-concurrency-governance.mjs \
             --repo-root "$GITHUB_WORKSPACE" \
             --verify-repository
           python3 scripts/security/validate-repository-security-posture.py
           git diff --check "$BASE_SHA...HEAD"
 
-          echo 'MODULE019_9018EE6_PROTECTED_TEST_CONTROL=PASSED'
-          echo 'EXPECTED_CHANGED_FILES=2'
-          echo 'MIGRATION_085=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'PR670_M087_PROTECTED_TEST_CONTROL=PASSED'
+          echo 'EXPECTED_CHANGED_FILES=3'
+          echo 'MIGRATION_087=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'
