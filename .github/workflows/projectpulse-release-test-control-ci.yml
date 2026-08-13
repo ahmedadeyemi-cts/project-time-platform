@@ -123,6 +123,13 @@ jobs:
           grep -Fq -- '--set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT"' "$CONTROLLER"
           grep -Fq 'runtime-contract-before.json' "$CONTROLLER"
           grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
+          [[ "$(grep -Fc 'def canonical_private_environment_entry:' "$CONTROLLER")" -eq 2 ]] \
+            || fail 'Private-runtime canonicalization must run before and after API deployment.'
+          [[ "$(grep -Fc '| canonical_private_environment_entry' "$CONTROLLER")" -eq 2 ]] \
+            || fail 'Each private-runtime snapshot must canonicalize its environment entries.'
+          grep -Fq 'Secret-backed private runtime variable also contains a non-empty literal value.' "$CONTROLLER"
+          grep -Fq '{name, secretRef}' "$CONTROLLER"
+          grep -Fq '{name, value: (.value // "")}' "$CONTROLLER"
           grep -Fq 'uploadVolumeContractCaptured:true' "$CONTROLLER"
           grep -Fq 'diff -u' "$CONTROLLER"
 
