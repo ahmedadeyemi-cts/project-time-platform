@@ -43,6 +43,64 @@ jobs:
       - name: Apply customer-share renderer and validator correction
         run: python3 scripts/module-066-enterprise/fix-customer-share-renderer.py
 
+      - name: Apply generated backend compiler corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs')
+          value = path.read_text(encoding='utf-8')
+          replacements = [
+              ('new { revision, rowVersion, validation.Valid, schedule.Valid }',
+               'new { revision, rowVersion, validationValid = validation.Valid, scheduleValid = schedule.Valid }', 1),
+              ('var managerId = reader.IsDBNull(4) ? null : reader.GetGuid(4);',
+               'Guid? managerId = reader.IsDBNull(4) ? null : reader.GetGuid(4);', 1),
+              ('planId = reader.IsDBNull(0) ? null : reader.GetGuid(0),',
+               'planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),', 1),
+              ('approvedBudget = reader.IsDBNull(2) ? null : reader.GetDecimal(2),',
+               'approvedBudget = reader.IsDBNull(2) ? (decimal?)null : reader.GetDecimal(2),', 1),
+              ('expenseBudget = reader.IsDBNull(3) ? null : reader.GetDecimal(3),',
+               'expenseBudget = reader.IsDBNull(3) ? (decimal?)null : reader.GetDecimal(3),', 1),
+              ('contingencyBudget = reader.IsDBNull(4) ? null : reader.GetDecimal(4),',
+               'contingencyBudget = reader.IsDBNull(4) ? (decimal?)null : reader.GetDecimal(4),', 1),
+              ('forecastAtCompletion = reader.IsDBNull(5) ? null : reader.GetDecimal(5),',
+               'forecastAtCompletion = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),', 1),
+              ('planId = reader.IsDBNull(1) ? null : reader.GetGuid(1),',
+               'planId = reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1),', 2),
+              ('probability = reader.IsDBNull(7) ? null : reader.GetInt16(7),',
+               'probability = reader.IsDBNull(7) ? (short?)null : reader.GetInt16(7),', 1),
+              ('impact = reader.IsDBNull(8) ? null : reader.GetInt16(8),',
+               'impact = reader.IsDBNull(8) ? (short?)null : reader.GetInt16(8),', 1),
+              ('ownerUserId = reader.IsDBNull(9) ? null : reader.GetGuid(9),',
+               'ownerUserId = reader.IsDBNull(9) ? (Guid?)null : reader.GetGuid(9),', 1),
+              ('dueDate = reader.IsDBNull(11) ? null : ReadDate(reader, 11),',
+               'dueDate = reader.IsDBNull(11) ? (DateOnly?)null : ReadDate(reader, 11),', 1),
+              ('planVersionNumber = reader.IsDBNull(2) ? null : reader.GetInt32(2),',
+               'planVersionNumber = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),', 1),
+              ('periodStart = reader.IsDBNull(4) ? null : ReadDate(reader, 4),',
+               'periodStart = reader.IsDBNull(4) ? (DateOnly?)null : ReadDate(reader, 4),', 1),
+              ('periodEnd = reader.IsDBNull(5) ? null : ReadDate(reader, 5),',
+               'periodEnd = reader.IsDBNull(5) ? (DateOnly?)null : ReadDate(reader, 5),', 1),
+              ('var revokedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7);',
+               'DateTimeOffset? revokedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7);', 1),
+              ('lastAccessedAt = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),',
+               'lastAccessedAt = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9),', 1),
+              ('var activeVersion = reader.IsDBNull(5) ? null : reader.GetGuid(5);',
+               'Guid? activeVersion = reader.IsDBNull(5) ? null : reader.GetGuid(5);', 1),
+              ('request.Probability.HasValue ? Math.Clamp(request.Probability.Value, 1, 5) : DBNull.Value',
+               'request.Probability.HasValue ? (short)Math.Clamp((int)request.Probability.Value, 1, 5) : DBNull.Value', 1),
+              ('request.Impact.HasValue ? Math.Clamp(request.Impact.Value, 1, 5) : DBNull.Value',
+               'request.Impact.HasValue ? (short)Math.Clamp((int)request.Impact.Value, 1, 5) : DBNull.Value', 1),
+          ]
+          for old, new, expected in replacements:
+              count = value.count(old)
+              if count != expected:
+                  raise SystemExit(f'Backend compile anchor mismatch: expected {expected}, found {count}: {old}')
+              value = value.replace(old, new)
+          path.write_text(value, encoding='utf-8')
+          print('FLOWHIVE_ENTERPRISE_BACKEND_COMPILE_FIX=PASS')
+          PY
+
       - name: Register generated JSX repair immediately before Vite
         run: |
           python3 - <<'PY'
