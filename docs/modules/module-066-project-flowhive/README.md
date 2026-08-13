@@ -114,3 +114,8 @@ before PDF or Excel generation. The frontend uses the existing
 
 See the API contract, capability matrix, and security/design documents in this
 directory for the complete source boundary.
+
+
+## Enterprise Project Management extension (Migration 086)
+
+The source package adds PM-owned working copies, phase-aware task add/delete and drag/drop, editable schedule constraints, authoritative financial visibility, Fixed Price/T&M controls, RAID, immutable status reports, actionable SOW evidence readiness, professional PM exports, and expiring customer-safe links tied to exact reviewed baselines. Project Managers can mutate only projects assigned to them; View-As remains read-only. Source completion does not by itself claim protected-Test deployment.

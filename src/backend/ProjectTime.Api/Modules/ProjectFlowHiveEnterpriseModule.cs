@@ -201,7 +201,7 @@ internal static class ProjectFlowHiveEnterpriseModule
             null,
             "working_copy_saved",
             access,
-            new { revision, rowVersion, validation.Valid, schedule.Valid },
+            new { revision, rowVersion, validationValid = validation.Valid, scheduleValid = schedule.Valid },
             request.Plan.CelarAiCorrelationId,
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -859,25 +859,40 @@ internal static class ProjectFlowHiveEnterpriseModule
         var summary = string.IsNullOrWhiteSpace(executiveSummary)
             ? "This reviewed project baseline presents the current authorized schedule and delivery status."
             : executiveSummary;
-        return $"""
+        var projectStart = H(schedule.ProjectStartDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture));
+        var projectFinish = H(schedule.ProjectFinishDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture));
+        var customerNote = string.IsNullOrWhiteSpace(note)
+            ? string.Empty
+            : $"<p><strong>Project Manager note:</strong> {H(note)}</p>";
+        return """
             <!doctype html>
             <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>{H(projectCode)} Project Status</title>
+            <title>__PROJECT_CODE__ Project Status</title>
             <style>
-            :root{{--navy:#082b4c;--blue:#057aa8;--ink:#17324a;--muted:#617286;--line:#d8e2ea;--soft:#f3f8fb}}
-            *{{box-sizing:border-box}}body{{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--soft)}}
-            main{{max-width:1180px;margin:32px auto;padding:0 20px}}header{{padding:28px;border-radius:18px;color:#fff;background:linear-gradient(135deg,#061d35,#0b5276)}}
-            .brand{{font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#82ddf6}}h1{{margin:.35rem 0 .25rem}}.meta{{display:flex;gap:18px;flex-wrap:wrap;color:#d9edf7}}
-            section{{margin-top:18px;padding:22px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(7,35,59,.07)}}
-            h2{{margin-top:0;color:var(--navy)}}p{{line-height:1.55}}table{{width:100%;border-collapse:collapse;font-size:14px}}th{{text-align:left;background:var(--navy);color:#fff;padding:11px}}td{{padding:11px;border-bottom:1px solid var(--line);vertical-align:top}}td small{{display:block;margin-top:4px;color:var(--muted);line-height:1.4}}footer{{padding:20px 0;color:var(--muted);font-size:12px}}@media(max-width:760px){{table{{display:block;overflow:auto}}}}
+            :root{--navy:#082b4c;--blue:#057aa8;--ink:#17324a;--muted:#617286;--line:#d8e2ea;--soft:#f3f8fb}
+            *{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--ink);background:var(--soft)}
+            main{max-width:1180px;margin:32px auto;padding:0 20px}header{padding:28px;border-radius:18px;color:#fff;background:linear-gradient(135deg,#061d35,#0b5276)}
+            .brand{font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#82ddf6}h1{margin:.35rem 0 .25rem}.meta{display:flex;gap:18px;flex-wrap:wrap;color:#d9edf7}
+            section{margin-top:18px;padding:22px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(7,35,59,.07)}
+            h2{margin-top:0;color:var(--navy)}p{line-height:1.55}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;background:var(--navy);color:#fff;padding:11px}td{padding:11px;border-bottom:1px solid var(--line);vertical-align:top}td small{display:block;margin-top:4px;color:var(--muted);line-height:1.4}footer{padding:20px 0;color:var(--muted);font-size:12px}@media(max-width:760px){table{display:block;overflow:auto}}
             </style></head><body><main>
-            <header><div class="brand">US Signal Project FlowHive</div><h1>{H(projectCode)} · {H(projectName)}</h1><div class="meta"><span>Customer: {H(customer)}</span><span>Reviewed baseline version {plan.PlanId}</span><span>Link expires {expiresAt:MMM d, yyyy}</span></div></header>
-            <section><h2>Executive summary</h2><p>{H(summary)}</p>{(string.IsNullOrWhiteSpace(note) ? string.Empty : $"<p><strong>Project Manager note:</strong> {H(note)}</p>")}</section>
-            <section><h2>Reviewed schedule</h2><p>{H(schedule.ProjectStartDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture))} through {H(schedule.ProjectFinishDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture))} · {schedule.CriticalTaskCount} critical task(s)</p>
-            <table><thead><tr><th>WBS</th><th>Task</th><th>Start</th><th>Finish</th><th>Progress</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></section>
+            <header><div class="brand">US Signal Project FlowHive</div><h1>__PROJECT_CODE__ · __PROJECT_NAME__</h1><div class="meta"><span>Customer: __CUSTOMER__</span><span>Reviewed project baseline</span><span>Link expires __EXPIRES__</span></div></header>
+            <section><h2>Executive summary</h2><p>__SUMMARY__</p>__CUSTOMER_NOTE__</section>
+            <section><h2>Reviewed schedule</h2><p>__PROJECT_START__ through __PROJECT_FINISH__ · __CRITICAL_COUNT__ critical task(s)</p>
+            <table><thead><tr><th>WBS</th><th>Task</th><th>Start</th><th>Finish</th><th>Progress</th><th>Status</th></tr></thead><tbody>__ROWS__</tbody></table></section>
             <footer>Customer-safe, read-only Project FlowHive view. Internal notes, private citations, assignments, financial details, and provider data are not included.</footer>
             </main></body></html>
-            """;
+            """
+            .Replace("__PROJECT_CODE__", H(projectCode), StringComparison.Ordinal)
+            .Replace("__PROJECT_NAME__", H(projectName), StringComparison.Ordinal)
+            .Replace("__CUSTOMER__", H(customer), StringComparison.Ordinal)
+            .Replace("__EXPIRES__", expiresAt.ToString("MMM d, yyyy", CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__SUMMARY__", H(summary), StringComparison.Ordinal)
+            .Replace("__CUSTOMER_NOTE__", customerNote, StringComparison.Ordinal)
+            .Replace("__PROJECT_START__", projectStart, StringComparison.Ordinal)
+            .Replace("__PROJECT_FINISH__", projectFinish, StringComparison.Ordinal)
+            .Replace("__CRITICAL_COUNT__", schedule.CriticalTaskCount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__ROWS__", rows.ToString(), StringComparison.Ordinal);
     }
 
     private static async Task<OpenOutcome> OpenAuthorizedAsync(
@@ -996,7 +1011,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
 
-        var managerId = reader.IsDBNull(4) ? null : reader.GetGuid(4);
+        Guid? managerId = reader.IsDBNull(4) ? null : reader.GetGuid(4);
         var owner = managerId.HasValue && managerId.Value == effectiveUserId;
         var assigned = reader.GetBoolean(7);
         var broad = reader.GetBoolean(8);
@@ -1027,7 +1042,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         if (!await reader.ReadAsync(cancellationToken)) return null;
         return new
         {
-            planId = reader.IsDBNull(0) ? null : reader.GetGuid(0),
+            planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),
             plan = ParseJson(reader.GetString(1)),
             workingRevision = reader.GetInt32(2),
             rowVersion = reader.GetGuid(3),
@@ -1070,10 +1085,10 @@ internal static class ProjectFlowHiveEnterpriseModule
             projectId,
             contractType = reader.GetString(0),
             currencyCode = reader.GetString(1),
-            approvedBudget = reader.IsDBNull(2) ? null : reader.GetDecimal(2),
-            expenseBudget = reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-            contingencyBudget = reader.IsDBNull(4) ? null : reader.GetDecimal(4),
-            forecastAtCompletion = reader.IsDBNull(5) ? null : reader.GetDecimal(5),
+            approvedBudget = reader.IsDBNull(2) ? (decimal?)null : reader.GetDecimal(2),
+            expenseBudget = reader.IsDBNull(3) ? (decimal?)null : reader.GetDecimal(3),
+            contingencyBudget = reader.IsDBNull(4) ? (decimal?)null : reader.GetDecimal(4),
+            forecastAtCompletion = reader.IsDBNull(5) ? (decimal?)null : reader.GetDecimal(5),
             percentCompleteMethod = reader.GetString(6),
             statusReportCadence = reader.GetString(7),
             customerSharingEnabled = reader.GetBoolean(8),
@@ -1103,17 +1118,17 @@ internal static class ProjectFlowHiveEnterpriseModule
             rows.Add(new
             {
                 raidItemId = reader.GetGuid(0),
-                planId = reader.IsDBNull(1) ? null : reader.GetGuid(1),
+                planId = reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1),
                 itemType = reader.GetString(2),
                 title = reader.GetString(3),
                 description = reader.GetString(4),
                 status = reader.GetString(5),
                 priority = reader.GetString(6),
-                probability = reader.IsDBNull(7) ? null : reader.GetInt16(7),
-                impact = reader.IsDBNull(8) ? null : reader.GetInt16(8),
-                ownerUserId = reader.IsDBNull(9) ? null : reader.GetGuid(9),
+                probability = reader.IsDBNull(7) ? (short?)null : reader.GetInt16(7),
+                impact = reader.IsDBNull(8) ? (short?)null : reader.GetInt16(8),
+                ownerUserId = reader.IsDBNull(9) ? (Guid?)null : reader.GetGuid(9),
                 ownerName = reader.GetString(10),
-                dueDate = reader.IsDBNull(11) ? null : ReadDate(reader, 11),
+                dueDate = reader.IsDBNull(11) ? (DateOnly?)null : ReadDate(reader, 11),
                 mitigation = reader.GetString(12),
                 sourceKind = reader.GetString(13),
                 sourceReference = reader.GetString(14),
@@ -1144,11 +1159,11 @@ internal static class ProjectFlowHiveEnterpriseModule
             rows.Add(new
             {
                 statusReportId = reader.GetGuid(0),
-                planId = reader.IsDBNull(1) ? null : reader.GetGuid(1),
-                planVersionNumber = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                planId = reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1),
+                planVersionNumber = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
                 statusDate = ReadDate(reader, 3),
-                periodStart = reader.IsDBNull(4) ? null : ReadDate(reader, 4),
-                periodEnd = reader.IsDBNull(5) ? null : ReadDate(reader, 5),
+                periodStart = reader.IsDBNull(4) ? (DateOnly?)null : ReadDate(reader, 4),
+                periodEnd = reader.IsDBNull(5) ? (DateOnly?)null : ReadDate(reader, 5),
                 overallHealth = reader.GetString(6),
                 scheduleHealth = reader.GetString(7),
                 financialHealth = reader.GetString(8),
@@ -1183,7 +1198,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         while (await reader.ReadAsync(cancellationToken))
         {
             var expiresAt = reader.GetFieldValue<DateTimeOffset>(6);
-            var revokedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7);
+            DateTimeOffset? revokedAt = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7);
             rows.Add(new
             {
                 shareId = reader.GetGuid(0),
@@ -1195,7 +1210,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                 expiresAt,
                 revokedAt,
                 revocationReason = reader.GetString(8),
-                lastAccessedAt = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),
+                lastAccessedAt = reader.IsDBNull(9) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(9),
                 accessCount = reader.GetInt32(10),
                 createdAt = reader.GetFieldValue<DateTimeOffset>(11),
                 active = !revokedAt.HasValue && expiresAt > DateTimeOffset.UtcNow
@@ -1246,7 +1261,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                 var category = reader.GetString(2);
                 var processing = reader.GetString(3);
                 var visible = reader.GetBoolean(4);
-                var activeVersion = reader.IsDBNull(5) ? null : reader.GetGuid(5);
+                Guid? activeVersion = reader.IsDBNull(5) ? null : reader.GetGuid(5);
                 var authority = reader.GetString(6);
                 var index = reader.GetString(7);
                 var citations = reader.GetInt32(8);
@@ -1291,8 +1306,8 @@ internal static class ProjectFlowHiveEnterpriseModule
         command.Parameters.AddWithValue("description", Clean(request.Description, 12_000));
         command.Parameters.AddWithValue("status", RaidStatus(request.Status));
         command.Parameters.AddWithValue("priority", Priority(request.Priority));
-        command.Parameters.Add("probability", NpgsqlDbType.Smallint).Value = request.Probability.HasValue ? Math.Clamp(request.Probability.Value, 1, 5) : DBNull.Value;
-        command.Parameters.Add("impact", NpgsqlDbType.Smallint).Value = request.Impact.HasValue ? Math.Clamp(request.Impact.Value, 1, 5) : DBNull.Value;
+        command.Parameters.Add("probability", NpgsqlDbType.Smallint).Value = request.Probability.HasValue ? (short)Math.Clamp((int)request.Probability.Value, 1, 5) : DBNull.Value;
+        command.Parameters.Add("impact", NpgsqlDbType.Smallint).Value = request.Impact.HasValue ? (short)Math.Clamp((int)request.Impact.Value, 1, 5) : DBNull.Value;
         command.Parameters.Add("owner", NpgsqlDbType.Uuid).Value = request.OwnerUserId.HasValue ? request.OwnerUserId.Value : DBNull.Value;
         command.Parameters.Add("due_date", NpgsqlDbType.Date).Value = request.DueDate.HasValue ? request.DueDate.Value : DBNull.Value;
         command.Parameters.AddWithValue("mitigation", Clean(request.Mitigation, 12_000));
