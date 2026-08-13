@@ -1,0 +1,123 @@
+/* -------------------------------------------------------------------------- */
+/* Module Management: primary enterprise directory, Classic remains unchanged */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] #modules-directory-portal-host {
+  display: block !important;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: var(--pulse-enterprise-assistant-safe-area);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-page {
+  gap: 0.75rem;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-bar {
+  align-items: center;
+  padding: 0.82rem 0.9rem;
+  border-color: var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-md);
+  background: var(--pulse-enterprise-surface);
+  box-shadow: var(--pulse-enterprise-shadow-sm);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-bar > div:first-child {
+  gap: 0.18rem;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-bar > div:first-child > strong {
+  color: var(--pulse-enterprise-text);
+  font-size: 0.9rem;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-bar > div:first-child > span {
+  color: var(--pulse-enterprise-muted);
+  font-size: 0.82rem;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-counts span {
+  min-width: 84px;
+  padding: 0.48rem 0.62rem;
+  border: 1px solid var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-sm);
+  background: var(--pulse-enterprise-surface-soft);
+  color: var(--pulse-enterprise-muted);
+  box-shadow: none;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-availability-counts strong {
+  color: var(--pulse-enterprise-text);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-controls {
+  grid-template-columns: minmax(330px, 1fr) minmax(220px, 300px) auto;
+  align-items: end;
+  gap: 0.72rem;
+  padding: 0.78rem;
+  border-color: var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-md);
+  background: var(--pulse-enterprise-surface);
+  box-shadow: var(--pulse-enterprise-shadow-sm);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-controls label {
+  gap: 0.32rem;
+  color: var(--pulse-enterprise-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.055em;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-controls input,
+:root[data-pulse-experience='enterprise'] .modules-directory-controls select,
+:root[data-pulse-experience='enterprise'] .modules-directory-controls button {
+  min-height: 42px;
+  border-radius: var(--pulse-enterprise-radius-sm);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-controls button {
+  border-color: var(--pulse-enterprise-border-strong);
+  background: var(--pulse-enterprise-surface-soft);
+  color: var(--pulse-enterprise-blue);
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.72rem;
+  align-items: stretch;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card {
+  position: relative;
+  grid-template-rows: auto auto minmax(4.3rem, auto) auto auto;
+  gap: 0.58rem;
+  min-height: 244px;
+  padding: 0.85rem;
+  border-color: var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-md);
+  background: var(--pulse-enterprise-surface);
+  box-shadow: var(--pulse-enterprise-shadow-sm);
+  transform: none;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card::before {
+  content: attr(data-module-number);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 0.05rem;
+  border: 1px solid rgba(0, 86, 154, 0.14);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #edf6ff, #e6f8f8);
+  color: var(--pulse-enterprise-blue);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .modules-directory-card::before {
+  border-color: rgba(104, 188, 255, 0.18);
+  background: linear-gradient(145deg, #142d45, #12333e);
+}

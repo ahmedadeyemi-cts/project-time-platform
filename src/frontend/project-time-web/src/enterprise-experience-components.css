@@ -1,0 +1,112 @@
+/* -------------------------------------------------------------------------- */
+/* Shared page rhythm, surfaces, controls, tables, and states                  */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > :where(
+  #modules-directory-portal-host,
+  [id$='-portal-host'],
+  section,
+  .dashboard,
+  .workspace,
+  [class$='-workspace'],
+  [class$='-center']
+):not(.top-bar):not(.enterprise-sidebar):not(#pulse-enterprise-page-chrome-host) {
+  min-width: 0;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .panel,
+  .status-card,
+  .module-card,
+  .target-card,
+  [class$='-panel'],
+  [class$='-card'],
+  [class*='summary-card'],
+  [class*='metric-card'],
+  [class*='kpi-card']
+):not(.profile-card):not([class*='celar-ai']):not([class*='assistant']) {
+  border-color: var(--pulse-enterprise-border);
+  border-radius: var(--pulse-enterprise-radius-md);
+  background-color: var(--pulse-enterprise-surface);
+  color: var(--pulse-enterprise-text);
+  box-shadow: var(--pulse-enterprise-shadow-sm);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  h1,
+  h2,
+  h3,
+  h4
+):not(.enterprise-top-bar *) {
+  color: var(--pulse-enterprise-text);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  p,
+  small,
+  .muted,
+  .section-copy,
+  [class*='description']
+):not(.enterprise-top-bar *) {
+  color: var(--pulse-enterprise-muted);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea
+):not([class*='celar-ai'] *) {
+  min-height: 42px;
+  border: 1px solid var(--pulse-enterprise-border-strong);
+  border-radius: var(--pulse-enterprise-radius-sm);
+  background: var(--pulse-enterprise-surface-soft);
+  color: var(--pulse-enterprise-text);
+  box-shadow: inset 0 1px 2px rgba(6, 39, 70, 0.035);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled textarea {
+  min-height: 92px;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  input,
+  select,
+  textarea,
+  button,
+  a
+):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--pulse-enterprise-blue) 28%, transparent);
+  outline-offset: 2px;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  button,
+  .button,
+  [class*='primary-action'],
+  [class*='secondary-action']
+):not(.profile-avatar-button):not(.enterprise-sidebar-group-toggle):not([class*='celar-ai']) {
+  border-radius: var(--pulse-enterprise-radius-sm);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .primary-action,
+  button.primary,
+  .button-primary,
+  [class$='-primary-action']
+) {
+  border-color: var(--pulse-enterprise-blue);
+  background: var(--pulse-enterprise-blue);
+  color: #ffffff;
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--pulse-enterprise-blue) 22%, transparent);
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled :where(
+  .secondary-action,
+  button.secondary,
+  .button-secondary,
+  [class$='-secondary-action']
+) {
+  border-color: var(--pulse-enterprise-border-strong);
+  background: var(--pulse-enterprise-surface);
+  color: var(--pulse-enterprise-blue);
+}

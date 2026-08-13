@@ -1,4 +1,3 @@
-import './runtime-browser-compatibility.js';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './projectpulse-authoritative-api.js';
@@ -30,7 +29,7 @@ import ProjectExpenseCrossModulePortal from './ProjectExpenseCrossModulePortal.j
 import Module005ExperienceCompatibility from './Module005ExperienceCompatibility.jsx';
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
-import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
+import EnterpriseExperienceController from './EnterpriseExperienceController.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
@@ -44,12 +43,19 @@ import './admin-experience-theme.css';
 import './pulse-shell-frontend-compatibility.css';
 import './profile-settings-enterprise.css';
 import './enterprise-theme-completion.css';
+import './enterprise-experience-system.css';
+import './enterprise-experience-components.css';
+import './enterprise-experience-data.css';
+import './enterprise-module-management.css';
+import './enterprise-module-cards.css';
+import './enterprise-overlay-responsive.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ApplicationErrorBoundary>
       <App />
+      <EnterpriseExperienceController />
       <CriticalRoutePresentationBoundary />
       <AdminRuntimeStabilityPortal />
       <GlobalViewAsDrawer />
@@ -62,7 +68,6 @@ createRoot(document.getElementById('root')).render(
       <Module005ExperienceCompatibility />
       <MicrosoftIntegrationDualConnectionPortal />
       <MicrosoftMailTransportReadinessPanel />
-      <ProjectForgeFlowHiveSyncPortal />
       <AuthenticatedHelpAssistant />
     </ApplicationErrorBoundary>
   </React.StrictMode>
