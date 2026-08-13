@@ -37,7 +37,7 @@ trap 'rm -f "$sql_file"; for record in "${records[@]}"; do unset "${record#*|}";
         setting="${record%%|*}"
         variable="${record#*|}"
         value="${!variable:-}"
-        [[ "$value" =~ ^PBKDF2-SHA256\$210000\$[A-Za-z0-9+/]{{22}}==\$[A-Za-z0-9+/]{{43}}=$ ]] \
+        [[ "$value" =~ ^PBKDF2-SHA256\$210000\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=$ ]] \
             || fail "$variable must be supplied as a protected runtime-derived PBKDF2 value."
         [[ -z "${seen[$value]:-}" ]] || fail "Every account requires an independently salted derived value."
         seen[$value]=1
