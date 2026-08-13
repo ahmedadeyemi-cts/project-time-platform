@@ -2,16 +2,19 @@
 # Ask Celar AI operational intelligence into the existing composition root and
 # authoritative v2 chat platform.
 # Usage:
-#   awk -v mode=services   -f this-file canonical-services.cs
+#   awk -v mode=services -f this-file canonical-services.cs
 #   awk -v mode=production -f this-file canonical-production-module.cs
 
 BEGIN {
   inserted_service = 0
+  inserted_current_fact_service = 0
   inserted_operations_service = 0
   inserted_map = 0
+  inserted_intent_map = 0
   changed_delegate = 0
   inserted_parameter = 0
   inserted_plan = 0
+  inserted_current_fact_gate = 0
   inserted_gate = 0
   inserted_evidence = 0
   waiting_for_map_brace = 0
@@ -21,12 +24,15 @@ BEGIN {
 mode == "services" {
   print
   if ($0 ~ /services\.AddSingleton<CelarAiInternalDataService>\(\);/) {
+    print "        services.AddHttpClient(CelarAiAuthoritativePublicFactService.ClientName);"
+    print "        services.AddSingleton<CelarAiAuthoritativePublicFactService>();"
     print "        services.AddSingleton<CelarAiUniversalAnswerReliabilityService>();"
     print "        services.AddSingleton<CelarAiDefectOrchestrationService>();"
     print "        services.AddSingleton<CelarAiDefectQueryService>();"
     print "        services.AddSingleton<CelarAiMonitorLeadershipService>();"
     print "        services.AddHostedService<CelarAiAvailabilityMonitorService>();"
     inserted_service++
+    inserted_current_fact_service++
     inserted_operations_service++
   }
   next
@@ -34,15 +40,11 @@ mode == "services" {
 
 mode == "production" {
   line = $0
-
-  if (line ~ /public static IEndpointRouteBuilder MapCelarAiProductionPlatformEndpoints\(this IEndpointRouteBuilder endpoints\)/) {
-    waiting_for_map_brace = 1
-  }
+  if (line ~ /public static IEndpointRouteBuilder MapCelarAiProductionPlatformEndpoints\(this IEndpointRouteBuilder endpoints\)/) waiting_for_map_brace = 1
 
   if (line ~ /CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken/) {
     gsub(/CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken/,
-      "CelarAiPeopleAndGuidanceService, CelarAiUniversalAnswerReliabilityService, CelarAiCapabilityRoutingStore, CancellationToken",
-      line)
+      "CelarAiPeopleAndGuidanceService, CelarAiAuthoritativePublicFactService, CelarAiUniversalAnswerReliabilityService, CelarAiCapabilityRoutingStore, CancellationToken", line)
     changed_delegate++
   }
 
@@ -51,12 +53,15 @@ mode == "production" {
   if (waiting_for_map_brace == 1 && line ~ /^[[:space:]]*\{[[:space:]]*$/) {
     print "        endpoints.MapCelarAiUniversalAnswerReliabilityEndpoints();"
     print "        endpoints.MapCelarAiOperationsEndpoints();"
+    print "        endpoints.MapCelarAiOperationsIntentEndpoints();"
     print "        endpoints.MapCelarAiDefectQueryEndpoints();"
     inserted_map++
+    inserted_intent_map++
     waiting_for_map_brace = 0
   }
 
   if (line ~ /^[[:space:]]*CelarAiPeopleAndGuidanceService peopleAndGuidance,[[:space:]]*$/) {
+    print "        CelarAiAuthoritativePublicFactService authoritativePublicFacts,"
     print "        CelarAiUniversalAnswerReliabilityService universalReliability,"
     inserted_parameter++
   }
@@ -74,12 +79,18 @@ mode == "production" {
   }
 
   if (line ~ /^[[:space:]]*result = EnforceAnswer\(result, intent, question\);[[:space:]]*$/) {
+    print "        result = await authoritativePublicFacts.VerifyAsync("
+    print "            result,"
+    print "            reliabilityPlan,"
+    print "            question,"
+    print "            cancellationToken);"
     print "        var reliabilityEnforcement = universalReliability.Enforce("
     print "            result,"
     print "            reliabilityPlan,"
     print "            request.IncludeSourceCitations,"
     print "            request.IncludeAssumptions);"
     print "        result = reliabilityEnforcement.Result;"
+    inserted_current_fact_gate++
     inserted_gate++
     after_quality_gate = 1
   }
@@ -96,18 +107,8 @@ mode == "production" {
 
 END {
   if (mode == "services") {
-    if (inserted_service != 1 || inserted_operations_service != 1) {
-      print "CELAR_UAR_GENERATOR_ERROR=service_registration_count:" inserted_service ",operations:" inserted_operations_service > "/dev/stderr"
-      exit 42
-    }
+    if (inserted_service != 1 || inserted_current_fact_service != 1 || inserted_operations_service != 1) exit 42
   } else if (mode == "production") {
-    if (inserted_map != 1 || changed_delegate != 1 || inserted_parameter != 1 ||
-        inserted_plan != 1 || inserted_gate != 1 || inserted_evidence != 1) {
-      print "CELAR_UAR_GENERATOR_ERROR=map:" inserted_map ",delegate:" changed_delegate ",parameter:" inserted_parameter ",plan:" inserted_plan ",gate:" inserted_gate ",evidence:" inserted_evidence > "/dev/stderr"
-      exit 42
-    }
-  } else {
-    print "CELAR_UAR_GENERATOR_ERROR=unknown_mode:" mode > "/dev/stderr"
-    exit 42
-  }
+    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1) exit 42
+  } else exit 42
 }
