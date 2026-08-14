@@ -14,17 +14,18 @@ jobs:
   snapshot:
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out exact source
+      - name: Check out Celar AI and FlowHive reconciliation source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: feature/celar-authoritative-flowhive-current-main-20260813
           fetch-depth: 0
           persist-credentials: false
-      - name: Create source archive
-        run: tar --exclude=.git -C "$GITHUB_WORKSPACE" -czf /tmp/source-snapshot.tgz .
+      - name: Create source archive outside checkout
+        run: tar --exclude=.git -C "$GITHUB_WORKSPACE" -czf "$RUNNER_TEMP/celar-flowhive-source.tgz" .
       - name: Upload source archive
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
-          name: project-time-platform-source-20260814
-          path: /tmp/source-snapshot.tgz
+          name: celar-flowhive-reconciliation-source-20260814
+          path: ${{ runner.temp }}/celar-flowhive-source.tgz
           if-no-files-found: error
           retention-days: 1
