@@ -31,7 +31,7 @@ jobs:
           test "$(git merge-base 94949b43b999146b07b10956b1f128e4619ebb82 HEAD)" = 94949b43b999146b07b10956b1f128e4619ebb82
           git diff --check 94949b43b999146b07b10956b1f128e4619ebb82...HEAD
 
-      - name: Make the yearly endpoint anchor whitespace tolerant
+      - name: Reconcile guarded patch anchors with reviewed main
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -41,31 +41,64 @@ jobs:
           path = Path('.github/scripts/apply_utilization_role_scoping.py')
           lines = path.read_text(encoding='utf-8').splitlines()
           slash = chr(92)
-          matches = [
+
+          yearly_matches = [
               index
               for index, line in enumerate(lines)
               if 'yearly-status' in line and "r'app" in line
           ]
+          if len(yearly_matches) != 1:
+              raise SystemExit(f'Expected one yearly regex line, found {len(yearly_matches)}')
 
-          if len(matches) != 1:
-              raise SystemExit(f'Expected one yearly regex line, found {len(matches)}')
-
-          index = matches[0]
-          if index + 1 >= len(lines) or 'source-projects' not in lines[index + 1]:
+          yearly_index = yearly_matches[0]
+          if yearly_index + 1 >= len(lines) or 'source-projects' not in lines[yearly_index + 1]:
               raise SystemExit('The yearly endpoint closing anchor is not adjacent to the opening regex line')
 
-          lines[index] = (
+          lines[yearly_index] = (
               "        r'app" + slash + ".MapGet" + slash
               + "(\"/api/utilization/yearly-status\",[" + slash + "s" + slash
               + "S]*?" + slash + "n" + slash + "}" + slash + ");'"
           )
-          lines[index + 1] = (
+          lines[yearly_index + 1] = (
               "        r'" + slash + "s*app" + slash + ".MapGet" + slash
               + "(\"/api/project-allocation-info/source-projects\"'"
           )
 
+          count_matches = [
+              index for index, line in enumerate(lines)
+              if 'if block.count(role_filter) != 2:' in line
+          ]
+          if len(count_matches) != 1:
+              raise SystemExit(f'Expected one role-filter count guard, found {len(count_matches)}')
+          count_index = count_matches[0]
+          lines[count_index] = lines[count_index].replace('!= 2', '!= 1')
+          lines[count_index + 1] = lines[count_index + 1].replace('expected two anchors', 'expected one anchor')
+
+          replace_start = next(
+              (
+                  index for index, line in enumerate(lines)
+                  if line.strip() == 'block = block.replace('
+                  and index + 1 < len(lines)
+                  and lines[index + 1].strip() == 'role_filter,'
+              ),
+              None
+          )
+          if replace_start is None:
+              raise SystemExit('Role-filter replacement block was not found')
+
+          replacement_count_index = next(
+              (
+                  index for index in range(replace_start + 1, min(replace_start + 8, len(lines)))
+                  if lines[index].strip() == '2,'
+              ),
+              None
+          )
+          if replacement_count_index is None:
+              raise SystemExit('Role-filter replacement count was not found')
+          lines[replacement_count_index] = lines[replacement_count_index].replace('2,', '1,')
+
           path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          print('PATCHER_YEARLY_ANCHOR_REPAIR=PASS')
+          print('PATCHER_ANCHOR_RECONCILIATION=PASS')
           PY
 
       - name: Apply guarded source repair
