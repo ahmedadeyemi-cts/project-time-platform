@@ -1,4 +1,4 @@
-name: Export Systemwide Enterprise Reliability Workflows 20260814
+name: Publish Reliability Workflow Blobs 20260814
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  publish-blobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out staging branch
@@ -20,8 +20,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Rebuild exact reviewed patch
+      - name: Rebuild reviewed workflows and create Git blobs only
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
           cat .github/reliability-patch/part-* > "$RUNNER_TEMP/systemwide.patch.xz.b64"
@@ -31,17 +34,46 @@ jobs:
           git reset --hard origin/main
           git apply --check --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
           git apply --index --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
-          test -s .github/workflows/systemwide-enterprise-reliability-ci.yml
-          test -s .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
-          mkdir -p "$RUNNER_TEMP/reliability-workflows"
-          cp .github/workflows/systemwide-enterprise-reliability-ci.yml "$RUNNER_TEMP/reliability-workflows/"
-          cp .github/workflows/systemwide-enterprise-reliability-test-deployment.yml "$RUNNER_TEMP/reliability-workflows/"
-          sha256sum "$RUNNER_TEMP/reliability-workflows/"*.yml
 
-      - name: Upload exact workflow files
+          CI_FILE='.github/workflows/systemwide-enterprise-reliability-ci.yml'
+          DEPLOY_FILE='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          test -s "$CI_FILE"
+          test -s "$DEPLOY_FILE"
+
+          create_blob() {
+            local file="$1"
+            local payload response sha expected
+            payload="$(jq -n --arg content "$(base64 -w0 "$file")" '{content:$content,encoding:"base64"}')"
+            response="$(curl -fsS -X POST \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$REPOSITORY/git/blobs" \
+              -d "$payload")"
+            sha="$(jq -r '.sha // empty' <<<"$response")"
+            expected="$(git hash-object "$file")"
+            [[ "$sha" == "$expected" ]] || {
+              echo "ERROR: GitHub blob SHA mismatch for $file." >&2
+              exit 1
+            }
+            printf '%s\n' "$sha"
+          }
+
+          CI_SHA="$(create_blob "$CI_FILE")"
+          DEPLOY_SHA="$(create_blob "$DEPLOY_FILE")"
+          jq -n \
+            --arg ci "$CI_SHA" \
+            --arg deploy "$DEPLOY_SHA" \
+            --arg ciPath "$CI_FILE" \
+            --arg deployPath "$DEPLOY_FILE" \
+            '{ci:{path:$ciPath,sha:$ci},deployment:{path:$deployPath,sha:$deploy}}' \
+            > "$RUNNER_TEMP/reliability-workflow-blobs.json"
+          cat "$RUNNER_TEMP/reliability-workflow-blobs.json"
+
+      - name: Upload workflow blob evidence
         uses: actions/upload-artifact@v4
         with:
-          name: systemwide-enterprise-reliability-workflows-20260814
-          path: ${{ runner.temp }}/reliability-workflows
+          name: systemwide-enterprise-reliability-workflow-blobs-20260814
+          path: ${{ runner.temp }}/reliability-workflow-blobs.json
           if-no-files-found: error
           retention-days: 1
