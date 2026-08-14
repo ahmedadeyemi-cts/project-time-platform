@@ -24387,12 +24387,102 @@ async Task<bool> ProjectAllocationUserCanAccessProjectAsync(NpgsqlConnection con
 
 app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpContext) =>
 {
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
+    {
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
     var selectedYear = year ?? DateTime.UtcNow.Year;
+    var minimumYear = DateTime.UtcNow.Year - 3;
+    var maximumYear = DateTime.UtcNow.Year + 6;
 
-    if (selectedYear < 2026) selectedYear = 2026;
-    if (selectedYear > 2036) selectedYear = 2036;
+    if (selectedYear < minimumYear) selectedYear = minimumYear;
+    if (selectedYear > maximumYear) selectedYear = maximumYear;
 
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var yearStart = new DateOnly(selectedYear, 1, 1);
+    var nextYearStart = new DateOnly(selectedYear + 1, 1, 1);
     decimal standardQuarterHours = 482m;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using (var policyCommand = new NpgsqlCommand("""
+        SELECT standard_period_hours
+        FROM utilization_policies
+        WHERE is_active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1;
+        """, connection))
+    {
+        var policyHours = await policyCommand.ExecuteScalarAsync();
+        if (policyHours is decimal configuredHours && configuredHours > 0)
+        {
+            standardQuarterHours = configuredHours;
+        }
+    }
+
+    var billableByQuarter = new Dictionary<int, decimal>
+    {
+        [1] = 0m,
+        [2] = 0m,
+        [3] = 0m,
+        [4] = 0m
+    };
+
+    await using (var usageCommand = new NpgsqlCommand("""
+        WITH entry_rows AS (
+            SELECT
+                NULLIF(to_jsonb(te)->>'work_date', '')::date AS work_date,
+                COALESCE(NULLIF(to_jsonb(te)->>'hours', '')::numeric, 0) AS hours,
+                CASE
+                    WHEN NULLIF(to_jsonb(te)->>'is_billable', '') IS NOT NULL
+                        THEN NULLIF(to_jsonb(te)->>'is_billable', '')::boolean
+                    WHEN NULLIF(to_jsonb(te)->>'billable', '') IS NOT NULL
+                        THEN NULLIF(to_jsonb(te)->>'billable', '')::boolean
+                    ELSE COALESCE(
+                        NULLIF(to_jsonb(te)->>'project_id', ''),
+                        NULLIF(to_jsonb(te)->>'project_task_id', ''),
+                        NULLIF(to_jsonb(te)->>'task_id', ''),
+                        NULLIF(to_jsonb(te)->>'service_request_id', '')
+                    ) IS NOT NULL
+                END AS is_billable,
+                COALESCE(NULLIF(to_jsonb(ts)->>'status', ''), 'draft') AS timesheet_status
+            FROM time_entries te
+            JOIN timesheets ts
+              ON ts.timesheet_id = te.timesheet_id
+            WHERE ts.user_id = @user_id
+        )
+        SELECT
+            EXTRACT(QUARTER FROM work_date)::int AS quarter_number,
+            COALESCE(SUM(hours), 0)::numeric AS billable_hours
+        FROM entry_rows
+        WHERE work_date >= @year_start
+          AND work_date < @next_year_start
+          AND is_billable = TRUE
+          AND timesheet_status NOT IN ('manager_declined', 'rejected', 'voided')
+        GROUP BY EXTRACT(QUARTER FROM work_date)::int
+        ORDER BY quarter_number;
+        """, connection))
+    {
+        usageCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        usageCommand.Parameters.AddWithValue("year_start", yearStart);
+        usageCommand.Parameters.AddWithValue("next_year_start", nextYearStart);
+
+        await using var reader = await usageCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var quarterNumber = reader.GetInt32(0);
+            if (quarterNumber is >= 1 and <= 4)
+            {
+                billableByQuarter[quarterNumber] = Math.Round(reader.GetDecimal(1), 2);
+            }
+        }
+    }
 
     var targets = new[] { 70m, 75m, 80m, 85m, 90m, 95m, 100m, 105m }
         .Select(percent => new
@@ -24406,11 +24496,15 @@ app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpC
 
     foreach (var quarterNumber in new[] { 1, 2, 3, 4 })
     {
-        decimal billableHours = 0m;
-        decimal utilizationPercent = 0m;
+        var billableHours = billableByQuarter[quarterNumber];
+        var utilizationPercent = standardQuarterHours == 0
+            ? 0m
+            : Math.Round((billableHours / standardQuarterHours) * 100m, 2);
 
         var nextTarget = targets.FirstOrDefault(target => target.targetHours > billableHours);
-        var hoursToNextTarget = nextTarget is null ? 0m : Math.Max(0, Math.Round(nextTarget.targetHours - billableHours, 2));
+        var hoursToNextTarget = nextTarget is null
+            ? 0m
+            : Math.Max(0m, Math.Round(nextTarget.targetHours - billableHours, 2));
 
         quarters.Add(new
         {
@@ -24426,22 +24520,33 @@ app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpC
             {
                 target.targetPercent,
                 target.targetHours,
-                hoursRemaining = Math.Max(0, Math.Round(target.targetHours - billableHours, 2)),
+                hoursRemaining = Math.Max(0m, Math.Round(target.targetHours - billableHours, 2)),
                 reached = billableHours >= target.targetHours
             })
         });
     }
 
+    var annualBillableHours = billableByQuarter.Values.Sum();
+    var annualCapacityHours = standardQuarterHours * 4m;
+    var annualUtilizationPercent = annualCapacityHours == 0
+        ? 0m
+        : Math.Round((annualBillableHours / annualCapacityHours) * 100m, 2);
+
     return Results.Ok(new
     {
         year = selectedYear,
         standardQuarterHours,
-        calculationStatus = "placeholder",
-        calculationNote = "Project and service-request utilization calculation will be finalized during 019I. This view is stable now so engineers can see yearly quarterly thresholds.",
+        calculationStatus = "calculated",
+        calculationNote = "Utilization is calculated from the signed-in effective user's authoritative billable time entries. Declined, rejected, and voided time is excluded.",
+        annualSummary = new
+        {
+            billableHours = annualBillableHours,
+            capacityHours = annualCapacityHours,
+            utilizationPercent = annualUtilizationPercent
+        },
         quarters
     });
 });
-
 
 
 app.MapGet("/api/project-allocation-info/source-projects", async (HttpContext httpContext) =>
@@ -25219,15 +25324,28 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
         }
     }
 
+    /* UTILIZATION_ROLE_SCOPE_20260814 */
     var canViewAll =
-        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
+        roles.Contains("SUPER_ADMINISTRATOR")
+        || roles.Contains("SUPERADMINISTRATOR")
+        || roles.Contains("GLOBAL_ADMINISTRATOR")
+        || roles.Contains("GLOBALADMINISTRATOR")
+        || roles.Contains("ADMINISTRATOR")
         || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || roles.Contains("EXECUTIVE")
+        || roles.Contains("EXECUTIVE_LEADERSHIP")
+        || permissions.Contains("VIEW_ORGANIZATION_UTILIZATION")
+        || permissions.Contains("VIEW_ALL_UTILIZATION")
         || permissions.Contains("SYSTEM_ADMINISTRATION")
         || permissions.Contains("MANAGE_ALL");
 
-    var isEngineeringTeamLead = (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"));
-    var isManager = roles.Contains("MANAGER");
-    var isEngineer = (roles.Contains("ENGINEERING") || roles.Contains("ENGINEER"));
+    var isEngineeringTeamLead =
+        roles.Contains("TEAM_LEAD")
+        || roles.Contains("ENGINEERING_LEAD")
+        || roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isDirector = roles.Contains("DIRECTOR") || roles.Contains("ENGINEERING_DIRECTOR");
+    var isManager = roles.Contains("MANAGER") || roles.Contains("ENGINEERING_MANAGER") || isDirector;
+    var isEngineer = roles.Contains("ENGINEERING") || roles.Contains("ENGINEER");
 
     var canUseTeamScope =
         !canViewAll
@@ -25237,11 +25355,12 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             || permissions.Contains("VIEW_TEAM_UTILIZATION")
         );
 
-    var canUseOwnScope = false;
+    var canUseOwnScope = isEngineer || isEngineeringTeamLead;
 
     var canAccess =
         canViewAll
-        || canUseTeamScope;
+        || canUseTeamScope
+        || canUseOwnScope;
 
     if (!canAccess)
     {
@@ -25249,7 +25368,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
         {
             canViewEngineeringTeamUtilization = false,
             status = "access_denied",
-            message = "Engineering team utilization is available to Engineering Team Leads, Managers, Project/Team Coordinators, and Administrators."
+            message = "Utilization access is limited to an engineer's own record, assigned team scope, or authorized organization-wide reporting scope."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -25271,7 +25390,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
                 ON r.app_role_id = ura.app_role_id
                AND r.is_active = TRUE
             WHERE u.is_active = TRUE
-              AND r.role_code IN ('ENGINEERING', 'ENGINEER')
+              AND r.role_code IN ('ENGINEERING', 'ENGINEER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD')
             ORDER BY team_name, display_name, u.email;
             """, connection);
 
@@ -25328,6 +25447,8 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
                 SELECT user_id FROM membership_candidates
                 UNION
                 SELECT user_id FROM profile_candidates
+                UNION
+                SELECT @user_id
             )
             SELECT DISTINCT
                 u.user_id,
@@ -25403,7 +25524,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
 
     if (engineerUserId.HasValue && engineerUserId.Value != Guid.Empty)
     {
-        if (canViewAll || isEngineeringTeamLead)
+        if (canViewAll || canUseTeamScope)
         {
             if (!allowedEngineerIds.Contains(engineerUserId.Value))
             {
@@ -25600,6 +25721,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
             canSelectEngineer = canViewAll || canUseTeamScope,
             isEngineeringTeamLead,
             isManager,
+            isDirector,
             isEngineer,
             canUseTeamScope,
             canUseOwnScope
@@ -25621,7 +25743,7 @@ app.MapGet("/api/utilization/engineering-team-summary", async (int? year, Guid? 
         },
         teamSummaries,
         members,
-        calculationNote = "Engineering Team Lead scope is enforced by backend role scope. Team leads can only view engineers on matching active team membership or profile team/department scope."
+        calculationNote = "Backend authorization enforces self-only Engineer scope, assigned team scope for Engineering Leads, Managers, and Directors, and organization-wide scope for Executives and authorized administrators."
     });
 });
 

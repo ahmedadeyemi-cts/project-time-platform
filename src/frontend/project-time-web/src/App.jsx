@@ -479,7 +479,7 @@ function installProjectPulseGlobalViewAsPreview() {
   window.addEventListener('projectpulse:auth-session-ready', loadUsers);
 }
 
-installProjectPulseGlobalViewAsPreview();
+/* Legacy DOM View-As preview disabled; GlobalViewAsDrawer is the single React-owned authority. */
 
 // 022F_TOPBAR_VIEWAS_MOUNT_START
 function installProjectPulseGlobalViewAsTopbarMount() {
