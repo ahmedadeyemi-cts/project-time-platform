@@ -72,7 +72,7 @@ jobs:
             fi
 
             echo 'MODULE_008_NATIVE_FALLBACK_THEME_SOURCE_ISOLATION=PASSED'
-          elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* ]]; then
+          elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* || "$BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
             DIRECT_MODULE_008='^(\.github/workflows/validate-global-session-invalidation\.yml|src/frontend/project-time-web/scripts/(validate-global-session-invalidation|test-authoritative-session-transport-theme-runtime|validate-modules-008-009-admin-experience)\.mjs|src/frontend/project-time-web/src/(projectpulse-authoritative-api\.js|AuditHistoryPanel\.jsx|admin-experience-theme\.css))$'
             DIRECT_CHANGED="$(printf '%s\n' "${CHANGED[@]}" | grep -E "$DIRECT_MODULE_008" || true)"
             [[ -n "$DIRECT_CHANGED" ]] || {

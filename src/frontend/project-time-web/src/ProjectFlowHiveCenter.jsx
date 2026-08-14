@@ -67,6 +67,8 @@ async function parseResponse(response, path) {
     return response;
   }
   const body = await response.json();
+  const correlationId = response.headers.get('x-projectpulse-correlation-id') || response.headers.get('x-correlation-id') || '';
+  if (body && typeof body === 'object' && correlationId && !body.correlationId) body.correlationId = correlationId;
   if (!response.ok) {
     const error = new Error(body.message || body.detail || body.issues?.[0]?.message || `${path} returned HTTP ${response.status}`);
     error.responseBody = body;
@@ -299,6 +301,7 @@ export default function ProjectFlowHiveCenter() {
   const [sowExcerpt, setSowExcerpt] = useState('');
   const [requestedOutcome, setRequestedOutcome] = useState('Create a reviewable implementation plan with detailed tasks, dependencies, risks, assumptions, milestones, acceptance, operational handoff, and closeout.');
   const [enterprise, setEnterprise] = useState(null);
+  const [enterpriseError, setEnterpriseError] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [controls, setControls] = useState(defaultControls);
   const [dirty, setDirty] = useState(false);
@@ -336,10 +339,12 @@ export default function ProjectFlowHiveCenter() {
   async function loadEnterpriseWorkspace(projectId, applyWorkingCopy = false) {
     if (!projectId) {
       setEnterprise(null);
+      setEnterpriseError(null);
       setFinancials(null);
       setControls(defaultControls);
       return;
     }
+    setEnterpriseError(null);
     try {
       const result = await getJson(`/api/project-flowhive/projects/${projectId}/enterprise`);
       setEnterprise(result);
@@ -354,7 +359,14 @@ export default function ProjectFlowHiveCenter() {
       }
     } catch (workspaceError) {
       setEnterprise(null);
-      if (workspaceError.responseBody?.status !== 'migration_086_required') setError(workspaceError.message);
+      const body = workspaceError.responseBody || {};
+      setEnterpriseError({
+        status: body.status || 'flowhive_enterprise_unavailable',
+        message: body.message || workspaceError.message || 'The enterprise workspace is temporarily unavailable.',
+        requiredMigration: body.requiredMigration || (body.status === 'migration_086_required' ? '086_module_066_flowhive_enterprise_pm' : ''),
+        correlationId: body.correlationId || ''
+      });
+      setError('');
     }
     try {
       setFinancials(await getJson(`/api/project-financials/projects/${projectId}?workspace=project_management`));
@@ -371,6 +383,7 @@ export default function ProjectFlowHiveCenter() {
     if (selectedProjectId) loadEnterpriseWorkspace(selectedProjectId, false);
     else {
       setEnterprise(null);
+      setEnterpriseError(null);
       setFinancials(null);
     }
   }, [selectedProjectId]);
@@ -970,6 +983,7 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
+      {enterpriseError ? <div className="flowhive-error flowhive-enterprise-readiness-error" role="alert"><div><strong>FlowHive enterprise controls are temporarily unavailable.</strong><span>{enterpriseError.message}</span>{enterpriseError.requiredMigration ? <small>Required database contract: {enterpriseError.requiredMigration}</small> : null}{enterpriseError.correlationId ? <small>Correlation ID: {enterpriseError.correlationId}</small> : null}</div><button type="button" onClick={() => loadEnterpriseWorkspace(selectedProjectId, false)} disabled={!selectedProjectId || busy}>Retry enterprise workspace</button></div> : null}
       {error ? <div className="flowhive-error" role="alert"><strong>Project FlowHive needs attention.</strong><span>{error}</span></div> : null}
       {notice ? <div className="flowhive-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>Dismiss</button></div> : null}
 
@@ -1037,10 +1051,10 @@ export default function ProjectFlowHiveCenter() {
               {aiPreview ? <aside className="flowhive-ai-planner-summary">
                 <div><span>AI Planner result</span><strong>{labelFrom(aiPreview.status)}</strong><small>{aiPreview.planningEvidence?.scopeOfServicesLocated ? 'Approved SOW Scope of Services located' : 'SOW scope evidence requires review'}</small></div>
                 <div><span>Private evidence</span><strong>{aiPreview.planningEvidence?.approvedSowCitationCount ?? 0} SOW citation(s)</strong><small>{aiPreview.planningEvidence?.scopeOfServicesCitationCount ?? 0} scope citation(s)</small></div>
-                <div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath)}</small></div>
+                <div><span>Evidence score</span><strong>{formatPercent(aiPreview.confidence)}</strong><small>{labelFrom(aiPreview.executionPath)}</small></div>
                 <div className="privacy"><span>External privacy</span><strong>No private SOW content sent</strong><small>Only a fixed identity-free planning blueprint is eligible for Claude/OpenAI.</small></div>
               </aside> : null}
-              <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Drag tasks to reorder or move them between phases. Delete is available for mistakenly added tasks.</p></div><div className="flowhive-phase-add-actions">{enterprisePhases.map((phase) => <button type="button" key={phase.wbs} disabled={!enterprise?.access?.canManage} onClick={() => addTask(phase.wbs)}>Add {phase.name} task</button>)}</div></div>
+              <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Use the Add task action on the Plan, Design, Implement, Validate, or Release phase header. Drag tasks to reorder or move them between phases.</p></div></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
                   <thead><tr><th title="Work Breakdown Structure number. FlowHive renumbers child tasks after a move or deletion.">WBS</th><th title="The scoped activity or phase deliverable.">Task Name</th><th title="Calculated start date. Enter a date to set a Start No Earlier Than constraint.">Start Date</th><th title="Calculated finish date. Editing it recalculates task duration in working days.">End Date</th><th title="Weekday duration, excluding weekends.">Duration in Days</th><th title="Completion percentage from 0 through 100.">Progress</th><th title="The WBS task that controls this task. Start means no predecessor.">Predecessor</th><th title={`${dependencyTypeHelp.FS} ${dependencyTypeHelp.SS} ${dependencyTypeHelp.FF} ${dependencyTypeHelp.SF}`}>Type</th><th title="Review and collaboration comments.">Comments</th><th title="Internal task notes included in the PM working artifact, but excluded from customer links.">Notes</th><th title="Module 062 identity assigned to the task.">Assigned Identity</th></tr></thead>
@@ -1138,7 +1152,7 @@ export default function ProjectFlowHiveCenter() {
             <button type="button" className="primary" onClick={previewAiRequest} disabled={busy}>{busy === 'ai-planner' ? 'Generating detailed Celar AI plan…' : 'Generate and auto-fill detailed plan'}</button>
             {aiPreview ? <section className="celar-flowhive-production-result">
               <header><div><span>Celar AI result</span><strong>{labelFrom(aiPreview.status)}</strong></div><div><span>Execution path</span><strong>{labelFrom(aiPreview.executionPath)}</strong></div></header>
-              <div className="metrics"><div><span>Confidence</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
+              <div className="metrics"><div><span>Evidence score</span><strong>{formatPercent(aiPreview.confidence)}</strong></div><div><span>Tasks</span><strong>{aiPreview.plan?.tasks?.length || 0}</strong></div><div><span>Working days</span><strong>{aiPreview.schedule?.scheduledWorkingDays ?? 'Not calculated'}</strong></div><div><span>Critical tasks</span><strong>{aiPreview.schedule?.criticalTaskCount ?? 'Not calculated'}</strong></div></div>
               <p>{aiPreview.confidenceExplanation}</p>
               {aiPreview.plan?.tasks?.length ? <div className="tasks"><table><thead><tr><th>WBS</th><th>Task</th><th>Description &amp; citations</th><th>Duration</th><th>Start</th><th>Finish</th><th>Status</th></tr></thead><tbody>{aiPreview.plan.tasks.map((task, index) => {
                 const scheduled = aiPreview.schedule?.tasks?.find((row) => row.wbsNumber === task.wbsNumber);

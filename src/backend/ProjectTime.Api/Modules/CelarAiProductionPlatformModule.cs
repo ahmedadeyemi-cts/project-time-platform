@@ -765,63 +765,123 @@ public static partial class CelarAiProductionPlatformModule
 
     private static object Trust(PulseAiSystemQuestionResult result, Intent intent)
     {
-        // Tool results are already projected into Sources. Count each governed
-        // observation once instead of inflating trust with duplicate objects.
-        var successful = result.Sources.Count(source => source.StatusCode is >= 200 and < 300);
+        // Generation success is not evidence. Count only governed observations
+        // whose source type represents an authoritative database, document,
+        // same-origin tool, runtime catalog, or allowlisted official web source.
+        // Provider/model outputs remain visible in execution diagnostics but are
+        // excluded from trust scoring and successful-source counts.
+        var authoritativeSources = result.Sources.Where(IsAuthoritativeTrustSource).ToArray();
+        var successful = authoritativeSources.Length;
         var failed = result.Sources.Count(source => source.StatusCode is < 200 or >= 300);
+        var providerResponses = result.Sources.Count(IsProviderNarrativeSource);
         var privateCitations = result.PrivateCitations?.Count ?? 0;
+        var citations = result.Answer.CitationIds.Count;
+        var currentPublicVerified = authoritativeSources.Any(source =>
+            string.Equals(source.SourceType, "authoritative_public_web", StringComparison.OrdinalIgnoreCase)
+            && source.Path.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            && (source.Freshness.Contains("current", StringComparison.OrdinalIgnoreCase)
+                || source.Freshness.Contains("retrieved", StringComparison.OrdinalIgnoreCase)
+                || source.Freshness.Contains("live", StringComparison.OrdinalIgnoreCase)));
         var verifiedPrivateAnswer = privateCitations > 0
             && string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
             && string.Equals(
                 result.ModelProvider,
                 CelarAiCapabilityTargets.CelarAi,
                 StringComparison.OrdinalIgnoreCase);
-        var citations = result.Answer.CitationIds.Count;
-        var answered = string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
+        var answerShapePresent = string.Equals(result.Status, "completed", StringComparison.OrdinalIgnoreCase)
             && AnswerHasRequiredShape(string.Empty, result.Answer.DirectConclusion, intent.Code)
             && !LooksLikeNonAnswer(result.Answer.DirectConclusion);
+        var answered = answerShapePresent
+            && (!intent.RequiresCurrentEvidence || currentPublicVerified)
+            && (intent.Code != "internal_data" || successful > 0);
+
         var classification = intent.Code switch
         {
-            "current_date_time" or "system_version" or "api_inventory" => "verified_current_fact",
+            "current_date_time" or "system_version" or "api_inventory" when answered && successful > 0 => "verified_current_fact",
             "capabilities" or "identity" or "platform_identity" => "platform_capability",
-            "general_knowledge" when answered => "general_knowledge",
+            "general_knowledge" when intent.RequiresCurrentEvidence && currentPublicVerified && answered => "verified_current_fact",
+            "general_knowledge" when intent.RequiresCurrentEvidence => "insufficient_evidence",
+            "general_knowledge" when answered => "general_knowledge_draft",
             "procedure" => "procedure",
             "future_enhancement" => "draft",
             "internal_data" when answered && successful > 0 => "verified_current_fact",
             "projects_and_delivery" => verifiedPrivateAnswer ? "verified_document_draft" : "draft",
             "documents_and_rag" => verifiedPrivateAnswer ? "verified_document_fact" : "insufficient_evidence",
             _ when !answered || intent.RequiresCurrentEvidence && successful == 0 => "insufficient_evidence",
-            _ when result.Answer.Confidence >= .8m => "verified_current_fact",
-            _ when result.Answer.Confidence >= .55m => "verified_with_limitations",
+            _ when successful > 0 && citations > 0 => "verified_with_limitations",
             _ => "insufficient_evidence"
         };
         var label = classification switch
         {
-            "verified_current_fact" => "Verified current fact",
+            "verified_current_fact" => "Verified current source",
             "verified_document_fact" => "Verified document fact",
             "verified_document_draft" => "Document-grounded draft",
-            "verified_with_limitations" => "Verified with limitations",
+            "verified_with_limitations" => "Evidence verified with limitations",
             "platform_capability" => "Platform capability",
-            "general_knowledge" => "General knowledge",
+            "general_knowledge_draft" => "General knowledge draft",
             "procedure" => "Procedure",
             "draft" => "Reviewable draft",
             _ => "Insufficient evidence"
         };
+
+        var evidenceScore = currentPublicVerified
+            ? 1m
+            : verifiedPrivateAnswer
+                ? Math.Min(1m, .75m + Math.Min(privateCitations, 5) * .05m)
+                : successful > 0 && citations > 0
+                    ? Math.Min(.9m, .55m + Math.Min(successful, 5) * .05m + Math.Min(citations, 5) * .03m)
+                    : 0m;
+
         return new
         {
             classification,
             label,
             questionAnswered = answered,
             currentEvidenceRequired = intent.RequiresCurrentEvidence,
+            currentPublicEvidenceVerified = currentPublicVerified,
             successfulSourceCount = successful,
+            authoritativeSourceCount = successful,
             failedSourceCount = failed,
+            providerResponseCount = providerResponses,
             citationCount = citations,
             privateDocumentCitationCount = privateCitations,
-            confidence = result.Answer.Confidence,
+            confidence = evidenceScore,
+            evidenceScore,
+            scoreMeaning = "Deterministic evidence strength, not model accuracy or probability of truth.",
             humanReviewRequired = classification.Contains("draft") || classification == "insufficient_evidence",
-            reasons = new[] { intent.Reason, $"Successful current/source observations: {successful}.", $"Failed, unavailable, or unauthorized observations: {failed}.", $"Private document citations: {privateCitations}; other source identifiers: {citations}." },
+            reasons = new[]
+            {
+                intent.Reason,
+                $"Successful authoritative observations: {successful}.",
+                $"Provider/model responses excluded from evidence: {providerResponses}.",
+                $"Failed, unavailable, or unauthorized observations: {failed}.",
+                $"Private document citations: {privateCitations}; other source identifiers: {citations}."
+            },
             dataAsOf = result.Answer.DataAsOf
         };
+    }
+
+    private static bool IsProviderNarrativeSource(PulseAiSystemSourceEvidence source)
+    {
+        var type = (source.SourceType ?? string.Empty).Trim().ToLowerInvariant();
+        return type.Contains("public_ai", StringComparison.Ordinal)
+            || type.Contains("private_ai", StringComparison.Ordinal)
+            || type.Contains("provider", StringComparison.Ordinal)
+            || type.Contains("model", StringComparison.Ordinal);
+    }
+
+    private static bool IsAuthoritativeTrustSource(PulseAiSystemSourceEvidence source)
+    {
+        if (source.StatusCode is < 200 or >= 300 || IsProviderNarrativeSource(source)) return false;
+        var type = (source.SourceType ?? string.Empty).Trim().ToLowerInvariant();
+        return type == "authoritative_public_web"
+            || type.Contains("internal_database", StringComparison.Ordinal)
+            || type.Contains("live_tool", StringComparison.Ordinal)
+            || type.Contains("same_origin_tool", StringComparison.Ordinal)
+            || type.Contains("runtime_endpoint", StringComparison.Ordinal)
+            || type.Contains("private_rag", StringComparison.Ordinal)
+            || type.Contains("document", StringComparison.Ordinal)
+            || type.Contains("authoritative", StringComparison.Ordinal);
     }
 
     private static bool AnswerHasRequiredShape(string question, string direct, string? intentCode = null)

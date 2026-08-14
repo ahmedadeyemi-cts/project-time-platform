@@ -191,6 +191,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseAdminAuditTelemetry();
 app.UseProjectPulseSecurityHardening();
 app.UseWorkRegisterAuthorization();
 
@@ -15582,61 +15583,141 @@ app.MapPost("/api/projects/cost-alerts/{alertId:guid}/release-notification", asy
 });
 
 
-app.MapGet("/api/project-management/summary", async () =>
+app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
     if (missingResult is not null) return missingResult;
 
-    await using var connection = new NpgsqlConnection(config.ConnectionString);
-    await connection.OpenAsync();
-
-    var milestones = new List<object>();
-    await using (var command = new NpgsqlCommand("""
-        SELECT p.project_code, pm.milestone_name, pm.milestone_status, pm.due_date, pm.display_order
-        FROM project_milestones pm
-        INNER JOIN projects p ON p.project_id = pm.project_id
-        ORDER BY p.project_code, pm.display_order, pm.due_date;
-        """, connection))
-    await using (var reader = await command.ExecuteReaderAsync())
+    try
     {
-        while (await reader.ReadAsync())
-        {
-            milestones.Add(new
-            {
-                projectCode = reader.GetString(0),
-                name = reader.GetString(1),
-                status = reader.GetString(2),
-                dueDate = reader.IsDBNull(3) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(3),
-                displayOrder = reader.GetInt32(4)
-            });
-        }
-    }
+        await using var connection = new NpgsqlConnection(config.ConnectionString);
+        await connection.OpenAsync(httpContext.RequestAborted);
 
-    var risks = new List<object>();
-    await using (var command = new NpgsqlCommand("""
-        SELECT p.project_code, pr.risk_title, pr.probability, pr.impact, pr.risk_status, pr.mitigation_plan
-        FROM project_risks pr
-        INNER JOIN projects p ON p.project_id = pr.project_id
-        ORDER BY p.project_code, pr.created_at DESC;
-        """, connection))
-    await using (var reader = await command.ExecuteReaderAsync())
+        await using (var readiness = new NpgsqlCommand("""
+            SELECT
+                to_regclass('public.project_milestones') IS NOT NULL,
+                to_regclass('public.project_risks') IS NOT NULL,
+                EXISTS(
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='project_risks'
+                      AND column_name='probability_score'),
+                EXISTS(
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='project_risks'
+                      AND column_name='overall_impact_score');
+            """, connection))
+        await using (var reader = await readiness.ExecuteReaderAsync(httpContext.RequestAborted))
+        {
+            await reader.ReadAsync(httpContext.RequestAborted);
+            if (!reader.GetBoolean(0) || !reader.GetBoolean(1) || !reader.GetBoolean(2) || !reader.GetBoolean(3))
+            {
+                return Results.Json(new
+                {
+                    status = "project_management_schema_unavailable",
+                    message = "Project Management requires the current milestone and Risk Register schema.",
+                    source = "project_management_summary",
+                    requiredMigration = "077_module_082_enterprise_project_risk_register",
+                    stateChanged = false
+                }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }
+
+        var milestones = new List<object>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT p.project_code,pm.milestone_name,pm.milestone_status,pm.due_date,pm.display_order
+            FROM project_milestones pm
+            INNER JOIN projects p ON p.project_id=pm.project_id
+            ORDER BY p.project_code,pm.display_order,pm.due_date;
+            """, connection))
+        await using (var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted))
+        {
+            while (await reader.ReadAsync(httpContext.RequestAborted))
+            {
+                milestones.Add(new
+                {
+                    projectCode = reader.GetString(0),
+                    name = reader.GetString(1),
+                    status = reader.GetString(2),
+                    dueDate = reader.IsDBNull(3) ? (DateOnly?)null : reader.GetFieldValue<DateOnly>(3),
+                    displayOrder = reader.GetInt32(4)
+                });
+            }
+        }
+
+        var risks = new List<object>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT
+                p.project_code,
+                pr.risk_title,
+                CASE WHEN pr.probability_score<=2 THEN 'low'
+                     WHEN pr.probability_score=3 THEN 'medium'
+                     ELSE 'high' END,
+                CASE WHEN pr.overall_impact_score<=2 THEN 'low'
+                     WHEN pr.overall_impact_score=3 THEN 'medium'
+                     ELSE 'high' END,
+                pr.risk_status,
+                COALESCE(NULLIF(pr.mitigation_actions,''),NULLIF(pr.response_plan,'')),
+                pr.inherent_exposure,
+                pr.risk_number
+            FROM project_risks pr
+            INNER JOIN projects p ON p.project_id=pr.project_id
+            ORDER BY p.project_code,pr.created_at DESC;
+            """, connection))
+        await using (var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted))
+        {
+            while (await reader.ReadAsync(httpContext.RequestAborted))
+            {
+                risks.Add(new
+                {
+                    projectCode = reader.GetString(0),
+                    title = reader.GetString(1),
+                    probability = reader.GetString(2),
+                    impact = reader.GetString(3),
+                    status = reader.GetString(4),
+                    mitigationPlan = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    exposure = reader.IsDBNull(6) ? (short?)null : reader.GetInt16(6),
+                    riskNumber = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7)
+                });
+            }
+        }
+
+        return Results.Ok(new
+        {
+            status = "project_management_summary_loaded",
+            milestoneCount = milestones.Count,
+            riskCount = risks.Count,
+            milestones,
+            risks,
+            sources = new
+            {
+                projectMilestones = "healthy",
+                projectRiskRegister = "healthy",
+                riskSchema = "migration_077"
+            },
+            generatedAt = DateTimeOffset.UtcNow,
+            stateChanged = false
+        });
+    }
+    catch (PostgresException exception)
     {
-        while (await reader.ReadAsync())
+        return Results.Json(new
         {
-            risks.Add(new
-            {
-                projectCode = reader.GetString(0),
-                title = reader.GetString(1),
-                probability = reader.GetString(2),
-                impact = reader.GetString(3),
-                status = reader.GetString(4),
-                mitigationPlan = reader.IsDBNull(5) ? null : reader.GetString(5)
-            });
-        }
+            status = "project_management_query_failed",
+            message = "Project Management data is temporarily unavailable because an authoritative database query failed.",
+            diagnosticCode = exception.SqlState,
+            stateChanged = false
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
-
-    return Results.Ok(new { milestoneCount = milestones.Count, riskCount = risks.Count, milestones, risks });
+    catch (Exception)
+    {
+        return Results.Json(new
+        {
+            status = "project_management_dependency_unavailable",
+            message = "Project Management data is temporarily unavailable.",
+            stateChanged = false
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
 });
 
 app.MapGet("/api/resource-scheduling/capacity", async (DateOnly? weekStart) =>

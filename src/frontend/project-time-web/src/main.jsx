@@ -1,3 +1,4 @@
+import './runtime-browser-compatibility.js';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './projectpulse-authoritative-api.js';
@@ -30,6 +31,7 @@ import Module005ExperienceCompatibility from './Module005ExperienceCompatibility
 import MicrosoftIntegrationDualConnectionPortal from './MicrosoftIntegrationDualConnectionPortal.jsx';
 import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadinessPanel.jsx';
 import EnterpriseExperienceController from './EnterpriseExperienceController.jsx';
+import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import './approval-access-navigation-compatibility.js';
 import './scoped-rbac-catalog-compatibility.js';
@@ -49,6 +51,7 @@ import './enterprise-experience-data.css';
 import './enterprise-module-management.css';
 import './enterprise-module-cards.css';
 import './enterprise-overlay-responsive.css';
+import './enterprise-systemwide-reliability.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
@@ -68,6 +71,7 @@ createRoot(document.getElementById('root')).render(
       <Module005ExperienceCompatibility />
       <MicrosoftIntegrationDualConnectionPortal />
       <MicrosoftMailTransportReadinessPanel />
+      <ProjectForgeFlowHiveSyncPortal />
       <AuthenticatedHelpAssistant />
     </ApplicationErrorBoundary>
   </React.StrictMode>

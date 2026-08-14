@@ -8,6 +8,7 @@ const ENTERPRISE_EXPERIENCE = 'enterprise';
 const CLASSIC_EXPERIENCE = 'classic';
 const CONTROL_HOST_ID = 'pulse-enterprise-experience-control-host';
 const PAGE_CHROME_HOST_ID = 'pulse-enterprise-page-chrome-host';
+const DISPLAY_UTILITY_DOCK_ID = 'pulse-display-utility-dock';
 
 const STATIC_ROUTE_METADATA = Object.freeze({
   dashboard: Object.freeze({
@@ -96,36 +97,53 @@ function routeMetadata(route) {
   };
 }
 
-function findHeaderUtilities(main) {
-  const topBar = main?.querySelector(':scope > .top-bar')
+function findTopBar(main) {
+  return main?.querySelector(':scope > .top-bar')
     || main?.querySelector(':scope > .enterprise-top-bar')
     || document.querySelector('.enterprise-top-bar, .top-bar');
+}
+
+function ensureDisplayUtilityDock(main) {
+  const topBar = findTopBar(main);
   if (!topBar) return null;
-  return topBar.querySelector('.enterprise-header-utilities') || topBar;
+
+  let dock = topBar.querySelector(`:scope > #${DISPLAY_UTILITY_DOCK_ID}`);
+  if (!dock) {
+    document.getElementById(DISPLAY_UTILITY_DOCK_ID)?.remove();
+    dock = document.createElement('div');
+    dock.id = DISPLAY_UTILITY_DOCK_ID;
+    dock.className = 'pulse-display-utility-dock';
+    dock.dataset.pulseDisplayUtilityDock = 'true';
+    dock.setAttribute('aria-label', 'Display options');
+
+    const label = document.createElement('span');
+    label.className = 'pulse-display-utility-dock__label';
+    label.textContent = 'Display';
+    dock.appendChild(label);
+
+    const utilities = topBar.querySelector(':scope > .enterprise-header-utilities');
+    if (utilities) utilities.insertAdjacentElement('beforebegin', dock);
+    else topBar.appendChild(dock);
+  }
+
+  const themeSwitcher = topBar.querySelector('[data-pulse-header-theme-switcher]');
+  if (themeSwitcher && themeSwitcher.parentElement !== dock) dock.appendChild(themeSwitcher);
+  return dock;
 }
 
 function ensureControlHost(main) {
-  const utilities = findHeaderUtilities(main);
-  if (!utilities) return null;
+  const dock = ensureDisplayUtilityDock(main);
+  if (!dock) return null;
 
   let host = document.getElementById(CONTROL_HOST_ID);
-  if (host && host.parentElement !== utilities) host.remove();
+  if (host && host.parentElement !== dock) host.remove();
 
-  host = utilities.querySelector(`#${CONTROL_HOST_ID}`);
+  host = dock.querySelector(`#${CONTROL_HOST_ID}`);
   if (!host) {
     host = document.createElement('div');
     host.id = CONTROL_HOST_ID;
     host.dataset.pulseEnterpriseExperienceHost = 'control';
-
-    const profileControl = utilities.querySelector(
-      '.profile-menu, .profile-avatar-button, [data-profile-menu], [aria-label*="profile" i]'
-    );
-    let insertionPoint = profileControl;
-    while (insertionPoint?.parentElement && insertionPoint.parentElement !== utilities) {
-      insertionPoint = insertionPoint.parentElement;
-    }
-    if (insertionPoint?.parentElement === utilities) utilities.insertBefore(host, insertionPoint);
-    else utilities.appendChild(host);
+    dock.appendChild(host);
   }
 
   return host;

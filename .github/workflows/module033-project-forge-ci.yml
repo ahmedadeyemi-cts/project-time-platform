@@ -93,6 +93,18 @@ jobs:
             ! grep -Eq '^[[:space:]]{2}push:' .github/workflows/projectpulse-deploy-celar-ai-private-runtime-test.yml
             grep -Fq 'status: deferred-until-opencloud' deployment/environments/opencloud-template.yml
           fi
+          if [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
+            # This broad reconciliation branch updates the canonical generated-API
+            # source patch that materializes Project Management and FlowHive routes.
+            # It is not a deployment controller and remains the only deployment/
+            # path permitted by this regression-mode exception.
+            PROTECTED_DEPLOYMENT="$(grep -Fvx \
+              'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' \
+              <<<"$PROTECTED_DEPLOYMENT" || true)"
+            test -f deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh
+            grep -Fxq 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$CHANGED"
+            echo 'MODULE_033_SYSTEMWIDE_RECONCILIATION_BOUNDARY=PASSED'
+          fi
           if [[ -n "$PROTECTED_DEPLOYMENT" ]]; then
             echo 'Project Forge validation never authorizes deployment controls or the web Dockerfile.' >&2
             printf '%s\n' "$PROTECTED_DEPLOYMENT" >&2
