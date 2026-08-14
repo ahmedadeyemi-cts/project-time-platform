@@ -32,10 +32,11 @@ jobs:
           path = Path('tests/CelarAiUniversalAnswerReliabilityTests/Program.cs')
           text = path.read_text()
           anchor = 'Require(livePublic.Assessment.Passed, "retrieval-time cited public answer passes");\n'
-          diagnostic = '''Console.WriteLine("LIVE_PUBLIC_PLAN=" + JsonSerializer.Serialize(currentPublicPlan));
-Console.WriteLine("LIVE_PUBLIC_ASSESSMENT=" + JsonSerializer.Serialize(livePublic.Assessment));
-Console.WriteLine("LIVE_PUBLIC_RESULT=" + JsonSerializer.Serialize(livePublic.Result));
-'''
+          diagnostic = (
+              'Console.WriteLine("LIVE_PUBLIC_PLAN=" + JsonSerializer.Serialize(currentPublicPlan));\n'
+              'Console.WriteLine("LIVE_PUBLIC_ASSESSMENT=" + JsonSerializer.Serialize(livePublic.Assessment));\n'
+              'Console.WriteLine("LIVE_PUBLIC_RESULT=" + JsonSerializer.Serialize(livePublic.Result));\n'
+          )
           if text.count(anchor) != 1:
               raise SystemExit(f'Expected one live-public assertion; found {text.count(anchor)}.')
           path.write_text(text.replace(anchor, diagnostic + anchor, 1))
