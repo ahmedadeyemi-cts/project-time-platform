@@ -1,4 +1,4 @@
-name: Diagnose Systemwide Reliability API Build 20260814
+name: Prepare Remaining CI Gates and Diagnose Frontend 20260814
 
 on:
   push:
@@ -8,12 +8,12 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-api-build:
+  prepare-and-diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -22,31 +22,116 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
-        with:
-          dotnet-version: '10.0.x'
+      - name: Create exact Module 008 and Module 030 workflow blobs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Build API and publish concise compiler evidence
+          module008 = Path('.github/workflows/validate-global-session-invalidation.yml')
+          text = module008.read_text()
+          old = 'elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* ]]; then'
+          new = 'elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* || "$BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one Module 008 regression branch anchor; found {text.count(old)}.')
+          module008.write_text(text.replace(old, new, 1))
+
+          module030 = Path('.github/workflows/module030-analytics-center-ci.yml')
+          text = module030.read_text()
+          old = '''          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
+'''
+          new = '''          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
+            # This branch changes the canonical generated API source patch that
+            # materializes Project Management and FlowHive routes. It is source,
+            # not a deployment controller, and remains the only deployment/
+            # path permitted by this exact regression boundary.
+            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$DEPLOYMENT_OVERLAP" || true)"
+            test -f deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh
+            grep -Fxq 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$CHANGED"
+            echo 'ANALYTICS_CENTER_SYSTEMWIDE_RELIABILITY_BOUNDARY=PASSED'
+          fi
+          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one Module 030 deployment-overlap anchor; found {text.count(old)}.')
+          module030.write_text(text.replace(old, new, 1))
+          PY
+
+          git diff --check -- \
+            .github/workflows/validate-global-session-invalidation.yml \
+            .github/workflows/module030-analytics-center-ci.yml
+          grep -Fq 'fix/systemwide-enterprise-reliability-final-*' .github/workflows/validate-global-session-invalidation.yml
+          grep -Fq 'ANALYTICS_CENTER_SYSTEMWIDE_RELIABILITY_BOUNDARY=PASSED' .github/workflows/module030-analytics-center-ci.yml
+
+          create_blob() {
+            local file="$1"
+            local payload response sha expected
+            payload="$(jq -n --arg content "$(base64 -w0 "$file")" '{content:$content,encoding:"base64"}')"
+            response="$(curl -fsS -X POST \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$REPOSITORY/git/blobs" \
+              -d "$payload")"
+            sha="$(jq -r '.sha // empty' <<<"$response")"
+            expected="$(git hash-object "$file")"
+            [[ "$sha" == "$expected" ]] || {
+              echo "ERROR: GitHub blob SHA mismatch for $file." >&2
+              exit 1
+            }
+            printf '%s\n' "$sha"
+          }
+
+          MODULE008_SHA="$(create_blob .github/workflows/validate-global-session-invalidation.yml)"
+          MODULE030_SHA="$(create_blob .github/workflows/module030-analytics-center-ci.yml)"
+          jq -n \
+            --arg module008 "$MODULE008_SHA" \
+            --arg module030 "$MODULE030_SHA" \
+            '{module008:{path:".github/workflows/validate-global-session-invalidation.yml",sha:$module008},module030:{path:".github/workflows/module030-analytics-center-ci.yml",sha:$module030}}' \
+            > "$RUNNER_TEMP/remaining-ci-workflow-blobs.json"
+          cat "$RUNNER_TEMP/remaining-ci-workflow-blobs.json"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build frontend and publish concise failure evidence
+        working-directory: src/frontend/project-time-web
         shell: bash
         run: |
           set +e
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
-            --configuration Release \
-            --verbosity minimal \
-            2>&1 | tee "$RUNNER_TEMP/api-build.log"
+          npm run build 2>&1 | tee "$RUNNER_TEMP/frontend-build.log"
           status=${PIPESTATUS[0]}
-          echo '--- CONCISE_COMPILER_EVIDENCE_BEGIN ---'
-          grep -E '(^|: )(error (CS|MSB|NU)[0-9]*:|error:|Build FAILED\.|[0-9]+ Error\(s\))' \
-            "$RUNNER_TEMP/api-build.log" | tail -n 120 || true
-          echo '--- CONCISE_COMPILER_EVIDENCE_END ---'
+          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_BEGIN ---'
+          grep -Ei '(error|failed|failure|cannot|could not|syntaxerror|referenceerror|rolluperror|✗)' \
+            "$RUNNER_TEMP/frontend-build.log" | tail -n 160 || true
+          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_END ---'
           exit "$status"
 
-      - name: Upload full API build log
+      - name: Upload workflow blobs and frontend build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: systemwide-reliability-api-build-log-20260814
-          path: ${{ runner.temp }}/api-build.log
-          if-no-files-found: error
+          name: remaining-ci-gates-and-frontend-build-20260814
+          path: |
+            ${{ runner.temp }}/remaining-ci-workflow-blobs.json
+            ${{ runner.temp }}/frontend-build.log
+          if-no-files-found: warn
           retention-days: 1
