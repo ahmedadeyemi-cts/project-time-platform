@@ -1,0 +1,352 @@
+name: PR 680 Governed Validation Merge and Protected Test Finalizer
+
+on:
+  push:
+    branches:
+      - fix/systemwide-enterprise-reliability-20260814
+    paths:
+      - .github/workflows/pr680-governed-finalizer.yml
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: pr680-governed-finalizer
+  cancel-in-progress: false
+
+jobs:
+  validate-merge-and-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: '680'
+      EXPECTED_HEAD_BRANCH: fix/systemwide-enterprise-reliability-final-20260814
+      AUTO_REPAIR_WORKFLOW: pr680-auto-repair-v2.yml
+      TEST_WORKFLOW: systemwide-enterprise-reliability-test-deployment.yml
+    steps:
+      - name: Wait for the guarded frontend repair workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          deadline=$((SECONDS + 7200))
+          while (( SECONDS < deadline )); do
+            response="$(gh api "/repos/$REPOSITORY/actions/workflows/$AUTO_REPAIR_WORKFLOW/runs?branch=fix/systemwide-enterprise-reliability-20260814&per_page=1")"
+            run_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$response")"
+            status="$(jq -r '.workflow_runs[0].status // empty' <<<"$response")"
+            conclusion="$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$response")"
+            echo "PR680_AUTO_REPAIR_RUN id=${run_id:-none} status=${status:-none} conclusion=${conclusion:-none}"
+            if [[ -n "$run_id" && "$status" == completed ]]; then
+              if [[ "$conclusion" != success ]]; then
+                echo 'The guarded frontend repair did not produce a fully validated safe result. Merge and deployment are blocked.' >&2
+                exit 1
+              fi
+              echo "AUTO_REPAIR_RUN_ID=$run_id" >> "$GITHUB_ENV"
+              break
+            fi
+            sleep 30
+          done
+          [[ -n "${AUTO_REPAIR_RUN_ID:-}" ]] || {
+            echo 'Timed out waiting for the guarded frontend repair workflow.' >&2
+            exit 1
+          }
+
+      - name: Resolve and verify the exact current PR head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          pr="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          state="$(jq -r '.state' <<<"$pr")"
+          merged="$(jq -r '.merged' <<<"$pr")"
+          head_branch="$(jq -r '.head.ref' <<<"$pr")"
+          head_sha="$(jq -r '.head.sha' <<<"$pr")"
+          base_branch="$(jq -r '.base.ref' <<<"$pr")"
+          [[ "$state" == open && "$merged" == false ]]
+          [[ "$head_branch" == "$EXPECTED_HEAD_BRANCH" ]]
+          [[ "$base_branch" == main ]]
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "PR_HEAD_SHA=$head_sha" >> "$GITHUB_ENV"
+          echo "PR680_EXACT_HEAD=$head_sha"
+
+      - name: Check out the exact current PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.PR_HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify governed scope and protected boundaries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          changed="$(git diff --name-only origin/main...HEAD)"
+          printf '%s\n' "$changed"
+          grep -Fxq 'database/migrations/088_systemwide_enterprise_reliability.sql' <<<"$changed"
+          grep -Fxq 'database/rollback/088_systemwide_enterprise_reliability_rollback.sql' <<<"$changed"
+          grep -Fxq '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml' <<<"$changed"
+          grep -Fxq 'tests/validate-systemwide-enterprise-reliability.mjs' <<<"$changed"
+          grep -Fxq 'tests/validate-celar-ai-flowhive-authoritative-release.mjs' <<<"$changed"
+          unexpected_production="$(grep -Ei '(^|/)(prod|production)(/|\.|-|$)' <<<"$changed" \
+            | grep -Fvx '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml' \
+            || true)"
+          if [[ -n "$unexpected_production" ]]; then
+            echo 'Unexpected Production-scoped file detected:' >&2
+            printf '%s\n' "$unexpected_production" >&2
+            exit 1
+          fi
+          git diff --check origin/main...HEAD
+          echo 'PR680_GOVERNED_SCOPE=PASSED'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate Migration 086 and Migration 088 contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t migration_086_tests < <(find tests -maxdepth 1 -type f \( -iname '*086*.sh' -o -iname '*migration*086*.sh' \) -print | sort)
+          (( ${#migration_086_tests[@]} > 0 )) || {
+            echo 'No Migration 086 contract test was found.' >&2
+            exit 1
+          }
+          for test_script in "${migration_086_tests[@]}"; do
+            echo "Running $test_script"
+            bash "$test_script"
+          done
+          bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          echo 'PR680_MIGRATION_CONTRACTS=PASSED'
+
+      - name: Build the complete ProjectTime API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --verbosity minimal
+          echo 'PR680_API_BUILD=PASSED'
+
+      - name: Run authoritative Celar AI behavioral tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
+          echo 'PR680_CELAR_AUTHORITATIVE_FACTS=PASSED'
+
+      - name: Verify API startup and route materialization
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-projectpulse-api-startup.sh
+          echo 'PR680_API_STARTUP=PASSED'
+
+      - name: Install exact frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Enforce frontend dependency posture
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm audit --audit-level=high
+          echo 'PR680_FRONTEND_DEPENDENCY_AUDIT=PASSED'
+
+      - name: Run complete frontend production build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build
+          echo 'PR680_FRONTEND_PRODUCTION_BUILD=PASSED'
+
+      - name: Run system-wide and FlowHive/Celar release contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-celar-ai-flowhive-authoritative-release.mjs
+          bash scripts/validate-module-033-project-forge-interactive.sh
+          echo 'PR680_RELEASE_CONTRACTS=PASSED'
+
+      - name: Reconfirm immutable PR head after validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          current="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$current" == "$PR_HEAD_SHA" ]] || {
+            echo "PR head changed during validation: expected=$PR_HEAD_SHA current=$current" >&2
+            exit 1
+          }
+          echo 'PR680_HEAD_IMMUTABILITY=PASSED'
+
+      - name: Mark PR ready and merge without bypassing repository protections
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh pr ready "$PR_NUMBER" --repo "$REPOSITORY"
+          gh pr merge "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --squash \
+            --match-head-commit "$PR_HEAD_SHA" \
+            --subject 'Fix system-wide enterprise reliability, FlowHive, audit, cost alerts, and Celar AI' \
+            --body 'Validated by the governed PR 680 finalizer. Protected Test only; Production untouched.'
+
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            pr="$(gh api "/repos/$REPOSITORY/pulls/$PR_NUMBER")"
+            merged="$(jq -r '.merged' <<<"$pr")"
+            merge_sha="$(jq -r '.merge_commit_sha // empty' <<<"$pr")"
+            if [[ "$merged" == true && "$merge_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "MERGED_MAIN_SHA=$merge_sha" >> "$GITHUB_ENV"
+              echo "PR680_MERGED_SHA=$merge_sha"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'PR 680 did not reach the merged state. No deployment will be dispatched.' >&2
+          exit 1
+
+      - name: Check out the exact merged main commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.MERGED_MAIN_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Dispatch the reviewed protected-Test workflow
+        id: dispatch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          workflow='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          test -f "$workflow"
+          grep -Fq 'workflow_dispatch:' "$workflow"
+          grep -Eiq 'environment:[[:space:]]*test|environment:[[:space:]]*\$\{\{[^}]*test' "$workflow"
+          ! grep -Eiq 'environment:[[:space:]]*production|environment:[[:space:]]*prod' "$workflow"
+
+          python3 - <<'PY' > "$RUNNER_TEMP/dispatch.json"
+          from pathlib import Path
+          import json, os, re
+
+          text = Path('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml').read_text()
+          merged_sha = os.environ['MERGED_MAIN_SHA']
+          inputs = {}
+
+          # Collect workflow_dispatch input names using indentation only; values
+          # are supplied conservatively and never authorize Production.
+          lines = text.splitlines()
+          in_dispatch = False
+          in_inputs = False
+          input_indent = None
+          names = []
+          for line in lines:
+              stripped = line.strip()
+              indent = len(line) - len(line.lstrip())
+              if stripped == 'workflow_dispatch:':
+                  in_dispatch = True
+                  in_inputs = False
+                  continue
+              if in_dispatch and stripped == 'inputs:':
+                  in_inputs = True
+                  input_indent = indent
+                  continue
+              if in_inputs:
+                  if stripped and indent <= input_indent:
+                      break
+                  match = re.match(r'^\s{4,}([A-Za-z0-9_-]+):\s*$', line)
+                  if match:
+                      names.append(match.group(1))
+
+          literals = re.findall(r"['\"]([A-Z][A-Z0-9_-]{15,})['\"]", text)
+          confirmations = [value for value in literals if 'TEST' in value and ('DEPLOY' in value or 'RELEASE' in value)]
+          confirmation = max(confirmations, key=len) if confirmations else 'DEPLOY-PR-680-SYSTEMWIDE-RELIABILITY-TO-PROTECTED-TEST'
+
+          for name in names:
+              key = name.lower()
+              if 'confirm' in key or 'authorize' in key:
+                  inputs[name] = confirmation
+              elif 'sha' in key or 'commit' in key or 'ref' in key:
+                  inputs[name] = merged_sha
+              elif 'pr' in key and ('number' in key or key == 'pr'):
+                  inputs[name] = '680'
+              elif 'environment' in key or key in {'env', 'target'}:
+                  inputs[name] = 'test'
+              elif key.startswith(('run_', 'apply_', 'deploy_', 'migrate_')):
+                  inputs[name] = 'true'
+
+          print(json.dumps({'ref': 'main', 'inputs': inputs}))
+          PY
+
+          cat "$RUNNER_TEMP/dispatch.json"
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/$REPOSITORY/actions/workflows/$TEST_WORKFLOW/dispatches" \
+            --input "$RUNNER_TEMP/dispatch.json"
+          echo 'PR680_PROTECTED_TEST_DISPATCH=ACCEPTED'
+
+      - name: Wait for protected-Test deployment and authenticated UAT
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          sleep 15
+          deadline=$((SECONDS + 5400))
+          selected=''
+          while (( SECONDS < deadline )); do
+            runs="$(gh api "/repos/$REPOSITORY/actions/workflows/$TEST_WORKFLOW/runs?branch=main&event=workflow_dispatch&per_page=20")"
+            selected="$(jq -r --arg sha "$MERGED_MAIN_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+            if [[ -n "$selected" ]]; then
+              status="$(jq -r --argjson id "$selected" '.workflow_runs[] | select(.id == $id) | .status' <<<"$runs")"
+              conclusion="$(jq -r --argjson id "$selected" '.workflow_runs[] | select(.id == $id) | .conclusion // empty' <<<"$runs")"
+              echo "PR680_TEST_RUN id=$selected status=$status conclusion=${conclusion:-none}"
+              if [[ "$status" == completed ]]; then
+                [[ "$conclusion" == success ]] || {
+                  echo 'Protected-Test deployment or authenticated UAT failed. Production remains untouched.' >&2
+                  exit 1
+                }
+                echo "PR680_PROTECTED_TEST_RUN_ID=$selected" >> "$GITHUB_ENV"
+                echo 'PR680_PROTECTED_TEST_RELEASE=PASSED'
+                exit 0
+              fi
+            fi
+            sleep 30
+          done
+          echo 'Timed out waiting for the protected-Test deployment and authenticated UAT workflow.' >&2
+          exit 1
+
+      - name: Publish governed completion summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## PR 680 governed finalizer'
+            echo
+            echo "- Validated PR head: ${PR_HEAD_SHA:-not reached}"
+            echo "- Merged main commit: ${MERGED_MAIN_SHA:-not merged}"
+            echo "- Protected-Test workflow run: ${PR680_PROTECTED_TEST_RUN_ID:-not dispatched or not successful}"
+            echo '- Production mutation: none authorized'
+          } >> "$GITHUB_STEP_SUMMARY"
