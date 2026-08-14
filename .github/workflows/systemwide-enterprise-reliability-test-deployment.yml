@@ -220,6 +220,23 @@ jobs:
           ACR='${{ vars.AZURE_ACR_NAME }}'
           SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
           UNIQUE_TAG="rel-${SHORT_RELEASE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RELEASE_ROOT="$(pwd -P)"
+          BUILD_LOG="$EVIDENCE_DIR/image-build.log"
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          : > "$BUILD_LOG"
+          [[ -n "$ACR" && "$ACR" =~ ^[A-Za-z0-9]+$ ]] || fail 'AZURE_ACR_NAME is missing or invalid.'
+          for tool in az docker realpath tee; do
+            command -v "$tool" >/dev/null 2>&1 || fail "Required image-build tool is unavailable: $tool"
+          done
+          for required in             deployment/containers/api/Dockerfile             deployment/containers/web/Dockerfile; do
+            [[ -f "$required" ]] || fail "Image-build Dockerfile is missing: $required"
+          done
+          {
+            echo "IMAGE_BUILD_RELEASE_ROOT=$RELEASE_ROOT"
+            echo "IMAGE_BUILD_ACR=$ACR"
+            echo "IMAGE_BUILD_UNIQUE_TAG=$UNIQUE_TAG"
+          } | tee -a "$BUILD_LOG" >&2
 
           resolve_digest() {
             local image="$1" digest='' attempt
@@ -232,20 +249,42 @@ jobs:
           }
 
           build_image() {
-            local repository="$1" dockerfile="$2" context="$3" image="$repository:$UNIQUE_TAG" digest='' attempt
+            local repository="$1" dockerfile="$2" context="$3" image="$repository:$UNIQUE_TAG"
+            local digest='' attempt dockerfile_abs context_abs dockerfile_for_acr full_image
+
+            dockerfile_abs="$(realpath "$dockerfile")" || fail "Could not resolve Dockerfile path: $dockerfile"
+            context_abs="$(realpath "$context")" || fail "Could not resolve build context: $context"
+            [[ -f "$dockerfile_abs" ]] || fail "Dockerfile is not a file: $dockerfile_abs"
+            [[ -d "$context_abs" ]] || fail "Build context is not a directory: $context_abs"
+            case "$dockerfile_abs" in
+              "$context_abs"/*) dockerfile_for_acr="${dockerfile_abs#"$context_abs"/}" ;;
+              *) fail "Dockerfile must be contained by its ACR build context: $dockerfile_abs outside $context_abs" ;;
+            esac
+
+            {
+              echo "IMAGE_BUILD_REPOSITORY=$repository"
+              echo "IMAGE_BUILD_CONTEXT=$context_abs"
+              echo "IMAGE_BUILD_DOCKERFILE=$dockerfile_for_acr"
+            } | tee -a "$BUILD_LOG" >&2
+
             for attempt in 1 2; do
-              echo "ACR_BUILD_ATTEMPT=$attempt IMAGE=$image" >&2
-              if az acr build --registry "$ACR" --image "$image" --file "$dockerfile" --timeout 3600 "$context" >&2; then
+              echo "ACR_BUILD_ATTEMPT=$attempt IMAGE=$image" | tee -a "$BUILD_LOG" >&2
+              if az acr build                 --registry "$ACR"                 --image "$image"                 --file "$dockerfile_for_acr"                 --timeout 3600                 "$context_abs" 2>&1 | tee -a "$BUILD_LOG" >&2; then
                 digest="$(resolve_digest "$image" || true)"
-                if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then printf '%s\n' "$digest"; return 0; fi
+                if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                  printf '%s\n' "$digest"
+                  return 0
+                fi
+                echo "ACR_BUILD_DIGEST_UNAVAILABLE IMAGE=$image ATTEMPT=$attempt" | tee -a "$BUILD_LOG" >&2
               fi
               (( attempt < 2 )) && sleep $((attempt * 20))
             done
-            echo "ACR cloud build failed twice; using authenticated local Docker fallback for $image." >&2
-            az acr login --name "$ACR" --only-show-errors >&2
-            local full_image="$ACR.azurecr.io/$image"
-            docker build --file "$dockerfile" --tag "$full_image" "$context" >&2
-            docker push "$full_image" >&2
+
+            echo "ACR cloud build failed twice; using authenticated local Docker fallback for $image." | tee -a "$BUILD_LOG" >&2
+            az acr login --name "$ACR" --only-show-errors 2>&1 | tee -a "$BUILD_LOG" >&2
+            full_image="$ACR.azurecr.io/$image"
+            docker build --file "$dockerfile_abs" --tag "$full_imae" "$context_abs" 2>&1 | tee -a "$BUILD_LOG" >&2
+            docker push "$full_image" 2>&1 | tee -a "$BUILD_LOG" >&2
             digest="$(resolve_digest "$image" || true)"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Fallback build did not publish an immutable digest for $image."
             printf '%s\n' "$digest"
