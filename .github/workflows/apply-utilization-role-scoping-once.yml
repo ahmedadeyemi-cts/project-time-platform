@@ -39,30 +39,29 @@ jobs:
           from pathlib import Path
 
           path = Path('.github/scripts/apply_utilization_role_scoping.py')
-          source = path.read_text(encoding='utf-8')
-          replacements = [
-              (
-                  r'''        r'app\\.MapGet\\("/api/utilization/yearly-status",[\\s\\S]*?\\n\\}\\);'
-                  r'\\n\\n\\napp\\.MapGet\\("/api/project-allocation-info/source-projects"''',
-                  r'''        r'app\.MapGet\("/api/utilization/yearly-status",[\s\S]*?\n\}\);'
-                  r'\n\n\napp\.MapGet\("/api/project-allocation-info/source-projects"'''
-              ),
-              (
-                  r'''        r'  const loadUsers = useCallback\\(async \\(\\) => \\{[\\s\\S]*?\\n  \\}, \\[\\]\\);',''',
-                  r'''        r'  const loadUsers = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[\]\);','''
-              ),
-              (
-                  r'''        r'  useEffect\\(\\(\\) => \\{\\n    const timers = \\[250, 1200, 3000\\][\\s\\S]*?\\n  \\}, \\[loadUsers\\]\\);',''',
-                  r'''        r'  useEffect\(\(\) => \{\n    const timers = \[250, 1200, 3000\][\s\S]*?\n  \}, \[loadUsers\]\);','''
+          lines = path.read_text(encoding='utf-8').splitlines()
+          slash = chr(92)
+          doubled = slash * 2
+          updated = 0
+
+          for index, line in enumerate(lines):
+              is_target = (
+                  ('yearly-status' in line and "r'app" in line)
+                  or ('source-projects' in line and line.lstrip().startswith("r'"))
+                  or ('const loadUsers = useCallback' in line and "r'" in line)
+                  or ('const timers = ' in line and "r'  useEffect" in line)
               )
-          ]
+              if not is_target:
+                  continue
+              if doubled not in line:
+                  raise SystemExit(f'Expected doubled regex escapes were not found on line {index + 1}')
+              lines[index] = line.replace(doubled, slash)
+              updated += 1
 
-          for old, new in replacements:
-              if old not in source:
-                  raise SystemExit(f'Expected regex literal was not found: {old!r}')
-              source = source.replace(old, new, 1)
+          if updated != 4:
+              raise SystemExit(f'Expected to normalize four regex lines, normalized {updated}')
 
-          path.write_text(source, encoding='utf-8')
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
           print('PATCHER_REGEX_NORMALIZATION=PASS')
           PY
 
