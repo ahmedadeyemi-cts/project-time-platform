@@ -31,7 +31,7 @@ jobs:
           test "$(git merge-base 94949b43b999146b07b10956b1f128e4619ebb82 HEAD)" = 94949b43b999146b07b10956b1f128e4619ebb82
           git diff --check 94949b43b999146b07b10956b1f128e4619ebb82...HEAD
 
-      - name: Normalize guarded patcher regex literals
+      - name: Make the yearly endpoint anchor whitespace tolerant
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -41,28 +41,31 @@ jobs:
           path = Path('.github/scripts/apply_utilization_role_scoping.py')
           lines = path.read_text(encoding='utf-8').splitlines()
           slash = chr(92)
-          doubled = slash * 2
-          updated = 0
+          matches = [
+              index
+              for index, line in enumerate(lines)
+              if 'yearly-status' in line and "r'app" in line
+          ]
 
-          for index, line in enumerate(lines):
-              is_target = (
-                  ('yearly-status' in line and "r'app" in line)
-                  or ('source-projects' in line and line.lstrip().startswith("r'"))
-                  or ('const loadUsers = useCallback' in line and "r'" in line)
-                  or ('const timers = ' in line and "r'  useEffect" in line)
-              )
-              if not is_target:
-                  continue
-              if doubled not in line:
-                  raise SystemExit(f'Expected doubled regex escapes were not found on line {index + 1}')
-              lines[index] = line.replace(doubled, slash)
-              updated += 1
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one yearly regex line, found {len(matches)}')
 
-          if updated != 4:
-              raise SystemExit(f'Expected to normalize four regex lines, normalized {updated}')
+          index = matches[0]
+          if index + 1 >= len(lines) or 'source-projects' not in lines[index + 1]:
+              raise SystemExit('The yearly endpoint closing anchor is not adjacent to the opening regex line')
+
+          lines[index] = (
+              "        r'app" + slash + ".MapGet" + slash
+              + "(\"/api/utilization/yearly-status\",[" + slash + "s" + slash
+              + "S]*?" + slash + "n" + slash + "}" + slash + ");'"
+          )
+          lines[index + 1] = (
+              "        r'" + slash + "s*app" + slash + ".MapGet" + slash
+              + "(\"/api/project-allocation-info/source-projects\"'"
+          )
 
           path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          print('PATCHER_REGEX_NORMALIZATION=PASS')
+          print('PATCHER_YEARLY_ANCHOR_REPAIR=PASS')
           PY
 
       - name: Apply guarded source repair
