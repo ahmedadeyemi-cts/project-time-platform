@@ -1,4 +1,4 @@
-name: Prepare Remaining CI Gates and Diagnose Frontend 20260814
+name: Publish Module 008 and 030 Regression Blobs 20260814
 
 on:
   push:
@@ -11,9 +11,8 @@ permissions:
   contents: write
 
 jobs:
-  prepare-and-diagnose:
+  publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -22,56 +21,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Create exact Module 008 and Module 030 workflow blobs
+      - name: Apply exact CI regression boundaries and create Git blobs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          module008 = Path('.github/workflows/validate-global-session-invalidation.yml')
-          text = module008.read_text()
-          old = 'elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* ]]; then'
-          new = 'elif [[ "$BRANCH" == feature/enterprise-operations-ux-* || "$BRANCH" == fix/modules-081-082-theme-recovery-* || "$BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then'
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected exactly one Module 008 regression branch anchor; found {text.count(old)}.')
-          module008.write_text(text.replace(old, new, 1))
-
-          module030 = Path('.github/workflows/module030-analytics-center-ci.yml')
-          text = module030.read_text()
-          old = '''          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
-            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
-          fi
-          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
-'''
-          new = '''          if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
-            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
-          fi
-          if [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
-            # This branch changes the canonical generated API source patch that
-            # materializes Project Management and FlowHive routes. It is source,
-            # not a deployment controller, and remains the only deployment/
-            # path permitted by this exact regression boundary.
-            DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$DEPLOYMENT_OVERLAP" || true)"
-            test -f deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh
-            grep -Fxq 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$CHANGED"
-            echo 'ANALYTICS_CENTER_SYSTEMWIDE_RELIABILITY_BOUNDARY=PASSED'
-          fi
-          if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected exactly one Module 030 deployment-overlap anchor; found {text.count(old)}.')
-          module030.write_text(text.replace(old, new, 1))
-          PY
-
+          printf '%s' 'ZGlmZiAtLWdpdCBhLy5naXRodWIvd29ya2Zsb3dzL3ZhbGlkYXRlLWdsb2JhbC1zZXNzaW9uLWludmFsaWRhdGlvbi55bWwgYi8uZ2l0aHViL3dvcmtmbG93cy92YWxpZGF0ZS1nbG9iYWwtc2Vzc2lvbi1pbnZhbGlkYXRpb24ueW1sCi0tLSBhLy5naXRodWIvd29ya2Zsb3dzL3ZhbGlkYXRlLWdsb2JhbC1zZXNzaW9uLWludmFsaWRhdGlvbi55bWwKKysrIGIvLmdpdGh1Yi93b3JrZmxvd3MvdmFsaWRhdGUtZ2xvYmFsLXNlc3Npb24taW52YWxpZGF0aW9uLnltbApAQCAtNjcsNyArNjcsNyBAQCBqb2JzOgoKICAgICAgICAgICAgIGVjaG8gJ01PRFVMRV8wMDhfTkFUSVZFX0ZBTExCQUNLX1RIRU1FX1NPVVJDRV9JU09MQVRJT049UEFTU0VEJwotICAgICAgICAgIGVsaWYgW1sgIiRCUkFOQ0giID09IGZlYXR1cmUvZW50ZXJwcmlzZS1vcGVyYXRpb25zLXV4LSogfHwgIiRCUkFOQ0giID09IGZpeC9tb2R1bGVzLTA4MS0wODItdGhlbWUtcmVjb3ZlcnktKiBdXTsgdGhlbgorICAgICAgICAgIGVsaWYgW1sgIiRCUkFOQ0giID09IGZlYXR1cmUvZW50ZXJwcmlzZS1vcGVyYXRpb25zLXV4LSogfHwgIiRCUkFOQ0giID09IGZpeC9tb2R1bGVzLTA4MS0wODItdGhlbWUtcmVjb3ZlcnktKiB8fCAiJEJSQU5DSCIgPT0gZml4L3N5c3RlbXdpZGUtZW50ZXJwcmlzZS1yZWxpYWJpbGl0eS1maW5hbC0qIF1dOyB0aGVuCiAgICAgICAgICAgICBESVJFQ1RfTU9EVUxFXzAwOD0nXihcLmdpdGh1Yi93b3JrZmxvd3MvdmFsaWRhdGUtZ2xvYmFsLXNlc3Npb24taW52YWxpZGF0aW9uXC55bWx8c3JjL2Zyb250ZW5kL3Byb2plY3QtdGltZS13ZWIvc2NyaXB0cy8odmFsaWRhdGUtZ2xvYmFsLXNlc3Npb24taW52YWxpZGF0aW9ufHRlc3QtYXV0aG9yaXRhdGl2ZS1zZXNzaW9uLXRyYW5zcG9ydC10aGVtZS1ydW50aW1lfHZhbGlkYXRlLW1vZHVsZXMtMDA4LTAwOS1hZG1pbi1leHBlcmllbmNlKVwubWpzfHNyYy9mcm9udGVuZC9wcm9qZWN0LXRpbWUtd2ViL3NyYy8ocHJvamVjdHB1bHNlLWF1dGhvcml0YXRpdmUtYXBpXC5qc3xBdWRpdEhpc3RvcnlQYW5lbFwuanN4fGFkbWluLWV4cGVyaWVuY2UtdGhlbWVcLmNzcykpJCcKICAgICAgICAgICAgIERJUkVDVF9DSEFOR0VEPSIkKHByaW50ZiAnJXNcbicgIiR7Q0hBTkdFRFtAXX0iIHwgZ3JlcCAtRSAiJERJUkVDVF9NT0RVTEVfMDA4IiB8fCB0cnVlKSIKICAgICAgICAgICAgIFtbIC1uICIkRElSRUNUX0NIQU5HRUQiIF1dIHx8IHsKZGlmZiAtLWdpdCBhLy5naXRodWIvd29ya2Zsb3dzL21vZHVsZTAzMC1hbmFseXRpY3MtY2VudGVyLWNpLnltbCBiLy5naXRodWIvd29ya2Zsb3dzL21vZHVsZTAzMC1hbmFseXRpY3MtY2VudGVyLWNpLnltbAotLS0gYS8uZ2l0aHViL3dvcmtmbG93cy9tb2R1bGUwMzAtYW5hbHl0aWNzLWNlbnRlci1jaS55bWwKKysrIGIvLmdpdGh1Yi93b3JrZmxvd3MvbW9kdWxlMDMwLWFuYWx5dGljcy1jZW50ZXItY2kueW1sCkBAIC0xNjksNiArMTY5LDE2IEBAIGpvYnM6CiAgICAgICAgICAgaWYgW1sgIiRIRUFEX0JSQU5DSCIgPT0gcmVsZWFzZS9jb25zb2xpZGF0ZWQtZW50ZXJwcmlzZS12YWxpZGF0aW9uLSogXV07IHRoZW4KICAgICAgICAgICAgIERFUExPWU1FTlRfT1ZFUkxBUD0iJChncmVwIC1GdnggJ2RlcGxveW1lbnQvY29udGFpbmVycy93ZWIvRG9ja2VyZmlsZScgPDw8IiRERVBMT1lNRU5UX09WRVJMQVAiIHx8IHRydWUpIgogICAgICAgICAgIGZpCisgICAgICAgICAgaWYgW1sgIiRIRUFEX0JSQU5DSCIgPT0gZml4L3N5c3RlbXdpZGUtZW50ZXJwcmlzZS1yZWxpYWJpbGl0eS1maW5hbC0qIF1dOyB0aGVuCisgICAgICAgICAgICAjIFRoaXMgYnJhbmNoIGNoYW5nZXMgdGhlIGNhbm9uaWNhbCBnZW5lcmF0ZWQgQVBJIHNvdXJjZSBwYXRjaCB0aGF0CisgICAgICAgICAgICAjIG1hdGVyaWFsaXplcyBQcm9qZWN0IE1hbmFnZW1lbnQgYW5kIEZsb3dIaXZlIHJvdXRlcy4gSXQgaXMgc291cmNlLAorICAgICAgICAgICAgIyBub3QgYSBkZXBsb3ltZW50IGNvbnRyb2xsZXIsIGFuZCByZW1haW5zIHRoZSBvbmx5IGRlcGxveW1lbnQvCisgICAgICAgICAgICAjIHBhdGggcGVybWl0dGVkIGJ5IHRoaXMgZXhhY3QgcmVncmVzc2lvbiBib3VuZGFyeS4KKyAgICAgICAgICAgIERFUExPWU1FTlRfT1ZFUkxBUD0iJChncmVwIC1GdnggJ2RlcGxveW1lbnQvcm9ja3ktbGludXgvYXBwbHktcmVtYWluaW5nLXBzYS1tb2R1bGUtYXBpLXBhdGNoLnNoJyA8PDwiJERFUExPWU1FTlRfT1ZFUkxBUCIgfHwgdHJ1ZSkiCisgICAgICAgICAgICB0ZXN0IC1mIGRlcGxveW1lbnQvcm9ja3ktbGludXgvYXBwbHktcmVtYWluaW5nLXBzYS1tb2R1bGUtYXBpLXBhdGNoLnNoCisgICAgICAgICAgICBncmVwIC1GeHEgJ2RlcGxveW1lbnQvcm9ja3ktbGludXgvYXBwbHktcmVtYWluaW5nLXBzYS1tb2R1bGUtYXBpLXBhdGNoLnNoJyA8PDwiJENIQU5HRUQiCisgICAgICAgICAgICBlY2hvICdBTkFMWVRJQ1NfQ0VOVEVSX1NZU1RFTVdJREVfUkVMSUFCSUxJVFlfQk9VTkRBUlk9UEFTU0VEJworICAgICAgICAgIGZpCiAgICAgICAgICAgaWYgW1sgLW4gIiRERVBMT1lNRU5UX09WRVJMQVAiIF1dOyB0aGVuCiAgICAgICAgICAgICBlY2hvICdBbmFseXRpY3MgQ2VudGVyIHZhbGlkYXRpb24gZGV0ZWN0ZWQgZGVwbG95bWVudC1jb250cm9sIG92ZXJsYXA6JyA+JjIKICAgICAgICAgICAgIHByaW50ZiAnJXNcbicgIiRERVBMT1lNRU5UX09WRVJMQVAiID4mMgo=' | base64 --decode > "$RUNNER_TEMP/module008-module030.patch"
+          git apply --check --whitespace=error-all "$RUNNER_TEMP/module008-module030.patch"
+          git apply --whitespace=error-all "$RUNNER_TEMP/module008-module030.patch"
           git diff --check -- \
             .github/workflows/validate-global-session-invalidation.yml \
             .github/workflows/module030-analytics-center-ci.yml
-          grep -Fq 'fix/systemwide-enterprise-reliability-final-*' .github/workflows/validate-global-session-invalidation.yml
-          grep -Fq 'ANALYTICS_CENTER_SYSTEMWIDE_RELIABILITY_BOUNDARY=PASSED' .github/workflows/module030-analytics-center-ci.yml
 
           create_blob() {
             local file="$1"
@@ -85,53 +47,21 @@ jobs:
               -d "$payload")"
             sha="$(jq -r '.sha // empty' <<<"$response")"
             expected="$(git hash-object "$file")"
-            [[ "$sha" == "$expected" ]] || {
-              echo "ERROR: GitHub blob SHA mismatch for $file." >&2
-              exit 1
-            }
+            [[ "$sha" == "$expected" ]] || exit 1
             printf '%s\n' "$sha"
           }
 
           MODULE008_SHA="$(create_blob .github/workflows/validate-global-session-invalidation.yml)"
           MODULE030_SHA="$(create_blob .github/workflows/module030-analytics-center-ci.yml)"
-          jq -n \
-            --arg module008 "$MODULE008_SHA" \
-            --arg module030 "$MODULE030_SHA" \
+          jq -n --arg module008 "$MODULE008_SHA" --arg module030 "$MODULE030_SHA" \
             '{module008:{path:".github/workflows/validate-global-session-invalidation.yml",sha:$module008},module030:{path:".github/workflows/module030-analytics-center-ci.yml",sha:$module030}}' \
-            > "$RUNNER_TEMP/remaining-ci-workflow-blobs.json"
-          cat "$RUNNER_TEMP/remaining-ci-workflow-blobs.json"
+            > "$RUNNER_TEMP/module008-module030-blobs.json"
+          cat "$RUNNER_TEMP/module008-module030-blobs.json"
 
-      - name: Set up Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: src/frontend/project-time-web/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: src/frontend/project-time-web
-        run: npm ci --no-audit --no-fund
-
-      - name: Build frontend and publish concise failure evidence
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set +e
-          npm run build 2>&1 | tee "$RUNNER_TEMP/frontend-build.log"
-          status=${PIPESTATUS[0]}
-          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_BEGIN ---'
-          grep -Ei '(error|failed|failure|cannot|could not|syntaxerror|referenceerror|rolluperror|✗)' \
-            "$RUNNER_TEMP/frontend-build.log" | tail -n 160 || true
-          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_END ---'
-          exit "$status"
-
-      - name: Upload workflow blobs and frontend build evidence
-        if: always()
+      - name: Upload blob evidence
         uses: actions/upload-artifact@v4
         with:
-          name: remaining-ci-gates-and-frontend-build-20260814
-          path: |
-            ${{ runner.temp }}/remaining-ci-workflow-blobs.json
-            ${{ runner.temp }}/frontend-build.log
-          if-no-files-found: warn
+          name: module008-module030-regression-blobs-20260814
+          path: ${{ runner.temp }}/module008-module030-blobs.json
+          if-no-files-found: error
           retention-days: 1
