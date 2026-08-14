@@ -1,4 +1,4 @@
-name: Export Help Chat Workflow 20260814
+name: Publish Help Chat Workflow Blob 20260814
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  publish:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact PR branch
@@ -21,19 +21,42 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Stage exact Help-chat workflow
+      - name: Apply exact regression-boundary patch and create Git blob
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          test -s .github/workflows/pulse-ai-help-chat-usability-ci.yml
-          mkdir -p "$RUNNER_TEMP/help-chat-workflow"
-          cp .github/workflows/pulse-ai-help-chat-usability-ci.yml "$RUNNER_TEMP/help-chat-workflow/"
-          sha256sum "$RUNNER_TEMP/help-chat-workflow/pulse-ai-help-chat-usability-ci.yml"
+          FILE='.github/workflows/pulse-ai-help-chat-usability-ci.yml'
+          printf '%s' 'LS0tIGEvLmdpdGh1Yi93b3JrZmxvd3MvcHVsc2UtYWktaGVscC1jaGF0LXVzYWJpbGl0eS1jaS55bWwKKysrIGIvLmdpdGh1Yi93b3JrZmxvd3MvcHVsc2UtYWktaGVscC1jaGF0LXVzYWJpbGl0eS1jaS55bWwKQEAgLTI1NCw2ICsyNTQsMTggQEAKICAgICAgICAgICAgICAgZWNobyAnUFVMU0VfQUlfSEVMUF9DSEFUX1ZBTElEQVRJT05fTU9ERT1GTE9XSElWRV9QUk9EVUNUSU9OJyA+PiAiJEdJVEhVQl9FTlYiCiAgICAgICAgICAgICAgIGVjaG8gJ1BVTFNFX0FJX0hFTFBfQ0hBVF9GTE9XSElWRV9QUk9EVUNUSU9OPVBBU1NFRCcKICAgICAgICAgICAgICAgOzsKKyAgICAgICAgICAgIGZpeC9zeXN0ZW13aWRlLWVudGVycHJpc2UtcmVsaWFiaWxpdHktZmluYWwtKikKKyAgICAgICAgICAgICAgRElSRUNUX0hFTFBfQ0hBTkdFUz0iJChncmVwIC1FICIkSEVMUF9SVU5USU1FX09XTkVEIiA8PDwiJENIQU5HRUQiIHx8IHRydWUpIgorICAgICAgICAgICAgICBVTkFQUFJPVkVEX0hFTFA9IiQoZ3JlcCAtRXYgIiRDRU5UUkFMX0hFTFBfQ09OVkVSR0VOQ0UiIDw8PCIkRElSRUNUX0hFTFBfQ0hBTkdFUyIgfHwgdHJ1ZSkiCisgICAgICAgICAgICAgIGlmIFtbIC1uICIkVU5BUFBST1ZFRF9IRUxQIiBdXTsgdGhlbgorICAgICAgICAgICAgICAgIGVjaG8gJ1RoZSBzeXN0ZW13aWRlIHJlbGlhYmlsaXR5IHBhY2thZ2UgY2hhbmdlZCBIZWxwLWNoYXQgcnVudGltZSBzb3VyY2Ugb3V0c2lkZSB0aGUgcmV2aWV3ZWQgSGVscEFzc2lzdGFudCBjb252ZXJnZW5jZSBib3VuZGFyeTonID4mMgorICAgICAgICAgICAgICAgIHByaW50ZiAnJXNcbicgIiRVTkFQUFJPVkVEX0hFTFAiID4mMgorICAgICAgICAgICAgICAgIGV4aXQgMQorICAgICAgICAgICAgICBmaQorICAgICAgICAgICAgICB0ZXN0IC1mIHNyYy9mcm9udGVuZC9wcm9qZWN0LXRpbWUtd2ViL3NyYy9IZWxwQXNzaXN0YW50LmpzeAorICAgICAgICAgICAgICBlY2hvICdQVUxTRV9BSV9IRUxQX0NIQVRfVkFMSURBVElPTl9NT0RFPVNZU1RFTVdJREVfUkVMSUFCSUxJVFknID4+ICIkR0lUSFVCX0VOViIKKyAgICAgICAgICAgICAgZWNobyAnUFVMU0VfQUlfSEVMUF9DSEFUX1NZU1RFTVdJREVfUkVMSUFCSUxJVFk9UEFTU0VEJworICAgICAgICAgICAgICA7OwogICAgICAgICAgICAgKikKICAgICAgICAgICAgICAgRElSRUNUX0hFTFBfQ0hBTkdFUz0iJChncmVwIC1FICIkSEVMUF9SVU5USU1FX09XTkVEIiA8PDwiJENIQU5HRUQiIHx8IHRydWUpIgogICAgICAgICAgICAgICBpZiBbWyAtbiAiJERJUkVDVF9IRUxQX0NIQU5HRVMiIF1dOyB0aGVuCg==' | base64 --decode > "$RUNNER_TEMP/help-chat-regression.patch"
+          git apply --check --whitespace=error-all "$RUNNER_TEMP/help-chat-regression.patch"
+          git apply --whitespace=error-all "$RUNNER_TEMP/help-chat-regression.patch"
+          grep -Fq 'fix/systemwide-enterprise-reliability-final-*)' "$FILE"
+          grep -Fq 'PULSE_AI_HELP_CHAT_SYSTEMWIDE_RELIABILITY=PASSED' "$FILE"
+          git diff --check -- "$FILE"
 
-      - name: Upload exact Help-chat workflow
+          PAYLOAD="$(jq -n --arg content "$(base64 -w0 "$FILE")" '{content:$content,encoding:"base64"}')"
+          RESPONSE="$(curl -fsS -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$REPOSITORY/git/blobs" \
+            -d "$PAYLOAD")"
+          BLOB_SHA="$(jq -r '.sha // empty' <<<"$RESPONSE")"
+          EXPECTED_SHA="$(git hash-object "$FILE")"
+          [[ "$BLOB_SHA" == "$EXPECTED_SHA" ]] || {
+            echo 'ERROR: Help-chat workflow blob SHA mismatch.' >&2
+            exit 1
+          }
+          jq -n --arg path "$FILE" --arg sha "$BLOB_SHA" '{path:$path,sha:$sha}' \
+            > "$RUNNER_TEMP/help-chat-workflow-blob.json"
+          cat "$RUNNER_TEMP/help-chat-workflow-blob.json"
+
+      - name: Upload Help-chat workflow blob evidence
         uses: actions/upload-artifact@v4
         with:
-          name: pulse-ai-help-chat-usability-workflow-20260814
-          path: ${{ runner.temp }}/help-chat-workflow
+          name: help-chat-systemwide-regression-workflow-blob-20260814
+          path: ${{ runner.temp }}/help-chat-workflow-blob.json
           if-no-files-found: error
           retention-days: 1
