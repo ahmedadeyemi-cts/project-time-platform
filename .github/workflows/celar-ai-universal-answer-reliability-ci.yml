@@ -6,16 +6,21 @@ on:
     paths:
       - '.github/workflows/celar-ai-universal-answer-reliability-ci.yml'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiUniversal*.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiDeterministicIntentPolicy.cs'
       - 'src/backend/ProjectTime.Api/Ai/CelarAiExecutionGovernance.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiUniversalAnswerReliabilityModule.cs'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
       - 'src/backend/ProjectTime.Api/Directory.Build.targets'
       - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'src/backend/ProjectTime.Api/build/repair-project-management-summary-schema.py'
       - 'src/frontend/project-time-web/src/CelarAiAnswerReliabilityWorkbench.jsx'
       - 'src/frontend/project-time-web/src/celar-ai-answer-reliability-workbench.css'
       - 'src/frontend/project-time-web/scripts/inject-celar-ai-universal-answer-reliability.mjs'
       - 'tests/CelarAiUniversalAnswerReliabilityTests/**'
+      - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/celar-ai-universal-answer-evaluation-cases.json'
+      - 'tests/validate-celar-ai-operational-regressions.mjs'
       - 'tests/validate-celar-ai-pr630-consolidated.mjs'
   workflow_dispatch:
 
@@ -28,7 +33,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate planning, evidence gates, privacy, API, and UI
+    name: Validate planning, evidence gates, current facts, API, and UI
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -54,8 +59,14 @@ jobs:
       - name: Validate consolidated source and evidence contracts
         run: node tests/validate-celar-ai-pr630-consolidated.mjs
 
+      - name: Validate Project Management summary compatibility
+        run: node tests/validate-celar-ai-operational-regressions.mjs
+
       - name: Run deterministic reliability tests
         run: dotnet run --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj --configuration Release
+
+      - name: Run retrieval-time authoritative public-fact tests
+        run: dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
 
       - name: Build complete API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
@@ -78,6 +89,7 @@ jobs:
       - name: Publish source-only summary
         run: |
           echo 'CELAR_AI_UNIVERSAL_ANSWER_RELIABILITY=SOURCE_VALIDATED'
-          echo 'CELAR_AI_UNIVERSAL_ANSWER_EVALUATION_CASES=120'
+          echo 'CELAR_AI_AUTHORITATIVE_CURRENT_FACTS=SOURCE_VALIDATED'
+          echo 'CELAR_AI_OPERATIONAL_SUMMARY_SCHEMA=SOURCE_VALIDATED'
           echo 'CELAR_AI_UNIVERSAL_ANSWER_TEST_DEPLOYMENTS=0'
           echo 'CELAR_AI_UNIVERSAL_ANSWER_PRODUCTION_MUTATIONS=0'
