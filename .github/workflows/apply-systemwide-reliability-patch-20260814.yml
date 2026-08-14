@@ -20,10 +20,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Rebuild exact patch and publish clean repair branch
+      - name: Rebuild patch and publish non-workflow source to clean branch
         shell: bash
         run: |
           set -Eeuo pipefail
+          TARGET_BRANCH='fix/systemwide-enterprise-reliability-final-20260814'
           git config user.name "ProjectPulse Reliability Automation"
           git config user.email "projectpulse-reliability@users.noreply.github.com"
 
@@ -43,9 +44,23 @@ jobs:
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           git diff --cached --check
 
+          # The GITHUB_TOKEN is intentionally not permitted to publish workflow
+          # files. Publish the reviewed application/database/test source first;
+          # the two workflow files are added to the clean branch through the
+          # governed GitHub connector immediately after this job succeeds.
+          git rm --cached --ignore-unmatch \
+            .github/workflows/systemwide-enterprise-reliability-ci.yml \
+            .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          rm -f \
+            .github/workflows/systemwide-enterprise-reliability-ci.yml \
+            .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+
           test ! -e .github/workflows/temporary-source-snapshot-20260814.yml
           test ! -e .github/workflows/apply-systemwide-reliability-patch-20260814.yml
           test ! -e .github/reliability-patch
+          test ! -e .github/workflows/systemwide-enterprise-reliability-ci.yml
+          test ! -e .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          git diff --cached --check
 
           git commit -m "Fix systemwide enterprise reliability and protected Test validation"
-          git push --force-with-lease origin HEAD:fix/systemwide-enterprise-reliability-20260814
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
