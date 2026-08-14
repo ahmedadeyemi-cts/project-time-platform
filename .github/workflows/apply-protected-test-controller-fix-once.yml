@@ -1,4 +1,4 @@
-name: Apply protected-Test controller fix once
+name: Stage protected-Test controller repair once
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-protected-test-controller-fix-once
+  group: stage-protected-test-controller-repair-once
   cancel-in-progress: false
 
 jobs:
-  apply:
-    name: Patch, validate, commit, and remove one-time controller
+  stage:
+    name: Patch, validate, and stage repaired workflow content
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -33,13 +33,12 @@ jobs:
           set -Eeuo pipefail
           git fetch origin main --no-tags
           git merge-base --is-ancestor origin/main HEAD
-          test "$(git rev-list --count origin/main..HEAD)" -eq 1
           mapfile -t changed < <(git diff --name-only origin/main...HEAD)
           test "${#changed[@]}" -eq 1
           test "${changed[0]}" = '.github/workflows/apply-protected-test-controller-fix-once.yml'
           git diff --check origin/main...HEAD
 
-      - name: Apply the minimal controller correction and utilization gate
+      - name: Apply and validate the controller correction
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -79,15 +78,22 @@ jobs:
           node tests/validate-utilization-role-scoping.mjs
           git diff --check
 
-      - name: Commit the final one-file repair to the branch
+      - name: Stage the validated content outside the workflow directory
         shell: bash
         run: |
           set -Eeuo pipefail
+          target='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          staged='tmp/protected-test-controller-patched.yml'
+          mkdir -p "$(dirname "$staged")"
+          cp "$target" "$staged"
+          git checkout -- "$target"
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
-          git rm .github/workflows/apply-protected-test-controller-fix-once.yml
+          git add "$staged"
           git diff --cached --check
-          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" -eq 2
-          git commit -m 'Fix protected-Test image tag and gate utilization scoping'
+          mapfile -t staged_paths < <(git diff --cached --name-only)
+          test "${#staged_paths[@]}" -eq 1
+          test "${staged_paths[0]}" = "$staged"
+          git commit -m 'Stage validated protected-Test controller content'
           git push origin HEAD:fix/protected-test-image-tag-utilization-gate-20260814
