@@ -31,6 +31,41 @@ jobs:
           test "$(git merge-base 94949b43b999146b07b10956b1f128e4619ebb82 HEAD)" = 94949b43b999146b07b10956b1f128e4619ebb82
           git diff --check 94949b43b999146b07b10956b1f128e4619ebb82...HEAD
 
+      - name: Normalize guarded patcher regex literals
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/apply_utilization_role_scoping.py')
+          source = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  r'''        r'app\\.MapGet\\("/api/utilization/yearly-status",[\\s\\S]*?\\n\\}\\);'
+                  r'\\n\\n\\napp\\.MapGet\\("/api/project-allocation-info/source-projects"''',
+                  r'''        r'app\.MapGet\("/api/utilization/yearly-status",[\s\S]*?\n\}\);'
+                  r'\n\n\napp\.MapGet\("/api/project-allocation-info/source-projects"'''
+              ),
+              (
+                  r'''        r'  const loadUsers = useCallback\\(async \\(\\) => \\{[\\s\\S]*?\\n  \\}, \\[\\]\\);',''',
+                  r'''        r'  const loadUsers = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[\]\);','''
+              ),
+              (
+                  r'''        r'  useEffect\\(\\(\\) => \\{\\n    const timers = \\[250, 1200, 3000\\][\\s\\S]*?\\n  \\}, \\[loadUsers\\]\\);',''',
+                  r'''        r'  useEffect\(\(\) => \{\n    const timers = \[250, 1200, 3000\][\s\S]*?\n  \}, \[loadUsers\]\);','''
+              )
+          ]
+
+          for old, new in replacements:
+              if old not in source:
+                  raise SystemExit(f'Expected regex literal was not found: {old!r}')
+              source = source.replace(old, new, 1)
+
+          path.write_text(source, encoding='utf-8')
+          print('PATCHER_REGEX_NORMALIZATION=PASS')
+          PY
+
       - name: Apply guarded source repair
         run: python .github/scripts/apply_utilization_role_scoping.py
 
