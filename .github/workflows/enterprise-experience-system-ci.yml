@@ -6,6 +6,8 @@ on:
       - '.github/workflows/enterprise-experience-system-ci.yml'
       - 'docs/architecture/PULSE-ENTERPRISE-EXPERIENCE-AUDIT.md'
       - 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+      - 'src/frontend/project-time-web/src/DefaultEnterpriseViewController.jsx'
+      - 'src/frontend/project-time-web/src/default-enterprise-view.css'
       - 'src/frontend/project-time-web/src/enterprise-experience-system.css'
       - 'src/frontend/project-time-web/src/enterprise-experience-components.css'
       - 'src/frontend/project-time-web/src/enterprise-experience-data.css'
@@ -24,7 +26,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate enterprise and classic presentation
+    name: Validate default and alternate enterprise presentation
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -36,19 +38,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CONTROLLER='src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+          EXPERIENCE='src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
+          VIEW='src/frontend/project-time-web/src/DefaultEnterpriseViewController.jsx'
+          VIEW_CSS='src/frontend/project-time-web/src/default-enterprise-view.css'
           SYSTEM_CSS='src/frontend/project-time-web/src/enterprise-experience-system.css'
           MODULE_CSS='src/frontend/project-time-web/src/enterprise-module-management.css'
           MAIN='src/frontend/project-time-web/src/main.jsx'
-          grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" "$CONTROLLER"
-          grep -Fq "const CLASSIC_EXPERIENCE = 'classic';" "$CONTROLLER"
-          grep -Fq 'Module Management' "$CONTROLLER"
-          grep -Fq 'Customer Pipelines' "$CONTROLLER"
+          grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" "$EXPERIENCE"
+          grep -Fq "const VIEW_STORAGE_KEY = 'pulse-workspace-view';" "$VIEW"
+          grep -Fq "const DEFAULT_VIEW = 'default';" "$VIEW"
+          grep -Fq "const ALTERNATE_VIEW = 'alternate';" "$VIEW"
+          grep -Fq 'Module Management' "$VIEW"
+          grep -Fq "data-pulse-view='default'" "$VIEW_CSS"
           grep -Fq "data-pulse-experience='enterprise'" "$SYSTEM_CSS"
           grep -Fq "data-theme='dark'" "$SYSTEM_CSS"
           grep -Fq 'repeat(6, minmax(0, 1fr))' "$MODULE_CSS"
-          grep -Fq 'EnterpriseExperienceController' "$MAIN"
-          echo 'PULSE_ENTERPRISE_EXPERIENCE_SCOPE=PASS'
+          grep -Fq 'DefaultEnterpriseViewController' "$MAIN"
+          grep -Fq 'ProjectForgeFlowHiveSyncPortal' "$MAIN"
+          echo 'PULSE_DEFAULT_ALTERNATE_ENTERPRISE_EXPERIENCE=PASS'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

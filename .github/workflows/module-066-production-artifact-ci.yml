@@ -1,0 +1,59 @@
+name: Validate Module 066 Production Artifacts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/module-066-production-artifact-ci.yml'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs'
+      - 'src/backend/ProjectTime.Api/build/generate-project-flowhive-production-artifact.py'
+      - 'tests/ProjectFlowHiveProductionArtifactTests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-066-production-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate production PDF and Excel artifact contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate deterministic source transformation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TEMP_RENDERER="$(mktemp)"
+          python3 src/backend/ProjectTime.Api/build/generate-project-flowhive-production-artifact.py \
+            --input src/backend/ProjectTime.Api/Modules/ProjectFlowHiveArtifactRenderer.cs \
+            --output "$TEMP_RENDERER"
+          grep -Fq 'PROJECT MANAGEMENT PLAN' "$TEMP_RENDERER"
+          grep -Fq 'EXECUTIVE SUMMARY' "$TEMP_RENDERER"
+          grep -Fq 'Internal governed artifact' "$TEMP_RENDERER"
+          grep -Fq 'NormalizePdfText' "$TEMP_RENDERER"
+          ! grep -Fq 'REVIEW REQUIRED' "$TEMP_RENDERER"
+          ! grep -Fq 'Logo SHA-256 {ProjectFlowHiveBrandAssets.LogoSha256}' "$TEMP_RENDERER"
+          rm -f "$TEMP_RENDERER"
+
+      - name: Build complete API and run artifact behavior tests
+        run: dotnet run --project tests/ProjectFlowHiveProductionArtifactTests/ProjectFlowHiveProductionArtifactTests.csproj --configuration Release
+
+      - name: Verify clean tracked source
+        run: git diff --check && git diff --exit-code

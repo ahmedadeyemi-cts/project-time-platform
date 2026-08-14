@@ -9,7 +9,27 @@ const compatibilityFilteredPaths = new Set([
   'src/frontend/project-time-web/scripts/validate-celar-ai-external-deidentification.mjs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs',
   'src/backend/ProjectTime.Api/Ai/PulseAiSystemKnowledgeCatalog.cs',
-  'tests/CelarAiInternalDataTests/Program.cs'
+  'tests/CelarAiInternalDataTests/Program.cs',
+  '.github/workflows/celar-ai-universal-answer-reliability-ci.yml',
+  '.github/workflows/enterprise-experience-system-ci.yml',
+  '.github/workflows/module-066-production-artifact-ci.yml',
+  'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh',
+  'src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs',
+  'src/backend/ProjectTime.Api/Directory.Build.props',
+  'src/backend/ProjectTime.Api/build/generate-project-flowhive-production-artifact.py',
+  'src/backend/ProjectTime.Api/build/repair-project-management-summary-schema.py',
+  'src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs',
+  'src/frontend/project-time-web/src/DefaultEnterpriseViewController.jsx',
+  'src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx',
+  'src/frontend/project-time-web/src/default-enterprise-view.css',
+  'src/frontend/project-time-web/src/main.jsx',
+  'src/frontend/project-time-web/src/project-forge-flowhive-sync.css',
+  'src/frontend/project-time-web/src/runtime-browser-compatibility.js',
+  'tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj',
+  'tests/CelarAiAuthoritativePublicFactTests/Program.cs',
+  'tests/ProjectFlowHiveProductionArtifactTests/ProjectFlowHiveProductionArtifactTests.csproj',
+  'tests/ProjectFlowHiveProductionArtifactTests/Program.cs',
+  'tests/validate-celar-ai-operational-regressions.mjs'
 ]);
 const requiredPr630BaselinePaths = [
   'database/migrations/084_module_076_celar_ai_defect_operations.sql',

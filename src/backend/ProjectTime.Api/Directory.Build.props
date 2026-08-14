@@ -1,0 +1,45 @@
+<Project>
+  <!--
+    Repair only the ignored generated Program copy consumed by compilation.
+    The reviewed canonical Program remains unchanged while the runtime query
+    uses the authoritative Migration 077 project-risk schema. Depending on the
+    established generator is intentional: BeforeTargets alone does not impose
+    ordering between two CoreCompile prerequisites.
+  -->
+  <Target Name="RepairCelarAiOperationalGeneratedSources"
+          DependsOnTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <CelarAiProjectSummarySchemaRepair>$(MSBuildProjectDirectory)/build/repair-project-management-summary-schema.py</CelarAiProjectSummarySchemaRepair>
+    </PropertyGroup>
+    <Exec Command="python3 &quot;$(CelarAiProjectSummarySchemaRepair)&quot; --input &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.probability_score' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.overall_impact_score' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.mitigation_actions' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+    <Exec Command="grep -Fq 'pr.response_plan' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
+  </Target>
+
+  <!--
+    Produce the compiled FlowHive renderer from the reviewable canonical source.
+    This keeps the production artifact rules deterministic while avoiding a
+    second handwritten renderer or any runtime template mutation.
+  -->
+  <Target Name="GenerateProjectFlowHiveProductionArtifact"
+          BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <ProjectFlowHiveArtifactSource>$(MSBuildProjectDirectory)/Modules/ProjectFlowHiveArtifactRenderer.cs</ProjectFlowHiveArtifactSource>
+      <ProjectFlowHiveArtifactGenerator>$(MSBuildProjectDirectory)/build/generate-project-flowhive-production-artifact.py</ProjectFlowHiveArtifactGenerator>
+      <ProjectFlowHiveArtifactGenerated>$(IntermediateOutputPath)generated/ProjectFlowHiveArtifactRenderer.g.cs</ProjectFlowHiveArtifactGenerated>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)generated" />
+    <Exec Command="python3 &quot;$(ProjectFlowHiveArtifactGenerator)&quot; --input &quot;$(ProjectFlowHiveArtifactSource)&quot; --output &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Remove="$(ProjectFlowHiveArtifactSource)" />
+      <Compile Include="$(ProjectFlowHiveArtifactGenerated)" />
+    </ItemGroup>
+    <Exec Command="grep -Fq 'PROJECT MANAGEMENT PLAN' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="grep -Fq 'EXECUTIVE SUMMARY' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="grep -Fq 'NormalizePdfText' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="! grep -Fq 'REVIEW REQUIRED' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+  </Target>
+</Project>
