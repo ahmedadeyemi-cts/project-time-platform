@@ -20,11 +20,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Create source archive
-        run: tar --exclude=.git --exclude=source-snapshot.tgz -czf source-snapshot.tgz .
+        run: tar --exclude=.git -C "$GITHUB_WORKSPACE" -czf /tmp/source-snapshot.tgz .
       - name: Upload source archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: project-time-platform-source-20260814
-          path: source-snapshot.tgz
+          path: /tmp/source-snapshot.tgz
           if-no-files-found: error
           retention-days: 1
