@@ -1,0 +1,51 @@
+name: Apply Systemwide Enterprise Reliability Patch 20260814
+
+on:
+  push:
+    branches:
+      - fix/systemwide-enterprise-reliability-20260814
+    paths:
+      - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Rebuild exact patch and publish clean repair branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "ProjectPulse Reliability Automation"
+          git config user.email "projectpulse-reliability@users.noreply.github.com"
+
+          cat .github/reliability-patch/part-* > "$RUNNER_TEMP/systemwide.patch.xz.b64"
+          base64 --decode "$RUNNER_TEMP/systemwide.patch.xz.b64" > "$RUNNER_TEMP/systemwide.patch.xz"
+          xz --decompress --stdout "$RUNNER_TEMP/systemwide.patch.xz" > "$RUNNER_TEMP/systemwide.patch"
+
+          git fetch origin main
+          git reset --hard origin/main
+          git apply --check --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
+          git apply --index --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
+
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-celar-ai-flowhive-authoritative-release.mjs
+          bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
+          bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          git diff --cached --check
+
+          test ! -e .github/workflows/temporary-source-snapshot-20260814.yml
+          test ! -e .github/workflows/apply-systemwide-reliability-patch-20260814.yml
+          test ! -e .github/reliability-patch
+
+          git commit -m "Fix systemwide enterprise reliability and protected Test validation"
+          git push --force-with-lease origin HEAD:fix/systemwide-enterprise-reliability-20260814
