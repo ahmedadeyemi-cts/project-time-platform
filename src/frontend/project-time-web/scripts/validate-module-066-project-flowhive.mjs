@@ -657,7 +657,8 @@ assertInvariant(
 
 assertInvariant(
   'MODULE_066_PHASE_TASK_CRUD_AND_REORDER',
-  frontend.includes('Add {phase.name} task') &&
+  frontend.includes('function addTask(phaseWbs)') &&
+    frontend.includes('onClick={() => addTask(task.wbsNumber)}>Add task</button>') &&
     frontend.includes('deleteTask(task.wbsNumber)') &&
     frontend.includes('draggable={Boolean(enterprise?.access?.canManage)}') &&
     frontend.includes('dropTask(task.wbsNumber') &&
