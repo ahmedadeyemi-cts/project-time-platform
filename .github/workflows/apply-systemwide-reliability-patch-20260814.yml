@@ -1,4 +1,4 @@
-name: Apply Systemwide Enterprise Reliability Patch 20260814
+name: Export Systemwide Enterprise Reliability Workflows 20260814
 
 on:
   push:
@@ -8,59 +8,40 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  export:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out staging branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Rebuild patch and publish non-workflow source to clean branch
+      - name: Rebuild exact reviewed patch
         shell: bash
         run: |
           set -Eeuo pipefail
-          TARGET_BRANCH='fix/systemwide-enterprise-reliability-final-20260814'
-          git config user.name "ProjectPulse Reliability Automation"
-          git config user.email "projectpulse-reliability@users.noreply.github.com"
-
           cat .github/reliability-patch/part-* > "$RUNNER_TEMP/systemwide.patch.xz.b64"
           base64 --decode "$RUNNER_TEMP/systemwide.patch.xz.b64" > "$RUNNER_TEMP/systemwide.patch.xz"
           xz --decompress --stdout "$RUNNER_TEMP/systemwide.patch.xz" > "$RUNNER_TEMP/systemwide.patch"
-
           git fetch origin main
           git reset --hard origin/main
           git apply --check --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
           git apply --index --whitespace=error-all "$RUNNER_TEMP/systemwide.patch"
+          test -s .github/workflows/systemwide-enterprise-reliability-ci.yml
+          test -s .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          mkdir -p "$RUNNER_TEMP/reliability-workflows"
+          cp .github/workflows/systemwide-enterprise-reliability-ci.yml "$RUNNER_TEMP/reliability-workflows/"
+          cp .github/workflows/systemwide-enterprise-reliability-test-deployment.yml "$RUNNER_TEMP/reliability-workflows/"
+          sha256sum "$RUNNER_TEMP/reliability-workflows/"*.yml
 
-          node tests/validate-systemwide-enterprise-reliability.mjs
-          node tests/validate-celar-ai-flowhive-authoritative-release.mjs
-          bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
-          bash tests/test-systemwide-enterprise-reliability-migration-088.sh
-          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          git diff --cached --check
-
-          # The GITHUB_TOKEN is intentionally not permitted to publish workflow
-          # files. Publish the reviewed application/database/test source first;
-          # the two workflow files are added to the clean branch through the
-          # governed GitHub connector immediately after this job succeeds.
-          git rm --cached --ignore-unmatch \
-            .github/workflows/systemwide-enterprise-reliability-ci.yml \
-            .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
-          rm -f \
-            .github/workflows/systemwide-enterprise-reliability-ci.yml \
-            .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
-
-          test ! -e .github/workflows/temporary-source-snapshot-20260814.yml
-          test ! -e .github/workflows/apply-systemwide-reliability-patch-20260814.yml
-          test ! -e .github/reliability-patch
-          test ! -e .github/workflows/systemwide-enterprise-reliability-ci.yml
-          test ! -e .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
-          git diff --cached --check
-
-          git commit -m "Fix systemwide enterprise reliability and protected Test validation"
-          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+      - name: Upload exact workflow files
+        uses: actions/upload-artifact@v4
+        with:
+          name: systemwide-enterprise-reliability-workflows-20260814
+          path: ${{ runner.temp }}/reliability-workflows
+          if-no-files-found: error
+          retention-days: 1
