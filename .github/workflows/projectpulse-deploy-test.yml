@@ -312,10 +312,9 @@ jobs:
             local image="$repository:$UNIQUE_TAG"
             local digest=''
             local attempt
+            # az acr build resolves --file from the runner working directory,
+            # so preserve the exact Dockerfile path for temporary absolute contexts.
             local acr_dockerfile="$dockerfile"
-            if [[ "$dockerfile" == "$context/"* ]]; then
-              acr_dockerfile="${dockerfile#"$context/"}"
-            fi
 
             for attempt in 1 2; do
               echo "ACR_BUILD_ATTEMPT=$attempt IMAGE=$image" >&2
@@ -346,19 +345,33 @@ jobs:
           }
 
           MIGRATION_CONTEXT="$RUNNER_TEMP/pr670-m087-migrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          install -d -m 0700 "$MIGRATION_CONTEXT/database/migrations"
+          # Preserve the repository layout expected by the apply script. It resolves
+          # the release root by walking two levels above scripts/release-test.
+          install -d -m 0700 \
+            "$MIGRATION_CONTEXT/database/migrations" \
+            "$MIGRATION_CONTEXT/scripts/release-test"
           install -m 0644 \
             database/migrations/087_activate_approved_local_logins.sql \
             "$MIGRATION_CONTEXT/database/migrations/087_activate_approved_local_logins.sql"
           install -m 0555 \
             scripts/release-test/apply-087-approved-local-logins.sh \
-            "$MIGRATION_CONTEXT/apply-087-approved-local-logins.sh"
+            "$MIGRATION_CONTEXT/scripts/release-test/apply-087-approved-local-logins.sh"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
 
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
           #!/usr/bin/env bash
           set -Eeuo pipefail
           ROOT=/opt/projectpulse/release
+          APPLY="$ROOT/scripts/release-test/apply-087-approved-local-logins.sh"
+          MIGRATION="$ROOT/database/migrations/087_activate_approved_local_logins.sql"
+          [[ -x "$APPLY" ]] || {
+            echo "ERROR: Migration 087 apply runner is missing from the release layout." >&2
+            exit 1
+          }
+          [[ -f "$MIGRATION" ]] || {
+            echo "ERROR: Migration 087 SQL is missing from the release layout." >&2
+            exit 1
+          }
           BUNDLED_RELEASE="$(cat "$ROOT/.projectpulse-release-commit")"
           [[ "$BUNDLED_RELEASE" == "${MAIN_RELEASE_EXPECTED_RELEASE_COMMIT:-}" ]] || {
             echo "ERROR: Migration image release identity does not match the requested release." >&2
@@ -404,7 +417,7 @@ jobs:
           )"
           unset PROJECTPULSE_M087_PASSWORD M087_PASSWORD
           export PROJECTPULSE_ENVIRONMENT=Test
-          exec /usr/local/bin/apply-087-approved-local-logins.sh
+          exec "$APPLY"
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
 
@@ -414,10 +427,10 @@ jobs:
           WORKDIR /opt/projectpulse/release
           COPY release-commit .projectpulse-release-commit
           COPY database/ database/
-          COPY apply-087-approved-local-logins.sh /usr/local/bin/apply-087-approved-local-logins.sh
+          COPY scripts/ scripts/
           COPY entrypoint.sh /usr/local/bin/pr670-m087-entrypoint.sh
           RUN chmod 0555 \
-                /usr/local/bin/apply-087-approved-local-logins.sh \
+                scripts/release-test/apply-087-approved-local-logins.sh \
                 /usr/local/bin/pr670-m087-entrypoint.sh \
               && chmod 0444 \
                 .projectpulse-release-commit \
