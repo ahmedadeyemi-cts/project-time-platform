@@ -37,14 +37,12 @@ jobs:
           path = Path('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml')
           text = path.read_text()
 
-          old_header = '''          ACR='${{ vars.AZURE_ACR_NAME }}'
-          SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
+          old_header = '''          SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
           UNIQUE_TAG="rel-${SHORT_RELEASE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           resolve_digest() {
 '''
-          new_header = '''          ACR='${{ vars.AZURE_ACR_NAME }}'
-          SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
+          new_header = '''          SHORT_RELEASE="${TARGET_RELEASE_COMMIT:0:12}"
           UNIQUE_TAG="rel-${SHORT_RELEASE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           RELEASE_ROOT="$(pwd -P)"
           BUILD_LOG="$EVIDENCE_DIR/image-build.log"
