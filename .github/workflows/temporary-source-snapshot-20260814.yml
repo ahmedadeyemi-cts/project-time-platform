@@ -1,0 +1,30 @@
+name: Temporary Source Snapshot 20260814
+
+on:
+  push:
+    branches:
+      - fix/systemwide-enterprise-reliability-20260814
+    paths:
+      - .github/workflows/temporary-source-snapshot-20260814.yml
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create source archive
+        run: tar --exclude=.git --exclude=source-snapshot.tgz -czf source-snapshot.tgz .
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-time-platform-source-20260814
+          path: source-snapshot.tgz
+          if-no-files-found: error
+          retention-days: 1
