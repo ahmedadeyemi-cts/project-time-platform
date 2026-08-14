@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Apply the focused utilization role-scope patch to project-time-platform.
+"""Apply the guarded Module 003 utilization and authorization-stability repair.
 
-The script is intentionally anchor-driven and transactional: it validates every
-expected source anchor before writing any file. Run it from the repository root
-at the reviewed base commit.
+This script is intentionally anchor-driven. It refuses partial changes when the
+reviewed main source no longer matches, which protects concurrent repository work.
 """
 from __future__ import annotations
 
@@ -14,323 +13,712 @@ from pathlib import Path
 
 ROOT = Path.cwd()
 PROGRAM = ROOT / "src/backend/ProjectTime.Api/Program.cs"
+TEAM_PANEL = ROOT / "src/frontend/project-time-web/src/EngineeringTeamLeadUtilizationPanel.jsx"
+VIEW_AS_DRAWER = ROOT / "src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx"
 APP = ROOT / "src/frontend/project-time-web/src/App.jsx"
-PACKAGE = ROOT / "src/frontend/project-time-web/package.json"
-VALIDATOR = ROOT / "src/frontend/project-time-web/scripts/validate-utilization-role-scoping.mjs"
+TEST = ROOT / "tests/validate-utilization-role-scoping.mjs"
+CI = ROOT / ".github/workflows/utilization-role-scoping-ci.yml"
 
 
-def require_file(path: Path) -> str:
+def read(path: Path) -> str:
     if not path.is_file():
-        raise RuntimeError(f"Required file not found: {path}")
+        raise RuntimeError(f"Required file is missing: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
 
 
-def replace_once(text: str, old: str, new: str, label: str) -> str:
-    count = text.count(old)
+def replace_once(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
     if count != 1:
-        raise RuntimeError(f"{label}: expected exactly one source anchor, found {count}")
-    return text.replace(old, new, 1)
+        raise RuntimeError(f"{label}: expected one anchor, found {count}")
+    return source.replace(old, new, 1)
 
 
-def replace_regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
-    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE | re.DOTALL)
+def regex_once(source: str, pattern: str, replacement: str, label: str) -> str:
+    updated, count = re.subn(pattern, replacement, source, count=1, flags=re.MULTILINE | re.DOTALL)
     if count != 1:
-        raise RuntimeError(f"{label}: expected exactly one regex anchor, found {count}")
+        raise RuntimeError(f"{label}: expected one regex anchor, found {count}")
     return updated
 
 
-def patch_program(source: str) -> str:
-    if "UTILIZATION_ROLE_SCOPE_V2_START" in source:
-        raise RuntimeError("Program.cs already contains the utilization role-scope marker")
-
-    source = replace_once(
-        source,
-        '''    var canViewAll = activeRoleCodes.Contains("EXECUTIVE")
-                     || activeRoleCodes.Contains("ADMINISTRATOR")
-                     || activeRoleCodes.Contains("SUPER_ADMINISTRATOR")
-                     || activeRoleCodes.Contains("PTC")
-                     || store.UserHasPermission(engineerId, "reports.view.all")
-                     || store.UserHasPermission(engineerId, "reports.finance.view");''',
-        '''    /* UTILIZATION_ROLE_SCOPE_V2_START */
-    var canViewAll = activeRoleCodes.Contains("EXECUTIVE")
-                     || activeRoleCodes.Contains("EXECUTIVE_LEADERSHIP")
-                     || activeRoleCodes.Contains("SUPER_ADMINISTRATOR")
-                     || activeRoleCodes.Contains("SUPERADMINISTRATOR")
-                     || activeRoleCodes.Contains("GLOBAL_ADMINISTRATOR")
-                     || activeRoleCodes.Contains("GLOBALADMINISTRATOR")
-                     || store.UserHasPermission(engineerId, "reports.view.all")
-                     || store.UserHasPermission(engineerId, "reports.finance.view");''',
-        "full-scope role boundary",
-    )
-
-    source = replace_once(
-        source,
-        '''    var canUseTeamScope = activeRoleCodes.Contains("TEAM_LEAD")
-                          || activeRoleCodes.Contains("ENGINEERING_MANAGER")
-                          || activeRoleCodes.Contains("ENGINEERING_DIRECTOR");
-    var canUseOwnScope = false;
-    var canAccess = canViewAll || canUseTeamScope || canUseOwnScope;''',
-        '''    var canUseTeamScope = activeRoleCodes.Contains("TEAM_LEAD")
-                          || activeRoleCodes.Contains("ENGINEERING_LEAD")
-                          || activeRoleCodes.Contains("ENGINEERING_TEAM_LEAD")
-                          || activeRoleCodes.Contains("ENGINEERING_MANAGER")
-                          || activeRoleCodes.Contains("ENGINEERING_DIRECTOR");
-    var canUseOwnScope = activeRoleCodes.Contains("ENGINEER")
-                         || activeRoleCodes.Contains("ENGINEERING")
-                         || activeRoleCodes.Contains("SOLUTION_ARCHITECT")
-                         || activeRoleCodes.Contains("SR_SOLUTION_ARCHITECT")
-                         || activeRoleCodes.Contains("PRINCIPAL_SOLUTION_ARCHITECT")
-                         || activeRoleCodes.Contains("PRODUCT_DESIGNER")
-                         || activeRoleCodes.Contains("SYSTEMS_ENGINEER")
-                         || activeRoleCodes.Contains("NETWORK_ENGINEER")
-                         || activeRoleCodes.Contains("ENTERPRISE_NETWORK_ENGINEER");
-    var canAccess = canViewAll || canUseTeamScope || canUseOwnScope;''',
-        "own/team role boundary",
-    )
-
-    source = replace_once(
-        source,
-        '''            roleCode.Equals("ENGINEER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("SR_SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("PRINCIPAL_SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("PRODUCT_DESIGNER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_MANAGER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_DIRECTOR", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("TEAM_LEAD", StringComparison.OrdinalIgnoreCase)))
-        .Where(item =>
-            canViewAll
-            || activeRoleCodes.Contains("TEAM_LEAD"))''',
-        '''            roleCode.Equals("ENGINEER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("SR_SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("PRINCIPAL_SOLUTION_ARCHITECT", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("PRODUCT_DESIGNER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("SYSTEMS_ENGINEER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("NETWORK_ENGINEER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENTERPRISE_NETWORK_ENGINEER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_LEAD", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_TEAM_LEAD", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_MANAGER", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("ENGINEERING_DIRECTOR", StringComparison.OrdinalIgnoreCase)
-            || roleCode.Equals("TEAM_LEAD", StringComparison.OrdinalIgnoreCase)))
-        .Where(item =>
-            canViewAll
-            || canUseTeamScope
-            || (canUseOwnScope && item.Id == engineerId))''',
-        "selectable engineer role filter",
-    )
-
-    source = replace_once(
-        source,
-        '''    if (!canViewAll)
+YEARLY_ENDPOINT = r'''app.MapGet("/api/utilization/yearly-status", async (int? year, HttpContext httpContext) =>
+{
+    var sessionUserId = GetProjectPulseSessionUserId(httpContext);
+    if (sessionUserId is null)
     {
-        var scopedEngineerIds = GetEngineeringScopeUserIds(store, engineerId, selectableEngineers.Select(item => item.Id));
-        selectableEngineers = selectableEngineers
-            .Where(item => scopedEngineerIds.Contains(item.Id))
-            .ToList();
-    }''',
-        '''    if (!canViewAll)
-    {
-        HashSet<Guid> scopedEngineerIds;
-        if (canUseTeamScope)
-        {
-            scopedEngineerIds = GetEngineeringScopeUserIds(
-                    store,
-                    engineerId,
-                    selectableEngineers.Select(item => item.Id))
-                .ToHashSet();
-        }
-        else
-        {
-            scopedEngineerIds = new HashSet<Guid> { engineerId };
-        }
-
-        selectableEngineers = selectableEngineers
-            .Where(item => scopedEngineerIds.Contains(item.Id))
-            .ToList();
+        return Results.Json(new { status = "session_required", message = "Missing session token." }, statusCode: StatusCodes.Status401Unauthorized);
     }
-    /* UTILIZATION_ROLE_SCOPE_V2_END */''',
-        "server-side scope application",
+
+    var selectedYear = year ?? DateTime.UtcNow.Year;
+    var minimumYear = DateTime.UtcNow.Year - 3;
+    var maximumYear = DateTime.UtcNow.Year + 6;
+
+    if (selectedYear < minimumYear) selectedYear = minimumYear;
+    if (selectedYear > maximumYear) selectedYear = maximumYear;
+
+    var config = DatabaseConfig.FromEnvironment();
+    var missingResult = ValidateConfig(config);
+    if (missingResult is not null) return missingResult;
+
+    var yearStart = new DateOnly(selectedYear, 1, 1);
+    var nextYearStart = new DateOnly(selectedYear + 1, 1, 1);
+    decimal standardQuarterHours = 482m;
+
+    await using var connection = new NpgsqlConnection(config.ConnectionString);
+    await connection.OpenAsync();
+
+    await using (var policyCommand = new NpgsqlCommand("""
+        SELECT standard_period_hours
+        FROM utilization_policies
+        WHERE is_active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1;
+        """, connection))
+    {
+        var policyHours = await policyCommand.ExecuteScalarAsync();
+        if (policyHours is decimal configuredHours && configuredHours > 0)
+        {
+            standardQuarterHours = configuredHours;
+        }
+    }
+
+    var billableByQuarter = new Dictionary<int, decimal>
+    {
+        [1] = 0m,
+        [2] = 0m,
+        [3] = 0m,
+        [4] = 0m
+    };
+
+    await using (var usageCommand = new NpgsqlCommand("""
+        WITH entry_rows AS (
+            SELECT
+                NULLIF(to_jsonb(te)->>'work_date', '')::date AS work_date,
+                COALESCE(NULLIF(to_jsonb(te)->>'hours', '')::numeric, 0) AS hours,
+                CASE
+                    WHEN NULLIF(to_jsonb(te)->>'is_billable', '') IS NOT NULL
+                        THEN NULLIF(to_jsonb(te)->>'is_billable', '')::boolean
+                    WHEN NULLIF(to_jsonb(te)->>'billable', '') IS NOT NULL
+                        THEN NULLIF(to_jsonb(te)->>'billable', '')::boolean
+                    ELSE COALESCE(
+                        NULLIF(to_jsonb(te)->>'project_id', ''),
+                        NULLIF(to_jsonb(te)->>'project_task_id', ''),
+                        NULLIF(to_jsonb(te)->>'task_id', ''),
+                        NULLIF(to_jsonb(te)->>'service_request_id', '')
+                    ) IS NOT NULL
+                END AS is_billable,
+                COALESCE(NULLIF(to_jsonb(ts)->>'status', ''), 'draft') AS timesheet_status
+            FROM time_entries te
+            JOIN timesheets ts
+              ON ts.timesheet_id = te.timesheet_id
+            WHERE ts.user_id = @user_id
+        )
+        SELECT
+            EXTRACT(QUARTER FROM work_date)::int AS quarter_number,
+            COALESCE(SUM(hours), 0)::numeric AS billable_hours
+        FROM entry_rows
+        WHERE work_date >= @year_start
+          AND work_date < @next_year_start
+          AND is_billable = TRUE
+          AND timesheet_status NOT IN ('manager_declined', 'rejected', 'voided')
+        GROUP BY EXTRACT(QUARTER FROM work_date)::int
+        ORDER BY quarter_number;
+        """, connection))
+    {
+        usageCommand.Parameters.AddWithValue("user_id", sessionUserId.Value);
+        usageCommand.Parameters.AddWithValue("year_start", yearStart);
+        usageCommand.Parameters.AddWithValue("next_year_start", nextYearStart);
+
+        await using var reader = await usageCommand.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var quarterNumber = reader.GetInt32(0);
+            if (quarterNumber is >= 1 and <= 4)
+            {
+                billableByQuarter[quarterNumber] = Math.Round(reader.GetDecimal(1), 2);
+            }
+        }
+    }
+
+    var targets = new[] { 70m, 75m, 80m, 85m, 90m, 95m, 100m, 105m }
+        .Select(percent => new
+        {
+            targetPercent = percent,
+            targetHours = Math.Round(standardQuarterHours * percent / 100m, 1)
+        })
+        .ToList();
+
+    var quarters = new List<object>();
+
+    foreach (var quarterNumber in new[] { 1, 2, 3, 4 })
+    {
+        var billableHours = billableByQuarter[quarterNumber];
+        var utilizationPercent = standardQuarterHours == 0
+            ? 0m
+            : Math.Round((billableHours / standardQuarterHours) * 100m, 2);
+
+        var nextTarget = targets.FirstOrDefault(target => target.targetHours > billableHours);
+        var hoursToNextTarget = nextTarget is null
+            ? 0m
+            : Math.Max(0m, Math.Round(nextTarget.targetHours - billableHours, 2));
+
+        quarters.Add(new
+        {
+            quarterNumber,
+            quarterName = $"Q{quarterNumber}",
+            standardQuarterHours,
+            billableHours,
+            utilizationPercent,
+            nextTargetPercent = nextTarget?.targetPercent,
+            nextTargetHours = nextTarget?.targetHours,
+            hoursToNextTarget,
+            thresholds = targets.Select(target => new
+            {
+                target.targetPercent,
+                target.targetHours,
+                hoursRemaining = Math.Max(0m, Math.Round(target.targetHours - billableHours, 2)),
+                reached = billableHours >= target.targetHours
+            })
+        });
+    }
+
+    var annualBillableHours = billableByQuarter.Values.Sum();
+    var annualCapacityHours = standardQuarterHours * 4m;
+    var annualUtilizationPercent = annualCapacityHours == 0
+        ? 0m
+        : Math.Round((annualBillableHours / annualCapacityHours) * 100m, 2);
+
+    return Results.Ok(new
+    {
+        year = selectedYear,
+        standardQuarterHours,
+        calculationStatus = "calculated",
+        calculationNote = "Utilization is calculated from the signed-in effective user's authoritative billable time entries. Declined, rejected, and voided time is excluded.",
+        annualSummary = new
+        {
+            billableHours = annualBillableHours,
+            capacityHours = annualCapacityHours,
+            utilizationPercent = annualUtilizationPercent
+        },
+        quarters
+    });
+});'''
+
+
+def patch_program(source: str) -> str:
+    if "UTILIZATION_ROLE_SCOPE_20260814" in source:
+        raise RuntimeError("Program.cs already contains the utilization repair marker")
+
+    yearly_pattern = (
+        r'app\.MapGet\("/api/utilization/yearly-status",[\s\S]*?\n\}\);'
+        r'\n\n\napp\.MapGet\("/api/project-allocation-info/source-projects"'
+    )
+    source = regex_once(
+        source,
+        yearly_pattern,
+        YEARLY_ENDPOINT + '\n\n\napp.MapGet("/api/project-allocation-info/source-projects"',
+        "yearly utilization endpoint",
     )
 
-    return source
+    start_marker = 'app.MapGet("/api/utilization/engineering-team-summary"'
+    end_marker = 'app.MapGet("/api/utilization/manager-team-summary"'
+    start = source.find(start_marker)
+    end = source.find(end_marker, start + 1)
+    if start < 0 or end < 0:
+        raise RuntimeError("Could not isolate engineering-team-summary endpoint")
+
+    block = source[start:end]
+
+    block = replace_once(
+        block,
+        '''    var canViewAll =
+        (roles.Contains("SUPER_ADMINISTRATOR") || roles.Contains("ADMINISTRATOR"))
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var isEngineeringTeamLead = (roles.Contains("ENGINEERING_LEAD") || roles.Contains("ENGINEERING_TEAM_LEAD"));
+    var isManager = roles.Contains("MANAGER");
+    var isEngineer = (roles.Contains("ENGINEERING") || roles.Contains("ENGINEER"));''',
+        '''    /* UTILIZATION_ROLE_SCOPE_20260814 */
+    var canViewAll =
+        roles.Contains("SUPER_ADMINISTRATOR")
+        || roles.Contains("SUPERADMINISTRATOR")
+        || roles.Contains("GLOBAL_ADMINISTRATOR")
+        || roles.Contains("GLOBALADMINISTRATOR")
+        || roles.Contains("ADMINISTRATOR")
+        || roles.Contains("PROJECT_TEAM_COORDINATOR")
+        || roles.Contains("EXECUTIVE")
+        || roles.Contains("EXECUTIVE_LEADERSHIP")
+        || permissions.Contains("VIEW_ORGANIZATION_UTILIZATION")
+        || permissions.Contains("VIEW_ALL_UTILIZATION")
+        || permissions.Contains("SYSTEM_ADMINISTRATION")
+        || permissions.Contains("MANAGE_ALL");
+
+    var isEngineeringTeamLead =
+        roles.Contains("TEAM_LEAD")
+        || roles.Contains("ENGINEERING_LEAD")
+        || roles.Contains("ENGINEERING_TEAM_LEAD");
+    var isDirector = roles.Contains("DIRECTOR") || roles.Contains("ENGINEERING_DIRECTOR");
+    var isManager = roles.Contains("MANAGER") || roles.Contains("ENGINEERING_MANAGER") || isDirector;
+    var isEngineer = roles.Contains("ENGINEERING") || roles.Contains("ENGINEER");''',
+        "utilization role definitions",
+    )
+
+    block = replace_once(
+        block,
+        '''    var canUseOwnScope = false;
+
+    var canAccess =
+        canViewAll
+        || canUseTeamScope;''',
+        '''    var canUseOwnScope = isEngineer || isEngineeringTeamLead;
+
+    var canAccess =
+        canViewAll
+        || canUseTeamScope
+        || canUseOwnScope;''',
+        "own utilization access",
+    )
+
+    block = replace_once(
+        block,
+        'message = "Engineering team utilization is available to Engineering Team Leads, Managers, Project/Team Coordinators, and Administrators."',
+        'message = "Utilization access is limited to an engineer\'s own record, assigned team scope, or authorized organization-wide reporting scope."',
+        "access denied message",
+    )
+
+    role_filter = "AND r.role_code IN ('ENGINEERING', 'ENGINEER')"
+    if block.count(role_filter) != 2:
+        raise RuntimeError(f"engineering role query filter: expected two anchors, found {block.count(role_filter)}")
+    block = block.replace(
+        role_filter,
+        "AND r.role_code IN ('ENGINEERING', 'ENGINEER', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD')",
+        2,
+    )
+
+    block = replace_once(
+        block,
+        '''            eligible_engineers AS (
+                SELECT user_id FROM membership_candidates
+                UNION
+                SELECT user_id FROM profile_candidates
+            )''',
+        '''            eligible_engineers AS (
+                SELECT user_id FROM membership_candidates
+                UNION
+                SELECT user_id FROM profile_candidates
+                UNION
+                SELECT @user_id
+            )''',
+        "engineering lead self visibility",
+    )
+
+    block = replace_once(
+        block,
+        '        if (canViewAll || isEngineeringTeamLead)',
+        '        if (canViewAll || canUseTeamScope)',
+        "manager and director engineer selection",
+    )
+
+    block = replace_once(
+        block,
+        '''            isEngineeringTeamLead,
+            isManager,
+            isEngineer,''',
+        '''            isEngineeringTeamLead,
+            isManager,
+            isDirector,
+            isEngineer,''',
+        "access metadata",
+    )
+
+    block = replace_once(
+        block,
+        'calculationNote = "Engineering Team Lead scope is enforced by backend role scope. Team leads can only view engineers on matching active team membership or profile team/department scope."',
+        'calculationNote = "Backend authorization enforces self-only Engineer scope, assigned team scope for Engineering Leads, Managers, and Directors, and organization-wide scope for Executives and authorized administrators."',
+        "calculation note",
+    )
+
+    return source[:start] + block + source[end:]
 
 
-FRONTEND_HELPERS = r'''
+TEAM_HELPERS = r'''
 
-/* UTILIZATION_ROLE_SCOPE_V2_FRONTEND_START */
-const ENGINEERING_OWN_UTILIZATION_ROLE_CODES = new Set([
-  'ENGINEER',
-  'ENGINEERING',
-  'SOLUTION_ARCHITECT',
-  'SR_SOLUTION_ARCHITECT',
-  'PRINCIPAL_SOLUTION_ARCHITECT',
-  'PRODUCT_DESIGNER',
-  'SYSTEMS_ENGINEER',
-  'NETWORK_ENGINEER',
-  'ENTERPRISE_NETWORK_ENGINEER'
-]);
-
-const ENGINEERING_TEAM_UTILIZATION_ROLE_CODES = new Set([
+const ENGINEERING_TEAM_SCOPE_ROLE_CODES = new Set([
   'TEAM_LEAD',
   'ENGINEERING_LEAD',
   'ENGINEERING_TEAM_LEAD',
+  'MANAGER',
   'ENGINEERING_MANAGER',
+  'DIRECTOR',
   'ENGINEERING_DIRECTOR'
 ]);
 
-const ENGINEERING_FULL_UTILIZATION_ROLE_CODES = new Set([
-  'EXECUTIVE',
-  'EXECUTIVE_LEADERSHIP',
+const ENGINEERING_ORGANIZATION_SCOPE_ROLE_CODES = new Set([
   'SUPER_ADMINISTRATOR',
   'SUPERADMINISTRATOR',
   'GLOBAL_ADMINISTRATOR',
-  'GLOBALADMINISTRATOR'
+  'GLOBALADMINISTRATOR',
+  'ADMINISTRATOR',
+  'PROJECT_TEAM_COORDINATOR',
+  'EXECUTIVE',
+  'EXECUTIVE_LEADERSHIP'
 ]);
 
 function normalizeUtilizationRoleCode(value) {
-  return String(value ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, '_');
+  return String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
 }
 
-function getUtilizationRoleCodes(user) {
-  const values = [
-    ...(Array.isArray(user?.roleCodes) ? user.roleCodes : []),
-    ...(Array.isArray(user?.roles) ? user.roles : []),
-    user?.roleCode,
-    user?.roleName,
-    user?.workspaceRoleCode,
-    user?.workspaceRole?.code,
-    user?.workspaceRole?.name
-  ];
-
-  return new Set(values
-    .map((value) => typeof value === 'string'
-      ? value
-      : value?.code ?? value?.roleCode ?? value?.name ?? value?.roleName)
-    .map(normalizeUtilizationRoleCode)
+function canLoadEngineeringTeamSummary(securityContext) {
+  const roleCodes = new Set((securityContext?.roles ?? [])
+    .map((role) => normalizeUtilizationRoleCode(role?.roleCode ?? role?.roleName ?? role))
     .filter(Boolean));
-}
+  const permissions = new Set((securityContext?.permissions ?? [])
+    .map((permission) => String(permission ?? '').trim().toUpperCase())
+    .filter(Boolean));
 
-function canRequestEngineeringUtilization(user) {
-  const roleCodes = getUtilizationRoleCodes(user);
   return [...roleCodes].some((roleCode) =>
-    ENGINEERING_OWN_UTILIZATION_ROLE_CODES.has(roleCode)
-    || ENGINEERING_TEAM_UTILIZATION_ROLE_CODES.has(roleCode)
-    || ENGINEERING_FULL_UTILIZATION_ROLE_CODES.has(roleCode));
+    ENGINEERING_TEAM_SCOPE_ROLE_CODES.has(roleCode)
+    || ENGINEERING_ORGANIZATION_SCOPE_ROLE_CODES.has(roleCode))
+    || permissions.has('VIEW_TEAM_UTILIZATION')
+    || permissions.has('VIEW_ORGANIZATION_UTILIZATION')
+    || permissions.has('VIEW_ALL_UTILIZATION')
+    || permissions.has('SYSTEM_ADMINISTRATION')
+    || permissions.has('MANAGE_ALL');
 }
-/* UTILIZATION_ROLE_SCOPE_V2_FRONTEND_END */
 '''
 
 
-def patch_app(source: str) -> str:
-    if "UTILIZATION_ROLE_SCOPE_V2_FRONTEND_START" in source:
-        raise RuntimeError("App.jsx already contains the utilization role-scope marker")
+def patch_team_panel(source: str) -> str:
+    if "ENGINEERING_TEAM_SCOPE_ROLE_CODES" in source:
+        raise RuntimeError("EngineeringTeamLeadUtilizationPanel.jsx already contains the role gate")
 
-    endpoint_pattern = r'''(const engineeringTeamUtilizationEndpoint\s*=\s*\(userId,\s*options\s*=\s*\{\}\)\s*=>\s*\{.*?\n\};)'''
-    match = re.search(endpoint_pattern, source, flags=re.MULTILINE | re.DOTALL)
-    if not match:
-        raise RuntimeError("App.jsx: could not locate engineeringTeamUtilizationEndpoint")
-    source = source[:match.end()] + FRONTEND_HELPERS + source[match.end():]
+    source = replace_once(
+        source,
+        '}\n\nasync function readApiErrorMessage',
+        '}' + TEAM_HELPERS + '\nasync function readApiErrorMessage',
+        "team panel helper insertion",
+    )
 
-    declaration = '''  const canViewEngineeringTeamUtilization = canRequestEngineeringUtilization(currentUser.data);\n\n'''
-    loader_anchor = "  async function loadEngineeringTeamUtilization(userId = CURRENT_USER_ID, options = {}) {"
-    if source.count(loader_anchor) != 1:
-        raise RuntimeError(
-            "App.jsx: expected exactly one loadEngineeringTeamUtilization loader "
-            f"anchor, found {source.count(loader_anchor)}"
-        )
-    source = source.replace(loader_anchor, declaration + loader_anchor, 1)
+    source = replace_once(
+        source,
+        '''  useEffect(() => {
+    loadUtilization(selectedYear, selectedEngineerUserId);
+  }, []);''',
+        '''  useEffect(() => {
+    let cancelled = false;
 
-    loader_guard_anchor = '''  async function loadEngineeringTeamUtilization(userId = CURRENT_USER_ID, options = {}) {
-    setEngineeringTeamUtilization((previous) => ({ ...previous, loading: true, error: null }));'''
-    loader_guard = '''  async function loadEngineeringTeamUtilization(userId = CURRENT_USER_ID, options = {}) {
-    if (!canViewEngineeringTeamUtilization) {
-      setEngineeringTeamUtilization({ data: null, loading: false, error: null });
-      return;
+    async function loadAuthorizedTeamUtilization() {
+      try {
+        const securityContext = await fetchJson('/api/security/context');
+        if (cancelled) return;
+
+        if (!canLoadEngineeringTeamSummary(securityContext)) {
+          setPayload({
+            loading: false,
+            data: { canViewEngineeringTeamUtilization: false },
+            error: null
+          });
+          return;
+        }
+
+        await loadUtilization(selectedYear, selectedEngineerUserId);
+      } catch (error) {
+        if (cancelled) return;
+        setPayload({
+          loading: false,
+          data: null,
+          error: error instanceof Error ? error.message : 'Unable to verify engineering utilization access.'
+        });
+      }
     }
 
-    setEngineeringTeamUtilization((previous) => ({ ...previous, loading: true, error: null }));'''
-    source = replace_once(source, loader_guard_anchor, loader_guard, "frontend request gate")
+    void loadAuthorizedTeamUtilization();
+    return () => {
+      cancelled = true;
+    };
+  }, []);''',
+        "team panel authorization preflight",
+    )
 
     return source
 
 
-VALIDATOR_CONTENT = r'''import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+VIEW_AS_AUTHORITY_HELPER = r'''
 
-const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(scriptDirectory, '..');
-const repoRoot = path.resolve(webRoot, '../../..');
-const read = (filePath) => fs.readFileSync(filePath, 'utf8');
+function securityContextAllowsViewAs(context) {
+  const roleCodes = new Set((context?.roles ?? [])
+    .map((role) => String(role?.roleCode ?? role?.roleName ?? role ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_'))
+    .filter(Boolean));
 
-const app = read(path.join(webRoot, 'src/App.jsx'));
-const program = read(path.join(repoRoot, 'src/backend/ProjectTime.Api/Program.cs'));
-
-assert.match(app, /UTILIZATION_ROLE_SCOPE_V2_FRONTEND_START/);
-assert.match(app, /function canRequestEngineeringUtilization\(user\)/);
-assert.match(app, /if \(!canViewEngineeringTeamUtilization\) \{/);
-assert.match(app, /setEngineeringTeamUtilization\(\{ data: null, loading: false, error: null \}\);/);
-assert.doesNotMatch(app, /ENGINEERING_FULL_UTILIZATION_ROLE_CODES[\s\S]*?'ADMINISTRATOR'/);
-assert.doesNotMatch(app, /ENGINEERING_FULL_UTILIZATION_ROLE_CODES[\s\S]*?'PTC'/);
-
-assert.match(program, /UTILIZATION_ROLE_SCOPE_V2_START/);
-assert.match(program, /var canUseOwnScope = activeRoleCodes\.Contains\("ENGINEER"\)/);
-assert.match(program, /\|\| canUseTeamScope\s*\|\| \(canUseOwnScope && item\.Id == engineerId\)/);
-assert.match(program, /scopedEngineerIds = new HashSet<Guid> \{ engineerId \};/);
-assert.match(program, /activeRoleCodes\.Contains\("ENGINEERING_DIRECTOR"\)/);
-assert.match(program, /activeRoleCodes\.Contains\("SUPER_ADMINISTRATOR"\)/);
-assert.doesNotMatch(
-  program.slice(
-    program.indexOf('/* UTILIZATION_ROLE_SCOPE_V2_START */'),
-    program.indexOf('/* UTILIZATION_ROLE_SCOPE_V2_END */')
-  ),
-  /activeRoleCodes\.Contains\("ADMINISTRATOR"\)|activeRoleCodes\.Contains\("PTC"\)/
-);
-
-console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self teamLeadManagerDirector=scoped executiveSuperAdmin=full unauthorizedFrontendRequest=blocked');
+  return [
+    'SUPER_ADMINISTRATOR',
+    'SUPERADMINISTRATOR',
+    'GLOBAL_ADMINISTRATOR',
+    'GLOBALADMINISTRATOR',
+    'ADMINISTRATOR'
+  ].some((roleCode) => roleCodes.has(roleCode));
+}
 '''
 
+VIEW_AS_LOAD_USERS = r'''  const loadUsers = useCallback(async () => {
+    const session = readAuthSession();
+    const active = readActiveViewAs();
+    setActiveViewAs(active);
 
-def patch_package(source: str) -> str:
-    payload = json.loads(source)
-    scripts = payload.setdefault("scripts", {})
-    scripts["validate:utilization-role-scoping"] = (
-        "node ./scripts/validate-utilization-role-scoping.mjs"
+    if (!session?.sessionToken) {
+      setUsers([]);
+      setLoadState(active ? 'error' : 'hidden');
+      setLoadError(active ? 'Your administrator session is unavailable. Exit View-As and sign in again.' : '');
+      return;
+    }
+
+    const sequence = ++requestSequence.current;
+    setLoadState((current) => current === 'ready' ? 'refreshing' : 'loading');
+    setLoadError('');
+
+    try {
+      const requestFetch = window.__projectPulseOriginalFetch || window.fetch.bind(window);
+
+      if (!active) {
+        const contextResponse = await requestFetch('/api/security/context', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          headers: {
+            'X-ProjectPulse-Session': session.sessionToken,
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache'
+          }
+        });
+
+        if (sequence !== requestSequence.current) return;
+
+        if (!contextResponse.ok) {
+          setUsers([]);
+          setLoadState('hidden');
+          setLoadError('');
+          return;
+        }
+
+        const securityContext = await contextResponse.json().catch(() => ({}));
+        if (!securityContextAllowsViewAs(securityContext)) {
+          setUsers([]);
+          setLoadState('hidden');
+          setLoadError('');
+          return;
+        }
+      }
+
+      const response = await requestFetch(VIEW_AS_USERS_ENDPOINT, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+          'X-ProjectPulse-Session': session.sessionToken,
+          'Cache-Control': 'no-cache, no-store',
+          Pragma: 'no-cache'
+        }
+      });
+
+      if (sequence !== requestSequence.current) return;
+
+      if (!response.ok) {
+        setUsers([]);
+        setLoadState(active ? 'error' : 'hidden');
+        setLoadError(active
+          ? 'The eligible-user list could not be refreshed. You can still exit the active preview.'
+          : '');
+        return;
+      }
+
+      const body = await response.json().catch(() => ({}));
+      const eligibleUsers = Array.isArray(body?.users)
+        ? body.users.filter((user) => user?.userId)
+        : [];
+
+      setUsers(eligibleUsers);
+      setLoadState(eligibleUsers.length || active ? 'ready' : 'hidden');
+    } catch {
+      if (sequence !== requestSequence.current) return;
+      setUsers([]);
+      setLoadState(active ? 'error' : 'hidden');
+      setLoadError(active
+        ? 'The eligible-user list could not be refreshed. You can still exit the active preview.'
+        : '');
+    }
+  }, []);'''
+
+VIEW_AS_EFFECT = r'''  useEffect(() => {
+    const timer = window.setTimeout(loadUsers, 250);
+    const synchronize = () => {
+      setActiveViewAs(readActiveViewAs());
+      void loadUsers();
+    };
+    const onStorage = (event) => {
+      if (event.key === VIEW_AS_STORAGE_KEY || event.key === AUTH_SESSION_STORAGE_KEY) synchronize();
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('projectpulse:auth-session-ready', loadUsers);
+    window.addEventListener(VIEW_AS_CHANGED_EVENT, synchronize);
+
+    return () => {
+      requestSequence.current += 1;
+      window.clearTimeout(timer);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('projectpulse:auth-session-ready', loadUsers);
+      window.removeEventListener(VIEW_AS_CHANGED_EVENT, synchronize);
+    };
+  }, [loadUsers]);'''
+
+
+def patch_view_as_drawer(source: str) -> str:
+    if "securityContextAllowsViewAs" in source:
+        raise RuntimeError("GlobalViewAsDrawer.jsx already contains the capability preflight")
+
+    source = replace_once(
+        source,
+        '}\n\nfunction roleLabel',
+        '}' + VIEW_AS_AUTHORITY_HELPER + '\nfunction roleLabel',
+        "View-As authority helper insertion",
     )
-    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    source = regex_once(
+        source,
+        r'  const loadUsers = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[\]\);',
+        VIEW_AS_LOAD_USERS,
+        "View-As loadUsers replacement",
+    )
+    source = regex_once(
+        source,
+        r'  useEffect\(\(\) => \{\n    const timers = \[250, 1200, 3000\][\s\S]*?\n  \}, \[loadUsers\]\);',
+        VIEW_AS_EFFECT,
+        "View-As retry removal",
+    )
+    return source
+
+
+def patch_app(source: str) -> str:
+    return replace_once(
+        source,
+        'installProjectPulseGlobalViewAsPreview();',
+        '/* Legacy DOM View-As preview disabled; GlobalViewAsDrawer is the single React-owned authority. */',
+        "legacy View-As bootstrap disablement",
+    )
+
+
+TEST_CONTENT = r'''import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const read = (path) => fs.readFileSync(path, 'utf8');
+const program = read('src/backend/ProjectTime.Api/Program.cs');
+const teamPanel = read('src/frontend/project-time-web/src/EngineeringTeamLeadUtilizationPanel.jsx');
+const drawer = read('src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx');
+const app = read('src/frontend/project-time-web/src/App.jsx');
+
+assert.match(program, /calculationStatus = "calculated"/);
+assert.doesNotMatch(program, /calculationStatus = "placeholder"/);
+assert.match(program, /WHERE ts\.user_id = @user_id/);
+assert.match(program, /timesheet_status NOT IN \('manager_declined', 'rejected', 'voided'\)/);
+assert.match(program, /roles\.Contains\("EXECUTIVE"\)/);
+assert.match(program, /roles\.Contains\("ENGINEERING_DIRECTOR"\)/);
+assert.match(program, /var canUseOwnScope = isEngineer \|\| isEngineeringTeamLead;/);
+assert.match(program, /if \(canViewAll \|\| canUseTeamScope\)/);
+assert.match(program, /SELECT @user_id/);
+assert.match(program, /'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD'/);
+
+assert.match(teamPanel, /canLoadEngineeringTeamSummary/);
+assert.match(teamPanel, /fetchJson\('\/api\/security\/context'\)/);
+assert.match(teamPanel, /ENGINEERING_TEAM_SCOPE_ROLE_CODES/);
+assert.match(teamPanel, /ENGINEERING_ORGANIZATION_SCOPE_ROLE_CODES/);
+
+assert.match(drawer, /securityContextAllowsViewAs/);
+assert.match(drawer, /contextResponse = await requestFetch\('\/api\/security\/context'/);
+assert.match(drawer, /const timer = window\.setTimeout\(loadUsers, 250\);/);
+assert.doesNotMatch(drawer, /\[250, 1200, 3000\]/);
+assert.doesNotMatch(drawer, /addEventListener\('hashchange', loadUsers\)/);
+
+assert.match(app, /Legacy DOM View-As preview disabled/);
+assert.doesNotMatch(app, /^installProjectPulseGlobalViewAsPreview\(\);$/m);
+
+console.log('UTILIZATION_ROLE_SCOPING_VALIDATION=PASS engineer=self lead=self+team managerDirector=team executive=all viewAs=capability-gated');
+'''
+
+CI_CONTENT = r'''name: Utilization Role Scoping CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/frontend/project-time-web/src/EngineeringTeamLeadUtilizationPanel.jsx'
+      - 'src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'tests/validate-utilization-role-scoping.mjs'
+      - '.github/workflows/utilization-role-scoping-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+      - name: Validate utilization contracts
+        run: node tests/validate-utilization-role-scoping.mjs
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+      - name: Validate and build web
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run validate:modules003004-rolling-years
+          npm run build
+'''
 
 
 def main() -> int:
     try:
-        program_original = require_file(PROGRAM)
-        app_original = require_file(APP)
-        package_original = require_file(PACKAGE)
+        originals = {
+            PROGRAM: read(PROGRAM),
+            TEAM_PANEL: read(TEAM_PANEL),
+            VIEW_AS_DRAWER: read(VIEW_AS_DRAWER),
+            APP: read(APP),
+        }
 
-        program_updated = patch_program(program_original)
-        app_updated = patch_app(app_original)
-        package_updated = patch_package(package_original)
+        updates = {
+            PROGRAM: patch_program(originals[PROGRAM]),
+            TEAM_PANEL: patch_team_panel(originals[TEAM_PANEL]),
+            VIEW_AS_DRAWER: patch_view_as_drawer(originals[VIEW_AS_DRAWER]),
+            APP: patch_app(originals[APP]),
+            TEST: TEST_CONTENT,
+            CI: CI_CONTENT,
+        }
 
-        # Complete every transformation before any write occurs.
-        PROGRAM.write_text(program_updated, encoding="utf-8")
-        APP.write_text(app_updated, encoding="utf-8")
-        PACKAGE.write_text(package_updated, encoding="utf-8")
-        VALIDATOR.write_text(VALIDATOR_CONTENT, encoding="utf-8")
+        # All transformations have succeeded before the first write.
+        for path, content in updates.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
 
-        print("Applied utilization role scoping to:")
-        print(f"- {PROGRAM.relative_to(ROOT)}")
-        print(f"- {APP.relative_to(ROOT)}")
-        print(f"- {PACKAGE.relative_to(ROOT)}")
-        print(f"- {VALIDATOR.relative_to(ROOT)}")
+        print("UTILIZATION_ROLE_SCOPING_PATCH=PASS")
+        for path in updates:
+            print(path.relative_to(ROOT))
         return 0
     except Exception as exc:  # noqa: BLE001
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"UTILIZATION_ROLE_SCOPING_PATCH=FAIL {exc}", file=sys.stderr)
         return 1
 
 
