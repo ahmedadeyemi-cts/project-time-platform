@@ -1,0 +1,336 @@
+name: PR 680 Contract-Safe Repair Fallback V2
+
+on:
+  push:
+    branches:
+      - fix/systemwide-enterprise-reliability-20260814
+    paths:
+      - .github/workflows/pr680-auto-repair-fallback-v2.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr680-contract-safe-repair-fallback-v2
+  cancel-in-progress: false
+
+jobs:
+  repair-only-if-primary-failed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: '680'
+      TARGET_BRANCH: fix/systemwide-enterprise-reliability-final-20260814
+      PRIMARY_WORKFLOW: pr680-auto-repair-v3.yml
+    steps:
+      - name: Wait for primary repair and decide whether fallback is needed
+        id: primary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          deadline=$((SECONDS + 7200))
+          while (( SECONDS < deadline )); do
+            runs="$(gh api "/repos/$REPOSITORY/actions/workflows/$PRIMARY_WORKFLOW/runs?branch=fix/systemwide-enterprise-reliability-20260814&per_page=10")"
+            run_id="$(jq -r '[.workflow_runs[] | select(.event == "push")] | sort_by(.created_at) | last | .id // empty' <<<"$runs")"
+            status="$(jq -r --argjson id "${run_id:-0}" '.workflow_runs[] | select(.id == $id) | .status // empty' <<<"$runs")"
+            conclusion="$(jq -r --argjson id "${run_id:-0}" '.workflow_runs[] | select(.id == $id) | .conclusion // empty' <<<"$runs")"
+            echo "PR680_PRIMARY_REPAIR id=${run_id:-none} status=${status:-none} conclusion=${conclusion:-none}"
+            if [[ -n "$run_id" && "$status" == completed ]]; then
+              if [[ "$conclusion" == success ]]; then
+                echo 'needed=false' >> "$GITHUB_OUTPUT"
+                echo 'PR680_FALLBACK_V2=NOT_REQUIRED'
+              else
+                echo 'needed=true' >> "$GITHUB_OUTPUT"
+                echo 'PR680_FALLBACK_V2=REQUIRED'
+              fi
+              echo "PRIMARY_RUN_ID=$run_id" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo 'Timed out waiting for the primary repair workflow.' >&2
+          exit 1
+
+      - name: Check out exact PR branch
+        if: steps.primary.outputs.needed == 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        if: steps.primary.outputs.needed == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install exact frontend dependencies
+        if: steps.primary.outputs.needed == 'true'
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Locate and apply a minimal contract-safe correction
+        if: steps.primary.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main "$TARGET_BRANCH" --no-tags
+          HEAD_SHA="$(git rev-parse HEAD)"
+          BASE_REF='origin/main'
+          export HEAD_SHA BASE_REF
+
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import itertools
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          repo = Path.cwd()
+          frontend = repo / 'src/frontend/project-time-web'
+          head_sha = os.environ['HEAD_SHA']
+          base_ref = os.environ['BASE_REF']
+          evidence = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'pr680-fallback-v2'
+          evidence.mkdir(parents=True, exist_ok=True)
+          attempts = 0
+          max_attempts = 60
+
+          def run(cmd: list[str], *, cwd: Path = repo, timeout: int = 2100):
+              return subprocess.run(
+                  cmd,
+                  cwd=cwd,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  timeout=timeout,
+              )
+
+          def require(cmd: list[str], *, cwd: Path = repo, timeout: int = 2100):
+              proc = run(cmd, cwd=cwd, timeout=timeout)
+              if proc.returncode != 0:
+                  raise SystemExit(f"Command failed ({proc.returncode}): {' '.join(cmd)}\n{proc.stdout[-12000:]}")
+              return proc
+
+          def reset() -> None:
+              require(['git', 'reset', '--hard', head_sha])
+              require(['git', 'clean', '-fd'])
+
+          def extract_probe(log: str) -> list[str] | None:
+              scripts = re.findall(r'^>\s+project-pulse-web@[^\s]+\s+([^\s]+)\s*$', log, flags=re.M)
+              for script in reversed(scripts):
+                  if script not in {'build', 'prebuild'}:
+                      return ['npm', 'run', script]
+              return None
+
+          def full_build(label: str) -> tuple[bool, str]:
+              proc = run(['npm', 'run', 'build'], cwd=frontend)
+              (evidence / f'{label}-build.log').write_text(proc.stdout)
+              return proc.returncode == 0, proc.stdout
+
+          def contracts(label: str) -> bool:
+              commands = (
+                  ['node', 'tests/validate-systemwide-enterprise-reliability.mjs'],
+                  ['node', 'tests/validate-celar-ai-flowhive-authoritative-release.mjs'],
+                  ['bash', 'scripts/validate-module-033-project-forge-interactive.sh'],
+              )
+              for index, command in enumerate(commands):
+                  proc = run(command, timeout=600)
+                  (evidence / f'{label}-contract-{index}.log').write_text(proc.stdout)
+                  if proc.returncode != 0:
+                      return False
+              check = run(['git', 'diff', '--check'])
+              (evidence / f'{label}-diff-check.log').write_text(check.stdout)
+              return check.returncode == 0
+
+          reset()
+          baseline_ok, baseline_log = full_build('baseline')
+          if baseline_ok:
+              if not contracts('baseline'):
+                  raise SystemExit('The current head builds, but a required release contract fails.')
+              (evidence / 'result.txt').write_text('repair=not-required-current-head-is-green\n')
+              sys.exit(0)
+          probe = extract_probe(baseline_log)
+          (evidence / 'probe.txt').write_text(' '.join(probe) if probe else 'full-build')
+          reset()
+
+          changed = require([
+              'git', 'diff', '--name-only', f'{base_ref}...{head_sha}', '--',
+              'src/frontend/project-time-web/src',
+              'src/frontend/project-time-web/scripts',
+          ]).stdout.splitlines()
+          candidates = [
+              path for path in changed
+              if path.endswith(('.js', '.jsx', '.css', '.mjs'))
+              and not path.endswith('App.Module001.g.jsx')
+          ]
+
+          log_paths: list[tuple[str, int]] = []
+          path_pattern = re.compile(
+              r'(?P<path>(?:[A-Za-z]:)?[^\s"\']*src/frontend/project-time-web/(?:src|scripts)/[^\s"\']+?\.(?:jsx?|css|mjs))(?::(?P<line>\d+)(?::\d+)?)?'
+          )
+          for match in path_pattern.finditer(baseline_log):
+              raw = match.group('path').replace('\\', '/')
+              marker = 'src/frontend/project-time-web/'
+              relative = raw[raw.rfind(marker):]
+              if relative in candidates:
+                  log_paths.append((relative, int(match.group('line') or 0)))
+
+          priority = {
+              'src/frontend/project-time-web/src/main.jsx': 0,
+              'src/frontend/project-time-web/src/enterprise-systemwide-reliability.css': 1,
+              'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx': 2,
+              'src/frontend/project-time-web/src/HelpAssistant.jsx': 3,
+              'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx': 4,
+              'src/frontend/project-time-web/src/ProjectForgeFlowHiveSyncPortal.jsx': 5,
+              'src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx': 6,
+              'src/frontend/project-time-web/src/AuditHistoryPanel.jsx': 7,
+              'src/frontend/project-time-web/src/BillingReadinessCenter.jsx': 8,
+              'src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx': 9,
+              'src/frontend/project-time-web/scripts/repair-module-066-generated-jsx.mjs': 10,
+          }
+          log_rank = {path: index for index, (path, _) in enumerate(log_paths)}
+          candidates.sort(key=lambda path: (log_rank.get(path, 1000), priority.get(path, 100), path))
+
+          def probe_passes(label: str) -> bool:
+              nonlocal_attempts = None
+              global attempts
+              attempts += 1
+              if attempts > max_attempts:
+                  raise SystemExit(f'Fallback attempt cap exceeded ({max_attempts}).')
+              command = probe or ['npm', 'run', 'build']
+              proc = run(command, cwd=frontend)
+              (evidence / f'{label}-probe.log').write_text(proc.stdout)
+              return proc.returncode == 0
+
+          def complete_passes(label: str) -> bool:
+              if probe and not probe_passes(label):
+                  return False
+              ok, _ = full_build(label)
+              return ok and contracts(label)
+
+          culprit = None
+          for index, path in enumerate(candidates[:20]):
+              reset()
+              if run(['git', 'cat-file', '-e', f'{base_ref}:{path}']).returncode == 0:
+                  require(['git', 'checkout', base_ref, '--', path])
+              else:
+                  Path(path).unlink(missing_ok=True)
+              if probe_passes(f'locate-{index:02d}'):
+                  ok, _ = full_build(f'locate-{index:02d}')
+                  if ok:
+                      culprit = path
+                      break
+          reset()
+          if culprit is None:
+              (evidence / 'result.txt').write_text('repair=not-applied\nreason=no-single-file-build-candidate\n')
+              raise SystemExit('No single changed frontend file isolated the build failure.')
+
+          diff = require([
+              'git', 'diff', '--unified=0', '--no-ext-diff', f'{base_ref}...{head_sha}', '--', culprit
+          ]).stdout
+          lines = diff.splitlines(keepends=True)
+          first = next((i for i, line in enumerate(lines) if line.startswith('@@ ')), None)
+          if first is None:
+              raise SystemExit(f'No text hunks are available for {culprit}.')
+          header = lines[:first]
+          hunks: list[list[str]] = []
+          current: list[str] = []
+          for line in lines[first:]:
+              if line.startswith('@@ '):
+                  if current:
+                      hunks.append(current)
+                  current = [line]
+              else:
+                  current.append(line)
+          if current:
+              hunks.append(current)
+
+          def hunk_new_line(hunk: list[str]) -> int:
+              match = re.search(r'\+(\d+)', hunk[0])
+              return int(match.group(1)) if match else 0
+
+          error_line = next((line for path, line in log_paths if path == culprit and line), 0)
+          ordered = list(range(len(hunks)))
+          if error_line:
+              ordered.sort(key=lambda index: abs(hunk_new_line(hunks[index]) - error_line))
+          ordered = ordered[:20]
+
+          selected_patch = None
+          selected_combo = None
+          for size in (1, 2, 3):
+              for combo in itertools.combinations(ordered, size):
+                  reset()
+                  patch_text = ''.join(header + [line for index in sorted(combo) for line in hunks[index]])
+                  name = f"candidate-{size}-{'-'.join(map(str, combo))}"
+                  patch_file = evidence / f'{name}.patch'
+                  patch_file.write_text(patch_text)
+                  applied = run(['git', 'apply', '-R', '--unidiff-zero', str(patch_file)])
+                  (evidence / f'{name}-apply.log').write_text(applied.stdout)
+                  if applied.returncode != 0:
+                      continue
+                  if complete_passes(name):
+                      selected_patch = patch_text
+                      selected_combo = combo
+                      break
+              if selected_patch:
+                  break
+
+          reset()
+          if selected_patch is None:
+              (evidence / 'result.txt').write_text(
+                  f'repair=not-applied\nreason=no-one-to-three-hunk-contract-safe-candidate\nculprit={culprit}\n'
+              )
+              raise SystemExit(f'No minimal hunk correction in {culprit} passed all required gates.')
+
+          selected_file = evidence / 'selected.patch'
+          selected_file.write_text(selected_patch)
+          require(['git', 'apply', '-R', '--unidiff-zero', str(selected_file)])
+          if not complete_passes('final-selected'):
+              raise SystemExit('The selected fallback correction was not stable under final validation.')
+          reset()
+          require(['git', 'apply', '-R', '--unidiff-zero', str(selected_file)])
+          require(['git', 'diff', '--check'])
+          (evidence / 'result.txt').write_text(
+              f'repair=contract-safe-minimal-hunk-reversion\nculprit={culprit}\nhunks={",".join(map(str, selected_combo or []))}\n'
+          )
+          PY
+
+          if git diff --quiet; then
+            echo 'PR680_FALLBACK_V2_REPAIR=NO_SOURCE_CHANGE_REQUIRED'
+            exit 0
+          fi
+          git diff --check
+          git status --short
+          git config user.name 'ChangePoint governed repair'
+          git config user.email 'noreply@users.noreply.github.com'
+          git add -- src/frontend/project-time-web/src src/frontend/project-time-web/scripts
+          git commit -m 'Apply contract-safe fallback repair for PR 680 frontend build'
+          git push origin "HEAD:$TARGET_BRANCH"
+
+      - name: Upload fallback V2 evidence
+        if: always() && steps.primary.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr680-contract-safe-repair-fallback-v2-evidence
+          path: ${{ runner.temp }}/pr680-fallback-v2
+          if-no-files-found: warn
+          retention-days: 2
+
+      - name: Comment when fallback V2 remains blocked
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPOSITORY" --body "PR #680's primary repair did not complete successfully, and fallback V2 could not identify a minimal one-to-three-hunk correction that passed the full frontend build and every release contract. No merge or deployment occurred. Diagnostic run: ${GITHUB_SERVER_URL}/${REPOSITORY}/actions/runs/${GITHUB_RUN_ID}." || true
