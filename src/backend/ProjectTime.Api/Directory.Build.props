@@ -18,4 +18,28 @@
     <Exec Command="grep -Fq 'pr.mitigation_actions' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
     <Exec Command="grep -Fq 'pr.response_plan' &quot;$(ScopedRbacGeneratedProgram)&quot;" />
   </Target>
+
+  <!--
+    Produce the compiled FlowHive renderer from the reviewable canonical source.
+    This keeps the production artifact rules deterministic while avoiding a
+    second handwritten renderer or any runtime template mutation.
+  -->
+  <Target Name="GenerateProjectFlowHiveProductionArtifact"
+          BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <ProjectFlowHiveArtifactSource>$(MSBuildProjectDirectory)/Modules/ProjectFlowHiveArtifactRenderer.cs</ProjectFlowHiveArtifactSource>
+      <ProjectFlowHiveArtifactGenerator>$(MSBuildProjectDirectory)/build/generate-project-flowhive-production-artifact.py</ProjectFlowHiveArtifactGenerator>
+      <ProjectFlowHiveArtifactGenerated>$(IntermediateOutputPath)generated/ProjectFlowHiveArtifactRenderer.g.cs</ProjectFlowHiveArtifactGenerated>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)generated" />
+    <Exec Command="python3 &quot;$(ProjectFlowHiveArtifactGenerator)&quot; --input &quot;$(ProjectFlowHiveArtifactSource)&quot; --output &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <ItemGroup>
+      <Compile Remove="$(ProjectFlowHiveArtifactSource)" />
+      <Compile Include="$(ProjectFlowHiveArtifactGenerated)" />
+    </ItemGroup>
+    <Exec Command="grep -Fq 'PROJECT MANAGEMENT PLAN' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="grep -Fq 'EXECUTIVE SUMMARY' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="grep -Fq 'NormalizePdfText' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+    <Exec Command="! grep -Fq 'REVIEW REQUIRED' &quot;$(ProjectFlowHiveArtifactGenerated)&quot;" />
+  </Target>
 </Project>
