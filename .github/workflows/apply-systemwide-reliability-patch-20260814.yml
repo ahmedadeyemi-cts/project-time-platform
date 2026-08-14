@@ -1,4 +1,4 @@
-name: Publish Help Chat Regression Workflow Blob 20260814
+name: Export Help Chat Workflow 20260814
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish-blob:
+  export:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact PR branch
@@ -21,68 +21,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Add exact systemwide Help-chat regression boundary and create Git blob
+      - name: Stage exact Help-chat workflow
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          FILE='.github/workflows/pulse-ai-help-chat-usability-ci.yml'
-          python3 - <<'PY'
-          from pathlib import Path
+          test -s .github/workflows/pulse-ai-help-chat-usability-ci.yml
+          mkdir -p "$RUNNER_TEMP/help-chat-workflow"
+          cp .github/workflows/pulse-ai-help-chat-usability-ci.yml "$RUNNER_TEMP/help-chat-workflow/"
+          sha256sum "$RUNNER_TEMP/help-chat-workflow/pulse-ai-help-chat-usability-ci.yml"
 
-          path = Path('.github/workflows/pulse-ai-help-chat-usability-ci.yml')
-          text = path.read_text()
-          anchor = '''            *)
-              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-'''
-          insertion = '''            fix/systemwide-enterprise-reliability-final-*)
-              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
-              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
-              if [[ -n "$UNAPPROVED_HELP" ]]; then
-                echo 'The systemwide reliability package changed Help-chat runtime source outside the reviewed HelpAssistant convergence boundary:' >&2
-                printf '%s\\n' "$UNAPPROVED_HELP" >&2
-                exit 1
-              fi
-              test -f src/frontend/project-time-web/src/HelpAssistant.jsx
-              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=SYSTEMWIDE_RELIABILITY' >> "$GITHUB_ENV"
-              echo 'PULSE_AI_HELP_CHAT_SYSTEMWIDE_RELIABILITY=PASSED'
-              ;;
-'''
-          if text.count(anchor) != 1:
-              raise SystemExit(f'Expected one default Help-chat branch anchor; found {text.count(anchor)}.')
-          if 'PULSE_AI_HELP_CHAT_SYSTEMWIDE_RELIABILITY=PASSED' in text:
-              raise SystemExit('Systemwide Help-chat boundary already exists unexpectedly.')
-          path.write_text(text.replace(anchor, insertion + anchor, 1))
-          PY
-
-          grep -Fq 'fix/systemwide-enterprise-reliability-final-*)' "$FILE"
-          grep -Fq 'PULSE_AI_HELP_CHAT_SYSTEMWIDE_RELIABILITY=PASSED' "$FILE"
-          grep -Fq 'CENTRAL_HELP_CONVERGENCE' "$FILE"
-          git diff --check -- "$FILE"
-
-          PAYLOAD="$(jq -n --arg content "$(base64 -w0 "$FILE")" '{content:$content,encoding:"base64"}')"
-          RESPONSE="$(curl -fsS -X POST \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/$REPOSITORY/git/blobs" \
-            -d "$PAYLOAD")"
-          BLOB_SHA="$(jq -r '.sha // empty' <<<"$RESPONSE")"
-          EXPECTED_SHA="$(git hash-object "$FILE")"
-          [[ "$BLOB_SHA" == "$EXPECTED_SHA" ]] || {
-            echo 'ERROR: Help-chat workflow blob SHA mismatch.' >&2
-            exit 1
-          }
-          jq -n --arg path "$FILE" --arg sha "$BLOB_SHA" '{path:$path,sha:$sha}' \
-            > "$RUNNER_TEMP/help-chat-workflow-blob.json"
-          cat "$RUNNER_TEMP/help-chat-workflow-blob.json"
-
-      - name: Upload Help-chat workflow blob evidence
+      - name: Upload exact Help-chat workflow
         uses: actions/upload-artifact@v4
         with:
-          name: help-chat-systemwide-regression-workflow-blob-20260814
-          path: ${{ runner.temp }}/help-chat-workflow-blob.json
+          name: pulse-ai-help-chat-usability-workflow-20260814
+          path: ${{ runner.temp }}/help-chat-workflow
           if-no-files-found: error
           retention-days: 1
