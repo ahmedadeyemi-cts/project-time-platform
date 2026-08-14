@@ -1,4 +1,4 @@
-name: Publish Final Systemwide CI Corrections 20260814
+name: Publish Final Systemwide CI Corrections 20260814 v2
 
 on:
   push:
@@ -22,11 +22,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Stage patch script and check out exact PR head
+      - name: Stage patch scripts and check out exact PR head
         shell: bash
         run: |
           set -Eeuo pipefail
           cp .github/reliability-patch/final-systemwide-ci-corrections.py "$RUNNER_TEMP/final-systemwide-ci-corrections.py"
+          cp .github/reliability-patch/public-fact-conflict-correction.py "$RUNNER_TEMP/public-fact-conflict-correction.py"
           git checkout --detach 8b2aa5442bdb562447d9d7f44ffae7f87d0832af
           test "$(git rev-parse HEAD)" = '8b2aa5442bdb562447d9d7f44ffae7f87d0832af'
 
@@ -35,6 +36,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 "$RUNNER_TEMP/final-systemwide-ci-corrections.py"
+          python3 "$RUNNER_TEMP/public-fact-conflict-correction.py"
           node --check tests/validate-celar-ai-pr630-consolidated.mjs
           git diff --check -- \
             src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs \
@@ -42,6 +44,7 @@ jobs:
             .github/workflows/module030-analytics-enterprise-experience-ci.yml \
             .github/workflows/celar-ai-production-platform-ci.yml
           grep -Fq 'recognizedCurrentPublicProfile' src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs
+          grep -Fq '(?:President|Vice|Administration|White|House|The|First|United|States|His|Her|Majesty|Royal|Court)' src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs
           grep -Fq 'CELAR_PR630_SYSTEMWIDE_RELIABILITY_COMPATIBILITY=PASS' tests/validate-celar-ai-pr630-consolidated.mjs
           grep -Fq 'ANALYTICS_ENTERPRISE_SYSTEMWIDE_SOURCE_BOUNDARY=PASSED' .github/workflows/module030-analytics-enterprise-experience-ci.yml
           grep -Fq 'CELAR_AI_PRODUCTION_SOURCE_MODE=SYSTEMWIDE_RELIABILITY' .github/workflows/celar-ai-production-platform-ci.yml
@@ -113,7 +116,7 @@ jobs:
       - name: Upload exact blob evidence
         uses: actions/upload-artifact@v4
         with:
-          name: final-systemwide-ci-blobs-20260814
+          name: final-systemwide-ci-blobs-20260814-v2
           path: ${{ runner.temp }}/final-systemwide-ci-blobs.json
           if-no-files-found: error
           retention-days: 1
