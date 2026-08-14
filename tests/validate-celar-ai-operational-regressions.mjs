@@ -32,7 +32,8 @@ requireMarker(
   'CELAR_PROJECT_SUMMARY_REPAIR_TARGET',
   props.includes('RepairCelarAiOperationalGeneratedSources')
     && props.includes('repair-project-management-summary-schema.py')
-    && props.includes('AfterTargets="GenerateScopedRbacSources"')
+    && props.includes('DependsOnTargets="GenerateScopedRbacSources"')
+    && props.includes('BeforeTargets="CoreCompile"')
 );
 requireMarker(
   'CELAR_MIGRATION_077_ENTERPRISE_RISK_SCHEMA',
