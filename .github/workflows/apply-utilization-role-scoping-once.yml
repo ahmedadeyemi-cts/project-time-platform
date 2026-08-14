@@ -1,0 +1,81 @@
+name: Apply Utilization Role Scoping Once
+
+on:
+  push:
+    branches:
+      - fix/utilization-role-scoping-20260814
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-utilization-role-scoping-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/utilization-role-scoping-20260814
+          fetch-depth: 0
+
+      - name: Verify reviewed base and concurrent work boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git merge-base --is-ancestor 94949b43b999146b07b10956b1f128e4619ebb82 HEAD
+          test "$(git merge-base 94949b43b999146b07b10956b1f128e4619ebb82 HEAD)" = 94949b43b999146b07b10956b1f128e4619ebb82
+          git diff --check 94949b43b999146b07b10956b1f128e4619ebb82...HEAD
+
+      - name: Apply guarded source repair
+        run: python .github/scripts/apply_utilization_role_scoping.py
+
+      - name: Validate source contracts
+        run: node tests/validate-utilization-role-scoping.mjs
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build frontend and run existing Module 003 validation
+        working-directory: src/frontend/project-time-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run validate:modules003004-rolling-years
+          npm run build
+
+      - name: Commit only reviewed source changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add \
+            src/backend/ProjectTime.Api/Program.cs \
+            src/frontend/project-time-web/src/EngineeringTeamLeadUtilizationPanel.jsx \
+            src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx \
+            src/frontend/project-time-web/src/App.jsx \
+            tests/validate-utilization-role-scoping.mjs \
+            .github/workflows/utilization-role-scoping-ci.yml
+
+          git rm \
+            .github/scripts/apply_utilization_role_scoping.py \
+            .github/workflows/apply-utilization-role-scoping-once.yml
+
+          git diff --cached --check
+          git commit -m 'Fix utilization role scoping and self calculations'
+          git push origin HEAD:fix/utilization-role-scoping-20260814
