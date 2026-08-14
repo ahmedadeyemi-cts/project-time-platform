@@ -12,6 +12,49 @@ function getProjectPulseAuthHeaders() {
   }
 }
 
+const ENGINEERING_TEAM_SCOPE_ROLE_CODES = new Set([
+  'TEAM_LEAD',
+  'ENGINEERING_LEAD',
+  'ENGINEERING_TEAM_LEAD',
+  'MANAGER',
+  'ENGINEERING_MANAGER',
+  'DIRECTOR',
+  'ENGINEERING_DIRECTOR'
+]);
+
+const ENGINEERING_ORGANIZATION_SCOPE_ROLE_CODES = new Set([
+  'SUPER_ADMINISTRATOR',
+  'SUPERADMINISTRATOR',
+  'GLOBAL_ADMINISTRATOR',
+  'GLOBALADMINISTRATOR',
+  'ADMINISTRATOR',
+  'PROJECT_TEAM_COORDINATOR',
+  'EXECUTIVE',
+  'EXECUTIVE_LEADERSHIP'
+]);
+
+function normalizeUtilizationRoleCode(value) {
+  return String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function canLoadEngineeringTeamSummary(securityContext) {
+  const roleCodes = new Set((securityContext?.roles ?? [])
+    .map((role) => normalizeUtilizationRoleCode(role?.roleCode ?? role?.roleName ?? role))
+    .filter(Boolean));
+  const permissions = new Set((securityContext?.permissions ?? [])
+    .map((permission) => String(permission ?? '').trim().toUpperCase())
+    .filter(Boolean));
+
+  return [...roleCodes].some((roleCode) =>
+    ENGINEERING_TEAM_SCOPE_ROLE_CODES.has(roleCode)
+    || ENGINEERING_ORGANIZATION_SCOPE_ROLE_CODES.has(roleCode))
+    || permissions.has('VIEW_TEAM_UTILIZATION')
+    || permissions.has('VIEW_ORGANIZATION_UTILIZATION')
+    || permissions.has('VIEW_ALL_UTILIZATION')
+    || permissions.has('SYSTEM_ADMINISTRATION')
+    || permissions.has('MANAGE_ALL');
+}
+
 async function readApiErrorMessage(response, path) {
   const raw = await response.text();
   if (!raw) return `${path} returned HTTP ${response.status}`;
@@ -110,7 +153,37 @@ export default function EngineeringTeamLeadUtilizationPanel() {
   }
 
   useEffect(() => {
-    loadUtilization(selectedYear, selectedEngineerUserId);
+    let cancelled = false;
+
+    async function loadAuthorizedTeamUtilization() {
+      try {
+        const securityContext = await fetchJson('/api/security/context');
+        if (cancelled) return;
+
+        if (!canLoadEngineeringTeamSummary(securityContext)) {
+          setPayload({
+            loading: false,
+            data: { canViewEngineeringTeamUtilization: false },
+            error: null
+          });
+          return;
+        }
+
+        await loadUtilization(selectedYear, selectedEngineerUserId);
+      } catch (error) {
+        if (cancelled) return;
+        setPayload({
+          loading: false,
+          data: null,
+          error: error instanceof Error ? error.message : 'Unable to verify engineering utilization access.'
+        });
+      }
+    }
+
+    void loadAuthorizedTeamUtilization();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const data = payload.data;

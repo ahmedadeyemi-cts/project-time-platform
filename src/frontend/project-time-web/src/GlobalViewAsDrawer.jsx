@@ -29,6 +29,23 @@ function readActiveViewAs() {
   return value?.userId ? value : null;
 }
 
+function securityContextAllowsViewAs(context) {
+  const roleCodes = new Set((context?.roles ?? [])
+    .map((role) => String(role?.roleCode ?? role?.roleName ?? role ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_'))
+    .filter(Boolean));
+
+  return [
+    'SUPER_ADMINISTRATOR',
+    'SUPERADMINISTRATOR',
+    'GLOBAL_ADMINISTRATOR',
+    'GLOBALADMINISTRATOR',
+    'ADMINISTRATOR'
+  ].some((roleCode) => roleCodes.has(roleCode));
+}
+
 function roleLabel(user) {
   const roles = Array.isArray(user?.roleCodes)
     ? user.roleCodes
@@ -76,6 +93,37 @@ export default function GlobalViewAsDrawer() {
 
     try {
       const requestFetch = window.__projectPulseOriginalFetch || window.fetch.bind(window);
+
+      if (!active) {
+        const contextResponse = await requestFetch('/api/security/context', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          headers: {
+            'X-ProjectPulse-Session': session.sessionToken,
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache'
+          }
+        });
+
+        if (sequence !== requestSequence.current) return;
+
+        if (!contextResponse.ok) {
+          setUsers([]);
+          setLoadState('hidden');
+          setLoadError('');
+          return;
+        }
+
+        const securityContext = await contextResponse.json().catch(() => ({}));
+        if (!securityContextAllowsViewAs(securityContext)) {
+          setUsers([]);
+          setLoadState('hidden');
+          setLoadError('');
+          return;
+        }
+      }
+
       const response = await requestFetch(VIEW_AS_USERS_ENDPOINT, {
         method: 'GET',
         credentials: 'include',
@@ -116,7 +164,7 @@ export default function GlobalViewAsDrawer() {
   }, []);
 
   useEffect(() => {
-    const timers = [250, 1200, 3000].map((delay) => window.setTimeout(loadUsers, delay));
+    const timer = window.setTimeout(loadUsers, 250);
     const synchronize = () => {
       setActiveViewAs(readActiveViewAs());
       void loadUsers();
@@ -126,15 +174,13 @@ export default function GlobalViewAsDrawer() {
     };
 
     window.addEventListener('storage', onStorage);
-    window.addEventListener('hashchange', loadUsers);
     window.addEventListener('projectpulse:auth-session-ready', loadUsers);
     window.addEventListener(VIEW_AS_CHANGED_EVENT, synchronize);
 
     return () => {
       requestSequence.current += 1;
-      timers.forEach((timer) => window.clearTimeout(timer));
+      window.clearTimeout(timer);
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener('hashchange', loadUsers);
       window.removeEventListener('projectpulse:auth-session-ready', loadUsers);
       window.removeEventListener(VIEW_AS_CHANGED_EVENT, synchronize);
     };
