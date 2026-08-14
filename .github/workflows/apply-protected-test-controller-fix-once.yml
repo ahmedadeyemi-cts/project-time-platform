@@ -1,0 +1,93 @@
+name: Apply protected-Test controller fix once
+
+on:
+  push:
+    branches:
+      - fix/protected-test-image-tag-utilization-gate-20260814
+    paths:
+      - .github/workflows/apply-protected-test-controller-fix-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-protected-test-controller-fix-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Patch, validate, commit, and remove one-time controller
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the isolated repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/protected-test-image-tag-utilization-gate-20260814
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard branch ancestry and isolated scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor origin/main HEAD
+          test "$(git rev-list --count origin/main..HEAD)" -eq 1
+          mapfile -t changed < <(git diff --name-only origin/main...HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = '.github/workflows/apply-protected-test-controller-fix-once.yml'
+          git diff --check origin/main...HEAD
+
+      - name: Apply the minimal controller correction and utilization gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml')
+          text = path.read_text(encoding='utf-8')
+
+          typo = '--tag "$full_imae"'
+          corrected = '--tag "$full_image"'
+          if text.count(typo) != 1:
+              raise SystemExit(f'Expected exactly one protected-Test image-tag typo, found {text.count(typo)}')
+          text = text.replace(typo, corrected, 1)
+
+          required_line = '            tests/validate-utilization-role-scoping.mjs \\\n'
+          required_anchor = '            tests/validate-systemwide-enterprise-reliability.mjs \\\n'
+          if required_line not in text:
+              if text.count(required_anchor) != 1:
+                  raise SystemExit('Could not locate the protected-Test required-file validation anchor')
+              text = text.replace(required_anchor, required_line + required_anchor, 1)
+
+          command_line = '          node tests/validate-utilization-role-scoping.mjs\n'
+          command_anchor = '          node tests/validate-systemwide-enterprise-reliability.mjs\n'
+          if command_line not in text:
+              if text.count(command_anchor) != 1:
+                  raise SystemExit('Could not locate the protected-Test validation command anchor')
+              text = text.replace(command_anchor, command_line + command_anchor, 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('PROTECTED_TEST_CONTROLLER_PATCH=APPLIED')
+          PY
+
+          test "$(grep -F -c '$full_imae' .github/workflows/systemwide-enterprise-reliability-test-deployment.yml || true)" -eq 0
+          test "$(grep -F -c '$full_image' .github/workflows/systemwide-enterprise-reliability-test-deployment.yml)" -ge 1
+          test "$(grep -F -c 'node tests/validate-utilization-role-scoping.mjs' .github/workflows/systemwide-enterprise-reliability-test-deployment.yml)" -eq 1
+          node tests/validate-utilization-role-scoping.mjs
+          git diff --check
+
+      - name: Commit the final one-file repair to the branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          git rm .github/workflows/apply-protected-test-controller-fix-once.yml
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" -eq 2
+          git commit -m 'Fix protected-Test image tag and gate utilization scoping'
+          git push origin HEAD:fix/protected-test-image-tag-utilization-gate-20260814
