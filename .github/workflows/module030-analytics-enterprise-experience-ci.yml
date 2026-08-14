@@ -80,6 +80,17 @@ jobs:
             fi
             echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=UAT_FUNCTIONAL_COMPLETION' >> "$GITHUB_ENV"
             echo 'ANALYTICS_ENTERPRISE_UAT_OWNED_SUBSET=PASSED'
+          elif [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
+            SYSTEMWIDE_DIRECT_ANALYTICS="$(grep -E "$OWNED" <<<"$CHANGED" || true)"
+            SYSTEMWIDE_ALLOWED='^\.github/workflows/(module030-analytics-center-ci|module030-analytics-enterprise-experience-ci)\.yml$'
+            UNEXPECTED="$(grep -Ev "$SYSTEMWIDE_ALLOWED" <<<"$SYSTEMWIDE_DIRECT_ANALYTICS" || true)"
+            if [[ -n "$UNEXPECTED" ]]; then
+              echo 'The systemwide reliability package changed Analytics-owned source outside its exact CI convergence boundary:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+            echo 'ANALYTICS_ENTERPRISE_VALIDATION_MODE=SYSTEMWIDE_RELIABILITY' >> "$GITHUB_ENV"
+            echo 'ANALYTICS_ENTERPRISE_SYSTEMWIDE_SOURCE_BOUNDARY=PASSED'
           else
             DIRECT_ANALYTICS="$(grep -E '^(database/(migrations/060_analytics_center_enterprise_experience\.sql|rollback/060_analytics_center_enterprise_experience_rollback\.sql)|docs/modules/module-030-analytics-enterprise-experience/README\.md|src/backend/ProjectTime.Api/Modules/(AnalyticsBrandedExportBuilder|AnalyticsCenterEnterpriseContracts|AnalyticsCenterEnterpriseExperienceModule|AnalyticsCenterExperienceScope|AnalyticsCenterScheduler|AnalyticsCenterScheduleRepository|AnalyticsCenterScheduleService|Module065AnalyticsAttachmentDelivery)\.cs|src/frontend/project-time-web/scripts/validate-analytics-center\.mjs|src/frontend/project-time-web/src/(AnalyticsCenter\.jsx|analytics/AnalyticsMultiSelect\.jsx|analytics-center\.css)|tests/test-analytics-center-enterprise-migration-060\.sh)$' <<<"$CHANGED" || true)"
             if [[ -n "$DIRECT_ANALYTICS" ]]; then
@@ -104,6 +115,13 @@ jobs:
           DEPLOYMENT_OVERLAP="$(grep -E '^(deployment/|\.github/workflows/projectpulse-deploy-|scripts/.*deploy)' <<<"$CHANGED" || true)"
           if [[ "$HEAD_BRANCH" == release/consolidated-enterprise-validation-* ]]; then
             DEPLOYMENT_OVERLAP="$(grep -Fvx 'deployment/containers/web/Dockerfile' <<<"$DEPLOYMENT_OVERLAP" || true)"
+          fi
+          if [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
+            GENERATED_API_SOURCE='deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh'
+            DEPLOYMENT_OVERLAP="$(grep -Fvx "$GENERATED_API_SOURCE" <<<"$DEPLOYMENT_OVERLAP" || true)"
+            test -f "$GENERATED_API_SOURCE"
+            grep -Fxq "$GENERATED_API_SOURCE" <<<"$CHANGED"
+            echo 'ANALYTICS_ENTERPRISE_SYSTEMWIDE_DEPLOYMENT_BOUNDARY=PASSED'
           fi
           if [[ -n "$DEPLOYMENT_OVERLAP" ]]; then
             echo 'Analytics enterprise validation detected deployment-control overlap:' >&2

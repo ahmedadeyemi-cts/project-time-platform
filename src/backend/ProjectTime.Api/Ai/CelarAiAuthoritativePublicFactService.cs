@@ -48,7 +48,7 @@ public sealed class CelarAiAuthoritativePublicFactService
         @"\s+",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PresidentName = new(
-        @"(?<!Vice )\bPresident\s+(?<name>(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)(?:\s+(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)){0,4})",
+        @"(?<!Vice )\bPresident\s+(?<name>(?:[A-Z][A-Za-z'’.-]*)(?:\s+(?!(?:President|Vice|Administration|White|House|The|First|United|States|His|Her|Majesty|Royal|Court)\b)(?:[A-Z][A-Za-z'’.-]*)){0,4})",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex KingName = new(
         @"\bKing\s+(?<name>(?:[A-Z][A-Za-z'’.-]+|II|III|IV)(?:\s+(?:[A-Z][A-Za-z'’.-]+|II|III|IV)){0,4})",
@@ -80,12 +80,21 @@ public sealed class CelarAiAuthoritativePublicFactService
         string question,
         CancellationToken cancellationToken)
     {
-        if (plan.QuestionClass != CelarAiAnswerQuestionClass.PublicCurrent) return result;
-        if (!Enabled()) return FailClosed(result, "current_public_connector_disabled");
-
         var normalized = Normalize(question);
         if (LooksLikeInternalJordan(normalized))
             return FailClosed(result, "public_fact_profile_rejected_internal_subject");
+
+        // A named current-officeholder question is inherently time-sensitive even
+        // when an upstream planner under-classifies a prompt that omits the word
+        // "current". The closed profile catalog remains the authority boundary.
+        var recognizedCurrentPublicProfile =
+            IsUnitedStatesPresidentQuestion(normalized)
+            || IsJordanPresidentQuestion(normalized)
+            || IsUsSignalChiefExecutiveQuestion(normalized);
+        if (plan.QuestionClass != CelarAiAnswerQuestionClass.PublicCurrent
+            && !recognizedCurrentPublicProfile)
+            return result;
+        if (!Enabled()) return FailClosed(result, "current_public_connector_disabled");
 
         try
         {

@@ -119,6 +119,12 @@ jobs:
               ! grep -Eq 'id-token:[[:space:]]+[w]rite' "$deferred"
               ! grep -Eq '^[[:space:]]{2}push:' "$deferred"
             done
+          elif [[ "$HEAD_BRANCH" == fix/systemwide-enterprise-reliability-final-* ]]; then
+            GENERATED_API_SOURCE='deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh'
+            UNAUTHORIZED_CONTROL="$(grep -Fvx "$GENERATED_API_SOURCE" <<<"$UNAUTHORIZED_CONTROL" || true)"
+            test -f "$GENERATED_API_SOURCE"
+            grep -Fxq "$GENERATED_API_SOURCE" <<<"$CHANGED"
+            echo 'CELAR_AI_PRODUCTION_SYSTEMWIDE_GENERATED_SOURCE_BOUNDARY=PASSED'
           fi
           if [[ -n "$UNAUTHORIZED_CONTROL" ]]; then
             echo 'Celar AI production source may not alter protected deployment controls.' >&2
@@ -207,6 +213,21 @@ jobs:
                 grep -Fxq "$required" <<<"$CHANGED"
               done
               echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=PRIVATE_RUNTIME_INTERNAL_DATA'
+              ;;
+            fix/systemwide-enterprise-reliability-final-*)
+              UNEXPECTED_MIGRATIONS="$(grep -Ev '^database/(migrations/088_systemwide_enterprise_reliability\.sql|rollback/088_systemwide_enterprise_reliability_rollback\.sql)$' <<<"$CHANGED_MIGRATIONS" || true)"
+              if [[ -n "$UNEXPECTED_MIGRATIONS" ]]; then
+                echo 'Unexpected numbered migration in the systemwide reliability package:' >&2
+                printf '%s\n' "$UNEXPECTED_MIGRATIONS" >&2
+                exit 1
+              fi
+              for required in \
+                'database/migrations/088_systemwide_enterprise_reliability.sql' \
+                'database/rollback/088_systemwide_enterprise_reliability_rollback.sql'; do
+                test -f "$required"
+                grep -Fxq "$required" <<<"$CHANGED"
+              done
+              echo 'CELAR_AI_PRODUCTION_SOURCE_MODE=SYSTEMWIDE_RELIABILITY'
               ;;
             *)
               if [[ -n "$CHANGED_MIGRATIONS" ]]; then
