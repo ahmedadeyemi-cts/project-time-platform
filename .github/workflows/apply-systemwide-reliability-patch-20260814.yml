@@ -1,4 +1,4 @@
-name: Publish Module 008 and 030 Regression Blobs 20260814
+name: Diagnose Systemwide Reliability Frontend Build 20260814
 
 on:
   push:
@@ -8,69 +8,49 @@ on:
       - .github/workflows/apply-systemwide-reliability-patch-20260814.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish:
+  diagnose-frontend-build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: cdf6b740023689157df4b625d95c3e37e5211281
+          ref: 0537b456ae7011bcf28d16ad1658ad29b23d252d
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Apply exact CI regression boundaries and create Git blobs
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install exact frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build frontend and publish concise evidence
+        working-directory: src/frontend/project-time-web
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          OLD_008_B64: ZWxpZiBbWyAiJEJSQU5DSCIgPT0gZmVhdHVyZS9lbnRlcnByaXNlLW9wZXJhdGlvbnMtdXgtKiB8fCAiJEJSQU5DSCIgPT0gZml4L21vZHVsZXMtMDgxLTA4Mi10aGVtZS1yZWNvdmVyeS0qIF1dOyB0aGVu
-          NEW_008_B64: ZWxpZiBbWyAiJEJSQU5DSCIgPT0gZmVhdHVyZS9lbnRlcnByaXNlLW9wZXJhdGlvbnMtdXgtKiB8fCAiJEJSQU5DSCIgPT0gZml4L21vZHVsZXMtMDgxLTA4Mi10aGVtZS1yZWNvdmVyeS0qIHx8ICIkQlJBTkNIIiA9PSBmaXgvc3lzdGVtd2lkZS1lbnRlcnByaXNlLXJlbGlhYmlsaXR5LWZpbmFsLSogXV07IHRoZW4=
-          OLD_030_B64: ICAgICAgICAgIGlmIFtbICIkSEVBRF9CUkFOQ0giID09IHJlbGVhc2UvY29uc29saWRhdGVkLWVudGVycHJpc2UtdmFsaWRhdGlvbi0qIF1dOyB0aGVuCiAgICAgICAgICAgIERFUExPWU1FTlRfT1ZFUkxBUD0iJChncmVwIC1GdnggJ2RlcGxveW1lbnQvY29udGFpbmVycy93ZWIvRG9ja2VyZmlsZScgPDw8IiRERVBMT1lNRU5UX09WRVJMQVAiIHx8IHRydWUpIgogICAgICAgICAgZmkKICAgICAgICAgIGlmIFtbIC1uICIkREVQTE9ZTUVOVF9PVkVSTEFQIiBdXTsgdGhlbgo=
-          NEW_030_B64: ICAgICAgICAgIGlmIFtbICIkSEVBRF9CUkFOQ0giID09IHJlbGVhc2UvY29uc29saWRhdGVkLWVudGVycHJpc2UtdmFsaWRhdGlvbi0qIF1dOyB0aGVuCiAgICAgICAgICAgIERFUExPWU1FTlRfT1ZFUkxBUD0iJChncmVwIC1GdnggJ2RlcGxveW1lbnQvY29udGFpbmVycy93ZWIvRG9ja2VyZmlsZScgPDw8IiRERVBMT1lNRU5UX09WRVJMQVAiIHx8IHRydWUpIgogICAgICAgICAgZmkKICAgICAgICAgIGlmIFtbICIkSEVBRF9CUkFOQ0giID09IGZpeC9zeXN0ZW13aWRlLWVudGVycHJpc2UtcmVsaWFiaWxpdHktZmluYWwtKiBdXTsgdGhlbgogICAgICAgICAgICAjIFRoaXMgYnJhbmNoIGNoYW5nZXMgdGhlIGNhbm9uaWNhbCBnZW5lcmF0ZWQgQVBJIHNvdXJjZSBwYXRjaCB0aGF0CiAgICAgICAgICAgICMgbWF0ZXJpYWxpemVzIFByb2plY3QgTWFuYWdlbWVudCBhbmQgRmxvd0hpdmUgcm91dGVzLiBJdCBpcyBzb3VyY2UsCiAgICAgICAgICAgICMgbm90IGEgZGVwbG95bWVudCBjb250cm9sbGVyLCBhbmQgcmVtYWlucyB0aGUgb25seSBkZXBsb3ltZW50LwogICAgICAgICAgICAjIHBhdGggcGVybWl0dGVkIGJ5IHRoaXMgZXhhY3QgcmVncmVzc2lvbiBib3VuZGFyeS4KICAgICAgICAgICAgREVQTE9ZTUVOVF9PVkVSTEFQPSIkKGdyZXAgLUZ2eCAnZGVwbG95bWVudC9yb2NreS1saW51eC9hcHBseS1yZW1haW5pbmctcHNhLW1vZHVsZS1hcGktcGF0Y2guc2gnIDw8PCIkREVQTE9ZTUVOVF9PVkVSTEFQIiB8fCB0cnVlKSIKICAgICAgICAgICAgdGVzdCAtZiBkZXBsb3ltZW50L3JvY2t5LWxpbnV4L2FwcGx5LXJlbWFpbmluZy1wc2EtbW9kdWxlLWFwaS1wYXRjaC5zaAogICAgICAgICAgICBncmVwIC1GeHEgJ2RlcGxveW1lbnQvcm9ja3ktbGludXgvYXBwbHktcmVtYWluaW5nLXBzYS1tb2R1bGUtYXBpLXBhdGNoLnNoJyA8PDwiJENIQU5HRUQiCiAgICAgICAgICAgIGVjaG8gJ0FOQUxZVElDU19DRU5URVJfU1lTVEVNV0lERV9SRUxJQUJJTElUWV9CT1VOREFSWT1QQVNTRUQnCiAgICAgICAgICBmaQogICAgICAgICAgaWYgW1sgLW4gIiRERVBMT1lNRU5UX09WRVJMQVAiIF1dOyB0aGVuCg==
         run: |
-          set -Eeuo pipefail
-          python3 -c 'import base64,os; from pathlib import Path; p=Path(".github/workflows/validate-global-session-invalidation.yml"); t=p.read_text(); old=base64.b64decode(os.environ["OLD_008_B64"]).decode(); new=base64.b64decode(os.environ["NEW_008_B64"]).decode(); assert t.count(old)==1, f"Module 008 anchor count={t.count(old)}"; p.write_text(t.replace(old,new,1))'
-          python3 -c 'import base64,os; from pathlib import Path; p=Path(".github/workflows/module030-analytics-center-ci.yml"); t=p.read_text(); old=base64.b64decode(os.environ["OLD_030_B64"]).decode(); new=base64.b64decode(os.environ["NEW_030_B64"]).decode(); assert t.count(old)==1, f"Module 030 anchor count={t.count(old)}"; p.write_text(t.replace(old,new,1))'
+          set +e
+          npm run build 2>&1 | tee "$RUNNER_TEMP/frontend-build.log"
+          status=${PIPESTATUS[0]}
+          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_BEGIN ---'
+          grep -Ei '(error|failed|failure|cannot|could not|syntaxerror|referenceerror|rolluperror|✗)' \
+            "$RUNNER_TEMP/frontend-build.log" | tail -n 200 || true
+          echo '--- CONCISE_FRONTEND_BUILD_EVIDENCE_END ---'
+          exit "$status"
 
-          grep -Fq 'fix/systemwide-enterprise-reliability-final-*' .github/workflows/validate-global-session-invalidation.yml
-          grep -Fq 'ANALYTICS_CENTER_SYSTEMWIDE_RELIABILITY_BOUNDARY=PASSED' .github/workflows/module030-analytics-center-ci.yml
-          git diff --check -- \
-            .github/workflows/validate-global-session-invalidation.yml \
-            .github/workflows/module030-analytics-center-ci.yml
-
-          create_blob() {
-            local file="$1"
-            local payload response sha expected
-            payload="$(jq -n --arg content "$(base64 -w0 "$file")" '{content:$content,encoding:"base64"}')"
-            response="$(curl -fsS -X POST \
-              -H 'Accept: application/vnd.github+json' \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H 'X-GitHub-Api-Version: 2022-11-28' \
-              "https://api.github.com/repos/$REPOSITORY/git/blobs" \
-              -d "$payload")"
-            sha="$(jq -r '.sha // empty' <<<"$response")"
-            expected="$(git hash-object "$file")"
-            [[ "$sha" == "$expected" ]] || {
-              echo "ERROR: GitHub blob SHA mismatch for $file." >&2
-              exit 1
-            }
-            printf '%s\n' "$sha"
-          }
-
-          MODULE008_SHA="$(create_blob .github/workflows/validate-global-session-invalidation.yml)"
-          MODULE030_SHA="$(create_blob .github/workflows/module030-analytics-center-ci.yml)"
-          jq -n --arg module008 "$MODULE008_SHA" --arg module030 "$MODULE030_SHA" \
-            '{module008:{path:".github/workflows/validate-global-session-invalidation.yml",sha:$module008},module030:{path:".github/workflows/module030-analytics-center-ci.yml",sha:$module030}}' \
-            > "$RUNNER_TEMP/module008-module030-blobs.json"
-          cat "$RUNNER_TEMP/module008-module030-blobs.json"
-
-      - name: Upload blob evidence
+      - name: Upload full frontend build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: module008-module030-regression-blobs-20260814
-          path: ${{ runner.temp }}/module008-module030-blobs.json
+          name: systemwide-reliability-frontend-build-log-20260814
+          path: ${{ runner.temp }}/frontend-build.log
           if-no-files-found: error
           retention-days: 1
