@@ -222,12 +222,13 @@ function AuditHistoryPanelContent({ stableRouteOwner }) {
       </div>
 
       <div className="audit-quick-filters" aria-label="Common history views"><span>Common views</span>{[
-        ['authentication', 'Authentication & sessions'],
-        ['notification', 'Email & notifications'],
-        ['workflow', 'Timesheet & approvals'],
-        ['ai_usage', 'AI usage'],
-        ['user_administration', 'Changes & administration']
-      ].map(([category, label]) => <button type="button" key={category} className={filters.category === category ? 'active' : ''} onClick={() => setFilters((current) => ({ ...current, category, source: 'all' }))}>{label}</button>)}<button type="button" onClick={() => setFilters((current) => ({ ...current, category: 'all', source: 'all' }))}>All history</button></div>
+        { key: 'authentication', label: 'Login, logout & sessions', category: 'authentication', status: 'all', search: '' },
+        { key: 'failures', label: 'Failures & denied requests', category: 'all', status: 'failure', search: '' },
+        { key: 'dependencies', label: 'Dependency outages', category: 'system', status: 'failure', search: 'temporarily unavailable' },
+        { key: 'changes', label: 'Changes & administration', category: 'change', status: 'all', search: '' },
+        { key: 'notifications', label: 'Email & notifications', category: 'notification', status: 'all', search: '' },
+        { key: 'ai', label: 'AI usage', category: 'ai_usage', status: 'all', search: '' }
+      ].map((view) => <button type="button" key={view.key} className={filters.category === view.category && filters.status === view.status && submittedSearch === view.search ? 'active' : ''} onClick={() => { setFilters((current) => ({ ...current, category: view.category, status: view.status, source: 'all', search: view.search })); setSubmittedSearch(view.search); }}>{view.label}</button>)}<button type="button" onClick={() => { setFilters((current) => ({ ...current, category: 'all', status: 'all', source: 'all', search: '' })); setSubmittedSearch(''); }}>All history</button></div>
 
       <form className="audit-filter-bar" onSubmit={applySearch}>
         <label>
@@ -340,7 +341,7 @@ function AuditHistoryPanelContent({ stableRouteOwner }) {
 
       <div className="audit-source-footnote">
         <strong>{availableSources.length}</strong> audit/history source{availableSources.length === 1 ? '' : 's'} available.
-        Sensitive fields such as passwords, tokens, secrets, credentials, and connection strings are redacted by the API.
+        Authentication outcomes, state changes, denied requests, server failures, and degraded dependencies are recorded automatically. Sensitive fields such as passwords, tokens, secrets, credentials, request bodies, and connection strings are redacted by the API.
       </div>
     </section>
   );

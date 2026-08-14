@@ -233,14 +233,20 @@ function AnswerList({ heading, values, open = false, ordered = false }) {
 
 function EvidenceBadges({ result }) {
   const answer = result?.answer ?? {};
+  const trust = result?.trust ?? {};
   const apiRequested = result?.intentCode === 'api_inventory';
+  const evidenceScore = trust.evidenceScore ?? trust.confidence ?? answer.confidence;
+  const authoritativeSources = trust.authoritativeSourceCount
+    ?? trust.successfulSourceCount
+    ?? asArray(result?.sources).length;
   return (
     <div className="pulse-ai-system-evidence-badges">
       <span>Status: {titleFrom(result?.status || 'unknown')}</span>
       <span>Intent: {titleFrom(result?.intentCode || 'general system')}</span>
-      <span>Confidence: {formatPercent(answer.confidence)}</span>
+      <span>Evidence score: {formatPercent(evidenceScore)}</span>
       <span>Data as of: {formatDate(answer.dataAsOf)}</span>
-      <span>Sources: {asArray(result?.sources).length}</span>
+      <span>Authoritative sources: {authoritativeSources}</span>
+      {Number(trust.providerResponseCount || 0) > 0 ? <span>Model responses excluded: {trust.providerResponseCount}</span> : null}
       {apiRequested ? <span>APIs: {asArray(result?.relevantApis).length}</span> : null}
       <span>Tools: {asArray(result?.toolResults).length}</span>
       <span>Saved: {result?.persisted ? 'Yes' : 'No'}</span>
@@ -251,15 +257,17 @@ function EvidenceBadges({ result }) {
 function TrustSummary({ trust }) {
   if (!trust) return null;
   const reasons = asArray(trust.reasons);
-  const confidence = Number.isFinite(Number(trust.confidence))
-    ? `${Math.round(Number(trust.confidence) * 100)}%`
+  const evidenceScoreValue = trust.evidenceScore ?? trust.confidence;
+  const evidenceScore = Number.isFinite(Number(evidenceScoreValue))
+    ? `${Math.round(Number(evidenceScoreValue) * 100)}%`
     : 'Not recorded';
   return (
     <div className={`celar-trust-banner is-${trust.classification || 'unknown'}`} role="status">
       <strong>{trust.label || titleFrom(trust.classification)}</strong>
       <span>{trust.questionAnswered ? 'Question answered' : 'Answer incomplete'}</span>
-      <span>Confidence {confidence}</span>
-      <span>{trust.successfulSourceCount || 0} successful source(s)</span>
+      <span>Evidence score {evidenceScore}</span>
+      <span>{trust.authoritativeSourceCount ?? trust.successfulSourceCount ?? 0} authoritative source(s)</span>
+      {Number(trust.providerResponseCount || 0) > 0 ? <span>{trust.providerResponseCount} model response(s) excluded from evidence</span> : null}
       {trust.humanReviewRequired ? <span>Human review required</span> : null}
       {reasons.length ? <details><summary>Why this trust status</summary><ul>{reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></details> : null}
     </div>

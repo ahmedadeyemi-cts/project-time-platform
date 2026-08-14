@@ -703,7 +703,8 @@ public static class AdminAuditHistoryModule
     private static string NormalizeStatus(string rawStatus, JsonElement row)
     {
         var normalized = (rawStatus ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized is "true" or "ok" or "completed" or "complete" or "success" or "successful" or "sent" or "approved" or "active" or "healthy")
+        if (normalized is "true" or "ok" or "completed" or "complete" or "success" or "successful" or "succeeded" or "sent" or "approved" or "active" or "healthy" or "logout_success" or "session_extended"
+            || normalized.EndsWith("_success", StringComparison.Ordinal))
         {
             return "success";
         }
@@ -711,6 +712,9 @@ public static class AdminAuditHistoryModule
         if (normalized.Contains("fail", StringComparison.Ordinal)
             || normalized.Contains("error", StringComparison.Ordinal)
             || normalized.Contains("denied", StringComparison.Ordinal)
+            || normalized.Contains("invalid_credentials", StringComparison.Ordinal)
+            || normalized.Contains("account_locked", StringComparison.Ordinal)
+            || normalized.Contains("rate_limited", StringComparison.Ordinal)
             || normalized.Contains("expired", StringComparison.Ordinal)
             || normalized.Contains("rejected", StringComparison.Ordinal))
         {

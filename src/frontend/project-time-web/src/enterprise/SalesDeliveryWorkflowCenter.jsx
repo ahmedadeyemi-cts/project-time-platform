@@ -80,11 +80,81 @@ function IntakeUploader({ signed = false }) {
 }
 
 function SowGenerator() {
-  const [form, setForm] = useState({ projectCode: '', projectName: '', requestedOutcome: '', detailLevel: 'comprehensive', allowSanitizedExternalFallback: true });
-  const [busy, setBusy] = useState(false); const [result, setResult] = useState(null); const [error, setError] = useState('');
-  async function generate(event) { event.preventDefault(); setBusy(true); setError(''); try { const response = await request('/api/sow-gsd-planning/ai/generate', { method: 'POST', body: JSON.stringify({ ...form, mode: 'sow_draft' }) }); setResult(response); } catch (failure) { setError(failure.message); } finally { setBusy(false); } }
+  const [form, setForm] = useState({ customerName: '', customerId: '', opportunityReference: '', opportunityId: '', projectCode: '', projectName: '', requestedOutcome: '', detailLevel: 'comprehensive', allowSanitizedExternalFallback: true });
+  const [directory, setDirectory] = useState({ loading: true, customers: [], opportunities: [], warnings: [] });
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([
+      request('/api/customers/overview'),
+      request('/api/opportunities?scope=all')
+    ]).then(([customersResult, opportunitiesResult]) => {
+      if (!active) return;
+      const warnings = [];
+      if (customersResult.status === 'rejected') warnings.push(`Customer Directory: ${customersResult.reason?.message || 'unavailable'}`);
+      if (opportunitiesResult.status === 'rejected') warnings.push(`Opportunities: ${opportunitiesResult.reason?.message || 'unavailable'}`);
+      setDirectory({
+        loading: false,
+        customers: customersResult.status === 'fulfilled' ? (customersResult.value?.customers || []) : [],
+        opportunities: opportunitiesResult.status === 'fulfilled' ? (opportunitiesResult.value?.opportunities || []) : [],
+        warnings
+      });
+    });
+    return () => { active = false; };
+  }, []);
+
+  function updateCustomer(value) {
+    const match = directory.customers.find((item) => String(item.clientName || '').toLowerCase() === String(value).toLowerCase());
+    setForm((current) => ({ ...current, customerName: value, customerId: match?.clientId || '' }));
+  }
+
+  function updateOpportunity(value) {
+    const match = directory.opportunities.find((item) => (
+      String(item.externalOpportunityId || '').toLowerCase() === String(value).toLowerCase()
+      || String(item.topic || '').toLowerCase() === String(value).toLowerCase()
+    ));
+    setForm((current) => ({
+      ...current,
+      opportunityReference: value,
+      opportunityId: match?.opportunityId || '',
+      customerName: match?.accountName || current.customerName,
+      customerId: match?.clientId || current.customerId,
+      projectCode: current.projectCode || match?.externalOpportunityId || '',
+      projectName: current.projectName || match?.topic || ''
+    }));
+  }
+
+  async function generate(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const contextLines = [
+        form.customerName ? `Customer: ${form.customerName}` : '',
+        form.opportunityReference ? `Opportunity: ${form.opportunityReference}` : '',
+        form.requestedOutcome
+      ].filter(Boolean);
+      const response = await request('/api/sow-gsd-planning/ai/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...form,
+          mode: 'sow_draft',
+          requestedOutcome: contextLines.join('\n')
+        })
+      });
+      setResult(response);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const draft = result?.result?.sowDraft;
-  return <div className="sales-delivery-two-column"><form className="sales-delivery-card sales-delivery-form" onSubmit={generate}><div className="sales-delivery-card-heading"><div><span>Celar AI governed draft</span><h2>Generate SOW content</h2></div><b>Human review required</b></div><div className="sales-delivery-fields"><label>Project / opportunity code<input required value={form.projectCode} onChange={(event) => setForm((value) => ({ ...value, projectCode: event.target.value }))} /></label><label>Project name<input required value={form.projectName} onChange={(event) => setForm((value) => ({ ...value, projectName: event.target.value }))} /></label><label className="is-wide">Customer outcome and known scope<textarea required rows="10" value={form.requestedOutcome} onChange={(event) => setForm((value) => ({ ...value, requestedOutcome: event.target.value }))} placeholder="Describe verified customer outcomes, in/out of scope, deliverables, assumptions, acceptance, dates, dependencies, and constraints." /></label><label>Detail<select value={form.detailLevel} onChange={(event) => setForm((value) => ({ ...value, detailLevel: event.target.value }))}><option value="comprehensive">Comprehensive</option><option value="standard">Standard</option><option value="concise">Concise</option></select></label><label className="sales-delivery-check"><input type="checkbox" checked={form.allowSanitizedExternalFallback} onChange={(event) => setForm((value) => ({ ...value, allowSanitizedExternalFallback: event.target.checked }))} />Allow sanitized Claude/OpenAI fallback when policy permits</label></div><button className="sales-delivery-primary" type="submit" disabled={busy}>{busy ? 'Generating review draft…' : 'Generate SOW draft'}</button>{error ? <div className="sales-delivery-result is-error">{error}</div> : null}<div className="sales-delivery-boundary"><strong>Template sample</strong><span>Upload the sample you referenced when ready. This workflow will preserve it as a versioned template and map its exact sections; until then the generator uses the governed SOW structure and never publishes or overwrites an approved SOW.</span></div></form><section className="sales-delivery-card sales-delivery-output"><div className="sales-delivery-card-heading"><div><span>Review workspace</span><h2>{draft ? 'Generated SOW draft' : 'Draft will appear here'}</h2></div>{result ? <b>{Math.round(Number(result.result?.confidence || 0) * 100)}% confidence</b> : null}</div>{draft ? <pre>{JSON.stringify(draft, null, 2)}</pre> : <div className="sales-delivery-empty">Celar AI separates verified facts, assumptions, missing evidence, conflicts, and citations before returning a review-only draft.</div>}{result?.result?.missingEvidence?.length ? <div className="sales-delivery-result"><strong>Missing evidence</strong>{result.result.missingEvidence.join(' · ')}</div> : null}</section></div>;
+  return <div className="sales-delivery-two-column"><form className="sales-delivery-card sales-delivery-form" onSubmit={generate}><div className="sales-delivery-card-heading"><div><span>Celar AI governed draft</span><h2>Generate SOW content</h2></div><b>Human review required</b></div><div className="sales-delivery-fields"><label>Customer<input required list="sow-customer-directory" value={form.customerName} onChange={(event) => updateCustomer(event.target.value)} placeholder={directory.loading ? 'Loading Customer Directory…' : 'Select or type a customer'} /><datalist id="sow-customer-directory">{directory.customers.map((customer) => <option key={customer.clientId || customer.clientName} value={customer.clientName}>{customer.clientCode || 'Customer Directory'}</option>)}</datalist><small>Select an authorized Customer Directory record or type a new customer name.</small></label><label>Opportunity<input list="sow-opportunity-directory" value={form.opportunityReference} onChange={(event) => updateOpportunity(event.target.value)} placeholder={directory.loading ? 'Loading opportunities…' : 'Select or type an opportunity'} /><datalist id="sow-opportunity-directory">{directory.opportunities.map((opportunity) => <option key={opportunity.opportunityId || opportunity.externalOpportunityId} value={opportunity.externalOpportunityId || opportunity.topic}>{opportunity.topic} · {opportunity.accountName}</option>)}</datalist><small>Select an authorized opportunity or type a new reference.</small></label><label>Project / opportunity code<input required value={form.projectCode} onChange={(event) => setForm((value) => ({ ...value, projectCode: event.target.value }))} /></label><label>Project name<input required value={form.projectName} onChange={(event) => setForm((value) => ({ ...value, projectName: event.target.value }))} /></label><label className="is-wide">Customer outcome and known scope<textarea required rows="10" value={form.requestedOutcome} onChange={(event) => setForm((value) => ({ ...value, requestedOutcome: event.target.value }))} placeholder="Describe verified customer outcomes, in/out of scope, deliverables, assumptions, acceptance, dates, dependencies, and constraints." /></label><label>Detail<select value={form.detailLevel} onChange={(event) => setForm((value) => ({ ...value, detailLevel: event.target.value }))}><option value="comprehensive">Comprehensive</option><option value="standard">Standard</option><option value="concise">Concise</option></select></label><label className="sales-delivery-check"><input type="checkbox" checked={form.allowSanitizedExternalFallback} onChange={(event) => setForm((value) => ({ ...value, allowSanitizedExternalFallback: event.target.checked }))} />Allow sanitized Claude/OpenAI fallback when policy permits</label></div>{directory.warnings.length ? <div className="sales-delivery-result is-error"><strong>Directory source status</strong>{directory.warnings.join(' · ')} You can still type a new customer or opportunity.</div> : null}<button className="sales-delivery-primary" type="submit" disabled={busy}>{busy ? 'Generating review draft…' : 'Generate SOW draft'}</button>{error ? <div className="sales-delivery-result is-error">{error}</div> : null}<div className="sales-delivery-boundary"><strong>Template sample</strong><span>Upload the sample you referenced when ready. This workflow will preserve it as a versioned template and map its exact sections; until then the generator uses the governed SOW structure and never publishes or overwrites an approved SOW.</span></div></form><section className="sales-delivery-card sales-delivery-output"><div className="sales-delivery-card-heading"><div><span>Review workspace</span><h2>{draft ? 'Generated SOW draft' : 'Draft will appear here'}</h2></div>{result ? <b>{Math.round(Number(result.result?.confidence || 0) * 100)}% evidence score</b> : null}</div>{draft ? <pre>{JSON.stringify(draft, null, 2)}</pre> : <div className="sales-delivery-empty">Celar AI separates verified facts, assumptions, missing evidence, conflicts, and citations before returning a review-only draft.</div>}{result?.result?.missingEvidence?.length ? <div className="sales-delivery-result"><strong>Missing evidence</strong>{result.result.missingEvidence.join(' · ')}</div> : null}</section></div>;
 }
 
 function AiTimeEntry() {

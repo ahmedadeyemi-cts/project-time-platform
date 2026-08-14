@@ -21,26 +21,83 @@ public static class ProjectIntakeModule
         var authorized = await ProjectNotificationRepository.OpenAuthorizedAsync(context, CanViewIntake);
         if (authorized.Failure is not null) return authorized.Failure;
         await using var connection = authorized.Connection!;
+        var actor = authorized.Actor!;
 
-        var intakes = await LoadIntakeRequestsAsync(connection);
-        var projects = await LoadProjectsAsync(connection);
-        var resourceRequests = await LoadResourceRequestsAsync(connection);
-        var capacity = await LoadResourceCapacityAsync(connection);
-        var projectManagers = await LoadUsersByRoleAsync(connection, "PROJECT_MANAGEMENT");
-        var engineers = await LoadUsersByRoleAsync(connection, "ENGINEERING");
-        /* 053I_INTAKE_AE_SA_START */
-        var accountExecutives = await LoadUsersByRoleOrProfileAsync(
-            connection,
-            new[] { "SALES" },
-            new[] { "account executive", "sales", "account manager" });
-        var solutionArchitects = await LoadUsersByRoleOrProfileAsync(
-            connection,
-            new[] { "SOLUTION_ARCHITECT" },
-            new[] { "solution architect", "architect" });
-        /* 053I_INTAKE_AE_SA_END */
+        var intakesLoad = await LoadSourceAsync("project_intake_requests", () => LoadIntakeRequestsAsync(connection), new List<IntakeSummary>());
+        var projectsLoad = await LoadSourceAsync("projects", () => LoadProjectsAsync(connection), new List<ProjectSummary>());
+        var resourceLoad = await LoadSourceAsync("engineering_resource_requests", () => LoadResourceRequestsAsync(connection), new List<ResourceRequestSummary>());
+        var capacityLoad = await LoadSourceAsync("engineering_capacity", () => LoadResourceCapacityAsync(connection), new List<ResourceCapacitySummary>());
+        var managerLoad = await LoadSourceAsync("project_management_directory", () => LoadUsersByRoleAsync(connection, "PROJECT_MANAGEMENT"), new List<UserOption>());
+        var engineerLoad = await LoadSourceAsync("engineering_directory", () => LoadUsersByRoleAsync(connection, "ENGINEERING"), new List<UserOption>());
+        var accountExecutiveLoad = await LoadSourceAsync(
+            "account_executive_directory",
+            () => LoadUsersByRoleOrProfileAsync(
+                connection,
+                new[] { "SALES" },
+                new[] { "account executive", "sales", "account manager" }),
+            new List<UserOption>());
+        var solutionArchitectLoad = await LoadSourceAsync(
+            "solution_architect_directory",
+            () => LoadUsersByRoleOrProfileAsync(
+                connection,
+                new[] { "SOLUTION_ARCHITECT" },
+                new[] { "solution architect", "architect" }),
+            new List<UserOption>());
+
+        var loads = new ISourceLoad[]
+        {
+            intakesLoad, projectsLoad, resourceLoad, capacityLoad,
+            managerLoad, engineerLoad, accountExecutiveLoad, solutionArchitectLoad
+        };
+        var degraded = loads.Where(load => !load.Succeeded).ToArray();
+        if (degraded.Length > 0)
+        {
+            try
+            {
+                await AdminExperienceCommon.WriteAuditAsync(
+                    connection,
+                    null,
+                    "system",
+                    "degraded",
+                    "project_intake_source_degraded",
+                    actor.ActualUserId,
+                    actor.Email,
+                    "module",
+                    "055D",
+                    "Project Intake",
+                    "055D",
+                    "project_intake_overview",
+                    string.Empty,
+                    $"Project Intake loaded with {degraded.Length} degraded source or sources.",
+                    new
+                    {
+                        sources = degraded.Select(load => new { load.Source, load.DiagnosticCode }).ToArray(),
+                        redaction = "No customer document or request payload retained."
+                    },
+                    AdminExperienceCommon.ClientIp(context),
+                    context.TraceIdentifier,
+                    context.RequestAborted);
+            }
+            catch
+            {
+                // The overview remains available even when audit persistence is degraded.
+            }
+        }
+
+        var intakes = intakesLoad.Value;
+        var projects = projectsLoad.Value;
+        var resourceRequests = resourceLoad.Value;
+        var capacity = capacityLoad.Value;
+        var projectManagers = managerLoad.Value;
+        var engineers = engineerLoad.Value;
+        var accountExecutives = accountExecutiveLoad.Value;
+        var solutionArchitects = solutionArchitectLoad.Value;
 
         return Results.Ok(new
         {
+            status = degraded.Length == 0
+                ? "project_intake_overview_loaded"
+                : "project_intake_overview_partial",
             module = "019M-P Project Intake + Engineering Resource Request",
             mode = "workflow_foundation",
             summary = new
@@ -60,13 +117,22 @@ public static class ProjectIntakeModule
             engineers,
             accountExecutives,
             solutionArchitects,
+            sources = loads.Select(load => new
+            {
+                source = load.Source,
+                status = load.Succeeded ? "healthy" : "degraded",
+                diagnosticCode = load.DiagnosticCode
+            }).ToArray(),
+            warnings = degraded.Select(load => $"{load.Source} is temporarily unavailable ({load.DiagnosticCode}).").ToArray(),
             guardrails = new[]
             {
                 "Workflow is production-shaped; integrations are enabled only after approval.",
                 "Salesforce sync is intentionally out of scope.",
                 "Outlook calendar sync is intentionally out of scope.",
                 "Resource assignment approval will be added before production enforcement."
-            }
+            },
+            generatedAt = DateTimeOffset.UtcNow,
+            stateChanged = false
         });
     }
 
@@ -788,6 +854,38 @@ public static class ProjectIntakeModule
             assignedUserId = request.UserId,
             maxEngineersPerRequest = 15
         });
+    }
+
+    private interface ISourceLoad
+    {
+        string Source { get; }
+        bool Succeeded { get; }
+        string DiagnosticCode { get; }
+    }
+
+    private sealed record SourceLoad<T>(
+        string Source,
+        bool Succeeded,
+        string DiagnosticCode,
+        T Value) : ISourceLoad;
+
+    private static async Task<SourceLoad<T>> LoadSourceAsync<T>(
+        string source,
+        Func<Task<T>> loader,
+        T fallback)
+    {
+        try
+        {
+            return new SourceLoad<T>(source, true, string.Empty, await loader());
+        }
+        catch (PostgresException exception)
+        {
+            return new SourceLoad<T>(source, false, $"postgres_{exception.SqlState}", fallback);
+        }
+        catch (Exception exception)
+        {
+            return new SourceLoad<T>(source, false, exception.GetType().Name.ToLowerInvariant(), fallback);
+        }
     }
 
     private static async Task<List<IntakeSummary>> LoadIntakeRequestsAsync(NpgsqlConnection connection)

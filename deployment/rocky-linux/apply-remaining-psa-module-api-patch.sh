@@ -110,7 +110,21 @@ app.MapGet("/api/project-management/summary", async () =>
 
     var risks = new List<object>();
     await using (var command = new NpgsqlCommand("""
-        SELECT p.project_code, pr.risk_title, pr.probability, pr.impact, pr.risk_status, pr.mitigation_plan
+        SELECT
+            p.project_code,
+            pr.risk_title,
+            CASE
+                WHEN pr.probability_score <= 2 THEN 'low'
+                WHEN pr.probability_score = 3 THEN 'medium'
+                ELSE 'high'
+            END AS probability,
+            CASE
+                WHEN pr.overall_impact_score <= 2 THEN 'low'
+                WHEN pr.overall_impact_score = 3 THEN 'medium'
+                ELSE 'high'
+            END AS impact,
+            pr.risk_status,
+            COALESCE(NULLIF(pr.mitigation_actions, ''), NULLIF(pr.response_plan, '')) AS mitigation_plan
         FROM project_risks pr
         INNER JOIN projects p ON p.project_id = pr.project_id
         ORDER BY p.project_code, pr.created_at DESC;

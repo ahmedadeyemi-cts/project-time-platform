@@ -1,0 +1,316 @@
+/* System-wide enterprise reliability and responsive presentation repairs. */
+
+/* Keep the primary application header readable at every supported viewport. */
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+  display: grid !important;
+  grid-template-columns: auto minmax(150px, 260px) minmax(300px, 1fr) auto !important;
+  grid-template-areas:
+    'brand context navigation utilities'
+    'brand context display utilities' !important;
+  align-items: center !important;
+  column-gap: clamp(0.55rem, 1.1vw, 1rem) !important;
+  row-gap: 0.45rem !important;
+  min-width: 0 !important;
+  padding: 0.72rem 0.9rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo,
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup {
+  grid-area: brand !important;
+  align-self: center !important;
+  min-width: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-context {
+  grid-area: context !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-context h1,
+:root[data-pulse-experience='enterprise'] .workspace-signed-in-user {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+  grid-area: navigation !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  scrollbar-width: thin;
+  padding: 0 0 0.1rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-header-utilities {
+  grid-area: utilities !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 0.5rem !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+
+#pulse-display-utility-dock {
+  grid-area: display !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  justify-self: end !important;
+  gap: 0.42rem !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+.pulse-display-utility-dock__label {
+  color: #536b85;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#pulse-enterprise-experience-control-host,
+#pulse-display-utility-dock .pulse-header-theme-switcher {
+  flex: 0 0 auto !important;
+}
+
+/* Active view and theme controls must always pass basic contrast. */
+.pulse-experience-switcher button.active,
+.pulse-experience-switcher button[aria-pressed='true'],
+#pulse-display-utility-dock .pulse-header-theme-switcher button.active,
+#pulse-display-utility-dock .pulse-header-theme-switcher button[aria-pressed='true'] {
+  background: #004b8d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.pulse-experience-switcher button.active *,
+.pulse-experience-switcher button[aria-pressed='true'] *,
+#pulse-display-utility-dock .pulse-header-theme-switcher button.active *,
+#pulse-display-utility-dock .pulse-header-theme-switcher button[aria-pressed='true'] * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-theme='dark'] #pulse-display-utility-dock .pulse-display-utility-dock__label {
+  color: #afc2d7;
+}
+
+/* The enterprise page chrome is the single identity header. */
+:root[data-pulse-experience='enterprise'] #pulse-enterprise-page-chrome-host {
+  margin-bottom: 0.55rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome {
+  min-height: 0 !important;
+  padding: 0.85rem 1rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .page-context-guide {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 0 0.55rem !important;
+  border-radius: 0.85rem !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .page-context-guide details {
+  padding: 0.56rem 0.78rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .page-context-guide summary strong {
+  font-size: 0.88rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .page-context-guide summary small {
+  font-size: 0.75rem !important;
+}
+
+/* Group 6 legacy presentation duplicates the global enterprise page chrome. */
+:root[data-pulse-experience='enterprise'] .uss-enterprise-module-presentation {
+  display: none !important;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > section,
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > .panel,
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > [class*='center'] {
+  margin-top: 0.55rem !important;
+}
+
+/* Universal enterprise table and summary-card containment. */
+:root[data-pulse-experience='enterprise'] :where(
+  .table-wrap,
+  .uss-table-wrap,
+  .flowhive-table-wrap,
+  [class*='table-wrap'],
+  [class*='table-container']
+) {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+:root[data-pulse-experience='enterprise'] :where(table, .uss-table, .flowhive-task-table) {
+  width: 100% !important;
+  min-width: max(100%, 48rem);
+  table-layout: auto !important;
+}
+
+:root[data-pulse-experience='enterprise'] .flowhive-task-table {
+  min-width: 100rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] :where(th, td, [class*='metric'], [class*='summary-card']) {
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+}
+
+:root[data-pulse-experience='enterprise'] :where(th, .uss-table th, .flowhive-task-table th) {
+  min-width: 7rem;
+  white-space: normal !important;
+  line-height: 1.25 !important;
+  vertical-align: bottom !important;
+}
+
+:root[data-pulse-experience='enterprise'] :where(
+  .flowhive-summary-grid,
+  .sales-insights-summary-grid,
+  .sales-insights-metrics,
+  .uss-summary-strip,
+  [class*='summary-grid'],
+  [class*='metric-grid']
+) {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)) !important;
+  align-items: stretch !important;
+}
+
+:root[data-pulse-experience='enterprise'] :where(
+  .flowhive-summary-grid > *,
+  .sales-insights-summary-grid > *,
+  .sales-insights-metrics > *,
+  .uss-summary-strip > *,
+  [class*='summary-grid'] > *,
+  [class*='metric-grid'] > *
+) {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+/* FlowHive keeps the phase-level Add task affordance only. */
+:root[data-pulse-experience='enterprise'] .flowhive-table-heading > .flowhive-phase-add-actions {
+  display: none !important;
+}
+
+@media (max-width: 1480px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: auto minmax(150px, 1fr) auto !important;
+    grid-template-areas:
+      'brand context utilities'
+      'navigation navigation navigation'
+      'display display display' !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+    justify-content: center !important;
+  }
+
+  #pulse-display-utility-dock {
+    justify-self: center !important;
+  }
+}
+
+@media (max-width: 900px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      'brand context utilities'
+      'navigation navigation navigation'
+      'display display display' !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+    justify-content: flex-start !important;
+  }
+
+  #pulse-display-utility-dock {
+    justify-self: start !important;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .pulse-display-utility-dock__label,
+  .pulse-experience-switcher__label {
+    display: none !important;
+  }
+}
+
+@media (max-width: 680px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      'context utilities'
+      'navigation navigation'
+      'display display' !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo,
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup {
+    display: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-context .eyebrow,
+  :root[data-pulse-experience='enterprise'] .workspace-signed-in-user {
+    display: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .pulse-enterprise-page-chrome__description {
+    display: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .page-context-guide summary small,
+  :root[data-pulse-experience='enterprise'] .page-context-guide summary::after {
+    display: none !important;
+  }
+}
+
+.flowhive-enterprise-readiness-error {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+}
+.flowhive-enterprise-readiness-error > div {
+  display: grid;
+  gap: 0.22rem;
+}
+.flowhive-enterprise-readiness-error small {
+  color: inherit;
+  opacity: 0.84;
+}
+@media (max-width: 720px) {
+  .flowhive-enterprise-readiness-error {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+}
+
+.billing-source-warning ul {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+  color: inherit;
+}
+.billing-source-warning li + li { margin-top: 0.22rem; }

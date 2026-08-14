@@ -452,6 +452,27 @@ function summarizeMonthEndPackages(rows) {
 }
 
 
+
+function fulfilledSourceWarnings(source, payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  const warnings = [];
+  if (String(payload.status || '').toLowerCase() === 'partial') {
+    const detail = Array.isArray(payload.warnings) && payload.warnings.length
+      ? payload.warnings.join(' ')
+      : 'Some authoritative records are temporarily unavailable.';
+    warnings.push({ source, message: detail });
+  }
+  if (payload.sources && typeof payload.sources === 'object') {
+    Object.entries(payload.sources).forEach(([name, state]) => {
+      const normalized = typeof state === 'string' ? state : state?.status;
+      if (normalized && !['healthy', 'ready', 'available', 'loaded'].includes(String(normalized).toLowerCase())) {
+        warnings.push({ source: `${source} · ${name}`, message: state?.message || `Source reported ${normalized}.` });
+      }
+    });
+  }
+  return warnings;
+}
+
 function pr467FriendlyPrerequisite(value) {
   const labels = {
     contracted_value: 'Contracted value',
@@ -501,11 +522,15 @@ export default function BillingReadinessCenter() {
     const [workspace, intake, customers, certifyExpenses, certifyExceptions, billingCandidates] = results;
 
     const sourceNames = ['Project Workspace', 'Project Intake', 'Customer Directory', 'Certify staged expenses', 'Certify exceptions', 'Billing candidates'];
-    const degradedSources = results
-      .map((result, index) => result.status === 'rejected'
-        ? { source: sourceNames[index], message: result.reason instanceof Error ? result.reason.message : 'Source unavailable.' }
-        : null)
-      .filter(Boolean);
+    const degradedSources = results.flatMap((result, index) => {
+      if (result.status === 'rejected') {
+        return [{
+          source: sourceNames[index],
+          message: result.reason instanceof Error ? result.reason.message : 'Source unavailable.'
+        }];
+      }
+      return fulfilledSourceWarnings(sourceNames[index], result.value);
+    });
     const billingCandidateFailure = billingCandidates.status === 'rejected'
       ? (billingCandidates.reason instanceof Error ? billingCandidates.reason.message : 'Billing candidates are unavailable.')
       : null;
@@ -884,7 +909,7 @@ export default function BillingReadinessCenter() {
 
   return (
     <section className="billing-readiness-center">
-      {payload.degradedSources?.length ? <div className="billing-source-warning" role="status"><div><strong>Supporting source status</strong><span>{payload.degradedSources.map((item) => item.source).join(', ')} {payload.degradedSources.length === 1 ? 'is' : 'are'} temporarily unavailable. Healthy billing data remains available.</span></div><button type="button" onClick={loadBillingReadinessData}>Retry sources</button></div> : null}
+      {payload.degradedSources?.length ? <div className="billing-source-warning" role="status"><div><strong>Supporting source status</strong><span>Healthy billing data remains available, but {payload.degradedSources.length} supporting source condition(s) require attention.</span><ul>{payload.degradedSources.slice(0, 6).map((item) => <li key={`${item.source}-${item.message}`}><strong>{item.source}:</strong> {item.message}</li>)}</ul></div><button type="button" onClick={loadBillingReadinessData}>Retry sources</button></div> : null}
       {/* PR467_BILLING_CLOSEOUT_HANDOFFS */}
       <section className="billing-readiness-handoff-panel">
         <div>

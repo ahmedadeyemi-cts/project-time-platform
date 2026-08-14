@@ -14,6 +14,7 @@ const NON_PRESENTATION_SELECTOR = 'script, style, noscript, code, pre, textarea,
 const THEME_STORAGE_KEY = 'ptp-theme';
 const THEME_EVENT = 'projectpulse:theme-changed';
 const THEME_SWITCHER_ATTRIBUTE = 'data-pulse-header-theme-switcher';
+const DISPLAY_UTILITY_DOCK_ID = 'pulse-display-utility-dock';
 
 function sameOriginApiPath(input) {
   try {
@@ -181,11 +182,35 @@ function themeButton(theme, icon, label) {
   return button;
 }
 
-function ensureHeaderThemeSwitcher() {
-  const utilities = document.querySelector('.enterprise-top-bar .enterprise-header-utilities');
-  if (!utilities) return null;
+function ensureDisplayUtilityDock() {
+  const topBar = document.querySelector('.enterprise-top-bar');
+  if (!topBar) return null;
 
-  let switcher = utilities.querySelector(`[${THEME_SWITCHER_ATTRIBUTE}]`);
+  let dock = topBar.querySelector(`:scope > #${DISPLAY_UTILITY_DOCK_ID}`);
+  if (!dock) {
+    dock = document.createElement('div');
+    dock.id = DISPLAY_UTILITY_DOCK_ID;
+    dock.className = 'pulse-display-utility-dock';
+    dock.dataset.pulseDisplayUtilityDock = 'true';
+    dock.setAttribute('aria-label', 'Display options');
+
+    const label = document.createElement('span');
+    label.className = 'pulse-display-utility-dock__label';
+    label.textContent = 'Display';
+    dock.appendChild(label);
+
+    const utilities = topBar.querySelector(':scope > .enterprise-header-utilities');
+    if (utilities) utilities.insertAdjacentElement('beforebegin', dock);
+    else topBar.appendChild(dock);
+  }
+  return dock;
+}
+
+function ensureHeaderThemeSwitcher() {
+  const dock = ensureDisplayUtilityDock();
+  if (!dock) return null;
+
+  let switcher = document.querySelector(`[${THEME_SWITCHER_ATTRIBUTE}]`);
   if (!switcher) {
     switcher = document.createElement('div');
     switcher.className = 'pulse-header-theme-switcher';
@@ -196,10 +221,8 @@ function ensureHeaderThemeSwitcher() {
       themeButton('light', '☀', 'Light'),
       themeButton('dark', '☾', 'Dark')
     );
-
-    const profileMenu = utilities.querySelector('.profile-menu-shell');
-    utilities.insertBefore(switcher, profileMenu || utilities.firstChild);
   }
+  if (switcher.parentElement !== dock) dock.appendChild(switcher);
 
   synchronizeThemeButtons();
   return switcher;
