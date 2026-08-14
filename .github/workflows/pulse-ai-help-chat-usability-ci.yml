@@ -254,6 +254,18 @@ jobs:
               echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=FLOWHIVE_PRODUCTION' >> "$GITHUB_ENV"
               echo 'PULSE_AI_HELP_CHAT_FLOWHIVE_PRODUCTION=PASSED'
               ;;
+            fix/systemwide-enterprise-reliability-final-*)
+              DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
+              UNAPPROVED_HELP="$(grep -Ev "$CENTRAL_HELP_CONVERGENCE" <<<"$DIRECT_HELP_CHANGES" || true)"
+              if [[ -n "$UNAPPROVED_HELP" ]]; then
+                echo 'The systemwide reliability package changed Help-chat runtime source outside the reviewed HelpAssistant convergence boundary:' >&2
+                printf '%s\n' "$UNAPPROVED_HELP" >&2
+                exit 1
+              fi
+              test -f src/frontend/project-time-web/src/HelpAssistant.jsx
+              echo 'PULSE_AI_HELP_CHAT_VALIDATION_MODE=SYSTEMWIDE_RELIABILITY' >> "$GITHUB_ENV"
+              echo 'PULSE_AI_HELP_CHAT_SYSTEMWIDE_RELIABILITY=PASSED'
+              ;;
             *)
               DIRECT_HELP_CHANGES="$(grep -E "$HELP_RUNTIME_OWNED" <<<"$CHANGED" || true)"
               if [[ -n "$DIRECT_HELP_CHANGES" ]]; then
