@@ -91,6 +91,7 @@ jobs:
             src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx \
             src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx \
             src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx \
+            tests/validate-utilization-role-scoping.mjs \
             tests/validate-systemwide-enterprise-reliability.mjs \
             tests/validate-celar-ai-flowhive-authoritative-release.mjs \
             deployment/containers/api/Dockerfile \
@@ -99,6 +100,7 @@ jobs:
           done
 
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
@@ -283,7 +285,7 @@ jobs:
             echo "ACR cloud build failed twice; using authenticated local Docker fallback for $image." | tee -a "$BUILD_LOG" >&2
             az acr login --name "$ACR" --only-show-errors 2>&1 | tee -a "$BUILD_LOG" >&2
             full_image="$ACR.azurecr.io/$image"
-            docker build --file "$dockerfile_abs" --tag "$full_imae" "$context_abs" 2>&1 | tee -a "$BUILD_LOG" >&2
+            docker build --file "$dockerfile_abs" --tag "$full_image" "$context_abs" 2>&1 | tee -a "$BUILD_LOG" >&2
             docker push "$full_image" 2>&1 | tee -a "$BUILD_LOG" >&2
             digest="$(resolve_digest "$image" || true)"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail "Fallback build did not publish an immutable digest for $image."
