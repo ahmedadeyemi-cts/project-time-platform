@@ -1,0 +1,17 @@
+name: PR 680 Automated Frontend Repair
+
+on:
+  push:
+    branches:
+      - fix/systemwide-enterprise-reliability-20260814
+    paths:
+      - .github/workflows/pr680-auto-repair.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-registration:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo PR680_AUTO_REPAIR_WORKFLOW_REGISTERED
