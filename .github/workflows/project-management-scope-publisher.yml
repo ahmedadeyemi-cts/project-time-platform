@@ -1,0 +1,265 @@
+name: Publish project management scope repair
+
+on:
+  push:
+    branches:
+      - fix/project-management-scope-approval-documents-20260815
+
+permissions:
+  contents: write
+
+concurrency:
+  group: project-management-scope-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/project-management-scope-approval-documents-20260815
+          fetch-depth: 0
+
+      - name: Apply exact scoped repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match in {path} but found {count}: {old[:100]!r}")
+              path.write_text(text.replace(old, new, 1))
+
+          approval = Path('src/backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs')
+          replace_once(
+              approval,
+              '''        "PROJECT_MANAGER",\n        "PROJECT_MANAGEMENT"\n    };''',
+              '''        "PROJECT_MANAGER",\n        "PROJECT_MANAGEMENT",\n        "PROJECT_MANAGEMENT_LEAD",\n        "PROJECT_MANAGEMENT_TEAM_LEAD",\n        "PM_TEAM_LEAD"\n    };''')
+          replace_once(
+              approval,
+              'message = "Approval Center access is restricted to Managers, Project Managers, Project Team Coordinators, Administrators, and Super Administrators."',
+              'message = "Approval Center access is restricted to Managers, Project Managers, Project Management Leads, Project Team Coordinators, Administrators, and Super Administrators."')
+          replace_once(
+              approval,
+              '''        var isManager = roleSet.Contains("MANAGER");\n        var isProjectManager = roleSet.Contains("PROJECT_MANAGER") || roleSet.Contains("PROJECT_MANAGEMENT");''',
+              '''        var isProjectManagementLead = roleSet.Contains("PROJECT_MANAGEMENT_LEAD")\n            || roleSet.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")\n            || roleSet.Contains("PM_TEAM_LEAD");\n        var isManager = roleSet.Contains("MANAGER") || isProjectManagementLead;\n        var isProjectManager = roleSet.Contains("PROJECT_MANAGER")\n            || roleSet.Contains("PROJECT_MANAGEMENT")\n            || isProjectManagementLead;''')
+          replace_once(
+              approval,
+              '''                : isCoordinator\n                    ? "Project Team Coordinator"\n                    : isManager\n                        ? "Manager"\n                        : "Project Manager";''',
+              '''                : isCoordinator\n                    ? "Project Team Coordinator"\n                    : isProjectManagementLead\n                        ? "Project Management Lead"\n                        : isManager\n                            ? "Manager"\n                            : "Project Manager";''')
+
+          approval_ui = Path('src/frontend/project-time-web/src/approval-access-navigation-compatibility.js')
+          replace_once(
+              approval_ui,
+              "    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT'",
+              "    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT',\n    'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'")
+
+          document_integrity = Path('src/frontend/project-time-web/src/work-register-document-integrity.js')
+          document_integrity.write_text(r'''/*
+           * Work Register project-document response integrity.
+           *
+           * Backend authorization remains authoritative. This compatibility layer
+           * prevents an empty document identity from being promoted as a successful
+           * upload or converted into /projects/documents//download.
+           */
+
+          const DOCUMENT_UPLOAD_PATH = '/api/work-register/projects/documents/upload';
+          const EMPTY_DOCUMENT_ROUTE = '/api/work-register/projects/documents//';
+          const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+          function cleanText(value) {
+            return String(value ?? '').trim();
+          }
+
+          function responseJson(payload, status, statusText) {
+            return new Response(JSON.stringify(payload), {
+              status,
+              statusText,
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-store, no-cache, must-revalidate',
+                Pragma: 'no-cache'
+              }
+            });
+          }
+
+          function property(source, ...names) {
+            if (!source || typeof source !== 'object') return undefined;
+            for (const name of names) {
+              if (Object.prototype.hasOwnProperty.call(source, name)) return source[name];
+            }
+            return undefined;
+          }
+
+          function documentId(payload) {
+            const candidates = [
+              property(payload, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId'),
+              property(payload?.document, 'documentId', 'DocumentId', 'id', 'Id'),
+              property(payload?.data, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId'),
+              property(payload?.result, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId')
+            ];
+            return candidates.map(cleanText).find((value) => UUID_PATTERN.test(value)) || '';
+          }
+
+          function installWorkRegisterDocumentIntegrity() {
+            if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
+            if (window.__projectPulseWorkRegisterDocumentIntegrityInstalled) return;
+
+            const previousFetch = window.fetch.bind(window);
+            window.fetch = async (input, init = {}) => {
+              const rawUrl = typeof input === 'string' ? input : input?.url;
+              let url;
+              try {
+                url = new URL(rawUrl, window.location.origin);
+              } catch {
+                return previousFetch(input, init);
+              }
+
+              const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+              if (url.origin === window.location.origin && url.pathname.includes(EMPTY_DOCUMENT_ROUTE)) {
+                return responseJson({
+                  status: 'missing_document_id',
+                  module: '055C',
+                  message: 'A valid project document ID is required before a document can be opened or downloaded.'
+                }, 400, 'Bad Request');
+              }
+
+              const response = await previousFetch(input, init);
+              if (url.origin !== window.location.origin
+                  || url.pathname !== DOCUMENT_UPLOAD_PATH
+                  || method !== 'POST'
+                  || !response.ok) {
+                return response;
+              }
+
+              let payload;
+              try {
+                payload = await response.clone().json();
+              } catch {
+                return responseJson({
+                  status: 'document_identity_missing',
+                  module: '055C',
+                  message: 'The upload response could not be verified, so the document was not marked as available.'
+                }, 502, 'Bad Gateway');
+              }
+
+              const stableDocumentId = documentId(payload);
+              if (!stableDocumentId) {
+                return responseJson({
+                  status: 'document_identity_missing',
+                  module: '055C',
+                  message: 'The upload did not return a stable document ID, so success was not recorded. Refresh the project before trying again.'
+                }, 502, 'Bad Gateway');
+              }
+
+              return response;
+            };
+
+            window.fetch.__projectPulseWorkRegisterDocumentIntegrity = true;
+            window.__projectPulseWorkRegisterDocumentIntegrityInstalled = true;
+          }
+
+          installWorkRegisterDocumentIntegrity();
+          ''')
+
+          main = Path('src/frontend/project-time-web/src/main.jsx')
+          replace_once(
+              main,
+              "import './approval-access-navigation-compatibility.js';",
+              "import './approval-access-navigation-compatibility.js';\nimport './work-register-document-integrity.js';")
+
+          validator = Path('src/frontend/project-time-web/scripts/validate-project-management-scope-approval-documents.mjs')
+          validator.write_text(r'''import fs from 'node:fs';
+
+          function read(path) {
+            if (!fs.existsSync(path)) throw new Error(`Missing required source: ${path}`);
+            return fs.readFileSync(path, 'utf8');
+          }
+
+          function requireText(source, marker, label) {
+            if (!source.includes(marker)) throw new Error(`Missing ${label}: ${marker}`);
+          }
+
+          const scope = read('../../backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs');
+          const authorization = read('../../backend/ProjectTime.Api/Modules/WorkRegisterAuthorization.cs');
+          const approval = read('../../backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs');
+          const approvalUi = read('./src/approval-access-navigation-compatibility.js');
+          const documents = read('./src/work-register-document-integrity.js');
+          const main = read('./src/main.jsx');
+
+          for (const role of [
+            'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
+            'PROJECT_MANAGER', 'PROJECT_MANAGEMENT', 'PROJECT_MANAGEMENT_LEAD',
+            'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD', 'MANAGER'
+          ]) requireText(scope, `"${role}"`, `Work Register role ${role}`);
+
+          requireText(scope, 'user_admin_manager_team_assignments', 'authoritative manager-to-team scope');
+          requireText(scope, 'project.project_manager_user_id = @user_id', 'assigned Project Manager scope');
+          requireText(scope, 'project_management_team_view', 'team view-only scope');
+          requireText(scope, 'canEditProject', 'per-project edit evidence');
+          requireText(scope, 'teamProjectsReadOnly', 'team read-only response contract');
+          requireText(authorization, 'ProjectManagementWorkRegisterScope.TryHandleReadAsync', 'server read-scope middleware');
+
+          for (const role of [
+            'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'
+          ]) {
+            requireText(approval, `"${role}"`, `Approval Center backend role ${role}`);
+            requireText(approvalUi, `'${role}'`, `Approval Center frontend role ${role}`);
+          }
+          requireText(approval, 'var isManager = roleSet.Contains("MANAGER") || isProjectManagementLead;', 'lead team approval scope');
+          requireText(approval, '|| isProjectManagementLead;', 'lead managed-project approval scope');
+          requireText(approval, '? "Project Management Lead"', 'lead approval role label');
+
+          requireText(documents, "const EMPTY_DOCUMENT_ROUTE = '/api/work-register/projects/documents//';", 'empty document route guard');
+          requireText(documents, "status: 'document_identity_missing'", 'missing upload identity failure');
+          requireText(documents, 'UUID_PATTERN.test(value)', 'stable document identity validation');
+          requireText(main, "import './work-register-document-integrity.js';", 'document integrity runtime import');
+
+          console.log('PROJECT_MANAGEMENT_SCOPE_APPROVAL_DOCUMENTS=PASS');
+          console.log('PROJECT_MANAGER_SCOPE=OWN_PROJECTS_ONLY');
+          console.log('PROJECT_MANAGEMENT_LEAD_SCOPE=OWN_PLUS_ASSIGNED_TEAM_VIEW');
+          console.log('PROJECT_MANAGEMENT_MANAGER_SCOPE=ASSIGNED_TEAM_VIEW_ONLY');
+          console.log('PROJECT_TEAM_COORDINATOR_SCOPE=FULL_PROJECT_AUTHORITY');
+          console.log('APPROVAL_INBOX_PM_LEAD_ALIASES=PASS');
+          console.log('WORK_REGISTER_DOCUMENT_IDENTITY=FAIL_CLOSED');
+          ''')
+
+          package = Path('src/frontend/project-time-web/package.json')
+          replace_once(
+              package,
+              'npm run validate:approval-access-compatibility && npm run validate:dashboard-personal-calendar',
+              'npm run validate:approval-access-compatibility && npm run validate:project-management-scope-approval-documents && npm run validate:dashboard-personal-calendar')
+          replace_once(
+              package,
+              '    "validate:approval-access-compatibility": "node ./scripts/validate-approval-access-navigation-compatibility.mjs",',
+              '    "validate:approval-access-compatibility": "node ./scripts/validate-approval-access-navigation-compatibility.mjs",\n    "validate:project-management-scope-approval-documents": "node ./scripts/validate-project-management-scope-approval-documents.mjs",')
+
+          Path('.github/workflows/project-management-scope-publisher.yml').unlink()
+          PY
+
+      - name: Validate focused source contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          node ./scripts/validate-project-management-scope-approval-documents.mjs
+          cd ../../..
+          git diff --check
+
+      - name: Commit published repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Complete project management scope and approval repair'
+          git push origin HEAD:fix/project-management-scope-approval-documents-20260815
