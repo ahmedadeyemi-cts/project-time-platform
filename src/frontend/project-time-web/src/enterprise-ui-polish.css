@@ -1,0 +1,721 @@
+/* ENTERPRISE_UI_POLISH_PRESENTATION_V1
+ * Enterprise-only refinements for the Appearance handle, verified Module 006
+ * customer marks, Ask Celar AI, More-menu layering, and compact route flow.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Appearance handle                                                           */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .pulse-display-view-handle {
+  min-height: 104px !important;
+  padding: 11px 6px !important;
+  font-size: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .pulse-display-view-handle::after {
+  content: 'Appearance';
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Module 006 verified customer marks                                          */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006'] {
+  padding-top: 3.2rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006']::before {
+  width: 100% !important;
+  height: 44px !important;
+  border-color: rgba(15, 45, 78, 0.16) !important;
+  border-radius: 10px !important;
+  background: #f8fbff url('./assets/module-006-customer-brands.svg') center / contain no-repeat !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .modules-directory-card[data-module-number='006']::before {
+  border-color: rgba(184, 210, 235, 0.28) !important;
+  background: #13243a url('./assets/module-006-customer-brands.svg') center / contain no-repeat !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* More launcher overlay                                                        */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation,
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-dropdown {
+  isolation: isolate;
+}
+
+:root[data-pulse-experience='enterprise'] #enterprise-more-navigation-menu.enterprise-more-dropdown {
+  z-index: 18000 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ask Celar AI launcher                                                        */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .help-launcher {
+  right: 1.25rem !important;
+  bottom: 1.15rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.52rem !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  padding: 0.7rem 1rem !important;
+  border: 1px solid rgba(115, 190, 255, 0.38) !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #063b73 0%, #005b9f 58%, #047f9b 100%) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: 0 14px 34px rgba(0, 55, 105, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.01em !important;
+  line-height: 1 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-launcher::before {
+  content: '';
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2.5 13.7 8l5.8 1.8-5.8 1.8L12 17l-1.7-5.4-5.8-1.8L10.3 8 12 2.5Zm6.5 11.5.9 2.7 2.6.8-2.6.8-.9 2.7-.8-2.7-2.7-.8 2.7-.8.8-2.7ZM5 15.3l.7 2.1 2.1.7-2.1.7L5 21l-.7-2.2-2.1-.7 2.1-.7.7-2.1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2.5 13.7 8l5.8 1.8-5.8 1.8L12 17l-1.7-5.4-5.8-1.8L10.3 8 12 2.5Zm6.5 11.5.9 2.7 2.6.8-2.6.8-.9 2.7-.8-2.7-2.7-.8 2.7-.8.8-2.7ZM5 15.3l.7 2.1 2.1.7-2.1.7L5 21l-.7-2.2-2.1-.7 2.1-.7.7-2.1Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+:root[data-pulse-experience='enterprise'] .help-launcher:hover,
+:root[data-pulse-experience='enterprise'] .help-launcher:focus-visible,
+:root[data-pulse-experience='enterprise'] .help-launcher[aria-expanded='true'] {
+  border-color: #91d4ff !important;
+  background: linear-gradient(135deg, #052f5b 0%, #004f8e 54%, #036f88 100%) !important;
+  box-shadow: 0 17px 38px rgba(0, 55, 105, 0.34), 0 0 0 4px rgba(42, 159, 229, 0.16) !important;
+  outline: none !important;
+  transform: translateY(-1px);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ask Celar AI enterprise panel                                               */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat {
+  right: 1.25rem !important;
+  bottom: 5.35rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-rows: none !important;
+  width: min(700px, calc(100vw - 2.5rem)) !important;
+  height: min(780px, calc(100dvh - 7rem)) !important;
+  min-width: min(440px, calc(100vw - 1.5rem)) !important;
+  min-height: min(480px, calc(100dvh - 5rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  max-height: calc(100dvh - 6rem) !important;
+  border: 1px solid rgba(31, 99, 150, 0.28) !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  color: #14243a !important;
+  box-shadow: 0 30px 80px rgba(4, 30, 61, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.76) inset !important;
+  overflow: hidden !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-compact {
+  width: min(500px, calc(100vw - 2.5rem)) !important;
+  height: min(650px, calc(100dvh - 7rem)) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-standard {
+  width: min(700px, calc(100vw - 2.5rem)) !important;
+  height: min(780px, calc(100dvh - 7rem)) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-wide {
+  width: min(980px, calc(100vw - 2.5rem)) !important;
+  height: min(820px, calc(100dvh - 7rem)) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-fullscreen {
+  inset: 1rem !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 24px !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-minimized {
+  right: 1.25rem !important;
+  bottom: 5.35rem !important;
+  width: min(430px, calc(100vw - 2rem)) !important;
+  height: 62px !important;
+  min-width: 300px !important;
+  min-height: 62px !important;
+  max-height: 62px !important;
+  border-radius: 18px !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  padding: 0.9rem 1rem !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background:
+    radial-gradient(circle at 88% 10%, rgba(52, 211, 226, 0.24), transparent 26%),
+    linear-gradient(135deg, #062c51 0%, #064f7e 58%, #08768a 100%) !important;
+  color: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header > div:first-child {
+  min-width: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header strong {
+  overflow: hidden !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.015em !important;
+  line-height: 1.2 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header span {
+  overflow: hidden !important;
+  margin-top: 0.18rem !important;
+  color: rgba(235, 247, 255, 0.82) !important;
+  -webkit-text-fill-color: rgba(235, 247, 255, 0.82) !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 0.28rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls button {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.26) !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls button:hover,
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls button:focus-visible,
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls button.is-active {
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+  outline: 2px solid rgba(255, 255, 255, 0.2) !important;
+  outline-offset: 1px !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar,
+:root[data-pulse-experience='enterprise'] .celar-ai-question-context-toggle,
+:root[data-pulse-experience='enterprise'] .pulse-ai-conversation-toolbar,
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-governance {
+  flex: 0 0 auto !important;
+  border-color: #dce7f0 !important;
+  background: #f7fafc !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.75rem !important;
+  padding: 0.62rem 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar > div {
+  display: grid !important;
+  gap: 0.12rem !important;
+  min-width: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar strong {
+  color: #173a5e !important;
+  font-size: 0.75rem !important;
+  line-height: 1.3 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar span {
+  overflow: hidden !important;
+  color: #64788e !important;
+  font-size: 0.66rem !important;
+  line-height: 1.4 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-context-bar button,
+:root[data-pulse-experience='enterprise'] .celar-ai-question-context-toggle button,
+:root[data-pulse-experience='enterprise'] .pulse-ai-conversation-toolbar button {
+  min-width: auto !important;
+  min-height: 34px !important;
+  border: 1px solid #a9bfd3 !important;
+  border-radius: 10px !important;
+  padding: 0.42rem 0.66rem !important;
+  background: #ffffff !important;
+  color: #0a5a91 !important;
+  -webkit-text-fill-color: #0a5a91 !important;
+  font-size: 0.67rem !important;
+  font-weight: 850 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-question-context-toggle {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+  padding: 0.58rem 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-question-context-toggle > span {
+  color: #64788e !important;
+  font-size: 0.65rem !important;
+  line-height: 1.4 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-question-context {
+  flex: 0 0 auto !important;
+  max-height: min(310px, 42dvh) !important;
+  overflow-y: auto !important;
+  border-bottom: 1px solid #dce7f0 !important;
+  background: #ffffff !important;
+  padding: 0.75rem 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .pulse-ai-conversation-toolbar.is-open {
+  display: grid !important;
+  gap: 0.55rem !important;
+  padding: 0.7rem 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions {
+  flex: 0 0 auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.5rem !important;
+  padding: 0.65rem 0.85rem !important;
+  border-bottom: 1px solid #dce7f0 !important;
+  background: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-full-guide-button,
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-pulse-ai-button,
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-report-defect-button {
+  min-width: 0 !important;
+  min-height: 42px !important;
+  padding: 0.55rem 0.65rem !important;
+  border-radius: 11px !important;
+  font-size: 0.68rem !important;
+  line-height: 1.3 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-governance > summary {
+  padding: 0.5rem 0.85rem !important;
+  color: #586f86 !important;
+  font-size: 0.65rem !important;
+  font-weight: 850 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-messages {
+  flex: 1 1 auto !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 0.7rem !important;
+  min-height: 150px !important;
+  overflow-y: auto !important;
+  padding: 0.85rem !important;
+  background:
+    radial-gradient(circle at 95% 0%, rgba(8, 143, 166, 0.07), transparent 18rem),
+    #f3f7fa !important;
+  scrollbar-gutter: stable;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-message {
+  max-width: min(92%, 720px) !important;
+  border-radius: 15px !important;
+  padding: 0.7rem 0.82rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1.55 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-message.assistant {
+  border: 1px solid #d8e4ed !important;
+  background: #ffffff !important;
+  box-shadow: 0 5px 16px rgba(15, 42, 70, 0.05) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-message.user {
+  background: linear-gradient(135deg, #064f8a, #08718d) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-suggestions {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0.45rem !important;
+  min-height: 0 !important;
+  overflow-x: auto !important;
+  padding: 0.55rem 0.85rem !important;
+  border-top: 1px solid #dce7f0 !important;
+  background: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-suggestions button {
+  flex: 0 0 auto !important;
+  max-width: 260px !important;
+  min-height: 34px !important;
+  padding: 0.4rem 0.62rem !important;
+  border: 1px solid #cbd9e5 !important;
+  border-radius: 999px !important;
+  background: #f7fafc !important;
+  color: #36536f !important;
+  -webkit-text-fill-color: #36536f !important;
+  font-size: 0.63rem !important;
+  line-height: 1.35 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-attachments {
+  flex: 0 0 auto !important;
+  max-height: min(310px, 40dvh) !important;
+  overflow-y: auto !important;
+  border-top: 1px solid #dce7f0 !important;
+  background: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-attachments-summary {
+  min-height: 48px !important;
+  padding: 0.55rem 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-attachments-summary strong {
+  color: #173a5e !important;
+  font-size: 0.75rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-attachments-summary small {
+  color: #64788e !important;
+  font-size: 0.64rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-input-row {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: end !important;
+  gap: 0.65rem !important;
+  padding: 0.72rem 0.85rem 1.1rem !important;
+  border-top: 1px solid #dce7f0 !important;
+  background: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-input-row textarea {
+  min-width: 0 !important;
+  min-height: 62px !important;
+  max-height: 145px !important;
+  border: 1px solid #9fb5c9 !important;
+  border-radius: 13px !important;
+  padding: 0.65rem 0.75rem !important;
+  background: #f9fbfd !important;
+  color: #14243a !important;
+  -webkit-text-fill-color: #14243a !important;
+  font-size: 0.76rem !important;
+  line-height: 1.45 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-input-row > button {
+  min-width: 82px !important;
+  min-height: 46px !important;
+  border: 1px solid #0065a8 !important;
+  border-radius: 12px !important;
+  padding: 0.65rem 0.9rem !important;
+  background: linear-gradient(135deg, #075a9a, #087b95) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: 0.75rem !important;
+  font-weight: 900 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .pulse-ai-help-keyboard-hint {
+  grid-column: 1 / -1 !important;
+  color: #64788e !important;
+  font-size: 0.58rem !important;
+  line-height: 1.35 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-resize-note {
+  right: 0.55rem !important;
+  bottom: 0.28rem !important;
+  color: #71859a !important;
+  font-size: 0.55rem !important;
+}
+
+/* Dark appearance */
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat {
+  border-color: rgba(104, 188, 255, 0.3) !important;
+  background: #101f31 !important;
+  color: #f2f7fc !important;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5) !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] :is(
+  .celar-ai-context-bar,
+  .celar-ai-question-context-toggle,
+  .pulse-ai-conversation-toolbar,
+  .celar-ai-chat-governance,
+  .celar-ai-question-context,
+  .celar-ai-contextual-chat .help-quick-actions,
+  .celar-ai-contextual-chat .help-suggestions,
+  .celar-ai-chat-attachments,
+  .celar-ai-contextual-chat .help-input-row
+) {
+  border-color: #334a61 !important;
+  background: #132338 !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-messages {
+  background: #0c1929 !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-message.assistant {
+  border-color: #334a61 !important;
+  background: #17283d !important;
+  color: #edf5fc !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] :is(
+  .celar-ai-context-bar strong,
+  .celar-ai-chat-attachments-summary strong
+) {
+  color: #eaf4fd !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] :is(
+  .celar-ai-context-bar span,
+  .celar-ai-question-context-toggle > span,
+  .celar-ai-chat-attachments-summary small,
+  .celar-ai-contextual-chat .pulse-ai-help-keyboard-hint,
+  .celar-ai-chat-resize-note
+) {
+  color: #afc2d7 !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-input-row textarea {
+  border-color: #526a82 !important;
+  background: #0f1e30 !important;
+  color: #f2f7fc !important;
+  -webkit-text-fill-color: #f2f7fc !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-suggestions button {
+  border-color: #405970 !important;
+  background: #17283d !important;
+  color: #d8e7f5 !important;
+  -webkit-text-fill-color: #d8e7f5 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Enterprise route-flow and empty-placeholder guard                           */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled {
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > :is(
+  section,
+  .panel,
+  [data-route-placeholder]
+):empty:not(.enterprise-top-bar):not(#pulse-enterprise-page-chrome-host):not(.page-context-guide) {
+  display: none !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > :is([hidden], [aria-hidden='true']) {
+  display: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] main.app-shell.enterprise-nav-enabled > .pulse-enterprise-legacy-page-header {
+  display: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history main.app-shell.route-audit-history {
+  min-height: 0 !important;
+  height: auto !important;
+  padding-bottom: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history main.app-shell.route-audit-history #audit-history:empty {
+  display: none !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history .admin-runtime-stability-route-root {
+  width: min(1480px, calc(100% - 64px)) !important;
+  margin: 0.6rem auto 4.5rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history .admin-runtime-stability-route-root .audit-history-panel,
+:root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history .app-shell.route-audit-history #audit-history {
+  min-height: 0 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Responsive                                                                  */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-compact,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-standard,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-wide {
+    right: 0.65rem !important;
+    bottom: 4.8rem !important;
+    width: min(680px, calc(100vw - 1.3rem)) !important;
+    height: min(760px, calc(100dvh - 5.7rem)) !important;
+    min-width: min(380px, calc(100vw - 1.3rem)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] body.projectpulse-route-audit-history .admin-runtime-stability-route-root {
+    width: min(100% - 24px, 1480px) !important;
+    margin: 0.5rem auto 3.5rem !important;
+  }
+}
+
+@media (max-width: 620px) {
+  :root[data-pulse-experience='enterprise'] .help-launcher {
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+    min-height: 46px !important;
+    padding: 0.65rem 0.85rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-compact,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-standard,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-wide,
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-size-fullscreen {
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    resize: none !important;
+    transform: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .help-panel.celar-ai-contextual-chat.is-minimized {
+    top: auto !important;
+    right: 0.5rem !important;
+    bottom: 4.25rem !important;
+    left: auto !important;
+    width: calc(100vw - 1rem) !important;
+    height: 60px !important;
+    min-height: 60px !important;
+    border-radius: 16px !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header {
+    padding: 0.72rem 0.75rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-header span {
+    display: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-context-bar,
+  :root[data-pulse-experience='enterprise'] .celar-ai-question-context-toggle {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-context-bar span {
+    white-space: normal !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-input-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-input-row > button {
+    width: 100% !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .pulse-display-view-handle {
+    min-height: 92px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-pulse-experience='enterprise'] .help-launcher,
+  :root[data-pulse-experience='enterprise'] .help-panel,
+  :root[data-pulse-experience='enterprise'] .help-panel * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  .help-launcher,
+  .help-panel,
+  .pulse-display-handle {
+    display: none !important;
+  }
+}
