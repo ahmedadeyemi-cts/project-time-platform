@@ -630,9 +630,32 @@ jobs:
           echo "::add-mask::$COORDINATOR_SESSION"
           rm -f "$COORDINATOR_RESPONSE"
           require_get 'Audit history' '/api/admin/audit-history/events?days=1&limit=250&category=authentication' "$EVIDENCE_DIR/audit-authentication.json"
-          jq -e '[.events[]? | .eventType] | any(. == "login_succeeded" or . == "login_failed" or . == "logout_succeeded")' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Audit history did not expose authentication outcomes.'
-          jq -e '[.events[]? | .eventType] | any(. == "login_failed")' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Failed login was not visible in Audit History.'
-          jq -e '[.events[]? | .eventType] | any(. == "logout_succeeded")' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Logout was not visible in Audit History.'
+          jq -e '
+            .status == "audit_history_loaded"
+            and (.centralAudit.available == true)
+            and ((.events // []) | type == "array")
+            and ((.events // []) | length > 0)
+          ' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Audit History did not return an available authentication event collection.'
+          jq -e '
+            any(.events[]?;
+              (.details.event_type // "") == "login_succeeded"
+              or (((.eventType // "") | ascii_downcase) == "login succeeded")
+            )
+          ' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Successful login was not visible in Audit History.'
+          jq -e '
+            any(.events[]?;
+              (.details.event_type // "") == "login_failed"
+              or (((.eventType // "") | ascii_downcase) == "login failed")
+            )
+          ' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Failed login was not visible in Audit History.'
+          jq -e '
+            any(.events[]?;
+              (.details.event_type // "") == "logout_succeeded"
+              or (.details.login_result // "") == "logout_success"
+              or (.details.revoked_reason // "") == "user_logout"
+              or (((.eventType // "") | ascii_downcase) == "logout succeeded")
+            )
+          ' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Logout was not visible in Audit History.'
 
           ask_public_fact() {
             local question="$1" output="$2" payload

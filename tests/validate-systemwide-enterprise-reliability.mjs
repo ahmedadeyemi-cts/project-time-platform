@@ -137,6 +137,46 @@ for (const marker of [
   'opportunityDirectoryRole:"ENGINEERING"'
 ]) requireText(deployment, marker, 'role-correct Opportunity Directory UAT');
 
+for (const marker of [
+  '.status == "audit_history_loaded"',
+  '.centralAudit.available == true',
+  '.details.event_type // ""',
+  '.details.login_result // ""',
+  '.details.revoked_reason // ""',
+  '"logout_success"',
+  '"user_logout"'
+]) requireText(deployment, marker, 'Audit History response-contract UAT');
+rejectText(
+  deployment,
+  '[.events[]? | .eventType] | any(. == "login_succeeded"',
+  'display-label-only Audit History UAT'
+);
+
+const auditResponseFixture = {
+  status: 'audit_history_loaded',
+  centralAudit: { available: true },
+  events: [
+    { eventType: 'Login Succeeded', details: { event_type: 'login_succeeded' } },
+    { eventType: 'Login Failed', details: { event_type: 'login_failed' } },
+    { eventType: 'Auth Login Events', details: { login_result: 'logout_success' } },
+    { eventType: 'Auth Sessions', details: { revoked_reason: 'user_logout' } }
+  ]
+};
+const auditEvents = auditResponseFixture.events;
+if (!auditEvents.some((event) => event.details?.event_type === 'login_succeeded')) {
+  throw new Error('Audit response fixture is missing login_succeeded evidence.');
+}
+if (!auditEvents.some((event) => event.details?.event_type === 'login_failed')) {
+  throw new Error('Audit response fixture is missing login_failed evidence.');
+}
+if (!auditEvents.some((event) =>
+  event.details?.event_type === 'logout_succeeded'
+  || event.details?.login_result === 'logout_success'
+  || event.details?.revoked_reason === 'user_logout'
+)) {
+  throw new Error('Audit response fixture is missing logout evidence.');
+}
+
 const authGetStart = deployment.indexOf('          auth_get() {');
 const authPostStart = deployment.indexOf('          auth_post() {', authGetStart);
 const requireGetStart = deployment.indexOf('          require_get() {', authPostStart);
