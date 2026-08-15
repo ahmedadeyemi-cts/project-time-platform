@@ -106,7 +106,9 @@ GENERATED_VALIDATOR.write_text(validator, encoding="utf-8")
 
 run("git", "restore", "--", str(WORKFLOW_PATH.relative_to(ROOT)), str(VALIDATOR_PATH.relative_to(ROOT)))
 remaining = subprocess.check_output(["git", "status", "--short"], cwd=ROOT, text=True)
-if any(line and not line.startswith("?? generated/protected-test-audit-uat-repair-20260815/") for line in remaining.splitlines()):
+allowed_status = {"?? generated/", "?? generated/protected-test-audit-uat-repair-20260815/"}
+unexpected = [line for line in remaining.splitlines() if line and line not in allowed_status]
+if unexpected:
     raise SystemExit(f"Unexpected worktree state after generation:\n{remaining}")
 
 run("git", "config", "user.name", "github-actions[bot]")
