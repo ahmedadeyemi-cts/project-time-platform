@@ -56,6 +56,7 @@ import './enterprise-overlay-responsive.css';
 import './enterprise-systemwide-reliability.css';
 import './enterprise-feedback-fixes.css';
 import './display-preferences-drawer.css';
+import './enterprise-header-navigation-layout.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(

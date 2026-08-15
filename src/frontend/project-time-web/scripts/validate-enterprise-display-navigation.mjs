@@ -7,6 +7,7 @@ const fail = (message) => { throw new Error(`ENTERPRISE_DISPLAY_NAVIGATION_FAILE
 
 const component = source('src/DisplayPreferencesDrawer.jsx');
 const css = source('src/display-preferences-drawer.css');
+const headerCss = source('src/enterprise-header-navigation-layout.css');
 const main = source('src/main.jsx');
 
 for (const marker of [
@@ -40,19 +41,42 @@ for (const marker of [
   if (!css.includes(marker)) fail(`css_marker_missing:${marker}`);
 }
 
+for (const marker of [
+  'ENTERPRISE_HEADER_NAVIGATION_ALIGNMENT_V1',
+  "grid-template-columns: minmax(240px, 320px) minmax(260px, 1fr) max-content max-content",
+  "grid-template-areas: 'brand context navigation utilities'",
+  '.enterprise-top-navigation',
+  '.enterprise-header-utilities',
+  '.workspace-signed-in-user',
+  'overflow-wrap: anywhere !important;',
+  '@media (max-width: 1320px)'
+]) {
+  if (!headerCss.includes(marker)) fail(`header_css_marker_missing:${marker}`);
+}
+
 if (!main.includes("import DisplayPreferencesDrawer from './DisplayPreferencesDrawer.jsx';")) {
   fail('component_import_missing');
 }
 if (!main.includes("import './display-preferences-drawer.css';")) {
   fail('css_import_missing');
 }
+if (!main.includes("import './enterprise-header-navigation-layout.css';")) {
+  fail('header_layout_css_import_missing');
+}
 if (!main.includes('<DisplayPreferencesDrawer />')) {
   fail('component_mount_missing');
 }
 
 const displayCssIndex = main.indexOf("import './display-preferences-drawer.css';");
+const headerCssIndex = main.indexOf("import './enterprise-header-navigation-layout.css';");
 const contrastGuardIndex = main.indexOf("import './enterprise-contrast-guard.css';");
-if (displayCssIndex < 0 || contrastGuardIndex < 0 || displayCssIndex > contrastGuardIndex) {
+if (
+  displayCssIndex < 0
+  || headerCssIndex < 0
+  || contrastGuardIndex < 0
+  || displayCssIndex > headerCssIndex
+  || headerCssIndex > contrastGuardIndex
+) {
   fail('contrast_guard_must_remain_last');
 }
 
@@ -65,4 +89,4 @@ for (const forbidden of [
   if (component.includes(forbidden)) fail(`react_ownership_or_reload_forbidden:${forbidden}`);
 }
 
-console.log('ENTERPRISE_DISPLAY_NAVIGATION=PASS drawer=collapsed-left-edge theme=subtle more=unclipped contrast=guarded');
+console.log('ENTERPRISE_DISPLAY_NAVIGATION=PASS drawer=collapsed-left-edge theme=subtle more=unclipped header=single-row-wide context=dynamic contrast=guarded');

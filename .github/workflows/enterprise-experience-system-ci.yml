@@ -8,6 +8,7 @@ on:
       - 'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
       - 'src/frontend/project-time-web/src/DisplayPreferencesDrawer.jsx'
       - 'src/frontend/project-time-web/src/display-preferences-drawer.css'
+      - 'src/frontend/project-time-web/src/enterprise-header-navigation-layout.css'
       - 'src/frontend/project-time-web/scripts/validate-enterprise-display-navigation.mjs'
       - 'src/frontend/project-time-web/src/enterprise-experience-system.css'
       - 'src/frontend/project-time-web/src/enterprise-experience-components.css'
@@ -42,6 +43,7 @@ jobs:
           CONTROLLER='src/frontend/project-time-web/src/EnterpriseExperienceController.jsx'
           DISPLAY_DRAWER='src/frontend/project-time-web/src/DisplayPreferencesDrawer.jsx'
           DISPLAY_CSS='src/frontend/project-time-web/src/display-preferences-drawer.css'
+          HEADER_CSS='src/frontend/project-time-web/src/enterprise-header-navigation-layout.css'
           SYSTEM_CSS='src/frontend/project-time-web/src/enterprise-experience-system.css'
           MODULE_CSS='src/frontend/project-time-web/src/enterprise-module-management.css'
           MAIN='src/frontend/project-time-web/src/main.jsx'
@@ -54,10 +56,14 @@ jobs:
           grep -Fq 'pulse-display-theme-handle' "$DISPLAY_DRAWER"
           grep -Fq 'ENTERPRISE_DISPLAY_DRAWER_AND_MORE_OVERLAY_V2' "$DISPLAY_CSS"
           grep -Fq '#enterprise-more-navigation-menu.enterprise-more-dropdown' "$DISPLAY_CSS"
+          grep -Fq 'ENTERPRISE_HEADER_NAVIGATION_ALIGNMENT_V1' "$HEADER_CSS"
+          grep -Fq "grid-template-areas: 'brand context navigation utilities'" "$HEADER_CSS"
+          grep -Fq '.workspace-signed-in-user' "$HEADER_CSS"
           grep -Fq "data-pulse-experience='enterprise'" "$SYSTEM_CSS"
           grep -Fq "data-theme='dark'" "$SYSTEM_CSS"
           grep -Fq 'repeat(6, minmax(0, 1fr))' "$MODULE_CSS"
           grep -Fq 'DisplayPreferencesDrawer' "$MAIN"
+          grep -Fq 'enterprise-header-navigation-layout.css' "$MAIN"
           echo 'PULSE_ENTERPRISE_EXPERIENCE_SCOPE=PASS'
 
       - name: Set up Node.js

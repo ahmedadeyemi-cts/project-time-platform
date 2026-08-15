@@ -1,0 +1,188 @@
+/* ENTERPRISE_HEADER_NAVIGATION_ALIGNMENT_V1
+ * Keeps Dashboard, Modules, and More beside the approval/search utilities on
+ * normal desktop widths while reserving a readable, dynamic Workspace context
+ * column for every signed-in user.
+ */
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 320px) minmax(260px, 1fr) max-content max-content !important;
+  grid-template-areas: 'brand context navigation utilities' !important;
+  align-items: center !important;
+  column-gap: clamp(0.65rem, 1vw, 1.1rem) !important;
+  row-gap: 0 !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup,
+:root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo {
+  grid-area: brand !important;
+  width: auto !important;
+  min-width: clamp(240px, 19vw, 320px) !important;
+  max-width: 320px !important;
+  align-self: center !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-context {
+  grid-area: context !important;
+  min-width: 260px !important;
+  max-width: none !important;
+  overflow: visible !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-context > *,
+:root[data-pulse-experience='enterprise'] .workspace-header-context {
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-context h1,
+:root[data-pulse-experience='enterprise'] .workspace-header-context h1,
+:root[data-pulse-experience='enterprise'] .workspace-signed-in-user {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+:root[data-pulse-experience='enterprise'] .workspace-signed-in-user {
+  display: block !important;
+  max-width: 100% !important;
+  line-height: 1.28 !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+  grid-area: navigation !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  justify-self: end !important;
+  flex-wrap: nowrap !important;
+  gap: 0.42rem !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  overflow: visible !important;
+  padding: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation > a,
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation .enterprise-more-button {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-header-utilities {
+  grid-area: utilities !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  justify-self: end !important;
+  flex-wrap: nowrap !important;
+  gap: 0.48rem !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  margin: 0 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-header-utilities > * {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 1600px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: minmax(220px, 290px) minmax(240px, 1fr) max-content max-content !important;
+    column-gap: 0.62rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup,
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo {
+    min-width: clamp(220px, 17vw, 290px) !important;
+    max-width: 290px !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-context {
+    min-width: 240px !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+    gap: 0.34rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation > a,
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation .enterprise-more-button {
+    padding-right: 0.72rem !important;
+    padding-left: 0.72rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-header-utilities {
+    gap: 0.38rem !important;
+  }
+}
+
+@media (max-width: 1320px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: minmax(220px, 290px) minmax(260px, 1fr) max-content !important;
+    grid-template-areas:
+      'brand context utilities'
+      'brand navigation utilities' !important;
+    align-items: center !important;
+    row-gap: 0.45rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+    justify-self: end !important;
+  }
+}
+
+@media (max-width: 1040px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    grid-template-areas:
+      'brand utilities'
+      'context context'
+      'navigation navigation' !important;
+    row-gap: 0.48rem !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup,
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo {
+    min-width: 0 !important;
+    max-width: min(320px, 100%) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-context {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+    justify-content: flex-start !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    scrollbar-width: thin !important;
+    padding-bottom: 0.18rem !important;
+  }
+}
+
+@media (max-width: 700px) {
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      'context utilities'
+      'navigation navigation' !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .brand-lockup,
+  :root[data-pulse-experience='enterprise'] .enterprise-top-bar > .signal-logo {
+    display: none !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .workspace-signed-in-user {
+    max-width: 32ch !important;
+  }
+}
