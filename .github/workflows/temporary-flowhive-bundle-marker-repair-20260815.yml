@@ -44,8 +44,8 @@ jobs:
 
           workflow = Path('.github/workflows/projectpulse-deploy-test.yml')
           source = workflow.read_text(encoding='utf-8')
-          old = "            'FlowHive enterprise workspace is not ready' \\\n"
-          new = "            'FlowHive enterprise controls are temporarily unavailable.' \\\n"
+          old = "'FlowHive enterprise workspace is not ready'"
+          new = "'FlowHive enterprise controls are temporarily unavailable.'"
           count = source.count(old)
           if count != 1:
               raise SystemExit(f'workflow FlowHive marker: expected one stale marker, found {count}')
@@ -96,13 +96,14 @@ jobs:
             .github/workflows/projectpulse-deploy-test.yml \
             tests/validate-systemwide-enterprise-reliability.mjs
 
-          mapfile -t changed < <(git diff --cached --name-only | sort)
+          mapfile -t changed < <(git diff --cached --name-only | LC_ALL=C sort)
           expected=(
             '.github/workflows/projectpulse-deploy-test.yml'
+            '.github/workflows/temporary-flowhive-bundle-marker-repair-20260815.yml'
             'tests/validate-systemwide-enterprise-reliability.mjs'
           )
           [[ "${changed[*]}" == "${expected[*]}" ]] || {
-            echo 'ERROR: Staged scope is not the approved two-file repair.' >&2
+            echo 'ERROR: Staged scope is not the guarded two-file net repair plus temporary workflow removal.' >&2
             printf 'Changed: %s\n' "${changed[*]}" >&2
             exit 1
           }
