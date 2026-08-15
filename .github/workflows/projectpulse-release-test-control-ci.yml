@@ -10,6 +10,7 @@ on:
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'tests/validate-systemwide-image-build-controller.mjs'
+      - 'tests/validate-systemwide-enterprise-reliability.mjs'
 
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '22'
 
@@ -59,6 +60,7 @@ jobs:
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           tests/validate-systemwide-image-build-controller.mjs
+          tests/validate-systemwide-enterprise-reliability.mjs
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
@@ -110,6 +112,7 @@ jobs:
 
           node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
           node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
           node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --self-test
           python3 scripts/security/validate-repository-security-posture.py
@@ -117,6 +120,7 @@ jobs:
 
           echo 'GOVERNED_PROTECTED_TEST_CONTROLLER=PASSED'
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
+          echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
           echo 'MIGRATIONS_086_088=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
