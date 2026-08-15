@@ -1,0 +1,467 @@
+/* ENTERPRISE_FEEDBACK_FIXES_V1
+ * Keeps the role-scoped More launcher visible, moves the optional workspace
+ * view control to a compact left rail, supplies module-card iconography, and
+ * gives Module 006 a local Toyota / Hyundai / Turion Space brand strip.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Enterprise More trigger parity                                              */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-top-navigation > .enterprise-more-navigation {
+  position: sticky !important;
+  right: 0 !important;
+  z-index: 20 !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+  align-self: stretch !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  margin-left: 0.25rem !important;
+  padding-left: 0.45rem !important;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.98) 35%) !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-top-navigation > .enterprise-more-navigation {
+  background: linear-gradient(90deg, rgba(12, 27, 44, 0), rgba(12, 27, 44, 0.98) 35%) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button,
+:root[data-pulse-experience='enterprise'] .enterprise-more-button[data-pulse-more-visibility='persistent'] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 42px !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  border: 1px solid #829fbc !important;
+  background: #ffffff !important;
+  color: #113f6d !important;
+  -webkit-text-fill-color: #113f6d !important;
+  box-shadow: 0 4px 12px rgba(6, 39, 70, 0.08) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button:hover,
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button:focus-visible {
+  border-color: #00569a !important;
+  background: #e9f4ff !important;
+  color: #003a70 !important;
+  -webkit-text-fill-color: #003a70 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button.active,
+:root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button[aria-expanded='true'] {
+  border-color: #004b8d !important;
+  background: #004b8d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-more-navigation > .enterprise-more-button {
+  border-color: #7697b7 !important;
+  background: #13263a !important;
+  color: #e5f2ff !important;
+  -webkit-text-fill-color: #e5f2ff !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-more-navigation > .enterprise-more-button:hover,
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-more-navigation > .enterprise-more-button:focus-visible {
+  border-color: #68bcff !important;
+  background: #1b3955 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-more-navigation > .enterprise-more-button.active,
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .enterprise-more-navigation > .enterprise-more-button[aria-expanded='true'] {
+  border-color: #68bcff !important;
+  background: #2d8bd3 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Compact left-side Views rail                                                */
+/* -------------------------------------------------------------------------- */
+
+#pulse-enterprise-experience-control-host {
+  position: fixed !important;
+  left: 0 !important;
+  top: clamp(7rem, 27vh, 16rem) !important;
+  z-index: 7995 !important;
+  display: block !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  pointer-events: auto !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher {
+  display: grid !important;
+  grid-template-columns: 38px !important;
+  align-items: center !important;
+  justify-items: center !important;
+  gap: 0.28rem !important;
+  min-height: 0 !important;
+  padding: 0.38rem 0.3rem 0.42rem !important;
+  border: 1px solid #8ba7c2 !important;
+  border-left: 0 !important;
+  border-radius: 0 12px 12px 0 !important;
+  background: #ffffff !important;
+  box-shadow: 6px 10px 24px rgba(10, 42, 71, 0.22) !important;
+  white-space: normal !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher__label {
+  display: grid !important;
+  place-items: center !important;
+  width: 38px !important;
+  height: 52px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #123f69 !important;
+  -webkit-text-fill-color: #123f69 !important;
+  font-size: 0.67rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  text-transform: uppercase !important;
+  writing-mode: vertical-rl !important;
+  transform: rotate(180deg) !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher__label::after {
+  content: 's';
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid #7694b2 !important;
+  border-radius: 9px !important;
+  background: #ffffff !important;
+  color: #153f68 !important;
+  -webkit-text-fill-color: #153f68 !important;
+  box-shadow: none !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button:not(.active):not([aria-pressed='true']) {
+  border-color: #7694b2 !important;
+  background: #ffffff !important;
+  color: #153f68 !important;
+  -webkit-text-fill-color: #153f68 !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button:hover,
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button:focus-visible {
+  border-color: #00569a !important;
+  background: #e9f4ff !important;
+  color: #003a70 !important;
+  -webkit-text-fill-color: #003a70 !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button.active,
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button[aria-pressed='true'] {
+  border-color: #004b8d !important;
+  background: #004b8d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(0, 75, 141, 0.25) !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button svg {
+  width: 18px !important;
+  height: 18px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+}
+
+#pulse-enterprise-experience-control-host .pulse-experience-switcher button strong {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher {
+  border-color: #6f8fab !important;
+  background: #102137 !important;
+  box-shadow: 7px 12px 28px rgba(0, 0, 0, 0.38) !important;
+}
+
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher__label {
+  color: #d6e9fb !important;
+  -webkit-text-fill-color: #d6e9fb !important;
+}
+
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher button {
+  border-color: #6f8fab !important;
+  background: #172c44 !important;
+  color: #d7eaff !important;
+  -webkit-text-fill-color: #d7eaff !important;
+}
+
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher button:hover,
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher button:focus-visible {
+  border-color: #68bcff !important;
+  background: #1f4667 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher button.active,
+:root[data-theme='dark'] #pulse-enterprise-experience-control-host .pulse-experience-switcher button[aria-pressed='true'] {
+  border-color: #8dcfff !important;
+  background: #2d8bd3 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Module-card iconography                                                     */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card {
+  --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='3'%20y='3'%20width='7'%20height='7'%20rx='1.5'/%3E%3Crect%20x='14'%20y='3'%20width='7'%20height='7'%20rx='1.5'/%3E%3Crect%20x='3'%20y='14'%20width='7'%20height='7'%20rx='1.5'/%3E%3Crect%20x='14'%20y='14'%20width='7'%20height='7'%20rx='1.5'/%3E%3C/svg%3E");
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card::before {
+  content: '' !important;
+  width: 38px !important;
+  height: 38px !important;
+  margin-top: 0 !important;
+  border: 1px solid rgba(0, 86, 154, 0.2) !important;
+  border-radius: 11px !important;
+  background:
+    var(--pulse-module-card-icon) center / 22px 22px no-repeat,
+    linear-gradient(145deg, #eef7ff, #e7f8f7) !important;
+  color: transparent !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .modules-directory-card::before {
+  border-color: rgba(104, 188, 255, 0.28) !important;
+  background:
+    var(--pulse-module-card-icon) center / 22px 22px no-repeat,
+    linear-gradient(145deg, #17334f, #123b45) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='001'],
+  [data-module-number='023'],
+  [data-module-number='028'],
+  [data-module-number='057'],
+  [data-module-number='071']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='12'%20cy='12'%20r='8'/%3E%3Cpath%20d='M12%207v5l3%202'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='001A'],
+  [data-module-number='018'],
+  [data-module-number='019'],
+  [data-module-number='020'],
+  [data-module-number='033'],
+  [data-module-number='040'],
+  [data-module-number='055C'],
+  [data-module-number='055D'],
+  [data-module-number='066'],
+  [data-module-number='080'],
+  [data-module-number='082']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='3'%20y='7'%20width='18'%20height='12'%20rx='2'/%3E%3Cpath%20d='M8%207V5.5A1.5%201.5%200%200%201%209.5%204h5A1.5%201.5%200%200%201%2016%205.5V7M3%2012h18M10%2012v2h4v-2'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='002'],
+  [data-module-number='007'],
+  [data-module-number='027'],
+  [data-module-number='029'],
+  [data-module-number='038'],
+  [data-module-number='077']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%205h16v14H4z'/%3E%3Cpath%20d='m8%2012%202.5%202.5L16%209'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='003'],
+  [data-module-number='030'],
+  [data-module-number='036'],
+  [data-module-number='070'],
+  [data-module-number='078']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M5%2020V10M12%2020V4M19%2020v-7'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='004']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='3'%20y='5'%20width='18'%20height='16'%20rx='2'/%3E%3Cpath%20d='M8%203v4M16%203v4M3%2010h18'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='005'],
+  [data-module-number='022'],
+  [data-module-number='039'],
+  [data-module-number='042'],
+  [data-module-number='055B'],
+  [data-module-number='060'],
+  [data-module-number='063']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='5'%20y='3'%20width='14'%20height='18'%20rx='2'/%3E%3Cpath%20d='M9%207h6M12%209v8M15%2012.5c0-1-1.3-1.5-3-1.5s-3%20.6-3%201.7%201.3%201.5%203%201.5%203%20.5%203%201.6-1.3%201.7-3%201.7-3-.6-3-1.6'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='006'],
+  [data-module-number='024'],
+  [data-module-number='026'],
+  [data-module-number='073']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='5'%20cy='7'%20r='2'/%3E%3Ccircle%20cx='19'%20cy='10'%20r='2'/%3E%3Ccircle%20cx='5'%20cy='17'%20r='2'/%3E%3Ccircle%20cx='19'%20cy='14'%20r='2'/%3E%3Cpath%20d='M7%207h4l2%203h4M7%2017h4l2-3h4'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='008'],
+  [data-module-number='015'],
+  [data-module-number='041'],
+  [data-module-number='076'],
+  [data-module-number='079']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M6%203h9l3%203v15H6z'/%3E%3Cpath%20d='M15%203v4h4M9%2011h6M9%2015h6'/%3E%3Ccircle%20cx='16.5'%20cy='17.5'%20r='2.5'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='009'],
+  [data-module-number='012'],
+  [data-module-number='021'],
+  [data-module-number='037'],
+  [data-module-number='069'],
+  [data-module-number='072'],
+  [data-module-number='074']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='9'%20cy='8'%20r='3'/%3E%3Cpath%20d='M3.5%2019c.4-3.6%202.2-5.5%205.5-5.5s5.1%201.9%205.5%205.5'/%3E%3Ccircle%20cx='17'%20cy='9'%20r='2.2'/%3E%3Cpath%20d='M15%2014c3.5-.4%205.3%201.3%205.5%204'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='010'],
+  [data-module-number='014'],
+  [data-module-number='016'],
+  [data-module-number='017'],
+  [data-module-number='058'],
+  [data-module-number='065'],
+  [data-module-number='067'],
+  [data-module-number='068'],
+  [data-module-number='075'],
+  [data-module-number='081']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M7%2018h10a4%204%200%200%200%20.6-8A6%206%200%200%200%206.3%208.7%204.5%204.5%200%200%200%207%2018Z'/%3E%3Cpath%20d='M9%2013h6M12%2010v6'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='011'],
+  [data-module-number='064']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='5'%20y='5'%20width='14'%20height='14'%20rx='3'/%3E%3Cpath%20d='M9%2015V9h3a2%202%200%200%201%200%204H9M15%209v6M3%209h2M3%2015h2M19%209h2M19%2015h2M9%203v2M15%203v2M9%2019v2M15%2019v2'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='013'],
+  [data-module-number='997']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M12%203%205%206v5.5c0%204.2%202.7%207.1%207%208.5%204.3-1.4%207-4.3%207-8.5V6z'/%3E%3Cpath%20d='m9%2012%202%202%204-4'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='025'],
+  [data-module-number='026'],
+  [data-module-number='032'],
+  [data-module-number='038'],
+  [data-module-number='064'],
+  [data-module-number='065'],
+  [data-module-number='067'],
+  [data-module-number='075']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M8%203v5M16%203v5M6%208h12v3a6%206%200%200%201-6%206v4M9%2021h6'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='031'],
+  [data-module-number='068'],
+  [data-module-number='077'],
+  [data-module-number='078'],
+  [data-module-number='998']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='12'%20cy='12'%20r='3'/%3E%3Cpath%20d='M19%2013.5v-3l-2-.6a7%207%200%200%200-.7-1.6l1-1.8-2.1-2.1-1.8%201A7%207%200%200%200%2011.5%205L11%203H8l-.6%202a7%207%200%200%200-1.6.7l-1.8-1L1.9%206.8l1%201.8A7%207%200%200%200%202.2%2010L0%2010.5v3l2%20.6a7%207%200%200%200%20.7%201.6l-1%201.8%202.1%202.1%201.8-1a7%207%200%200%200%201.6.7l.6%202h3l.6-2a7%207%200%200%200%201.6-.7l1.8%201%202.1-2.1-1-1.8a7%207%200%200%200%20.7-1.6z'%20transform='translate(2%200)%20scale(.83%201)'/%3E%3C/svg%3E"); }
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card:is(
+  [data-module-number='017'],
+  [data-module-number='999']
+) { --pulse-module-card-icon: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%230b63ce'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'/%3E%3Cpath%20d='M9.8%209a2.5%202.5%200%201%201%203.6%202.2c-1%20.6-1.4%201.1-1.4%202.3M12%2017h.01'/%3E%3C/svg%3E"); }
+
+/* Module 006 uses the three requested customer marks as a dedicated first row. */
+:root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006'] {
+  padding-top: 2.72rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006'] .modules-directory-card-heading {
+  left: 0.85rem !important;
+}
+
+:root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006']::before {
+  width: 100% !important;
+  height: 36px !important;
+  border-color: rgba(15, 45, 78, 0.16) !important;
+  border-radius: 9px !important;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20300%2040'%3E%0A%3Crect%20width='94'%20height='40'%20rx='8'%20fill='%23fff'/%3E%0A%3Cg%20transform='translate(5%208)'%20fill='none'%20stroke='%23eb0a1e'%20stroke-width='1.6'%3E%0A%3Cellipse%20cx='14'%20cy='11'%20rx='12'%20ry='7.2'/%3E%3Cellipse%20cx='14'%20cy='11'%20rx='4.2'%20ry='9.2'/%3E%3Cpath%20d='M3%208.5c4.5%203.1%2017.5%203.1%2022%200'/%3E%0A%3C/g%3E%3Ctext%20x='34'%20y='25'%20font-family='Arial,sans-serif'%20font-size='10.5'%20font-weight='700'%20fill='%23eb0a1e'%3ETOYOTA%3C/text%3E%0A%3Crect%20x='101'%20width='94'%20height='40'%20rx='8'%20fill='%23fff'/%3E%0A%3Cg%20transform='translate(106%209)'%20fill='none'%20stroke='%23002c5f'%20stroke-width='1.8'%3E%0A%3Cellipse%20cx='14'%20cy='10'%20rx='13'%20ry='8'/%3E%3Cpath%20d='M6%2014%2011%206m0%200%206%208m0%200%205-8'/%3E%0A%3C/g%3E%3Ctext%20x='135'%20y='25'%20font-family='Arial,sans-serif'%20font-size='9.5'%20font-weight='700'%20fill='%23002c5f'%3EHYUNDAI%3C/text%3E%0A%3Crect%20x='202'%20width='98'%20height='40'%20rx='8'%20fill='%23080a24'/%3E%0A%3Cg%20transform='translate(208%208)'%20fill='none'%20stroke='%23fff'%20stroke-width='1.4'%3E%3Ccircle%20cx='10'%20cy='12'%20r='8'/%3E%3Cpath%20d='M2%2012c5-6%2011-6%2016%200M3%2016c5-4%2010-4%2014%200'/%3E%3C/g%3E%0A%3Ctext%20x='229'%20y='18'%20font-family='Arial,sans-serif'%20font-size='8.8'%20font-weight='700'%20fill='%23fff'%3ETURION%3C/text%3E%0A%3Ctext%20x='229'%20y='29'%20font-family='Arial,sans-serif'%20font-size='7.5'%20font-weight='600'%20letter-spacing='1.2'%20fill='%23b9c6ff'%3ESPACE%3C/text%3E%0A%3C/svg%3E") center / contain no-repeat, #f8fbff !important;
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .modules-directory-card[data-module-number='006']::before {
+  border-color: rgba(184, 210, 235, 0.28) !important;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20300%2040'%3E%0A%3Crect%20width='94'%20height='40'%20rx='8'%20fill='%23fff'/%3E%0A%3Cg%20transform='translate(5%208)'%20fill='none'%20stroke='%23eb0a1e'%20stroke-width='1.6'%3E%0A%3Cellipse%20cx='14'%20cy='11'%20rx='12'%20ry='7.2'/%3E%3Cellipse%20cx='14'%20cy='11'%20rx='4.2'%20ry='9.2'/%3E%3Cpath%20d='M3%208.5c4.5%203.1%2017.5%203.1%2022%200'/%3E%0A%3C/g%3E%3Ctext%20x='34'%20y='25'%20font-family='Arial,sans-serif'%20font-size='10.5'%20font-weight='700'%20fill='%23eb0a1e'%3ETOYOTA%3C/text%3E%0A%3Crect%20x='101'%20width='94'%20height='40'%20rx='8'%20fill='%23fff'/%3E%0A%3Cg%20transform='translate(106%209)'%20fill='none'%20stroke='%23002c5f'%20stroke-width='1.8'%3E%0A%3Cellipse%20cx='14'%20cy='10'%20rx='13'%20ry='8'/%3E%3Cpath%20d='M6%2014%2011%206m0%200%206%208m0%200%205-8'/%3E%0A%3C/g%3E%3Ctext%20x='135'%20y='25'%20font-family='Arial,sans-serif'%20font-size='9.5'%20font-weight='700'%20fill='%23002c5f'%3EHYUNDAI%3C/text%3E%0A%3Crect%20x='202'%20width='98'%20height='40'%20rx='8'%20fill='%23080a24'/%3E%0A%3Cg%20transform='translate(208%208)'%20fill='none'%20stroke='%23fff'%20stroke-width='1.4'%3E%3Ccircle%20cx='10'%20cy='12'%20r='8'/%3E%3Cpath%20d='M2%2012c5-6%2011-6%2016%200M3%2016c5-4%2010-4%2014%200'/%3E%3C/g%3E%0A%3Ctext%20x='229'%20y='18'%20font-family='Arial,sans-serif'%20font-size='8.8'%20font-weight='700'%20fill='%23fff'%3ETURION%3C/text%3E%0A%3Ctext%20x='229'%20y='29'%20font-family='Arial,sans-serif'%20font-size='7.5'%20font-weight='600'%20letter-spacing='1.2'%20fill='%23b9c6ff'%3ESPACE%3C/text%3E%0A%3C/svg%3E") center / contain no-repeat, #eaf1f8 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Responsive and accessibility behavior                                      */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  #pulse-enterprise-experience-control-host {
+    top: 31vh !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .enterprise-top-navigation > .enterprise-more-navigation {
+    margin-left: 0.1rem !important;
+    padding-left: 0.28rem !important;
+  }
+}
+
+@media (max-width: 620px) {
+  #pulse-enterprise-experience-control-host {
+    top: auto !important;
+    bottom: 9rem !important;
+  }
+
+  #pulse-enterprise-experience-control-host .pulse-experience-switcher__label {
+    height: 44px !important;
+    font-size: 0.62rem !important;
+  }
+
+  #pulse-enterprise-experience-control-host .pulse-experience-switcher button {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .modules-directory-card[data-module-number='006']::before {
+    height: 34px !important;
+  }
+}
+
+@media (forced-colors: active) {
+  #pulse-enterprise-experience-control-host .pulse-experience-switcher,
+  #pulse-enterprise-experience-control-host .pulse-experience-switcher button,
+  :root[data-pulse-experience='enterprise'] .enterprise-more-navigation > .enterprise-more-button,
+  :root[data-pulse-experience='enterprise'] .modules-directory-card::before {
+    border: 1px solid CanvasText !important;
+  }
+}
+
+@media print {
+  #pulse-enterprise-experience-control-host {
+    display: none !important;
+  }
+}

@@ -16,6 +16,7 @@ import './react-dom-ownership-prelude.js';
 import './pulse-ai-help-chat-usability.js';
 import './admin-experience-theme.js';
 import './pulse-shell-frontend-compatibility.js';
+import './enterprise-navigation-parity.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
@@ -52,6 +53,7 @@ import './enterprise-module-management.css';
 import './enterprise-module-cards.css';
 import './enterprise-overlay-responsive.css';
 import './enterprise-systemwide-reliability.css';
+import './enterprise-feedback-fixes.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
