@@ -1,0 +1,703 @@
+name: Publish modules, 055C, and responsive runtime repair
+
+on:
+  push:
+    branches:
+      - fix/modules-055c-responsive-runtime-20260815
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-modules-055c-responsive-runtime
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/modules-055c-responsive-runtime-20260815
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply exact runtime repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match in {path}, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          frontend = Path('src/frontend/project-time-web')
+
+          authority = frontend / 'src/module-directory-authority.js'
+          authority.write_text('''function normalizedModuleNumber(value) {
+            return String(value || '').trim().toUpperCase();
+          }
+
+          export function authorizedModulesFromNavigationState(projectModules, navigationState) {
+            if (!navigationState || navigationState.state !== 'ready') return null;
+
+            const denied = new Set(
+              (navigationState.deniedModuleNumbers || []).map(normalizedModuleNumber).filter(Boolean)
+            );
+            const retired = new Set(
+              (navigationState.retiredModuleNumbers || []).map(normalizedModuleNumber).filter(Boolean)
+            );
+
+            return (projectModules || []).filter((module) => {
+              const moduleNumber = normalizedModuleNumber(module?.moduleNumber);
+              return Boolean(moduleNumber) && !denied.has(moduleNumber) && !retired.has(moduleNumber);
+            });
+          }
+          ''', encoding='utf-8')
+
+          portal = frontend / 'src/ModulesDirectoryPortal.jsx'
+          replace_once(
+              portal,
+              "import { PROJECTPULSE_MODULES, canonicalModuleRoute, moduleForRoute, replaceTimesheetLabel } from './module-availability-registry.js';",
+              "import { PROJECTPULSE_MODULES, canonicalModuleRoute, moduleForRoute, replaceTimesheetLabel } from './module-availability-registry.js';\nimport { authorizedModulesFromNavigationState } from './module-directory-authority.js';",
+              'module directory authority import')
+          replace_once(
+              portal,
+              '''function collectAuthorizedModules() {
+            const modules = [];
+            const seenRoutes = new Set();''',
+              '''function collectAuthorizedModules() {
+            const authoritativeModules = authorizedModulesFromNavigationState(
+              PROJECTPULSE_MODULES,
+              window.__projectPulseEffectiveNavigation
+            );
+            if (authoritativeModules !== null) {
+              return authoritativeModules.map((registryModule, index) => ({
+                route: registryModule.route,
+                href: `#${registryModule.route}`,
+                label: registryModule.displayName,
+                description: registryModule.description || '',
+                moduleNumber: registryModule.moduleNumber,
+                group: registryModule.group,
+                order: index
+              }));
+            }
+
+            const modules = [];
+            const seenRoutes = new Set();''',
+              'authoritative module collection')
+          replace_once(
+              portal,
+              '''    window.addEventListener('projectpulse:view-as-changed', refresh);
+            window.addEventListener('projectpulse:module-availability-changed', refresh);
+
+            return () => {
+              observer?.disconnect();
+              window.removeEventListener('projectpulse:view-as-changed', refresh);
+              window.removeEventListener('projectpulse:module-availability-changed', refresh);''',
+              '''    window.addEventListener('projectpulse:view-as-changed', refresh);
+            window.addEventListener('projectpulse:module-availability-changed', refresh);
+            window.addEventListener('projectpulse:permission-navigation-updated', refresh);
+
+            return () => {
+              observer?.disconnect();
+              window.removeEventListener('projectpulse:view-as-changed', refresh);
+              window.removeEventListener('projectpulse:module-availability-changed', refresh);
+              window.removeEventListener('projectpulse:permission-navigation-updated', refresh);''',
+              'permission navigation refresh event')
+
+          app = frontend / 'src/App.jsx'
+          replace_once(
+              app,
+              '''const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
+            'SUPER_ADMINISTRATOR',
+            'ADMINISTRATOR',
+            'PROJECT_TEAM_COORDINATOR',
+            'MANAGER',
+            'PROJECT_MANAGER',
+            'PROJECT_MANAGEMENT'
+          ]);''',
+              '''const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
+            'SUPER_ADMINISTRATOR',
+            'ADMINISTRATOR',
+            'PROJECT_TEAM_COORDINATOR',
+            'MANAGER',
+            'PROJECT_MANAGER',
+            'PROJECT_MANAGEMENT',
+            'PROJECT_MANAGEMENT_LEAD',
+            'PROJECT_MANAGEMENT_TEAM_LEAD',
+            'PM_TEAM_LEAD'
+          ]);''',
+              'Module 002 lead aliases')
+          replace_once(
+              app,
+              '''      {!localViewAsIsActive() ? <AiProviderReadinessController authSession={authSession} /> : null}''',
+              '''      {(activeRoute === 'ai-provider-configuration'
+                && !localViewAsIsActive()
+                && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']))
+                ? <AiProviderReadinessController authSession={authSession} />
+                : null}''',
+              'AI readiness route and capability gate')
+          replace_once(
+              app,
+              '''          fetchJson('/api/db-health', authSession),''',
+              '''          (['system-diagnostics', 'azure-admin'].includes(activeRoute)
+                ? fetchJson('/api/db-health', authSession)
+                : Promise.resolve({ skipped: 'route_not_active' })),''',
+              'database health route gate')
+          replace_once(
+              app,
+              '''          fetchJson('/api/schema/tables', authSession),''',
+              '''          (['system-diagnostics', 'azure-admin'].includes(activeRoute)
+                ? fetchJson('/api/schema/tables', authSession)
+                : Promise.resolve({ skipped: 'route_not_active' })),''',
+              'schema route gate')
+          replace_once(
+              app,
+              '''          fetchJson('/api/utilization/policies', authSession),''',
+              '''          (activeRoute === 'utilization'
+                ? fetchJson('/api/utilization/policies', authSession)
+                : Promise.resolve({ skipped: 'route_not_active' })),''',
+              'utilization policy route gate')
+          replace_once(
+              app,
+              '''          fetchJson('/api/utilization/targets', authSession),''',
+              '''          (activeRoute === 'utilization'
+                ? fetchJson('/api/utilization/targets', authSession)
+                : Promise.resolve({ skipped: 'route_not_active' })),''',
+              'utilization targets route gate')
+          replace_once(
+              app,
+              '''          fetchJson('/api/utilization/current-quarter', authSession),''',
+              '''          (activeRoute === 'utilization'
+                ? fetchJson('/api/utilization/current-quarter', authSession)
+                : Promise.resolve({ skipped: 'route_not_active' })),''',
+              'current-quarter route gate')
+          replace_once(
+              app,
+              '''<section id="project-allocation-info" className="panel project-allocation-info-panel">
+                <ProjectAllocationInfoPanel />
+              </section>''',
+              '''{activeRoute === 'project-allocation-info' ? (
+              <section id="project-allocation-info" className="panel project-allocation-info-panel">
+                <ProjectAllocationInfoPanel />
+              </section>
+              ) : null}''',
+              'project allocation route gate')
+          replace_once(
+              app,
+              '''      <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">''',
+              '''      {activeRoute === 'utilization' ? (
+                <>
+              <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">''',
+              'utilization route wrapper start')
+          replace_once(
+              app,
+              '''      <section id="utilization" className="panel">
+                <YearlyUtilizationPanel />
+                <ManagerTeamUtilizationPanel />
+                <EngineeringTeamLeadUtilizationPanel />''',
+              '''      <section id="utilization" className="panel">
+                {canSeeAny(['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+                  ? <YearlyUtilizationPanel />
+                  : null}
+                {canSeeAny(['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+                  ? <ManagerTeamUtilizationPanel />
+                  : null}
+                {canSeeAny(['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+                  ? <EngineeringTeamLeadUtilizationPanel />
+                  : null}''',
+              'utilization component capability gates')
+          replace_once(
+              app,
+              '''      </section>
+
+
+              {(activeRoute === 'roles-permissions-matrix' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (''',
+              '''      </section>
+                </>
+              ) : null}
+
+
+              {(activeRoute === 'roles-permissions-matrix' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (''',
+              'utilization route wrapper end')
+
+          mailbox = frontend / 'src/ApprovalMailbox.jsx'
+          mailbox.write_text('''import { useEffect, useRef, useState } from 'react';
+          import './approval-mailbox.css';
+
+          const APPROVAL_ROLE_CODES = new Set([
+            'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
+            'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT',
+            'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'
+          ]);
+
+          function sessionHeaders() {
+            try {
+              const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
+              return session?.sessionToken ? {
+                'X-ProjectPulse-Session': session.sessionToken,
+                'X-ProjectPulse-Module-Number': '002'
+              } : {};
+            } catch {
+              return {};
+            }
+          }
+
+          function hasApprovalAuthority() {
+            const navigation = window.__projectPulseEffectiveNavigation;
+            if (!navigation || navigation.state !== 'ready') return null;
+            return (navigation.roleCodes || [])
+              .map((role) => String(role || '').trim().toUpperCase())
+              .some((role) => APPROVAL_ROLE_CODES.has(role));
+          }
+
+          export default function ApprovalMailbox() {
+            const [summary, setSummary] = useState(null);
+            const [open, setOpen] = useState(false);
+            const shellRef = useRef(null);
+
+            useEffect(() => {
+              let cancelled = false;
+
+              async function load() {
+                const authority = hasApprovalAuthority();
+                if (authority !== true) {
+                  if (authority === false && !cancelled) setSummary(null);
+                  return;
+                }
+
+                try {
+                  const response = await fetch('/api/manager/approval-count', { headers: sessionHeaders() });
+                  if (response.status === 401 || response.status === 403) {
+                    if (!cancelled) setSummary(null);
+                    return;
+                  }
+                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                  const payload = await response.json();
+                  if (!cancelled) setSummary(payload);
+                } catch {
+                  if (!cancelled) setSummary(null);
+                }
+              }
+
+              function closeOnOutsideClick(event) {
+                if (shellRef.current && !shellRef.current.contains(event.target)) setOpen(false);
+              }
+
+              load();
+              const timer = window.setInterval(load, 30000);
+              window.addEventListener('projectpulse:permission-navigation-updated', load);
+              window.addEventListener('projectpulse:view-as-changed', load);
+              window.addEventListener('projectpulse:approval-queue-changed', load);
+              document.addEventListener('mousedown', closeOnOutsideClick);
+
+              return () => {
+                cancelled = true;
+                window.clearInterval(timer);
+                window.removeEventListener('projectpulse:permission-navigation-updated', load);
+                window.removeEventListener('projectpulse:view-as-changed', load);
+                window.removeEventListener('projectpulse:approval-queue-changed', load);
+                document.removeEventListener('mousedown', closeOnOutsideClick);
+              };
+            }, []);
+
+            if (!summary?.access) return null;
+
+            const total = Number(summary.actionableTotal ?? summary.totalPendingCount ?? 0);
+            const time = Number(summary.submittedTimePending ?? 0);
+            const resetPending = Number(summary.localResetPendingApproval ?? 0);
+            const resetReady = Number(summary.localResetReadyForTempPassword ?? 0);
+
+            return (
+              <div className="approval-mailbox-shell" ref={shellRef}>
+                <button
+                  type="button"
+                  className={open ? 'approval-mailbox-button active' : 'approval-mailbox-button'}
+                  aria-label={`${total} approval items require attention`}
+                  aria-expanded={open}
+                  onClick={() => setOpen((value) => !value)}
+                >
+                  <span className="approval-mailbox-icon" aria-hidden="true">✉</span>
+                  <span className="approval-mailbox-label">Approvals</span>
+                  {total > 0 ? <span className="approval-mailbox-badge">{total > 99 ? '99+' : total}</span> : null}
+                </button>
+
+                {open ? (
+                  <div className="approval-mailbox-popover">
+                    <div className="approval-mailbox-heading">
+                      <div>
+                        <strong>Approval Inbox</strong>
+                        <small>{summary.access.scopeLabel}</small>
+                      </div>
+                      <span className={total > 0 ? 'approval-mailbox-total pending' : 'approval-mailbox-total'}>{total}</span>
+                    </div>
+
+                    <div className="approval-mailbox-breakdown">
+                      {summary.access.canViewTimeApprovals ? (
+                        <div><span>Time approvals</span><strong>{time}</strong></div>
+                      ) : null}
+                      {summary.access.canViewPasswordResetApprovals ? (
+                        <>
+                          <div><span>Password-reset approvals</span><strong>{resetPending}</strong></div>
+                          <div><span>Ready for temporary password</span><strong>{resetReady}</strong></div>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <a href="#manager-approval" onClick={() => setOpen(false)}>Open Approval Center</a>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+          ''', encoding='utf-8')
+
+          approval_compat = frontend / 'src/approval-access-navigation-compatibility.js'
+          replace_once(
+              approval_compat,
+              '''  headers.set('Cache-Control', 'no-cache');
+            headers.set('Pragma', 'no-cache');
+            return headers;''',
+              '''  headers.set('Cache-Control', 'no-cache');
+            headers.set('Pragma', 'no-cache');
+            headers.set('X-ProjectPulse-Module-Number', '002');
+            return headers;''',
+              'Approval Center module attribution')
+
+          scope = Path('src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs')
+          replace_once(
+              scope,
+              '''using Npgsql;
+
+          namespace ProjectTime.Api.Modules;''',
+              '''using Npgsql;
+          using NpgsqlTypes;
+
+          namespace ProjectTime.Api.Modules;''',
+              'Npgsql UUID type import')
+          replace_once(
+              scope,
+              '''AND lower(team_scope.team_name) = lower(COALESCE(project_manager.team_name, ''))''',
+              '''AND lower(team_scope.team_name) = lower(COALESCE(NULLIF(to_jsonb(project_manager)->>'team_name', ''), NULLIF(to_jsonb(project_manager)->>'department_name', ''), ''))''',
+              'schema-safe team scope')
+          replace_once(
+              scope,
+              '''lower(COALESCE(project_manager.manager_email, '')) = lower(@actor_email)''',
+              '''lower(COALESCE(to_jsonb(project_manager)->>'manager_email', '')) = lower(@actor_email)''',
+              'schema-safe manager scope')
+          replace_once(
+              scope,
+              '''        command.Parameters.AddWithValue("project_id", (object?)projectId ?? DBNull.Value);''',
+              '''        var projectIdParameter = command.Parameters.Add("project_id", NpgsqlDbType.Uuid);
+                  projectIdParameter.Value = projectId.HasValue ? projectId.Value : DBNull.Value;''',
+              'typed nullable project UUID')
+          replace_once(
+              scope,
+              '''                    .LogWarning(
+                              "Work Register overview read scope was unavailable ({ExceptionType}).",
+                              exception.GetType().Name);''',
+              '''                    .LogWarning(
+                              "Work Register overview read scope was unavailable ({ExceptionType}, SQLSTATE {SqlState}, Correlation {CorrelationId}).",
+                              exception.GetType().Name,
+                              exception is PostgresException postgresException ? postgresException.SqlState : "not_postgres",
+                              context.TraceIdentifier);''',
+              'sanitized overview diagnostics')
+          replace_once(
+              scope,
+              '''                    module = "055C",
+                              message = "Project visibility could not be verified. No project data was returned."''',
+              '''                    module = "055C",
+                              correlationId = context.TraceIdentifier,
+                              message = "Project visibility could not be verified. No project data was returned."''',
+              'overview correlation response')
+
+          css = frontend / 'src/unified-project-financial-workspace.css'
+          replace_once(
+              css,
+              '''.group3-summary-grid,
+          .group3-financial-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 0.8rem;
+          }''',
+              '''.group3-summary-grid,
+          .group3-financial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+            gap: 0.8rem;
+          }''',
+              'responsive summary grid')
+          replace_once(
+              css,
+              '''.group3-metric {
+            min-height: 142px;
+            padding: 0.95rem;
+          }''',
+              '''.group3-metric {
+            min-width: 0;
+            min-height: 142px;
+            padding: 0.95rem;
+          }''',
+              'metric minimum width')
+          replace_once(
+              css,
+              '''.group3-metric-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.5rem;
+          }''',
+              '''.group3-metric-heading {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            align-content: start;
+            justify-items: start;
+            gap: 0.45rem;
+          }''',
+              'metric heading layout')
+          replace_once(
+              css,
+              '''.group3-metric-heading > span,
+          .group3-person > span,''',
+              '''.group3-metric-heading > span,
+          .group3-person > span,''',
+              'metric heading selector anchor')
+          marker = '''.group3-metric-heading > span,
+          .group3-person > span,
+          .group3-sell-grid span,
+          .group3-facts dt {
+            color: var(--group3-slate-700);
+            font-size: 0.69rem;
+            font-weight: 850;
+            letter-spacing: 0.065em;
+            text-transform: uppercase;
+          }
+          '''
+          insertion = marker + '''
+          .group3-metric-heading > span {
+            min-width: 0;
+            max-width: 100%;
+            word-break: normal;
+            overflow-wrap: break-word;
+            hyphens: none;
+          }
+          '''
+          replace_once(css, marker, insertion, 'metric heading word wrapping')
+          replace_once(
+              css,
+              '''  white-space: nowrap;
+          }''',
+              '''  max-width: 100%;
+            justify-self: start;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: break-word;
+          }''',
+              'status pill responsive wrapping')
+
+          workflow = Path('.github/workflows/projectpulse-deploy-test.yml')
+          replace_once(
+              workflow,
+              '''          jq 'del(.sessionToken)' "$ENGINEER_RESPONSE" > "$EVIDENCE_DIR/engineer-login-redacted.json"
+                    rm -f "$ENGINEER_RESPONSE"
+
+                    auth_get() {''',
+              '''          jq 'del(.sessionToken)' "$ENGINEER_RESPONSE" > "$EVIDENCE_DIR/engineer-login-redacted.json"
+                    rm -f "$ENGINEER_RESPONSE"
+
+                    PROJECT_MANAGER='heather.schrock@ussignal.local'
+                    PROJECT_MANAGER_RESPONSE="$(mktemp)"
+                    PROJECT_MANAGER_STATUS="$(login "$PROJECT_MANAGER" "$PROJECT_MANAGER_RESPONSE" "$TEST_LOGIN_PASSWORD")"
+                    [[ "$PROJECT_MANAGER_STATUS" == 200 ]] || fail "Project Manager login returned HTTP $PROJECT_MANAGER_STATUS."
+                    jq -e '.provider == "LOCAL" and .mustChangePassword == false and (.sessionToken | type == "string" and length > 0)' "$PROJECT_MANAGER_RESPONSE" >/dev/null || fail 'Project Manager login response did not satisfy the session contract.'
+                    PROJECT_MANAGER_SESSION="$(jq -r '.sessionToken' "$PROJECT_MANAGER_RESPONSE")"
+                    echo "::add-mask::$PROJECT_MANAGER_SESSION"
+                    jq 'del(.sessionToken)' "$PROJECT_MANAGER_RESPONSE" > "$EVIDENCE_DIR/project-manager-login-redacted.json"
+                    rm -f "$PROJECT_MANAGER_RESPONSE"
+
+                    auth_get() {''',
+              'Protected Test Project Manager login')
+          replace_once(
+              workflow,
+              '''          require_get 'Customer directory' '/api/customers/overview' "$EVIDENCE_DIR/customer-directory.json"
+                    require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063' ''',
+              '''          require_get 'Customer directory' '/api/customers/overview' "$EVIDENCE_DIR/customer-directory.json"
+                    require_get 'Project Manager module availability' '/api/module-availability/overrides' "$EVIDENCE_DIR/project-manager-module-availability.json" "$PROJECT_MANAGER_SESSION" '009'
+                    jq -e '(.states | type == "array") and ((.access.effectiveRoles // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER"))' "$EVIDENCE_DIR/project-manager-module-availability.json" >/dev/null || fail 'Project Manager module availability did not preserve effective role evidence.'
+                    require_get 'Project Manager Work Register overview' '/api/work-register/overview' "$EVIDENCE_DIR/project-manager-work-register.json" "$PROJECT_MANAGER_SESSION" '055C'
+                    jq -e '(.workItems | type == "array") and (.access.scope == "managed_projects" or .access.scope == "project_management_team")' "$EVIDENCE_DIR/project-manager-work-register.json" >/dev/null || fail 'Project Manager Work Register scope did not return an authorized project collection.'
+                    require_get 'Project Manager Approval access' '/api/approval-center/access' "$EVIDENCE_DIR/project-manager-approval-access.json" "$PROJECT_MANAGER_SESSION" '002'
+                    jq -e '.canViewTimeApprovals == true and ((.roleCodes // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER" or . == "PROJECT_MANAGEMENT_LEAD"))' "$EVIDENCE_DIR/project-manager-approval-access.json" >/dev/null || fail 'Project Manager Approval Inbox access was not available.'
+                    PROJECT_MANAGER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/project-manager-logout.json" -w '%{http_code}' \\
+                      -X POST -H "Authorization: Bearer $PROJECT_MANAGER_SESSION" -H "X-ProjectPulse-Session: $PROJECT_MANAGER_SESSION" \\
+                      -H 'X-ProjectPulse-Module-Number: 002' \\
+                      -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
+                    [[ "$PROJECT_MANAGER_LOGOUT_STATUS" == 200 ]] || fail "Project Manager logout returned HTTP $PROJECT_MANAGER_LOGOUT_STATUS."
+                    unset PROJECT_MANAGER_SESSION
+                    require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063' ''',
+              'Protected Test PM modules Work Register and approval UAT')
+          replace_once(
+              workflow,
+              '''projectManagementSummary:true,projectIntake:true,opportunityDirectory:true''',
+              '''projectManagementSummary:true,projectIntake:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,opportunityDirectory:true''',
+              'Protected Test UAT summary')
+
+          validator = frontend / 'scripts/validate-runtime-navigation-work-register-responsive.mjs'
+          validator.write_text('''import fs from 'node:fs';
+          import { authorizedModulesFromNavigationState } from '../src/module-directory-authority.js';
+          import { PROJECTPULSE_MODULES } from '../src/module-availability-registry.js';
+
+          function read(path) {
+            if (!fs.existsSync(path)) throw new Error(`Missing source: ${path}`);
+            return fs.readFileSync(path, 'utf8');
+          }
+          function requireText(source, marker, label) {
+            if (!source.includes(marker)) throw new Error(`Missing ${label}: ${marker}`);
+          }
+          function rejectText(source, marker, label) {
+            if (source.includes(marker)) throw new Error(`Forbidden ${label}: ${marker}`);
+          }
+
+          const portal = read('./src/ModulesDirectoryPortal.jsx');
+          const app = read('./src/App.jsx');
+          const mailbox = read('./src/ApprovalMailbox.jsx');
+          const approvalCompatibility = read('./src/approval-access-navigation-compatibility.js');
+          const scope = read('../../backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs');
+          const css = read('./src/unified-project-financial-workspace.css');
+          const deployment = read('../../../.github/workflows/projectpulse-deploy-test.yml');
+
+          const denied = PROJECTPULSE_MODULES
+            .filter((module) => !['002', '018', '055C'].includes(module.moduleNumber))
+            .map((module) => module.moduleNumber);
+          const projectManagementModules = authorizedModulesFromNavigationState(PROJECTPULSE_MODULES, {
+            state: 'ready',
+            deniedModuleNumbers: denied,
+            retiredModuleNumbers: []
+          });
+          if (!projectManagementModules || projectManagementModules.length !== 3) {
+            throw new Error('Authoritative Module Directory did not retain the authorized Project Management module set.');
+          }
+
+          for (const marker of [
+            'authorizedModulesFromNavigationState',
+            'window.__projectPulseEffectiveNavigation',
+            "projectpulse:permission-navigation-updated"
+          ]) requireText(portal, marker, 'authoritative Modules directory');
+
+          for (const role of ['PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD']) {
+            requireText(app, `'${role}'`, `Module 002 route role ${role}`);
+            requireText(mailbox, `'${role}'`, `Approval mailbox role ${role}`);
+          }
+          requireText(mailbox, "'X-ProjectPulse-Module-Number': '002'", 'Approval mailbox module attribution');
+          requireText(mailbox, "projectpulse:permission-navigation-updated", 'Approval mailbox capability gate');
+          requireText(approvalCompatibility, "headers.set('X-ProjectPulse-Module-Number', '002');", 'Approval access module attribution');
+
+          for (const marker of [
+            "activeRoute === 'utilization' ? (",
+            "skipped: 'route_not_active'",
+            "activeRoute === 'project-allocation-info'",
+            "activeRoute === 'ai-provider-configuration'",
+            "VIEW_TEAM_UTILIZATION"
+          ]) requireText(app, marker, 'route and capability gated optional API loading');
+          rejectText(app, '<YearlyUtilizationPanel />\n        <ManagerTeamUtilizationPanel />', 'unguarded utilization panels');
+
+          for (const marker of [
+            'using NpgsqlTypes;',
+            'NpgsqlDbType.Uuid',
+            "to_jsonb(project_manager)->>'manager_email'",
+            "to_jsonb(project_manager)->>'team_name'",
+            'correlationId = context.TraceIdentifier'
+          ]) requireText(scope, marker, 'runtime-safe Work Register scope');
+
+          for (const marker of [
+            'repeat(auto-fit, minmax(min(100%, 210px), 1fr))',
+            'grid-template-columns: minmax(0, 1fr);',
+            'word-break: normal;',
+            'justify-self: start;',
+            'white-space: normal;'
+          ]) requireText(css, marker, 'responsive unified workspace metric layout');
+          rejectText(css, 'word-break: break-all;', 'letter-by-letter metric wrapping');
+
+          for (const marker of [
+            "PROJECT_MANAGER='heather.schrock@ussignal.local'",
+            'Project Manager module availability',
+            'Project Manager Work Register overview',
+            'Project Manager Approval access',
+            'projectManagerWorkRegister:true',
+            'projectManagerApprovalAccess:true'
+          ]) requireText(deployment, marker, 'Protected Test Project Management UAT');
+
+          console.log('RUNTIME_NAVIGATION_WORK_REGISTER_RESPONSIVE=PASS');
+          console.log('MODULE_DIRECTORY_SOURCE=AUTHORITATIVE_RBAC_STATE');
+          console.log('OPTIONAL_API_LOADING=ROUTE_AND_CAPABILITY_GATED');
+          console.log('WORK_REGISTER_NULLABLE_PROJECT_ID=TYPED_UUID');
+          console.log('PROJECT_WORKLOAD_METRICS=RESPONSIVE_HORIZONTAL_TEXT');
+          console.log('APPROVAL_INBOX_PM_ROLE_FAMILY=MODULE_002_ATTRIBUTED');
+          ''', encoding='utf-8')
+
+          package = frontend / 'package.json'
+          replace_once(
+              package,
+              'npm run validate:approval-access-compatibility && npm run validate:project-management-scope-approval-documents &&',
+              'npm run validate:approval-access-compatibility && npm run validate:project-management-scope-approval-documents && npm run validate:runtime-navigation-work-register-responsive &&',
+              'frontend build validator chain')
+          replace_once(
+              package,
+              '    "validate:approval-access-compatibility": "node ./scripts/validate-approval-access-navigation-compatibility.mjs",',
+              '    "validate:approval-access-compatibility": "node ./scripts/validate-approval-access-navigation-compatibility.mjs",\n    "validate:runtime-navigation-work-register-responsive": "node ./scripts/validate-runtime-navigation-work-register-responsive.mjs",',
+              'frontend validator command')
+
+          Path('.github/workflows/publish-modules-055c-responsive-runtime.yml').unlink()
+          PY
+
+      - name: Validate focused runtime contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund
+          node ./scripts/validate-runtime-navigation-work-register-responsive.mjs
+          npm run validate:approval-access-compatibility
+          npm run validate:project-management-scope-approval-documents
+          cd ../../..
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+          bash -n <(sed -n '/PROJECT_MANAGER='\''heather.schrock@ussignal.local'\''/,/unset PROJECT_MANAGER_SESSION/p' .github/workflows/projectpulse-deploy-test.yml)
+          git diff --check
+
+      - name: Build production frontend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          npm run build
+
+      - name: Commit validated repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'Repair module discovery, Work Register scope, and responsive metrics'
+          git push origin HEAD:fix/modules-055c-responsive-runtime-20260815
