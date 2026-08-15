@@ -12,6 +12,7 @@ on:
       - 'src/frontend/project-time-web/**'
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/test-systemwide-enterprise-reliability-migration-088.sh'
+      - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
 
@@ -92,6 +93,7 @@ jobs:
             src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx \
             src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx \
             tests/validate-utilization-role-scoping.mjs \
+            tests/validate-systemwide-image-build-controller.mjs \
             tests/validate-systemwide-enterprise-reliability.mjs \
             tests/validate-celar-ai-flowhive-authoritative-release.mjs \
             deployment/containers/api/Dockerfile \
@@ -101,6 +103,7 @@ jobs:
 
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           node tests/validate-utilization-role-scoping.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
@@ -251,7 +254,8 @@ jobs:
           }
 
           build_image() {
-            local repository="$1" dockerfile="$2" context="$3" image="$repository:$UNIQUE_TAG"
+            local repository="$1" dockerfile="$2" context="$3"
+            local image="${repository}:${UNIQUE_TAG}"
             local digest='' attempt dockerfile_abs context_abs dockerfile_for_acr full_image
 
             dockerfile_abs="$(realpath "$dockerfile")" || fail "Could not resolve Dockerfile path: $dockerfile"
@@ -537,7 +541,6 @@ jobs:
           COORDINATOR_SESSION="$(jq -r '.sessionToken' "$COORDINATOR_RESPONSE")"
           echo "::add-mask::$COORDINATOR_SESSION"
           rm -f "$COORDINATOR_RESPONSE"
-
           require_get 'Audit history' '/api/admin/audit-history/events?days=1&limit=250&category=authentication' "$EVIDENCE_DIR/audit-authentication.json"
           jq -e '[.events[]? | .eventType] | any(. == "login_succeeded" or . == "login_failed" or . == "logout_succeeded")' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Audit history did not expose authentication outcomes.'
           jq -e '[.events[]? | .eventType] | any(. == "login_failed")' "$EVIDENCE_DIR/audit-authentication.json" >/dev/null || fail 'Failed login was not visible in Audit History.'
