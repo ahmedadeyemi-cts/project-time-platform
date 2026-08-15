@@ -90,6 +90,21 @@ jobs:
           ''',
               'official public evidence assertions')
 
+          replace_once(
+              '''Require(!conflicting.Assessment.Passed, "unresolved conflict requires review");
+          Require(conflicting.Assessment.Level == "review_required", "conflict receives review-required level");
+          Require(conflicting.Result.Answer.Confidence <= 0.74m, "conflict confidence is capped");
+          Require(HasFinding(conflicting, "conflicting_evidence_requires_review"), "conflict finding exists");
+          ''',
+              '''Require(!conflicting.Assessment.Passed, "unresolved conflict blocks answer promotion");
+          Require(conflicting.Assessment.Level == "evidence_limited", "conflict receives evidence-limited level");
+          Require(conflicting.Result.Status == "partial", "conflict downgrades result status");
+          Require(conflicting.Result.Answer.Confidence <= 0.40m, "conflict confidence is blocker-capped");
+          Require(conflicting.Result.Answer.DirectConclusion == internalPlan.FailClosedConclusion, "conflict replaces conclusion with fail-closed text");
+          Require(HasFinding(conflicting, "conflicting_evidence_requires_review"), "conflict blocker finding exists");
+          ''',
+              'conflict blocker assertions')
+
           path.write_text(source, encoding='utf-8')
           PY
 
@@ -109,16 +124,20 @@ jobs:
           grep -Fq 'SourceType: "authoritative_public_web"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
           grep -Fq 'Path: "https://www.whitehouse.gov/administration/"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
           grep -Fq 'official public source. [4]' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          grep -Fq 'conflict receives evidence-limited level' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          grep -Fq 'conflict confidence is blocker-capped' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
           ! grep -Fq 'Source(4, "governed_public_source"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          ! grep -Fq 'conflict receives review-required level' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm -- .github/workflows/temporary-celar-ai-public-reliability-fixture-20260815.yml
           git add -- tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
           git diff --cached --check
-          git commit -m 'Align universal public fact test with official evidence contract'
+          git commit -m 'Align universal reliability tests with official evidence contract'
           git push origin HEAD:refs/heads/fix/celar-ai-president-identity-extraction-20260815
 
           echo 'CELAR_AI_PUBLIC_RELIABILITY_FIXTURE=PASS'
+          echo 'CELAR_AI_CONFLICT_BLOCKER_FIXTURE=PASS'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'APPLICATION_POLICY_WEAKENING=NONE'
