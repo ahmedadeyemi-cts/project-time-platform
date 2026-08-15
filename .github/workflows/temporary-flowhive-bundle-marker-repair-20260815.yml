@@ -15,6 +15,8 @@ jobs:
     name: Repair, validate, and publish FlowHive marker
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      STATUS_FILE: ${{ runner.temp }}/flowhive-marker-publisher-status.log
     steps:
       - name: Check out exact repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -30,10 +32,25 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Apply focused repair, validate, and publish
+      - name: Initialize publisher diagnostics
         shell: bash
         run: |
           set -Eeuo pipefail
+          {
+            echo 'FLOWHIVE_BUNDLE_MARKER_PUBLISHER=STARTED'
+            echo "TRIGGER_SHA=$GITHUB_SHA"
+            echo 'PRODUCTION_MUTATION=NONE'
+            echo 'TEST_MUTATION=NONE'
+            echo 'SECRET_ACCESS=NONE'
+          } > "$STATUS_FILE"
+
+      - name: Apply focused two-file repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; printf "STAGE=apply RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
+          echo 'STAGE=apply RESULT=STARTED' >> "$STATUS_FILE"
+
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || {
             echo 'ERROR: Checkout does not match the exact triggering commit.' >&2
             exit 1
@@ -65,13 +82,31 @@ jobs:
           validator.write_text(source.replace(anchor, insert, 1), encoding='utf-8')
           PY
 
+          git diff --check
+          echo 'STAGE=apply RESULT=PASS' >> "$STATUS_FILE"
+
+      - name: Run focused source validators
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; printf "STAGE=source_validation RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
+          echo 'STAGE=source_validation RESULT=STARTED' >> "$STATUS_FILE"
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-utilization-role-scoping.mjs
+          echo 'STAGE=source_validation RESULT=PASS' >> "$STATUS_FILE"
 
-          pushd src/frontend/project-time-web >/dev/null
+      - name: Build production frontend and prove every bundle marker
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; printf "STAGE=frontend_build RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
+          echo 'STAGE=frontend_build RESULT=STARTED' >> "$STATUS_FILE"
+
           npm ci --no-audit --no-fund
           npm run build
+
           BUNDLE="$RUNNER_TEMP/protected-test-frontend-bundle.txt"
           find dist/assets -type f \( -name '*.js' -o -name '*.css' \) -print0 | xargs -0 cat > "$BUNDLE"
           for marker in \
@@ -82,15 +117,27 @@ jobs:
             'Select or type a customer' \
             'FlowHive enterprise controls are temporarily unavailable.' \
             'Login, logout & sessions'; do
-            grep -Fq "$marker" "$BUNDLE" || {
-              echo "ERROR: Production frontend bundle is missing marker: $marker" >&2
+            if grep -Fq "$marker" "$BUNDLE"; then
+              printf 'FRONTEND_MARKER=PASS VALUE=%s\n' "$marker" | tee -a "$STATUS_FILE"
+            else
+              printf 'FRONTEND_MARKER=FAIL VALUE=%s\n' "$marker" | tee -a "$STATUS_FILE" >&2
               exit 1
-            }
-            echo "FRONTEND_MARKER=PASS value=$marker"
+            fi
           done
-          popd >/dev/null
+
+          echo 'STAGE=frontend_build RESULT=PASS' >> "$STATUS_FILE"
+
+      - name: Verify scope, commit, and push repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; printf "STAGE=publish RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
+          echo 'STAGE=publish RESULT=STARTED' >> "$STATUS_FILE"
 
           git diff --check
+          mapfile -t unstaged < <(git status --short | LC_ALL=C sort)
+          printf 'PREPUBLISH_STATUS=%s\n' "${unstaged[*]}" >> "$STATUS_FILE"
+
           git rm -- .github/workflows/temporary-flowhive-bundle-marker-repair-20260815.yml
           git add -- \
             .github/workflows/projectpulse-deploy-test.yml \
@@ -104,7 +151,7 @@ jobs:
           )
           [[ "${changed[*]}" == "${expected[*]}" ]] || {
             echo 'ERROR: Staged scope is not the guarded two-file net repair plus temporary workflow removal.' >&2
-            printf 'Changed: %s\n' "${changed[*]}" >&2
+            printf 'STAGED_FILES=%s\n' "${changed[*]}" >> "$STATUS_FILE"
             exit 1
           }
 
@@ -114,7 +161,14 @@ jobs:
           git commit -m 'Align protected-Test FlowHive degraded-state marker'
           git push origin HEAD:refs/heads/fix/protected-test-flowhive-bundle-marker-20260815
 
-          echo 'FLOWHIVE_BUNDLE_MARKER_REPAIR=PASS'
-          echo 'PRODUCTION_MUTATION=NONE'
-          echo 'APPLICATION_SOURCE_CHANGE=NONE'
-          echo 'MIGRATION_CHANGE=NONE'
+          echo 'STAGE=publish RESULT=PASS' >> "$STATUS_FILE"
+          echo 'FLOWHIVE_BUNDLE_MARKER_REPAIR=PASS' >> "$STATUS_FILE"
+
+      - name: Upload redacted publisher diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-marker-publisher-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/flowhive-marker-publisher-status.log
+          if-no-files-found: warn
+          retention-days: 2
