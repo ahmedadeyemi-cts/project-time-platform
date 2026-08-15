@@ -504,8 +504,19 @@ jobs:
           jq 'del(.sessionToken)' "$COORDINATOR_RESPONSE" > "$EVIDENCE_DIR/coordinator-login-redacted.json"
           rm -f "$COORDINATOR_RESPONSE"
 
+          ENGINEER='demo.engineer@ussignal.local'
+          ENGINEER_RESPONSE="$(mktemp)"
+          ENGINEER_STATUS="$(login "$ENGINEER" "$ENGINEER_RESPONSE" "$TEST_LOGIN_PASSWORD")"
+          [[ "$ENGINEER_STATUS" == 200 ]] || fail "Engineer login returned HTTP $ENGINEER_STATUS."
+          jq -e '.provider == "LOCAL" and .mustChangePassword == false and (.sessionToken | type == "string" and length > 0)' "$ENGINEER_RESPONSE" >/dev/null || fail 'Engineer login response did not satisfy the session contract.'
+          ENGINEER_SESSION="$(jq -r '.sessionToken' "$ENGINEER_RESPONSE")"
+          echo "::add-mask::$ENGINEER_SESSION"
+          jq 'del(.sessionToken)' "$ENGINEER_RESPONSE" > "$EVIDENCE_DIR/engineer-login-redacted.json"
+          rm -f "$ENGINEER_RESPONSE"
+
           auth_get() {
             local path="$1" output="$2" headers="$3" stderr_file="$4"
+            local session="${5:-$COORDINATOR_SESSION}" module_number="${6:-019}"
             local status curl_exit
             : > "$output"
             : > "$headers"
@@ -516,9 +527,9 @@ jobs:
               --output "$output" \
               --write-out '%{http_code}' \
               -H 'Cache-Control: no-cache' \
-              -H "Authorization: Bearer $COORDINATOR_SESSION" \
-              -H "X-ProjectPulse-Session: $COORDINATOR_SESSION" \
-              -H 'X-ProjectPulse-Module-Number: 019' \
+              -H "Authorization: Bearer $session" \
+              -H "X-ProjectPulse-Session: $session" \
+              -H "X-ProjectPulse-Module-Number: $module_number" \
               -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
               "$BASE$path" 2>"$stderr_file")"
             curl_exit=$?
@@ -537,11 +548,12 @@ jobs:
           }
           require_get() {
             local name="$1" path="$2" output="$3"
+            local session="${4:-$COORDINATOR_SESSION}" module_number="${5:-019}"
             local attempt result curl_exit status headers stderr_file body_bytes content_type
             for attempt in 1 2 3; do
               headers="$(mktemp)"
               stderr_file="$(mktemp)"
-              result="$(auth_get "$path" "$output" "$headers" "$stderr_file")"
+              result="$(auth_get "$path" "$output" "$headers" "$stderr_file" "$session" "$module_number")"
               IFS='|' read -r curl_exit status <<<"$result"
               status="${status:-000}"
               body_bytes="$(wc -c < "$output" | tr -d '[:space:]')"
@@ -591,7 +603,13 @@ jobs:
           require_get 'Project financial portfolio' '/api/project-financials/portfolio?workspace=pm&limit=250' "$EVIDENCE_DIR/project-financial-portfolio.json"
           require_get 'Cost alert workflow' '/api/projects/cost-alerts' "$EVIDENCE_DIR/cost-alerts.json"
           require_get 'Customer directory' '/api/customers/overview' "$EVIDENCE_DIR/customer-directory.json"
-          require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json"
+          require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063'
+          ENGINEER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/engineer-logout.json" -w '%{http_code}' \
+            -X POST -H "Authorization: Bearer $ENGINEER_SESSION" -H "X-ProjectPulse-Session: $ENGINEER_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 063' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
+          [[ "$ENGINEER_LOGOUT_STATUS" == 200 ]] || fail "Engineer logout returned HTTP $ENGINEER_LOGOUT_STATUS."
+          unset ENGINEER_SESSION
           require_get 'FlowHive portfolio' '/api/project-flowhive/portfolio' "$EVIDENCE_DIR/flowhive-portfolio.json"
 
           PROJECT_ID="$(jq -r '.projects[0].projectId // empty' "$EVIDENCE_DIR/flowhive-portfolio.json")"
@@ -677,7 +695,7 @@ jobs:
             --arg apiImage "$ACTIVE_API_IMAGE" \
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg projectId "$PROJECT_ID" \
-            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
+            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
       - name: Run protected-Test utilization role-scoping UAT
