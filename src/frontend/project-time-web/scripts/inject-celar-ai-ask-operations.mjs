@@ -28,11 +28,11 @@ if (!source.includes(helperMarker)) {
   const helperAnchor = "const EMPTY_QUESTION_CONTEXT = Object.freeze({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });\n";
   const helpers = `${helperAnchor}
 function isDefectIntakeQuestion(value) {
-  return /\\b(?:open|create|report|file|log|raise)\\s+(?:a\\s+)?defect\\b|\\breport\\s+this\\s+issue\\b|\\bthis\\s+is\\s+broken\\b|\\bopen\\s+an\\s+issue\\b/i.test(String(value ?? ''));
+  return /\b(?:open|create|report|file|log|raise)\s+(?:a\s+)?defect\b|\breport\s+this\s+issue\b|\bthis\s+is\s+broken\b|\bopen\s+an\s+issue\b/i.test(String(value ?? ''));
 }
 
 function isTroubleshootingQuestion(value) {
-  return /\\btroubleshoot\\b|\\bdiagnose\\b|\\brun\\s+diagnostics?\\b|\\bwhy\\s+(?:is|did)\\b.*\\b(?:fail|failed|error|unavailable|timeout|broken)\\b/i.test(String(value ?? ''));
+  return /\btroubleshoot\b|\bdiagnose\b|\brun\s+diagnostics?\b|\bwhy\s+(?:is|did)\b.*\b(?:fail|failed|error|unavailable|timeout|broken)\b/i.test(String(value ?? ''));
 }
 
 function operationalEvidenceFromResult(result) {
@@ -68,7 +68,7 @@ if (!source.includes(actionMarker)) {
                 }
               }))}
             >
-              Troubleshoot with Ask Celar AI
+              Troubleshoot with Celar
             </button>
             <button
               type="button"
@@ -76,7 +76,7 @@ if (!source.includes(actionMarker)) {
                 detail: {
                   triggerQuestion: answer.directConclusion || '',
                   suggestedTitle: answer.directConclusion || 'Ask Celar AI reported an operational issue',
-                  suggestedDescription: asArray(answer.limitations).concat(asArray(answer.knownUnknownAndStaleValues)).join('\\n'),
+                  suggestedDescription: asArray(answer.limitations).concat(asArray(answer.knownUnknownAndStaleValues)).join('\n'),
                   suggestedCategory: troubleshootingProfile ? 'Bug' : 'Other',
                   suggestedPriority: result?.status === 'failed' || result?.status === 'blocked' ? 'High' : 'Medium',
                   correlationId: result?.correlationId || '',
@@ -172,8 +172,8 @@ const quickActionAnchor = `            <button type="button" className="help-ful
             <button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Report a defect — Module 076</button>`;
 const quickActionReplacement = `            <button type="button" className="help-full-guide-button" onClick={() => openRoute('user-guide')}>Module 999 — System User Guide</button>
             <button type="button" className="help-pulse-ai-button" onClick={() => openRoute('celar-ai')}>Celar AI Workbench</button>
-            <button type="button" className="help-celar-operations-button" onClick={openOperations}>Troubleshoot with Ask Celar AI</button>
-            <button type="button" className="help-celar-health-button" onClick={openHealthAutomation}>Health & automatic defects</button>
+            <button type="button" className="help-celar-operations-button" onClick={openOperations}>Troubleshoot with Celar</button>
+            <button type="button" className="help-celar-health-button" onClick={openHealthAutomation}>Health &amp; Automatic Defects</button>
             <button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Open guided defect questionnaire</button>`;
 if (!source.includes('help-celar-operations-button')) {
   replaceOnce(quickActionAnchor, quickActionReplacement, 'QUICK_ACTIONS');

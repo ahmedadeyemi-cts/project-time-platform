@@ -60,6 +60,7 @@ import './enterprise-feedback-fixes.css';
 import './display-preferences-drawer.css';
 import './enterprise-header-navigation-layout.css';
 import './enterprise-ui-polish.css';
+import './celar-ai-control-followup.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(

@@ -1,0 +1,284 @@
+/* CELAR_AI_CONTROL_FOLLOWUP_V1
+ * Restores cross-mode Appearance labeling, balances all five Celar AI quick
+ * actions, and gives every chat window control an authoritative size/state
+ * selector without changing chat, diagnostics, defect, or provider behavior.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Appearance label parity in Enterprise and Classic                           */
+/* -------------------------------------------------------------------------- */
+
+.pulse-display-view-handle {
+  font-size: 0 !important;
+}
+
+.pulse-display-view-handle::after {
+  content: 'Appearance';
+  color: currentColor;
+  -webkit-text-fill-color: currentColor;
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ask Celar AI quick-action normalization                                     */
+/* -------------------------------------------------------------------------- */
+
+.help-panel .help-celar-operations-button,
+.help-panel .help-celar-health-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--brand-blue, #00569a) 35%, var(--border, #d7e0ea));
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: var(--surface-strong, #f7fafc);
+  color: var(--brand-blue-strong, #00467e);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.help-panel .help-celar-operations-button:hover,
+.help-panel .help-celar-operations-button:focus-visible,
+.help-panel .help-celar-health-button:hover,
+.help-panel .help-celar-health-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-blue, #00569a) 14%, transparent);
+  outline-offset: 1px;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 46px !important;
+  margin: 0 !important;
+  border-radius: 12px !important;
+  padding: 0.58rem 0.72rem !important;
+  box-shadow: 0 4px 13px rgba(11, 54, 91, 0.06) !important;
+  cursor: pointer !important;
+  font: inherit !important;
+  font-size: 0.67rem !important;
+  font-weight: 900 !important;
+  line-height: 1.3 !important;
+  text-align: center !important;
+  text-wrap: balance;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button:nth-child(-n + 3) {
+  grid-column: span 2;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button:nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-full-guide-button {
+  border-color: #075a9a !important;
+  background: linear-gradient(135deg, #064d86, #08769a) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-pulse-ai-button {
+  border-color: #72bacb !important;
+  background: #f0fafc !important;
+  color: #08677d !important;
+  -webkit-text-fill-color: #08677d !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-celar-operations-button {
+  border-color: #8eb8d8 !important;
+  background: #f1f7fd !important;
+  color: #0b5488 !important;
+  -webkit-text-fill-color: #0b5488 !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-celar-health-button {
+  border-color: #8dc7b1 !important;
+  background: #f0faf5 !important;
+  color: #17684d !important;
+  -webkit-text-fill-color: #17684d !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-report-defect-button {
+  border-color: #d8bd88 !important;
+  background: #fff8ec !important;
+  color: #85540b !important;
+  -webkit-text-fill-color: #85540b !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button:hover,
+:root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button:focus-visible {
+  border-color: #197bb5 !important;
+  box-shadow: 0 0 0 3px rgba(25, 123, 181, 0.13), 0 7px 18px rgba(11, 54, 91, 0.09) !important;
+  outline: none !important;
+  transform: translateY(-1px);
+}
+
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-pulse-ai-button,
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-celar-operations-button,
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-celar-health-button,
+:root[data-pulse-experience='enterprise'][data-theme='dark'] .celar-ai-contextual-chat .help-report-defect-button {
+  border-color: #405c74 !important;
+  background: #172a40 !important;
+  color: #e0edf8 !important;
+  -webkit-text-fill-color: #e0edf8 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Celar AI window-control behavior                                            */
+/* -------------------------------------------------------------------------- */
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls {
+  position: relative !important;
+  z-index: 4 !important;
+  pointer-events: auto !important;
+}
+
+:root[data-pulse-experience='enterprise'] .celar-ai-chat-window-controls button {
+  position: relative !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-compact:not(.is-minimized) {
+  width: min(500px, calc(100vw - 2.5rem)) !important;
+  height: min(650px, calc(100dvh - 7rem)) !important;
+  min-width: min(420px, calc(100vw - 1.5rem)) !important;
+  min-height: min(440px, calc(100dvh - 5rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  max-height: calc(100dvh - 6rem) !important;
+  resize: both !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-standard:not(.is-minimized) {
+  width: min(700px, calc(100vw - 2.5rem)) !important;
+  height: min(780px, calc(100dvh - 7rem)) !important;
+  min-width: min(440px, calc(100vw - 1.5rem)) !important;
+  min-height: min(480px, calc(100dvh - 5rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  max-height: calc(100dvh - 6rem) !important;
+  resize: both !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-wide:not(.is-minimized) {
+  width: min(980px, calc(100vw - 2.5rem)) !important;
+  height: min(820px, calc(100dvh - 7rem)) !important;
+  min-width: min(560px, calc(100vw - 1.5rem)) !important;
+  min-height: min(520px, calc(100dvh - 5rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  max-height: calc(100dvh - 6rem) !important;
+  resize: both !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-fullscreen:not(.is-minimized) {
+  inset: 1rem !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 24px !important;
+  resize: none !important;
+  transform: none !important;
+}
+
+:root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-minimized {
+  inset: auto 1.25rem 5.35rem auto !important;
+  width: min(430px, calc(100vw - 2rem)) !important;
+  height: 62px !important;
+  min-width: 300px !important;
+  min-height: 62px !important;
+  max-width: calc(100vw - 2rem) !important;
+  max-height: 62px !important;
+  border-radius: 18px !important;
+  resize: none !important;
+  transform: translate(var(--celar-chat-x, 0), var(--celar-chat-y, 0)) !important;
+}
+
+@media (max-width: 900px) and (min-width: 621px) {
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-compact:not(.is-minimized) {
+    right: 0.65rem !important;
+    bottom: 4.8rem !important;
+    width: min(480px, calc(100vw - 1.3rem)) !important;
+    height: min(620px, calc(100dvh - 5.7rem)) !important;
+    min-width: min(380px, calc(100vw - 1.3rem)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-standard:not(.is-minimized) {
+    right: 0.65rem !important;
+    bottom: 4.8rem !important;
+    width: min(650px, calc(100vw - 1.3rem)) !important;
+    height: min(740px, calc(100dvh - 5.7rem)) !important;
+    min-width: min(420px, calc(100vw - 1.3rem)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-size-wide:not(.is-minimized) {
+    right: 0.65rem !important;
+    bottom: 4.8rem !important;
+    width: calc(100vw - 1.3rem) !important;
+    height: min(780px, calc(100dvh - 5.7rem)) !important;
+    min-width: min(520px, calc(100vw - 1.3rem)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat.is-size-compact .help-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat.is-size-compact .help-quick-actions > button {
+    grid-column: auto !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat.is-size-compact .help-quick-actions > button:last-child {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .pulse-display-view-handle::after {
+    font-size: 0.66rem;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button {
+    grid-column: 1 !important;
+  }
+
+  :root[data-pulse-experience='enterprise'] .help-panel.pulse-ai-help-panel.pulse-ai-system-chat.celar-ai-contextual-chat.is-minimized {
+    inset: auto 0.5rem 4.25rem auto !important;
+    width: calc(100vw - 1rem) !important;
+    height: 60px !important;
+    min-width: 0 !important;
+    min-height: 60px !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: 60px !important;
+    border-radius: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-pulse-experience='enterprise'] .celar-ai-contextual-chat .help-quick-actions > button {
+    transition-duration: 0.01ms !important;
+  }
+}

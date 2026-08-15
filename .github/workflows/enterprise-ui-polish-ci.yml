@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/enterprise-ui-polish-ci.yml'
+      - 'src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs'
       - 'src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs'
+      - 'src/frontend/project-time-web/src/celar-ai-control-followup.css'
       - 'src/frontend/project-time-web/src/enterprise-ui-polish.js'
       - 'src/frontend/project-time-web/src/enterprise-ui-polish.css'
       - 'src/frontend/project-time-web/src/assets/module-006-customer-brands.svg'
@@ -20,7 +22,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate Appearance, Celar AI, More, brands, and module flow
+    name: Validate Appearance, Celar AI controls, More, brands, and module flow
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -39,14 +41,16 @@ jobs:
         run: |
           set -euo pipefail
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/changed-files.txt
-          cat > /tmp/allowed-files.txt <<'EOF'
+          cat > /tmp/allowed-files.txt <<'FILES'
           .github/workflows/enterprise-ui-polish-ci.yml
+          src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs
           src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs
           src/frontend/project-time-web/src/assets/module-006-customer-brands.svg
+          src/frontend/project-time-web/src/celar-ai-control-followup.css
           src/frontend/project-time-web/src/enterprise-ui-polish.css
           src/frontend/project-time-web/src/enterprise-ui-polish.js
           src/frontend/project-time-web/src/main.jsx
-          EOF
+          FILES
           sort -o /tmp/allowed-files.txt /tmp/allowed-files.txt
           unexpected="$(comm -23 /tmp/changed-files.txt /tmp/allowed-files.txt)"
           if [[ -n "$unexpected" ]]; then
@@ -72,6 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           node --check ./src/enterprise-ui-polish.js
+          node --check ./scripts/inject-celar-ai-ask-operations.mjs
+          node --check ./scripts/validate-enterprise-ui-polish.mjs
           python - <<'PY'
           import xml.etree.ElementTree as ET
           ET.parse('src/assets/module-006-customer-brands.svg')
