@@ -89,12 +89,12 @@ internal static class ProjectManagementWorkRegisterScope
                     return true;
                 }
 
-                var access = await ReadProjectAccessAsync(
+                var accessByProject = await ReadProjectAccessAsync(
                     connection,
                     identity,
                     projectId,
                     context.RequestAborted);
-                if (access is null)
+                if (!accessByProject.TryGetValue(projectId, out var access))
                 {
                     await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
                     return true;
