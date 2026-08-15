@@ -1,0 +1,124 @@
+name: Align Celar AI Public Reliability Test Fixture
+
+on:
+  push:
+    branches:
+      - fix/celar-ai-president-identity-extraction-20260815
+    paths:
+      - '.github/workflows/temporary-celar-ai-public-reliability-fixture-20260815.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    name: Align, validate, and publish the official-source fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/celar-ai-president-identity-extraction-20260815
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Align fixture, validate, and publish
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || {
+            echo 'ERROR: Checkout does not match the exact triggering commit.' >&2
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/CelarAiUniversalAnswerReliabilityTests/Program.cs')
+          source = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}.')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '''        "The current officeholder is verified by a retrieval-time public source.",
+          ''',
+              '''        "The current officeholder is verified by a retrieval-time official public source. [4]",
+          ''',
+              'inline official-source citation')
+
+          replace_once(
+              '''        [
+                      Source(4, "governed_public_source", "public-current", "Retrieved public source", "064", "live_retrieved_current", DateTimeOffset.UtcNow)
+                  ],
+          ''',
+              '''        [
+                      new PulseAiSystemSourceEvidence(
+                          SourceId: 4,
+                          SourceType: "authoritative_public_web",
+                          SourceCode: "white_house_administration",
+                          SourceName: "The White House - Administration",
+                          ModuleCode: "011",
+                          Method: "GET",
+                          Path: "https://www.whitehouse.gov/administration/",
+                          Status: "succeeded",
+                          StatusCode: 200,
+                          ObservedAt: DateTimeOffset.UtcNow,
+                          Freshness: "live_retrieved_current",
+                          EvidenceScope: "synthetic retrieval-time official-source test evidence")
+                  ],
+          ''',
+              'official public evidence fixture')
+
+          replace_once(
+              '''Require(livePublic.Assessment.Passed, "retrieval-time cited public answer passes");
+          Require(livePublic.Assessment.CurrentPublicEvidenceVerified, "current public evidence is marked verified");
+          ''',
+              '''Require(livePublic.Assessment.Passed, "retrieval-time cited official public answer passes");
+          Require(livePublic.Assessment.CurrentPublicEvidenceVerified, "current public evidence is marked verified");
+          Require(livePublic.Assessment.ValidSourceCitations == 1, "official public citation is retained");
+          ''',
+              'official public evidence assertions')
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          dotnet run \
+            --project tests/CelarAiUniversalAnswerReliabilityTests/CelarAiUniversalAnswerReliabilityTests.csproj \
+            --configuration Release
+          dotnet run \
+            --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj \
+            --configuration Release
+          dotnet build \
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          git diff --check
+
+          grep -Fq 'SourceType: "authoritative_public_web"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          grep -Fq 'Path: "https://www.whitehouse.gov/administration/"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          grep -Fq 'official public source. [4]' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          ! grep -Fq 'Source(4, "governed_public_source"' tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -- .github/workflows/temporary-celar-ai-public-reliability-fixture-20260815.yml
+          git add -- tests/CelarAiUniversalAnswerReliabilityTests/Program.cs
+          git diff --cached --check
+          git commit -m 'Align universal public fact test with official evidence contract'
+          git push origin HEAD:refs/heads/fix/celar-ai-president-identity-extraction-20260815
+
+          echo 'CELAR_AI_PUBLIC_RELIABILITY_FIXTURE=PASS'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'APPLICATION_POLICY_WEAKENING=NONE'
