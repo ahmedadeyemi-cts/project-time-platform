@@ -126,6 +126,8 @@ for (const marker of [
   'Production mutation: none'
 ]) requireText(deployment, marker, 'governed protected Test deployment contract');
 rejectText(deployment, 'AZURE_PRODUCTION', 'Production deployment path');
+requireText(deployment, "'Select or type a customer'", 'deployed SOW customer-selector marker');
+rejectText(deployment, "'Customer from Customer Directory'", 'stale case-sensitive customer-selector marker');
 
 for (const marker of [
   "ENGINEER='demo.engineer@ussignal.local'",
