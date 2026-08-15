@@ -8,22 +8,23 @@ on:
       - '.github/workflows/temporary-flowhive-bundle-marker-repair-20260815.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   repair:
-    name: Repair, validate, and publish FlowHive marker
+    name: Validate and package FlowHive marker repair
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       STATUS_FILE: /tmp/flowhive-marker-publisher-status.log
+      PACKAGE_ROOT: /tmp/flowhive-marker-repair
     steps:
       - name: Check out exact repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: fix/protected-test-flowhive-bundle-marker-20260815
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -32,12 +33,12 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Initialize publisher diagnostics
+      - name: Initialize diagnostics
         shell: bash
         run: |
           set -Eeuo pipefail
           {
-            echo 'FLOWHIVE_BUNDLE_MARKER_PUBLISHER=STARTED'
+            echo 'FLOWHIVE_BUNDLE_MARKER_REPAIR=STARTED'
             echo "TRIGGER_SHA=$GITHUB_SHA"
             echo 'PRODUCTION_MUTATION=NONE'
             echo 'TEST_MUTATION=NONE'
@@ -127,48 +128,54 @@ jobs:
 
           echo 'STAGE=frontend_build RESULT=PASS' >> "$STATUS_FILE"
 
-      - name: Verify scope, commit, and push repair
+      - name: Verify net scope and package validated files
         shell: bash
         run: |
           set -Eeuo pipefail
-          trap 'rc=$?; printf "STAGE=publish RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
-          echo 'STAGE=publish RESULT=STARTED' >> "$STATUS_FILE"
+          trap 'rc=$?; printf "STAGE=package RESULT=FAIL EXIT_CODE=%s LINE=%s COMMAND=%q\n" "$rc" "$LINENO" "$BASH_COMMAND" >> "$STATUS_FILE"; exit "$rc"' ERR
+          echo 'STAGE=package RESULT=STARTED' >> "$STATUS_FILE"
 
           git diff --check
-          mapfile -t unstaged < <(git status --short | LC_ALL=C sort)
-          printf 'PREPUBLISH_STATUS=%s\n' "${unstaged[*]}" >> "$STATUS_FILE"
-
-          git rm -- .github/workflows/temporary-flowhive-bundle-marker-repair-20260815.yml
-          git add -- \
-            .github/workflows/projectpulse-deploy-test.yml \
-            tests/validate-systemwide-enterprise-reliability.mjs
-
-          mapfile -t changed < <(git diff --cached --name-only | LC_ALL=C sort)
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
           expected=(
             '.github/workflows/projectpulse-deploy-test.yml'
-            '.github/workflows/temporary-flowhive-bundle-marker-repair-20260815.yml'
             'tests/validate-systemwide-enterprise-reliability.mjs'
           )
           [[ "${changed[*]}" == "${expected[*]}" ]] || {
-            echo 'ERROR: Staged scope is not the guarded two-file net repair plus temporary workflow removal.' >&2
-            printf 'STAGED_FILES=%s\n' "${changed[*]}" >> "$STATUS_FILE"
+            echo 'ERROR: Working-tree scope is not the approved two-file repair.' >&2
+            printf 'CHANGED_FILES=%s\n' "${changed[*]}" >> "$STATUS_FILE"
             exit 1
           }
 
-          git diff --cached --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Align protected-Test FlowHive degraded-state marker'
-          git push origin HEAD:refs/heads/fix/protected-test-flowhive-bundle-marker-20260815
+          install -d -m 0700 \
+            "$PACKAGE_ROOT/.github/workflows" \
+            "$PACKAGE_ROOT/tests"
+          cp .github/workflows/projectpulse-deploy-test.yml \
+            "$PACKAGE_ROOT/.github/workflows/projectpulse-deploy-test.yml"
+          cp tests/validate-systemwide-enterprise-reliability.mjs \
+            "$PACKAGE_ROOT/tests/validate-systemwide-enterprise-reliability.mjs"
+          sha256sum \
+            "$PACKAGE_ROOT/.github/workflows/projectpulse-deploy-test.yml" \
+            "$PACKAGE_ROOT/tests/validate-systemwide-enterprise-reliability.mjs" \
+            > "$PACKAGE_ROOT/SHA256SUMS"
 
-          echo 'STAGE=publish RESULT=PASS' >> "$STATUS_FILE"
-          echo 'FLOWHIVE_BUNDLE_MARKER_REPAIR=PASS' >> "$STATUS_FILE"
+          echo 'STAGE=package RESULT=PASS' >> "$STATUS_FILE"
+          echo 'FLOWHIVE_BUNDLE_MARKER_REPAIR=VALIDATED' >> "$STATUS_FILE"
 
-      - name: Upload redacted publisher diagnostics
+      - name: Upload validated two-file repair
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: validated-flowhive-marker-repair-${{ github.run_id }}
+          path: /tmp/flowhive-marker-repair
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload redacted diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: flowhive-marker-publisher-diagnostics-${{ github.run_id }}
+          name: flowhive-marker-repair-diagnostics-${{ github.run_id }}
           path: /tmp/flowhive-marker-publisher-status.log
           if-no-files-found: warn
           retention-days: 2
