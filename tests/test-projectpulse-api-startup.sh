@@ -24,6 +24,17 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cd "$ROOT"
+
+PROJECT_INTAKE_MODULE='src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs'
+grep -Fq '(Func<HttpContext, Task<IResult>>)GetOverviewAsync' "$PROJECT_INTAKE_MODULE" || {
+  echo 'ERROR: Project Intake overview must use an explicit IResult route binding.' >&2
+  exit 1
+}
+if grep -Fq 'app.MapGet("/api/project-intake/overview", GetOverviewAsync);' "$PROJECT_INTAKE_MODULE"; then
+  echo 'ERROR: Project Intake overview uses the RequestDelegate binding that can discard its IResult response.' >&2
+  exit 1
+fi
+
 env \
   -u PTP_DB_HOST \
   -u PTP_DB_PORT \
@@ -136,4 +147,4 @@ grep -Fq 'session_required' /tmp/projectpulse-startup-protected-combined-readine
   exit 1
 }
 
-echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 publicReadinessContracts=ready protectedAuthBoundary=ready operationalCountsSuppressed=true'
+echo 'PROJECTPULSE_API_STARTUP_SMOKE=PASS health=200 version=200 publicReadinessContracts=ready protectedAuthBoundary=ready projectIntakeIResultBinding=ready operationalCountsSuppressed=true'
