@@ -77,7 +77,6 @@ jobs:
           git diff --check
 
           cat > "$RUNNER_TEMP/expected-files" <<'FILES'
-          .github/workflows/temporary-project-intake-route-repair-20260815.yml
           src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs
           tests/validate-systemwide-enterprise-reliability.mjs
           FILES
