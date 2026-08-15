@@ -27,7 +27,7 @@ const migration = read('database/migrations/088_systemwide_enterprise_reliabilit
 const rollback = read('database/rollback/088_systemwide_enterprise_reliability_rollback.sql');
 const auditModule = read('src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs');
 const migrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
-const deployment = read('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml');
+const deployment = read('.github/workflows/projectpulse-deploy-test.yml');
 
 requireText(program, 'app.UseAdminAuditTelemetry();', 'system-wide audit middleware registration');
 requireText(program, 'pr.probability_score', 'Migration 077 risk probability');
@@ -110,18 +110,24 @@ for (const marker of [
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
 for (const marker of [
   'environment: test',
+  'group: projectpulse-deploy-test',
+  'queue: max',
   'Migrations 086 and 088',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
   'failed-login UAT',
+  'Run protected-Test utilization role-scoping UAT',
   'Who is the current President of the United States?',
   'Who is the CEO of US Signal?',
   'Production mutation: none'
-]) requireText(deployment, marker, 'protected Test deployment contract');
+]) requireText(deployment, marker, 'governed protected Test deployment contract');
 rejectText(deployment, 'AZURE_PRODUCTION', 'Production deployment path');
+if (fs.existsSync('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml')) {
+  throw new Error('Unregistered duplicate system-wide deployment workflow must remain retired.');
+}
 if (fs.existsSync('.github/workflows/temporary-source-snapshot-20260814.yml')) {
   throw new Error('Temporary source snapshot workflow must be removed before release.');
 }
 
-console.log('SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASS');
+console.log('SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASS governedController=projectpulse-deploy-test');
