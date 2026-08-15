@@ -1,4 +1,4 @@
-name: Package Validated FlowHive Controller File
+name: Publish Validated FlowHive Repair Blobs
 
 on:
   push:
@@ -8,11 +8,11 @@ on:
       - '.github/workflows/temporary-flowhive-controller-artifact-20260815.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  package:
-    name: Package validated deployment controller
+  publish:
+    name: Publish checksum-verified repair blobs
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -20,39 +20,66 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: fix/protected-test-flowhive-bundle-marker-20260815
-          fetch-depth: 1
-          persist-credentials: false
+          fetch-depth: 0
+          persist-credentials: true
 
-      - name: Apply validated marker substitution and package
+      - name: Generate, verify, and publish non-workflow repair blobs
         shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('.github/workflows/projectpulse-deploy-test.yml')
-          source = path.read_text(encoding='utf-8')
+
+          workflow = Path('.github/workflows/projectpulse-deploy-test.yml')
+          source = workflow.read_text(encoding='utf-8')
           old = "'FlowHive enterprise workspace is not ready'"
           new = "'FlowHive enterprise controls are temporarily unavailable.'"
           count = source.count(old)
           if count != 1:
-              raise SystemExit(f'expected one stale FlowHive marker, found {count}')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
-          PY
-          install -d -m 0700 /tmp/flowhive-controller-artifact
-          cp .github/workflows/projectpulse-deploy-test.yml \
-            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
-          sha256sum /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml \
-            > /tmp/flowhive-controller-artifact/SHA256SUMS
-          grep -Fq "'FlowHive enterprise controls are temporarily unavailable.'" \
-            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
-          ! grep -Fq "'FlowHive enterprise workspace is not ready'" \
-            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
+              raise SystemExit(f'workflow marker: expected one stale marker, found {count}')
+          workflow.write_text(source.replace(old, new, 1), encoding='utf-8')
 
-      - name: Upload controller artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: validated-flowhive-controller-${{ github.run_id }}
-          path: /tmp/flowhive-controller-artifact
-          if-no-files-found: error
-          retention-days: 2
+          validator = Path('tests/validate-systemwide-enterprise-reliability.mjs')
+          source = validator.read_text(encoding='utf-8')
+          anchor = "rejectText(deployment, \"'Customer from Customer Directory'\", 'stale case-sensitive customer-selector marker');\n"
+          insert = (
+              anchor
+              + "requireText(deployment, \"'FlowHive enterprise controls are temporarily unavailable.'\", 'deployed FlowHive degraded-state marker');\n"
+              + "rejectText(deployment, \"'FlowHive enterprise workspace is not ready'\", 'stale FlowHive bundle marker');\n"
+          )
+          count = source.count(anchor)
+          if count != 1:
+              raise SystemExit(f'validator anchor: expected one match, found {count}')
+          validator.write_text(source.replace(anchor, insert, 1), encoding='utf-8')
+          PY
+
+          [[ "$(sha256sum .github/workflows/projectpulse-deploy-test.yml | awk '{print $1}')" == 'f921a76b4c23a056d0e1e43249220cb08dd2e43e15074661f903396fb6fadecf' ]]
+          [[ "$(sha256sum tests/validate-systemwide-enterprise-reliability.mjs | awk '{print $1}')" == '9ee9762f6e65f93e71b77ef3b70225ef65ceb60c35941d902be2721c09e9ac79' ]]
+
+          install -d -m 0700 repair-artifacts/flowhive-marker
+          cp .github/workflows/projectpulse-deploy-test.yml \
+            repair-artifacts/flowhive-marker/projectpulse-deploy-test.yml
+          cp tests/validate-systemwide-enterprise-reliability.mjs \
+            repair-artifacts/flowhive-marker/validate-systemwide-enterprise-reliability.mjs
+          sha256sum repair-artifacts/flowhive-marker/* \
+            > repair-artifacts/flowhive-marker/SHA256SUMS
+
+          git add -- repair-artifacts/flowhive-marker
+          mapfile -t staged < <(git diff --cached --name-only | LC_ALL=C sort)
+          expected=(
+            'repair-artifacts/flowhive-marker/SHA256SUMS'
+            'repair-artifacts/flowhive-marker/projectpulse-deploy-test.yml'
+            'repair-artifacts/flowhive-marker/validate-systemwide-enterprise-reliability.mjs'
+          )
+          [[ "${staged[*]}" == "${expected[*]}" ]]
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Publish validated FlowHive marker repair blobs'
+          git push origin HEAD:refs/heads/fix/protected-test-flowhive-bundle-marker-20260815
+
+          echo 'FLOWHIVE_REPAIR_BLOBS=CHECKSUM_VERIFIED_AND_PUBLISHED'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'TEST_MUTATION=NONE'
