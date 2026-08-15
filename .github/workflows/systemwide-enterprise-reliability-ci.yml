@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+      - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
       - 'database/rollback/088_systemwide_enterprise_reliability_rollback.sql'
@@ -17,6 +18,7 @@ on:
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh'
       - 'tests/test-systemwide-enterprise-reliability-migration-088.sh'
+      - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
 
@@ -56,6 +58,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
@@ -86,6 +89,7 @@ jobs:
 
       - name: Publish validation boundary
         run: |
+          echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=VALIDATED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY=SOURCE_VALIDATED'
           echo 'MIGRATION_086=CONTRACT_VALIDATED'
           echo 'MIGRATION_088=CONTRACT_VALIDATED'
