@@ -1,0 +1,86 @@
+name: Fix Work Register read-scope compilation
+
+on:
+  push:
+    branches:
+      - fix/project-management-scope-approval-documents-20260815
+
+permissions:
+  contents: write
+
+concurrency:
+  group: project-management-scope-compile-fix
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/project-management-scope-approval-documents-20260815
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply exact compile correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs')
+          text = path.read_text()
+          old = '''                var access = await ReadProjectAccessAsync(
+                    connection,
+                    identity,
+                    projectId,
+                    context.RequestAborted);
+                if (access is null)
+                {
+                    await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
+                    return true;
+                }
+
+                context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
+                context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;'''
+          new = '''                var accessByProject = await ReadProjectAccessAsync(
+                    connection,
+                    identity,
+                    projectId,
+                    context.RequestAborted);
+                if (!accessByProject.TryGetValue(projectId, out var access))
+                {
+                    await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
+                    return true;
+                }
+
+                context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
+                context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one direct-read access block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/project-management-scope-compile-fix.yml').unlink()
+          PY
+
+      - name: Build API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+          git diff --check
+
+      - name: Commit compile correction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Fix scoped Work Register direct-read access lookup'
+          git push origin HEAD:fix/project-management-scope-approval-documents-20260815
