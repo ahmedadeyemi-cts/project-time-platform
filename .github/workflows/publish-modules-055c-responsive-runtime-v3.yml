@@ -1,0 +1,122 @@
+name: Publish modules, 055C, and responsive runtime repair v3
+
+on:
+  push:
+    branches:
+      - fix/modules-055c-responsive-runtime-20260815
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-modules-055c-responsive-runtime-v3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/modules-055c-responsive-runtime-20260815
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply structurally corrected guarded transformation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/publish-modules-055c-responsive-runtime.yml')
+          source = workflow.read_text(encoding='utf-8')
+          start_marker = "          python3 <<'PY'\n"
+          end_marker = "\n          PY\n\n      - name: Validate focused runtime contract"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          script = textwrap.dedent(source[start:end])
+
+          label = "'permission navigation refresh event'"
+          label_index = script.index(label)
+          operation_start = script.rfind('replace_once(', 0, label_index)
+          operation_end = script.index("\n\napp = frontend / 'src/App.jsx'", label_index)
+          if operation_start < 0:
+              raise SystemExit('Could not locate the brittle permission-navigation replacement operation.')
+
+          structural_operation = r'''portal_text = portal.read_text(encoding='utf-8')
+          portal_old = """  window.addEventListener('projectpulse:view-as-changed', refresh);
+            window.addEventListener('projectpulse:module-availability-changed', refresh);
+
+            return () => {
+              observer?.disconnect();
+              window.removeEventListener('projectpulse:view-as-changed', refresh);
+              window.removeEventListener('projectpulse:module-availability-changed', refresh);"""
+          portal_new = """  window.addEventListener('projectpulse:view-as-changed', refresh);
+            window.addEventListener('projectpulse:module-availability-changed', refresh);
+            window.addEventListener('projectpulse:permission-navigation-updated', refresh);
+
+            return () => {
+              observer?.disconnect();
+              window.removeEventListener('projectpulse:view-as-changed', refresh);
+              window.removeEventListener('projectpulse:module-availability-changed', refresh);
+              window.removeEventListener('projectpulse:permission-navigation-updated', refresh);"""
+          if portal_text.count(portal_old) != 1:
+              raise SystemExit(f'permission navigation structural replacement expected one match, found {portal_text.count(portal_old)}')
+          portal.write_text(portal_text.replace(portal_old, portal_new, 1), encoding='utf-8')'''
+
+          script = script[:operation_start] + structural_operation + script[operation_end:]
+          script += "\nfor temporary in [\n"
+          script += "    '.github/workflows/publish-modules-055c-responsive-runtime-v2.yml',\n"
+          script += "    '.github/workflows/publish-modules-055c-responsive-runtime-v3.yml'\n"
+          script += "]:\n    Path(temporary).unlink(missing_ok=True)\n"
+          Path('/tmp/apply-runtime-repair.py').write_text(script, encoding='utf-8')
+          PY
+          python3 /tmp/apply-runtime-repair.py
+
+      - name: Validate focused runtime contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund
+          node ./scripts/validate-runtime-navigation-work-register-responsive.mjs
+          npm run validate:approval-access-compatibility
+          npm run validate:project-management-scope-approval-documents
+          cd ../../..
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+          bash -n <(sed -n '/PROJECT_MANAGER='\''heather.schrock@ussignal.local'\''/,/unset PROJECT_MANAGER_SESSION/p' .github/workflows/projectpulse-deploy-test.yml)
+          git diff --check
+
+      - name: Build production frontend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          npm run build
+
+      - name: Commit validated repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'Repair module discovery, Work Register scope, and responsive metrics'
+          git push origin HEAD:fix/modules-055c-responsive-runtime-20260815
