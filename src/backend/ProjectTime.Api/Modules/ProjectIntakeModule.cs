@@ -6,7 +6,9 @@ public static class ProjectIntakeModule
 {
     public static WebApplication MapProjectIntakeEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/project-intake/overview", GetOverviewAsync);
+        app.MapGet(
+            "/api/project-intake/overview",
+            (Func<HttpContext, Task<IResult>>)GetOverviewAsync);
         app.MapPost("/api/project-intake/requests", CreateIntakeRequestAsync);
         app.MapPost("/api/project-intake/resource-requests", CreateResourceRequestAsync);
         app.MapPost("/api/project-intake/requests/{requestId:guid}/documents", UploadIntakeDocumentAsync).DisableAntiforgery();
