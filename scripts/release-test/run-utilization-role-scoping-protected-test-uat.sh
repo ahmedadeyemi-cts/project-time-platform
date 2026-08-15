@@ -97,6 +97,10 @@ jq -e '
 ' "$SECURITY_BEFORE" >/dev/null \
   || fail "Kevin is not authenticated exclusively within the expected Engineer role family."
 
+KEVIN_USER_ID="$(jq -r '.userId // empty' "$SECURITY_BEFORE")"
+[[ "$KEVIN_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || fail "Kevin security context did not expose a valid authenticated user ID."
+
 YEARLY="$EVIDENCE_DIR/kevin-utilization-2026.json"
 YEARLY_STATUS="$(auth_get '/api/utilization/yearly-status?year=2026' "$YEARLY")"
 [[ "$YEARLY_STATUS" == 200 ]] \
@@ -120,10 +124,34 @@ jq -e '
 ' "$YEARLY" >/dev/null \
   || fail "Kevin utilization does not match the accepted 2026 quarterly and annual values."
 
-OTHER_ENGINEER_RESPONSE="$EVIDENCE_DIR/kevin-other-engineer-denied.json"
-OTHER_ENGINEER_STATUS="$(auth_get '/api/utilization/engineering-team-summary?year=2026&engineerUserId=11111111-1111-1111-1111-111111111111' "$OTHER_ENGINEER_RESPONSE")"
-[[ "$OTHER_ENGINEER_STATUS" == 403 ]] \
-  || fail "Kevin cross-engineer utilization probe returned HTTP $OTHER_ENGINEER_STATUS instead of 403."
+OTHER_ENGINEER_ID='11111111-1111-1111-1111-111111111111'
+[[ "$OTHER_ENGINEER_ID" != "$KEVIN_USER_ID" ]] \
+  || fail "The cross-engineer utilization probe must use an identity different from Kevin."
+
+OTHER_ENGINEER_RESPONSE="$EVIDENCE_DIR/kevin-cross-engineer-normalized.json"
+OTHER_ENGINEER_STATUS="$(auth_get "/api/utilization/engineering-team-summary?year=2026&engineerUserId=$OTHER_ENGINEER_ID" "$OTHER_ENGINEER_RESPONSE")"
+[[ "$OTHER_ENGINEER_STATUS" == 200 ]] \
+  || fail "Kevin cross-engineer utilization normalization probe returned HTTP $OTHER_ENGINEER_STATUS instead of 200."
+jq -e \
+  --arg kevinUserId "$KEVIN_USER_ID" \
+  --arg requestedUserId "$OTHER_ENGINEER_ID" \
+  '
+    .canViewEngineeringTeamUtilization == true
+    and .scope == "own_engineer_scope"
+    and .selectedEngineerUserId == $kevinUserId
+    and .selectedEngineerUserId != $requestedUserId
+    and .access.canViewAll == false
+    and .access.canSelectEngineer == false
+    and .access.canUseTeamScope == false
+    and .access.canUseOwnScope == true
+    and (.selectableEngineers | type == "array" and length == 1)
+    and ([.selectableEngineers[]?.userId] == [$kevinUserId])
+    and (.members | type == "array" and length == 1)
+    and ([.members[]?.userId] == [$kevinUserId])
+    and (([.members[]?.userId] | index($requestedUserId)) == null)
+    and (.collectiveSummary.memberCount == 1)
+  ' "$OTHER_ENGINEER_RESPONSE" >/dev/null \
+  || fail "Kevin cross-engineer utilization request was not normalized to his authenticated self-only scope."
 
 VIEW_AS_RESPONSE="$EVIDENCE_DIR/kevin-view-as-denied.json"
 VIEW_AS_STATUS="$(auth_get '/api/project-workspace/view-as/users' "$VIEW_AS_RESPONSE")"
@@ -147,6 +175,8 @@ LOGOUT_STATUS="$(curl -sS --max-time 60 \
 
 jq -n \
   --arg identity "$KEVIN_EMAIL" \
+  --arg requestedUserId "$OTHER_ENGINEER_ID" \
+  --arg effectiveUserId "$KEVIN_USER_ID" \
   '{
     status:"passed",
     identity:$identity,
@@ -157,12 +187,15 @@ jq -n \
     q3:{billableHours:208,utilizationPercent:43.15},
     q4:{billableHours:0,utilizationPercent:0},
     annual:{billableHours:572,utilizationPercent:29.67},
-    crossEngineerRequestStatus:403,
+    crossEngineerRequestStatus:200,
+    crossEngineerRequestOutcome:"normalized_to_authenticated_engineer",
+    crossEngineerRequestedUserId:$requestedUserId,
+    crossEngineerEffectiveUserId:$effectiveUserId,
     viewAsRequestStatus:403,
-    identityPreservedAfterOptionalFailures:true,
+    identityPreservedAfterSecurityProbes:true,
     productionMutation:false
   }' > "$EVIDENCE_DIR/utilization-role-scoping-uat.json"
 
 unset SESSION_TOKEN TEST_LOGIN_PASSWORD
 
-echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS identity=Kevin.damisch@ussignal.local role=Engineer scope=self-only annualHours=572 annualPercent=29.67'
+echo 'UTILIZATION_ROLE_SCOPING_PROTECTED_TEST_UAT=PASS identity=Kevin.damisch@ussignal.local role=Engineer scope=self-only crossEngineer=normalized-to-self annualHours=572 annualPercent=29.67'

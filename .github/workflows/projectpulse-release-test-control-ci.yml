@@ -9,6 +9,7 @@ on:
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
 
@@ -59,6 +60,7 @@ jobs:
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          tests/validate-utilization-role-scoping.mjs
           tests/validate-systemwide-image-build-controller.mjs
           tests/validate-systemwide-enterprise-reliability.mjs
           FILES
