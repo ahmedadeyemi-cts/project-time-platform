@@ -16,7 +16,9 @@ const requiredPr630BaselinePaths = [
   'database/rollback/084_module_076_celar_ai_defect_operations_rollback.sql'
 ];
 const branchName = process.env.CELAR_PR630_VALIDATION_BRANCH || process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '';
-const systemwideReliabilityMode = branchName.startsWith('fix/systemwide-enterprise-reliability-final-');
+const systemwideReliabilityMode =
+  branchName.startsWith('fix/systemwide-enterprise-reliability-final-')
+  || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -35,6 +37,7 @@ const pr630AllowedPrefixes = [
   'src/frontend/project-time-web/scripts/inject-module-076-',
   'src/frontend/project-time-web/src/CelarAi',
   'src/frontend/project-time-web/src/celar-ai-',
+  'tests/CelarAiAuthoritativePublicFactTests/',
   'tests/CelarAiOperationsPolicyTests/',
   'tests/CelarAiUniversalAnswerReliabilityTests/',
   'tests/celar-ai-operations-',

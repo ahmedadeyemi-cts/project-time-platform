@@ -219,18 +219,31 @@ var livePublic = reliability.Enforce(
     Result(
         "completed",
         "general_knowledge",
-        "The current officeholder is verified by a retrieval-time public source.",
+        "The current officeholder is verified by a retrieval-time official public source. [4]",
         sources:
         [
-            Source(4, "governed_public_source", "public-current", "Retrieved public source", "064", "live_retrieved_current", DateTimeOffset.UtcNow)
+            new PulseAiSystemSourceEvidence(
+                SourceId: 4,
+                SourceType: "authoritative_public_web",
+                SourceCode: "white_house_administration",
+                SourceName: "The White House - Administration",
+                ModuleCode: "011",
+                Method: "GET",
+                Path: "https://www.whitehouse.gov/administration/",
+                Status: "succeeded",
+                StatusCode: 200,
+                ObservedAt: DateTimeOffset.UtcNow,
+                Freshness: "live_retrieved_current",
+                EvidenceScope: "synthetic retrieval-time official-source test evidence")
         ],
         citationIds: [4],
         provider: CelarAiCapabilityTargets.OpenAi),
     currentPublicPlan,
     true,
     true);
-Require(livePublic.Assessment.Passed, "retrieval-time cited public answer passes");
+Require(livePublic.Assessment.Passed, "retrieval-time cited official public answer passes");
 Require(livePublic.Assessment.CurrentPublicEvidenceVerified, "current public evidence is marked verified");
+Require(livePublic.Assessment.ValidSourceCitations == 1, "official public citation is retained");
 
 var staleInternal = reliability.Enforce(
     Result(
@@ -301,10 +314,12 @@ var conflicting = reliability.Enforce(
     internalPlan,
     true,
     true);
-Require(!conflicting.Assessment.Passed, "unresolved conflict requires review");
-Require(conflicting.Assessment.Level == "review_required", "conflict receives review-required level");
-Require(conflicting.Result.Answer.Confidence <= 0.74m, "conflict confidence is capped");
-Require(HasFinding(conflicting, "conflicting_evidence_requires_review"), "conflict finding exists");
+Require(!conflicting.Assessment.Passed, "unresolved conflict blocks answer promotion");
+Require(conflicting.Assessment.Level == "evidence_limited", "conflict receives evidence-limited level");
+Require(conflicting.Result.Status == "partial", "conflict downgrades result status");
+Require(conflicting.Result.Answer.Confidence <= 0.40m, "conflict confidence is blocker-capped");
+Require(conflicting.Result.Answer.DirectConclusion == internalPlan.FailClosedConclusion, "conflict replaces conclusion with fail-closed text");
+Require(HasFinding(conflicting, "conflicting_evidence_requires_review"), "conflict blocker finding exists");
 
 var blocked = reliability.Enforce(
     Result("blocked", "security", "This request is blocked by the safety policy."),
