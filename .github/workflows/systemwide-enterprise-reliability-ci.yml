@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
       - 'database/rollback/088_systemwide_enterprise_reliability_rollback.sql'
@@ -17,6 +20,8 @@ on:
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh'
       - 'tests/test-systemwide-enterprise-reliability-migration-088.sh'
+      - 'tests/validate-utilization-role-scoping.mjs'
+      - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
   workflow_dispatch:
 
@@ -29,7 +34,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate API, UI, migrations, audit, FlowHive, and Celar AI
+    name: Validate API, UI, migrations, audit, FlowHive, utilization, and Celar AI
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -46,20 +51,25 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Set up Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Validate source and migration contracts
+      - name: Validate source, deployment, utilization, and migration contracts
         shell: bash
         run: |
           set -Eeuo pipefail
+          bash -n scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          node tests/validate-utilization-role-scoping.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
           bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
           git diff --check
 
       - name: Run authoritative public-fact reliability tests
@@ -86,6 +96,9 @@ jobs:
 
       - name: Publish validation boundary
         run: |
+          echo 'GOVERNED_TEST_CONTROLLER=VALIDATED'
+          echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=VALIDATED'
+          echo 'UTILIZATION_ROLE_SCOPING=SOURCE_VALIDATED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY=SOURCE_VALIDATED'
           echo 'MIGRATION_086=CONTRACT_VALIDATED'
           echo 'MIGRATION_088=CONTRACT_VALIDATED'

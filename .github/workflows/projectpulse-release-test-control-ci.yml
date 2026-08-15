@@ -1,4 +1,4 @@
-name: Validate PR 670 Protected-Test Release Controller
+name: Validate Governed Protected-Test Release Controller
 
 on:
   pull_request:
@@ -6,35 +6,39 @@ on:
     paths:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
-      - 'scripts/release-test/run-migration-087-job.sh'
+      - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
+      - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'tests/validate-systemwide-image-build-controller.mjs'
+      - 'tests/validate-systemwide-enterprise-reliability.mjs'
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr670-protected-test-controller-${{ github.event.pull_request.number }}
+  group: governed-protected-test-controller-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    name: Validate exact PR 670 and Migration 087 Test controller
+    name: Validate governed Test controller, exact scope, and rollback boundaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out exact proposed release controls
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '22'
 
-      - name: Validate the final one-file protected-Test controller
+      - name: Validate governed protected-Test controller
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -43,123 +47,81 @@ jobs:
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
-          MIGRATION_RUNNER='scripts/release-test/run-migration-087-job.sh'
-          SOURCE='c8c41feb57490c5ccfd44ae5f66824bcfa1cb63d'
+          RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+          UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
 
-          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
-            || fail 'The pull-request base SHA is unavailable.'
-          git cat-file -e "$BASE_SHA^{commit}" \
-            || fail 'The exact pull-request base commit is unavailable.'
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
 
-          printf '%s\n' "$CONTROLLER" > "$RUNNER_TEMP/expected-release-files"
-          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort \
-            > "$RUNNER_TEMP/actual-release-files"
-          diff -u "$RUNNER_TEMP/expected-release-files" "$RUNNER_TEMP/actual-release-files"
+          cat > "$RUNNER_TEMP/allowed-release-files" <<'FILES'
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/systemwide-enterprise-reliability-ci.yml
+          .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          tests/validate-systemwide-image-build-controller.mjs
+          tests/validate-systemwide-enterprise-reliability.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
+          git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
+          comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
+          [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
+            echo 'Unexpected files in governed Test controller PR:' >&2
+            cat "$RUNNER_TEMP/unexpected-release-files" >&2
+            exit 1
+          }
 
-          test -f "$CONTROLLER" || fail 'The protected-Test controller is missing.'
-          test -f "$MIGRATION_RUNNER" || fail 'The Migration 087 private-network runner is missing.'
-          bash -n "$MIGRATION_RUNNER"
+          test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
+          test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
+          test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n "$UTILIZATION_UAT"
 
-          grep -Fq 'name: Deploy PR 670 Enterprise Experience and Migration 087 to Protected Test' "$CONTROLLER"
-          grep -Fq "TARGET_RELEASE_COMMIT: $SOURCE" "$CONTROLLER"
-          grep -Fq "ref: $SOURCE" "$CONTROLLER"
+          grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
           grep -Fq "if: github.ref == 'refs/heads/main'" "$CONTROLLER"
           grep -Fq 'environment: test' "$CONTROLLER"
           grep -Fq 'group: projectpulse-deploy-test' "$CONTROLLER"
           grep -Fq 'queue: max' "$CONTROLLER"
           grep -Fq 'cancel-in-progress: false' "$CONTROLLER"
-          OIDC_PERMISSION='id-token:'
-          OIDC_PERMISSION+=' write'
-          grep -Fq "$OIDC_PERMISSION" "$CONTROLLER"
-
+          TARGET_MARKER='TARGET_RELEASE_COMMIT: $'
+          TARGET_MARKER+='{{ github.sha }}'
+          grep -Fq "$TARGET_MARKER" "$CONTROLLER"
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_TEST_UAT_SESSION' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
-          grep -Fq 'The Test environment secret PROJECTPULSE_M087_PASSWORD is required' "$CONTROLLER"
-          grep -Fq 'Azure login is outside the protected Test subscription.' "$CONTROLLER"
-          grep -Fq 'API is not tagged Test.' "$CONTROLLER"
-          grep -Fq 'Web app is not tagged Test.' "$CONTROLLER"
-          grep -Fq 'API must use single-revision mode.' "$CONTROLLER"
-          grep -Fq 'Web app must use single-revision mode.' "$CONTROLLER"
-
-          grep -Fq 'tests/test-activate-approved-local-logins-migration-087.sh' "$CONTROLLER"
-          grep -Fq 'database/migrations/087_activate_approved_local_logins.sql' "$CONTROLLER"
-          grep -Fq 'database/rollback/087_activate_approved_local_logins_rollback.sql' "$CONTROLLER"
-          grep -Fq 'scripts/release-test/apply-087-approved-local-logins.sh' "$CONTROLLER"
-          grep -Fq 'scripts/release-test/run-migration-087-job.sh' "$CONTROLLER"
-          grep -Fq 'dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release' "$CONTROLLER"
-          grep -Fq 'bash tests/test-projectpulse-api-startup.sh' "$CONTROLLER"
-          grep -Fq 'npm audit --audit-level=high' "$CONTROLLER"
-          grep -Fq 'npm run build' "$CONTROLLER"
-
-          grep -Fq "const ENTERPRISE_EXPERIENCE = 'enterprise';" "$CONTROLLER"
-          grep -Fq "const CLASSIC_EXPERIENCE = 'classic';" "$CONTROLLER"
-          grep -Fq 'Module Management' "$CONTROLLER"
-          grep -Fq 'Customer Pipelines' "$CONTROLLER"
-          grep -Fq 'pulse-enterprise-experience-control-host' "$CONTROLLER"
-          grep -Fq 'pulse-enterprise-page-chrome-host' "$CONTROLLER"
-
-          grep -Fq 'hashlib.pbkdf2_hmac("sha256", password, salt, 210000, dklen=32)' "$CONTROLLER"
-          grep -Fq 'secrets.token_bytes(16)' "$CONTROLLER"
-          grep -Fq 'PBKDF2-SHA256$210000$' "$CONTROLLER"
-          [[ "$(grep -Fc 'PROJECTPULSE_M087_DERIVED_' "$CONTROLLER")" -eq 10 ]] \
-            || fail 'The migration image must derive exactly ten independently salted account values.'
-          grep -Fq 'MIGRATION_087_PRIVATE_NETWORK_JOB=SUCCEEDED' "$MIGRATION_RUNNER"
-          grep -Fq 'm087-login-password' "$MIGRATION_RUNNER"
-          grep -Fq 'm087-main-db-password' "$MIGRATION_RUNNER"
-          grep -Fq 'chmod 0600 "$PAYLOAD" "$JOB_RESPONSE"' "$MIGRATION_RUNNER"
-          grep -Fq 'unset PROJECTPULSE_M087_PASSWORD LOGIN_PASSWORD' "$MIGRATION_RUNNER"
-          JOB_DELETE_MARKER='az '
-          JOB_DELETE_MARKER+='containerapp job delete'
-          grep -Fq "$JOB_DELETE_MARKER" "$MIGRATION_RUNNER"
-          grep -Fq 'PREFLIGHT_CONFIRMED_404=1' "$MIGRATION_RUNNER"
-
-          grep -Fq 'AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID' "$CONTROLLER"
-          grep -Fq 'AZURE_KEY_VAULT_URI' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_TEST_DATABASE_HOST' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_TEST_DATABASE_PORT' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_TEST_DATABASE_NAME' "$CONTROLLER"
-          grep -Fq 'PROJECTPULSE_TEST_DATABASE_USER' "$CONTROLLER"
-
-          grep -Fq 'ACR cloud build failed twice' "$CONTROLLER"
-          grep -Fq 'project-health-dashboard-api@' "$CONTROLLER"
-          grep -Fq 'project-health-dashboard-web@' "$CONTROLLER"
-          grep -Fq 'project-health-dashboard-m087-migrator@' "$CONTROLLER"
+          grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
+          grep -Fq 'Apply and verify Migrations 086 and 088 inside Test private network' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
-          grep -Fq 'runtime-contract-before.json' "$CONTROLLER"
-          grep -Fq 'runtime-contract-after.json' "$CONTROLLER"
-          [[ "$(grep -Fc 'def canonical_private_environment_entry:' "$CONTROLLER")" -eq 2 ]] \
-            || fail 'Private-runtime validation must run before and after API deployment.'
-          grep -Fq 'Restore exact prior Test images and source after application failure' "$CONTROLLER"
+          grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
+          grep -Fq 'Run protected-Test utilization role-scoping UAT' "$CONTROLLER"
+          grep -Fq 'Restore exact prior Test images after application failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_source' "$CONTROLLER"
-          grep -Fq 'migration087RemainsApplied:true' "$CONTROLLER"
           grep -Fq 'Production mutation: none' "$CONTROLLER"
           grep -Fq 'Oracle/private AI runtime mutation: none' "$CONTROLLER"
 
-          ! grep -Fq 'workflow_dispatch:' "$CONTROLLER"
+          ! grep -Fq 'full_imae' "$CONTROLLER"
+          ! grep -Eq 'local[[:space:]]+repository="\$1".*image="\$repository:' "$CONTROLLER"
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
-          ! grep -Eq 'az[[:space:]]+network|az[[:space:]]+postgres' "$CONTROLLER"
-          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER"
           ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
           ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
-          ! grep -Eq 'PBKDF2-SHA256\$210000\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=' \
-            "$CONTROLLER" "$MIGRATION_RUNNER"
+          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT"
 
-          git merge-base --is-ancestor "$SOURCE" HEAD \
-            || fail 'The exact merged PR 670 release is not an ancestor of the controller.'
-          node scripts/validate-deployment-concurrency-governance.mjs \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --verify-repository
+          node tests/validate-utilization-role-scoping.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --self-test
           python3 scripts/security/validate-repository-security-posture.py
           git diff --check "$BASE_SHA...HEAD"
 
-          echo 'PR670_M087_PROTECTED_TEST_CONTROL=PASSED'
-          echo 'EXPECTED_CHANGED_FILES=1'
-          echo 'MIGRATION_087=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'GOVERNED_PROTECTED_TEST_CONTROLLER=PASSED'
+          echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
+          echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
+          echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
+          echo 'MIGRATIONS_086_088=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'
