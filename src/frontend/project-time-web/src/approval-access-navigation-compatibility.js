@@ -52,7 +52,8 @@ function readViewAsUser() {
 function viewAsHasApprovalAuthority(user) {
   const allowed = new Set([
     'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
-    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT'
+    'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT',
+    'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'
   ]);
   return roleCodes(user?.roleCodes ?? user?.roles ?? user?.roleCode)
     .some((role) => allowed.has(role));
