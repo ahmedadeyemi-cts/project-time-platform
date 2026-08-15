@@ -53,8 +53,8 @@ import './enterprise-module-management.css';
 import './enterprise-module-cards.css';
 import './enterprise-overlay-responsive.css';
 import './enterprise-systemwide-reliability.css';
-import './enterprise-contrast-guard.css';
 import './enterprise-feedback-fixes.css';
+import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
