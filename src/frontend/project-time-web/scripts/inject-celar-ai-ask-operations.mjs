@@ -91,13 +91,11 @@ ${actionAnchor}`;
   replaceOnce(actionAnchor, actionBlock, 'ANSWER_ACTIONS');
 }
 
-const submitMarker = 'projectpulse:celar-ai-open-defect-intake';
+const submitRoutingMarker = 'if (isDefectIntakeQuestion(clean))';
 const submitAnchor = `    const clean = question.trim();
-    if (!clean) return;
-    sendingRef.current = true;`;
-if (source.includes(submitAnchor)) {
-  const submitReplacement = `    const clean = question.trim();
-    if (!clean) return;
+    if (!clean) return;`;
+if (!source.includes(submitRoutingMarker)) {
+  const submitReplacement = `${submitAnchor}
     if (isDefectIntakeQuestion(clean)) {
       setQuestion('');
       window.dispatchEvent(new CustomEvent('projectpulse:celar-ai-open-defect-intake', {
@@ -123,11 +121,8 @@ if (source.includes(submitAnchor)) {
         }
       }));
       return;
-    }
-    sendingRef.current = true;`;
+    }`;
   replaceOnce(submitAnchor, submitReplacement, 'SUBMIT_ROUTING');
-} else if (!source.includes("if (isDefectIntakeQuestion(clean))")) {
-  throw new Error('CELAR_AI_ASK_OPERATIONS_INJECTOR_SUBMIT_ROUTING=FAILED missing stable anchor');
 }
 
 const oldDefectFunction = `  function openDefectTracker() {
@@ -194,7 +189,7 @@ for (const marker of [
   operationsImport,
   helperMarker,
   actionMarker,
-  "if (isDefectIntakeQuestion(clean))",
+  submitRoutingMarker,
   'function openOperations()',
   'help-celar-health-button',
   '<CelarAiAskOperations />'
