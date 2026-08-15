@@ -47,6 +47,9 @@ public sealed class CelarAiAuthoritativePublicFactService
     private static readonly Regex Whitespace = new(
         @"\s+",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex UnitedStatesPresidentIdentity = new(
+        @"(?<!Vice )\bPresident\s+(?<name>(?:[A-Z][A-Za-z'’.-]*)(?:\s+(?:[A-Z][A-Za-z'’.-]*)){1,4})\s+(?:\d{1,2}(?:st|nd|rd|th)(?:\s*&\s*\d{1,2}(?:st|nd|rd|th))?\s+)?President\s+of\s+the\s+United\s+States\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex PresidentName = new(
         @"(?<!Vice )\bPresident\s+(?<name>(?:[A-Z][A-Za-z'’.-]*)(?:\s+(?!(?:President|Vice|Administration|White|House|The|First|United|States|His|Her|Majesty|Royal|Court)\b)(?:[A-Z][A-Za-z'’.-]*)){0,4})",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -132,7 +135,12 @@ public sealed class CelarAiAuthoritativePublicFactService
             cancellationToken);
         if (!page.Succeeded) return FailClosed(result, page.DiagnosticCode);
 
-        var names = ExtractNames(PresidentName, page.Text).ToArray();
+        var contextualNames = ExtractNames(
+            UnitedStatesPresidentIdentity,
+            page.Text).ToArray();
+        var names = contextualNames.Length > 0
+            ? contextualNames
+            : ExtractNames(PresidentName, page.Text).ToArray();
         var president = ResolveCanonicalPersonName(names);
         if (president is null && names.Length == 0) return FailClosed(result, "official_source_claim_not_found");
         if (president is null)

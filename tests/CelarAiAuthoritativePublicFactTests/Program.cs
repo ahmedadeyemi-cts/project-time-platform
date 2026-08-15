@@ -6,7 +6,7 @@ using ProjectTime.Api.Ai;
 var reliability = new CelarAiUniversalAnswerReliabilityService();
 var officialBodies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 {
-    ["https://www.whitehouse.gov/administration/"] = "<html><h1>President Donald J. Trump</h1><p>President Trump</p><h2>Vice President JD Vance</h2></html>",
+    ["https://www.whitehouse.gov/administration/"] = "<html><body><h1>The Administration</h1><h2>President Donald J. Trump</h2><p>45th &amp; 47th President of the United States</p><nav>President Office President Trump About</nav><h2>Vice President JD Vance</h2><p>Vice President of the United States</p><h2>The Cabinet</h2><p>President Trump’s Team Established in Article II, Section 2 of the Constitution, the Cabinet advises the President on any subject.</p></body></html>",
     ["https://rhc.jo/en/jordans-governing-system"] = "<html><p>Jordan has a parliamentary system of government with a hereditary monarchy. His Majesty the King is the head of state.</p></html>",
     ["https://rhc.jo/en/king-abdullah"] = "<html><h1>King Abdullah II</h1></html>",
     ["https://ussignal.com/why-us-signal/leadership/"] = "<html><h2>Dan Watts, Chief Executive Officer</h2></html>"
@@ -44,6 +44,8 @@ Require(!wrongProvider.Answer.DirectConclusion.Contains("Matt Rosenberg", String
     "injected wrong-provider answer is rejected");
 Require(wrongProvider.Answer.DirectConclusion.Contains("Donald", StringComparison.OrdinalIgnoreCase),
     "official retrieval-time answer overrides wrong-provider text");
+Require(wrongProvider.Answer.Conflicts.Count == 0,
+    "White House navigation and Cabinet language do not create false President conflicts");
 Require(wrongProvider.Sources.All(source => source.SourceType == "authoritative_public_web"),
     "only official public web sources are promoted");
 
@@ -223,6 +225,7 @@ Require(factory.Requests.All(request => request.Host is "www.whitehouse.gov" or 
 
 Console.WriteLine("CELAR_AI_WRONG_PROVIDER_TEST=PASS");
 Console.WriteLine("CELAR_AI_STALE_PRESIDENT_TEST=PASS");
+Console.WriteLine("CELAR_AI_WHITE_HOUSE_NOISE_EXTRACTION_TEST=PASS");
 Console.WriteLine("CELAR_AI_US_SIGNAL_CEO_TEST=PASS");
 Console.WriteLine("CELAR_AI_FALSE_PREMISE_TEST=PASS");
 Console.WriteLine("CELAR_AI_NO_RETRIEVAL_TEST=PASS");
