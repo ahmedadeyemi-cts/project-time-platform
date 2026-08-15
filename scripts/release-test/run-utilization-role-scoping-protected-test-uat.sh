@@ -82,7 +82,10 @@ jq -e . "$SECURITY_BEFORE" >/dev/null \
 jq -e '
   [
     .roles[]?
-    | (.roleCode // .roleName // . // "")
+    | if type == "object"
+      then (.roleCode // .roleName // "")
+      else tostring
+      end
     | tostring
     | ascii_upcase
     | gsub("[ -]+"; "_")
