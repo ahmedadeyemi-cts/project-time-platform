@@ -123,6 +123,31 @@ for (const marker of [
   'Production mutation: none'
 ]) requireText(deployment, marker, 'governed protected Test deployment contract');
 rejectText(deployment, 'AZURE_PRODUCTION', 'Production deployment path');
+
+
+const authGetStart = deployment.indexOf('          auth_get() {');
+const authPostStart = deployment.indexOf('          auth_post() {', authGetStart);
+const requireGetStart = deployment.indexOf('          require_get() {', authPostStart);
+const firstRequiredGet = deployment.indexOf("          require_get 'Project Management summary'", requireGetStart);
+if (authGetStart < 0 || authPostStart < 0 || requireGetStart < 0 || firstRequiredGet < 0) {
+  throw new Error('Protected-Test authenticated GET UAT helpers are incomplete.');
+}
+const authGet = deployment.slice(authGetStart, authPostStart);
+const requireGet = deployment.slice(requireGetStart, firstRequiredGet);
+rejectText(authGet, '|| true', 'swallowed authenticated GET transport failure');
+for (const marker of [
+  '--http1.1',
+  '--dump-header "$headers"',
+  'curl_exit=$?',
+  'printf \'%s|%s\\n\''
+]) requireText(authGet, marker, 'authenticated GET transport diagnostics');
+for (const marker of [
+  'for attempt in 1 2 3',
+  'uat-http-diagnostics.ndjson',
+  'uat-http-errors.log',
+  'body_bytes',
+  'content_type'
+]) requireText(requireGet, marker, 'authenticated GET retry and evidence contract');
 if (fs.existsSync('.github/workflows/systemwide-enterprise-reliability-test-deployment.yml')) {
   throw new Error('Unregistered duplicate system-wide deployment workflow must remain retired.');
 }

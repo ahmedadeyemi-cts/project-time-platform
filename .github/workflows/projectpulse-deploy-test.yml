@@ -505,13 +505,25 @@ jobs:
           rm -f "$COORDINATOR_RESPONSE"
 
           auth_get() {
-            local path="$1" output="$2"
-            curl -sS --max-time 120 -o "$output" -w '%{http_code}' \
+            local path="$1" output="$2" headers="$3" stderr_file="$4"
+            local status curl_exit
+            : > "$output"
+            : > "$headers"
+            : > "$stderr_file"
+            set +e
+            status="$(curl -sS --http1.1 --connect-timeout 30 --max-time 120 \
+              --dump-header "$headers" \
+              --output "$output" \
+              --write-out '%{http_code}' \
               -H 'Cache-Control: no-cache' \
               -H "Authorization: Bearer $COORDINATOR_SESSION" \
               -H "X-ProjectPulse-Session: $COORDINATOR_SESSION" \
               -H 'X-ProjectPulse-Module-Number: 019' \
-              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE$path" || true
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              "$BASE$path" 2>"$stderr_file")"
+            curl_exit=$?
+            set -e
+            printf '%s|%s\n' "$curl_exit" "${status:-000}"
           }
           auth_post() {
             local path="$1" input="$2" output="$3"
@@ -524,10 +536,54 @@ jobs:
               --data-binary @"$input" "$BASE$path" || true
           }
           require_get() {
-            local name="$1" path="$2" output="$3" status
-            status="$(auth_get "$path" "$output")"
-            [[ "$status" == 200 ]] || fail "$name returned HTTP $status."
-            jq -e . "$output" >/dev/null || fail "$name did not return JSON."
+            local name="$1" path="$2" output="$3"
+            local attempt result curl_exit status headers stderr_file body_bytes content_type
+            for attempt in 1 2 3; do
+              headers="$(mktemp)"
+              stderr_file="$(mktemp)"
+              result="$(auth_get "$path" "$output" "$headers" "$stderr_file")"
+              IFS='|' read -r curl_exit status <<<"$result"
+              status="${status:-000}"
+              body_bytes="$(wc -c < "$output" | tr -d '[:space:]')"
+              content_type="$(awk '
+                BEGIN { IGNORECASE=1 }
+                /^content-type:/ {
+                  sub(/\r$/, "")
+                  value=$0
+                  sub(/^[^:]+:[[:space:]]*/, "", value)
+                }
+                END { print value }
+              ' "$headers")"
+
+              jq -n \
+                --arg name "$name" \
+                --arg path "$path" \
+                --argjson attempt "$attempt" \
+                --argjson curlExit "$curl_exit" \
+                --arg httpStatus "$status" \
+                --arg contentType "$content_type" \
+                --argjson bodyBytes "$body_bytes" \
+                '{name:$name,path:$path,attempt:$attempt,curlExit:$curlExit,httpStatus:$httpStatus,contentType:$contentType,bodyBytes:$bodyBytes}' \
+                >> "$EVIDENCE_DIR/uat-http-diagnostics.ndjson"
+
+              if [[ "$curl_exit" == 0 && "$status" == 200 && "$body_bytes" -gt 0 ]] \
+                && jq -e . "$output" >/dev/null 2>&1; then
+                rm -f "$headers" "$stderr_file"
+                return 0
+              fi
+
+              {
+                printf 'name=%s attempt=%s curl_exit=%s http_status=%s content_type=%s body_bytes=%s\n' \
+                  "$name" "$attempt" "$curl_exit" "$status" "${content_type:-none}" "$body_bytes"
+                if [[ -s "$stderr_file" ]]; then
+                  sed -E 's/(Bearer|X-ProjectPulse-Session:)[[:space:]]+[^[:space:]]+/\1 [REDACTED]/g' "$stderr_file"
+                fi
+              } >> "$EVIDENCE_DIR/uat-http-errors.log"
+              rm -f "$headers" "$stderr_file"
+              (( attempt < 3 )) && sleep $((attempt * 3))
+            done
+
+            fail "$name failed after 3 attempts (curl exit $curl_exit; HTTP $status; content type ${content_type:-none}; body bytes $body_bytes)."
           }
 
           require_get 'Project Management summary' '/api/project-management/summary' "$EVIDENCE_DIR/project-management-summary.json"
