@@ -20,6 +20,7 @@ import './enterprise-navigation-parity.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
+import DisplayPreferencesDrawer from './DisplayPreferencesDrawer.jsx';
 import AuthenticatedHelpAssistant from './AuthenticatedHelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
@@ -54,6 +55,7 @@ import './enterprise-module-cards.css';
 import './enterprise-overlay-responsive.css';
 import './enterprise-systemwide-reliability.css';
 import './enterprise-feedback-fixes.css';
+import './display-preferences-drawer.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
@@ -64,6 +66,7 @@ createRoot(document.getElementById('root')).render(
       <CriticalRoutePresentationBoundary />
       <AdminRuntimeStabilityPortal />
       <GlobalViewAsDrawer />
+      <DisplayPreferencesDrawer />
       <ModulesDirectoryPortal />
       <ModuleAvailabilityController />
       <DashboardPersonalCalendarPortal />
