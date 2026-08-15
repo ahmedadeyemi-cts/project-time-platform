@@ -10,13 +10,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = ROOT / ".github/workflows/projectpulse-deploy-test.yml"
 VALIDATOR_PATH = ROOT / "tests/validate-systemwide-enterprise-reliability.mjs"
-TEMP_WORKFLOW = ROOT / ".github/workflows/temporary-protected-test-audit-uat-repair-20260815.yml"
-TEMP_SCRIPT = ROOT / ".github/scripts/apply-protected-test-audit-uat-repair-20260815.py"
+GENERATED_DIR = ROOT / "generated/protected-test-audit-uat-repair-20260815"
+GENERATED_WORKFLOW = GENERATED_DIR / "projectpulse-deploy-test.yml"
+GENERATED_VALIDATOR = GENERATED_DIR / "validate-systemwide-enterprise-reliability.mjs"
 BRANCH = "fix/protected-test-audit-uat-contract-20260815"
 
 
-def run(*args: str, shell: bool = False) -> None:
-    subprocess.run(args[0] if shell else list(args), cwd=ROOT, shell=shell, check=True)
+def run(*args: str) -> None:
+    subprocess.run(list(args), cwd=ROOT, check=True)
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -99,15 +100,24 @@ expected_files = [
 if sorted(actual) != sorted(expected_files):
     raise SystemExit(f"Unexpected modified files: {actual}; expected {expected_files}.")
 
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+GENERATED_WORKFLOW.write_text(workflow, encoding="utf-8")
+GENERATED_VALIDATOR.write_text(validator, encoding="utf-8")
+
+run("git", "restore", "--", str(WORKFLOW_PATH.relative_to(ROOT)), str(VALIDATOR_PATH.relative_to(ROOT)))
+remaining = subprocess.check_output(["git", "status", "--short"], cwd=ROOT, text=True)
+if any(line and not line.startswith("?? generated/protected-test-audit-uat-repair-20260815/") for line in remaining.splitlines()):
+    raise SystemExit(f"Unexpected worktree state after generation:\n{remaining}")
+
 run("git", "config", "user.name", "github-actions[bot]")
 run("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-run("git", "rm", "--", str(TEMP_WORKFLOW.relative_to(ROOT)), str(TEMP_SCRIPT.relative_to(ROOT)))
-run("git", "add", "--", str(WORKFLOW_PATH.relative_to(ROOT)), str(VALIDATOR_PATH.relative_to(ROOT)))
+run("git", "add", "--", str(GENERATED_WORKFLOW.relative_to(ROOT)), str(GENERATED_VALIDATOR.relative_to(ROOT)))
 run("git", "diff", "--cached", "--check")
-run("git", "commit", "-m", "Align Protected-Test audit UAT with response contract")
+run("git", "commit", "-m", "Publish validated Protected-Test audit UAT repair blobs")
 run("git", "push", "origin", f"HEAD:refs/heads/{BRANCH}")
 
-print("PROTECTED_TEST_AUDIT_UAT_CONTRACT_REPAIR=PASS")
-print("FINAL_PR_FILES=2")
+print("PROTECTED_TEST_AUDIT_UAT_GENERATED_BLOBS=PASS")
+print("GENERATED_WORKFLOW=generated/protected-test-audit-uat-repair-20260815/projectpulse-deploy-test.yml")
+print("GENERATED_VALIDATOR=generated/protected-test-audit-uat-repair-20260815/validate-systemwide-enterprise-reliability.mjs")
 print("APPLICATION_SOURCE_CHANGE=NONE")
 print("PRODUCTION_MUTATION=NONE")
