@@ -35,6 +35,7 @@ const pr630AllowedPrefixes = [
   'src/frontend/project-time-web/scripts/inject-module-076-',
   'src/frontend/project-time-web/src/CelarAi',
   'src/frontend/project-time-web/src/celar-ai-',
+  'tests/CelarAiAuthoritativePublicFactTests/',
   'tests/CelarAiOperationsPolicyTests/',
   'tests/CelarAiUniversalAnswerReliabilityTests/',
   'tests/celar-ai-operations-',
