@@ -1,0 +1,58 @@
+name: Package Validated FlowHive Controller File
+
+on:
+  push:
+    branches:
+      - fix/protected-test-flowhive-bundle-marker-20260815
+    paths:
+      - '.github/workflows/temporary-flowhive-controller-artifact-20260815.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package validated deployment controller
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/protected-test-flowhive-bundle-marker-20260815
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Apply validated marker substitution and package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/projectpulse-deploy-test.yml')
+          source = path.read_text(encoding='utf-8')
+          old = "'FlowHive enterprise workspace is not ready'"
+          new = "'FlowHive enterprise controls are temporarily unavailable.'"
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one stale FlowHive marker, found {count}')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+          install -d -m 0700 /tmp/flowhive-controller-artifact
+          cp .github/workflows/projectpulse-deploy-test.yml \
+            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
+          sha256sum /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml \
+            > /tmp/flowhive-controller-artifact/SHA256SUMS
+          grep -Fq "'FlowHive enterprise controls are temporarily unavailable.'" \
+            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
+          ! grep -Fq "'FlowHive enterprise workspace is not ready'" \
+            /tmp/flowhive-controller-artifact/projectpulse-deploy-test.yml
+
+      - name: Upload controller artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: validated-flowhive-controller-${{ github.run_id }}
+          path: /tmp/flowhive-controller-artifact
+          if-no-files-found: error
+          retention-days: 2
