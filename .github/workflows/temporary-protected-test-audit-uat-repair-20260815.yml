@@ -28,6 +28,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Apply, validate, and publish focused repair
+      - name: Apply, validate, and publish focused repair blobs
         shell: bash
         run: python3 .github/scripts/apply-protected-test-audit-uat-repair-20260815.py
