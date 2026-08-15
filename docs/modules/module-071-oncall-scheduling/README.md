@@ -1,63 +1,33 @@
 # Module 071 — On-Call Scheduling
 
-Module 071 is the governed ProjectPulse source package for the established US Signal Professional Services on-call schedule. It preserves the operational behavior discovered in `ahmedadeyemi-cts/ussignal@da634f7620c2f76d6129020133f27481232edfbd` while moving authorization, identity selection, public routing contracts, and branding into ProjectPulse.
+Module 071 is the governed Pulse source package for the US Signal Professional Services on-call schedule.
 
 ## Confirmed behavior
 
-- Everyone with a ProjectPulse session can view the schedule and roster.
-- Only canonical `MANAGER` and `ENGINEERING_TEAM_LEAD` roles can add, edit, generate, restore, or save schedules and rosters.
-- Administrator status alone does not grant Module 071 management authority.
-- Engineer selection uses Module 062 stable `app_users.user_id` values and a dropdown sourced from active ProjectPulse identities.
+- The direct public schedule is `https://oncall.onenecklab.com/` and requires no authentication.
+- The engineer payment action uses the approved Microsoft form and is labeled **OnCall Pay Form**.
+- The public schedule exposes on-call assignment details only; it never exposes OneAssist PINs.
+- Every authenticated Pulse user can view the schedule, roster, and schedule history.
+- `MANAGER`, `PROJECT_TEAM_COORDINATOR`, canonical `ENGINEERING_LEAD`, legacy `ENGINEERING_TEAM_LEAD`, `SUPER_ADMINISTRATOR`, and legacy `ADMINISTRATOR` can change assignments, dates, the roster, generated rotations, and history.
+- View-As is read-only and never transfers management authority.
 - Coverage starts Friday at 4:00 PM America/Chicago and ends the following Friday at 7:00 AM America/Chicago.
-- Dates and assigned identities can be changed at any time by an authorized schedule manager.
-- Public, versioned GET APIs expose the current assignment and schedule for external routing.
-- The established Monday upcoming notice, Tuesday acknowledgement escalation, and Friday start notice remain the notification contract.
-- Email delivery belongs to Module 067 Global SMTP. No direct provider client or text-message path exists in this module.
+- Engineer selection uses Module 062 stable `app_users.user_id` values.
+- Public GET APIs expose the current assignment and schedule for reminder and routing consumers.
+- Schedule, roster, acknowledgement, and history persistence remains in Pulse PostgreSQL under migration 031.
 
-## Source-package boundary
+## Governed links
 
-This release train uses the existing retired external compatibility service service as a compatibility persistence adapter. It introduces no database migration, does not change retired external compatibility service, and does not activate email or scheduled jobs. The authenticated center and versioned public GET routes are registered in current-main source; without approved retired external compatibility service credentials the adapter remains unavailable and makes no external change.
+- Public schedule: `https://oncall.onenecklab.com/`
+- OnCall Pay Form: `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=2kFZU3Lai0qDeJg6VL7DQtvfUo2dqAlEkjfnG3izqQFUQ0NXTlQ5TEtERzE0RzNHN0tNMjJNWThWRSQlQCN0PWcu`
+- Authenticated OneAssist directory: Module 072 inside Pulse
 
-The source becomes runtime-active only after all of the following are separately approved:
+## Reminder contract
 
-1. Module 067 provides the shared mail sender contract.
-2. ProjectPulse public-route and scheduler registration is reviewed.
-3. retired external compatibility service Access service credentials are provisioned through an approved secret store.
-4. The legacy retired external compatibility service notification schedule is retired or coordinated to prevent duplicate email.
-5. Module 002/064/066/067/068 overlap evidence passes against the exact release-train base.
+On-call reminders use the direct public schedule URL. The page must remain usable without sign-in and must not request or render OneAssist customer or PIN data.
 
-## Environment names
+## Security and release boundary
 
-Only environment-variable names are documented; values are never committed.
-
-- `retired_oncall_upstream_setting`
-- `retired_oncall_service_identity`
-- `retired_oncall_service_credential`
-
-The upstream base URL must use HTTPS. The source package never returns either retired external compatibility service Access credential.
-
-## Branding
-
-The React center uses the existing repository-owned US Signal logo data asset and the canonical ProjectPulse US Signal brand tokens: blue, strong blue, cyan, and green. It includes branded hero, navigation, status treatments, public API documentation, and footer without hotlinking an external logo.
-
-## Authorization and external state
-
-- Azure changes: none.
-- Database changes: none.
-- Entra changes: none.
-- retired external compatibility service changes: none.
-- Commit, push, and deployment: not performed by this package.
-
-## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
-
-- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
-- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
-- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
-- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
-- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
-- Platform Administrator authority: explicit
-- View-As write authority: blocked
-- External compatibility runtime dependency: removed
-- Migration applied: no
-- Database changed: no
-- Deployment performed: no
+- OneAssist PINs require an authenticated Pulse session.
+- Schedule and roster mutations are server-authorized from the actual session.
+- No new database migration, secret, infrastructure, deployment, or environment change is introduced by this follow-up.
+- This source remains draft until separately authorized for merge and deployment.
