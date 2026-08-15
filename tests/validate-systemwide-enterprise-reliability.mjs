@@ -11,6 +11,7 @@ const rejectText = (source, marker, label) => {
 const program = read('src/backend/ProjectTime.Api/Program.cs');
 const audit = read('src/backend/ProjectTime.Api/Modules/AdminAuditTelemetryMiddleware.cs');
 const intake = read('src/backend/ProjectTime.Api/Modules/ProjectIntakeModule.cs');
+const opportunities = read('src/backend/ProjectTime.Api/Modules/OpportunitiesModule.cs');
 const reliability = read('src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs');
 const currentFacts = read('src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs');
 const main = read('src/frontend/project-time-web/src/main.jsx');
@@ -50,6 +51,8 @@ requireText(auditModule, 'invalid_credentials', 'failed-login audit normalizatio
 requireText(intake, 'project_intake_overview_partial', 'partial Project Intake response');
 requireText(intake, 'project_intake_source_degraded', 'Project Intake degraded audit');
 requireText(intake, 'LoadSourceAsync', 'independent Project Intake source loading');
+requireText(opportunities, '"ENGINEERING"', 'Engineer opportunity visibility');
+rejectText(opportunities, 'PROJECT_TEAM_COORDINATOR', 'PTC opportunity permission expansion');
 
 requireText(currentFacts, 'www.whitehouse.gov/administration/', 'official White House source');
 requireText(currentFacts, 'ussignal.com/why-us-signal/leadership/', 'official US Signal leadership source');
@@ -124,6 +127,15 @@ for (const marker of [
 ]) requireText(deployment, marker, 'governed protected Test deployment contract');
 rejectText(deployment, 'AZURE_PRODUCTION', 'Production deployment path');
 
+for (const marker of [
+  "ENGINEER='demo.engineer@ussignal.local'",
+  'engineer-login-redacted.json',
+  'engineer-logout.json',
+  'local session="${5:-$COORDINATOR_SESSION}" module_number="${6:-019}"',
+  'local session="${4:-$COORDINATOR_SESSION}" module_number="${5:-019}"',
+  `require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063'`,
+  'opportunityDirectoryRole:"ENGINEERING"'
+]) requireText(deployment, marker, 'role-correct Opportunity Directory UAT');
 
 const authGetStart = deployment.indexOf('          auth_get() {');
 const authPostStart = deployment.indexOf('          auth_post() {', authGetStart);
