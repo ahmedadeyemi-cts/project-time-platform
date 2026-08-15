@@ -4,6 +4,9 @@ import './oncall-scheduling-center.css';
 import './projectpulse-module-standard.css';
 
 const DEFAULT_DEPARTMENTS = ['enterprise_network', 'collaboration', 'system_storage'];
+const PUBLIC_ONCALL_SCHEDULE_URL = 'https://oncall.onenecklab.com/';
+const ONCALL_PAY_FORM_URL = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=2kFZU3Lai0qDeJg6VL7DQtvfUo2dqAlEkjfnG3izqQFUQ0NXTlQ5TEtERzE0RzNHN0tNMjJNWThWRSQlQCN0PWcu';
+const ONEASSIST_ROUTE_HASH = '#oneassist-routing-directory';
 
 function token(authSession) {
   return authSession?.sessionToken
@@ -334,9 +337,16 @@ export default function OnCallSchedulingCenter({ authSession }) {
             <p>Identity-backed weekly engineering coverage, history, routing, and governed email readiness.</p>
           </div>
         </div>
-        <div className="oncall-authority">
-          <span>{canManage ? 'Schedule manager' : 'Read-only viewer'}</span>
-          <small>{canManage ? 'Super Administrator / Administrator / Manager / Engineering Team Lead' : 'All ProjectPulse users can view'}</small>
+        <div className="oncall-hero-tools">
+          <div className="oncall-authority">
+            <span>{canManage ? 'Schedule manager' : 'Read-only viewer'}</span>
+            <small>{canManage ? 'Manager / PTC / Engineering Lead / Platform Administrator' : 'All authenticated Pulse users can view'}</small>
+          </div>
+          <div className="oncall-quick-links" aria-label="On-call resources">
+            <a href={ONCALL_PAY_FORM_URL} target="_blank" rel="noreferrer">OnCall Pay Form</a>
+            <a href={PUBLIC_ONCALL_SCHEDULE_URL} target="_blank" rel="noreferrer">Public On-Call Schedule</a>
+            <a href={ONEASSIST_ROUTE_HASH}>OneAssist PINs</a>
+          </div>
         </div>
       </header>
 
@@ -348,6 +358,9 @@ export default function OnCallSchedulingCenter({ authSession }) {
       </div>
       <div className="oncall-banner governed">
         Schedule, roster, and history changes are stored in the ProjectPulse PostgreSQL application database with actual-session audit evidence.
+      </div>
+      <div className="oncall-banner governed">
+        The public schedule link requires no sign-in and is the link used in on-call reminders. OneAssist PINs are never shown on that public page and remain available only after Pulse authentication.
       </div>
 
       <nav className="oncall-tabs" aria-label="On-call workspace sections">
@@ -414,7 +427,7 @@ export default function OnCallSchedulingCenter({ authSession }) {
             <label><span>Rotation seed</span><input type="number" min="0" step="1" value={generation.seedIndex} onChange={(event) => setGeneration((current) => ({ ...current, seedIndex: event.target.value }))} /></label>
           </div>
           <p className="oncall-help">Each generated entry begins Friday at 4:00 PM and ends the following Friday at 7:00 AM Central. Previewing never saves.</p>
-          {canManage ? <button type="button" className="oncall-primary" onClick={previewRotation} disabled={state.saving}>Preview generated schedule</button> : <p className="oncall-readonly">Only platform administrators, Managers, and Engineering Team Leads can generate rotations.</p>}
+          {canManage ? <button type="button" className="oncall-primary" onClick={previewRotation} disabled={state.saving}>Preview generated schedule</button> : <p className="oncall-readonly">Only Managers, Project Team Coordinators, Engineering Leads, and platform administrators can generate rotations.</p>}
         </section>
       ) : null}
 
@@ -471,11 +484,12 @@ export default function OnCallSchedulingCenter({ authSession }) {
 
       {tab === 'api' ? (
         <section className="oncall-card oncall-api">
-          <div className="oncall-card-head"><div><p className="oncall-eyebrow">Read-only routing contract</p><h2>Public On-Call API</h2></div><span className="oncall-live">Version 1</span></div>
+          <div className="oncall-card-head"><div><p className="oncall-eyebrow">No sign-in required</p><h2>Public On-Call Schedule</h2></div><span className="oncall-live">Version 1</span></div>
+          <code>{PUBLIC_ONCALL_SCHEDULE_URL}</code>
           <code>GET /api/public/v1/oncall/current</code>
           <code>GET /api/public/v1/oncall/current?department=collaboration</code>
           <code>GET /api/public/v1/oncall/schedule</code>
-          <p>Public routes expose current routing assignments only. Schedule and roster mutations remain protected by the Manager and Engineering Team Lead permission boundary.</p>
+          <p>The direct schedule and public APIs expose on-call assignments only. They never expose OneAssist PINs. Schedule changes remain protected by the Manager, PTC, Engineering Lead, and platform-administrator boundary.</p>
         </section>
       ) : null}
 
