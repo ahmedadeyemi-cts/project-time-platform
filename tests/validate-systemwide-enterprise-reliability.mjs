@@ -128,6 +128,8 @@ for (const marker of [
 rejectText(deployment, 'AZURE_PRODUCTION', 'Production deployment path');
 requireText(deployment, "'Select or type a customer'", 'deployed SOW customer-selector marker');
 rejectText(deployment, "'Customer from Customer Directory'", 'stale case-sensitive customer-selector marker');
+requireText(deployment, "'FlowHive enterprise controls are temporarily unavailable.'", 'deployed FlowHive degraded-state marker');
+rejectText(deployment, "'FlowHive enterprise workspace is not ready'", 'stale FlowHive bundle marker');
 
 for (const marker of [
   "ENGINEER='demo.engineer@ussignal.local'",
