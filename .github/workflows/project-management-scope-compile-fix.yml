@@ -27,7 +27,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Apply exact compile correction
+      - name: Apply compile correction
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -36,35 +36,25 @@ jobs:
 
           path = Path('src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs')
           text = path.read_text()
-          old = '''                var access = await ReadProjectAccessAsync(
-                    connection,
-                    identity,
-                    projectId,
-                    context.RequestAborted);
-                if (access is null)
-                {
-                    await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
-                    return true;
-                }
 
-                context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
-                context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;'''
-          new = '''                var accessByProject = await ReadProjectAccessAsync(
-                    connection,
-                    identity,
-                    projectId,
-                    context.RequestAborted);
-                if (!accessByProject.TryGetValue(projectId, out var access))
-                {
-                    await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
-                    return true;
-                }
+          replacements = [
+              (
+                  '                var access = await ReadProjectAccessAsync(\n',
+                  '                var accessByProject = await ReadProjectAccessAsync(\n'
+              ),
+              (
+                  '                if (access is null)\n',
+                  '                if (!accessByProject.TryGetValue(projectId, out var access))\n'
+              )
+          ]
 
-                context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
-                context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one direct-read access block, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, found {count}: {old!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
           Path('.github/workflows/project-management-scope-compile-fix.yml').unlink()
           PY
 
