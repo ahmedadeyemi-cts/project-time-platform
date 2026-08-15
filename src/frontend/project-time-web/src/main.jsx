@@ -36,6 +36,7 @@ import EnterpriseExperienceController from './EnterpriseExperienceController.jsx
 import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
 import './approval-access-navigation-compatibility.js';
+import './work-register-document-integrity.js';
 import './scoped-rbac-catalog-compatibility.js';
 import './styles.css';
 import './friendly-api-errors.css';

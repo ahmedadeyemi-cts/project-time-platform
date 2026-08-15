@@ -50,6 +50,13 @@ public static class WorkRegisterAuthorization
                 return;
             }
 
+            if (await ProjectManagementWorkRegisterScope.TryHandleReadAsync(
+                    context,
+                    _ => next()))
+            {
+                return;
+            }
+
             var isMutation = HttpMethods.IsPost(context.Request.Method)
                 || HttpMethods.IsPut(context.Request.Method)
                 || HttpMethods.IsPatch(context.Request.Method)

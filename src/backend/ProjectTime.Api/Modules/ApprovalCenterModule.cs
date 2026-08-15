@@ -13,7 +13,10 @@ public static class ApprovalCenterModule
         "PROJECT_TEAM_COORDINATOR",
         "MANAGER",
         "PROJECT_MANAGER",
-        "PROJECT_MANAGEMENT"
+        "PROJECT_MANAGEMENT",
+        "PROJECT_MANAGEMENT_LEAD",
+        "PROJECT_MANAGEMENT_TEAM_LEAD",
+        "PM_TEAM_LEAD"
     };
 
     private static readonly HashSet<string> PasswordResetRoles = new(StringComparer.OrdinalIgnoreCase)
@@ -980,7 +983,7 @@ public static class ApprovalCenterModule
             return (null, Results.Json(new
             {
                 status = "access_denied",
-                message = "Approval Center access is restricted to Managers, Project Managers, Project Team Coordinators, Administrators, and Super Administrators."
+                message = "Approval Center access is restricted to Managers, Project Managers, Project Management Leads, Project Team Coordinators, Administrators, and Super Administrators."
             }, statusCode: StatusCodes.Status403Forbidden));
         }
 
@@ -1031,8 +1034,13 @@ public static class ApprovalCenterModule
         var isSuperAdmin = roleSet.Contains("SUPER_ADMINISTRATOR");
         var isAdmin = roleSet.Contains("ADMINISTRATOR");
         var isCoordinator = roleSet.Contains("PROJECT_TEAM_COORDINATOR");
-        var isManager = roleSet.Contains("MANAGER");
-        var isProjectManager = roleSet.Contains("PROJECT_MANAGER") || roleSet.Contains("PROJECT_MANAGEMENT");
+        var isProjectManagementLead = roleSet.Contains("PROJECT_MANAGEMENT_LEAD")
+            || roleSet.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
+            || roleSet.Contains("PM_TEAM_LEAD");
+        var isManager = roleSet.Contains("MANAGER") || isProjectManagementLead;
+        var isProjectManager = roleSet.Contains("PROJECT_MANAGER")
+            || roleSet.Contains("PROJECT_MANAGEMENT")
+            || isProjectManagementLead;
         var canViewAll = isSuperAdmin || isAdmin || isCoordinator;
         var canViewTime = roles.Any(role => TimeApprovalRoles.Contains(role));
         var canViewPasswordReset = roles.Any(role => PasswordResetRoles.Contains(role));
@@ -1062,9 +1070,11 @@ public static class ApprovalCenterModule
                 ? "Administrator"
                 : isCoordinator
                     ? "Project Team Coordinator"
-                    : isManager
-                        ? "Manager"
-                        : "Project Manager";
+                    : isProjectManagementLead
+                        ? "Project Management Lead"
+                        : isManager
+                            ? "Manager"
+                            : "Project Manager";
 
         return new ApprovalAccess(
             userId,
