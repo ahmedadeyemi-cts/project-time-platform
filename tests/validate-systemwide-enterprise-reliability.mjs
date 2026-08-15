@@ -50,6 +50,16 @@ requireText(auditModule, 'invalid_credentials', 'failed-login audit normalizatio
 requireText(intake, 'project_intake_overview_partial', 'partial Project Intake response');
 requireText(intake, 'project_intake_source_degraded', 'Project Intake degraded audit');
 requireText(intake, 'LoadSourceAsync', 'independent Project Intake source loading');
+rejectText(
+  intake,
+  'app.MapGet("/api/project-intake/overview", GetOverviewAsync);',
+  'Project Intake RequestDelegate binding that discards IResult'
+);
+requireText(
+  intake,
+  '(Func<HttpContext, Task<IResult>>)GetOverviewAsync',
+  'Project Intake explicit IResult route binding'
+);
 
 requireText(currentFacts, 'www.whitehouse.gov/administration/', 'official White House source');
 requireText(currentFacts, 'ussignal.com/why-us-signal/leadership/', 'official US Signal leadership source');
