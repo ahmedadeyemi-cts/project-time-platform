@@ -27,6 +27,7 @@ requireText(scope, 'project.project_manager_user_id = @user_id', 'assigned Proje
 requireText(scope, 'project_management_team_view', 'team view-only scope');
 requireText(scope, 'canEditProject', 'per-project edit evidence');
 requireText(scope, 'teamProjectsReadOnly', 'team read-only response contract');
+requireText(scope, 'accessByProject.TryGetValue(projectId, out var access)', 'direct project read lookup');
 requireText(authorization, 'ProjectManagementWorkRegisterScope.TryHandleReadAsync', 'server read-scope middleware');
 
 for (const role of [
