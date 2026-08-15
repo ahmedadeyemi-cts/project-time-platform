@@ -1,0 +1,55 @@
+name: PR 698 On-Call Follow-up Patcher
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - '.github/workflows/pr698-oncall-followup-patcher.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr698-oncall-followup-patcher
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/classic-appearance-celar-controls-20260815
+          fetch-depth: 0
+
+      - name: Apply Module 071 and 072 follow-up
+        run: |
+          set -euo pipefail
+          python scripts/pr698_patch_module071.py
+          python scripts/pr698_patch_module072.py
+          git diff --check
+
+      - name: Validate focused contracts
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -euo pipefail
+          node --check scripts/validate-module-071-oncall-scheduling.mjs
+          node --check scripts/validate-module-072-oneassist-routing-directory.mjs
+          node scripts/validate-module-071-oncall-scheduling.mjs
+          node scripts/validate-module-072-oneassist-routing-directory.mjs
+
+      - name: Remove temporary patch controls and commit
+        run: |
+          set -euo pipefail
+          rm -f scripts/pr698_patch_module071.py
+          rm -f scripts/pr698_patch_module072.py
+          rm -f .github/workflows/pr698-oncall-followup-patcher.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(oncall): separate public schedule from authenticated PIN access"
+          git push origin HEAD:fix/classic-appearance-celar-controls-20260815
