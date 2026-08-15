@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      STATUS_FILE: ${{ runner.temp }}/flowhive-marker-publisher-status.log
+      STATUS_FILE: /tmp/flowhive-marker-publisher-status.log
     steps:
       - name: Check out exact repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -169,6 +169,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flowhive-marker-publisher-diagnostics-${{ github.run_id }}
-          path: ${{ runner.temp }}/flowhive-marker-publisher-status.log
+          path: /tmp/flowhive-marker-publisher-status.log
           if-no-files-found: warn
           retention-days: 2
