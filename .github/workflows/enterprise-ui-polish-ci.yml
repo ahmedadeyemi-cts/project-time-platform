@@ -1,0 +1,91 @@
+name: Enterprise UI Polish CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/enterprise-ui-polish-ci.yml'
+      - 'src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs'
+      - 'src/frontend/project-time-web/src/enterprise-ui-polish.js'
+      - 'src/frontend/project-time-web/src/enterprise-ui-polish.css'
+      - 'src/frontend/project-time-web/src/assets/module-006-customer-brands.svg'
+      - 'src/frontend/project-time-web/src/main.jsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-ui-polish-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Appearance, Celar AI, More, brands, and module flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard the source boundary
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/changed-files.txt
+          cat > /tmp/allowed-files.txt <<'EOF'
+          .github/workflows/enterprise-ui-polish-ci.yml
+          src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs
+          src/frontend/project-time-web/src/assets/module-006-customer-brands.svg
+          src/frontend/project-time-web/src/enterprise-ui-polish.css
+          src/frontend/project-time-web/src/enterprise-ui-polish.js
+          src/frontend/project-time-web/src/main.jsx
+          EOF
+          sort -o /tmp/allowed-files.txt /tmp/allowed-files.txt
+          unexpected="$(comm -23 /tmp/changed-files.txt /tmp/allowed-files.txt)"
+          if [[ -n "$unexpected" ]]; then
+            printf 'Unexpected source outside the enterprise UI polish boundary:\n%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          echo 'ENTERPRISE_UI_POLISH_SOURCE_BOUNDARY=PASS'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+
+      - name: Validate runtime syntax and SVG structure
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ./src/enterprise-ui-polish.js
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse('src/assets/module-006-customer-brands.svg')
+          print('MODULE_006_CUSTOMER_BRANDS_SVG=PASS')
+          PY
+
+      - name: Validate enterprise UI polish contract
+        working-directory: src/frontend/project-time-web
+        run: node ./scripts/validate-enterprise-ui-polish.mjs
+
+      - name: Run complete frontend production build
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Ensure validation did not mutate tracked source
+        shell: bash
+        run: git diff --exit-code

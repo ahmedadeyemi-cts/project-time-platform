@@ -17,6 +17,7 @@ import './pulse-ai-help-chat-usability.js';
 import './admin-experience-theme.js';
 import './pulse-shell-frontend-compatibility.js';
 import './enterprise-navigation-parity.js';
+import './enterprise-ui-polish.js';
 import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
@@ -58,6 +59,7 @@ import './enterprise-systemwide-reliability.css';
 import './enterprise-feedback-fixes.css';
 import './display-preferences-drawer.css';
 import './enterprise-header-navigation-layout.css';
+import './enterprise-ui-polish.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
