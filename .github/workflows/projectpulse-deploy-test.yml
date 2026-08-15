@@ -698,7 +698,7 @@ jobs:
             'Evidence score' \
             'Project Cost Alerts' \
             'Data incomplete' \
-            'Customer from Customer Directory' \
+            'Select or type a customer' \
             'FlowHive enterprise workspace is not ready' \
             'Login, logout & sessions'; do
             grep -Fq "$marker" "$FRONTEND_BUNDLE" || fail "Deployed frontend bundle is missing marker: $marker"
