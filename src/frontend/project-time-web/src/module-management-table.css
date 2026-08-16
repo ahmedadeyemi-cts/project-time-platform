@@ -1,0 +1,284 @@
+/* PR698_TABLE_MODULE_MANAGEMENT_V1
+ * Table is the default Pulse presentation. It retains the enterprise shell and
+ * switches Module Management to a dense, accessible table with inline owner
+ * administration for an actual Super Administrator session.
+ */
+
+:root[data-pulse-layout='table'] .modules-directory-grid {
+  display: none !important;
+}
+
+:root:not([data-pulse-layout='table']) .module-management-table-section {
+  display: none !important;
+}
+
+:root[data-pulse-layout='table'] .modules-directory-page {
+  gap: 0.85rem;
+}
+
+:root[data-pulse-layout='table'] .modules-directory-hero {
+  align-items: center;
+  padding: 1.15rem 1.25rem;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+:root[data-pulse-layout='table'] .modules-directory-hero h1,
+:root[data-pulse-layout='table'] .modules-directory-hero p:not(.eyebrow) {
+  color: var(--text);
+}
+
+:root[data-pulse-layout='table'] .modules-directory-hero .eyebrow,
+:root[data-pulse-layout='table'] .modules-directory-count span {
+  color: var(--brand-blue-strong);
+}
+
+.module-management-table-section {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.module-management-table-notice {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 750;
+}
+
+.module-management-table-notice.warning {
+  border-color: #d8a33e;
+  background: color-mix(in srgb, #fff3cd 78%, var(--surface));
+}
+
+.module-management-table-notice.success {
+  border-color: #55a579;
+  background: color-mix(in srgb, #daf4e5 76%, var(--surface));
+}
+
+.module-management-table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.module-management-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text);
+}
+
+.module-management-table th,
+.module-management-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.8rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.module-management-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.module-management-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.module-management-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.module-management-table-identity {
+  display: grid;
+  grid-template-columns: 42px minmax(220px, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.module-management-table-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 28%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 72%, var(--surface));
+  color: var(--brand-blue-strong);
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.module-management-table-identity > div {
+  display: grid;
+  gap: 0.13rem;
+  min-width: 0;
+}
+
+.module-management-table-number {
+  color: var(--brand-blue-strong);
+  font-size: 0.7rem;
+  letter-spacing: 0.055em;
+}
+
+.module-management-table-identity a {
+  color: var(--text);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.module-management-table-identity a:hover,
+.module-management-table-identity a:focus-visible {
+  color: var(--brand-blue-strong);
+  text-decoration: underline;
+}
+
+.module-management-table-identity small {
+  max-width: 430px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-management-table-category,
+.module-management-table-scope,
+.module-management-state {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.module-management-table-category,
+.module-management-table-scope {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+}
+
+.module-management-state.enabled {
+  background: #dcf3e5;
+  color: #146a3a;
+}
+
+.module-management-state.disabled {
+  background: #fde2e2;
+  color: #a02929;
+}
+
+.module-owner-editor,
+.module-owner-readonly {
+  display: grid;
+  grid-template-columns: 32px minmax(160px, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 210px;
+}
+
+.module-owner-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand-blue-strong);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.module-owner-editor select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.45rem 0.55rem;
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.module-owner-readonly > span:last-child {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.module-owner-readonly strong,
+.module-owner-readonly small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-owner-readonly small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.module-management-table time {
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.module-management-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.module-management-table-actions a,
+.module-management-table-actions button {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.45rem 0.62rem;
+  background: var(--surface-strong);
+  color: var(--brand-blue-strong);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.module-management-table-actions button.danger {
+  color: #a02929;
+}
+
+.module-management-table-actions button.enable {
+  color: #146a3a;
+}
+
+.module-management-table-actions button:disabled,
+.module-owner-editor select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+@media (max-width: 760px) {
+  :root[data-pulse-layout='table'] .modules-directory-hero {
+    align-items: flex-start;
+  }
+}

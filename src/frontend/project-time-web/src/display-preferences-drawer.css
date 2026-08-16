@@ -1,6 +1,6 @@
 /* ENTERPRISE_DISPLAY_DRAWER_AND_MORE_OVERLAY_V2
- * Replaces the always-open Views rail and top-bar theme switcher with two
- * compact left-edge handles and one accessible drawer. It also removes the
+ * Replaces the always-open Views rail and top-bar theme switcher with one
+ * compact Appearance handle and one accessible drawer. It also removes the
  * overflow/stacking conditions that clipped the React-owned More launcher.
  */
 
@@ -144,14 +144,11 @@ body.pulse-display-preferences-open {
   transition: background 0.16s ease, box-shadow 0.16s ease, padding 0.16s ease;
 }
 
-.pulse-display-view-handle {
+.pulse-display-view-handle,
+.pulse-display-appearance-handle {
   top: clamp(6.75rem, 29vh, 15.5rem);
 }
 
-.pulse-display-theme-handle {
-  bottom: 11.75rem;
-  background: #28506f;
-}
 
 .pulse-display-handle:hover,
 .pulse-display-handle:focus-visible,
@@ -171,10 +168,6 @@ body.pulse-display-preferences-open {
   -webkit-text-fill-color: #f4f9ff;
 }
 
-[data-theme='dark'] .pulse-display-theme-handle,
-:root[data-theme='dark'] .pulse-display-theme-handle {
-  background: #254865;
-}
 
 [data-theme='dark'] .pulse-display-handle:hover,
 [data-theme='dark'] .pulse-display-handle:focus-visible,

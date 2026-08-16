@@ -4,8 +4,11 @@ import { moduleForRoute } from './module-availability-registry.js';
 
 const EXPERIENCE_STORAGE_KEY = 'pulse-enterprise-experience';
 const EXPERIENCE_EVENT = 'projectpulse:experience-changed';
+const TABLE_EXPERIENCE = 'table';
 const ENTERPRISE_EXPERIENCE = 'enterprise';
 const CLASSIC_EXPERIENCE = 'classic';
+const EXPERIENCE_DEFAULT_VERSION_KEY = 'pulse-enterprise-experience-default-version';
+const TABLE_DEFAULT_VERSION = 'table-v1';
 const CONTROL_HOST_ID = 'pulse-enterprise-experience-control-host';
 const PAGE_CHROME_HOST_ID = 'pulse-enterprise-page-chrome-host';
 const DISPLAY_UTILITY_DOCK_ID = 'pulse-display-utility-dock';
@@ -19,7 +22,7 @@ const STATIC_ROUTE_METADATA = Object.freeze({
   modules: Object.freeze({
     group: 'Administration',
     title: 'Module Management',
-    description: 'Find authorized workspaces, review access scope, and manage module availability from one enterprise directory.'
+    description: 'Find authorized workspaces, review access scope, and manage module availability and ownership from one enterprise directory.'
   })
 });
 
@@ -28,16 +31,24 @@ function cleanText(value) {
 }
 
 function normalizeExperience(value) {
-  return String(value || '').toLowerCase() === CLASSIC_EXPERIENCE
-    ? CLASSIC_EXPERIENCE
-    : ENTERPRISE_EXPERIENCE;
+  const normalized = String(value || '').toLowerCase();
+  if ([TABLE_EXPERIENCE, ENTERPRISE_EXPERIENCE, CLASSIC_EXPERIENCE].includes(normalized)) {
+    return normalized;
+  }
+  return TABLE_EXPERIENCE;
 }
 
 function readExperience() {
   try {
+    const defaultVersion = window.localStorage.getItem(EXPERIENCE_DEFAULT_VERSION_KEY);
+    if (defaultVersion !== TABLE_DEFAULT_VERSION) {
+      window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, TABLE_EXPERIENCE);
+      window.localStorage.setItem(EXPERIENCE_DEFAULT_VERSION_KEY, TABLE_DEFAULT_VERSION);
+      return TABLE_EXPERIENCE;
+    }
     return normalizeExperience(window.localStorage.getItem(EXPERIENCE_STORAGE_KEY));
   } catch {
-    return ENTERPRISE_EXPERIENCE;
+    return TABLE_EXPERIENCE;
   }
 }
 
@@ -55,12 +66,20 @@ function applyExperience(experience, { announce = true } = {}) {
   const normalized = normalizeExperience(experience);
   try {
     window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, normalized);
+    window.localStorage.setItem(EXPERIENCE_DEFAULT_VERSION_KEY, TABLE_DEFAULT_VERSION);
   } catch {
     // Browser storage can be unavailable in hardened or private sessions.
   }
 
-  document.documentElement.dataset.pulseExperience = normalized;
-  if (document.body) document.body.dataset.pulseExperience = normalized;
+  const presentationExperience = normalized === TABLE_EXPERIENCE
+    ? ENTERPRISE_EXPERIENCE
+    : normalized;
+  document.documentElement.dataset.pulseExperience = presentationExperience;
+  document.documentElement.dataset.pulseLayout = normalized;
+  if (document.body) {
+    document.body.dataset.pulseExperience = presentationExperience;
+    document.body.dataset.pulseLayout = normalized;
+  }
 
   if (announce) {
     window.dispatchEvent(new CustomEvent(EXPERIENCE_EVENT, {
@@ -261,15 +280,26 @@ function decorateRoute(main, route) {
   applyCustomerNeutralModule006Presentation(main, route);
 }
 
-function ViewIcon({ enterprise }) {
-  return enterprise ? (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  ) : (
+function ViewIcon({ view }) {
+  if (view === TABLE_EXPERIENCE) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 9h18M3 14h18M9 4v16" />
+      </svg>
+    );
+  }
+  if (view === ENTERPRISE_EXPERIENCE) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      </svg>
+    );
+  }
+  return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 6h16M4 12h16M4 18h16" />
     </svg>
@@ -314,12 +344,22 @@ function ExperienceSwitcher({ experience, onChange }) {
       <span className="pulse-experience-switcher__label">View</span>
       <button
         type="button"
+        className={experience === TABLE_EXPERIENCE ? 'active' : ''}
+        aria-pressed={experience === TABLE_EXPERIENCE}
+        title="Use the table interface"
+        onClick={() => onChange(TABLE_EXPERIENCE)}
+      >
+        <ViewIcon view={TABLE_EXPERIENCE} />
+        <strong>Table</strong>
+      </button>
+      <button
+        type="button"
         className={experience === ENTERPRISE_EXPERIENCE ? 'active' : ''}
         aria-pressed={experience === ENTERPRISE_EXPERIENCE}
         title="Use the enterprise interface"
         onClick={() => onChange(ENTERPRISE_EXPERIENCE)}
       >
-        <ViewIcon enterprise />
+        <ViewIcon view={ENTERPRISE_EXPERIENCE} />
         <strong>Enterprise</strong>
       </button>
       <button
@@ -329,14 +369,19 @@ function ExperienceSwitcher({ experience, onChange }) {
         title="Use the classic interface"
         onClick={() => onChange(CLASSIC_EXPERIENCE)}
       >
-        <ViewIcon enterprise={false} />
+        <ViewIcon view={CLASSIC_EXPERIENCE} />
         <strong>Classic</strong>
       </button>
     </div>
   );
 }
 
-function EnterprisePageChrome({ metadata }) {
+function EnterprisePageChrome({ metadata, experience }) {
+  const viewLabel = experience === TABLE_EXPERIENCE
+    ? 'Table view'
+    : experience === CLASSIC_EXPERIENCE
+      ? 'Classic view'
+      : 'Enterprise view';
   return (
     <header className="pulse-enterprise-page-chrome" aria-label={`${metadata.title} page context`}>
       <div className="pulse-enterprise-page-chrome__identity">
@@ -354,7 +399,7 @@ function EnterprisePageChrome({ metadata }) {
         </div>
       </div>
       <div className="pulse-enterprise-page-chrome__status" aria-label="Presentation status">
-        <span><i aria-hidden="true" /> Enterprise view</span>
+        <span><i aria-hidden="true" /> {viewLabel}</span>
         {metadata.moduleNumber ? <small>Module {metadata.moduleNumber}</small> : <small>Unified workspace</small>}
       </div>
     </header>
@@ -443,7 +488,7 @@ export default function EnterpriseExperienceController() {
         controlHost
       ) : null}
       {pageChromeHost ? createPortal(
-        <EnterprisePageChrome metadata={metadata} />,
+        <EnterprisePageChrome metadata={metadata} experience={experience} />,
         pageChromeHost
       ) : null}
     </>
@@ -451,6 +496,7 @@ export default function EnterpriseExperienceController() {
 }
 
 export {
+  TABLE_EXPERIENCE,
   CLASSIC_EXPERIENCE,
   ENTERPRISE_EXPERIENCE,
   EXPERIENCE_EVENT,

@@ -4,15 +4,20 @@ const EXPERIENCE_STORAGE_KEY = 'pulse-enterprise-experience';
 const THEME_STORAGE_KEY = 'ptp-theme';
 const EXPERIENCE_EVENT = 'projectpulse:experience-changed';
 const THEME_EVENT = 'projectpulse:theme-changed';
+const TABLE_EXPERIENCE = 'table';
 const ENTERPRISE_EXPERIENCE = 'enterprise';
 const CLASSIC_EXPERIENCE = 'classic';
+const EXPERIENCE_DEFAULT_VERSION_KEY = 'pulse-enterprise-experience-default-version';
+const TABLE_DEFAULT_VERSION = 'table-v1';
 const LIGHT_THEME = 'light';
 const DARK_THEME = 'dark';
 
 function normalizeExperience(value) {
-  return String(value || '').toLowerCase() === CLASSIC_EXPERIENCE
-    ? CLASSIC_EXPERIENCE
-    : ENTERPRISE_EXPERIENCE;
+  const normalized = String(value || '').toLowerCase();
+  if ([TABLE_EXPERIENCE, ENTERPRISE_EXPERIENCE, CLASSIC_EXPERIENCE].includes(normalized)) {
+    return normalized;
+  }
+  return TABLE_EXPERIENCE;
 }
 
 function normalizeTheme(value) {
@@ -28,10 +33,22 @@ function readStorage(key) {
 }
 
 function readExperience() {
+  const defaultVersion = readStorage(EXPERIENCE_DEFAULT_VERSION_KEY);
+  if (defaultVersion !== TABLE_DEFAULT_VERSION) {
+    try {
+      window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, TABLE_EXPERIENCE);
+      window.localStorage.setItem(EXPERIENCE_DEFAULT_VERSION_KEY, TABLE_DEFAULT_VERSION);
+    } catch {
+      // Browser storage may be unavailable in hardened or private sessions.
+    }
+    return TABLE_EXPERIENCE;
+  }
   return normalizeExperience(
-    document.documentElement.dataset.pulseExperience
-      || document.body?.dataset.pulseExperience
+    document.documentElement.dataset.pulseLayout
+      || document.body?.dataset.pulseLayout
       || readStorage(EXPERIENCE_STORAGE_KEY)
+      || document.documentElement.dataset.pulseExperience
+      || document.body?.dataset.pulseExperience
   );
 }
 
@@ -48,12 +65,20 @@ function applyExperience(experience) {
 
   try {
     window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, normalized);
+    window.localStorage.setItem(EXPERIENCE_DEFAULT_VERSION_KEY, TABLE_DEFAULT_VERSION);
   } catch {
     // Browser storage may be unavailable in hardened or private sessions.
   }
 
-  document.documentElement.dataset.pulseExperience = normalized;
-  if (document.body) document.body.dataset.pulseExperience = normalized;
+  const presentationExperience = normalized === TABLE_EXPERIENCE
+    ? ENTERPRISE_EXPERIENCE
+    : normalized;
+  document.documentElement.dataset.pulseExperience = presentationExperience;
+  document.documentElement.dataset.pulseLayout = normalized;
+  if (document.body) {
+    document.body.dataset.pulseExperience = presentationExperience;
+    document.body.dataset.pulseLayout = normalized;
+  }
 
   window.dispatchEvent(new CustomEvent(EXPERIENCE_EVENT, {
     detail: { experience: normalized }
@@ -62,15 +87,26 @@ function applyExperience(experience) {
   return normalized;
 }
 
-function ViewIcon({ enterprise }) {
-  return enterprise ? (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  ) : (
+function ViewIcon({ view }) {
+  if (view === TABLE_EXPERIENCE) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 9h18M3 14h18M9 4v16" />
+      </svg>
+    );
+  }
+  if (view === ENTERPRISE_EXPERIENCE) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      </svg>
+    );
+  }
+  return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 6h16M4 12h16M4 18h16" />
     </svg>
@@ -106,7 +142,6 @@ export default function DisplayPreferencesDrawer() {
   const [experience, setExperience] = useState(() => readExperience());
   const [theme, setTheme] = useState(() => readTheme());
   const viewHandleRef = useRef(null);
-  const themeHandleRef = useRef(null);
   const closeButtonRef = useRef(null);
   const viewSectionRef = useRef(null);
   const themeSectionRef = useRef(null);
@@ -181,32 +216,25 @@ export default function DisplayPreferencesDrawer() {
     setExperience(normalized);
   };
 
-  const currentSummary = `${experience === ENTERPRISE_EXPERIENCE ? 'Enterprise' : 'Classic'} view · ${theme === DARK_THEME ? 'Dark' : 'Light'} appearance`;
+  const experienceLabel = experience === TABLE_EXPERIENCE
+    ? 'Table'
+    : experience === ENTERPRISE_EXPERIENCE
+      ? 'Enterprise'
+      : 'Classic';
+  const currentSummary = `${experienceLabel} view · ${theme === DARK_THEME ? 'Dark' : 'Light'} appearance`;
 
   return (
     <>
       <button
         ref={viewHandleRef}
         type="button"
-        className="pulse-display-handle pulse-display-view-handle"
+        className="pulse-display-handle pulse-display-view-handle pulse-display-appearance-handle"
         onClick={() => openDrawer('view', viewHandleRef.current)}
-        aria-expanded={open && activeSection === 'view'}
+        aria-expanded={open}
         aria-controls="pulse-display-preferences-drawer"
-        title="Open interface view settings"
+        title="Open interface and appearance settings"
       >
-        Views
-      </button>
-
-      <button
-        ref={themeHandleRef}
-        type="button"
-        className="pulse-display-handle pulse-display-theme-handle"
-        onClick={() => openDrawer('theme', themeHandleRef.current)}
-        aria-expanded={open && activeSection === 'theme'}
-        aria-controls="pulse-display-preferences-drawer"
-        title="Open light and dark appearance settings"
-      >
-        Theme
+        Appearance
       </button>
 
       <aside
@@ -248,7 +276,7 @@ export default function DisplayPreferencesDrawer() {
           >
             <div className="pulse-display-preference-section__heading">
               <span className="pulse-display-preference-section__icon" aria-hidden="true">
-                <ViewIcon enterprise />
+                <ViewIcon view={experience} />
               </span>
               <div>
                 <p>Interface view</p>
@@ -259,11 +287,25 @@ export default function DisplayPreferencesDrawer() {
             <div className="pulse-display-choice-grid">
               <button
                 type="button"
+                className={`pulse-display-choice ${experience === TABLE_EXPERIENCE ? 'is-selected' : ''}`}
+                aria-pressed={experience === TABLE_EXPERIENCE}
+                onClick={() => changeExperience(TABLE_EXPERIENCE)}
+              >
+                <span className="pulse-display-choice__icon" aria-hidden="true"><ViewIcon view={TABLE_EXPERIENCE} /></span>
+                <span className="pulse-display-choice__copy">
+                  <strong>Table</strong>
+                  <small>Dense, table-first administration with sortable operational rows and inline ownership controls.</small>
+                </span>
+                {experience === TABLE_EXPERIENCE ? <ChoiceStatus /> : null}
+              </button>
+
+              <button
+                type="button"
                 className={`pulse-display-choice ${experience === ENTERPRISE_EXPERIENCE ? 'is-selected' : ''}`}
                 aria-pressed={experience === ENTERPRISE_EXPERIENCE}
                 onClick={() => changeExperience(ENTERPRISE_EXPERIENCE)}
               >
-                <span className="pulse-display-choice__icon" aria-hidden="true"><ViewIcon enterprise /></span>
+                <span className="pulse-display-choice__icon" aria-hidden="true"><ViewIcon view={ENTERPRISE_EXPERIENCE} /></span>
                 <span className="pulse-display-choice__copy">
                   <strong>Enterprise</strong>
                   <small>Unified cards, page context, responsive workspaces, and enterprise styling.</small>
@@ -277,7 +319,7 @@ export default function DisplayPreferencesDrawer() {
                 aria-pressed={experience === CLASSIC_EXPERIENCE}
                 onClick={() => changeExperience(CLASSIC_EXPERIENCE)}
               >
-                <span className="pulse-display-choice__icon" aria-hidden="true"><ViewIcon enterprise={false} /></span>
+                <span className="pulse-display-choice__icon" aria-hidden="true"><ViewIcon view={CLASSIC_EXPERIENCE} /></span>
                 <span className="pulse-display-choice__copy">
                   <strong>Classic</strong>
                   <small>Use the established Pulse presentation while keeping the same role permissions.</small>

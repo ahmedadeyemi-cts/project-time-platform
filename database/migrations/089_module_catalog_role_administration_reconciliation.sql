@@ -1,74 +1,4 @@
-from __future__ import annotations
-
-from pathlib import Path
-import re
-
-ROOT = Path(__file__).resolve().parents[1]
-
-REGISTRY = ROOT / "src/frontend/project-time-web/src/module-availability-registry.js"
-ROLE_MODEL = ROOT / "src/frontend/project-time-web/src/role-permission-model.js"
-NAV_POLICY = ROOT / "src/frontend/project-time-web/src/module-navigation-access-policy.js"
-VALIDATOR = ROOT / "src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs"
-PR_WORKFLOW = ROOT / ".github/workflows/enterprise-ui-polish-ci.yml"
-MIGRATION = ROOT / "database/migrations/089_module_catalog_role_administration_reconciliation.sql"
-ROLLBACK = ROOT / "database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql"
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
-
-
-def replace_once(path: Path, old: str, new: str) -> None:
-    text = read(path)
-    count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f"{path}: expected exactly one replacement anchor, found {count}")
-    write(path, text.replace(old, new, 1))
-
-
-def sql(value: str) -> str:
-    return value.replace("'", "''")
-
-
-registry = read(REGISTRY)
-pattern = re.compile(
-    r"Object\.freeze\(\{\s*"
-    r"moduleNumber:\s*'(?P<code>[^']+)'\s*,\s*"
-    r"route:\s*'(?P<route>[^']+)'\s*,\s*"
-    r"displayName:\s*'(?P<name>[^']+)'\s*,\s*"
-    r"group:\s*'(?P<group>[^']+)'",
-    re.S,
-)
-modules = [match.groupdict() for match in pattern.finditer(registry)]
-if len(modules) < 70:
-    raise RuntimeError(f"Expected at least 70 canonical modules, found {len(modules)}")
-codes = [module["code"].upper() for module in modules]
-if len(codes) != len(set(codes)):
-    raise RuntimeError("Canonical module registry contains duplicate module numbers")
-if "001A" not in codes:
-    raise RuntimeError("Module 001A is missing from the canonical module registry")
-
-catalog_values = ",\n".join(
-    "    "
-    + "("
-    + ", ".join(
-        [
-            f"'{sql(module['code'].upper())}'",
-            f"'{sql(module['name'])}'",
-            f"'{sql(module['route'])}'",
-            f"'{sql(module['group'])}'",
-        ]
-    )
-    + ")"
-    for module in modules
-)
-
-migration = f"""-- Pulse migration 089
+-- Pulse migration 089
 -- Reconcile the complete built-in module catalog with Modules 012/037 and
 -- restore Module 001A Engineer Request Closeout access for Engineer and
 -- Engineering Lead roles.
@@ -149,7 +79,77 @@ INSERT INTO projectpulse_089_module_catalog (
     module_group
 )
 VALUES
-{catalog_values};
+    ('001', 'Timesheet', 'timesheet', 'Time Management'),
+    ('001A', 'Engineer Request Closeout', 'engineer-task-closeout', 'Time Management'),
+    ('002', 'Approval Inbox', 'manager-approval', 'Approvals'),
+    ('003', 'Utilization', 'utilization', 'Resource Management'),
+    ('004', 'Holiday Administration', 'holiday-admin', 'Time Management'),
+    ('005', 'Project Expense Upload', 'project-allocation-info', 'Project Management'),
+    ('006', 'Toyota & Hyundai Pipelines', 'toyota-hyundai-pipelines', 'Sales & Opportunities'),
+    ('007', 'Approval, Export & Audit Workflow', 'workflow', 'Approvals'),
+    ('008', 'Audit History', 'audit-history', 'Security & Audit'),
+    ('009', 'User Administration', 'user-admin', 'Administration'),
+    ('010', 'Azure / Entra Directory Users', 'azure-admin', 'Administration'),
+    ('011', 'Celar AI', 'work-task-builder', 'AI & Automation'),
+    ('012', 'Role Administration', 'role-admin', 'Administration'),
+    ('013', 'System Health & API Diagnostics', 'service-control', 'Platform Operations'),
+    ('014', 'Backup & Disaster Recovery', 'backup-dr', 'Platform Operations'),
+    ('015', 'Restore Validation', 'restore-validation', 'Platform Operations'),
+    ('016', 'Operational Evidence & Backup Retention', 'backup-retention', 'Platform Operations'),
+    ('017', 'Replication & Sync', 'replication-sync', 'Platform Operations'),
+    ('018', 'Project Workload', 'project-workload', 'Project Management'),
+    ('019', 'Project Engineering Workspace', 'project-workspace', 'Project Delivery'),
+    ('020', 'Project Intake & Resource Handoff', 'project-intake', 'Project Delivery'),
+    ('021', 'Customer Directory', 'customer-directory', 'Customers'),
+    ('022', 'Cost Alerts', 'cost-alerts', 'Reports & Workflow'),
+    ('023', 'Time Compliance', 'time-compliance', 'Time Management'),
+    ('024', 'Sales Intake', 'sales-intake', 'Sales & Opportunities'),
+    ('025', 'SOW Generator', 'sow-generator', 'Sales & Opportunities'),
+    ('026', 'CRM / ERP Integration Center', 'crm-integration', 'Integrations'),
+    ('027', 'Signed Handoff', 'signed-handoff', 'Project Delivery'),
+    ('028', 'AI Time Entry', 'ai-time-entry', 'Time Management'),
+    ('029', 'UAT Validation', 'uat-validation', 'Platform Operations'),
+    ('030', 'Analytics Center', 'reporting', 'Reports & Workflow'),
+    ('031', 'Financial Operations Workbench', 'financial-operations-workbench', 'Reports & Workflow'),
+    ('032', 'Notification Delivery Monitor', 'notification-delivery-monitor', 'Reports & Workflow'),
+    ('033', 'Project Forge', 'project-forge', 'Project Delivery'),
+    ('036', 'Sales Insights Dashboard', 'sales-insights', 'Sales & Opportunities'),
+    ('037', 'Roles & Permissions Matrix', 'roles-permissions-matrix', 'Administration'),
+    ('038', 'Certify Connection & Sync Center', 'certify-integration', 'Integrations'),
+    ('039', 'Billing Readiness', 'billing-readiness', 'Reports & Workflow'),
+    ('040', 'Project Closeout', 'project-closeout', 'Reports & Workflow'),
+    ('041', 'Closeout Email Automation', 'closeout-email', 'Reports & Workflow'),
+    ('042', 'Invoice & Billing Center', 'invoice-billing-center', 'Reports & Workflow'),
+    ('055B', 'Rate Card Administration', 'rate-card-administration', 'Project Operations'),
+    ('055C', 'Manage Existing Projects', 'work-register', 'Project Operations'),
+    ('055D', 'Create New Project', 'create-work-register', 'Project Operations'),
+    ('057', 'Calendar & Capacity', 'calendar-capacity', 'Resource Management'),
+    ('058', 'CI/CD Pipeline', 'cicd-pipeline', 'Platform Operations'),
+    ('060', 'Contracts', 'contracts', 'Project Operations'),
+    ('063', 'Opportunities', 'opportunities', 'Sales & Opportunities'),
+    ('064', 'AI Provider Configuration Center', 'ai-provider-configuration', 'Security'),
+    ('065', 'Microsoft Integration Connection', 'entra-secret-administration', 'Integrations'),
+    ('066', 'Project FlowHive', 'project-flowhive', 'Project Delivery'),
+    ('067', 'Global Mail Configuration Center', 'global-mail-configuration', 'Platform Operations'),
+    ('068', 'Provider-Neutral System Architecture', 'system-architecture', 'Platform Operations'),
+    ('069', 'Qualifications & Certification Matrix', 'qualifications-certifications', 'Resources'),
+    ('070', 'Capacity & Pipeline Forecasting', 'capacity-pipeline-forecast', 'Resource Management'),
+    ('071', 'On-Call Scheduling', 'oncall-scheduling', 'Platform Operations'),
+    ('072', 'OneAssist Routing Directory', 'oneassist-routing-directory', 'Platform Operations'),
+    ('073', 'Sales Coverage Alignment', 'sales-coverage-alignment', 'Sales & Opportunities'),
+    ('074', 'OEM & Vendor Directory', 'oem-vendor-directory', 'Sales & Opportunities'),
+    ('075', 'Integration Automation & Event Gateway', 'integration-event-gateway', 'Platform Operations'),
+    ('076', 'Defect Intake & Resolution Tracker', 'defect-tracker', 'Help & Documentation'),
+    ('077', 'Release, Deployment & Rollback Control Center', 'release-deployment-control', 'Platform Operations'),
+    ('078', 'Observability, SLO & Application Health Center', 'observability-slo-health', 'Platform Operations'),
+    ('079', 'Data Governance, Retention & Privacy Center', 'data-governance-retention', 'Security & Audit'),
+    ('080', 'Customer Delivery & Acceptance Portal', 'customer-delivery-acceptance', 'Project Operations'),
+    ('081', 'Lab Equipment Tracker', 'lab-equipment-tracker', 'Platform Operations'),
+    ('082', 'Enterprise Project Risk Register', 'project-risk-register', 'Project Delivery'),
+    ('083', 'Full Future Loop', 'full-future-loop', 'Platform Operations'),
+    ('997', 'Security Operations, Threat Intelligence & Response Center', 'security-operations', 'Security & Audit'),
+    ('998', 'System Diagnostic & Controlled Remediation Center', 'system-diagnostics', 'Platform Operations'),
+    ('999', 'System User Guide', 'user-guide', 'Help & Documentation');
 
 INSERT INTO module_catalog_reconciliation_089_modules (
     module_code,
@@ -660,373 +660,3 @@ VALUES (
 ON CONFLICT (migration_id) DO NOTHING;
 
 COMMIT;
-"""
-
-rollback = """-- Rollback for Pulse migration 089.
---
--- Guardrail: a later published role-policy version must be handled separately.
--- The rollback refuses to overwrite newer authorization decisions.
-
-BEGIN;
-
-DO $projectpulse089_rollback_policy$
-DECLARE
-    previous_id UUID;
-    replacement_id UUID;
-    current_published_id UUID;
-BEGIN
-    IF to_regclass('public.module_catalog_reconciliation_089_policy_versions') IS NULL THEN
-        RETURN;
-    END IF;
-
-    SELECT
-        previous_policy_version_id,
-        replacement_policy_version_id
-    INTO
-        previous_id,
-        replacement_id
-    FROM module_catalog_reconciliation_089_policy_versions
-    WHERE singleton_key = TRUE;
-
-    IF previous_id IS NULL OR replacement_id IS NULL THEN
-        RETURN;
-    END IF;
-
-    SELECT policy_version_id
-    INTO current_published_id
-    FROM scoped_role_policy_versions
-    WHERE policy_status = 'PUBLISHED'
-    ORDER BY version_number DESC
-    LIMIT 1;
-
-    IF current_published_id = replacement_id THEN
-        UPDATE scoped_role_policy_versions
-        SET policy_status = 'RETIRED',
-            retired_at = NOW()
-        WHERE policy_version_id = replacement_id;
-
-        UPDATE scoped_role_policy_versions
-        SET policy_status = 'PUBLISHED',
-            retired_at = NULL
-        WHERE policy_version_id = previous_id;
-
-        IF to_regclass('public.scoped_role_policy_audit_events') IS NOT NULL THEN
-            INSERT INTO scoped_role_policy_audit_events (
-                policy_version_id,
-                event_code,
-                actor_user_id,
-                actor_email,
-                reason,
-                previous_state,
-                new_state,
-                event_metadata
-            )
-            VALUES (
-                previous_id,
-                'ROLLBACK_089_MODULE001A_ROLE_CATALOG_RESTORED',
-                NULL,
-                'rollback-089@pulse.local',
-                'Restore the scoped role-policy version that preceded migration 089.',
-                jsonb_build_object('policyVersionId', replacement_id),
-                jsonb_build_object('policyVersionId', previous_id),
-                jsonb_build_object('immutableAudit', TRUE)
-            );
-        END IF;
-    ELSIF current_published_id IS DISTINCT FROM previous_id THEN
-        RAISE EXCEPTION
-            'Rollback 089 refused: a newer scoped role-policy version (%) is published.',
-            current_published_id;
-    END IF;
-END;
-$projectpulse089_rollback_policy$;
-
-DO $projectpulse089_rollback_permissions$
-BEGIN
-    IF to_regclass('public.module_catalog_reconciliation_089_permission_grants') IS NULL THEN
-        RETURN;
-    END IF;
-
-    DELETE FROM app_role_permissions relationship
-    USING module_catalog_reconciliation_089_permission_grants introduced
-    WHERE relationship.app_role_id = introduced.app_role_id
-      AND relationship.app_permission_id = introduced.app_permission_id;
-END;
-$projectpulse089_rollback_permissions$;
-
-DO $projectpulse089_rollback_modules$
-BEGIN
-    IF to_regclass('public.module_catalog_reconciliation_089_modules') IS NULL THEN
-        RETURN;
-    END IF;
-
-    UPDATE scoped_role_policy_modules module
-    SET module_name = evidence.previous_module_name,
-        route_scope = evidence.previous_route_scope,
-        current_state = evidence.previous_current_state,
-        permission_notes = evidence.previous_permission_notes,
-        source_url = evidence.previous_source_url,
-        is_active = evidence.previous_is_active
-    FROM module_catalog_reconciliation_089_modules evidence
-    WHERE evidence.was_present = TRUE
-      AND module.module_code = evidence.module_code;
-
-    UPDATE scoped_role_policy_modules module
-    SET current_state = 'Rolled back',
-        permission_notes = 'Migration 089 registration rolled back. The inactive row is retained because immutable policy history may reference it.',
-        is_active = FALSE
-    FROM module_catalog_reconciliation_089_modules evidence
-    WHERE evidence.was_present = FALSE
-      AND module.module_code = evidence.module_code;
-END;
-$projectpulse089_rollback_modules$;
-
-DELETE FROM schema_migrations
-WHERE migration_id = '089_module_catalog_role_administration_reconciliation';
-
-DROP TABLE IF EXISTS module_catalog_reconciliation_089_permission_grants;
-DROP TABLE IF EXISTS module_catalog_reconciliation_089_policy_versions;
-DROP TABLE IF EXISTS module_catalog_reconciliation_089_modules;
-
-COMMIT;
-"""
-
-write(MIGRATION, migration)
-write(ROLLBACK, rollback)
-
-# Insert a module-specific preset after the Module 001 definition and before Module 002.
-role_text = read(ROLE_MODEL)
-anchor = """  },
-  '002': {
-"""
-module001a_special = """  },
-  '001A': {
-    View: ['MODULE_VIEW'],
-    'Create/Edit': ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT'],
-    Approve: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW'],
-    Manage: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW'],
-    Administer: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW', 'AUDIT_RECORD'],
-    'Full Control': ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW', 'AUDIT_RECORD']
-  },
-  '002': {
-"""
-if "'001A': {" not in role_text:
-    if role_text.count(anchor) != 1:
-        raise RuntimeError(f"{ROLE_MODEL}: Module 001A insertion anchor mismatch")
-    role_text = role_text.replace(anchor, module001a_special, 1)
-    write(ROLE_MODEL, role_text)
-
-replace_once(
-    ROLE_MODEL,
-    """  if (level === 'No Access') {
-    return [{ actionCode: 'MODULE_ACCESS', scopeCode: 'ORGANIZATION', effect: 'DENY', conditions, delegatedAuthority: false, reasonRequired: false, auditRequired: true, isActive: true }];
-  }
-""",
-    """  if (level === 'No Access') {
-    return [{ actionCode: 'MODULE_ACCESS', scopeCode: 'ORGANIZATION', effect: 'DENY', conditions: { ...conditions, scopeCode: 'ORGANIZATION' }, delegatedAuthority: false, reasonRequired: false, auditRequired: true, isActive: true }];
-  }
-""",
-)
-
-replace_once(
-    ROLE_MODEL,
-    """  if (role === 'PROJECT_TEAM_COORDINATOR') {
-    const excluded = new Set(['MODULE_CONFIGURE', 'POLICY_DELEGATE', 'POLICY_PUBLISH', 'POLICY_RESTORE', 'SYSTEM_CONFIGURE', 'TIME_SUBMIT', 'TIME_DELETE_PERMANENT']);
-    actions = actions.filter((actionCode) => !excluded.has(actionCode));
-  }
-
-  return actions.map((actionCode) => ({ actionCode, scopeCode: scope, effect: 'GRANT', conditions, ...flags(actionCode, role) }));
-""",
-    """  if (role === 'PROJECT_TEAM_COORDINATOR') {
-    const excluded = new Set(['MODULE_CONFIGURE', 'POLICY_DELEGATE', 'POLICY_PUBLISH', 'POLICY_RESTORE', 'SYSTEM_CONFIGURE', 'TIME_SUBMIT', 'TIME_DELETE_PERMANENT']);
-    actions = actions.filter((actionCode) => !excluded.has(actionCode));
-  }
-
-  actions = [...new Set(['MODULE_ACCESS', ...actions])];
-
-  return actions.map((actionCode) => {
-    const grantScope = actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope;
-    return {
-      actionCode,
-      scopeCode: grantScope,
-      effect: 'GRANT',
-      conditions: { ...conditions, scopeCode: grantScope },
-      ...flags(actionCode, role)
-    };
-  });
-""",
-)
-
-replace_once(
-    NAV_POLICY,
-    """      if (!roleSet.has(roleCodeOf(grant))) continue;
-      if (canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS') continue;
-      const moduleCode = moduleCodeOf(grant);
-""",
-    """      if (!roleSet.has(roleCodeOf(grant))) continue;
-      const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);
-      if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;
-      const moduleCode = moduleCodeOf(grant);
-""",
-)
-
-validator = read(VALIDATOR)
-validator = validator.replace(
-    """const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
-const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
-""",
-    """const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
-const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
-const catalogMigration = read('database/migrations/089_module_catalog_role_administration_reconciliation.sql');
-const catalogRollback = read('database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql');
-""",
-    1,
-)
-validator = validator.replace(
-    """const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
-const ui = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
-""",
-    """const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
-const rolePermissionModel = read('src/frontend/project-time-web/src/role-permission-model.js');
-const navigationPolicy = read('src/frontend/project-time-web/src/module-navigation-access-policy.js');
-const ui = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
-""",
-    1,
-)
-validator_anchor = """requireText(migration, "'#engineer-task-closeout'", 'feature registration');
-
-requireText(rollback, 'Rollback refused: Module 001A closeout records exist.', 'guarded rollback');
-"""
-validator_block = """requireText(migration, "'#engineer-task-closeout'", 'feature registration');
-
-const registryModules = [...registry.matchAll(
-  /Object\\.freeze\\(\\{\\s*moduleNumber:\\s*'([^']+)'\\s*,\\s*route:\\s*'([^']+)'\\s*,\\s*displayName:\\s*'([^']+)'\\s*,\\s*group:\\s*'([^']+)'/gs
-)].map((match) => ({ moduleCode: match[1].toUpperCase(), route: match[2], moduleName: match[3], group: match[4] }));
-if (registryModules.length < 70) {
-  failures.push(`module catalog reconciliation: expected at least 70 canonical modules, found ${registryModules.length}`);
-}
-if (new Set(registryModules.map((module) => module.moduleCode)).size !== registryModules.length) {
-  failures.push('module catalog reconciliation: canonical module numbers must be unique');
-}
-const sqlQuote = (value) => String(value).replaceAll("'", "''");
-for (const module of registryModules) {
-  requireText(
-    catalogMigration,
-    `('${sqlQuote(module.moduleCode)}', '${sqlQuote(module.moduleName)}', '${sqlQuote(module.route)}', '${sqlQuote(module.group)}')`,
-    `Role Administration catalog registration for Module ${module.moduleCode}`
-  );
-}
-for (const roleCode of ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD']) {
-  requireText(catalogMigration, `('${roleCode}', 'VIEW_ENGINEER_TASK_CLOSEOUT_001A')`, `${roleCode} view permission repair`);
-  requireText(catalogMigration, `('${roleCode}', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A')`, `${roleCode} manage permission repair`);
-}
-for (const roleCode of ['ENGINEERING', 'ENGINEERING_LEAD']) {
-  requireText(catalogMigration, `('${roleCode}', 'MODULE_ACCESS', 'ORGANIZATION', FALSE)`, `${roleCode} module access grant`);
-  requireText(catalogMigration, `('${roleCode}', 'WORKFLOW_MANAGE', 'SELF', FALSE)`, `${roleCode} self-scoped closeout workflow grant`);
-}
-requireText(catalogMigration, 'migration_089_module_catalog_role_administration_reconciliation', 'immutable policy source');
-requireText(catalogMigration, "'allowedWorkTypes', jsonb_build_array('SERVICE_REQUEST', 'PRESALES', 'INTERNAL')", 'eligible request types');
-requireText(catalogMigration, 'engineerOwnedOnly', 'own-assignment policy evidence');
-requireText(catalogRollback, 'Rollback 089 refused: a newer scoped role-policy version', 'guarded policy rollback');
-requireText(rolePermissionModel, "'001A': {", 'Module 001A intuitive permission preset');
-requireText(rolePermissionModel, "actions = [...new Set(['MODULE_ACCESS', ...actions])]", 'non-No Access presets grant module visibility');
-requireText(rolePermissionModel, "actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope", 'organization module-access scope');
-requireText(navigationPolicy, "['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)", 'legacy published Module View visibility compatibility');
-
-requireText(rollback, 'Rollback refused: Module 001A closeout records exist.', 'guarded rollback');
-"""
-if validator.count(validator_anchor) != 1:
-    raise RuntimeError(f"{VALIDATOR}: catalog validation anchor mismatch")
-validator = validator.replace(validator_anchor, validator_block, 1)
-
-backend_role_anchor = """requireText(backend, 'pa.user_id = @engineer_user_id', 'own-assignment server scope');
-requireText(backend, 'reason.Length < 10', 'required reopen reason');
-"""
-backend_role_block = """requireText(backend, 'pa.user_id = @engineer_user_id', 'own-assignment server scope');
-for (const roleCode of ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD']) {
-  requireText(backend, `"${roleCode}"`, `${roleCode} runtime access`);
-}
-for (const normalizedWorkType of ["'servicerequest'", "'presales'", "'internal'"]) {
-  requireText(backend, normalizedWorkType, `${normalizedWorkType} closeout eligibility`);
-}
-requireText(backend, 'reason.Length < 10', 'required reopen reason');
-"""
-if validator.count(backend_role_anchor) != 1:
-    raise RuntimeError(f"{VALIDATOR}: backend role validation anchor mismatch")
-validator = validator.replace(backend_role_anchor, backend_role_block, 1)
-write(VALIDATOR, validator)
-
-workflow = read(PR_WORKFLOW)
-workflow = workflow.replace(
-    "name: Enterprise UI and On-Call Follow-up CI",
-    "name: Enterprise UI, On-Call, and Module 001A RBAC Follow-up CI",
-    1,
-)
-workflow = workflow.replace(
-    """      - 'docs/modules/module-072-oneassist-routing-directory/**'
-""",
-    """      - 'docs/modules/module-072-oneassist-routing-directory/**'
-      - 'database/migrations/089_module_catalog_role_administration_reconciliation.sql'
-      - 'database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql'
-      - 'src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs'
-      - 'src/frontend/project-time-web/src/role-permission-model.js'
-      - 'src/frontend/project-time-web/src/module-navigation-access-policy.js'
-""",
-    1,
-)
-workflow = workflow.replace(
-    "name: Validate Appearance, Celar controls, On-Call access, and OneAssist boundary",
-    "name: Validate Appearance, Celar controls, On-Call access, and Module 001A RBAC",
-    1,
-)
-workflow = workflow.replace(
-    """          docs/modules/module-072-oneassist-routing-directory/README.md
-""",
-    """          docs/modules/module-072-oneassist-routing-directory/README.md
-          database/migrations/089_module_catalog_role_administration_reconciliation.sql
-          database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql
-""",
-    1,
-)
-workflow = workflow.replace(
-    """          src/frontend/project-time-web/scripts/validate-module-072-oneassist-routing-directory.mjs
-""",
-    """          src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
-          src/frontend/project-time-web/scripts/validate-module-072-oneassist-routing-directory.mjs
-""",
-    1,
-)
-workflow = workflow.replace(
-    """          src/frontend/project-time-web/src/main.jsx
-""",
-    """          src/frontend/project-time-web/src/main.jsx
-          src/frontend/project-time-web/src/module-navigation-access-policy.js
-          src/frontend/project-time-web/src/role-permission-model.js
-""",
-    1,
-)
-workflow = workflow.replace(
-    """          node --check ./scripts/validate-module-071-oncall-scheduling.mjs
-          node --check ./scripts/validate-module-072-oneassist-routing-directory.mjs
-""",
-    """          node --check ./scripts/validate-module-001a-engineer-request-closeout.mjs
-          node --check ./scripts/validate-module-071-oncall-scheduling.mjs
-          node --check ./scripts/validate-module-072-oneassist-routing-directory.mjs
-          node --check ./src/module-navigation-access-policy.js
-          node --check ./src/role-permission-model.js
-""",
-    1,
-)
-workflow = workflow.replace(
-    """          node ./scripts/validate-enterprise-ui-polish.mjs
-          node ./scripts/validate-module-071-oncall-scheduling.mjs
-""",
-    """          node ./scripts/validate-enterprise-ui-polish.mjs
-          node ./scripts/validate-module-001a-engineer-request-closeout.mjs
-          node ./scripts/validate-module-071-oncall-scheduling.mjs
-""",
-    1,
-)
-write(PR_WORKFLOW, workflow)
-
-print(f"MODULE_CATALOG_COUNT={len(modules)}")
-print("PR698_MODULE001A_ROLE_CATALOG_PATCH=READY")
