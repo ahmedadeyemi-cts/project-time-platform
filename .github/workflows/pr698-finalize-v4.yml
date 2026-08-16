@@ -80,6 +80,67 @@ jobs:
           python3 /tmp/pr698-finalizer/apply_pr698_table_module_management.py
           python3 /tmp/pr698-finalizer/apply_workspace_navigation.py
 
+      - name: Align shared workspace-navigation validator contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+
+          web_root = Path('src/frontend/project-time-web')
+          scripts_root = web_root / 'scripts'
+          policy_path = web_root / 'src' / 'module-navigation-access-policy.js'
+          declaration = 'const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);'
+          action_filter = "if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;"
+          legacy_expression = "canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'"
+          legacy_line = re.compile(
+              r'^(?P<indent>\s*)"canonicalRoleCode\(grant\?\.actionCode \?\? grant\?\.ActionCode\) !== \'MODULE_ACCESS\'",\s*$',
+              re.MULTILINE,
+          )
+
+          changed = []
+          for path in sorted(scripts_root.glob('validate-*.mjs')):
+              text = path.read_text(encoding='utf-8')
+              if legacy_expression not in text:
+                  continue
+
+              def replace(match):
+                  indent = match.group('indent')
+                  return (
+                      f"{indent}'{declaration}',\n"
+                      f'{indent}"{action_filter}",'
+                  )
+
+              updated, count = legacy_line.subn(replace, text)
+              if count == 0:
+                  raise RuntimeError(
+                      f'Found retired navigation contract in {path}, but its validator line could not be normalized.'
+                  )
+              path.write_text(updated, encoding='utf-8')
+              changed.append(f'{path}:{count}')
+
+          remaining = []
+          for path in sorted(scripts_root.glob('validate-*.mjs')):
+              if legacy_expression in path.read_text(encoding='utf-8'):
+                  remaining.append(str(path))
+          if remaining:
+              raise RuntimeError(f'Retired one-code validator contract remains: {remaining}')
+
+          policy = policy_path.read_text(encoding='utf-8')
+          for required in (declaration, action_filter, "effect === 'DENY'", 'explicitDeniedModuleNumbers.add(moduleCode)'):
+              if required not in policy:
+                  raise RuntimeError(f'Shared navigation policy missing current contract: {required}')
+          if legacy_expression in policy:
+              raise RuntimeError('Shared navigation policy regressed to the retired one-code contract.')
+
+          print(
+              'PR698_WORKSPACE_NAVIGATION_VALIDATORS=PASS '
+              f'normalized={len(changed)} files={";".join(changed) if changed else "none"} '
+              'actions=MODULE_ACCESS,MODULE_VIEW explicitDeny=preserved'
+          )
+          PYCODE
+
       - name: Align workspace quick-launcher component contract
         shell: bash
         run: |
@@ -154,22 +215,19 @@ jobs:
           print(f'AFTER={replacement}')
           PYCODE
 
-      - name: Remove temporary finalizer controls and stage product source
+      - name: Stage validated product source without workflow-token cleanup
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .github/pr698-payload
-          rm -f .github/workflows/pr698-finalize.yml
-          rm -f .github/workflows/pr698-finalize-v2.yml
-          rm -f .github/workflows/pr698-finalize-v3.yml
-          rm -f .github/workflows/pr698-finalize-v4.yml
-          rm -f .github/workflows/pr698-module001a-role-catalog-patcher.yml
-          rm -f .github/workflows/pr698-workspace-navigation-diagnostic.yml
-          rm -f .github/workflows/pr698-api-build-diagnostic.yml
           rm -f scripts/pr698_module001a_catalog_patch.py
           git add -A
           git diff --cached --check
-          echo PR698_FINAL_SOURCE_STAGED=PASS
+          if git diff --cached --name-only | grep -qE '^\.github/(workflows/|pr698-payload/)'; then
+            echo 'The Actions token must not publish temporary workflow or payload cleanup.' >&2
+            git diff --cached --name-only | grep -E '^\.github/(workflows/|pr698-payload/)' >&2 || true
+            exit 1
+          fi
+          echo PR698_FINAL_PRODUCT_SOURCE_STAGED=PASS cleanup=connector-after-validation
 
       - name: Validate repository security posture
         shell: bash
@@ -256,7 +314,7 @@ jobs:
           git diff --cached --check
           echo PR698_CLEAN_SOURCE=PASS
 
-      - name: Publish exact validated source to the PR branch
+      - name: Publish exact validated product source to the PR branch
         shell: bash
         run: |
           set -euo pipefail
