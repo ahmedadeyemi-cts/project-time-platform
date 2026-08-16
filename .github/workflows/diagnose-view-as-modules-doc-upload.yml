@@ -177,6 +177,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          git_api_post() {
+            local endpoint="$1"
+            local request_file="$2"
+            local response_file="$3"
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/$endpoint" \
+              --data-binary "@$request_file" \
+              > "$response_file"
+          }
 
           [[ -z "$(git diff --name-only)" ]] || {
             git status --short >&2
@@ -203,25 +216,35 @@ jobs:
               jq -cn --arg path "$path" --arg mode "$mode" --arg sha "$blob_sha" \
                 '{path:$path,mode:$mode,type:"blob",sha:$sha}' >> "$EVIDENCE/tree-elements.ndjson"
             else
-              jq -cn --arg path "$path" \
-                '{path:$path,mode:"100644",type:"blob",sha:null}' >> "$EVIDENCE/tree-elements.ndjson"
+              jq -cn --arg path "$path" '{path:$path,sha:null}' \
+                >> "$EVIDENCE/tree-elements.ndjson"
             fi
           done < "$EVIDENCE/expected-paths.txt"
 
           jq -s '.' "$EVIDENCE/tree-elements.ndjson" > "$EVIDENCE/tree-elements.json"
           base_tree="$(git rev-parse "$EXPECTED_BASE^{tree}")"
-          tree_sha="$(jq -n \
+          jq -n \
             --arg base_tree "$base_tree" \
             --slurpfile tree "$EVIDENCE/tree-elements.json" \
             '{base_tree:$base_tree,tree:$tree[0]}' \
-            | gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')"
+            > "$EVIDENCE/create-tree-request.json"
+          git_api_post \
+            'git/trees' \
+            "$EVIDENCE/create-tree-request.json" \
+            "$EVIDENCE/create-tree-response.json"
+          tree_sha="$(jq -er '.sha' "$EVIDENCE/create-tree-response.json")"
 
-          commit_sha="$(jq -n \
+          jq -n \
             --arg message 'Fix View-As identity, Modules parity, and 055C document continuity' \
             --arg tree "$tree_sha" \
             --arg parent "$EXPECTED_BASE" \
             '{message:$message,tree:$tree,parents:[$parent]}' \
-            | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')"
+            > "$EVIDENCE/create-commit-request.json"
+          git_api_post \
+            'git/commits' \
+            "$EVIDENCE/create-commit-request.json" \
+            "$EVIDENCE/create-commit-response.json"
+          commit_sha="$(jq -er '.sha' "$EVIDENCE/create-commit-response.json")"
 
           printf '%s\n' "$EXPECTED_BASE" > "$EVIDENCE/base-sha.txt"
           printf '%s\n' "$tree_sha" > "$EVIDENCE/prepared-tree-sha.txt"
