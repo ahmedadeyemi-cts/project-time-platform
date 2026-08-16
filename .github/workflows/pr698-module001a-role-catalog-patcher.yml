@@ -1,0 +1,63 @@
+name: PR 698 Module 001A Role Catalog Patcher
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - scripts/pr698_module001a_catalog_patch.py
+      - .github/workflows/pr698-module001a-role-catalog-patcher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr698-module001a-role-catalog-patcher
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/classic-appearance-celar-controls-20260815
+          fetch-depth: 0
+
+      - name: Apply Module 001A and module catalog reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/pr698_module001a_catalog_patch.py
+          python scripts/pr698_module001a_catalog_patch.py
+          git diff --check
+
+      - name: Validate focused source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/frontend/project-time-web/src/role-permission-model.js
+          node --check src/frontend/project-time-web/src/module-navigation-access-policy.js
+          node --check src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+          node src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+
+      - name: Remove temporary patch controls and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f scripts/pr698_module001a_catalog_patch.py
+          rm -f .github/workflows/pr698-module001a-role-catalog-patcher.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No source changes were produced.' >&2
+            exit 1
+          fi
+          git commit -m 'fix(rbac): reconcile Module 001A and module catalog'
+          git push origin HEAD:fix/classic-appearance-celar-controls-20260815
