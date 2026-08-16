@@ -1,3 +1,4 @@
+# Triggered after aligning Module 075 validation with the canonical workspace registry.
 name: PR 698 Finalize Validated Product Source V4
 
 on:
