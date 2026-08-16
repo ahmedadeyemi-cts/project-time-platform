@@ -1,0 +1,75 @@
+name: Diagnose protected-Test served bundle markers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Build frontend and report every served-bundle marker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Build exact production frontend and diagnose markers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund
+          npm run build
+
+          BUNDLE="$RUNNER_TEMP/protected-test-frontend-bundle.txt"
+          find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) -print0 \
+            | sort -z \
+            | xargs -0 cat > "$BUNDLE"
+
+          markers=(
+            'pulse-display-utility-dock'
+            'Evidence score'
+            'Project Cost Alerts'
+            'Data incomplete'
+            'Select or type a customer'
+            'FlowHive enterprise controls are temporarily unavailable.'
+            'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'
+            '--project-workload-responsive-metrics:1'
+            'Login, logout & sessions'
+          )
+
+          missing=0
+          printf 'BUNDLE_BYTES=%s\n' "$(wc -c < "$BUNDLE" | tr -d '[:space:]')"
+          for marker in "${markers[@]}"; do
+            if grep -Fq -- "$marker" "$BUNDLE"; then
+              printf 'MARKER_PRESENT::%s\n' "$marker"
+            else
+              printf 'MARKER_MISSING::%s\n' "$marker"
+              missing=1
+            fi
+          done
+
+          printf '%s\n' '--- RELATED DISPLAY/UTILITY TOKENS ---'
+          grep -Eo -- 'pulse-[A-Za-z0-9_-]*(display|utility)[A-Za-z0-9_-]*' "$BUNDLE" \
+            | LC_ALL=C sort -u | head -100 || true
+          printf '%s\n' '--- RELATED LOGIN/AUDIT TOKENS ---'
+          grep -Eo -- '.{0,60}(Login|logout|sessions).{0,60}' "$BUNDLE" \
+            | head -100 || true
+
+          if (( missing != 0 )); then
+            echo 'SERVED_BUNDLE_MARKER_DIAGNOSTIC=FAILED'
+            exit 1
+          fi
+          echo 'SERVED_BUNDLE_MARKER_DIAGNOSTIC=PASSED'
