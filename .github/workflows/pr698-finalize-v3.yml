@@ -45,7 +45,7 @@ jobs:
           git config user.name 'PR 698 validation builder'
           git config user.email 'pr698-validation@users.noreply.github.com'
           git merge --no-ff --no-commit origin/main
-          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" HEAD
+          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_MAIN_SHA"
           echo "PR698_CURRENT_MAIN_RECONCILED=$actual_main"
 
       - name: Reconstruct and verify reviewed implementation payload
