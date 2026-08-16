@@ -1,4 +1,4 @@
-name: Diagnose View-As, Modules, and document upload
+name: Publish validated View-As, Modules, and document repair
 
 on:
   push:
@@ -8,37 +8,180 @@ on:
       - .github/workflows/diagnose-view-as-modules-doc-upload.yml
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: publish-view-as-modules-055c-document-continuity
+  cancel-in-progress: false
 
 jobs:
-  collect:
-    name: Collect complete current source
+  publish:
+    name: Apply, validate, and publish exact product repair
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
+    env:
+      TARGET_BRANCH: fix/view-as-modules-055c-document-continuity-20260816
+      EXPECTED_BASE: 1b60d1cda5fce24d99dd3850f2a65b1b27d7c374
+      PATCH_SHA256: b0ad08bfe997e86f5b27e55ab6242c10871924c991c946e845c29e7e7d2ebfd1
     steps:
-      - name: Check out exact diagnostic source
+      - name: Check out temporary publication controller
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
-      - name: Package complete source without Git metadata
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct and apply exact product patch
+        id: source
         shell: bash
         run: |
           set -Eeuo pipefail
-          tar \
-            --exclude='./.git' \
-            --exclude='./node_modules' \
-            --exclude='./**/node_modules' \
-            --exclude='./**/bin' \
-            --exclude='./**/obj' \
-            -czf "$RUNNER_TEMP/projectpulse-complete-source.tgz" .
-          sha256sum "$RUNNER_TEMP/projectpulse-complete-source.tgz"
+          fail() { echo "ERROR: $*" >&2; exit 1; }
 
-      - name: Upload complete source
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: projectpulse-complete-source-${{ github.run_id }}
-          path: ${{ runner.temp }}/projectpulse-complete-source.tgz
-          if-no-files-found: error
-          retention-days: 1
+          PATCH_GZ="$RUNNER_TEMP/view-as-modules-055c-product.patch.gz"
+          PATCH_FILE="$RUNNER_TEMP/view-as-modules-055c-product.patch"
+          WORKTREE="$RUNNER_TEMP/view-as-modules-055c-product"
+
+          cat .github/view-as-modules-055c-payload/chunk-*.b64 \
+            | base64 --decode > "$PATCH_GZ"
+          gzip --decompress --stdout "$PATCH_GZ" > "$PATCH_FILE"
+          [[ "$(sha256sum "$PATCH_FILE" | awk '{print $1}')" == "$PATCH_SHA256" ]] \
+            || fail 'The reconstructed product patch checksum does not match the reviewed patch.'
+
+          git fetch origin main "$TARGET_BRANCH"
+          [[ "$(git rev-parse origin/main)" == "$EXPECTED_BASE" ]] \
+            || fail 'main advanced after review; refusing to apply a stale repair.'
+          [[ "$(git rev-parse "origin/$TARGET_BRANCH")" == "$EXPECTED_BASE" ]] \
+            || fail 'The product branch changed after review; refusing to overwrite newer work.'
+
+          git worktree add --detach "$WORKTREE" "origin/$TARGET_BRANCH"
+          git -C "$WORKTREE" apply --check "$PATCH_FILE"
+          git -C "$WORKTREE" apply "$PATCH_FILE"
+
+          rm -rf \
+            "$WORKTREE/.github/pr698-payload" \
+            "$WORKTREE/.github/workflows/pr698-finalize.yml" \
+            "$WORKTREE/.github/workflows/pr698-finalize-v2.yml" \
+            "$WORKTREE/.github/workflows/pr698-finalize-v3.yml" \
+            "$WORKTREE/.github/workflows/pr698-finalize-v4.yml" \
+            "$WORKTREE/.github/workflows/pr698-trigger-finalize-v4.yml" \
+            "$WORKTREE/.github/workflows/pr698-workspace-navigation-diagnostic.yml"
+
+          expected=(
+            .github/pr698-payload/chunk-000.b64
+            .github/pr698-payload/chunk-001.b64
+            .github/pr698-payload/chunk-002.b64
+            .github/pr698-payload/chunk-003.b64
+            .github/pr698-payload/chunk-004.b64
+            .github/pr698-payload/chunk-005.b64
+            .github/pr698-payload/chunk-006.b64
+            .github/pr698-payload/chunk-007.b64
+            .github/pr698-payload/chunk-008.b64
+            .github/pr698-payload/chunk-009.b64
+            .github/pr698-payload/chunk-010.b64
+            .github/workflows/pr698-finalize-v2.yml
+            .github/workflows/pr698-finalize-v3.yml
+            .github/workflows/pr698-finalize-v4.yml
+            .github/workflows/pr698-finalize.yml
+            .github/workflows/pr698-trigger-finalize-v4.yml
+            .github/workflows/pr698-workspace-navigation-diagnostic.yml
+            .github/workflows/projectpulse-deploy-test.yml
+            .github/workflows/view-as-modules-work-register-documents-ci.yml
+            src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+            src/backend/ProjectTime.Api/Program.cs
+            src/frontend/project-time-web/scripts/validate-view-as-modules-work-register-documents.mjs
+            src/frontend/project-time-web/scripts/validate-workspace-navigation.mjs
+            src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx
+            src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+            src/frontend/project-time-web/src/PageContextGuide.jsx
+            src/frontend/project-time-web/src/WorkRegisterCenter.jsx
+            src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx
+            src/frontend/project-time-web/src/module-directory-authority.js
+            src/frontend/project-time-web/src/view-as-storage-compatibility.js
+            src/frontend/project-time-web/src/work-register-document-integrity.js
+          )
+
+          git -C "$WORKTREE" add -A -- "${expected[@]}"
+          mapfile -t actual < <(git -C "$WORKTREE" diff --cached --name-only | sort)
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          diff -u <(printf '%s\n' "${wanted[@]}") <(printf '%s\n' "${actual[@]}") \
+            || fail 'The staged repair does not match the exact reviewed source boundary.'
+          [[ -z "$(git -C "$WORKTREE" diff --name-only)" ]] \
+            || fail 'Unstaged source changes remain after exact staging.'
+          git -C "$WORKTREE" diff --cached --check
+
+          echo "worktree=$WORKTREE" >> "$GITHUB_OUTPUT"
+          echo 'EXACT_PRODUCT_SOURCE_BOUNDARY=PASSED'
+
+      - name: Run focused source and security validation
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-view-as-modules-work-register-documents.mjs
+          node src/frontend/project-time-web/scripts/validate-workspace-navigation.mjs
+          node src/frontend/project-time-web/scripts/validate-global-view-as-drawer.mjs
+          node src/frontend/project-time-web/scripts/validate-work-register-055c-055d.mjs
+          node src/frontend/project-time-web/scripts/validate-project-workspace-document-download.mjs
+          node src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-modules-directory-page.mjs
+            node scripts/validate-project-management-scope-approval-documents.mjs
+          )
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --cached --check
+
+      - name: Build complete API Release
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+
+      - name: Audit and build complete frontend production bundle
+        working-directory: ${{ steps.source.outputs.worktree }}/src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Preserve exact reviewed source after builds
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          [[ -z "$(git diff --name-only)" ]] || {
+            echo 'ERROR: Validation or build mutated tracked source:' >&2
+            git status --short >&2
+            exit 1
+          }
+          git diff --cached --check
+          test ! -e .github/pr698-payload
+          test ! -e .github/workflows/pr698-finalize.yml
+          test ! -e .github/workflows/pr698-finalize-v2.yml
+          test ! -e .github/workflows/pr698-finalize-v3.yml
+          test ! -e .github/workflows/pr698-finalize-v4.yml
+          test ! -e .github/workflows/pr698-trigger-finalize-v4.yml
+          test ! -e .github/workflows/pr698-workspace-navigation-diagnostic.yml
+          echo 'POST_BUILD_SOURCE_BOUNDARY=PASSED'
+
+      - name: Commit and push validated product repair
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git commit -m 'Fix View-As identity, Modules parity, and 055C document continuity'
+          PRODUCT_COMMIT="$(git rev-parse HEAD)"
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "PRODUCT_REPAIR_COMMIT=$PRODUCT_COMMIT"
+          echo 'PRODUCT_REPAIR_PUBLISHED=TRUE'
