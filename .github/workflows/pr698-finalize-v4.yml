@@ -215,19 +215,30 @@ jobs:
           print(f'AFTER={replacement}')
           PYCODE
 
-      - name: Stage validated product source without workflow-token cleanup
+      - name: Defer workflow-only changes and stage validated product source
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p /tmp/pr698-finalizer
+          git diff -- .github/workflows > /tmp/pr698-finalizer/deferred-workflow.patch || true
+          echo PR698_DEFERRED_WORKFLOW_PATCH_START
+          cat /tmp/pr698-finalizer/deferred-workflow.patch
+          echo PR698_DEFERRED_WORKFLOW_PATCH_END
+
+          git restore --source=HEAD --staged --worktree -- .github/workflows
+          git clean -fd -- .github/workflows
+          git restore --source=HEAD --staged --worktree -- .github/pr698-payload
+          git clean -fd -- .github/pr698-payload
           rm -f scripts/pr698_module001a_catalog_patch.py
+
           git add -A
           git diff --cached --check
           if git diff --cached --name-only | grep -qE '^\.github/(workflows/|pr698-payload/)'; then
-            echo 'The Actions token must not publish temporary workflow or payload cleanup.' >&2
+            echo 'The Actions token must not publish temporary workflow or payload changes.' >&2
             git diff --cached --name-only | grep -E '^\.github/(workflows/|pr698-payload/)' >&2 || true
             exit 1
           fi
-          echo PR698_FINAL_PRODUCT_SOURCE_STAGED=PASS cleanup=connector-after-validation
+          echo PR698_FINAL_PRODUCT_SOURCE_STAGED=PASS workflowChanges=deferred cleanup=connector-after-validation
 
       - name: Validate repository security posture
         shell: bash
