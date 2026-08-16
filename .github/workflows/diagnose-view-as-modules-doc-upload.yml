@@ -153,6 +153,26 @@ jobs:
           npm audit --audit-level=high
           npm run build
 
+      - name: Capture exact post-build source status
+        if: always() && steps.source.outputs.worktree != ''
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set +e
+          {
+            echo '=== GIT STATUS ==='
+            git status --short --untracked-files=all
+            echo '=== UNSTAGED FILES ==='
+            git diff --name-only
+            echo '=== UNSTAGED STAT ==='
+            git diff --stat
+            echo '=== STAGED FILES ==='
+            git diff --cached --name-only
+            echo '=== HEAD ==='
+            git rev-parse HEAD
+          } > "$RUNNER_TEMP/post-build-source-status.txt"
+          cat "$RUNNER_TEMP/post-build-source-status.txt"
+
       - name: Preserve exact reviewed source after builds
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
@@ -172,6 +192,15 @@ jobs:
           test ! -e .github/workflows/pr698-trigger-finalize-v4.yml
           test ! -e .github/workflows/pr698-workspace-navigation-diagnostic.yml
           echo 'POST_BUILD_SOURCE_BOUNDARY=PASSED'
+
+      - name: Upload post-build source status
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: view-as-modules-055c-post-build-status-${{ github.run_id }}
+          path: ${{ runner.temp }}/post-build-source-status.txt
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Commit and push validated product repair
         shell: bash
