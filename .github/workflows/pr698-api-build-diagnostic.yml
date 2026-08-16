@@ -1,0 +1,96 @@
+name: PR 698 API Build Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - '.github/workflows/pr698-api-build-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr698-api-build-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_MAIN_SHA: 823fae340a731ba92c5266349ad759493b5629a8
+      EXPECTED_PAYLOAD_SHA256: 507587a7fd5ba34d104a688b4f524399e35be62ac713cbda078d12d56c7aa539
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/classic-appearance-celar-controls-20260815
+          fetch-depth: 0
+
+      - name: Reconcile exact current main locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          actual_main="$(git rev-parse origin/main)"
+          test "$actual_main" = "$EXPECTED_MAIN_SHA"
+          git config user.name 'PR 698 API diagnostic'
+          git config user.email 'pr698-api-diagnostic@users.noreply.github.com'
+          git merge --no-ff --no-commit origin/main
+          git commit -m 'diagnostic: reconcile exact current main'
+
+      - name: Reconstruct and apply reviewed payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pr698-api/account-stage/tools
+          cat .github/pr698-payload/chunk-*.b64 > /tmp/pr698-api/payload.b64
+          base64 --decode /tmp/pr698-api/payload.b64 > /tmp/pr698-api/payload.tar.gz
+          actual_payload_sha="$(sha256sum /tmp/pr698-api/payload.tar.gz | awk '{print $1}')"
+          test "$actual_payload_sha" = "$EXPECTED_PAYLOAD_SHA256"
+          tar -xzf /tmp/pr698-api/payload.tar.gz -C /tmp/pr698-api
+          cp /tmp/pr698-api/apply_pr698_account_center.py /tmp/pr698-api/account-stage/tools/
+          python3 /tmp/pr698-api/account-stage/tools/apply_pr698_account_center.py "$GITHUB_WORKSPACE"
+          python3 /tmp/pr698-api/apply_pr698_table_module_management.py
+          python3 /tmp/pr698-api/apply_workspace_navigation.py
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          path = Path('src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs')
+          text = path.read_text(encoding='utf-8')
+          target = 'ownerUserId = reader.IsDBNull(1) ? null : reader.GetGuid(1),'
+          replacement = 'ownerUserId = reader.IsDBNull(1) ? (Guid?)null : reader.GetGuid(1),'
+          if text.count(target) != 1:
+              raise RuntimeError(f'Expected one nullable owner GUID expression, found {text.count(target)}')
+          path.write_text(text.replace(target, replacement, 1), encoding='utf-8')
+          PYCODE
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Capture compact API build failure
+        shell: bash
+        run: |
+          set +e
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj >/tmp/pr698-restore.log 2>&1
+          restore_status=$?
+          if [[ $restore_status -ne 0 ]]; then
+            echo '===== RESTORE FAILURE ====='
+            grep -nE '(^|[ :])(error|Error|ERROR)([ :]|$)|NU[0-9]{4}' /tmp/pr698-restore.log | tail -n 120 || true
+            tail -n 120 /tmp/pr698-restore.log
+            exit $restore_status
+          fi
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore >/tmp/pr698-build.log 2>&1
+          build_status=$?
+          echo "PR698_API_BUILD_EXIT_CODE=$build_status"
+          if [[ $build_status -ne 0 ]]; then
+            echo '===== COMPILER ERRORS ====='
+            grep -nE 'error (CS|MSB|NETSDK|NU)[0-9]+|: error |Build FAILED|[0-9]+ Error\(s\)' /tmp/pr698-build.log | tail -n 200 || true
+            echo '===== BUILD TAIL ====='
+            tail -n 180 /tmp/pr698-build.log
+            exit $build_status
+          fi
+          echo 'PR698_API_BUILD=PASS'
