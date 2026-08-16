@@ -144,6 +144,7 @@ jobs:
           rm -f .github/workflows/pr698-finalize-v4.yml
           rm -f .github/workflows/pr698-module001a-role-catalog-patcher.yml
           rm -f .github/workflows/pr698-workspace-navigation-diagnostic.yml
+          rm -f .github/workflows/pr698-api-build-diagnostic.yml
           rm -f scripts/pr698_module001a_catalog_patch.py
           git add -A
           git diff --cached --check
@@ -170,9 +171,25 @@ jobs:
       - name: Build API
         shell: bash
         run: |
-          set -euo pipefail
-          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+          set +e
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj >/tmp/pr698-api-restore.log 2>&1
+          restore_status=$?
+          if [[ $restore_status -ne 0 ]]; then
+            echo '===== API RESTORE FAILURE ====='
+            grep -nE '(^|[ :])(error|Error|ERROR)([ :]|$)|NU[0-9]{4}' /tmp/pr698-api-restore.log | tail -n 160 || true
+            tail -n 160 /tmp/pr698-api-restore.log
+            exit $restore_status
+          fi
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore >/tmp/pr698-api-build.log 2>&1
+          build_status=$?
+          if [[ $build_status -ne 0 ]]; then
+            echo '===== API COMPILER ERRORS ====='
+            grep -nE 'error (CS|MSB|NETSDK|NU)[0-9]+|: error |Build FAILED|[0-9]+ Error\(s\)' /tmp/pr698-api-build.log | tail -n 220 || true
+            echo '===== API BUILD TAIL ====='
+            tail -n 200 /tmp/pr698-api-build.log
+            exit $build_status
+          fi
+          echo PR698_API_BUILD=PASS
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
