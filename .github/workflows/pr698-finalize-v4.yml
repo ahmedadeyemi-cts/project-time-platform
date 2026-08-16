@@ -1,0 +1,211 @@
+name: PR 698 Finalize Validate and Publish
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - '.github/workflows/pr698-finalize-v4.yml'
+      - '.github/pr698-payload/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr698-finalize-validate-publish
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Finalize exact-main PR 698 release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EXPECTED_MAIN_SHA: 823fae340a731ba92c5266349ad759493b5629a8
+      EXPECTED_PAYLOAD_SHA256: 507587a7fd5ba34d104a688b4f524399e35be62ac713cbda078d12d56c7aa539
+      TARGET_BRANCH: fix/classic-appearance-celar-controls-20260815
+
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/classic-appearance-celar-controls-20260815
+          fetch-depth: 0
+
+      - name: Verify and reconcile exact current main locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          actual_main="$(git rev-parse origin/main)"
+          if [[ "$actual_main" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "Current main moved: expected $EXPECTED_MAIN_SHA, found $actual_main" >&2
+            exit 1
+          fi
+          git config user.name 'PR 698 release builder'
+          git config user.email 'pr698-release@users.noreply.github.com'
+          git merge --no-ff --no-commit origin/main
+          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_MAIN_SHA"
+          git commit -m 'chore: reconcile PR 698 with exact current main'
+          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" HEAD
+          echo "PR698_CURRENT_MAIN_RECONCILED=$actual_main"
+
+      - name: Reconstruct and verify reviewed implementation payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pr698-finalizer
+          cat .github/pr698-payload/chunk-*.b64 > /tmp/pr698-finalizer/payload.b64
+          base64 --decode /tmp/pr698-finalizer/payload.b64 > /tmp/pr698-finalizer/payload.tar.gz
+          actual_payload_sha="$(sha256sum /tmp/pr698-finalizer/payload.tar.gz | awk '{print $1}')"
+          if [[ "$actual_payload_sha" != "$EXPECTED_PAYLOAD_SHA256" ]]; then
+            echo "PR 698 payload checksum mismatch: expected $EXPECTED_PAYLOAD_SHA256, found $actual_payload_sha" >&2
+            exit 1
+          fi
+          tar -tzf /tmp/pr698-finalizer/payload.tar.gz > /tmp/pr698-finalizer/payload-files.txt
+          tar -xzf /tmp/pr698-finalizer/payload.tar.gz -C /tmp/pr698-finalizer
+          python3 -m py_compile /tmp/pr698-finalizer/apply_pr698_account_center.py
+          python3 -m py_compile /tmp/pr698-finalizer/apply_pr698_table_module_management.py
+          python3 -m py_compile /tmp/pr698-finalizer/apply_workspace_navigation.py
+          echo "PR698_FINALIZER_PAYLOAD=PASS sha256=$actual_payload_sha"
+
+      - name: Apply Account Center, Table ownership, Module 001A, and Workspace navigation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pr698-finalizer/account-stage/tools
+          cp /tmp/pr698-finalizer/apply_pr698_account_center.py /tmp/pr698-finalizer/account-stage/tools/
+          python3 /tmp/pr698-finalizer/account-stage/tools/apply_pr698_account_center.py "$GITHUB_WORKSPACE"
+          python3 /tmp/pr698-finalizer/apply_pr698_table_module_management.py
+          python3 /tmp/pr698-finalizer/apply_workspace_navigation.py
+
+      - name: Correct nullable module-owner identifier inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs')
+          text = path.read_text(encoding='utf-8')
+          lines = text.splitlines()
+          candidates = [
+              index for index, line in enumerate(lines)
+              if 'var ' in line
+              and '? null :' in line
+              and ('GetGuid(' in line or 'Guid.Parse(' in line or 'new Guid(' in line)
+          ]
+          if len(candidates) != 1:
+              start = max(0, 82)
+              end = min(len(lines), 106)
+              print('MODULE_CATALOG_OWNERSHIP_CONTEXT_START')
+              for number in range(start, end):
+                  print(f'{number + 1:04d}: {lines[number]}')
+              print('MODULE_CATALOG_OWNERSHIP_CONTEXT_END')
+              raise RuntimeError(
+                  f'Expected exactly one nullable Guid inference candidate, found {len(candidates)}'
+              )
+          index = candidates[0]
+          original = lines[index]
+          lines[index] = original.replace('var ', 'Guid? ', 1)
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print(f'PR698_NULLABLE_OWNER_GUID_FIX=PASS line={index + 1}')
+          print(f'BEFORE={original.strip()}')
+          print(f'AFTER={lines[index].strip()}')
+          PYCODE
+
+      - name: Remove temporary finalizer controls and stage product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/pr698-payload
+          rm -f .github/workflows/pr698-finalize.yml
+          rm -f .github/workflows/pr698-finalize-v2.yml
+          rm -f .github/workflows/pr698-finalize-v3.yml
+          rm -f .github/workflows/pr698-finalize-v4.yml
+          rm -f .github/workflows/pr698-module001a-role-catalog-patcher.yml
+          rm -f scripts/pr698_module001a_catalog_patch.py
+          git add -A
+          git diff --cached --check
+          echo PR698_FINAL_SOURCE_STAGED=PASS
+
+      - name: Validate repository security posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build API
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+
+      - name: Validate focused release contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ./scripts/inject-celar-ai-ask-operations.mjs
+          node --check ./scripts/validate-account-center.mjs
+          node --check ./scripts/validate-workspace-navigation.mjs
+          node --check ./scripts/validate-enterprise-ui-polish.mjs
+          node --check ./scripts/validate-module-001a-engineer-request-closeout.mjs
+          node --check ./scripts/validate-pr698-table-module-management.mjs
+          node --check ./scripts/validate-module-071-oncall-scheduling.mjs
+          node --check ./scripts/validate-module-072-oneassist-routing-directory.mjs
+          node --check ./src/module-navigation-access-policy.js
+          node --check ./src/role-permission-model.js
+          node ./scripts/validate-account-center.mjs
+          node ./scripts/validate-workspace-navigation.mjs
+          node ./scripts/validate-enterprise-ui-polish.mjs
+          node ./scripts/validate-module-001a-engineer-request-closeout.mjs
+          node ./scripts/validate-pr698-table-module-management.mjs
+          node ./scripts/validate-module-071-oncall-scheduling.mjs
+          node ./scripts/validate-module-072-oneassist-routing-directory.mjs
+          python3 - <<'PYCODE'
+          import xml.etree.ElementTree as ET
+          ET.parse('src/assets/module-006-customer-brands.svg')
+          print('MODULE_006_CUSTOMER_BRANDS_SVG=PASS')
+          PYCODE
+
+      - name: Run complete frontend production build
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Confirm validation did not mutate staged product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --check
+          echo PR698_CLEAN_SOURCE=PASS
+
+      - name: Publish exact validated source to the PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git diff --cached --stat origin/main
+          git commit -m 'feat: finalize Account Center and workspace navigation'
+          validated_sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PR698_VALIDATED_SOURCE_PUBLISHED=$validated_sha"
