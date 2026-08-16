@@ -129,6 +129,7 @@ function approvalRequestHeaders(input, init) {
   const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
   headers.set('Cache-Control', 'no-cache');
   headers.set('Pragma', 'no-cache');
+  headers.set('X-ProjectPulse-Module-Number', '002');
   return headers;
 }
 

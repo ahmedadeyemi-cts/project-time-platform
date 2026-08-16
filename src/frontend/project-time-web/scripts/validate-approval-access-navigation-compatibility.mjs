@@ -22,12 +22,22 @@ const paths = {
   approvalCenter: 'src/frontend/project-time-web/src/ApprovalCenter.jsx',
   mailbox: 'src/frontend/project-time-web/src/ApprovalMailbox.jsx',
   backend: 'src/backend/ProjectTime.Api/Modules/ApprovalCenterModule.cs',
+  scopedRules: 'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyRules.cs',
+  scopedEvaluator: 'src/backend/ProjectTime.Api/Modules/ScopedAuthorizationEvaluator.cs',
   packageJson: 'src/frontend/project-time-web/package.json'
 };
 
-const [main, app, compatibility, approvalCenter, mailbox, backend, packageJson] = await Promise.all(
-  Object.values(paths).map(text)
-);
+const [
+  main,
+  app,
+  compatibility,
+  approvalCenter,
+  mailbox,
+  backend,
+  scopedRules,
+  scopedEvaluator,
+  packageJson
+] = await Promise.all(Object.values(paths).map(text));
 
 const appImport = [
   "import App from './App.jsx';",
@@ -108,8 +118,37 @@ requireText(backend, [
   '"PROJECT_MANAGEMENT"',
   'app.MapGet("/api/approval-center/access"',
   'app.MapGet("/api/manager/approval-count"',
-  'access = ToAccessPayload(access)'
+  'access = ToAccessPayload(access)',
+  'if (!access.IsProjectManager) return false;',
+  'p.project_manager_user_id = @actor_user_id'
 ], 'Backend-authoritative approval access');
+
+requireText(scopedRules, [
+  'IsEndpointScopedApprovalReadCompatibilityDeny',
+  '!isWrite',
+  'string.Equals(moduleCode, "002", StringComparison.OrdinalIgnoreCase)',
+  'string.Equals(actionCode, "APPROVAL_VIEW", StringComparison.OrdinalIgnoreCase)',
+  'string.Equals(denyActionCode, "MODULE_ACCESS", StringComparison.OrdinalIgnoreCase)',
+  'ScopedRolePolicyModule.CanonicalRole(roleCode)',
+  '"PROJECT_MANAGEMENT"'
+], 'Narrow Module 002 Project Management read compatibility');
+
+requireText(scopedEvaluator, [
+  'if (actor.IsViewAs && isWrite)',
+  'ScopedRolePolicyRules.NonBypassableActions.Contains(normalizedAction)',
+  'var blockingExplicitDeny = explicitDenies.FirstOrDefault',
+  'var endpointScopedApprovalReadCompatibility = explicitDenies.FirstOrDefault',
+  'ScopedRolePolicyRules.IsEndpointScopedApprovalReadCompatibilityDeny(',
+  'if (blockingExplicitDeny is not null)',
+  'if (endpointScopedApprovalReadCompatibility is not null)',
+  'Project Management Module 002 read access is enforced by the Approval Center endpoint',
+  'Approval writes, password-reset approval, and administrative actions remain governed by scoped policy.'
+], 'Server-side scoped-policy compatibility');
+
+if (scopedEvaluator.indexOf('if (blockingExplicitDeny is not null)')
+    > scopedEvaluator.indexOf('if (endpointScopedApprovalReadCompatibility is not null)')) {
+  throw new Error('Non-compatible explicit denials must be enforced before the narrow Approval read fallback.');
+}
 
 requireText(packageJson, [
   'validate:approval-access-compatibility',
@@ -117,4 +156,4 @@ requireText(packageJson, [
   'npm run validate:approval-access-compatibility'
 ], 'Production build wiring');
 
-console.log('Backend-authoritative approval access recovery, cache bypass, and Modules title restoration contracts passed.');
+console.log('Backend-authoritative Approval access, narrow Module 002 read compatibility, cache bypass, and Modules title restoration contracts passed.');

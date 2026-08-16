@@ -43,6 +43,21 @@ public static class ScopedRolePolicyRules
         WriteActions.Contains(actionCode ?? string.Empty)
         || NonBypassableActions.Contains(actionCode ?? string.Empty);
 
+    public static bool IsEndpointScopedApprovalReadCompatibilityDeny(
+        string roleCode,
+        string moduleCode,
+        string actionCode,
+        string denyActionCode,
+        bool isWrite) =>
+        !isWrite
+        && string.Equals(moduleCode, "002", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(actionCode, "APPROVAL_VIEW", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(denyActionCode, "MODULE_ACCESS", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(
+            ScopedRolePolicyModule.CanonicalRole(roleCode),
+            "PROJECT_MANAGEMENT",
+            StringComparison.OrdinalIgnoreCase);
+
     public static ScopedRouteContract? RouteContract(string path, string method)
     {
         var normalized = NormalizeRoutePath(path);

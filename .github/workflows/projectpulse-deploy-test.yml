@@ -514,6 +514,16 @@ jobs:
           jq 'del(.sessionToken)' "$ENGINEER_RESPONSE" > "$EVIDENCE_DIR/engineer-login-redacted.json"
           rm -f "$ENGINEER_RESPONSE"
 
+          PROJECT_MANAGER='heather.schrock@ussignal.local'
+          PROJECT_MANAGER_RESPONSE="$(mktemp)"
+          PROJECT_MANAGER_STATUS="$(login "$PROJECT_MANAGER" "$PROJECT_MANAGER_RESPONSE" "$TEST_LOGIN_PASSWORD")"
+          [[ "$PROJECT_MANAGER_STATUS" == 200 ]] || fail "Project Manager login returned HTTP $PROJECT_MANAGER_STATUS."
+          jq -e '.provider == "LOCAL" and .mustChangePassword == false and (.sessionToken | type == "string" and length > 0)' "$PROJECT_MANAGER_RESPONSE" >/dev/null || fail 'Project Manager login response did not satisfy the session contract.'
+          PROJECT_MANAGER_SESSION="$(jq -r '.sessionToken' "$PROJECT_MANAGER_RESPONSE")"
+          echo "::add-mask::$PROJECT_MANAGER_SESSION"
+          jq 'del(.sessionToken)' "$PROJECT_MANAGER_RESPONSE" > "$EVIDENCE_DIR/project-manager-login-redacted.json"
+          rm -f "$PROJECT_MANAGER_RESPONSE"
+
           auth_get() {
             local path="$1" output="$2" headers="$3" stderr_file="$4"
             local session="${5:-$COORDINATOR_SESSION}" module_number="${6:-019}"
@@ -603,6 +613,18 @@ jobs:
           require_get 'Project financial portfolio' '/api/project-financials/portfolio?workspace=pm&limit=250' "$EVIDENCE_DIR/project-financial-portfolio.json"
           require_get 'Cost alert workflow' '/api/projects/cost-alerts' "$EVIDENCE_DIR/cost-alerts.json"
           require_get 'Customer directory' '/api/customers/overview' "$EVIDENCE_DIR/customer-directory.json"
+          require_get 'Project Manager module availability' '/api/module-availability/overrides' "$EVIDENCE_DIR/project-manager-module-availability.json" "$PROJECT_MANAGER_SESSION" '009'
+          jq -e '(.states | type == "array") and ((.access.effectiveRoles // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER"))' "$EVIDENCE_DIR/project-manager-module-availability.json" >/dev/null || fail 'Project Manager module availability did not preserve effective role evidence.'
+          require_get 'Project Manager Work Register overview' '/api/work-register/overview' "$EVIDENCE_DIR/project-manager-work-register.json" "$PROJECT_MANAGER_SESSION" '055C'
+          jq -e '(.workItems | type == "array") and ((.workItems | length) > 0) and (.access.scope == "managed_projects" or .access.scope == "project_management_team")' "$EVIDENCE_DIR/project-manager-work-register.json" >/dev/null || fail 'Project Manager Work Register scope did not return an authorized project collection.'
+          require_get 'Project Manager Approval access' '/api/approval-center/access' "$EVIDENCE_DIR/project-manager-approval-access.json" "$PROJECT_MANAGER_SESSION" '002'
+          jq -e '.canViewTimeApprovals == true and ((.roleCodes // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER" or . == "PROJECT_MANAGEMENT_LEAD"))' "$EVIDENCE_DIR/project-manager-approval-access.json" >/dev/null || fail 'Project Manager Approval Inbox access was not available.'
+          PROJECT_MANAGER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/project-manager-logout.json" -w '%{http_code}' \
+            -X POST -H "Authorization: Bearer $PROJECT_MANAGER_SESSION" -H "X-ProjectPulse-Session: $PROJECT_MANAGER_SESSION" \
+            -H 'X-ProjectPulse-Module-Number: 002' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' "$BASE/api/auth/session/logout" || true)"
+          [[ "$PROJECT_MANAGER_LOGOUT_STATUS" == 200 ]] || fail "Project Manager logout returned HTTP $PROJECT_MANAGER_LOGOUT_STATUS."
+          unset PROJECT_MANAGER_SESSION
           require_get 'Opportunity directory' '/api/opportunities?scope=all' "$EVIDENCE_DIR/opportunities.json" "$ENGINEER_SESSION" '063'
           ENGINEER_LOGOUT_STATUS="$(curl -sS --max-time 60 -o "$EVIDENCE_DIR/engineer-logout.json" -w '%{http_code}' \
             -X POST -H "Authorization: Bearer $ENGINEER_SESSION" -H "X-ProjectPulse-Session: $ENGINEER_SESSION" \
@@ -682,27 +704,71 @@ jobs:
 
           PORTAL_HTML="$RUNNER_TEMP/systemwide-reliability-test-portal.html"
           FRONTEND_BUNDLE="$RUNNER_TEMP/systemwide-reliability-test-assets.txt"
-          PORTAL_STATUS="$(curl -sS --max-time 60 -o "$PORTAL_HTML" -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_RUN_ID" || true)"
-          [[ "$PORTAL_STATUS" == 200 ]] || fail "Protected Test portal returned HTTP $PORTAL_STATUS."
-          mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
-          (( ${#FRONTEND_ASSETS[@]} > 0 )) || fail 'Protected Test portal exposed no frontend assets.'
-          : > "$FRONTEND_BUNDLE"
-          for asset in "${FRONTEND_ASSETS[@]}"; do
-            case "$asset" in
-              /assets/*) curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "$BASE$asset" >> "$FRONTEND_BUNDLE" ;;
-              *) fail "Unexpected frontend asset path: $asset" ;;
-            esac
+          FRONTEND_CONVERGENCE_LOG="$EVIDENCE_DIR/served-frontend-convergence.log"
+          : > "$FRONTEND_CONVERGENCE_LOG"
+          FRONTEND_READY=false
+          for attempt in $(seq 1 36); do
+            CACHE_BUSTER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            PORTAL_STATUS="$(curl -sS --max-time 60 -o "$PORTAL_HTML" -w '%{http_code}'               -H 'Cache-Control: no-cache, no-store, max-age=0'               -H 'Pragma: no-cache'               "$BASE/?release_check=$CACHE_BUSTER" || true)"
+            FRONTEND_ASSETS=()
+            MISSING_MARKERS=()
+            ASSET_FETCH_OK=true
+
+            if [[ "$PORTAL_STATUS" == 200 ]]; then
+              mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML"                 | sed -E 's/^(src|href)="([^"]+)"$/\2/'                 | sort -u)
+              if (( ${#FRONTEND_ASSETS[@]} > 0 )); then
+                : > "$FRONTEND_BUNDLE"
+                for asset in "${FRONTEND_ASSETS[@]}"; do
+                  case "$asset" in
+                    /assets/*)
+                      ASSET_URL="$BASE$asset"
+                      case "$ASSET_URL" in
+                        *\?*) ASSET_URL+="&release_check=$CACHE_BUSTER" ;;
+                        *) ASSET_URL+="?release_check=$CACHE_BUSTER" ;;
+                      esac
+                      if ! curl -fsS --max-time 90                         -H 'Cache-Control: no-cache, no-store, max-age=0'                         -H 'Pragma: no-cache'                         "$ASSET_URL" >> "$FRONTEND_BUNDLE"; then
+                        ASSET_FETCH_OK=false
+                        printf 'attempt=%s assetFetchFailed=%s\n' "$attempt" "$asset" >> "$FRONTEND_CONVERGENCE_LOG"
+                        break
+                      fi
+                      ;;
+                    *)
+                      ASSET_FETCH_OK=false
+                      printf 'attempt=%s unexpectedAsset=%s\n' "$attempt" "$asset" >> "$FRONTEND_CONVERGENCE_LOG"
+                      break
+                      ;;
+                  esac
+                done
+
+                if [[ "$ASSET_FETCH_OK" == true ]]; then
+                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
+                    grep -Fq -- "$marker" "$FRONTEND_BUNDLE" || MISSING_MARKERS+=("$marker")
+                  done
+                fi
+              else
+                ASSET_FETCH_OK=false
+              fi
+            else
+              ASSET_FETCH_OK=false
+            fi
+
+            printf 'attempt=%s portalStatus=%s assetCount=%s assetFetchOk=%s missingCount=%s\n'               "$attempt" "$PORTAL_STATUS" "${#FRONTEND_ASSETS[@]}" "$ASSET_FETCH_OK" "${#MISSING_MARKERS[@]}"               >> "$FRONTEND_CONVERGENCE_LOG"
+            for marker in "${MISSING_MARKERS[@]}"; do
+              printf 'attempt=%s missingMarker=%s\n' "$attempt" "$marker" >> "$FRONTEND_CONVERGENCE_LOG"
+            done
+
+            if [[ "$PORTAL_STATUS" == 200               && "$ASSET_FETCH_OK" == true               && ${#FRONTEND_ASSETS[@]} -gt 0               && ${#MISSING_MARKERS[@]} -eq 0 ]]; then
+              FRONTEND_READY=true
+              echo "PROTECTED_TEST_FRONTEND_CONVERGED attempt=$attempt assets=${#FRONTEND_ASSETS[@]}"
+              break
+            fi
+            (( attempt < 36 )) && sleep 5
           done
-          for marker in \
-            'pulse-display-utility-dock' \
-            'Evidence score' \
-            'Project Cost Alerts' \
-            'Data incomplete' \
-            'Select or type a customer' \
-            'FlowHive enterprise controls are temporarily unavailable.' \
-            'Login, logout & sessions'; do
-            grep -Fq "$marker" "$FRONTEND_BUNDLE" || fail "Deployed frontend bundle is missing marker: $marker"
-          done
+
+          if [[ "$FRONTEND_READY" != true ]]; then
+            tail -n 200 "$FRONTEND_CONVERGENCE_LOG" >&2 || true
+            fail 'Protected Test frontend did not converge to the required served bundle after 36 attempts.'
+          fi
 
           API_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
           WEB_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
@@ -718,7 +784,7 @@ jobs:
             --arg apiImage "$ACTIVE_API_IMAGE" \
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg projectId "$PROJECT_ID" \
-            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
+            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
       - name: Run protected-Test utilization role-scoping UAT

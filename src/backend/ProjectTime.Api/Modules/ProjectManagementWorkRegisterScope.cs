@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
@@ -117,6 +118,7 @@ internal static class ProjectManagementWorkRegisterScope
                 {
                     status = "work_register_read_scope_unavailable",
                     module = "055C",
+                    correlationId = context.TraceIdentifier,
                     message = "Project visibility could not be verified. No project data was returned."
                 }, context.RequestAborted);
                 return true;
@@ -262,6 +264,7 @@ internal static class ProjectManagementWorkRegisterScope
                 {
                     status = "work_register_read_scope_unavailable",
                     module = "055C",
+                    correlationId = context.TraceIdentifier,
                     message = "Project visibility could not be verified. No project data was returned."
                 }, context.RequestAborted);
             }
@@ -357,7 +360,7 @@ internal static class ProjectManagementWorkRegisterScope
                     FROM user_admin_manager_team_assignments team_scope
                     WHERE team_scope.manager_user_id = @user_id
                       AND team_scope.is_active = TRUE
-                      AND lower(team_scope.team_name) = lower(COALESCE(project_manager.team_name, ''))
+                      AND lower(team_scope.team_name) = lower(COALESCE(NULLIF(to_jsonb(project_manager)->>'team_name', ''), NULLIF(to_jsonb(project_manager)->>'department_name', ''), ''))
                 )
               """
             : string.Empty;
@@ -375,13 +378,16 @@ internal static class ProjectManagementWorkRegisterScope
                  OR (
                         @can_view_team = TRUE
                     AND (
-                           lower(COALESCE(project_manager.manager_email, '')) = lower(@actor_email)
+                           lower(COALESCE(to_jsonb(project_manager)->>'manager_email', '')) = lower(@actor_email)
                            {assignmentClause}
                         )
                     )
               );
             """, connection);
-        command.Parameters.AddWithValue("project_id", (object?)projectId ?? DBNull.Value);
+        var projectIdParameter = command.Parameters.Add("project_id", NpgsqlDbType.Uuid);
+        projectIdParameter.Value = projectId.HasValue
+    ? (object)projectId.Value
+    : DBNull.Value;
         command.Parameters.AddWithValue("user_id", identity.UserId);
         command.Parameters.AddWithValue("actor_email", identity.Email);
         command.Parameters.AddWithValue("can_view_own", identity.CanViewOwnProjects);
