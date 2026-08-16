@@ -56,16 +56,24 @@ jobs:
           python3 /tmp/pr698-diagnostic/apply_pr698_table_module_management.py
           python3 /tmp/pr698-diagnostic/apply_workspace_navigation.py
 
-      - name: Print workspace navigation validator and implementation evidence
+      - name: Print workspace navigation implementation and marker report
         shell: bash
         run: |
           set -euo pipefail
           echo '===== VALIDATOR ====='
           sed -n '1,260p' src/frontend/project-time-web/scripts/validate-workspace-navigation.mjs
-          echo '===== MATCHING FILES ====='
-          grep -RIlE 'WorkspaceQuickLauncher|WorkspaceDirectoryPage|View all workspaces|Search workspaces|Recently used' src/frontend/project-time-web/src | sort || true
-          echo '===== MATCHING LINES ====='
-          grep -RInE 'WorkspaceQuickLauncher|WorkspaceDirectoryPage|View all workspaces|Search workspaces|Recently used' src/frontend/project-time-web/src | head -n 500 || true
-          echo '===== SOURCE TREE ====='
-          find src/frontend/project-time-web/src -maxdepth 2 -type f | sort | grep -Ei 'workspace|account|profile|setting|more' || true
+          echo '===== COMPONENT 1-220 ====='
+          sed -n '1,220p' src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx
+          echo '===== COMPONENT 221-460 ====='
+          sed -n '221,460p' src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx
+          echo '===== FUNCTION DECLARATIONS ====='
+          grep -nE '^(function|const [A-Za-z0-9_]+ ?=|export default function)' src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx || true
+          echo '===== MARKER REPORT ====='
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          component = Path('src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx').read_text(encoding='utf-8')
+          markers = ['WorkspaceQuickLauncher', 'Workspace Directory', 'Search workspaces', 'View all workspaces', 'Recently used', 'Favorites', 'Browse by category', 'Toyota', 'Hyundai', 'Turion', 'authorizedModulesFromNavigationState', '__projectPulseEffectiveNavigation', 'View-As active', 'Retry verification', 'workspace-directory']
+          for marker in markers:
+              print(f'{marker}={component.count(marker)}')
+          PYCODE
           exit 1
