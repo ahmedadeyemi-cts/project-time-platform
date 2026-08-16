@@ -1,4 +1,4 @@
-name: PR 698 Prebuild Navigation Diagnostic
+name: PR 698 Trigger Final Validated Build
 
 on:
   push:
@@ -6,22 +6,18 @@ on:
       - fix/classic-appearance-celar-controls-20260815
     paths:
       - '.github/workflows/pr698-api-build-diagnostic.yml'
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: pr698-prebuild-navigation-diagnostic
+  group: pr698-trigger-final-validated-build
   cancel-in-progress: true
 
 jobs:
-  diagnose:
+  trigger:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      EXPECTED_MAIN_SHA: 823fae340a731ba92c5266349ad759493b5629a8
-      EXPECTED_PAYLOAD_SHA256: 507587a7fd5ba34d104a688b4f524399e35be62ac713cbda078d12d56c7aa539
+    timeout-minutes: 10
     steps:
       - name: Check out PR branch
         uses: actions/checkout@v4
@@ -29,57 +25,15 @@ jobs:
           ref: fix/classic-appearance-celar-controls-20260815
           fetch-depth: 0
 
-      - name: Reconcile exact current main locally
+      - name: Trigger finalizer on the corrected branch and remove this helper
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          actual_main="$(git rev-parse origin/main)"
-          test "$actual_main" = "$EXPECTED_MAIN_SHA"
-          git config user.name 'PR 698 prebuild diagnostic'
-          git config user.email 'pr698-prebuild-diagnostic@users.noreply.github.com'
-          git merge --no-ff --no-commit origin/main
-          git commit -m 'diagnostic: reconcile exact current main'
-
-      - name: Reconstruct and apply reviewed payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/pr698-prebuild/account-stage/tools
-          cat .github/pr698-payload/chunk-*.b64 > /tmp/pr698-prebuild/payload.b64
-          base64 --decode /tmp/pr698-prebuild/payload.b64 > /tmp/pr698-prebuild/payload.tar.gz
-          actual_payload_sha="$(sha256sum /tmp/pr698-prebuild/payload.tar.gz | awk '{print $1}')"
-          test "$actual_payload_sha" = "$EXPECTED_PAYLOAD_SHA256"
-          tar -xzf /tmp/pr698-prebuild/payload.tar.gz -C /tmp/pr698-prebuild
-          cp /tmp/pr698-prebuild/apply_pr698_account_center.py /tmp/pr698-prebuild/account-stage/tools/
-          python3 /tmp/pr698-prebuild/account-stage/tools/apply_pr698_account_center.py "$GITHUB_WORKSPACE"
-          python3 /tmp/pr698-prebuild/apply_pr698_table_module_management.py
-          python3 /tmp/pr698-prebuild/apply_workspace_navigation.py
-
-      - name: Record policy before prebuild
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha256sum src/module-navigation-access-policy.js
-          grep -nE 'MODULE_ACCESS|actionCode|explicitDeniedModuleNumbers' src/module-navigation-access-policy.js || true
-
-      - name: Run production prebuild
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: npm run prebuild
-
-      - name: Print policy after prebuild
-        working-directory: src/frontend/project-time-web
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '===== POLICY SHA AFTER PREBUILD ====='
-          sha256sum src/module-navigation-access-policy.js
-          echo '===== RELEVANT POLICY LINES ====='
-          grep -nE 'MODULE_ACCESS|actionCode|explicitDeniedModuleNumbers' src/module-navigation-access-policy.js || true
-          echo '===== COMPLETE POLICY ====='
-          cat src/module-navigation-access-policy.js
-          echo '===== MODIFIED FILES ====='
-          git status --short
-          exit 1
+          git config user.name 'PR 698 finalizer trigger'
+          git config user.email 'pr698-finalizer-trigger@users.noreply.github.com'
+          printf '\n# Triggered after shared navigation grant-contract convergence.\n' >> .github/workflows/pr698-finalize-v4.yml
+          git rm .github/workflows/pr698-api-build-diagnostic.yml
+          git add .github/workflows/pr698-finalize-v4.yml
+          git diff --cached --check
+          git commit -m 'ci: trigger corrected PR 698 final validation'
+          git push origin HEAD:fix/classic-appearance-celar-controls-20260815
