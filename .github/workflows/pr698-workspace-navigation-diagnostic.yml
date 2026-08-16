@@ -1,0 +1,71 @@
+name: PR 698 Workspace Navigation Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - '.github/workflows/pr698-workspace-navigation-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr698-workspace-navigation-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_MAIN_SHA: 823fae340a731ba92c5266349ad759493b5629a8
+      EXPECTED_PAYLOAD_SHA256: 507587a7fd5ba34d104a688b4f524399e35be62ac713cbda078d12d56c7aa539
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/classic-appearance-celar-controls-20260815
+          fetch-depth: 0
+
+      - name: Reconcile exact current main locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          actual_main="$(git rev-parse origin/main)"
+          test "$actual_main" = "$EXPECTED_MAIN_SHA"
+          git config user.name 'PR 698 diagnostic'
+          git config user.email 'pr698-diagnostic@users.noreply.github.com'
+          git merge --no-ff --no-commit origin/main
+          git commit -m 'diagnostic: reconcile exact current main'
+
+      - name: Reconstruct and apply reviewed payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pr698-diagnostic/account-stage/tools
+          cat .github/pr698-payload/chunk-*.b64 > /tmp/pr698-diagnostic/payload.b64
+          base64 --decode /tmp/pr698-diagnostic/payload.b64 > /tmp/pr698-diagnostic/payload.tar.gz
+          actual_payload_sha="$(sha256sum /tmp/pr698-diagnostic/payload.tar.gz | awk '{print $1}')"
+          test "$actual_payload_sha" = "$EXPECTED_PAYLOAD_SHA256"
+          tar -xzf /tmp/pr698-diagnostic/payload.tar.gz -C /tmp/pr698-diagnostic
+          cp /tmp/pr698-diagnostic/apply_pr698_account_center.py /tmp/pr698-diagnostic/account-stage/tools/
+          python3 /tmp/pr698-diagnostic/account-stage/tools/apply_pr698_account_center.py "$GITHUB_WORKSPACE"
+          python3 /tmp/pr698-diagnostic/apply_pr698_table_module_management.py
+          python3 /tmp/pr698-diagnostic/apply_workspace_navigation.py
+
+      - name: Print workspace navigation validator and implementation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== VALIDATOR ====='
+          sed -n '1,260p' src/frontend/project-time-web/scripts/validate-workspace-navigation.mjs
+          echo '===== MATCHING FILES ====='
+          grep -RIlE 'WorkspaceQuickLauncher|WorkspaceDirectoryPage|View all workspaces|Search workspaces|Recently used' src/frontend/project-time-web/src | sort || true
+          echo '===== MATCHING LINES ====='
+          grep -RInE 'WorkspaceQuickLauncher|WorkspaceDirectoryPage|View all workspaces|Search workspaces|Recently used' src/frontend/project-time-web/src | head -n 500 || true
+          echo '===== SOURCE TREE ====='
+          find src/frontend/project-time-web/src -maxdepth 2 -type f | sort | grep -Ei 'workspace|account|profile|setting|more' || true
+          exit 1
