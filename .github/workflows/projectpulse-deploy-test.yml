@@ -704,29 +704,71 @@ jobs:
 
           PORTAL_HTML="$RUNNER_TEMP/systemwide-reliability-test-portal.html"
           FRONTEND_BUNDLE="$RUNNER_TEMP/systemwide-reliability-test-assets.txt"
-          PORTAL_STATUS="$(curl -sS --max-time 60 -o "$PORTAL_HTML" -w '%{http_code}' -H 'Cache-Control: no-cache' "$BASE/?release=$GITHUB_RUN_ID" || true)"
-          [[ "$PORTAL_STATUS" == 200 ]] || fail "Protected Test portal returned HTTP $PORTAL_STATUS."
-          mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML" | sed -E 's/^(src|href)="([^"]+)"$/\2/' | sort -u)
-          (( ${#FRONTEND_ASSETS[@]} > 0 )) || fail 'Protected Test portal exposed no frontend assets.'
-          : > "$FRONTEND_BUNDLE"
-          for asset in "${FRONTEND_ASSETS[@]}"; do
-            case "$asset" in
-              /assets/*) curl -fsS --max-time 90 -H 'Cache-Control: no-cache' "$BASE$asset" >> "$FRONTEND_BUNDLE" ;;
-              *) fail "Unexpected frontend asset path: $asset" ;;
-            esac
+          FRONTEND_CONVERGENCE_LOG="$EVIDENCE_DIR/served-frontend-convergence.log"
+          : > "$FRONTEND_CONVERGENCE_LOG"
+          FRONTEND_READY=false
+          for attempt in $(seq 1 36); do
+            CACHE_BUSTER="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}"
+            PORTAL_STATUS="$(curl -sS --max-time 60 -o "$PORTAL_HTML" -w '%{http_code}'               -H 'Cache-Control: no-cache, no-store, max-age=0'               -H 'Pragma: no-cache'               "$BASE/?release_check=$CACHE_BUSTER" || true)"
+            FRONTEND_ASSETS=()
+            MISSING_MARKERS=()
+            ASSET_FETCH_OK=true
+
+            if [[ "$PORTAL_STATUS" == 200 ]]; then
+              mapfile -t FRONTEND_ASSETS < <(grep -oE '(src|href)="[^"]+\.(js|css)(\?[^"]*)?"' "$PORTAL_HTML"                 | sed -E 's/^(src|href)="([^"]+)"$/\2/'                 | sort -u)
+              if (( ${#FRONTEND_ASSETS[@]} > 0 )); then
+                : > "$FRONTEND_BUNDLE"
+                for asset in "${FRONTEND_ASSETS[@]}"; do
+                  case "$asset" in
+                    /assets/*)
+                      ASSET_URL="$BASE$asset"
+                      case "$ASSET_URL" in
+                        *\?*) ASSET_URL+="&release_check=$CACHE_BUSTER" ;;
+                        *) ASSET_URL+="?release_check=$CACHE_BUSTER" ;;
+                      esac
+                      if ! curl -fsS --max-time 90                         -H 'Cache-Control: no-cache, no-store, max-age=0'                         -H 'Pragma: no-cache'                         "$ASSET_URL" >> "$FRONTEND_BUNDLE"; then
+                        ASSET_FETCH_OK=false
+                        printf 'attempt=%s assetFetchFailed=%s\n' "$attempt" "$asset" >> "$FRONTEND_CONVERGENCE_LOG"
+                        break
+                      fi
+                      ;;
+                    *)
+                      ASSET_FETCH_OK=false
+                      printf 'attempt=%s unexpectedAsset=%s\n' "$attempt" "$asset" >> "$FRONTEND_CONVERGENCE_LOG"
+                      break
+                      ;;
+                  esac
+                done
+
+                if [[ "$ASSET_FETCH_OK" == true ]]; then
+                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
+                    grep -Fq -- "$marker" "$FRONTEND_BUNDLE" || MISSING_MARKERS+=("$marker")
+                  done
+                fi
+              else
+                ASSET_FETCH_OK=false
+              fi
+            else
+              ASSET_FETCH_OK=false
+            fi
+
+            printf 'attempt=%s portalStatus=%s assetCount=%s assetFetchOk=%s missingCount=%s\n'               "$attempt" "$PORTAL_STATUS" "${#FRONTEND_ASSETS[@]}" "$ASSET_FETCH_OK" "${#MISSING_MARKERS[@]}"               >> "$FRONTEND_CONVERGENCE_LOG"
+            for marker in "${MISSING_MARKERS[@]}"; do
+              printf 'attempt=%s missingMarker=%s\n' "$attempt" "$marker" >> "$FRONTEND_CONVERGENCE_LOG"
+            done
+
+            if [[ "$PORTAL_STATUS" == 200               && "$ASSET_FETCH_OK" == true               && ${#FRONTEND_ASSETS[@]} -gt 0               && ${#MISSING_MARKERS[@]} -eq 0 ]]; then
+              FRONTEND_READY=true
+              echo "PROTECTED_TEST_FRONTEND_CONVERGED attempt=$attempt assets=${#FRONTEND_ASSETS[@]}"
+              break
+            fi
+            (( attempt < 36 )) && sleep 5
           done
-          for marker in \
-            'pulse-display-utility-dock' \
-            'Evidence score' \
-            'Project Cost Alerts' \
-            'Data incomplete' \
-            'Select or type a customer' \
-            'FlowHive enterprise controls are temporarily unavailable.' \
-            'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1' \
-            '--project-workload-responsive-metrics:1' \
-            'Login, logout & sessions'; do
-            grep -Fq "$marker" "$FRONTEND_BUNDLE" || fail "Deployed frontend bundle is missing marker: $marker"
-          done
+
+          if [[ "$FRONTEND_READY" != true ]]; then
+            tail -n 200 "$FRONTEND_CONVERGENCE_LOG" >&2 || true
+            fail 'Protected Test frontend did not converge to the required served bundle after 36 attempts.'
+          fi
 
           API_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' -o json --only-show-errors)"
           WEB_AFTER="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_WEB_APP }}' -o json --only-show-errors)"
