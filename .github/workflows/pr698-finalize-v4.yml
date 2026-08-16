@@ -80,6 +80,33 @@ jobs:
           python3 /tmp/pr698-finalizer/apply_pr698_table_module_management.py
           python3 /tmp/pr698-finalizer/apply_workspace_navigation.py
 
+      - name: Align workspace quick-launcher component contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx')
+          text = path.read_text(encoding='utf-8')
+          declaration = 'function QuickLauncher('
+          usage = '<QuickLauncher'
+          declaration_count = text.count(declaration)
+          usage_count = text.count(usage)
+          if declaration_count != 1:
+              raise RuntimeError(f'Expected one QuickLauncher declaration, found {declaration_count}')
+          if usage_count < 1:
+              raise RuntimeError('Expected at least one QuickLauncher JSX usage')
+          text = text.replace(declaration, 'function WorkspaceQuickLauncher(', 1)
+          text = text.replace(usage, '<WorkspaceQuickLauncher')
+          if declaration in text or usage in text:
+              raise RuntimeError('Legacy QuickLauncher component reference remains after contract alignment')
+          if text.count('WorkspaceQuickLauncher') != usage_count + 1:
+              raise RuntimeError('WorkspaceQuickLauncher declaration and JSX usage count did not converge')
+          path.write_text(text, encoding='utf-8')
+          print(f'PR698_WORKSPACE_QUICK_LAUNCHER_CONTRACT=PASS usages={usage_count}')
+          PYCODE
+
       - name: Correct nullable module-owner identifier inference
         shell: bash
         run: |
@@ -116,6 +143,7 @@ jobs:
           rm -f .github/workflows/pr698-finalize-v3.yml
           rm -f .github/workflows/pr698-finalize-v4.yml
           rm -f .github/workflows/pr698-module001a-role-catalog-patcher.yml
+          rm -f .github/workflows/pr698-workspace-navigation-diagnostic.yml
           rm -f scripts/pr698_module001a_catalog_patch.py
           git add -A
           git diff --cached --check
