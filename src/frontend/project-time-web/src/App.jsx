@@ -21,14 +21,29 @@ const MODULE_064_074_NATIVE_ADMINISTRATION_ROUTES = Object.freeze({
   'oem-vendor-directory': '074'
 });
 
+const AI_PROVIDER_CONFIGURATION_ROUTE = 'ai-provider-configuration';
+
 const MODULE_002_APPROVAL_ROLE_CODES = Object.freeze([
   'SUPER_ADMINISTRATOR',
   'ADMINISTRATOR',
   'PROJECT_TEAM_COORDINATOR',
+  'PROJECT_COORDINATOR',
   'MANAGER',
   'PROJECT_MANAGER',
-  'PROJECT_MANAGEMENT'
+  'PROJECT_MANAGEMENT',
+  'PROJECT_MANAGEMENT_LEAD',
+  'PROJECT_MANAGEMENT_TEAM_LEAD',
+  'PM_TEAM_LEAD'
 ]);
+
+function approvalAuthorityFromNavigationState() {
+  const navigation = window.__projectPulseEffectiveNavigation;
+  if (!navigation || navigation.state !== 'ready') return null;
+  const allowed = new Set(MODULE_002_APPROVAL_ROLE_CODES);
+  return (navigation.roleCodes || [])
+    .map((role) => String(role || '').trim().toUpperCase())
+    .some((role) => allowed.has(role));
+}
 
 const TIMESHEET_AI_PROVIDER_LABELS = Object.freeze({
   celar_ai: 'Celar AI',
@@ -4367,33 +4382,50 @@ export default function App() {
       }
 
       setCurrentUser((current) => ({ ...current, loading: true, error: null }));
-      setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null }));
+      if (activeRoute === 'utilization') {
+        setCurrentQuarterUtilization((current) => ({ ...current, loading: true, error: null }));
+      } else {
+        setCurrentQuarterUtilization({ loading: false, data: null, error: null });
+      }
 
-      try {
-        const [userResult, quarterResult] = await Promise.all([
-          fetchJson('/api/security/me', authSession),
-          fetchJson('/api/utilization/current-quarter', authSession)
-        ]);
+      const [userResult, quarterResult] = await Promise.allSettled([
+        fetchJson('/api/security/me', authSession),
+        activeRoute === 'utilization'
+          ? fetchJson('/api/utilization/current-quarter', authSession)
+          : Promise.resolve(null)
+      ]);
 
-        if (!cancelled) {
-          setCurrentUser({ loading: false, data: userResult, error: null });
-          setCurrentQuarterUtilization({ loading: false, data: quarterResult, error: null });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          setCurrentUser((current) => ({ ...current, loading: false, error: message }));
-          setCurrentQuarterUtilization((current) => ({ ...current, loading: false, error: message }));
-        }
+      if (cancelled) return;
+
+      if (userResult.status === 'fulfilled') {
+        setCurrentUser({ loading: false, data: userResult.value, error: null });
+      } else {
+        setCurrentUser({
+          loading: false,
+          data: null,
+          error: userResult.reason instanceof Error ? userResult.reason.message : 'Unable to load the signed-in user.'
+        });
+      }
+
+      if (activeRoute !== 'utilization') {
+        setCurrentQuarterUtilization({ loading: false, data: null, error: null });
+      } else if (quarterResult.status === 'fulfilled') {
+        setCurrentQuarterUtilization({ loading: false, data: quarterResult.value, error: null });
+      } else {
+        setCurrentQuarterUtilization({
+          loading: false,
+          data: null,
+          error: quarterResult.reason instanceof Error ? quarterResult.reason.message : 'Unable to load current-quarter utilization.'
+        });
       }
     }
 
-    loadCurrentUserAndQuarterUtilization();
+    void loadCurrentUserAndQuarterUtilization();
 
     return () => {
       cancelled = true;
     };
-  }, [authSession?.sessionToken]);
+  }, [authSession?.sessionToken, activeRoute]);
 
 
   useEffect(() => {
@@ -4448,16 +4480,29 @@ export default function App() {
       setOpenTasks((current) => ({ ...current, loading: true, error: null }));
       setRemainingModules((current) => ({ ...current, loading: true, error: null }));
 
+      const utilizationRequests = activeRoute === 'utilization'
+        ? [
+          fetchJson('/api/utilization/policies', authSession),
+          fetchJson('/api/utilization/targets', authSession),
+        ]
+        : [
+          Promise.resolve({ skipped: 'route_not_active' }),
+          Promise.resolve({ skipped: 'route_not_active' }),
+        ];
+
       try {
         const results = await Promise.allSettled([
           fetchJson('/health', authSession),
-          fetchJson('/api/db-health', authSession),
-          fetchJson('/api/schema/tables', authSession),
+          (['system-diagnostics', 'azure-admin'].includes(activeRoute)
+            ? fetchJson('/api/db-health', authSession)
+            : Promise.resolve({ skipped: 'route_not_active' })),
+          (['system-diagnostics', 'azure-admin'].includes(activeRoute)
+            ? fetchJson('/api/schema/tables', authSession)
+            : Promise.resolve({ skipped: 'route_not_active' })),
           fetchJson(`/api/timesheets/week?weekStart=${selectedWeekStart}`, authSession),
           fetchJson('/api/work-location-groups', authSession),
           fetchJson('/api/work-locations', authSession),
-          fetchJson('/api/utilization/policies', authSession),
-          fetchJson('/api/utilization/targets', authSession),
+          ...utilizationRequests,
           fetchJson(`/api/assignments/available-tasks?weekStart=${selectedWeekStart}`, authSession),
           fetchJson('/api/users/timesheet-preferences', authSession),
           fetchJson(`/api/holidays?year=${selectedWeekStart.slice(0, 4)}`, authSession),
@@ -5582,17 +5627,21 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadApprovalPendingCount() {
-      if (!authSession?.sessionToken) {
-        const emptyCounts = {
-          submittedTimePending: 0,
-          localResetPendingApproval: 0,
-          localResetReadyForTempPassword: 0,
-          actionableTotal: 0
-        };
+    function clearApprovalCounts() {
+      const emptyCounts = {
+        submittedTimePending: 0,
+        localResetPendingApproval: 0,
+        localResetReadyForTempPassword: 0,
+        actionableTotal: 0
+      };
+      setProjectPulseApprovalActionableCounts(emptyCounts);
+      setApprovalPendingCount(0);
+    }
 
-        setProjectPulseApprovalActionableCounts(emptyCounts);
-        setApprovalPendingCount(0);
+    async function loadApprovalPendingCount() {
+      const approvalAuthority = approvalAuthorityFromNavigationState();
+      if (!authSession?.sessionToken || approvalAuthority !== true) {
+        if (!cancelled) clearApprovalCounts();
         return;
       }
 
@@ -5601,56 +5650,34 @@ export default function App() {
 
         if (!cancelled) {
           setProjectPulseApprovalActionableCounts(counts);
-          setApprovalPendingCount(
-            Number(counts.actionableTotal ?? 0)
-          );
-          window.setTimeout(
-            normalizeProjectPulseApprovalUi,
-            100
-          );
-          window.setTimeout(
-            normalizeProjectPulseApprovalUi,
-            600
-          );
+          setApprovalPendingCount(Number(counts.actionableTotal ?? 0));
+          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
+          window.setTimeout(normalizeProjectPulseApprovalUi, 600);
         }
       } catch {
         if (!cancelled) {
-          const emptyCounts = {
-            submittedTimePending: 0,
-            localResetPendingApproval: 0,
-            localResetReadyForTempPassword: 0,
-            actionableTotal: 0
-          };
-
-          setProjectPulseApprovalActionableCounts(emptyCounts);
-          setApprovalPendingCount(0);
-          window.setTimeout(
-            normalizeProjectPulseApprovalUi,
-            100
-          );
+          clearApprovalCounts();
+          window.setTimeout(normalizeProjectPulseApprovalUi, 100);
         }
       }
     }
 
+    function refreshApprovalAuthority() {
+      void loadApprovalPendingCount();
+    }
+
     void loadApprovalPendingCount();
-
-    const intervalId = window.setInterval(
-      loadApprovalPendingCount,
-      30000
-    );
-
-    window.addEventListener(
-      'projectpulse:approval-queue-changed',
-      loadApprovalPendingCount
-    );
+    const intervalId = window.setInterval(loadApprovalPendingCount, 30000);
+    window.addEventListener('projectpulse:permission-navigation-updated', refreshApprovalAuthority);
+    window.addEventListener('projectpulse:view-as-changed', refreshApprovalAuthority);
+    window.addEventListener('projectpulse:approval-queue-changed', loadApprovalPendingCount);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener(
-        'projectpulse:approval-queue-changed',
-        loadApprovalPendingCount
-      );
+      window.removeEventListener('projectpulse:permission-navigation-updated', refreshApprovalAuthority);
+      window.removeEventListener('projectpulse:view-as-changed', refreshApprovalAuthority);
+      window.removeEventListener('projectpulse:approval-queue-changed', loadApprovalPendingCount);
     };
   }, [authSession?.sessionToken, activeRoute]);
   /* MODULE_002_ROLE_AWARE_APPROVAL_COUNT_EFFECT_END */
@@ -6994,7 +7021,11 @@ Analytics - Variphy / Infortel`}
       {activeRoute === 'ai-time-entry' ? <SalesDeliveryWorkflowCenter module="028" /> : null}
       {activeRoute === 'uat-validation' ? <SalesDeliveryWorkflowCenter module="029" /> : null}
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_START */}
-      {!localViewAsIsActive() ? <AiProviderReadinessController authSession={authSession} /> : null}
+      {(activeRoute === AI_PROVIDER_CONFIGURATION_ROUTE
+        && !localViewAsIsActive()
+        && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL']))
+        ? <AiProviderReadinessController authSession={authSession} />
+        : null}
       {/* GROUP_7_AI_PROVIDER_READINESS_CONTROLLER_END */}
 
       {/* MODULE_060_CONTRACTS_ROOT_ROUTE_START */}
@@ -8546,9 +8577,11 @@ Analytics - Variphy / Infortel`}
         </div>
       </section>
       ) : null}
-<section id="project-allocation-info" className="panel project-allocation-info-panel">
+{activeRoute === 'project-allocation-info' ? (
+      <section id="project-allocation-info" className="panel project-allocation-info-panel">
         <ProjectAllocationInfoPanel />
       </section>
+      ) : null}
 
       {(activeRoute === 'project-workload' && canSeeAny(['VIEW_PROJECT_WORKLOAD', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
         <section id="project-workload" className="panel project-workload-route-panel">
@@ -8786,6 +8819,8 @@ Analytics - Variphy / Infortel`}
       ) : null}
 
 
+      {activeRoute === 'utilization' ? (
+        <>
       <section id="current-quarter-utilization" className="panel current-quarter-utilization-panel">
         <div className="section-heading">
           <div>
@@ -8826,9 +8861,15 @@ Analytics - Variphy / Infortel`}
       </section>
 
       <section id="utilization" className="panel">
-        <YearlyUtilizationPanel />
-        <ManagerTeamUtilizationPanel />
-        <EngineeringTeamLeadUtilizationPanel />
+        {canSeeAny(['VIEW_OWN_UTILIZATION', 'VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+          ? <YearlyUtilizationPanel />
+          : null}
+        {canSeeAny(['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+          ? <ManagerTeamUtilizationPanel />
+          : null}
+        {canSeeAny(['VIEW_TEAM_UTILIZATION', 'VIEW_INDIVIDUAL_UTILIZATION', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])
+          ? <EngineeringTeamLeadUtilizationPanel />
+          : null}
         <div className="section-header compact">
           <div>
             <p className="eyebrow">Utilization policy</p>
@@ -8851,6 +8892,8 @@ Analytics - Variphy / Infortel`}
           </div>
         </DataState>
       </section>
+        </>
+      ) : null}
 
 
       {(activeRoute === 'roles-permissions-matrix' && canSeeAny(['SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (

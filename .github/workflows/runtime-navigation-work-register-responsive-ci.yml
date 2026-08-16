@@ -1,0 +1,99 @@
+name: Runtime Navigation, Work Register, and Responsive Workspace CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs'
+      - 'src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/ApprovalMailbox.jsx'
+      - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
+      - 'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js'
+      - 'src/frontend/project-time-web/src/module-directory-authority.js'
+      - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-navigation-work-register-responsive-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate modules, 055C, optional APIs, and responsive metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard the focused source boundary
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/runtime-repair-changed.txt
+          cat > /tmp/runtime-repair-allowed.txt <<'EOF'
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+          src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/ApprovalMailbox.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          src/frontend/project-time-web/src/module-directory-authority.js
+          src/frontend/project-time-web/src/unified-project-financial-workspace.css
+          EOF
+          sort -o /tmp/runtime-repair-allowed.txt /tmp/runtime-repair-allowed.txt
+          unexpected="$(comm -23 /tmp/runtime-repair-changed.txt /tmp/runtime-repair-allowed.txt)"
+          [[ -z "$unexpected" ]] || {
+            printf 'Unexpected source:\n%s\n' "$unexpected" >&2
+            exit 1
+          }
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+
+      - name: Validate focused runtime contract
+        working-directory: src/frontend/project-time-web
+        run: |
+          node ./scripts/validate-runtime-navigation-work-register-responsive.mjs
+          node ./scripts/validate-enterprise-ui-polish.mjs
+
+      - name: Build API Release
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Preserve PR 697 presentation package and clean source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs
+          git diff --check
+          git diff --exit-code
