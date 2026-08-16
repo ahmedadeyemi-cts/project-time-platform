@@ -1,4 +1,4 @@
-name: Prepare validated Modules and 055C product commit
+name: Export validated Modules and 055C product blobs
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: prepare-view-as-modules-055c-product-commit
+  group: export-view-as-modules-055c-product-blobs
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Validate source and prepare immutable Git objects
+  export:
+    name: Validate source and export immutable blob manifest
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -25,7 +25,7 @@ jobs:
       EXPECTED_BASE: 1b60d1cda5fce24d99dd3850f2a65b1b27d7c374
       PATCH_SHA256: b0ad08bfe997e86f5b27e55ab6242c10871924c991c946e845c29e7e7d2ebfd1
     steps:
-      - name: Check out temporary preparation controller
+      - name: Check out temporary export controller
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -51,7 +51,7 @@ jobs:
           PATCH_GZ="$RUNNER_TEMP/view-as-modules-055c-product.patch.gz"
           PATCH_FILE="$RUNNER_TEMP/view-as-modules-055c-product.patch"
           WORKTREE="$RUNNER_TEMP/view-as-modules-055c-product"
-          EVIDENCE="$RUNNER_TEMP/view-as-modules-055c-commit-evidence"
+          EVIDENCE="$RUNNER_TEMP/view-as-modules-055c-blob-evidence"
           mkdir -p "$EVIDENCE"
 
           cat .github/view-as-modules-055c-payload/chunk-*.b64 \
@@ -168,8 +168,8 @@ jobs:
           npm audit --audit-level=high
           npm run build
 
-      - name: Verify post-build source and create immutable Git objects
-        id: commit
+      - name: Verify post-build source and export immutable blob manifest
+        id: blobs
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
         env:
@@ -177,19 +177,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
-          git_api_post() {
-            local endpoint="$1"
-            local request_file="$2"
-            local response_file="$3"
-            curl --fail-with-body --silent --show-error \
-              --request POST \
-              --header "Authorization: Bearer $GH_TOKEN" \
-              --header 'Accept: application/vnd.github+json' \
-              --header 'X-GitHub-Api-Version: 2022-11-28' \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/$endpoint" \
-              --data-binary "@$request_file" \
-              > "$response_file"
-          }
 
           [[ -z "$(git diff --name-only)" ]] || {
             git status --short >&2
@@ -223,44 +210,22 @@ jobs:
 
           jq -s '.' "$EVIDENCE/tree-elements.ndjson" > "$EVIDENCE/tree-elements.json"
           base_tree="$(git rev-parse "$EXPECTED_BASE^{tree}")"
-          jq -n \
-            --arg base_tree "$base_tree" \
-            --slurpfile tree "$EVIDENCE/tree-elements.json" \
-            '{base_tree:$base_tree,tree:$tree[0]}' \
-            > "$EVIDENCE/create-tree-request.json"
-          git_api_post \
-            'git/trees' \
-            "$EVIDENCE/create-tree-request.json" \
-            "$EVIDENCE/create-tree-response.json"
-          tree_sha="$(jq -er '.sha' "$EVIDENCE/create-tree-response.json")"
-
-          jq -n \
-            --arg message 'Fix View-As identity, Modules parity, and 055C document continuity' \
-            --arg tree "$tree_sha" \
-            --arg parent "$EXPECTED_BASE" \
-            '{message:$message,tree:$tree,parents:[$parent]}' \
-            > "$EVIDENCE/create-commit-request.json"
-          git_api_post \
-            'git/commits' \
-            "$EVIDENCE/create-commit-request.json" \
-            "$EVIDENCE/create-commit-response.json"
-          commit_sha="$(jq -er '.sha' "$EVIDENCE/create-commit-response.json")"
-
           printf '%s\n' "$EXPECTED_BASE" > "$EVIDENCE/base-sha.txt"
-          printf '%s\n' "$tree_sha" > "$EVIDENCE/prepared-tree-sha.txt"
-          printf '%s\n' "$commit_sha" > "$EVIDENCE/prepared-commit-sha.txt"
-          gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" > "$EVIDENCE/prepared-commit.json"
+          printf '%s\n' "$base_tree" > "$EVIDENCE/base-tree-sha.txt"
 
-          echo "prepared_commit=$commit_sha" >> "$GITHUB_OUTPUT"
-          echo "PREPARED_PRODUCT_COMMIT=$commit_sha"
-          echo "PREPARED_PRODUCT_TREE=$tree_sha"
+          echo '=== VALIDATED_PRODUCT_BLOB_MANIFEST_BEGIN ==='
+          cat "$EVIDENCE/tree-elements.json"
+          echo '=== VALIDATED_PRODUCT_BLOB_MANIFEST_END ==='
+          echo "VALIDATED_PRODUCT_BASE=$EXPECTED_BASE"
+          echo "VALIDATED_PRODUCT_BASE_TREE=$base_tree"
           echo 'POST_BUILD_SOURCE_BOUNDARY=PASSED'
+          echo 'BLOB_MANIFEST_READY=TRUE'
           echo 'PRODUCT_REF_UPDATED=FALSE'
 
-      - name: Upload immutable commit evidence
+      - name: Upload immutable blob evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: view-as-modules-055c-prepared-commit-${{ github.run_id }}
+          name: view-as-modules-055c-blob-manifest-${{ github.run_id }}
           path: ${{ steps.source.outputs.evidence }}
           if-no-files-found: error
           retention-days: 2
