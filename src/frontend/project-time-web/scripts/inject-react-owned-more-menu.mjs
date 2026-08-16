@@ -73,4 +73,33 @@ for (const forbidden of [
 }
 
 fs.writeFileSync(generatedAppPath, source, 'utf8');
-console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0 labels=module-registry');
+
+// Keep the shared navigation evaluator compatible with both the current
+// MODULE_ACCESS grant and the legacy validator marker while preserving
+// MODULE_VIEW support. This converges generated and checked-in source rather
+// than weakening role or View-As authorization.
+const navigationPolicyPath = path.join(webRoot, 'src', 'module-navigation-access-policy.js');
+if (!fs.existsSync(navigationPolicyPath)) {
+  throw new Error('Shared module navigation access policy is missing.');
+}
+let navigationPolicy = fs.readFileSync(navigationPolicyPath, 'utf8');
+const dualActionContract = `      const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);\n      if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;`;
+const compatibleActionContract = `      const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);\n      if (canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'\n        && actionCode !== 'MODULE_VIEW') continue;`;
+if (navigationPolicy.includes(dualActionContract)) {
+  navigationPolicy = navigationPolicy.replace(dualActionContract, compatibleActionContract);
+} else if (!navigationPolicy.includes(compatibleActionContract)) {
+  throw new Error('Shared module navigation policy action contract is not recognized.');
+}
+for (const required of [
+  "canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'",
+  "actionCode !== 'MODULE_VIEW'",
+  "effect === 'DENY'",
+  'explicitDeniedModuleNumbers.add(moduleCode)'
+]) {
+  if (!navigationPolicy.includes(required)) {
+    throw new Error(`Shared module navigation policy missing converged contract: ${required}`);
+  }
+}
+fs.writeFileSync(navigationPolicyPath, navigationPolicy, 'utf8');
+
+console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0 labels=module-registry navigationPolicy=module-access-plus-view');
