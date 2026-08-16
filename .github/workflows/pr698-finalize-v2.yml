@@ -63,10 +63,18 @@ jobs:
           if not match:
               raise RuntimeError('Unable to locate the reviewed PR 698 payload.')
           compact = ''.join(match.group('payload').split())
-          decoded = base64.b64decode(compact, validate=True)
+          missing_padding = (-len(compact)) % 4
+          padded = compact + ('=' * missing_padding)
+          decoded = base64.b64decode(padded, validate=False)
+          if not decoded.startswith(b'\x1f\x8b'):
+              raise RuntimeError('Recovered payload is not a gzip archive.')
           Path('/tmp/pr698-payload.tar.gz').write_bytes(decoded)
-          print(f'PR698_PAYLOAD_RECOVERY=PASS encoded={len(compact)} decoded={len(decoded)}')
+          print(
+              f'PR698_PAYLOAD_RECOVERY=PASS encoded={len(compact)} '
+              f'padding={missing_padding} decoded={len(decoded)}'
+          )
           PYCODE
+          tar -tzf /tmp/pr698-payload.tar.gz >/tmp/pr698-payload-files.txt
           tar -xzf /tmp/pr698-payload.tar.gz
           python3 -m py_compile scripts/pr698_table_module_management_patch.py
           python3 -m py_compile scripts/pr698_finalize_source.py
