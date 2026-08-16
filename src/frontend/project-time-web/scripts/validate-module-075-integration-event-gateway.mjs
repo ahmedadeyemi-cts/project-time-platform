@@ -79,13 +79,34 @@ const workspaceRegistry = read(files.workspaceRegistry);
 const packageJson = JSON.parse(read(files.package));
 const docker = read(files.docker);
 
+const registryOwnsRouteNumber =
+  registry.includes("moduleNumber: '075'")
+  && registry.includes("route: 'integration-event-gateway'")
+  && app.includes("route: 'integration-event-gateway'")
+  && app.includes("navLabel: 'MODULE 075'");
+
+const sharedWorkspaceRegistryUsesCurrentAuthority =
+  workspaceRegistry.includes("import { PROJECTPULSE_MODULES, canonicalModuleRoute }")
+  && workspaceRegistry.includes('export function toWorkspace')
+  && workspaceRegistry.includes('PROJECTPULSE_MODULES.map(toWorkspace)')
+  && workspaceRegistry.includes('WORKSPACE_BY_NUMBER')
+  && workspaceRegistry.includes('WORKSPACE_BY_ROUTE')
+  && workspaceRegistry.includes('moduleNumber')
+  && workspaceRegistry.includes('route');
+
+const completeFrontendContainerContext =
+  docker.includes('# COPY src/frontend/project-time-web/')
+  && docker.includes('COPY . /workspace/')
+  && docker.includes('WORKDIR /workspace/src/frontend/project-time-web')
+  && docker.includes('RUN npm run build');
+
 const runtimeChecks = {
   BACKEND_MAP_ONCE:
     program.split('app.MapIntegrationEventGatewayEndpoints();').length - 1 === 1,
   APP_IMPORT_ONCE:
     (app.match(/import IntegrationEventGatewayCenter from ['"]\.\/IntegrationEventGatewayCenter(?:\.jsx)?['"];/g) || []).length === 1,
   APP_ROUTE_NUMBER:
-    app.includes("'integration-event-gateway': '075'"),
+    registryOwnsRouteNumber,
   APP_ROUTE_CONDITION:
     app.includes("activeRoute === 'integration-event-gateway'"),
   APP_COMPONENT_MOUNT:
@@ -95,10 +116,7 @@ const runtimeChecks = {
   INSTALLED_REGISTRY_ENTRY:
     registry.includes("moduleNumber: '075'") && registry.includes("route: 'integration-event-gateway'"),
   SHARED_WORKSPACE_REGISTRY:
-    workspaceRegistry.includes("import { INSTALLED_MODULES")
-      && workspaceRegistry.includes('buildWorkspaceRegistry')
-      && workspaceRegistry.includes('moduleNumber')
-      && workspaceRegistry.includes('route'),
+    sharedWorkspaceRegistryUsesCurrentAuthority,
   FOCUSED_VALIDATOR_SCRIPT:
     typeof packageJson.scripts?.['validate:module075'] === 'string'
       && packageJson.scripts['validate:module075'].includes('validate-module-075-integration-event-gateway.mjs'),
@@ -110,19 +128,28 @@ const runtimeChecks = {
       && packageJson.scripts.build.includes('validate:module075')
       && packageJson.scripts.build.includes('validate:modules075080-runtime'),
   CONTAINER_BACKEND_SOURCE:
-    docker.includes('IntegrationEventGatewayModule.cs'),
+    docker.includes('IntegrationEventGatewayModule.cs') && docker.includes('COPY . /workspace/'),
   CONTAINER_FRONTEND_SOURCE:
-    docker.includes('IntegrationEventGatewayCenter.jsx')
+    completeFrontendContainerContext
 };
 
 for (const [name, condition] of Object.entries(runtimeChecks)) {
-  test(`RUNTIME_${name}`, condition, condition ? 'current governed source contract' : 'runtime source did not converge');
+  const evidence = condition
+    ? name === 'APP_ROUTE_NUMBER'
+      ? 'module number resolved from the canonical module registry'
+      : name === 'SHARED_WORKSPACE_REGISTRY'
+        ? 'workspace metadata derives from PROJECTPULSE_MODULES'
+        : name === 'CONTAINER_FRONTEND_SOURCE'
+          ? 'complete repository context is copied before the production build'
+          : 'current governed source contract'
+    : 'runtime source did not converge';
+  test(`RUNTIME_${name}`, condition, evidence);
 }
 
 test(
   'SHARED_RUNTIME_INTEGRATED',
   Object.values(runtimeChecks).every(Boolean),
-  'backend map, route mount, shared registry, build chain, and container context'
+  'backend map, route mount, canonical module/workspace registries, build chain, and complete container context'
 );
 
 console.log(`MODULE_075_VALIDATION_CHECKS=${checks}`);
