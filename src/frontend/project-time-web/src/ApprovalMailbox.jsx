@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import './approval-mailbox.css';
 
+const APPROVAL_ROLE_CODES = new Set([
+  'SUPER_ADMINISTRATOR', 'ADMINISTRATOR', 'PROJECT_TEAM_COORDINATOR',
+  'PROJECT_COORDINATOR', 'MANAGER', 'PROJECT_MANAGER', 'PROJECT_MANAGEMENT',
+  'PROJECT_MANAGEMENT_LEAD', 'PROJECT_MANAGEMENT_TEAM_LEAD', 'PM_TEAM_LEAD'
+]);
+
 function sessionHeaders() {
   try {
     const session = JSON.parse(window.localStorage.getItem('projectPulseAuthSession') || 'null');
-    return session?.sessionToken ? { 'X-ProjectPulse-Session': session.sessionToken } : {};
+    return session?.sessionToken ? {
+      'X-ProjectPulse-Session': session.sessionToken,
+      'X-ProjectPulse-Module-Number': '002'
+    } : {};
   } catch {
     return {};
   }
+}
+
+function hasApprovalAuthority() {
+  const navigation = window.__projectPulseEffectiveNavigation;
+  if (!navigation || navigation.state !== 'ready') return null;
+  return (navigation.roleCodes || [])
+    .map((role) => String(role || '').trim().toUpperCase())
+    .some((role) => APPROVAL_ROLE_CODES.has(role));
 }
 
 export default function ApprovalMailbox() {
@@ -19,6 +36,12 @@ export default function ApprovalMailbox() {
     let cancelled = false;
 
     async function load() {
+      const authority = hasApprovalAuthority();
+      if (authority !== true) {
+        if (authority === false && !cancelled) setSummary(null);
+        return;
+      }
+
       try {
         const response = await fetch('/api/manager/approval-count', { headers: sessionHeaders() });
         if (response.status === 401 || response.status === 403) {
@@ -37,14 +60,18 @@ export default function ApprovalMailbox() {
       if (shellRef.current && !shellRef.current.contains(event.target)) setOpen(false);
     }
 
-    load();
+    void load();
     const timer = window.setInterval(load, 30000);
+    window.addEventListener('projectpulse:permission-navigation-updated', load);
+    window.addEventListener('projectpulse:view-as-changed', load);
     window.addEventListener('projectpulse:approval-queue-changed', load);
     document.addEventListener('mousedown', closeOnOutsideClick);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener('projectpulse:permission-navigation-updated', load);
+      window.removeEventListener('projectpulse:view-as-changed', load);
       window.removeEventListener('projectpulse:approval-queue-changed', load);
       document.removeEventListener('mousedown', closeOnOutsideClick);
     };

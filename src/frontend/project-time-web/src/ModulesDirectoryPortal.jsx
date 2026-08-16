@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROJECTPULSE_MODULES, canonicalModuleRoute, moduleForRoute, replaceTimesheetLabel } from './module-availability-registry.js';
+import { MODULE_DIRECTORY_AUTHORITY_CONTRACT, authorizedModulesFromNavigationState } from './module-directory-authority.js';
 // MODULE_006_AUTHORITATIVE_MODULE_DIRECTORY_PATCH
 import './modules-directory-page.css';
 import './module-availability.css';
@@ -226,6 +227,22 @@ function addAuthorizedModule(modules, seenRoutes, anchor, groupName) {
 }
 
 function collectAuthorizedModules() {
+  const authoritativeModules = authorizedModulesFromNavigationState(
+    PROJECTPULSE_MODULES,
+    window.__projectPulseEffectiveNavigation
+  );
+  if (authoritativeModules !== null) {
+    return authoritativeModules.map((registryModule, index) => ({
+      route: registryModule.route,
+      href: `#${registryModule.route}`,
+      label: registryModule.displayName,
+      description: registryModule.description || '',
+      moduleNumber: registryModule.moduleNumber,
+      group: registryModule.group,
+      order: index
+    }));
+  }
+
   const modules = [];
   const seenRoutes = new Set();
   const sections = Array.from(document.querySelectorAll('.enterprise-sidebar-section'));
@@ -413,11 +430,13 @@ export default function ModulesDirectoryPortal() {
 
     window.addEventListener('projectpulse:view-as-changed', refresh);
     window.addEventListener('projectpulse:module-availability-changed', refresh);
+    window.addEventListener('projectpulse:permission-navigation-updated', refresh);
 
     return () => {
       observer?.disconnect();
       window.removeEventListener('projectpulse:view-as-changed', refresh);
       window.removeEventListener('projectpulse:module-availability-changed', refresh);
+      window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
       window.clearTimeout(refreshTimer.current);
       if (active) restoreNavigationGroups(expandedForDirectory.current);
     };
@@ -523,7 +542,7 @@ export default function ModulesDirectoryPortal() {
   if (!portalHost || !active) return null;
 
   return createPortal(
-    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title">
+    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title" data-authority-contract={MODULE_DIRECTORY_AUTHORITY_CONTRACT}>
       <header className="modules-directory-hero">
         <div>
           <p className="eyebrow">ProjectPulse workspace directory</p>

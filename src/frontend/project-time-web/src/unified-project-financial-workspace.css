@@ -981,3 +981,40 @@
     padding: 1.15rem;
   }
 }
+
+/* PROJECT_WORKLOAD_RESPONSIVE_METRIC_REPAIR_V1 */
+.group3-financial-workspace {
+  --project-workload-responsive-metrics: 1;
+}
+
+.group3-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.group3-metric {
+  min-width: 0;
+}
+
+.group3-metric-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  justify-items: start;
+  gap: 0.45rem;
+}
+
+.group3-metric-heading > span {
+  min-width: 0;
+  max-width: 100%;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+
+.group3-metric-heading .group3-status {
+  max-width: 100%;
+  justify-self: start;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
