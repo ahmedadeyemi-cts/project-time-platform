@@ -88,11 +88,20 @@ public static class ScopedAuthorizationEvaluator
             }
         }
 
-        var explicitDeny = rows.FirstOrDefault(row =>
+        var explicitDenies = rows.Where(row =>
             string.Equals(row.GrantEffect, "DENY", StringComparison.OrdinalIgnoreCase)
-            && (row.ActionCode == "MODULE_ACCESS"
-                || string.Equals(row.ActionCode, normalizedAction, StringComparison.OrdinalIgnoreCase)));
-        if (explicitDeny is not null)
+            && (string.Equals(row.ActionCode, "MODULE_ACCESS", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(row.ActionCode, normalizedAction, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        var blockingExplicitDeny = explicitDenies.FirstOrDefault(row =>
+            !ScopedRolePolicyRules.IsEndpointScopedApprovalReadCompatibilityDeny(
+                row.RoleCode,
+                normalizedModule,
+                normalizedAction,
+                row.ActionCode,
+                isWrite));
+        if (blockingExplicitDeny is not null)
         {
             return new ScopedAuthorizationDecision(
                 false,
@@ -101,34 +110,26 @@ public static class ScopedAuthorizationEvaluator
                 actor.IsViewAs,
                 normalizedModule,
                 normalizedAction,
-                explicitDeny.ScopeCode,
-                explicitDeny.VersionNumber,
-                explicitDeny.ReasonRequired,
-                explicitDeny.AuditRequired,
-                explicitDeny.DelegatedAuthority,
-                $"{explicitDeny.RoleCode} has an explicit denial for {normalizedAction} in Module {normalizedModule}.");
+                blockingExplicitDeny.ScopeCode,
+                blockingExplicitDeny.VersionNumber,
+                blockingExplicitDeny.ReasonRequired,
+                blockingExplicitDeny.AuditRequired,
+                blockingExplicitDeny.DelegatedAuthority,
+                $"{blockingExplicitDeny.RoleCode} has an explicit denial for {normalizedAction} in Module {normalizedModule}.");
         }
+
+        var endpointScopedApprovalReadCompatibility = explicitDenies.FirstOrDefault(row =>
+            ScopedRolePolicyRules.IsEndpointScopedApprovalReadCompatibilityDeny(
+                row.RoleCode,
+                normalizedModule,
+                normalizedAction,
+                row.ActionCode,
+                isWrite));
 
         var grants = rows.Where(row =>
             string.Equals(row.GrantEffect, "GRANT", StringComparison.OrdinalIgnoreCase)
             && string.Equals(row.ActionCode, normalizedAction, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (grants.Length == 0)
-        {
-            return new ScopedAuthorizationDecision(
-                true,
-                false,
-                true,
-                actor.IsViewAs,
-                normalizedModule,
-                normalizedAction,
-                "LEGACY_FALLBACK",
-                null,
-                false,
-                true,
-                false,
-                "No scoped workbook decision exists for this action. Existing ProjectPulse authorization remains authoritative.");
-        }
 
         foreach (var grant in grants)
         {
@@ -154,6 +155,40 @@ public static class ScopedAuthorizationEvaluator
                     grant.DelegatedAuthority,
                     $"{grant.RoleCode} grants {normalizedAction} within {grant.ScopeCode}. Existing endpoint-level resource checks remain active.");
             }
+        }
+
+        if (endpointScopedApprovalReadCompatibility is not null)
+        {
+            return new ScopedAuthorizationDecision(
+                true,
+                false,
+                true,
+                actor.IsViewAs,
+                normalizedModule,
+                normalizedAction,
+                endpointScopedApprovalReadCompatibility.ScopeCode,
+                endpointScopedApprovalReadCompatibility.VersionNumber,
+                false,
+                true,
+                false,
+                "Project Management Module 002 read access is enforced by the Approval Center endpoint's managed-project authorization. Approval writes, password-reset approval, and administrative actions remain governed by scoped policy.");
+        }
+
+        if (grants.Length == 0)
+        {
+            return new ScopedAuthorizationDecision(
+                true,
+                false,
+                true,
+                actor.IsViewAs,
+                normalizedModule,
+                normalizedAction,
+                "LEGACY_FALLBACK",
+                null,
+                false,
+                true,
+                false,
+                "No scoped workbook decision exists for this action. Existing ProjectPulse authorization remains authoritative.");
         }
 
         return ScopedAuthorizationDecision.Denied(
