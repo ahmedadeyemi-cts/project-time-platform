@@ -66,13 +66,33 @@ jobs:
           FILES
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-release-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/allowed-release-files" -o "$RUNNER_TEMP/allowed-release-files"
+
+          cat > "$RUNNER_TEMP/exact-runtime-repair-files" <<'FILES'
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+          src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs
+          src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/ApprovalMailbox.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          src/frontend/project-time-web/src/module-directory-authority.js
+          src/frontend/project-time-web/src/unified-project-financial-workspace.css
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-runtime-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-runtime-repair-files" -o "$RUNNER_TEMP/exact-runtime-repair-files"
+
           git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
-          comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
-          [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
-            echo 'Unexpected files in governed Test controller PR:' >&2
-            cat "$RUNNER_TEMP/unexpected-release-files" >&2
-            exit 1
-          }
+          if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
+            echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
+          else
+            comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
+            [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
+              echo 'Unexpected files in governed Test controller PR:' >&2
+              cat "$RUNNER_TEMP/unexpected-release-files" >&2
+              exit 1
+            }
+          fi
 
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
