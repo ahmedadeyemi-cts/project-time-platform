@@ -46,6 +46,8 @@ jobs:
           git config user.email 'pr698-validation@users.noreply.github.com'
           git merge --no-ff --no-commit origin/main
           test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_MAIN_SHA"
+          git commit -m 'chore: temporary PR 698 latest-main reconciliation for validation'
+          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" HEAD
           echo "PR698_CURRENT_MAIN_RECONCILED=$actual_main"
 
       - name: Reconstruct and verify reviewed implementation payload
