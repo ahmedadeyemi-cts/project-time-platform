@@ -28,11 +28,11 @@ if (!source.includes(helperMarker)) {
   const helperAnchor = "const EMPTY_QUESTION_CONTEXT = Object.freeze({ projectCode: '', projectName: '', personOrTeam: '', dateFrom: '', dateTo: '' });\n";
   const helpers = `${helperAnchor}
 function isDefectIntakeQuestion(value) {
-  return /\b(?:open|create|report|file|log|raise)\s+(?:a\s+)?defect\b|\breport\s+this\s+issue\b|\bthis\s+is\s+broken\b|\bopen\s+an\s+issue\b/i.test(String(value ?? ''));
+  return /\\b(?:open|create|report|file|log|raise)\\s+(?:a\\s+)?defect\\b|\\breport\\s+this\\s+issue\\b|\\bthis\\s+is\\s+broken\\b|\\bopen\\s+an\\s+issue\\b/i.test(String(value ?? ''));
 }
 
 function isTroubleshootingQuestion(value) {
-  return /\btroubleshoot\b|\bdiagnose\b|\brun\s+diagnostics?\b|\bwhy\s+(?:is|did)\b.*\b(?:fail|failed|error|unavailable|timeout|broken)\b/i.test(String(value ?? ''));
+  return /\\btroubleshoot\\b|\\bdiagnose\\b|\\brun\\s+diagnostics?\\b|\\bwhy\\s+(?:is|did)\\b.*\\b(?:fail|failed|error|unavailable|timeout|broken)\\b/i.test(String(value ?? ''));
 }
 
 function operationalEvidenceFromResult(result) {
@@ -76,7 +76,7 @@ if (!source.includes(actionMarker)) {
                 detail: {
                   triggerQuestion: answer.directConclusion || '',
                   suggestedTitle: answer.directConclusion || 'Ask Celar AI reported an operational issue',
-                  suggestedDescription: asArray(answer.limitations).concat(asArray(answer.knownUnknownAndStaleValues)).join('\n'),
+                  suggestedDescription: asArray(answer.limitations).concat(asArray(answer.knownUnknownAndStaleValues)).join('\\n'),
                   suggestedCategory: troubleshootingProfile ? 'Bug' : 'Other',
                   suggestedPriority: result?.status === 'failed' || result?.status === 'blocked' ? 'High' : 'Medium',
                   correlationId: result?.correlationId || '',
@@ -192,11 +192,18 @@ for (const marker of [
   submitRoutingMarker,
   'function openOperations()',
   'help-celar-health-button',
-  '<CelarAiAskOperations />'
+  '<CelarAiAskOperations />',
+  "return /\\b(?:open|create|report|file|log|raise)\\s+",
+  "return /\\btroubleshoot\\b|\\bdiagnose\\b|\\brun\\s+diagnostics?\\b",
+  ".join('\\n'),"
 ]) {
   if (!source.includes(marker)) {
     throw new Error(`CELAR_AI_ASK_OPERATIONS_INJECTOR_MARKER=FAILED marker=${marker}`);
   }
+}
+
+if (source.includes('\u0008')) {
+  throw new Error('CELAR_AI_ASK_OPERATIONS_INJECTOR_ESCAPING=FAILED generated_backspace_detected');
 }
 
 fs.writeFileSync(helpPath, source, 'utf8');
@@ -205,3 +212,4 @@ console.log('CELAR_AI_ASK_OPERATIONS_DURABLE_DEFECT_SYSTEM=Module 076');
 console.log('CELAR_AI_ASK_OPERATIONS_DIAGNOSTICS=INJECTED');
 console.log('CELAR_AI_ASK_OPERATIONS_QUESTIONNAIRE=INJECTED');
 console.log('CELAR_AI_ASK_OPERATIONS_HEALTH_AUTOMATION=INJECTED');
+console.log('CELAR_AI_ASK_OPERATIONS_ESCAPING=VERIFIED');
