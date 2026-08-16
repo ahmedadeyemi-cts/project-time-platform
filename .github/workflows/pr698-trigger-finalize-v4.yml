@@ -1,0 +1,33 @@
+name: PR 698 Trigger Finalizer V4
+
+on:
+  push:
+    branches:
+      - fix/classic-appearance-celar-controls-20260815
+    paths:
+      - .github/workflows/pr698-trigger-finalize-v4.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch latest branch through finalizer V4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch exact workflow on latest branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_REF: fix/classic-appearance-celar-controls-20260815
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GH_REPO}/actions/workflows/pr698-finalize-v4.yml/dispatches" \
+            -f ref="${TARGET_REF}"
+          echo 'PR698_FINALIZER_V4_DISPATCHED=YES'
