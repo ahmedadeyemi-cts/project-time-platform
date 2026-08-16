@@ -15,6 +15,8 @@ function requirePattern(source, pattern, label) {
 
 const migration = read('database/migrations/078_module_001a_engineer_request_closeout.sql');
 const rollback = read('database/rollback/078_module_001a_engineer_request_closeout_rollback.sql');
+const catalogMigration = read('database/migrations/089_module_catalog_role_administration_reconciliation.sql');
+const catalogRollback = read('database/rollback/089_module_catalog_role_administration_reconciliation_rollback.sql');
 const backend = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
 const notificationRepository = read('src/backend/ProjectTime.Api/Modules/EnterpriseNotificationRepository.cs');
 const backendAvailability = read('src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs');
@@ -23,6 +25,8 @@ const timesheetData = read('src/backend/ProjectTime.Api/Modules/Module001Timeshe
 const timesheetModule = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs');
 const app = read('src/frontend/project-time-web/src/App.jsx');
 const registry = read('src/frontend/project-time-web/src/module-availability-registry.js');
+const rolePermissionModel = read('src/frontend/project-time-web/src/role-permission-model.js');
+const navigationPolicy = read('src/frontend/project-time-web/src/module-navigation-access-policy.js');
 const ui = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
 const css = read('src/frontend/project-time-web/src/engineer-task-closeout-center.css');
 const docs = read('docs/modules/module-001a-engineer-request-closeout/README.md');
@@ -45,6 +49,40 @@ requireText(migration, 'VIEW_ENGINEER_TASK_CLOSEOUT_001A', 'view permission');
 requireText(migration, 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A', 'manage permission');
 requireText(migration, "'#engineer-task-closeout'", 'feature registration');
 
+const registryModules = [...registry.matchAll(
+  /Object\.freeze\(\{\s*moduleNumber:\s*'([^']+)'\s*,\s*route:\s*'([^']+)'\s*,\s*displayName:\s*'([^']+)'\s*,\s*group:\s*'([^']+)'/gs
+)].map((match) => ({ moduleCode: match[1].toUpperCase(), route: match[2], moduleName: match[3], group: match[4] }));
+if (registryModules.length < 70) {
+  failures.push(`module catalog reconciliation: expected at least 70 canonical modules, found ${registryModules.length}`);
+}
+if (new Set(registryModules.map((module) => module.moduleCode)).size !== registryModules.length) {
+  failures.push('module catalog reconciliation: canonical module numbers must be unique');
+}
+const sqlQuote = (value) => String(value).replaceAll("'", "''");
+for (const module of registryModules) {
+  requireText(
+    catalogMigration,
+    `('${sqlQuote(module.moduleCode)}', '${sqlQuote(module.moduleName)}', '${sqlQuote(module.route)}', '${sqlQuote(module.group)}')`,
+    `Role Administration catalog registration for Module ${module.moduleCode}`
+  );
+}
+for (const roleCode of ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD']) {
+  requireText(catalogMigration, `('${roleCode}', 'VIEW_ENGINEER_TASK_CLOSEOUT_001A')`, `${roleCode} view permission repair`);
+  requireText(catalogMigration, `('${roleCode}', 'MANAGE_OWN_ENGINEER_TASK_CLOSEOUT_001A')`, `${roleCode} manage permission repair`);
+}
+for (const roleCode of ['ENGINEERING', 'ENGINEERING_LEAD']) {
+  requireText(catalogMigration, `('${roleCode}', 'MODULE_ACCESS', 'ORGANIZATION', FALSE)`, `${roleCode} module access grant`);
+  requireText(catalogMigration, `('${roleCode}', 'WORKFLOW_MANAGE', 'SELF', FALSE)`, `${roleCode} self-scoped closeout workflow grant`);
+}
+requireText(catalogMigration, 'migration_089_module_catalog_role_administration_reconciliation', 'immutable policy source');
+requireText(catalogMigration, "'allowedWorkTypes', jsonb_build_array('SERVICE_REQUEST', 'PRESALES', 'INTERNAL')", 'eligible request types');
+requireText(catalogMigration, 'engineerOwnedOnly', 'own-assignment policy evidence');
+requireText(catalogRollback, 'Rollback 089 refused: a newer scoped role-policy version', 'guarded policy rollback');
+requireText(rolePermissionModel, "'001A': {", 'Module 001A intuitive permission preset');
+requireText(rolePermissionModel, "actions = [...new Set(['MODULE_ACCESS', ...actions])]", 'non-No Access presets grant module visibility');
+requireText(rolePermissionModel, "actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope", 'organization module-access scope');
+requireText(navigationPolicy, "['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)", 'legacy published Module View visibility compatibility');
+
 requireText(rollback, 'Rollback refused: Module 001A closeout records exist.', 'guarded rollback');
 requireText(rollback, 'Rollback refused: Module 001A immutable transition evidence exists.', 'immutable rollback guard');
 
@@ -54,6 +92,12 @@ for (const endpoint of [
   '/api/engineer-task-closeout/assignments/{assignmentId:guid}/reopen'
 ]) requireText(backend, endpoint, 'backend endpoint');
 requireText(backend, 'pa.user_id = @engineer_user_id', 'own-assignment server scope');
+for (const roleCode of ['ENGINEER', 'ENGINEERING', 'ENGINEERING_LEAD', 'ENGINEERING_TEAM_LEAD']) {
+  requireText(backend, `"${roleCode}"`, `${roleCode} runtime access`);
+}
+for (const normalizedWorkType of ["'servicerequest'", "'presales'", "'internal'"]) {
+  requireText(backend, normalizedWorkType, `${normalizedWorkType} closeout eligibility`);
+}
 requireText(backend, 'reason.Length < 10', 'required reopen reason');
 requireText(backend, 'ptc_final_close_blocks_reopen', 'server-side final-close reopen guard');
 requireText(backend, "recipient.Type == \"to\"", 'PTC To recipient');

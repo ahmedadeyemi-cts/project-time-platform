@@ -1,13 +1,15 @@
 # Module 072 — OneAssist Routing PIN Directory
 
-Module 072 brings the existing US Signal OneAssist customer routing directory into ProjectPulse. The confirmed PIN classification is a public routing identifier: PINs are displayed without masking to every ProjectPulse user and through a versioned public read API. Knowledge of a PIN must never be treated as authentication or proof of identity.
+Module 072 provides the US Signal OneAssist customer routing directory inside authenticated Pulse.
 
 ## Confirmed authorization
 
-- Everyone can view customer names, IDs, and routing PINs.
-- Canonical `MANAGER`, `ADMINISTRATOR`, `SUPER_ADMINISTRATOR`, and `PROJECT_TEAM_COORDINATOR` roles can add, edit, import, remove, and save routes.
-- Solution Architects and all other roles remain viewers unless separately authorized later.
-- Mutation authorization comes from the actual ProjectPulse session. View-As never transfers authority.
+- OneAssist customer names, IDs, and five-digit routing PINs require a valid Pulse session.
+- All authenticated Pulse users can view and search the unmasked routing directory.
+- `MANAGER`, `PROJECT_TEAM_COORDINATOR`, canonical `ENGINEERING_LEAD`, legacy `ENGINEERING_TEAM_LEAD`, `SUPER_ADMINISTRATOR`, and legacy `ADMINISTRATOR` can add, edit, import, remove, and save routes.
+- All other authenticated roles remain read-only.
+- View-As never transfers mutation authority.
+- The public On-Call page and public On-Call APIs never request or return OneAssist PINs.
 - The governed permission label is `MANAGE_ONEASSIST_ROUTING_DIRECTORY`.
 
 ## Preserved behavior
@@ -15,47 +17,11 @@ Module 072 brings the existing US Signal OneAssist customer routing directory in
 - Customer name, stable customer ID, and exactly five-digit routing PIN.
 - Unique PIN enforcement.
 - Search by name, PIN, or customer ID.
-- Add, edit, remove, refresh, and explicit save.
+- Add, edit, remove, refresh, and explicit save for approved editors.
 - CSV and XLSX import with a non-persistent preview.
-- Standard CSV and IVR CSV download.
-- Public full-directory and PIN-resolution GET APIs.
+- Standard CSV and IVR CSV download after authentication.
+- Pulse PostgreSQL persistence and immutable revision evidence from migration 031.
 
-## Source-package boundary
+## Security and release boundary
 
-The release train uses the existing retired external compatibility service service as a compatibility store. It does not modify retired external compatibility service, create a ProjectPulse table, migrate PIN values, or configure a service credential. Its public read routes are registered in source; without approved retired external compatibility service credentials the adapter remains unavailable and makes no external change.
-
-`Program.cs`, `App.jsx`, `package.json`, deployment files, and the frontend validator chain are semantically integrated once from the Module 002-enabled current-main base.
-
-## Environment names
-
-- `retired_oneassist_upstream_setting`
-- `retired_oneassist_service_identity`
-- `retired_oneassist_service_credential`
-
-The adapter can fall back to the corresponding `PROJECTPULSE_ONCALL_*` values when both modules share one retired external compatibility service application. Values are never committed or returned.
-
-## Branding
-
-The React center uses the existing repository-owned US Signal logo and ProjectPulse US Signal blue, cyan, and green brand tokens. The unmasked PIN treatment, tables, import preview, public API panel, and footer are all scoped to Module 072.
-
-## External state
-
-- Azure changes: none.
-- Database changes: none.
-- Entra changes: none.
-- retired external compatibility service changes: none.
-- Commit, push, and deployment: not performed.
-
-## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
-
-- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
-- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
-- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
-- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
-- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
-- Platform Administrator authority: explicit
-- View-As write authority: blocked
-- External compatibility runtime dependency: removed
-- Migration applied: no
-- Database changed: no
-- Deployment performed: no
+PINs are routing identifiers rather than authentication credentials, but they are internal operational data and are not exposed anonymously. No new migration, secret, infrastructure, environment, or deployment change is introduced by this follow-up.

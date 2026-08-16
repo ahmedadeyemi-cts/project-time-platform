@@ -55,3 +55,7 @@ if (!finalSource.includes("setActiveView('planner')")) {
 
 console.log(`MODULE_066_GENERATED_JSX_REPAIR=${malformedCount === 1 ? 'REPAIRED' : 'ALREADY_VALID'}`);
 console.log(`MODULE_066_REQUESTED_PROJECT_BRIDGE=${selectionAnchorCount === 1 ? 'INJECTED' : 'ALREADY_PRESENT'}`);
+
+// Run after every build-time injector so generated navigation source converges
+// back to the governed dual-action RBAC contract before Vite packages it.
+await import('./converge-workspace-navigation-policy.mjs');

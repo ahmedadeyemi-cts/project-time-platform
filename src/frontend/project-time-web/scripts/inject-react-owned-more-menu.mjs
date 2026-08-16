@@ -73,4 +73,23 @@ for (const forbidden of [
 }
 
 fs.writeFileSync(generatedAppPath, source, 'utf8');
-console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0 labels=module-registry');
+
+// The shared evaluator is the authorization source of truth. Prebuild may
+// validate this contract, but must never rewrite role or View-As behavior.
+const navigationPolicyPath = path.join(webRoot, 'src', 'module-navigation-access-policy.js');
+if (!fs.existsSync(navigationPolicyPath)) {
+  throw new Error('Shared module navigation access policy is missing.');
+}
+const navigationPolicy = fs.readFileSync(navigationPolicyPath, 'utf8');
+for (const required of [
+  'const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);',
+  "if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;",
+  "effect === 'DENY'",
+  'explicitDeniedModuleNumbers.add(moduleCode)'
+]) {
+  if (!navigationPolicy.includes(required)) {
+    throw new Error(`Shared module navigation policy missing dual-action contract: ${required}`);
+  }
+}
+
+console.log('PROJECTPULSE_REACT_OWNED_MORE_MENU=PASS runtimeChildReplacement=0 labels=module-registry navigationPolicy=module-access-plus-view sourceMutation=0');

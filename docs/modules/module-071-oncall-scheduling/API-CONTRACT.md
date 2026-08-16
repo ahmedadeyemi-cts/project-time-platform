@@ -4,34 +4,34 @@
 
 | Method | Route | Result |
 |---|---|---|
-| `GET` | `/api/oncall-scheduling/capabilities` | Authorization, schedule, notification, public API, and persistence metadata |
-| `GET` | `/api/oncall-scheduling/schedule` | Complete schedule for every authenticated ProjectPulse user |
-| `GET` | `/api/oncall-scheduling/roster` | Rotation roster for every authenticated ProjectPulse user |
-| `GET` | `/api/oncall-scheduling/history` | Schedule snapshot history; restore capability is returned separately |
-| `GET` | `/api/oncall-scheduling/identity-options` | Active engineering identities; restricted to Module 071 managers |
+| `GET` | `/api/oncall-scheduling/capabilities` | Authorization, governed links, schedule, notification, public API, and persistence metadata |
+| `GET` | `/api/oncall-scheduling/schedule` | Complete schedule for every authenticated Pulse user |
+| `GET` | `/api/oncall-scheduling/roster` | Rotation roster for every authenticated Pulse user |
+| `GET` | `/api/oncall-scheduling/history` | Schedule snapshot history |
+| `GET` | `/api/oncall-scheduling/identity-options` | Active engineering identities; restricted to approved editors |
 
 ## Protected management endpoints
 
-Every mutation uses the actual ProjectPulse session and requires canonical `MANAGER` or `ENGINEERING_TEAM_LEAD`. View-As never transfers authority.
+Every mutation uses the actual Pulse session. Approved editors are `MANAGER`, `PROJECT_TEAM_COORDINATOR`, canonical `ENGINEERING_LEAD`, legacy `ENGINEERING_TEAM_LEAD`, `SUPER_ADMINISTRATOR`, and legacy `ADMINISTRATOR`. View-As never transfers authority.
 
 | Method | Route | Result |
 |---|---|---|
-| `PUT` | `/api/oncall-scheduling/schedule` | Validates identity IDs and America/Chicago windows, then saves through the compatibility adapter |
-| `PUT` | `/api/oncall-scheduling/roster` | Saves the department rotation roster |
-| `POST` | `/api/oncall-scheduling/autogenerate` | Returns an unsaved Friday rotation preview |
-| `POST` | `/api/oncall-scheduling/history/restore` | Restores a selected upstream schedule snapshot |
+| `PUT` | `/api/oncall-scheduling/schedule` | Validate and save assignment/date changes |
+| `PUT` | `/api/oncall-scheduling/roster` | Save the department rotation roster |
+| `POST` | `/api/oncall-scheduling/autogenerate` | Return an unsaved Friday rotation preview |
+| `POST` | `/api/oncall-scheduling/history/restore` | Restore a selected schedule snapshot |
 
-Auto-generation never persists automatically. A manager must review the generated entries and explicitly call the schedule save endpoint.
+Auto-generation never persists automatically. An approved editor must review the generated entries and explicitly save the schedule.
 
-## Public routing endpoints
+## Public schedule access
 
-| Method | Route | Result |
-|---|---|---|
-| `GET` | `/api/public/v1/oncall/current` | Current window and all assigned departments |
-| `GET` | `/api/public/v1/oncall/current?department=collaboration` | Current assignment for one normalized department |
-| `GET` | `/api/public/v1/oncall/schedule` | Public routing schedule |
+- Direct unauthenticated page: `https://oncall.onenecklab.com/`
+- Engineer payment form: `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=2kFZU3Lai0qDeJg6VL7DQtvfUo2dqAlEkjfnG3izqQFUQ0NXTlQ5TEtERzE0RzNHN0tNMjJNWThWRSQlQCN0PWcu`
+- `GET /api/public/v1/oncall/current`
+- `GET /api/public/v1/oncall/current?department=collaboration`
+- `GET /api/public/v1/oncall/schedule`
 
-Public endpoints are GET-only, set a short cache policy, allow cross-origin routing clients, and expose no mutation or retired external compatibility service credential.
+Public schedule surfaces are GET-only and briefly cacheable. They expose on-call assignments only and never expose OneAssist customer PIN data.
 
 ## Schedule shape
 
@@ -46,7 +46,7 @@ Public endpoints are GET-only, set a short cache policy, allow cross-origin rout
       "endISO": "2026-07-31T07:00:00",
       "departments": {
         "collaboration": {
-          "userId": "stable-projectpulse-user-guid",
+          "userId": "stable-pulse-user-guid",
           "name": "Current identity display name",
           "email": "current identity email",
           "phone": "routing contact number"
@@ -57,22 +57,8 @@ Public endpoints are GET-only, set a short cache policy, allow cross-origin rout
 }
 ```
 
-Legacy assignments without `userId` remain readable. Every newly selected identity carries a stable ProjectPulse GUID and is server-validated as active before save.
+Legacy assignments without `userId` remain readable. Newly selected identities carry active stable Pulse GUIDs.
 
-## Error boundary
+## Error and data boundary
 
-Raw upstream responses, secrets, connection strings, and exception text are not returned. Upstream failures are normalized to `dependency_unavailable` or `oncall_source_unavailable` responses.
-
-## PROJECTPULSE_NATIVE_POSTGRESQL_MIGRATION_031
-
-- Source parent: `603538ad408b70b3e6a26ff2f4f162599fa1cabf`
-- Migration source: `database/migrations/031_modules_071_072_native_persistence.sql`
-- Rollback source: `database/rollback/031_modules_071_072_native_persistence_rollback.sql`
-- Module 071 persistence: ProjectPulse PostgreSQL schedule, roster, acknowledgement, and history tables
-- Module 072 persistence: ProjectPulse PostgreSQL routing directory and immutable revision tables
-- Platform Administrator authority: explicit
-- View-As write authority: blocked
-- External compatibility runtime dependency: removed
-- Migration applied: no
-- Database changed: no
-- Deployment performed: no
+Raw exceptions, connection strings, provider secrets, and OneAssist PINs are excluded from public schedule responses. Authenticated mutations fail closed when the actual session lacks an approved editor role or when View-As is active.

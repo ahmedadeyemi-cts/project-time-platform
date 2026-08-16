@@ -22,6 +22,7 @@ import App from './App.Module001.g.jsx';
 import AdminRuntimeStabilityPortal from './AdminRuntimeStabilityPortal.jsx';
 import GlobalViewAsDrawer from './GlobalViewAsDrawer.jsx';
 import DisplayPreferencesDrawer from './DisplayPreferencesDrawer.jsx';
+import AccountCenterPortal from './AccountCenterPortal.jsx';
 import AuthenticatedHelpAssistant from './AuthenticatedHelpAssistant.jsx';
 import ModulesDirectoryPortal from './ModulesDirectoryPortal.jsx';
 import ModuleAvailabilityController from './ModuleAvailabilityController.jsx';
@@ -36,6 +37,7 @@ import MicrosoftMailTransportReadinessPanel from './MicrosoftMailTransportReadin
 import EnterpriseExperienceController from './EnterpriseExperienceController.jsx';
 import ProjectForgeFlowHiveSyncPortal from './ProjectForgeFlowHiveSyncPortal.jsx';
 import ApplicationErrorBoundary from './ApplicationErrorBoundary.jsx';
+import WorkspaceNavigationPortal from './WorkspaceNavigationPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './work-register-document-integrity.js';
 import './scoped-rbac-catalog-compatibility.js';
@@ -58,8 +60,12 @@ import './enterprise-overlay-responsive.css';
 import './enterprise-systemwide-reliability.css';
 import './enterprise-feedback-fixes.css';
 import './display-preferences-drawer.css';
+import './module-management-table.css';
 import './enterprise-header-navigation-layout.css';
 import './enterprise-ui-polish.css';
+import './celar-ai-control-followup.css';
+import './account-center.css';
+import './workspace-navigation.css';
 import './enterprise-contrast-guard.css';
 
 createRoot(document.getElementById('root')).render(
@@ -71,6 +77,7 @@ createRoot(document.getElementById('root')).render(
       <AdminRuntimeStabilityPortal />
       <GlobalViewAsDrawer />
       <DisplayPreferencesDrawer />
+      <AccountCenterPortal />
       <ModulesDirectoryPortal />
       <ModuleAvailabilityController />
       <DashboardPersonalCalendarPortal />
@@ -82,6 +89,7 @@ createRoot(document.getElementById('root')).render(
       <MicrosoftMailTransportReadinessPanel />
       <ProjectForgeFlowHiveSyncPortal />
       <AuthenticatedHelpAssistant />
+      <WorkspaceNavigationPortal />
     </ApplicationErrorBoundary>
   </React.StrictMode>
 );

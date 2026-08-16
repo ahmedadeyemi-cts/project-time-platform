@@ -163,6 +163,14 @@ const SPECIAL = Object.freeze({
     Administer: ['MODULE_VIEW', 'TIME_VIEW', 'TIME_EDIT_OWN', 'TIME_SUBMIT', 'TIME_REOPEN', 'TIME_REASSIGN', 'TIME_CORRECT_ON_BEHALF', 'TIME_APPROVE', 'TIME_REJECT', 'AUDIT_VIEW', 'AUDIT_RECORD'],
     'Full Control': ['MODULE_VIEW', 'TIME_VIEW', 'TIME_EDIT_OWN', 'TIME_SUBMIT', 'TIME_REOPEN', 'TIME_REASSIGN', 'TIME_CORRECT_ON_BEHALF', 'TIME_APPROVE', 'TIME_REJECT', 'AUDIT_VIEW', 'AUDIT_RECORD']
   },
+  '001A': {
+    View: ['MODULE_VIEW'],
+    'Create/Edit': ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT'],
+    Approve: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW'],
+    Manage: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW'],
+    Administer: ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW', 'AUDIT_RECORD'],
+    'Full Control': ['MODULE_VIEW', 'RECORD_CREATE', 'RECORD_EDIT', 'RECORD_REOPEN', 'WORKFLOW_MANAGE', 'AUDIT_VIEW', 'AUDIT_RECORD']
+  },
   '002': {
     View: ['MODULE_VIEW', 'APPROVAL_VIEW'],
     'Create/Edit': ['MODULE_VIEW', 'APPROVAL_VIEW'],
@@ -346,7 +354,7 @@ export function grantsFor(moduleCode, role, level, scope) {
     operationalTimeSteward: role === 'PROJECT_TEAM_COORDINATOR' && moduleCode === '001'
   };
   if (level === 'No Access') {
-    return [{ actionCode: 'MODULE_ACCESS', scopeCode: 'ORGANIZATION', effect: 'DENY', conditions, delegatedAuthority: false, reasonRequired: false, auditRequired: true, isActive: true }];
+    return [{ actionCode: 'MODULE_ACCESS', scopeCode: 'ORGANIZATION', effect: 'DENY', conditions: { ...conditions, scopeCode: 'ORGANIZATION' }, delegatedAuthority: false, reasonRequired: false, auditRequired: true, isActive: true }];
   }
 
   let actions;
@@ -361,7 +369,18 @@ export function grantsFor(moduleCode, role, level, scope) {
     actions = actions.filter((actionCode) => !excluded.has(actionCode));
   }
 
-  return actions.map((actionCode) => ({ actionCode, scopeCode: scope, effect: 'GRANT', conditions, ...flags(actionCode, role) }));
+  actions = [...new Set(['MODULE_ACCESS', ...actions])];
+
+  return actions.map((actionCode) => {
+    const grantScope = actionCode === 'MODULE_ACCESS' ? 'ORGANIZATION' : scope;
+    return {
+      actionCode,
+      scopeCode: grantScope,
+      effect: 'GRANT',
+      conditions: { ...conditions, scopeCode: grantScope },
+      ...flags(actionCode, role)
+    };
+  });
 }
 
 export function stable(grants) {

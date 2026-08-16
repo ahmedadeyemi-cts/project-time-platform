@@ -19,6 +19,8 @@ public static class OnCallSchedulingModule
         "2b4a6d1a1242a25b52110a2a209ff8ddda0b8ca4";
     private const string DefaultTimeZone = "America/Chicago";
     private const string ManagePermission = "MANAGE_ONCALL_SCHEDULE";
+    private const string PublicScheduleUrl = "https://oncall.onenecklab.com/";
+    private const string OnCallPayFormUrl = "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=2kFZU3Lai0qDeJg6VL7DQtvfUo2dqAlEkjfnG3izqQFUQ0NXTlQ5TEtERzE0RzNHN0tNMjJNWThWRSQlQCN0PWcu";
 
     public static WebApplication MapOnCallSchedulingEndpoints(this WebApplication app)
     {
@@ -80,7 +82,9 @@ public static class OnCallSchedulingModule
                     "SUPER_ADMINISTRATOR",
                     "ADMINISTRATOR",
                     "MANAGER",
-                    "ENGINEERING_TEAM_LEAD"
+                    "ENGINEERING_LEAD",
+                    "ENGINEERING_TEAM_LEAD",
+                    "PROJECT_TEAM_COORDINATOR"
                 },
                 permission = ManagePermission,
                 platformAdministratorAccess = true,
@@ -105,6 +109,13 @@ public static class OnCallSchedulingModule
                 smsEnabled = false,
                 brevoEnabled = false,
                 activation = "deferred until shared Global SMTP and scheduler registration are authorized"
+            },
+            links = new
+            {
+                publicSchedule = PublicScheduleUrl,
+                onCallPayForm = OnCallPayFormUrl,
+                publicScheduleAuthenticationRequired = false,
+                oneAssistPinAuthenticationRequired = true
             },
             publicApi = new[]
             {
@@ -187,6 +198,7 @@ public static class OnCallSchedulingModule
                   AND upper(COALESCE(r.role_code, '')) IN (
                       'ENGINEER',
                       'ENGINEERING',
+                      'ENGINEERING_LEAD',
                       'ENGINEERING_MANAGER',
                       'ENGINEERING_TEAM_LEAD',
                       'MANAGER'
@@ -700,11 +712,15 @@ public static class OnCallSchedulingModule
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) roles.Add(reader.GetString(0));
-            var canManage =
-                roles.Contains("SUPER_ADMINISTRATOR")
-                || roles.Contains("ADMINISTRATOR")
-                || roles.Contains("MANAGER")
-                || roles.Contains("ENGINEERING_TEAM_LEAD");
+            var canManage = !IsViewAs(context) && roles.Overlaps(new[]
+            {
+                "SUPER_ADMINISTRATOR",
+                "ADMINISTRATOR",
+                "MANAGER",
+                "ENGINEERING_LEAD",
+                "ENGINEERING_TEAM_LEAD",
+                "PROJECT_TEAM_COORDINATOR"
+            });
             if (requireManage && !canManage)
             {
                 return new(null, Results.Json(new
@@ -712,7 +728,7 @@ public static class OnCallSchedulingModule
                     module = ModuleNumber,
                     status = "oncall_manage_permission_required",
                     permission = ManagePermission,
-                    message = "Only Super Administrators, Administrators, Managers, and Engineering Team Leads can manage the on-call schedule."
+                    message = "Only Managers, Project Team Coordinators, Engineering Leads, and platform administrators can manage the on-call schedule."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new(new AccessContext(actualUserId.Value, effectiveUserId.Value, roles, canManage), null);

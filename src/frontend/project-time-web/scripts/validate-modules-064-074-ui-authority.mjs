@@ -66,6 +66,14 @@ const tracker = read(files.tracker);
 const packageJson = JSON.parse(read(files.package));
 const module065PermanentAdministratorAuthority =
   module065.includes('ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles)');
+const module071ManagementRoles = [
+  'SUPER_ADMINISTRATOR',
+  'ADMINISTRATOR',
+  'MANAGER',
+  'ENGINEERING_LEAD',
+  'ENGINEERING_TEAM_LEAD',
+  'PROJECT_TEAM_COORDINATOR'
+];
 
 check(
   'SHARED_STYLE_SCOPED',
@@ -94,12 +102,10 @@ check(
 );
 check(
   'MODULE_071_PLATFORM_ADMIN_AUTHORITY',
-  module071.includes('roles.Contains("SUPER_ADMINISTRATOR")')
-    && module071.includes('roles.Contains("ADMINISTRATOR")')
-    && module071.includes('roles.Contains("MANAGER")')
-    && module071.includes('roles.Contains("ENGINEERING_TEAM_LEAD")')
+  module071.includes('var canManage = !IsViewAs(context) && roles.Overlaps(new[]')
+    && module071ManagementRoles.every((role) => module071.includes(`"${role}"`))
     && module071.includes('platformAdministratorAccess = true'),
-  'approved management role set'
+  'approved management role set through the current overlap-based authorization contract'
 );
 check(
   'MODULE_071_ACTUAL_SESSION_AUTHORITY',
@@ -114,8 +120,10 @@ check(
 );
 check(
   'MODULE_071_AUTHORIZATION_DOCUMENTED',
-  module071Authorization.includes('MODULES_064_074_PLATFORM_ADMIN_ALIGNMENT'),
-  'Module 071 authority alignment'
+  module071Authorization.includes('Canonical `ENGINEERING_LEAD` and legacy `ENGINEERING_TEAM_LEAD`')
+    && module071Authorization.includes('`PROJECT_TEAM_COORDINATOR`, `MANAGER`, `SUPER_ADMINISTRATOR`, and legacy `ADMINISTRATOR`')
+    && module071Authorization.includes('View-As is read-only'),
+  'Module 071 canonical role aliases and actual-session View-As boundary'
 );
 check(
   'TRACKER_ALIGNMENT_RECORDED',

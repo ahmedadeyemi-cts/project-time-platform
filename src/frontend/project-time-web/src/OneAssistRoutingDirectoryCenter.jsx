@@ -219,7 +219,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       data-module="072"
       data-brand="us-signal"
       data-persistence="projectpulse-postgresql"
-      data-pin-visibility="public-unmasked"
+      data-pin-visibility="authenticated-unmasked"
       aria-labelledby="oneassist-title"
     >
       <header className="oneassist-hero">
@@ -228,12 +228,12 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
           <div>
             <p className="oneassist-eyebrow">Module 072 · US Signal Professional Services</p>
             <h1 id="oneassist-title">OneAssist Routing Directory</h1>
-            <p>Visible five-digit customer routing identifiers for engineers, coordinators, integrations, and public routing clients.</p>
+            <p>Visible five-digit customer routing identifiers for authenticated engineers, coordinators, and approved integrations.</p>
           </div>
         </div>
         <div className="oneassist-authority">
           <span>{canManage ? 'Directory editor' : 'Directory viewer'}</span>
-          <small>{canManage ? 'Super Administrator / Administrator / Manager / PTC' : 'Everyone can view routing PINs'}</small>
+          <small>{canManage ? 'Manager / PTC / Engineering Lead / Platform Administrator' : 'All authenticated Pulse users can view routing PINs'}</small>
         </div>
       </header>
 
@@ -241,7 +241,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       {state.error ? <div className="oneassist-banner error" role="alert">{state.error}</div> : null}
       {state.notice ? <div className="oneassist-banner success" role="status">{state.notice}</div> : null}
       <div className="oneassist-banner governed">
-        OneAssist PINs are public routing identifiers and are intentionally displayed without masking. They must never be accepted as proof of identity.
+        OneAssist PINs are internal routing identifiers displayed without masking only after Pulse authentication. They must never be accepted as proof of identity.
       </div>
       <div className="oneassist-banner governed">
         Directory edits and revision history are stored in the ProjectPulse PostgreSQL application database.
@@ -250,7 +250,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       <nav className="oneassist-tabs" aria-label="OneAssist workspace sections">
         <button type="button" className={tab === 'directory' ? 'active' : ''} onClick={() => setTab('directory')}>Directory</button>
         <button type="button" className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>Import preview</button>
-        <button type="button" className={tab === 'api' ? 'active' : ''} onClick={() => setTab('api')}>Public API</button>
+        <button type="button" className={tab === 'api' ? 'active' : ''} onClick={() => setTab('api')}>Authenticated API</button>
       </nav>
 
       <input
@@ -265,7 +265,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       {tab === 'directory' ? (
         <section className="oneassist-card">
           <div className="oneassist-card-head">
-            <div><p className="oneassist-eyebrow">Public routing data</p><h2>Customer PIN directory</h2></div>
+            <div><p className="oneassist-eyebrow">Authenticated routing data</p><h2>Customer PIN directory</h2></div>
             <div className="oneassist-actions">
               <button type="button" className="oneassist-secondary" onClick={load} disabled={state.loading || state.saving}>Refresh</button>
               <button type="button" className="oneassist-secondary" onClick={() => downloadCsv('oneassist-routes.csv', state.routes)}>Download CSV</button>
@@ -302,7 +302,7 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
       {tab === 'import' ? (
         <section className="oneassist-card">
           <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Preview before apply</p><h2>CSV/XLSX import</h2></div>{canManage ? <label className="oneassist-secondary oneassist-file-picker" htmlFor="oneassist-import-file">Choose file</label> : null}</div>
-          {!canManage ? <p className="oneassist-help">Only platform administrators, Managers, and Project Team Coordinators can import directory changes.</p> : null}
+          {!canManage ? <p className="oneassist-help">Only Managers, Project Team Coordinators, Engineering Leads, and platform administrators can import directory changes.</p> : null}
           {state.importPreview ? (
             <>
               <div className="oneassist-import-summary">
@@ -322,10 +322,9 @@ export default function OneAssistRoutingDirectoryCenter({ authSession }) {
 
       {tab === 'api' ? (
         <section className="oneassist-card oneassist-api">
-          <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Versioned read-only contract</p><h2>Public routing API</h2></div><span className="oneassist-live">Version 1</span></div>
-          <code>GET /api/public/v1/oneassist/routes</code>
-          <code>GET /api/public/v1/oneassist/resolve?pin=12345</code>
-          <p>The public API intentionally returns visible routing PINs and customer routing identities. It exposes no add, edit, delete, import, or save operation.</p>
+          <div className="oneassist-card-head"><div><p className="oneassist-eyebrow">Session-protected read contract</p><h2>Authenticated routing API</h2></div><span className="oneassist-live">Version 1</span></div>
+          <code>GET /api/oneassist/routes</code>
+          <p>The authenticated API returns visible routing PINs only to signed-in Pulse users. It exposes no unauthenticated PIN route; add, edit, delete, import, and save remain limited to approved editors.</p>
         </section>
       ) : null}
 

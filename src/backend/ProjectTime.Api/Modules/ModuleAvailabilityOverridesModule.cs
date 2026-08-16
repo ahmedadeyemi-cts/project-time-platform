@@ -12,7 +12,7 @@ namespace ProjectTime.Api.Modules;
 public static class ModuleAvailabilityOverridesModule
 {
     private const string MigrationFile = "042_module_availability_controls.sql";
-    private const int RegisteredModuleCount = 65;
+    private const int RegisteredModuleCount = 71;
 
     public static WebApplication MapModuleAvailabilityOverrideEndpoints(this WebApplication app)
     {
@@ -21,6 +21,8 @@ public static class ModuleAvailabilityOverridesModule
         app.UsePermanentRoleAuthorityCompatibility();
         app.MapRoleAccessAuditEndpoints();
         app.MapQualificationsCertificationSelfServiceEndpoints();
+
+        app.MapModuleCatalogOwnershipEndpoints();
 
         // Force the Minimal API Delegate overload. A direct method-group binding can
         // select RequestDelegate and discard the returned IResult, producing HTTP 200

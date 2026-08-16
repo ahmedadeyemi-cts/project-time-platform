@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROJECTPULSE_MODULES, canonicalModuleRoute, moduleForRoute, replaceTimesheetLabel } from './module-availability-registry.js';
+import ModuleManagementTableView from './ModuleManagementTableView.jsx';
 import { MODULE_DIRECTORY_AUTHORITY_CONTRACT, authorizedModulesFromNavigationState } from './module-directory-authority.js';
 // MODULE_006_AUTHORITATIVE_MODULE_DIRECTORY_PATCH
 import './modules-directory-page.css';
@@ -124,7 +125,7 @@ function responseMessage(payload, fallback) {
 
 function normalizeOverrideResponse(body) {
   if (!Array.isArray(body?.states)) {
-    throw new Error('Module availability returned an invalid override response. Existing modules remain available.');
+    throw new Error('Module availability returned an invalid override response. Existing module cards remain available.');
   }
 
   const states = new Map();
@@ -547,7 +548,7 @@ export default function ModulesDirectoryPortal() {
         <div>
           <p className="eyebrow">ProjectPulse workspace directory</p>
           <h1 id="modules-directory-title">Modules</h1>
-          <p>Open the modules authorized for your current role or View-As identity.</p>
+          <p>Open authorized modules and manage availability, ownership, and configuration within your current scope.</p>
         </div>
         <div className="modules-directory-count">
           <strong>{visibleModules.length}</strong>
@@ -559,15 +560,15 @@ export default function ModulesDirectoryPortal() {
         <div>
           <strong>{canManage ? 'Module availability controls' : 'Module availability'}</strong>
           {availability.error ? (
-            <span>{availability.error} Existing module cards remain available and no module is treated as disabled.</span>
+            <span>{availability.error} Existing module entries remain available and no module is treated as disabled.</span>
           ) : availability.loaded ? (
             <span>
               Missing overrides default to Enabled. {canManage
-                ? 'Use the switches on each card to enable or disable a module safely.'
+                ? 'Use the controls shown with each module to enable or disable it safely.'
                 : `Toggle controls require SUPER_ADMINISTRATOR. Effective roles: ${effectiveRoles.join(', ') || 'none reported'}.`}
             </span>
           ) : (
-            <span>Loading availability overrides. Existing module cards remain available.</span>
+            <span>Loading availability overrides. Existing module entries remain available.</span>
           )}
         </div>
         {availability.loaded ? (
@@ -608,6 +609,14 @@ export default function ModulesDirectoryPortal() {
           <button type="button" onClick={() => { setSearch(''); setGroup('all'); }}>Clear filters</button>
         ) : null}
       </div>
+
+      <ModuleManagementTableView
+        modules={visibleModules}
+        availability={availability}
+        canManage={canManage}
+        busyModule={busyModule}
+        onToggleModule={toggleModule}
+      />
 
       {visibleModules.length ? (
         <div className="modules-directory-grid">

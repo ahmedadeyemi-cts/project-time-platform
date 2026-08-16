@@ -210,7 +210,8 @@ rejectAll(navigation, [
 ], 'View-As navigation false-deny and refresh-race contract');
 
 requireAll(navigationPolicy, [
-  "canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS'",
+  'const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);',
+  "if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;",
   "effect === 'DENY'",
   'explicitDeniedModuleNumbers.add(moduleCode)',
   'inactiveDynamicModuleNumbers',

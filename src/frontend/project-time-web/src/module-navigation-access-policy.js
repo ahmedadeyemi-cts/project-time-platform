@@ -80,7 +80,8 @@ export function resolveModuleNavigationAccess({
   if (!actualSessionPermanentFullControl) {
     for (const grant of asArray(grants)) {
       if (!roleSet.has(roleCodeOf(grant))) continue;
-      if (canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode) !== 'MODULE_ACCESS') continue;
+      const actionCode = canonicalRoleCode(grant?.actionCode ?? grant?.ActionCode);
+      if (!['MODULE_ACCESS', 'MODULE_VIEW'].includes(actionCode)) continue;
       const moduleCode = moduleCodeOf(grant);
       if (!moduleCode) continue;
       const effect = canonicalRoleCode(

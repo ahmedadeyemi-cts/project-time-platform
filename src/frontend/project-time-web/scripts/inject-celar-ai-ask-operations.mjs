@@ -68,7 +68,7 @@ if (!source.includes(actionMarker)) {
                 }
               }))}
             >
-              Troubleshoot with Ask Celar AI
+              Troubleshoot with Celar
             </button>
             <button
               type="button"
@@ -91,13 +91,11 @@ ${actionAnchor}`;
   replaceOnce(actionAnchor, actionBlock, 'ANSWER_ACTIONS');
 }
 
-const submitMarker = 'projectpulse:celar-ai-open-defect-intake';
+const submitRoutingMarker = 'if (isDefectIntakeQuestion(clean))';
 const submitAnchor = `    const clean = question.trim();
-    if (!clean) return;
-    sendingRef.current = true;`;
-if (source.includes(submitAnchor)) {
-  const submitReplacement = `    const clean = question.trim();
-    if (!clean) return;
+    if (!clean) return;`;
+if (!source.includes(submitRoutingMarker)) {
+  const submitReplacement = `${submitAnchor}
     if (isDefectIntakeQuestion(clean)) {
       setQuestion('');
       window.dispatchEvent(new CustomEvent('projectpulse:celar-ai-open-defect-intake', {
@@ -123,11 +121,8 @@ if (source.includes(submitAnchor)) {
         }
       }));
       return;
-    }
-    sendingRef.current = true;`;
+    }`;
   replaceOnce(submitAnchor, submitReplacement, 'SUBMIT_ROUTING');
-} else if (!source.includes("if (isDefectIntakeQuestion(clean))")) {
-  throw new Error('CELAR_AI_ASK_OPERATIONS_INJECTOR_SUBMIT_ROUTING=FAILED missing stable anchor');
 }
 
 const oldDefectFunction = `  function openDefectTracker() {
@@ -172,8 +167,8 @@ const quickActionAnchor = `            <button type="button" className="help-ful
             <button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Report a defect — Module 076</button>`;
 const quickActionReplacement = `            <button type="button" className="help-full-guide-button" onClick={() => openRoute('user-guide')}>Module 999 — System User Guide</button>
             <button type="button" className="help-pulse-ai-button" onClick={() => openRoute('celar-ai')}>Celar AI Workbench</button>
-            <button type="button" className="help-celar-operations-button" onClick={openOperations}>Troubleshoot with Ask Celar AI</button>
-            <button type="button" className="help-celar-health-button" onClick={openHealthAutomation}>Health & automatic defects</button>
+            <button type="button" className="help-celar-operations-button" onClick={openOperations}>Troubleshoot with Celar</button>
+            <button type="button" className="help-celar-health-button" onClick={openHealthAutomation}>Health &amp; Automatic Defects</button>
             <button type="button" className="help-report-defect-button" onClick={openDefectTracker}>Open guided defect questionnaire</button>`;
 if (!source.includes('help-celar-operations-button')) {
   replaceOnce(quickActionAnchor, quickActionReplacement, 'QUICK_ACTIONS');
@@ -194,14 +189,21 @@ for (const marker of [
   operationsImport,
   helperMarker,
   actionMarker,
-  "if (isDefectIntakeQuestion(clean))",
+  submitRoutingMarker,
   'function openOperations()',
   'help-celar-health-button',
-  '<CelarAiAskOperations />'
+  '<CelarAiAskOperations />',
+  "return /\\b(?:open|create|report|file|log|raise)\\s+",
+  "return /\\btroubleshoot\\b|\\bdiagnose\\b|\\brun\\s+diagnostics?\\b",
+  ".join('\\n'),"
 ]) {
   if (!source.includes(marker)) {
     throw new Error(`CELAR_AI_ASK_OPERATIONS_INJECTOR_MARKER=FAILED marker=${marker}`);
   }
+}
+
+if (source.includes('\u0008')) {
+  throw new Error('CELAR_AI_ASK_OPERATIONS_INJECTOR_ESCAPING=FAILED generated_backspace_detected');
 }
 
 fs.writeFileSync(helpPath, source, 'utf8');
@@ -210,3 +212,4 @@ console.log('CELAR_AI_ASK_OPERATIONS_DURABLE_DEFECT_SYSTEM=Module 076');
 console.log('CELAR_AI_ASK_OPERATIONS_DIAGNOSTICS=INJECTED');
 console.log('CELAR_AI_ASK_OPERATIONS_QUESTIONNAIRE=INJECTED');
 console.log('CELAR_AI_ASK_OPERATIONS_HEALTH_AUTOMATION=INJECTED');
+console.log('CELAR_AI_ASK_OPERATIONS_ESCAPING=VERIFIED');

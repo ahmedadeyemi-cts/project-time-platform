@@ -10,9 +10,9 @@ namespace ProjectTime.Api.Modules;
 
 /// <summary>
 /// Module 072 provides the US Signal OneAssist routing PIN directory. Routing
-/// PINs are intentionally visible identifiers, not authentication secrets.
-/// Everyone can read them; only the confirmed manager, administrator, and PTC
-/// roles can edit them.
+/// PINs are visible routing identifiers, not authentication secrets.
+/// They are available only after Pulse authentication. Managers, Project Team
+/// Coordinators, Engineering Leads, and platform administrators can edit them.
 /// </summary>
 public static class OneAssistRoutingDirectoryModule
 {
@@ -36,12 +36,6 @@ public static class OneAssistRoutingDirectoryModule
         app.MapPost(
             "/api/oneassist/import/preview",
             (Func<HttpContext, Task<IResult>>)PreviewImportAsync);
-        app.MapGet(
-            "/api/public/v1/oneassist/routes",
-            (Func<HttpContext, Task<IResult>>)GetPublicRoutesAsync);
-        app.MapGet(
-            "/api/public/v1/oneassist/resolve",
-            (Func<string?, HttpContext, Task<IResult>>)ResolvePublicPinAsync);
 
         return app;
     }
@@ -61,21 +55,24 @@ public static class OneAssistRoutingDirectoryModule
             access = AccessResponse(access.Context!, context),
             dataClassification = new
             {
-                pinClassification = "public_routing_identifier",
+                pinClassification = "internal_routing_identifier",
                 masked = false,
                 visibleToAllAuthenticatedUsers = true,
-                publicApiEnabled = true,
+                publicApiEnabled = false,
+                authenticationRequired = true,
                 authenticationCredential = false
             },
             authorization = new
             {
-                view = "everyone",
+                view = "all authenticated Pulse users",
                 manage = new[]
                 {
                     "MANAGER",
+                    "ENGINEERING_LEAD",
+                    "ENGINEERING_TEAM_LEAD",
+                    "PROJECT_TEAM_COORDINATOR",
                     "ADMINISTRATOR",
-                    "SUPER_ADMINISTRATOR",
-                    "PROJECT_TEAM_COORDINATOR"
+                    "SUPER_ADMINISTRATOR"
                 },
                 permission = ManagePermission,
                 serverEnforced = true,
@@ -95,10 +92,9 @@ public static class OneAssistRoutingDirectoryModule
                 previewBeforeApply = true,
                 automaticallyPersists = false
             },
-            publicApi = new[]
+            authenticatedApi = new[]
             {
-                "/api/public/v1/oneassist/routes",
-                "/api/public/v1/oneassist/resolve?pin=12345"
+                "/api/oneassist/routes"
             },
             persistence = PersistenceStatus()
         });
@@ -117,7 +113,7 @@ public static class OneAssistRoutingDirectoryModule
             status = "routes_loaded",
             access = AccessResponse(access.Context!, context),
             canManage = access.Context!.CanManage,
-            pinVisibility = "visible_unmasked",
+            pinVisibility = "authenticated_visible_unmasked",
             count = routes.Count,
             routes
         });
@@ -234,67 +230,6 @@ public static class OneAssistRoutingDirectoryModule
                 detail: "The tabular file could not be previewed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
-    }
-
-    private static async Task<IResult> GetPublicRoutesAsync(HttpContext context)
-    {
-        SetPublicHeaders(context);
-        var source = await ReadUpstreamAsync(context);
-        if (source.Failure is not null) return source.Failure;
-        var routes = NormalizeRoutes(source.Payload);
-        return Results.Ok(new
-        {
-            module = ModuleNumber,
-            service = "US Signal OneAssist Routing",
-            status = "routes_loaded",
-            generatedAt = DateTimeOffset.UtcNow,
-            pinClassification = "public_routing_identifier",
-            count = routes.Count,
-            routes
-        });
-    }
-
-    private static async Task<IResult> ResolvePublicPinAsync(string? pin, HttpContext context)
-    {
-        SetPublicHeaders(context);
-        var normalizedPin = NormalizePin(pin);
-        if (normalizedPin is null)
-        {
-            return Results.BadRequest(new
-            {
-                module = ModuleNumber,
-                service = "US Signal OneAssist Routing",
-                status = "invalid_pin",
-                message = "PIN must contain exactly five digits."
-            });
-        }
-
-        var source = await ReadUpstreamAsync(context);
-        if (source.Failure is not null) return source.Failure;
-        var routes = NormalizeRoutes(source.Payload);
-        var match = routes
-            .Select(node => node as JsonObject)
-            .FirstOrDefault(route => route?["pin"]?.GetValue<string>() == normalizedPin);
-        if (match is null)
-        {
-            return Results.Json(new
-            {
-                module = ModuleNumber,
-                service = "US Signal OneAssist Routing",
-                status = "route_not_found",
-                match = false,
-                pin = normalizedPin
-            }, statusCode: StatusCodes.Status404NotFound);
-        }
-
-        return Results.Ok(new
-        {
-            module = ModuleNumber,
-            service = "US Signal OneAssist Routing",
-            status = "route_resolved",
-            match = true,
-            route = match
-        });
     }
 
     private static JsonArray NormalizeRoutes(JsonNode? payload)
@@ -568,12 +503,14 @@ public static class OneAssistRoutingDirectoryModule
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) roles.Add(reader.GetString(0));
-            var canManage = roles.Overlaps(new[]
+            var canManage = !IsViewAs(context) && roles.Overlaps(new[]
             {
                 "MANAGER",
+                "ENGINEERING_LEAD",
+                "ENGINEERING_TEAM_LEAD",
+                "PROJECT_TEAM_COORDINATOR",
                 "ADMINISTRATOR",
-                "SUPER_ADMINISTRATOR",
-                "PROJECT_TEAM_COORDINATOR"
+                "SUPER_ADMINISTRATOR"
             });
             if (requireManage && !canManage)
             {
@@ -582,7 +519,7 @@ public static class OneAssistRoutingDirectoryModule
                     module = ModuleNumber,
                     status = "oneassist_manage_permission_required",
                     permission = ManagePermission,
-                    message = "Only Super Administrators, Administrators, Managers, and Project Team Coordinators can edit OneAssist routing PINs."
+                    message = "Only Managers, Project Team Coordinators, Engineering Leads, and platform administrators can edit OneAssist routing PINs."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new(new AccessContext(actualUserId.Value, effectiveUserId.Value, roles, canManage), null);
@@ -688,12 +625,6 @@ public static class OneAssistRoutingDirectoryModule
         activation = "migration 031 and current API deployment"
     };
 
-    private static void SetPublicHeaders(HttpContext context)
-    {
-        context.Response.Headers.CacheControl = "public, max-age=60";
-        context.Response.Headers.AccessControlAllowOrigin = "*";
-        context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-    }
 
     private static Guid? SessionUserId(HttpContext context, params string[] keys)
     {
