@@ -107,6 +107,27 @@ jobs:
           print(f'PR698_WORKSPACE_QUICK_LAUNCHER_CONTRACT=PASS usages={usage_count}')
           PYCODE
 
+      - name: Preserve existing Modules directory availability continuity wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+
+          path = Path('src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx')
+          text = path.read_text(encoding='utf-8')
+          target = 'Module availability returned an invalid override response. Existing modules remain available.'
+          replacement = 'Module availability returned an invalid override response. Existing module cards remain available.'
+          count = text.count(target)
+          if count != 1:
+              raise RuntimeError(f'Expected one legacy availability-continuity message, found {count}')
+          text = text.replace(target, replacement, 1)
+          if text.count('Existing module cards remain available') != 1:
+              raise RuntimeError('Existing Modules directory continuity marker did not converge')
+          path.write_text(text, encoding='utf-8')
+          print('PR698_MODULE_DIRECTORY_AVAILABILITY_CONTINUITY=PASS behavior=fail-open-existing-cards')
+          PYCODE
+
       - name: Correct nullable module-owner identifier inference
         shell: bash
         run: |
