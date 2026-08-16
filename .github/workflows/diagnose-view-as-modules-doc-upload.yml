@@ -1,0 +1,50 @@
+name: Diagnose View-As, Modules, and document upload
+
+on:
+  push:
+    branches:
+      - diagnostic/view-as-modules-doc-upload-20260816
+    paths:
+      - .github/workflows/diagnose-view-as-modules-doc-upload.yml
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    name: Collect current focused source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Package focused source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tar -czf "$RUNNER_TEMP/projectpulse-focused-source.tgz" \
+            src/frontend/project-time-web/src \
+            src/frontend/project-time-web/scripts \
+            src/backend/ProjectTime.Api \
+            tests \
+            .github/workflows/projectpulse-deploy-test.yml \
+            .github/workflows/projectpulse-ci.yml 2>/dev/null || \
+          tar -czf "$RUNNER_TEMP/projectpulse-focused-source.tgz" \
+            src/frontend/project-time-web/src \
+            src/frontend/project-time-web/scripts \
+            src/backend/ProjectTime.Api \
+            tests \
+            .github/workflows/projectpulse-deploy-test.yml
+          sha256sum "$RUNNER_TEMP/projectpulse-focused-source.tgz"
+
+      - name: Upload focused source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: projectpulse-focused-source-${{ github.run_id }}
+          path: ${{ runner.temp }}/projectpulse-focused-source.tgz
+          if-no-files-found: error
+          retention-days: 1
