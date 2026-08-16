@@ -15,11 +15,40 @@ function replaceOnce(anchor, replacement, label) {
 }
 
 if (!source.includes('async function resolveOperationalIntent(value)')) {
-  const anchor = `function isTroubleshootingQuestion(value) {
-  return /\\btroubleshoot\\b|\\bdiagnose\\b|\\brun\\s+diagnostics?\\b|\\bwhy\\s+(?:is|did)\\b.*\\b(?:fail|failed|error|unavailable|timeout|broken)\\b/i.test(String(value ?? ''));
+  const anchor = 'function operationalEvidenceFromResult(result) {';
+  const helper = `function isDefectIntakeQuestionFallback(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return [
+    'open defect',
+    'open a defect',
+    'create defect',
+    'create a defect',
+    'report defect',
+    'report a defect',
+    'file defect',
+    'file a defect',
+    'log defect',
+    'log a defect',
+    'raise defect',
+    'raise a defect',
+    'report this issue',
+    'this is broken',
+    'open an issue'
+  ].some((phrase) => normalized.includes(phrase));
 }
-`;
-  const helper = `${anchor}
+
+function isTroubleshootingQuestionFallback(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return [
+    'troubleshoot',
+    'diagnose',
+    'run diagnostic',
+    'run diagnostics',
+    'why is',
+    'why did'
+  ].some((phrase) => normalized.includes(phrase));
+}
+
 async function resolveOperationalIntent(value) {
   try {
     const response = await fetch('/api/celar-ai/v1/operations/intent', {
@@ -36,7 +65,8 @@ async function resolveOperationalIntent(value) {
     return null;
   }
 }
-`;
+
+${anchor}`;
   replaceOnce(anchor, helper, 'HELPER');
 }
 
@@ -57,18 +87,20 @@ if (!source.includes('const operationalDecision = await resolveOperationalIntent
       return;
     }
     if (operationalDecision?.actionKind === 'open_defect_questionnaire'
-        || (!operationalDecision && isDefectIntakeQuestion(clean))) {`,
+        || (!operationalDecision && isDefectIntakeQuestionFallback(clean))) {`,
     'DEFECT_ROUTE'
   );
   replaceOnce(
     `    if (isTroubleshootingQuestion(clean)) {`,
     `    if (operationalDecision?.actionKind === 'run_read_only_diagnostics'
-        || (!operationalDecision && isTroubleshootingQuestion(clean))) {`,
+        || (!operationalDecision && isTroubleshootingQuestionFallback(clean))) {`,
     'TROUBLESHOOT_ROUTE'
   );
 }
 
 for (const marker of [
+  'function isDefectIntakeQuestionFallback(value)',
+  'function isTroubleshootingQuestionFallback(value)',
   'async function resolveOperationalIntent(value)',
   "operationalDecision?.actionKind === 'open_defect_questionnaire'",
   "operationalDecision?.actionKind === 'run_read_only_diagnostics'",
