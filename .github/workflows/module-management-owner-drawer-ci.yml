@@ -42,6 +42,17 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
+      - name: Validate GitHub Actions workflow syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" -oneline \
+            .github/workflows/projectpulse-deploy-test.yml \
+            .github/workflows/projectpulse-release-test-control-ci.yml \
+            .github/workflows/runtime-navigation-work-register-responsive-ci.yml \
+            .github/workflows/module-management-owner-drawer-ci.yml
+
       - name: Validate focused source contract
         run: |
           set -Eeuo pipefail
