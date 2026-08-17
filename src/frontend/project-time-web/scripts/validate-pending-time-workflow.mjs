@@ -105,10 +105,15 @@ for (const token of [
 for (const token of [
   "import ProductionApprovalWorkPortal from '../ProductionApprovalWorkPortal.jsx';",
   "import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';",
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
   '<ProductionApprovalWorkPortal />',
   '<PtcGuidedMovePortal />',
   '<PtcTimesheetManagementPortal />',
-  'if (state.active && !state.allowed) return null;'
+  'if (!authority.ready) return null;',
+  'if (!canStewardTime && !canReviewApprovals) return null;'
 ]) {
   requireText(compositionGate, token, 'Frontend composition gate');
 }
