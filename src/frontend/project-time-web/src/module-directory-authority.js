@@ -42,7 +42,14 @@ export function authorizedModulesFromEffectiveNavigationState(projectModules, na
 export function authorizedModulesFromNavigationState(projectModules, navigationState) {
   const published = publishedWorkspaceAuthority();
   if (published) {
-    if (published.state !== 'ready') return [];
+    // Shared workspace authorization is published asynchronously. While it is
+    // still initializing, retain the already-authorized effective-navigation
+    // result instead of converting the loading state into an empty directory.
+    // A completed shared result remains authoritative once it is ready.
+    if (published.state !== 'ready') {
+      return authorizedModulesFromEffectiveNavigationState(projectModules, navigationState);
+    }
+
     const allowed = new Set(
       (published.moduleNumbers || []).map(normalizedModuleNumber).filter(Boolean)
     );
