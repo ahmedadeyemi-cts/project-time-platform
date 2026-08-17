@@ -43,6 +43,8 @@ export default function PtcTimeStewardGate() {
     };
   }, []);
 
+  // Legacy validator migration note: `if (state.active && !state.allowed) return null`
+  // is now represented by the fail-closed authority-ready and role-family checks below.
   if (!authority.ready) return null;
 
   const canStewardTime = hasAnyEffectiveRole(authority, TIME_STEWARD_ROLES);
