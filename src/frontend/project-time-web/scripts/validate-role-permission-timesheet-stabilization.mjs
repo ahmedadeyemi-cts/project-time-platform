@@ -22,6 +22,7 @@ const [
   boundary,
   project,
   gate,
+  roleAuthority,
   main,
   authoritative,
   timerPortal,
@@ -35,6 +36,7 @@ const [
   optional('src/backend/ProjectTime.Api/Modules/PtcTimeStewardRoleBoundary.cs'),
   optional('src/backend/ProjectTime.Api/ProjectTime.Api.csproj'),
   read('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  read('src/frontend/project-time-web/src/effective-role-authority.js'),
   read('src/frontend/project-time-web/src/main.jsx'),
   read('src/frontend/project-time-web/src/projectpulse-authoritative-api.js'),
   read('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
@@ -84,14 +86,48 @@ if (project) {
 
 requireAll(gate, [
   'PtcTimeStewardGate',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
-  "'projectPulseViewAsUser'",
-  'roleCodes',
-  'if (state.active && !state.allowed) return null',
-  '<PtcTimesheetManagementPortal />'
+  'if (!authority.ready) return null',
+  'if (!canStewardTime && !canReviewApprovals) return null',
+  '<PtcTimesheetManagementPortal />',
+  '<ProductionApprovalWorkPortal />'
 ], 'Effective-role PTC UI gate');
-rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+rejectAll(gate, [
+  'PtcRuntimeTaskCatalog',
+  'state.active',
+  'state.allowed'
+], 'single PTC portal owner and retired role-probe state');
+
+requireAll(roleAuthority, [
+  'normalizeProjectPulseRoleCodes',
+  'readEffectiveRoleAuthority',
+  'hasAnyEffectiveRole',
+  "readJsonStorage('projectPulseViewAsUser')",
+  "readJsonStorage('projectPulseAuthSession')",
+  'window.__projectPulseEffectiveNavigation',
+  'roleCodes',
+  "source: 'view_as'",
+  "source: 'effective_navigation'",
+  "source: 'session'"
+], 'Central effective-role authority');
+
+const viewAsPosition = roleAuthority.indexOf("readJsonStorage('projectPulseViewAsUser')");
+const navigationPosition = roleAuthority.indexOf('window.__projectPulseEffectiveNavigation');
+const sessionPosition = roleAuthority.indexOf("readJsonStorage('projectPulseAuthSession')");
+if (
+  viewAsPosition < 0
+  || navigationPosition < 0
+  || sessionPosition < 0
+  || viewAsPosition > navigationPosition
+  || navigationPosition > sessionPosition
+) {
+  throw new Error('Effective-role authority must prefer View-As, then effective navigation, then authenticated session.');
+}
 
 requireAll(main, [
   "import './projectpulse-authoritative-api.js';",
