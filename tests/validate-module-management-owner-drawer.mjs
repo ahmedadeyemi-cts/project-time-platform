@@ -5,6 +5,8 @@ const root = process.cwd();
 const files = {
   view: path.join(root, 'src/frontend/project-time-web/src/ModuleManagementTableView.jsx'),
   css: path.join(root, 'src/frontend/project-time-web/src/module-management-table.css'),
+  authority: path.join(root, 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'),
+  ownership: path.join(root, 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'),
   migration: path.join(root, 'database/migrations/091_module_management_owner_storage_repair.sql'),
   rollback: path.join(root, 'database/rollback/091_module_management_owner_storage_repair_rollback.sql')
 };
@@ -28,18 +30,42 @@ function requireMarkers(name, source, markers) {
   }
 }
 
-const view = requireFile('Table view', files.view);
-const css = requireFile('Table styles', files.css);
+const view = requireFile('Enterprise Module Management view', files.view);
+const css = requireFile('Enterprise Module Management styles', files.css);
+const authority = requireFile('Actual-session authority resolver', files.authority);
+const ownership = requireFile('Module ownership API', files.ownership);
 const migration = requireFile('Migration 091', files.migration);
 const rollback = requireFile('Rollback 091', files.rollback);
 
-requireMarkers('Table view', view, [
+requireMarkers('Enterprise Module Management view', view, [
   "import IdentityAvatar from './identity/IdentityAvatar.jsx'",
   "import module006CustomerBrands from './assets/module-006-customer-brands.svg'",
   "fetch('/api/module-catalog/owners'",
   "fetch('/api/identity/profile'",
   "fetch('/api/profile/preferences'",
   "projectpulse:profile-preferences-changed",
+  "body?.access?.canManageOwners === true || body?.access?.canManage === true",
+  "const canChangeOwner = ownership.canManage && !viewAsReadOnly",
+  "if (!ownership.canManage || ownership.isViewAs",
+  'module-management-enterprise-header',
+  'module-management-enterprise-layout',
+  'module-management-rail',
+  'module-management-command-bar',
+  'module-management-active-filters',
+  'module-management-grid',
+  'module-management-pagination',
+  'All Modules',
+  'My Available Modules',
+  'Customer Solutions',
+  'Core Operations',
+  'Project Management',
+  'Recently Updated',
+  'Disabled Modules',
+  'Assigned Roles',
+  'Module Owner',
+  'Recently Changed',
+  'Search by module number, name, route, or customer',
+  'Rows per page:',
   'module-management-detail-panel',
   'role="tablist"',
   'Overview',
@@ -48,20 +74,53 @@ requireMarkers('Table view', view, [
   'History',
   'Customer Programs',
   'module006CustomerBrands',
-  'Only an actual Super Administrator session can change module ownership',
+  'Assign to me',
   'Module ownership is accountability metadata only',
-  'View-As remains read-only',
+  'View-As is read-only',
   'Copy Module Link',
-  'Audit History'
+  'View Change History',
+  'Review Dependencies'
 ]);
 
-requireMarkers('Table styles', css, [
-  '.module-management-table-workspace.has-detail-panel',
+requireMarkers('Enterprise Module Management styles', css, [
+  'MODULE_MANAGEMENT_ENTERPRISE_WORKSPACE_V3',
+  'body.module-management-enterprise-active #pulse-enterprise-page-chrome-host',
+  '.module-management-enterprise-layout.has-detail-panel',
+  '.module-management-rail',
+  '.module-management-command-bar',
+  '.module-management-active-filters',
+  '.module-management-grid',
+  '.module-management-pagination',
   '.module-management-detail-panel',
-  '.module-management-detail-tabs',
   '.module-management-drawer-backdrop',
-  '@media (max-width: 1120px)',
+  '.module-management-rail-backdrop.visible',
+  '@media (max-width: 1280px)',
+  '@media (max-width: 680px)',
   '@media (prefers-reduced-motion: reduce)'
+]);
+
+requireMarkers('Actual-session authority resolver', authority, [
+  'ResolveByUserIdAsync',
+  'ResolveByApplicationEmailAsync',
+  'ResolveByExternalIdentityAsync',
+  "to_regclass('public.auth_external_identity_links') IS NOT NULL",
+  'auth_external_identity_links external_identity',
+  'actual_session_user_id',
+  'actual_session_application_email',
+  'actual_session_external_identity',
+  'IsAdministratorRoleCode(roleCode)',
+  'ProjectPulsePermanentFullControl',
+  'if (IsViewAs(context)) return false'
+]);
+
+requireMarkers('Module ownership API', ownership, [
+  '/api/module-catalog/owners',
+  '/api/module-catalog/{moduleNumber}/owner',
+  'ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync',
+  'ownerCandidates',
+  'MODULE_OWNER_CHANGED',
+  'ownershipDoesNotGrantAccess',
+  'Exit View-As before changing module ownership'
 ]);
 
 requireMarkers('Migration 091', migration, [
@@ -95,6 +154,11 @@ if (!/role="button"/.test(view) || !/aria-controls="module-management-detail-pan
   fail('Module rows must expose keyboard-accessible detail-panel behavior.');
 }
 
+if (/const canChangeOwner\s*=\s*canManage\s*&&\s*ownership\.canManage/.test(view)
+    || /if \(!canManage \|\| !ownership\.canManage/.test(view)) {
+  fail('Module ownership authority must come from the actual-session ownership API and must not depend on the separate availability-control response.');
+}
+
 if (!/owner_user_id IS DISTINCT FROM owner_id/.test(migration)) {
   fail('Migration 091 must avoid increasing owner revisions when the requested owner is already assigned.');
 }
@@ -107,5 +171,19 @@ if (view.includes('/assets/brand-customer-programs.svg')) {
   fail('Module 006 branding must reuse the existing bundled SVG asset rather than a missing public path.');
 }
 
+if (/#[0-9a-f]{3,8}\b/i.test(css)) {
+  const allowedBrandNeutralColors = [
+    '#ffffff', '#d9f4e5', '#fde6e6', '#fff1c7', '#05172e', '#071425',
+    '#167447', '#c33a3a', '#9a6500'
+  ];
+  const literals = [...new Set(css.match(/#[0-9a-f]{3,8}\b/gi) || [])]
+    .map((value) => value.toLowerCase());
+  for (const literal of literals) {
+    if (!allowedBrandNeutralColors.includes(literal)) {
+      fail(`Enterprise Module Management styles contain an ungoverned hard-coded color: ${literal}`);
+    }
+  }
+}
+
 if (process.exitCode) process.exit(process.exitCode);
-console.log('MODULE_MANAGEMENT_OWNER_DRAWER_VALIDATION=PASS');
+console.log('MODULE_MANAGEMENT_ENTERPRISE_OWNER_AUTHORITY_VALIDATION=PASS');
