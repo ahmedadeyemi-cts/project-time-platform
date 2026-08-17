@@ -1,4 +1,4 @@
-name: Export validated Modules and 055C product blobs
+name: Publish validated View-As, Modules, and 055C non-workflow source
 
 on:
   push:
@@ -11,30 +11,31 @@ permissions:
   contents: write
 
 concurrency:
-  group: export-view-as-modules-055c-product-blobs
+  group: publish-view-as-modules-055c-nonworkflow-20260817
   cancel-in-progress: false
 
 jobs:
-  export:
-    name: Validate source and export immutable blob manifest
+  publish:
+    name: Validate and publish exact non-workflow product source
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GH_TOKEN: ${{ github.token }}
-      TARGET_BRANCH: fix/view-as-modules-055c-document-continuity-20260816
+      TARGET_BRANCH: fix/modules-owner-viewas-document-continuity-20260817
       EXPECTED_BASE: 1b60d1cda5fce24d99dd3850f2a65b1b27d7c374
       PATCH_SHA256: b0ad08bfe997e86f5b27e55ab6242c10871924c991c946e845c29e7e7d2ebfd1
     steps:
-      - name: Check out temporary export controller
+      - name: Check out temporary publisher source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
@@ -51,8 +52,6 @@ jobs:
           PATCH_GZ="$RUNNER_TEMP/view-as-modules-055c-product.patch.gz"
           PATCH_FILE="$RUNNER_TEMP/view-as-modules-055c-product.patch"
           WORKTREE="$RUNNER_TEMP/view-as-modules-055c-product"
-          EVIDENCE="$RUNNER_TEMP/view-as-modules-055c-blob-evidence"
-          mkdir -p "$EVIDENCE"
 
           cat .github/view-as-modules-055c-payload/chunk-*.b64 \
             | base64 --decode > "$PATCH_GZ"
@@ -68,7 +67,7 @@ jobs:
 
           git worktree add --detach "$WORKTREE" "origin/$TARGET_BRANCH"
           git -C "$WORKTREE" apply --check "$PATCH_FILE"
-          git -C "$WORKTREE" apply "$PATCH_FILE"
+          git -C "$WORKTREE" apply --index "$PATCH_FILE"
 
           rm -rf \
             "$WORKTREE/.github/pr698-payload" \
@@ -78,8 +77,9 @@ jobs:
             "$WORKTREE/.github/workflows/pr698-finalize-v4.yml" \
             "$WORKTREE/.github/workflows/pr698-trigger-finalize-v4.yml" \
             "$WORKTREE/.github/workflows/pr698-workspace-navigation-diagnostic.yml"
+          git -C "$WORKTREE" add -A
 
-          cat > "$EVIDENCE/expected-paths.txt" <<'PATHS'
+          cat > "$RUNNER_TEMP/expected-viewas-paths.txt" <<'PATHS'
           .github/pr698-payload/chunk-000.b64
           .github/pr698-payload/chunk-001.b64
           .github/pr698-payload/chunk-002.b64
@@ -112,12 +112,10 @@ jobs:
           src/frontend/project-time-web/src/view-as-storage-compatibility.js
           src/frontend/project-time-web/src/work-register-document-integrity.js
           PATHS
-          sed -i 's/^          //' "$EVIDENCE/expected-paths.txt"
-          sort -o "$EVIDENCE/expected-paths.txt" "$EVIDENCE/expected-paths.txt"
-
-          git -C "$WORKTREE" add -A
-          git -C "$WORKTREE" diff --cached --name-only | sort > "$EVIDENCE/actual-paths.txt"
-          diff -u "$EVIDENCE/expected-paths.txt" "$EVIDENCE/actual-paths.txt" \
+          sed -i 's/^          //' "$RUNNER_TEMP/expected-viewas-paths.txt"
+          sort -o "$RUNNER_TEMP/expected-viewas-paths.txt" "$RUNNER_TEMP/expected-viewas-paths.txt"
+          git -C "$WORKTREE" diff --cached --name-only | sort > "$RUNNER_TEMP/actual-viewas-paths.txt"
+          diff -u "$RUNNER_TEMP/expected-viewas-paths.txt" "$RUNNER_TEMP/actual-viewas-paths.txt" \
             || fail 'The staged repair does not match the exact reviewed 31-path boundary.'
           [[ -z "$(git -C "$WORKTREE" diff --name-only)" ]] \
             || fail 'Unstaged source changes remain after exact staging.'
@@ -132,11 +130,10 @@ jobs:
             src/frontend/project-time-web/src/main.jsx
 
           echo "worktree=$WORKTREE" >> "$GITHUB_OUTPUT"
-          echo "evidence=$EVIDENCE" >> "$GITHUB_OUTPUT"
           echo 'EXACT_CURRENT_MAIN_PRODUCT_BOUNDARY=PASSED'
           echo 'PR697_PRESENTATION_FILES=UNCHANGED'
 
-      - name: Run focused current and inherited repair validation
+      - name: Run focused and inherited repair validation
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
         run: |
@@ -168,12 +165,9 @@ jobs:
           npm audit --audit-level=high
           npm run build
 
-      - name: Verify post-build source and export immutable blob manifest
-        id: blobs
+      - name: Verify build source and publish non-workflow product commit
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
-        env:
-          EVIDENCE: ${{ steps.source.outputs.evidence }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -184,48 +178,52 @@ jobs:
           }
           git diff --cached --check
 
-          test ! -e .github/pr698-payload
-          test ! -e .github/workflows/pr698-finalize.yml
-          test ! -e .github/workflows/pr698-finalize-v2.yml
-          test ! -e .github/workflows/pr698-finalize-v3.yml
-          test ! -e .github/workflows/pr698-finalize-v4.yml
-          test ! -e .github/workflows/pr698-trigger-finalize-v4.yml
-          test ! -e .github/workflows/pr698-workspace-navigation-diagnostic.yml
+          workflow_paths=(
+            .github/workflows/pr698-finalize-v2.yml
+            .github/workflows/pr698-finalize-v3.yml
+            .github/workflows/pr698-finalize-v4.yml
+            .github/workflows/pr698-finalize.yml
+            .github/workflows/pr698-trigger-finalize-v4.yml
+            .github/workflows/pr698-workspace-navigation-diagnostic.yml
+            .github/workflows/projectpulse-deploy-test.yml
+            .github/workflows/view-as-modules-work-register-documents-ci.yml
+          )
+          git restore --source=HEAD --staged --worktree -- "${workflow_paths[@]}"
 
-          : > "$EVIDENCE/tree-elements.ndjson"
-          while IFS= read -r path; do
-            if [[ -e "$path" ]]; then
-              encoded="$(base64 -w0 "$path")"
-              blob_sha="$(jq -n --arg content "$encoded" '{content:$content,encoding:"base64"}' \
-                | gh api --method POST "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha')"
-              mode="$(git ls-files -s -- "$path" | awk 'NR==1 {print $1}')"
-              [[ -n "$mode" ]] || mode=100644
-              jq -cn --arg path "$path" --arg mode "$mode" --arg sha "$blob_sha" \
-                '{path:$path,mode:$mode,type:"blob",sha:$sha}' >> "$EVIDENCE/tree-elements.ndjson"
-            else
-              jq -cn --arg path "$path" '{path:$path,sha:null}' \
-                >> "$EVIDENCE/tree-elements.ndjson"
-            fi
-          done < "$EVIDENCE/expected-paths.txt"
+          cat > "$RUNNER_TEMP/expected-nonworkflow-paths.txt" <<'PATHS'
+          .github/pr698-payload/chunk-000.b64
+          .github/pr698-payload/chunk-001.b64
+          .github/pr698-payload/chunk-002.b64
+          .github/pr698-payload/chunk-003.b64
+          .github/pr698-payload/chunk-004.b64
+          .github/pr698-payload/chunk-005.b64
+          .github/pr698-payload/chunk-006.b64
+          .github/pr698-payload/chunk-007.b64
+          .github/pr698-payload/chunk-008.b64
+          .github/pr698-payload/chunk-009.b64
+          .github/pr698-payload/chunk-010.b64
+          src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+          src/backend/ProjectTime.Api/Program.cs
+          src/frontend/project-time-web/scripts/validate-view-as-modules-work-register-documents.mjs
+          src/frontend/project-time-web/scripts/validate-workspace-navigation.mjs
+          src/frontend/project-time-web/src/GlobalViewAsDrawer.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/PageContextGuide.jsx
+          src/frontend/project-time-web/src/WorkRegisterCenter.jsx
+          src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx
+          src/frontend/project-time-web/src/module-directory-authority.js
+          src/frontend/project-time-web/src/view-as-storage-compatibility.js
+          src/frontend/project-time-web/src/work-register-document-integrity.js
+          PATHS
+          sed -i 's/^          //' "$RUNNER_TEMP/expected-nonworkflow-paths.txt"
+          sort -o "$RUNNER_TEMP/expected-nonworkflow-paths.txt" "$RUNNER_TEMP/expected-nonworkflow-paths.txt"
+          git diff --cached --name-only | sort > "$RUNNER_TEMP/actual-nonworkflow-paths.txt"
+          diff -u "$RUNNER_TEMP/expected-nonworkflow-paths.txt" "$RUNNER_TEMP/actual-nonworkflow-paths.txt" \
+            || fail 'The publication boundary is not the exact 23-path non-workflow subset.'
+          [[ -z "$(git diff --name-only)" ]] || fail 'Unstaged source remains before publication.'
 
-          jq -s '.' "$EVIDENCE/tree-elements.ndjson" > "$EVIDENCE/tree-elements.json"
-          base_tree="$(git rev-parse "$EXPECTED_BASE^{tree}")"
-          printf '%s\n' "$EXPECTED_BASE" > "$EVIDENCE/base-sha.txt"
-          printf '%s\n' "$base_tree" > "$EVIDENCE/base-tree-sha.txt"
-
-          echo '=== VALIDATED_PRODUCT_BLOB_MANIFEST_BEGIN ==='
-          cat "$EVIDENCE/tree-elements.json"
-          echo '=== VALIDATED_PRODUCT_BLOB_MANIFEST_END ==='
-          echo "VALIDATED_PRODUCT_BASE=$EXPECTED_BASE"
-          echo "VALIDATED_PRODUCT_BASE_TREE=$base_tree"
-          echo 'POST_BUILD_SOURCE_BOUNDARY=PASSED'
-          echo 'BLOB_MANIFEST_READY=TRUE'
-          echo 'PRODUCT_REF_UPDATED=FALSE'
-
-      - name: Upload immutable blob evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: view-as-modules-055c-blob-manifest-${{ github.run_id }}
-          path: ${{ steps.source.outputs.evidence }}
-          if-no-files-found: error
-          retention-days: 2
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git commit -m 'Fix View-As identity, Modules parity, and 055C document continuity'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "PUBLISHED_NONWORKFLOW_COMMIT=$(git rev-parse HEAD)"
