@@ -97,7 +97,12 @@ requireAll(gate, [
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
   "'projectPulseViewAsUser'",
-  'if (state.active && !state.allowed) return null',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
+  'if (!authority.ready) return null',
+  'if (!canStewardTime && !canReviewApprovals) return null',
   '<PtcTimesheetManagementPortal />'
 ], 'Effective-role PTC frontend gate');
 rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal ownership');
