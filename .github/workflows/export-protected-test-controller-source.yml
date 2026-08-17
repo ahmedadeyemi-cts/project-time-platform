@@ -24,9 +24,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          install -d -m 0700 "$RUNNER_TEMP/controller-source/.github/workflows"
-          install -m 0600 .github/workflows/projectpulse-deploy-test.yml "$RUNNER_TEMP/controller-source/.github/workflows/projectpulse-deploy-test.yml"
-          install -m 0600 .github/workflows/projectpulse-release-test-control-ci.yml "$RUNNER_TEMP/controller-source/.github/workflows/projectpulse-release-test-control-ci.yml"
+          ROOT="$RUNNER_TEMP/controller-source"
+          install -d -m 0700 "$ROOT/.github/workflows" "$ROOT/scripts/release-test" "$ROOT/tests"
+          install -m 0600 .github/workflows/projectpulse-deploy-test.yml "$ROOT/.github/workflows/projectpulse-deploy-test.yml"
+          install -m 0600 .github/workflows/projectpulse-release-test-control-ci.yml "$ROOT/.github/workflows/projectpulse-release-test-control-ci.yml"
+          install -m 0600 scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh "$ROOT/scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh"
+          install -m 0600 tests/validate-systemwide-image-build-controller.mjs "$ROOT/tests/validate-systemwide-image-build-controller.mjs"
+          install -m 0600 tests/validate-systemwide-enterprise-reliability.mjs "$ROOT/tests/validate-systemwide-enterprise-reliability.mjs"
 
       - name: Upload controller source
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
