@@ -50,6 +50,37 @@ jobs:
         run: |
           set -euo pipefail
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/changed-files.txt
+
+          cat > /tmp/enterprise-ui-signatures.txt <<'FILES'
+          docs/modules/module-071-oncall-scheduling/API-CONTRACT.md
+          docs/modules/module-071-oncall-scheduling/AUTHORIZATION-MATRIX.md
+          docs/modules/module-071-oncall-scheduling/README.md
+          docs/modules/module-072-oneassist-routing-directory/API-CONTRACT.md
+          docs/modules/module-072-oneassist-routing-directory/AUTHORIZATION-MATRIX.md
+          docs/modules/module-072-oneassist-routing-directory/README.md
+          src/backend/ProjectTime.Api/Modules/OnCallSchedulingModule.cs
+          src/backend/ProjectTime.Api/Modules/OneAssistRoutingDirectoryModule.cs
+          src/frontend/project-time-web/scripts/inject-celar-ai-ask-operations.mjs
+          src/frontend/project-time-web/scripts/validate-enterprise-ui-polish.mjs
+          src/frontend/project-time-web/scripts/validate-module-071-oncall-scheduling.mjs
+          src/frontend/project-time-web/scripts/validate-module-072-oneassist-routing-directory.mjs
+          src/frontend/project-time-web/src/OnCallSchedulingCenter.jsx
+          src/frontend/project-time-web/src/OneAssistRoutingDirectoryCenter.jsx
+          src/frontend/project-time-web/src/assets/module-006-customer-brands.svg
+          src/frontend/project-time-web/src/celar-ai-control-followup.css
+          src/frontend/project-time-web/src/enterprise-ui-polish.css
+          src/frontend/project-time-web/src/enterprise-ui-polish.js
+          src/frontend/project-time-web/src/oncall-scheduling-center.css
+          FILES
+          sort -o /tmp/enterprise-ui-signatures.txt /tmp/enterprise-ui-signatures.txt
+          package_specific="$(comm -12 /tmp/changed-files.txt /tmp/enterprise-ui-signatures.txt)"
+          if [[ -z "$package_specific" ]]; then
+            echo 'PR698_SOURCE_BOUNDARY=SKIPPED_SHARED_DEPENDENCY_REGRESSION'
+            echo 'The complete enterprise UI validators and production build will still run.'
+            exit 0
+          fi
+          printf 'PR698_PACKAGE_SOURCE_DETECTED:\n%s\n' "$package_specific"
+
           cat > /tmp/allowed-files.txt <<'FILES'
           .github/workflows/enterprise-ui-polish-ci.yml
           docs/modules/module-071-oncall-scheduling/API-CONTRACT.md
