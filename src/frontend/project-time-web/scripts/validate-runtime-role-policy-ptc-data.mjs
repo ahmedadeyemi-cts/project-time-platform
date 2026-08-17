@@ -25,6 +25,7 @@ const [
   matrixModel,
   portal,
   gate,
+  roleAuthority,
   timerPortal,
   timerView,
   picker,
@@ -42,6 +43,7 @@ const [
   text('src/frontend/project-time-web/src/role-permission-matrix-model.js'),
   text('src/frontend/project-time-web/src/module001/PtcTimesheetManagementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'),
+  text('src/frontend/project-time-web/src/effective-role-authority.js'),
   text('src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx'),
   text('src/frontend/project-time-web/src/module001/TimesheetTimerView.jsx'),
   text('src/frontend/project-time-web/src/module001/TimesheetTaskPicker.jsx'),
@@ -136,13 +138,43 @@ rejectAll(portal, [
 
 requireAll(gate, [
   'PtcTimeStewardGate',
+  "from '../effective-role-authority.js'",
+  'EFFECTIVE_ROLE_AUTHORITY_EVENTS',
+  'hasAnyEffectiveRole',
+  'readEffectiveRoleAuthority',
   "'PROJECT_TEAM_COORDINATOR'",
   "'SUPER_ADMINISTRATOR'",
-  "localStorage.getItem('projectPulseViewAsUser')",
-  'if (state.active && !state.allowed) return null',
+  'if (!authority.ready) return null',
+  'if (!canStewardTime && !canReviewApprovals) return null',
   '<PtcTimesheetManagementPortal />'
 ], 'Effective-role PTC gate');
 rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
+
+requireAll(roleAuthority, [
+  'normalizeProjectPulseRoleCodes',
+  'readEffectiveRoleAuthority',
+  'hasAnyEffectiveRole',
+  "readJsonStorage('projectPulseViewAsUser')",
+  "readJsonStorage('projectPulseAuthSession')",
+  'window.__projectPulseEffectiveNavigation',
+  'roleCodes',
+  "source: 'view_as'",
+  "source: 'effective_navigation'",
+  "source: 'session'"
+], 'Central effective-role authority');
+
+const viewAsPosition = roleAuthority.indexOf("readJsonStorage('projectPulseViewAsUser')");
+const navigationPosition = roleAuthority.indexOf('window.__projectPulseEffectiveNavigation');
+const sessionPosition = roleAuthority.indexOf("readJsonStorage('projectPulseAuthSession')");
+if (
+  viewAsPosition < 0
+  || navigationPosition < 0
+  || sessionPosition < 0
+  || viewAsPosition > navigationPosition
+  || navigationPosition > sessionPosition
+) {
+  throw new Error('Effective-role authority must prefer View-As, then effective navigation, then authenticated session.');
+}
 
 requireAll(timerPortal, [
   "import { authoritativeApi } from '../projectpulse-authoritative-api.js';",
