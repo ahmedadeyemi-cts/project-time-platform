@@ -34,4 +34,5 @@ jobs:
           name: protected-test-controller-source
           path: ${{ runner.temp }}/controller-source
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
