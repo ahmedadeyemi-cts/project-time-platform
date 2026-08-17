@@ -9,7 +9,7 @@ import PtcGuidedMovePortal from './PtcGuidedMovePortal.jsx';
 import PtcTimesheetManagementPortal from './PtcTimesheetManagementPortal.jsx';
 
 // View-As storage compatibility remains centralized in effective-role-authority.js
-// under the canonical projectPulseViewAsUser key.
+// under the canonical key 'projectPulseViewAsUser'.
 const TIME_STEWARD_ROLES = new Set([
   'PROJECT_TEAM_COORDINATOR',
   'SUPER_ADMINISTRATOR',
