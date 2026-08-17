@@ -91,17 +91,36 @@ jobs:
           printf '%s\n' "${expected[@]}" > "$RUNNER_TEMP/expected-module-owner-runtime-paths.txt"
           echo 'EXACT_MODULE_OWNER_RUNTIME_SOURCE_BOUNDARY=PASSED'
 
-      - name: Run focused runtime and migration validation
+      - name: Validate module owner drawer source
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: node tests/validate-module-management-owner-drawer.mjs
+
+      - name: Validate migration 091 runtime contract
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: bash tests/test-module-management-owner-storage-migration-091.sh
+
+      - name: Validate Protected-Test image controller
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: node tests/validate-systemwide-image-build-controller.mjs
+
+      - name: Validate system-wide release contract
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: node tests/validate-systemwide-enterprise-reliability.mjs
+
+      - name: Validate existing PR 698 table module management
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
+
+      - name: Validate repository security posture
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Validate migration runner shell and source diff
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
         run: |
           set -Eeuo pipefail
-          node tests/validate-module-management-owner-drawer.mjs
-          bash tests/test-module-management-owner-storage-migration-091.sh
-          node tests/validate-systemwide-image-build-controller.mjs
-          node tests/validate-systemwide-enterprise-reliability.mjs
-          node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
-          python3 scripts/security/validate-repository-security-posture.py
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           git diff --check "$MAIN_SHA"
 
