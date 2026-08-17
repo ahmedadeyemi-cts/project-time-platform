@@ -41,6 +41,7 @@ import WorkspaceNavigationPortal from './WorkspaceNavigationPortal.jsx';
 import './approval-access-navigation-compatibility.js';
 import './work-register-document-integrity.js';
 import './scoped-rbac-catalog-compatibility.js';
+import './background-request-role-gate.js';
 import './styles.css';
 import './friendly-api-errors.css';
 import './role-welcome-dashboard-visibility.css';
