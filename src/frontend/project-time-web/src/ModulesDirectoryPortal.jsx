@@ -432,12 +432,14 @@ export default function ModulesDirectoryPortal() {
     window.addEventListener('projectpulse:view-as-changed', refresh);
     window.addEventListener('projectpulse:module-availability-changed', refresh);
     window.addEventListener('projectpulse:permission-navigation-updated', refresh);
+    window.addEventListener('projectpulse:workspace-authorization-updated', refresh);
 
     return () => {
       observer?.disconnect();
       window.removeEventListener('projectpulse:view-as-changed', refresh);
       window.removeEventListener('projectpulse:module-availability-changed', refresh);
       window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
+      window.removeEventListener('projectpulse:workspace-authorization-updated', refresh);
       window.clearTimeout(refreshTimer.current);
       if (active) restoreNavigationGroups(expandedForDirectory.current);
     };

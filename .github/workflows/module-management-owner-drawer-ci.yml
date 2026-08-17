@@ -1,0 +1,54 @@
+name: Module Management Owner Drawer CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module-management-owner-drawer-ci.yml'
+      - 'database/migrations/091_module_management_owner_storage_repair.sql'
+      - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
+      - 'src/frontend/project-time-web/src/ModuleManagementTableView.jsx'
+      - 'src/frontend/project-time-web/src/module-management-table.css'
+      - 'tests/validate-module-management-owner-drawer.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate owner storage and responsive module drawer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact pull-request source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Validate focused source contract
+        run: |
+          set -Eeuo pipefail
+          node --check tests/validate-module-management-owner-drawer.mjs
+          node tests/validate-module-management-owner-drawer.mjs
+          node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
+          git diff --check
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Verify clean generated source
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code -- . ':!src/frontend/project-time-web/dist'

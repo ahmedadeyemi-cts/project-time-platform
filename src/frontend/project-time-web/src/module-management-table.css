@@ -1,7 +1,7 @@
-/* PR698_TABLE_MODULE_MANAGEMENT_V1
- * Table is the default Pulse presentation. It retains the enterprise shell and
- * switches Module Management to a dense, accessible table with inline owner
- * administration for an actual Super Administrator session.
+/* MODULE_MANAGEMENT_OWNER_DRAWER_V2
+ * Table remains the default Pulse presentation. Module rows open a governed,
+ * responsive details panel. Module ownership is descriptive metadata only and
+ * never changes role, record, team, department, or organization authorization.
  */
 
 :root[data-pulse-layout='table'] .modules-directory-grid {
@@ -43,12 +43,27 @@
 }
 
 .module-management-table-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.75rem 0.9rem;
   background: var(--surface);
   color: var(--text);
   font-weight: 750;
+}
+
+.module-management-table-notice button {
+  min-height: 38px;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  padding: 0.35rem 0.7rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
 .module-management-table-notice.warning {
@@ -61,9 +76,21 @@
   background: color-mix(in srgb, #daf4e5 76%, var(--surface));
 }
 
+.module-management-table-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+.module-management-table-workspace.has-detail-panel {
+  grid-template-columns: minmax(760px, 1fr) minmax(330px, 390px);
+  align-items: start;
+}
+
 .module-management-table-scroll {
   min-width: 0;
-  overflow-x: auto;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface);
@@ -72,7 +99,7 @@
 
 .module-management-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1080px;
   border-collapse: separate;
   border-spacing: 0;
   color: var(--text);
@@ -99,12 +126,23 @@
   white-space: nowrap;
 }
 
+.module-management-table tbody tr {
+  cursor: pointer;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
 .module-management-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.module-management-table tbody tr:hover {
+.module-management-table tbody tr:hover,
+.module-management-table tbody tr:focus-visible,
+.module-management-table tbody tr.selected {
   background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.module-management-table tbody tr.selected {
+  box-shadow: inset 4px 0 var(--brand-blue-strong);
 }
 
 .module-management-table-identity {
@@ -114,7 +152,8 @@
   gap: 0.75rem;
 }
 
-.module-management-table-icon {
+.module-management-table-icon,
+.module-detail-icon {
   display: grid;
   place-items: center;
   width: 42px;
@@ -179,17 +218,18 @@
   background: var(--surface-strong);
 }
 
-.module-management-state.enabled {
+.module-management-state.enabled,
+.module-detail-availability.enabled {
   background: #dcf3e5;
   color: #146a3a;
 }
 
-.module-management-state.disabled {
+.module-management-state.disabled,
+.module-detail-availability.disabled {
   background: #fde2e2;
   color: #a02929;
 }
 
-.module-owner-editor,
 .module-owner-readonly {
   display: grid;
   grid-template-columns: 32px minmax(160px, 1fr);
@@ -198,31 +238,16 @@
   min-width: 210px;
 }
 
-.module-owner-avatar {
-  display: grid;
-  place-items: center;
+.module-owner-avatar-shell,
+.module-owner-avatar-shell .identity-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background: var(--brand-blue-strong);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 950;
-}
-
-.module-owner-editor select {
-  width: 100%;
-  min-height: 38px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 0.45rem 0.55rem;
-  background: var(--surface-strong);
-  color: var(--text);
 }
 
 .module-owner-readonly > span:last-child {
   display: grid;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .module-owner-readonly strong,
@@ -251,7 +276,12 @@
 }
 
 .module-management-table-actions a,
-.module-management-table-actions button {
+.module-management-table-actions button,
+.module-detail-actions a,
+.module-detail-actions button,
+.module-detail-primary-link,
+.module-detail-primary,
+.module-detail-danger {
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 0.45rem 0.62rem;
@@ -263,22 +293,375 @@
   text-decoration: none;
 }
 
-.module-management-table-actions button.danger {
+.module-management-table-actions button.danger,
+.module-detail-danger {
   color: #a02929;
 }
 
-.module-management-table-actions button.enable {
+.module-management-table-actions button.enable,
+.module-detail-primary {
   color: #146a3a;
 }
 
 .module-management-table-actions button:disabled,
-.module-owner-editor select:disabled {
+.module-detail-panel button:disabled,
+.module-detail-owner-editor select:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.module-management-detail-panel {
+  position: sticky;
+  top: 88px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  max-height: calc(100vh - 108px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.module-management-detail-header {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 42%, var(--surface));
+}
+
+.module-management-detail-title-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.module-management-detail-title-row > div {
+  min-width: 0;
+}
+
+.module-management-detail-title-row > div > span {
+  color: var(--brand-blue-strong);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.module-management-detail-title-row h2 {
+  margin: 0.12rem 0 0;
+  overflow: hidden;
+  font-size: 1rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.module-management-detail-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.module-management-customer-brands {
+  display: grid;
+  place-items: center;
+  min-height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 0.35rem;
+  background: var(--surface-strong);
+}
+
+.module-management-customer-brands img {
+  width: 100%;
+  max-width: 310px;
+  max-height: 54px;
+  object-fit: contain;
+}
+
+.module-management-detail-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-strong);
+}
+
+.module-management-detail-tabs button {
+  min-height: 44px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.module-management-detail-tabs button:last-child {
+  border-right: 0;
+}
+
+.module-management-detail-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--brand-blue-strong);
+  color: var(--brand-blue-strong);
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.module-management-detail-content {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.85rem;
+}
+
+.module-detail-card {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: var(--surface-strong);
+}
+
+.module-detail-card h3,
+.module-detail-card p {
+  margin: 0;
+}
+
+.module-detail-card p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.module-detail-card dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.module-detail-card dl > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.65rem;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.module-detail-card dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.module-detail-card dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.module-detail-owner {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.module-detail-owner .identity-avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+
+.module-detail-availability {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.58rem;
+  font-weight: 900;
+}
+
+.module-detail-actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.module-detail-actions a,
+.module-detail-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
+.module-detail-primary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  background: var(--brand-blue-strong);
+  color: #fff;
+}
+
+.module-detail-policy-note {
+  border-left: 3px solid var(--brand-blue-strong);
+  padding-left: 0.65rem;
+}
+
+.module-detail-owner-summary {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.module-detail-owner-summary .identity-avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.module-detail-owner-summary > div {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.module-detail-owner-summary span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-detail-owner-editor {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.module-detail-owner-editor > span {
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.module-detail-owner-editor select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.48rem 0.58rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.module-management-drawer-backdrop {
+  display: none;
+}
+
+.module-management-table tbody tr:focus-visible,
+.module-management-table button:focus-visible,
+.module-management-table a:focus-visible,
+.module-management-detail-panel button:focus-visible,
+.module-management-detail-panel a:focus-visible,
+.module-management-detail-panel select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-blue) 48%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1350px) {
+  .module-management-table-workspace.has-detail-panel {
+    grid-template-columns: minmax(690px, 1fr) minmax(315px, 360px);
+  }
+
+  .module-management-table {
+    min-width: 1020px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .module-management-table-workspace.has-detail-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .module-management-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1098;
+    display: block;
+    border: 0;
+    background: rgb(3 19 41 / 0.46);
+    backdrop-filter: blur(2px);
+  }
+
+  .module-management-detail-panel {
+    position: fixed;
+    inset: 78px 0 0 auto;
+    z-index: 1099;
+    width: min(430px, 100vw);
+    max-height: calc(100vh - 78px);
+    border-radius: 16px 0 0 0;
+    box-shadow: -16px 0 42px rgb(2 20 43 / 0.28);
+  }
 }
 
 @media (max-width: 760px) {
   :root[data-pulse-layout='table'] .modules-directory-hero {
     align-items: flex-start;
+  }
+
+  .module-management-table-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .module-management-detail-panel {
+    inset: 64px 0 0;
+    width: 100vw;
+    max-height: calc(100vh - 64px);
+    border-radius: 16px 16px 0 0;
+  }
+
+  .module-management-detail-title-row {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .module-management-detail-title-row > .module-management-state {
+    display: none;
+  }
+
+  .module-management-detail-tabs {
+    overflow-x: auto;
+    grid-template-columns: repeat(4, minmax(92px, 1fr));
+  }
+
+  .module-detail-card dl > div {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-management-table tbody tr {
+    transition: none;
   }
 }

@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { moduleForRoute } from './module-availability-registry.js';
 import './page-context-guide.css';
 
+const API_INVENTORY_MODULES = new Set(['011', '064', '068', '078', '998']);
+const API_INVENTORY_ROLES = new Set([
+  'SUPER_ADMINISTRATOR',
+  'SUPERADMINISTRATOR',
+  'GLOBAL_ADMINISTRATOR',
+  'GLOBALADMINISTRATOR',
+  'ADMINISTRATOR'
+]);
+
 const routeContext = {
   // PR467_MODULE_006_PAGE_CONTEXT
   'toyota-hyundai-pipelines': { page: 'Toyota & Hyundai Pipelines — Module 006', purpose: 'Standalone Toyota and Hyundai pipeline management for project rows, tasks, status updates, notes, review dates, history, and exports.', backend: '/api/module-006/pipeline and /api/module-006/tasks', check: 'Create or open a project, save a status note, create a standalone task, and confirm no other project module is opened or modified.' },
@@ -206,6 +215,17 @@ function activeViewAsUser() {
   }
 }
 
+function canRequestLiveApiInventory(moduleNumber) {
+  if (activeViewAsUser() || !API_INVENTORY_MODULES.has(String(moduleNumber || '').toUpperCase())) {
+    return false;
+  }
+  const navigation = window.__projectPulseEffectiveNavigation;
+  if (!navigation || navigation.state !== 'ready' || navigation.isViewAs) return false;
+  return (navigation.roleCodes || [])
+    .map((role) => String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))
+    .some((role) => API_INVENTORY_ROLES.has(role));
+}
+
 function getContext(route, module) {
   const configured = routeContext[route] || {};
   if (!module) return {
@@ -226,6 +246,17 @@ export default function PageContextGuide({ activeRoute }) {
   const module = useMemo(() => moduleForRoute(activeRoute), [activeRoute]);
   const context = useMemo(() => getContext(activeRoute, module), [activeRoute, module]);
   const [apiEvidence, setApiEvidence] = useState({ status: 'idle', apis: [] });
+  const [permissionRevision, setPermissionRevision] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setPermissionRevision((current) => current + 1);
+    window.addEventListener('projectpulse:permission-navigation-updated', refresh);
+    window.addEventListener('projectpulse:view-as-changed', refresh);
+    return () => {
+      window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
+      window.removeEventListener('projectpulse:view-as-changed', refresh);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -235,6 +266,10 @@ export default function PageContextGuide({ activeRoute }) {
     }
     if (activeViewAsUser()) {
       setApiEvidence({ status: 'view_as_documented_contract', apis: [] });
+      return () => { active = false; };
+    }
+    if (!canRequestLiveApiInventory(module.moduleNumber)) {
+      setApiEvidence({ status: 'documented_contract', apis: [] });
       return () => { active = false; };
     }
     setApiEvidence({ status: 'loading', apis: [] });
@@ -253,7 +288,7 @@ export default function PageContextGuide({ activeRoute }) {
         if (active) setApiEvidence({ status: 'permission_limited', apis: [] });
       });
     return () => { active = false; };
-  }, [module]);
+  }, [module, permissionRevision]);
 
   const apiRoutes = apiEvidence.apis.map((api) => `${api.method} ${api.routePattern}`).filter(Boolean);
   const backendSummary = apiEvidence.status === 'live'

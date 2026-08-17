@@ -1746,9 +1746,11 @@ function updateRosterEngineer(task, index, field, value) {
         }
       }
 
-      const viewAsUser = window.localStorage.getItem('projectPulseViewAsUser');
-      if (viewAsUser) {
-        headers['X-ProjectPulse-View-As-User'] = viewAsUser;
+      const rawViewAs = window.localStorage.getItem('projectPulseViewAsUser');
+      const viewAs = rawViewAs ? JSON.parse(rawViewAs) : null;
+      const viewAsUserId = String(viewAs?.userId || '').trim();
+      if (viewAsUserId) {
+        headers['X-ProjectPulse-View-As-User'] = viewAsUserId;
       }
     } catch {
       // Ignore browser storage failures.

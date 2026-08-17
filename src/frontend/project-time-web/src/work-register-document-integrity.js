@@ -36,10 +36,10 @@ function property(source, ...names) {
 
 function documentId(payload) {
   const candidates = [
-    property(payload, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId'),
+    property(payload, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId', 'workRegisterDocumentId', 'WorkRegisterDocumentId'),
     property(payload?.document, 'documentId', 'DocumentId', 'id', 'Id'),
-    property(payload?.data, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId'),
-    property(payload?.result, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId')
+    property(payload?.data, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId', 'workRegisterDocumentId', 'WorkRegisterDocumentId'),
+    property(payload?.result, 'documentId', 'DocumentId', 'projectDocumentId', 'ProjectDocumentId', 'workRegisterDocumentId', 'WorkRegisterDocumentId')
   ];
   return candidates.map(cleanText).find((value) => UUID_PATTERN.test(value)) || '';
 }

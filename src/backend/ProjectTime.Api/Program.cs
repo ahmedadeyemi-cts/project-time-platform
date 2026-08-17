@@ -9032,12 +9032,39 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
     {
         status = "document_uploaded",
         projectId = projectId.Value,
+        documentId = workRegisterDocumentId,
         workRegisterDocumentId,
         documentName,
+        documentType,
+        versionLabel,
+        visibility,
+        effectiveDate,
+        notes,
         originalFileName,
+        contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
         fileSizeBytes = file.Length,
         downloadReference,
-        message = "Local document uploaded and audit history saved."
+        downloadUrl = downloadReference,
+        document = new
+        {
+            documentId = workRegisterDocumentId,
+            fileName = documentName,
+            documentName,
+            documentType,
+            versionLabel,
+            visibility,
+            effectiveDate,
+            notes,
+            originalFileName,
+            contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            fileSizeBytes = file.Length,
+            status = "active",
+            uploadSource = "local_file",
+            downloadUrl = downloadReference,
+            sourceTable = "work_register_documents"
+        },
+        contract = "WORK_REGISTER_DOCUMENT_CONTINUITY_V1",
+        message = "Local document uploaded, registered, and made available in Module 055C."
     });
 }).DisableAntiforgery();
 
@@ -9054,7 +9081,11 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
     await using var connection = new NpgsqlConnection(dbConfig.ConnectionString);
     await connection.OpenAsync();
 
-    await using var command = new NpgsqlCommand("""
+    var storedFilePath = "";
+    var originalFileName = "document";
+    var contentType = "application/octet-stream";
+
+    await using (var command = new NpgsqlCommand("""
         SELECT
             COALESCE(stored_file_path, ''),
             COALESCE(original_file_name, document_name, 'document'),
@@ -9063,19 +9094,50 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
         WHERE work_register_document_id = @document_id
           AND status = 'active'
         LIMIT 1;
-        """, connection);
+        """, connection))
+    {
+        command.Parameters.AddWithValue("document_id", documentId);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            storedFilePath = reader.GetString(0);
+            originalFileName = reader.GetString(1);
+            contentType = reader.GetString(2);
+        }
+    }
 
-    command.Parameters.AddWithValue("document_id", documentId);
+    if (string.IsNullOrWhiteSpace(storedFilePath))
+    {
+        await using var legacyTableCommand = new NpgsqlCommand(
+            "SELECT to_regclass('public.work_register_project_documents') IS NOT NULL;",
+            connection);
+        var legacyTableAvailable = Convert.ToBoolean(await legacyTableCommand.ExecuteScalarAsync() ?? false);
+        if (legacyTableAvailable)
+        {
+            await using var legacyCommand = new NpgsqlCommand("""
+                SELECT
+                    COALESCE(stored_file_path, ''),
+                    COALESCE(original_file_name, 'document'),
+                    COALESCE(content_type, 'application/octet-stream')
+                FROM work_register_project_documents
+                WHERE work_register_project_document_id = @document_id
+                LIMIT 1;
+                """, connection);
+            legacyCommand.Parameters.AddWithValue("document_id", documentId);
+            await using var legacyReader = await legacyCommand.ExecuteReaderAsync();
+            if (await legacyReader.ReadAsync())
+            {
+                storedFilePath = legacyReader.GetString(0);
+                originalFileName = legacyReader.GetString(1);
+                contentType = legacyReader.GetString(2);
+            }
+        }
+    }
 
-    await using var reader = await command.ExecuteReaderAsync();
-    if (!await reader.ReadAsync())
+    if (string.IsNullOrWhiteSpace(storedFilePath))
     {
         return Results.NotFound(new { status = "document_not_found", message = "Document was not found or is archived." });
     }
-
-    var storedFilePath = reader.GetString(0);
-    var originalFileName = reader.GetString(1);
-    var contentType = reader.GetString(2);
 
     if (string.IsNullOrWhiteSpace(storedFilePath) || !System.IO.File.Exists(storedFilePath))
     {
@@ -11039,7 +11101,9 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
 
     var taskRows = await LoadRowsByProjectAsync("project_tasks", 1000, "project_id", "work_item_id", "parent_project_id");
     var documentRows = await LoadRowsByProjectAsync("project_documents", 1000, "project_id", "work_item_id", "parent_project_id");
-    var workRegisterDocumentRows = await LoadRowsByProjectAsync("work_register_project_documents", 1000, "project_id");
+    var workRegisterProjectDocumentRows = await LoadRowsByProjectAsync("work_register_project_documents", 1000, "project_id");
+    var workRegisterDocumentRows = await LoadRowsByProjectAsync("work_register_documents", 1000, "project_id");
+    /* WORK_REGISTER_DOCUMENT_CONTINUITY_V1 */
     /* 055C_9_DETAILS_DOCUMENT_MANAGEMENT_LOAD */
     /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_DETAILS_DOCUMENT_SOURCE */
     var timeRows = await LoadRowsByProjectAsync("time_entries", 100000, "project_id", "work_item_id", "parent_project_id");
@@ -11190,6 +11254,37 @@ app.MapGet("/api/work-register/projects/{projectId:guid}/details", async (Guid p
             effectiveDate = Pick(document, "effective_date"),
             notes = Pick(document, "notes", "description"),
             sourceTable = "project_documents",
+            canArchive = false,
+            source = document
+        });
+    }
+
+    foreach (var document in workRegisterProjectDocumentRows)
+    {
+        var legacyDocumentId = Pick(document, "work_register_project_document_id", "work_register_document_id");
+        var legacyStoredPath = Pick(document, "stored_file_path");
+        documents.Add(new
+        {
+            documentId = legacyDocumentId,
+            fileName = Pick(document, "document_name", "original_file_name"),
+            documentType = Pick(document, "document_type", "type", "category"),
+            visibility = Pick(document, "visibility", "document_visibility", "access_level"),
+            uploadedAt = Pick(document, "created_at"),
+            documentReference = Pick(document, "document_reference"),
+            downloadUrl = !string.IsNullOrWhiteSpace(legacyStoredPath) && !string.IsNullOrWhiteSpace(legacyDocumentId)
+                ? $"/api/work-register/projects/documents/{legacyDocumentId}/download"
+                : "",
+            uploadSource = "project_intake",
+            originalFileName = Pick(document, "original_file_name"),
+            contentType = Pick(document, "content_type"),
+            fileSizeBytes = PickDecimal(document, "file_size_bytes"),
+            versionLabel = Pick(document, "version_label"),
+            status = "active",
+            effectiveDate = Pick(document, "effective_date"),
+            notes = Pick(document, "notes"),
+            archiveReason = "",
+            archivedAt = "",
+            sourceTable = "work_register_project_documents",
             canArchive = false,
             source = document
         });
@@ -12293,6 +12388,7 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
     var taskRows = await LoadRowsAsync("project_tasks", 50000);
     var documentRows = await LoadRowsAsync("project_documents", 50000);
     var workRegisterProjectDocumentRows = await LoadRowsAsync("work_register_project_documents", 50000);
+    var workRegisterDocumentRows = await LoadRowsAsync("work_register_documents", 50000);
     var timeRows = await LoadRowsAsync("time_entries", 100000);
     var taskAssignmentRows = await LoadRowsAsync("work_register_task_assignment_history", 100000);
     /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_LOAD_SOURCES */
@@ -12460,7 +12556,7 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
     }
 
     var workRegisterDocumentsByProject = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-    foreach (var row in workRegisterProjectDocumentRows)
+    foreach (var row in workRegisterProjectDocumentRows.Concat(workRegisterDocumentRows))
     {
         var projectId = Pick(row, "project_id", "work_item_id", "parent_project_id");
         if (string.IsNullOrWhiteSpace(projectId)) continue;
@@ -12470,6 +12566,7 @@ app.MapGet("/api/work-register/overview", async (HttpContext httpContext) =>
                 ? current + 1
                 : 1;
     }
+    /* WORK_REGISTER_DOCUMENT_CONTINUITY_V1 */
     /* 055D_6A6_WORK_REGISTER_ROLLUP_FIX_DOCUMENT_COUNTS_END */
 
     var hoursByProject = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
