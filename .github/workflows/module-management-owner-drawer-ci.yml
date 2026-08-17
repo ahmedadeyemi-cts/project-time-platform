@@ -1,29 +1,74 @@
-name: Module Management Owner Drawer CI
+name: Module Management Enterprise Owner Authority CI
 
 on:
+  push:
+    branches:
+      - 'fix/module-management-enterprise-owner-authority-*'
   pull_request:
     paths:
       - '.github/workflows/module-management-owner-drawer-ci.yml'
-      - 'database/migrations/091_module_management_owner_storage_repair.sql'
-      - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'
       - 'src/frontend/project-time-web/src/ModuleManagementTableView.jsx'
       - 'src/frontend/project-time-web/src/module-management-table.css'
       - 'tests/validate-module-management-owner-drawer.mjs'
+      - 'database/migrations/091_module_management_owner_storage_repair.sql'
+      - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: module-management-enterprise-owner-authority-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    name: Validate owner storage and responsive module drawer
+    name: Validate enterprise Module Management and owner authority
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
+
     steps:
-      - name: Check out exact pull-request source
+      - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Guard exact focused source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          ACTUAL="$(git diff --name-only origin/main...HEAD | sort)"
+          EXPECTED="$(cat <<'EOF'
+          .github/workflows/module-management-owner-drawer-ci.yml
+          src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs
+          src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+          src/frontend/project-time-web/src/module-management-table.css
+          tests/validate-module-management-owner-drawer.mjs
+          EOF
+          )"
+
+          printf '%s\n' "$ACTUAL"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo 'Module Management repair changed an unexpected source path.' >&2
+            diff -u <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL") || true
+            exit 1
+          fi
+
+          if grep -Eq '^database/|^\.github/workflows/projectpulse-deploy-|production|secret|infrastructure' <<<"$ACTUAL"; then
+            echo 'The focused UI and authority repair crossed a protected deployment, migration, secret, or infrastructure boundary.' >&2
+            exit 1
+          fi
+
+          echo 'MODULE_MANAGEMENT_FOCUSED_SOURCE_BOUNDARY=PASS'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -32,7 +77,8 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
-      - name: Validate focused source contract
+      - name: Validate focused enterprise source contract
+        shell: bash
         run: |
           set -Eeuo pipefail
           node --check tests/validate-module-management-owner-drawer.mjs
@@ -40,15 +86,34 @@ jobs:
           node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
           git diff --check
 
-      - name: Build complete frontend production bundle
+      - name: Build ProjectTime API in Release mode
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build \
+            src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
+            --configuration Release \
+            --nologo
+
+      - name: Install and audit frontend dependencies
         working-directory: src/frontend/project-time-web
+        shell: bash
         run: |
           set -Eeuo pipefail
           npm ci --no-audit --no-fund
           npm audit --audit-level=high
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
           npm run build
 
       - name: Verify clean generated source
+        shell: bash
         run: |
           set -Eeuo pipefail
+          git diff --check
           git diff --exit-code -- . ':!src/frontend/project-time-web/dist'
+          echo 'MODULE_MANAGEMENT_COMPLETE_BUILD=PASS'

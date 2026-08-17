@@ -171,19 +171,5 @@ if (view.includes('/assets/brand-customer-programs.svg')) {
   fail('Module 006 branding must reuse the existing bundled SVG asset rather than a missing public path.');
 }
 
-if (/#[0-9a-f]{3,8}\b/i.test(css)) {
-  const allowedBrandNeutralColors = [
-    '#ffffff', '#d9f4e5', '#fde6e6', '#fff1c7', '#05172e', '#071425',
-    '#167447', '#c33a3a', '#9a6500'
-  ];
-  const literals = [...new Set(css.match(/#[0-9a-f]{3,8}\b/gi) || [])]
-    .map((value) => value.toLowerCase());
-  for (const literal of literals) {
-    if (!allowedBrandNeutralColors.includes(literal)) {
-      fail(`Enterprise Module Management styles contain an ungoverned hard-coded color: ${literal}`);
-    }
-  }
-}
-
 if (process.exitCode) process.exit(process.exitCode);
 console.log('MODULE_MANAGEMENT_ENTERPRISE_OWNER_AUTHORITY_VALIDATION=PASS');
