@@ -107,7 +107,7 @@ rejectText(rollback, 'DROP COLUMN IF EXISTS account_executive_user_id', 'destruc
 
 for (const marker of [
   'SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED',
-  'projectpulse-migration"] == "086-088"',
+  'projectpulse-migration"] == "086-088-089-091"',
   'main-db-password',
   'PROJECTPULSE_ENVIRONMENT'
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
@@ -115,12 +115,14 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'queue: max',
-  'Migrations 086 and 088',
+  'Migrations 086, 088, 089, and 091',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
   'failed-login UAT',
   'Run protected-Test utilization role-scoping UAT',
+  'Module ownership catalog',
+  'MIGRATION_091=APPLIED_AND_VERIFIED',
   'Who is the current President of the United States?',
   'Who is the CEO of US Signal?',
   'Production mutation: none'

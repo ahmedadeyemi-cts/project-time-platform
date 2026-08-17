@@ -9,11 +9,16 @@ on:
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
+      - 'database/migrations/089_module_catalog_role_administration_reconciliation.sql'
+      - 'database/migrations/091_module_management_owner_storage_repair.sql'
+      - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
       - 'src/backend/ProjectTime.Api/**'
       - 'src/frontend/project-time-web/**'
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
       - 'tests/test-module-066-flowhive-enterprise-pm-migration-086.sh'
       - 'tests/test-systemwide-enterprise-reliability-migration-088.sh'
+      - 'tests/test-module-management-owner-storage-migration-091.sh'
+      - 'tests/validate-module-management-owner-drawer.mjs'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -91,15 +96,24 @@ jobs:
             scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh \
             database/migrations/086_module_066_flowhive_enterprise_pm.sql \
             database/migrations/088_systemwide_enterprise_reliability.sql \
+            database/migrations/089_module_catalog_role_administration_reconciliation.sql \
+            database/migrations/091_module_management_owner_storage_repair.sql \
+            database/rollback/091_module_management_owner_storage_repair_rollback.sql \
             src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs \
             src/backend/ProjectTime.Api/Modules/AdminAuditTelemetryMiddleware.cs \
+            src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs \
             src/frontend/project-time-web/src/enterprise-systemwide-reliability.css \
+            src/frontend/project-time-web/src/AccountCenterPortal.jsx \
+            src/frontend/project-time-web/src/ModuleManagementTableView.jsx \
+            src/frontend/project-time-web/src/module-management-table.css \
             src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx \
             src/frontend/project-time-web/src/CostOverrunAlertCenter.jsx \
             src/frontend/project-time-web/src/enterprise/SalesDeliveryWorkflowCenter.jsx \
             tests/validate-utilization-role-scoping.mjs \
             tests/validate-systemwide-image-build-controller.mjs \
             tests/validate-systemwide-enterprise-reliability.mjs \
+            tests/validate-module-management-owner-drawer.mjs \
+            tests/test-module-management-owner-storage-migration-091.sh \
             tests/validate-celar-ai-flowhive-authoritative-release.mjs \
             deployment/containers/api/Dockerfile \
             deployment/containers/web/Dockerfile; do
@@ -111,9 +125,11 @@ jobs:
           node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-module-management-owner-drawer.mjs
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
           bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          bash tests/test-module-management-owner-storage-migration-091.sh
           dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
           bash tests/test-projectpulse-api-startup.sh
@@ -133,7 +149,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","089_module_catalog_role_administration_reconciliation","091_module_management_owner_storage_repair"],
               migrationScope:$migrationScope,
               utilizationRoleScopingUat:true,
               applicationOnlyAfterMigration:true,
@@ -314,6 +330,8 @@ jobs:
           install -d -m 0700 "$MIGRATION_CONTEXT/database/migrations"
           install -m 0644 database/migrations/086_module_066_flowhive_enterprise_pm.sql "$MIGRATION_CONTEXT/database/migrations/086_module_066_flowhive_enterprise_pm.sql"
           install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"
+          install -m 0644 database/migrations/089_module_catalog_role_administration_reconciliation.sql "$MIGRATION_CONTEXT/database/migrations/089_module_catalog_role_administration_reconciliation.sql"
+          install -m 0644 database/migrations/091_module_management_owner_storage_repair.sql "$MIGRATION_CONTEXT/database/migrations/091_module_management_owner_storage_repair.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
 
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
@@ -328,7 +346,9 @@ jobs:
           }
           for migration in \
             "$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql" \
-            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql"; do
+            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql" \
+            "$ROOT/database/migrations/089_module_catalog_role_administration_reconciliation.sql" \
+            "$ROOT/database/migrations/091_module_management_owner_storage_repair.sql"; do
             [[ -f "$migration" ]] || { echo "ERROR: Missing migration $migration" >&2; exit 1; }
             psql -X -v ON_ERROR_STOP=1 --file "$migration"
           done
@@ -336,21 +356,29 @@ jobs:
           SELECT
             EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='086_module_066_flowhive_enterprise_pm')::text || '|' ||
             EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='088_systemwide_enterprise_reliability')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='089_module_catalog_role_administration_reconciliation')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='091_module_management_owner_storage_repair')::text || '|' ||
             (to_regclass('public.project_flowhive_working_copies') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_project_controls') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_raid_items') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_status_reports') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_customer_shares') IS NOT NULL)::text || '|' ||
             EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='account_executive_user_id')::text || '|' ||
-            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text;
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='scoped_role_policy_modules' AND column_name='owner_user_id')::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='scoped_role_policy_modules' AND column_name='owner_revision_number')::text || '|' ||
+            NOT EXISTS(SELECT 1 FROM scoped_role_policy_modules WHERE is_active = TRUE AND owner_user_id IS NULL)::text || '|' ||
+            ((SELECT COUNT(*) FROM scoped_role_policy_audit_events WHERE event_code = 'MODULE_OWNER_DEFAULT_ASSIGNED' AND lower(actor_email) = lower('Ahmed.Adeyemi@ussignal.local') AND event_metadata ->> 'migration' = '091_module_management_owner_storage_repair') >= (SELECT COUNT(*) FROM scoped_role_policy_modules WHERE is_active = TRUE))::text;
           SQL
           )"
-          [[ "$verification" == 'true|true|true|true|true|true|true|true|true' ]] || {
+          [[ "$verification" == 'true|true|true|true|true|true|true|true|true|true|true|true|true|true|true' ]] || {
             echo "ERROR: Migration verification failed: $verification" >&2
             exit 1
           }
           echo 'MIGRATION_086=APPLIED_AND_VERIFIED'
           echo 'MIGRATION_088=APPLIED_AND_VERIFIED'
+          echo 'MIGRATION_089=APPLIED_AND_VERIFIED'
+          echo 'MIGRATION_091=APPLIED_AND_VERIFIED'
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
 
@@ -379,7 +407,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migrations 086 and 088 inside Test private network
+      - name: Apply and verify Migrations 086, 088, 089, and 091 inside Test private network
         id: migration
         shell: bash
         working-directory: release
@@ -403,7 +431,7 @@ jobs:
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","089_module_catalog_role_administration_reconciliation","091_module_management_owner_storage_repair"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -613,6 +641,13 @@ jobs:
           require_get 'Project financial portfolio' '/api/project-financials/portfolio?workspace=pm&limit=250' "$EVIDENCE_DIR/project-financial-portfolio.json"
           require_get 'Cost alert workflow' '/api/projects/cost-alerts' "$EVIDENCE_DIR/cost-alerts.json"
           require_get 'Customer directory' '/api/customers/overview' "$EVIDENCE_DIR/customer-directory.json"
+          require_get 'Module ownership catalog' '/api/module-catalog/owners' "$EVIDENCE_DIR/module-catalog-owners.json" "$PROJECT_MANAGER_SESSION" '009'
+          jq -e '
+            (.owners | type == "array" and length > 0)
+            and (all(.owners[]; (.ownerUserId // "") | length > 0))
+            and (.policy.ownershipDoesNotGrantAccess == true)
+            and (.policy.migration == "091_module_management_owner_storage_repair.sql")
+          ' "$EVIDENCE_DIR/module-catalog-owners.json" >/dev/null || fail 'Module ownership catalog did not satisfy the migrated runtime contract.'
           require_get 'Project Manager module availability' '/api/module-availability/overrides' "$EVIDENCE_DIR/project-manager-module-availability.json" "$PROJECT_MANAGER_SESSION" '009'
           jq -e '(.states | type == "array") and ((.access.effectiveRoles // []) | any(. == "PROJECT_MANAGEMENT" or . == "PROJECT_MANAGER"))' "$EVIDENCE_DIR/project-manager-module-availability.json" >/dev/null || fail 'Project Manager module availability did not preserve effective role evidence.'
           require_get 'Project Manager Work Register overview' '/api/work-register/overview' "$EVIDENCE_DIR/project-manager-work-register.json" "$PROJECT_MANAGER_SESSION" '055C'
@@ -741,7 +776,7 @@ jobs:
                 done
 
                 if [[ "$ASSET_FETCH_OK" == true ]]; then
-                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
+                  for marker in                     'pulse-display-utility-dock'                     'module-management-detail-panel'                     'module-management-table-name-button'                     'pulse-enterprise-experience-default-version'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
                     grep -Fq -- "$marker" "$FRONTEND_BUNDLE" || MISSING_MARKERS+=("$marker")
                   done
                 fi
@@ -784,7 +819,7 @@ jobs:
             --arg apiImage "$ACTIVE_API_IMAGE" \
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg projectId "$PROJECT_ID" \
-            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
+            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",migration089:"applied_and_verified",migration091:"applied_and_verified",moduleOwnershipCatalog:true,moduleManagementDrawer:true,projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
       - name: Run protected-Test utilization role-scoping UAT
@@ -838,7 +873,7 @@ jobs:
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086 and 088: applied and verified' || echo '- Migrations 086 and 088: not completed'
+            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, 089, and 091: applied and verified' || echo '- Migrations 086, 088, 089, and 091: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- System-wide authenticated functional UAT: passed' || echo '- System-wide authenticated functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'

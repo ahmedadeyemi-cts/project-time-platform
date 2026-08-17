@@ -31,6 +31,9 @@ assert.match(workflow, /docker push "\$full_image"/);
 assert.match(workflow, /BUILD_LOG="\$EVIDENCE_DIR\/image-build\.log"/);
 assert.match(workflow, /node tests\/validate-systemwide-image-build-controller\.mjs/);
 assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
+assert.match(workflow, /089_module_catalog_role_administration_reconciliation\.sql/);
+assert.match(workflow, /091_module_management_owner_storage_repair\.sql/);
+assert.match(workflow, /Module ownership catalog/);
 
 const bashScript = [
   'set -Eeuo pipefail',

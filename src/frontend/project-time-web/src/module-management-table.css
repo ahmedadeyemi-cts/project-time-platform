@@ -178,16 +178,30 @@
   letter-spacing: 0.055em;
 }
 
-.module-management-table-identity a {
+.module-management-table-name-button {
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--text);
+  font: inherit;
   font-weight: 900;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
-.module-management-table-identity a:hover,
-.module-management-table-identity a:focus-visible {
+.module-management-table-name-button:hover,
+.module-management-table-name-button:focus-visible {
   color: var(--brand-blue-strong);
   text-decoration: underline;
+}
+
+.module-management-table-name-button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--brand-blue-strong);
+  outline-offset: 3px;
 }
 
 .module-management-table-identity small {

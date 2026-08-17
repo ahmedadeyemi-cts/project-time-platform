@@ -20,6 +20,11 @@ const AUTH_SESSION_KEY = 'projectPulseAuthSession';
 const VIEW_AS_STORAGE_KEY = 'projectPulseViewAsUser';
 const THEME_STORAGE_KEY = 'ptp-theme';
 const EXPERIENCE_STORAGE_KEY = 'pulse-enterprise-experience';
+const EXPERIENCE_DEFAULT_VERSION_KEY = 'pulse-enterprise-experience-default-version';
+const TABLE_DEFAULT_VERSION = 'table-v1';
+const TABLE_EXPERIENCE = 'table';
+const ENTERPRISE_EXPERIENCE = 'enterprise';
+const CLASSIC_EXPERIENCE = 'classic';
 const THEME_EVENT = 'projectpulse:theme-changed';
 const EXPERIENCE_EVENT = 'projectpulse:experience-changed';
 const PROFILE_CHANGED_EVENT = 'projectpulse:identity-profile-changed';
@@ -175,12 +180,21 @@ function currentResolvedTheme() {
   return String(declared).toLowerCase() === 'dark' ? 'dark' : 'light';
 }
 
+function normalizeWorkspaceLayout(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return [TABLE_EXPERIENCE, ENTERPRISE_EXPERIENCE, CLASSIC_EXPERIENCE].includes(normalized)
+    ? normalized
+    : TABLE_EXPERIENCE;
+}
+
 function currentExperience() {
-  const declared = document.documentElement.dataset.pulseExperience
-    || document.body?.dataset.pulseExperience
+  const declared = document.documentElement.dataset.pulseLayout
+    || document.body?.dataset.pulseLayout
     || window.localStorage.getItem(EXPERIENCE_STORAGE_KEY)
-    || 'enterprise';
-  return String(declared).toLowerCase() === 'classic' ? 'classic' : 'enterprise';
+    || document.documentElement.dataset.pulseExperience
+    || document.body?.dataset.pulseExperience
+    || TABLE_EXPERIENCE;
+  return normalizeWorkspaceLayout(declared);
 }
 
 function defaultPreferences(session) {
@@ -423,12 +437,21 @@ function applyThemeToDocument(themePreference, { persist = false } = {}) {
 }
 
 function applyWorkspaceLayout(layout) {
-  const experience = layout === 'classic' ? 'classic' : 'enterprise';
-  window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, experience);
-  document.documentElement.dataset.pulseExperience = experience;
-  if (document.body) document.body.dataset.pulseExperience = experience;
+  const normalized = normalizeWorkspaceLayout(layout);
+  const presentationExperience = normalized === TABLE_EXPERIENCE
+    ? ENTERPRISE_EXPERIENCE
+    : normalized;
+
+  window.localStorage.setItem(EXPERIENCE_STORAGE_KEY, normalized);
+  window.localStorage.setItem(EXPERIENCE_DEFAULT_VERSION_KEY, TABLE_DEFAULT_VERSION);
+  document.documentElement.dataset.pulseExperience = presentationExperience;
+  document.documentElement.dataset.pulseLayout = normalized;
+  if (document.body) {
+    document.body.dataset.pulseExperience = presentationExperience;
+    document.body.dataset.pulseLayout = normalized;
+  }
   window.dispatchEvent(new CustomEvent(EXPERIENCE_EVENT, {
-    detail: { experience, workspaceLayout: layout }
+    detail: { experience: normalized, workspaceLayout: normalized }
   }));
 }
 
@@ -741,8 +764,8 @@ function AppearanceSection({
   onSave,
   onCancel
 }) {
-  const tableAvailable = window.__projectPulseTableModeAvailable === true
-    || document.documentElement.dataset.pulseTableAvailable === 'true';
+  // Table is compiled into the current Pulse application and is not an optional backend capability.
+  const tableAvailable = true;
   const layoutOptions = [
     { value: 'table', label: 'Enterprise table (recommended)', description: 'Dense table navigation for large workspace catalogs.', available: tableAvailable },
     { value: 'enterprise', label: 'Enterprise cards', description: 'Unified responsive cards and enterprise page context.', available: true },
@@ -1297,7 +1320,7 @@ export default function AccountCenterPortal() {
       ...draft,
       theme: resolvedTheme,
       themePreference: draft.themePreference || draft.theme || resolvedTheme,
-      workspaceLayout: draft.workspaceLayout || 'enterprise'
+      workspaceLayout: normalizeWorkspaceLayout(draft.workspaceLayout)
     };
 
     try {

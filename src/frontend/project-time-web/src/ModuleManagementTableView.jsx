@@ -432,7 +432,14 @@ export default function ModuleManagementTableView({
                         <span className="module-management-table-icon" aria-hidden="true">{module.moduleNumber?.slice(0, 3) || '—'}</span>
                         <div>
                           <strong className="module-management-table-number">{module.moduleNumber || '—'}</strong>
-                          <a href={moduleLink(module)}>{moduleDisplayName(module)}</a>
+                          <button
+                            type="button"
+                            className="module-management-table-name-button"
+                            aria-label={`Show details for Module ${module.moduleNumber} — ${moduleDisplayName(module)}`}
+                            onClick={() => selectModule(module)}
+                          >
+                            {moduleDisplayName(module)}
+                          </button>
                           <small>{moduleDescription(module)}</small>
                         </div>
                       </div>

@@ -6,9 +6,14 @@ on:
       - '.github/workflows/module-management-owner-drawer-ci.yml'
       - 'database/migrations/091_module_management_owner_storage_repair.sql'
       - 'database/rollback/091_module_management_owner_storage_repair_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'
+      - 'src/frontend/project-time-web/src/AccountCenterPortal.jsx'
       - 'src/frontend/project-time-web/src/ModuleManagementTableView.jsx'
       - 'src/frontend/project-time-web/src/module-management-table.css'
       - 'tests/validate-module-management-owner-drawer.mjs'
+      - 'tests/test-module-management-owner-storage-migration-091.sh'
+      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
+      - '.github/workflows/projectpulse-deploy-test.yml'
   workflow_dispatch:
 
 permissions:
@@ -25,6 +30,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -37,8 +47,14 @@ jobs:
           set -Eeuo pipefail
           node --check tests/validate-module-management-owner-drawer.mjs
           node tests/validate-module-management-owner-drawer.mjs
+          bash tests/test-module-management-owner-storage-migration-091.sh
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
           node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
           git diff --check
+
+      - name: Build complete API Release
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
 
       - name: Build complete frontend production bundle
         working-directory: src/frontend/project-time-web

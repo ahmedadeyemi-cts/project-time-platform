@@ -10,7 +10,7 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 public static class ModuleCatalogOwnershipModule
 {
-    private const string MigrationFile = "090_module_management_table_and_ownership.sql";
+    private const string MigrationFile = "091_module_management_owner_storage_repair.sql";
 
     public sealed record ModuleOwnerUpdateRequest(
         Guid? OwnerUserId,
@@ -75,7 +75,11 @@ public static class ModuleCatalogOwnershipModule
                     WHERE link.user_id = app_user.user_id
                       AND link.is_active = TRUE
                     ORDER BY
-                      CASE WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 0 ELSE 1 END,
+                      CASE
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.local' THEN 0
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 1
+                              ELSE 2
+                            END,
                       link.updated_at DESC NULLS LAST,
                       link.created_at DESC
                     LIMIT 1
@@ -114,7 +118,11 @@ public static class ModuleCatalogOwnershipModule
                         WHERE link.user_id = app_user.user_id
                           AND link.is_active = TRUE
                         ORDER BY
-                          CASE WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 0 ELSE 1 END,
+                          CASE
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.local' THEN 0
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 1
+                              ELSE 2
+                            END,
                           link.updated_at DESC NULLS LAST,
                           link.created_at DESC
                         LIMIT 1
@@ -259,7 +267,11 @@ public static class ModuleCatalogOwnershipModule
                     WHERE link.user_id = app_user.user_id
                       AND link.is_active = TRUE
                     ORDER BY
-                      CASE WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 0 ELSE 1 END,
+                      CASE
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.local' THEN 0
+                              WHEN lower(COALESCE(link.email, link.user_principal_name, '')) LIKE '%@ussignal.com' THEN 1
+                              ELSE 2
+                            END,
                       link.updated_at DESC NULLS LAST,
                       link.created_at DESC
                     LIMIT 1
