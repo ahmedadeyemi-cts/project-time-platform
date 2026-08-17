@@ -1,0 +1,196 @@
+name: Materialize module ownership runtime repair commit
+
+on:
+  push:
+    branches:
+      - diagnostic/module-owner-runtime-commit-object-20260817
+    paths:
+      - .github/workflows/materialize-module-owner-runtime-commit.yml
+      - .github/module-owner-runtime/remaining.patch.gz.b64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-module-owner-runtime-repair
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Validate and create final product commit object
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAIN_SHA: 43d8f6c696ed5f22d0616d7084c305c14717867a
+      PRODUCT_BRANCH: fix/module-ownership-runtime-activation-20260817
+      PRODUCT_HEAD: c21748865cfae5d582908726099ba4ddbbc0d8ca
+      PATCH_SHA256: 02953eb30933128bbbc58568b6efb75bdfcf0f894ff733e29a606b7dddb19ece
+    steps:
+      - name: Check out materialization controller
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct the exact reviewed repair
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          git fetch origin main "$PRODUCT_BRANCH" --no-tags
+          [[ "$(git rev-parse origin/main)" == "$MAIN_SHA" ]] \
+            || fail 'main advanced after review; refusing to publish stale source.'
+          [[ "$(git rev-parse "origin/$PRODUCT_BRANCH")" == "$PRODUCT_HEAD" ]] \
+            || fail 'The product branch changed after review; refusing to overwrite newer work.'
+
+          PATCH_FILE="$RUNNER_TEMP/module-owner-runtime.patch"
+          WORKTREE="$RUNNER_TEMP/module-owner-runtime-product"
+          base64 --decode .github/module-owner-runtime/remaining.patch.gz.b64 \
+            | gzip --decompress > "$PATCH_FILE"
+          [[ "$(sha256sum "$PATCH_FILE" | awk '{print $1}')" == "$PATCH_SHA256" ]] \
+            || fail 'The reconstructed repair patch checksum does not match the reviewed patch.'
+
+          git worktree add --detach "$WORKTREE" "origin/$PRODUCT_BRANCH"
+          git -C "$WORKTREE" apply --check "$PATCH_FILE"
+          git -C "$WORKTREE" apply "$PATCH_FILE"
+          chmod 0755 "$WORKTREE/tests/test-module-management-owner-storage-migration-091.sh"
+
+          expected=(
+            .github/workflows/module-management-owner-drawer-ci.yml
+            .github/workflows/projectpulse-deploy-test.yml
+            scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+            src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+            src/frontend/project-time-web/src/AccountCenterPortal.jsx
+            tests/test-module-management-owner-storage-migration-091.sh
+            tests/validate-module-management-owner-drawer.mjs
+            tests/validate-systemwide-enterprise-reliability.mjs
+            tests/validate-systemwide-image-build-controller.mjs
+          )
+          mapfile -t actual < <(git -C "$WORKTREE" diff --name-only "$MAIN_SHA" | sort)
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          diff -u <(printf '%s\n' "${wanted[@]}") <(printf '%s\n' "${actual[@]}") \
+            || fail 'The reconstructed product boundary is not the exact reviewed nine-file repair.'
+          git -C "$WORKTREE" diff --check "$MAIN_SHA"
+
+          echo "worktree=$WORKTREE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${expected[@]}" > "$RUNNER_TEMP/expected-module-owner-runtime-paths.txt"
+          echo 'EXACT_MODULE_OWNER_RUNTIME_SOURCE_BOUNDARY=PASSED'
+
+      - name: Run focused runtime and migration validation
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-module-management-owner-drawer.mjs
+          bash tests/test-module-management-owner-storage-migration-091.sh
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          git diff --check "$MAIN_SHA"
+
+      - name: Build complete API Release
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --nologo
+
+      - name: Audit and build complete frontend production bundle
+        working-directory: ${{ steps.source.outputs.worktree }}/src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Revalidate source after complete builds
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          mapfile -t actual < <(git diff --name-only "$MAIN_SHA" | sort)
+          mapfile -t wanted < <(sort "$RUNNER_TEMP/expected-module-owner-runtime-paths.txt")
+          diff -u <(printf '%s\n' "${wanted[@]}") <(printf '%s\n' "${actual[@]}")
+          git diff --check "$MAIN_SHA"
+          echo 'POST_BUILD_MODULE_OWNER_RUNTIME_SOURCE_BOUNDARY=PASSED'
+
+      - name: Create the validated Git commit object without moving a ref
+        id: commit
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          mapfile -t expected < "$RUNNER_TEMP/expected-module-owner-runtime-paths.txt"
+          git add -- "${expected[@]}"
+          [[ -z "$(git diff --name-only)" ]] || {
+            git status --short >&2
+            fail 'Unstaged tracked changes remain after exact staging.'
+          }
+          git diff --cached --check
+
+          entries='[]'
+          for file in "${expected[@]}"; do
+            mode="$(git ls-files -s -- "$file" | awk '{print $1}')"
+            [[ "$mode" =~ ^100(644|755)$ ]] || fail "Unsupported source mode for $file: $mode"
+            encoded="$(base64 -w0 "$file")"
+            blob_sha="$(jq -n --arg content "$encoded" '{content:$content,encoding:"base64"}' \
+              | gh api --method POST "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha')"
+            [[ "$blob_sha" =~ ^[0-9a-f]{40}$ ]] || fail "GitHub did not create a blob for $file."
+            entries="$(jq --arg path "$file" --arg mode "$mode" --arg sha "$blob_sha" \
+              '. + [{path:$path,mode:$mode,type:"blob",sha:$sha}]' <<<"$entries")"
+          done
+
+          base_tree="$(git rev-parse "$PRODUCT_HEAD^{tree}")"
+          tree_sha="$(jq -n --arg baseTree "$base_tree" --argjson entries "$entries" \
+            '{base_tree:$baseTree,tree:$entries}' \
+            | gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')"
+          [[ "$tree_sha" =~ ^[0-9a-f]{40}$ ]] || fail 'GitHub did not create the validated product tree.'
+
+          commit_sha="$(jq -n \
+            --arg message 'Activate module ownership storage and preserve Table drawer runtime' \
+            --arg tree "$tree_sha" \
+            --arg parent "$PRODUCT_HEAD" \
+            '{message:$message,tree:$tree,parents:[$parent]}' \
+            | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')"
+          [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || fail 'GitHub did not create the validated product commit.'
+
+          remote_parent="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.parents[0].sha')"
+          remote_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$commit_sha" --jq '.tree.sha')"
+          [[ "$remote_parent" == "$PRODUCT_HEAD" ]] || fail 'The materialized commit parent is not the reviewed product branch head.'
+          [[ "$remote_tree" == "$tree_sha" ]] || fail 'The materialized commit tree does not match the validated product tree.'
+
+          jq -n \
+            --arg mainSha "$MAIN_SHA" \
+            --arg productBranch "$PRODUCT_BRANCH" \
+            --arg parentSha "$PRODUCT_HEAD" \
+            --arg treeSha "$tree_sha" \
+            --arg commitSha "$commit_sha" \
+            --argjson paths "$(printf '%s\n' "${expected[@]}" | jq -R . | jq -s .)" \
+            '{mainSha:$mainSha,productBranch:$productBranch,parentSha:$parentSha,treeSha:$treeSha,commitSha:$commitSha,paths:$paths,validated:true,refMoved:false}' \
+            > "$RUNNER_TEMP/module-owner-runtime-materialized-commit.json"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "MATERIALIZED_PRODUCT_COMMIT=$commit_sha"
+
+      - name: Upload materialized commit evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module-owner-runtime-materialized-commit-${{ github.run_id }}
+          path: ${{ runner.temp }}/module-owner-runtime-materialized-commit.json
+          if-no-files-found: error
+          retention-days: 2
