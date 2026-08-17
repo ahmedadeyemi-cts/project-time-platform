@@ -74,36 +74,26 @@ internal static class ProjectManagementWorkRegisterScope
 
         if (TryReadProjectIdFromPath(path, out var projectId))
         {
+            await WriteScopedProjectReadAsync(context, next, projectId);
+            return true;
+        }
+
+        if (TryReadDocumentIdFromPath(path, out var documentId))
+        {
             try
             {
                 await using var connection = await OpenAsync(context.RequestAborted);
-                var identity = await ReadIdentityAsync(connection, context, context.RequestAborted);
-                if (identity is null)
-                {
-                    await WriteDeniedAsync(context, "A valid effective ProjectPulse identity is required.");
-                    return true;
-                }
-
-                if (identity.HasFullAccess)
+                var documentProjectId = await ReadDocumentProjectIdAsync(
+                    connection,
+                    documentId,
+                    context.RequestAborted);
+                if (documentProjectId is null)
                 {
                     await next(context);
                     return true;
                 }
 
-                var accessByProject = await ReadProjectAccessAsync(
-                    connection,
-                    identity,
-                    projectId,
-                    context.RequestAborted);
-                if (!accessByProject.TryGetValue(projectId, out var access))
-                {
-                    await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
-                    return true;
-                }
-
-                context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
-                context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;
-                await next(context);
+                await WriteScopedProjectReadAsync(context, next, documentProjectId.Value);
                 return true;
             }
             catch (Exception exception)
@@ -111,21 +101,75 @@ internal static class ProjectManagementWorkRegisterScope
                 context.RequestServices.GetRequiredService<ILoggerFactory>()
                     .CreateLogger("ProjectManagementWorkRegisterScope")
                     .LogWarning(
-                        "Work Register project read scope was unavailable ({ExceptionType}).",
+                        "Work Register document read scope was unavailable ({ExceptionType}).",
                         exception.GetType().Name);
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 await context.Response.WriteAsJsonAsync(new
                 {
-                    status = "work_register_read_scope_unavailable",
+                    status = "work_register_document_scope_unavailable",
                     module = "055C",
                     correlationId = context.TraceIdentifier,
-                    message = "Project visibility could not be verified. No project data was returned."
+                    message = "Document visibility could not be verified. No document data was returned."
                 }, context.RequestAborted);
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static async Task WriteScopedProjectReadAsync(
+        HttpContext context,
+        RequestDelegate next,
+        Guid projectId)
+    {
+        try
+        {
+            await using var connection = await OpenAsync(context.RequestAborted);
+            var identity = await ReadIdentityAsync(connection, context, context.RequestAborted);
+            if (identity is null)
+            {
+                await WriteDeniedAsync(context, "A valid effective ProjectPulse identity is required.");
+                return;
+            }
+
+            if (identity.HasFullAccess)
+            {
+                await next(context);
+                return;
+            }
+
+            var accessByProject = await ReadProjectAccessAsync(
+                connection,
+                identity,
+                projectId,
+                context.RequestAborted);
+            if (!accessByProject.TryGetValue(projectId, out var access))
+            {
+                await WriteDeniedAsync(context, "This project is outside your Project Management scope.");
+                return;
+            }
+
+            context.Items["ProjectPulseWorkRegisterReadScope"] = access.Scope;
+            context.Items["ProjectPulseWorkRegisterCanEdit"] = access.CanEdit;
+            await next(context);
+        }
+        catch (Exception exception)
+        {
+            context.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ProjectManagementWorkRegisterScope")
+                .LogWarning(
+                    "Work Register project read scope was unavailable ({ExceptionType}).",
+                    exception.GetType().Name);
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                status = "work_register_read_scope_unavailable",
+                module = "055C",
+                correlationId = context.TraceIdentifier,
+                message = "Project visibility could not be verified. No project data was returned."
+            }, context.RequestAborted);
+        }
     }
 
     private static async Task WriteScopedOverviewAsync(
@@ -419,6 +463,60 @@ internal static class ProjectManagementWorkRegisterScope
             connection);
         command.Parameters.AddWithValue("table_name", tableName);
         return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
+    private static async Task<Guid?> ReadDocumentProjectIdAsync(
+        NpgsqlConnection connection,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        await using (var command = new NpgsqlCommand("""
+            SELECT project_id
+            FROM work_register_documents
+            WHERE work_register_document_id = @document_id
+            LIMIT 1;
+            """, connection))
+        {
+            command.Parameters.AddWithValue("document_id", documentId);
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            if (value is Guid projectId && projectId != Guid.Empty) return projectId;
+        }
+
+        if (!await TableExistsAsync(
+                connection,
+                "work_register_project_documents",
+                cancellationToken))
+        {
+            return null;
+        }
+
+        await using var legacyCommand = new NpgsqlCommand("""
+            SELECT project_id
+            FROM work_register_project_documents
+            WHERE work_register_project_document_id = @document_id
+            LIMIT 1;
+            """, connection);
+        legacyCommand.Parameters.AddWithValue("document_id", documentId);
+        var legacyValue = await legacyCommand.ExecuteScalarAsync(cancellationToken);
+        return legacyValue is Guid legacyProjectId && legacyProjectId != Guid.Empty
+            ? legacyProjectId
+            : null;
+    }
+
+    private static bool TryReadDocumentIdFromPath(string path, out Guid documentId)
+    {
+        documentId = Guid.Empty;
+        var segments = path.Split(
+            '/',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length >= 6
+            && segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
+            && segments[1].Equals("work-register", StringComparison.OrdinalIgnoreCase)
+            && segments[2].Equals("projects", StringComparison.OrdinalIgnoreCase)
+            && segments[3].Equals("documents", StringComparison.OrdinalIgnoreCase)
+            && segments[5].Equals("download", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(segments[4], out documentId)
+            && documentId != Guid.Empty;
     }
 
     private static bool TryReadProjectIdFromPath(string path, out Guid projectId)

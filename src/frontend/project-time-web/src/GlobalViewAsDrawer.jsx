@@ -92,7 +92,7 @@ export default function GlobalViewAsDrawer() {
     setLoadError('');
 
     try {
-      const requestFetch = window.__projectPulseOriginalFetch || window.fetch.bind(window);
+      const requestFetch = window.__projectPulseAdministratorFetch || window.__projectPulseOriginalFetch || window.fetch.bind(window);
 
       if (!active) {
         const contextResponse = await requestFetch('/api/security/context', {

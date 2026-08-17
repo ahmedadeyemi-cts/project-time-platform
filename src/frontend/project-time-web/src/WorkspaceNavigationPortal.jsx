@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROJECTPULSE_MODULES } from './module-availability-registry.js';
-import { authorizedModulesFromNavigationState } from './module-directory-authority.js';
+import {
+  SHARED_WORKSPACE_MODULE_AUTHORITY_CONTRACT,
+  authorizedModulesFromEffectiveNavigationState
+} from './module-directory-authority.js';
 import {
   PULSE_WORKSPACES,
   WORKSPACE_BY_NUMBER,
@@ -151,6 +154,22 @@ function WorkspaceTile({ workspace, compact = false, favorite, onOpen, onToggleF
   );
 }
 
+function publishWorkspaceAuthorization(workspaces, state) {
+  if (typeof window === 'undefined') return;
+  const viewAsUserId = clean(readJsonStorage('projectPulseViewAsUser', null)?.userId);
+  const detail = Object.freeze({
+    contract: SHARED_WORKSPACE_MODULE_AUTHORITY_CONTRACT,
+    state: state === 'ready' && Array.isArray(workspaces) ? 'ready' : state,
+    moduleNumbers: Array.isArray(workspaces)
+      ? workspaces.map((workspace) => clean(workspace.moduleNumber).toUpperCase()).filter(Boolean)
+      : [],
+    viewAsUserId,
+    authoritySource: 'workspace_directory_rbac_and_availability_v1'
+  });
+  window.__projectPulseAuthorizedWorkspaceNavigation = detail;
+  window.dispatchEvent(new CustomEvent('projectpulse:workspace-authorization-updated', { detail }));
+}
+
 function useWorkspaceAuthority() {
   const [revision, setRevision] = useState(0);
   const [availability, setAvailability] = useState({ state: 'loading', map: new Map(), error: '' });
@@ -190,7 +209,7 @@ function useWorkspaceAuthority() {
   }, [refresh]);
 
   const authorized = useMemo(() => {
-    const modules = authorizedModulesFromNavigationState(PROJECTPULSE_MODULES, window.__projectPulseEffectiveNavigation);
+    const modules = authorizedModulesFromEffectiveNavigationState(PROJECTPULSE_MODULES, window.__projectPulseEffectiveNavigation);
     if (modules === null || availability.state !== 'ready') return null;
     const allowedNumbers = new Set(modules.map((module) => clean(module.moduleNumber).toUpperCase()));
     return PULSE_WORKSPACES.filter((workspace) => allowedNumbers.has(workspace.moduleNumber) && availability.map.get(workspace.moduleNumber) !== false);
@@ -404,6 +423,10 @@ export default function WorkspaceNavigationPortal() {
   const triggerRef = useRef(null);
   const authority = useWorkspaceAuthority();
   const identity = sessionIdentity();
+
+  useEffect(() => {
+    publishWorkspaceAuthorization(authority.authorized, authority.state);
+  }, [authority.authorized, authority.state, identity.viewAs?.userId]);
 
   const closeQuick = useCallback(() => {
     setQuickOpen(false);
