@@ -1,0 +1,125 @@
+name: Publish validated Module Management owner drawer source
+
+on:
+  push:
+    branches:
+      - diagnostic/publish-module-management-owner-drawer-20260816
+    paths:
+      - .github/workflows/publish-module-management-owner-drawer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-module-management-owner-drawer-20260816
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish five non-workflow product files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_BRANCH: fix/module-management-owner-drawer-20260816
+      EXPECTED_BASE: 1b60d1cda5fce24d99dd3850f2a65b1b27d7c374
+      ARCHIVE_SHA256: 07fc40fb5396a3ac546ec645662595aa071645ccc81e4e4649b12ad6431a3417
+    steps:
+      - name: Check out temporary publisher source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Reconstruct exact reviewed source package
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          ARCHIVE="$RUNNER_TEMP/module-management-owner-drawer.tgz"
+          WORKTREE="$RUNNER_TEMP/module-management-owner-drawer-product"
+          cat .github/module-owner-drawer-publisher/chunk-*.b64 | base64 --decode > "$ARCHIVE"
+          [[ "$(sha256sum "$ARCHIVE" | awk '{print $1}')" == "$ARCHIVE_SHA256" ]] \
+            || fail 'The reconstructed source archive checksum does not match the reviewed package.'
+
+          git fetch origin main "$TARGET_BRANCH"
+          [[ "$(git rev-parse origin/main)" == "$EXPECTED_BASE" ]] \
+            || fail 'main advanced after review; refusing to publish stale source.'
+          [[ "$(git rev-parse "origin/$TARGET_BRANCH")" == "$EXPECTED_BASE" ]] \
+            || fail 'The product branch changed after review; refusing to overwrite newer work.'
+
+          git worktree add --detach "$WORKTREE" "origin/$TARGET_BRANCH"
+          tar -xzf "$ARCHIVE" -C "$WORKTREE"
+
+          expected=(
+            database/migrations/091_module_management_owner_storage_repair.sql
+            database/rollback/091_module_management_owner_storage_repair_rollback.sql
+            src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+            src/frontend/project-time-web/src/module-management-table.css
+            tests/validate-module-management-owner-drawer.mjs
+          )
+          mapfile -t actual < <(git -C "$WORKTREE" status --short --untracked-files=all | sed -E 's/^.. //' | sort)
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          diff -u <(printf '%s\n' "${wanted[@]}") <(printf '%s\n' "${actual[@]}") \
+            || fail 'The reconstructed product source does not match the exact five-file publisher boundary.'
+
+          echo "worktree=$WORKTREE" >> "$GITHUB_OUTPUT"
+          echo 'FIVE_FILE_SOURCE_BOUNDARY=PASSED'
+
+      - name: Run focused source validation
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          node --check tests/validate-module-management-owner-drawer.mjs
+          node tests/validate-module-management-owner-drawer.mjs
+          node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
+          git diff --check
+
+      - name: Build complete frontend production bundle
+        working-directory: ${{ steps.source.outputs.worktree }}/src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Verify builds did not mutate tracked source
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          unexpected="$(git diff --name-only -- . ':!src/frontend/project-time-web/dist')"
+          [[ -z "$unexpected" ]] || {
+            echo 'ERROR: Validation or build mutated tracked source:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          }
+
+      - name: Commit and push validated non-workflow source
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -- \
+            database/migrations/091_module_management_owner_storage_repair.sql \
+            database/rollback/091_module_management_owner_storage_repair_rollback.sql \
+            src/frontend/project-time-web/src/ModuleManagementTableView.jsx \
+            src/frontend/project-time-web/src/module-management-table.css \
+            tests/validate-module-management-owner-drawer.mjs
+          git diff --cached --check
+          [[ "$(git diff --cached --name-only | wc -l | tr -d ' ')" == '5' ]]
+          git commit -m 'Add module owner repair and responsive detail drawer'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "PUBLISHED_COMMIT=$(git rev-parse HEAD)"
