@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - 'database/migrations/092_module_loading_assignment_visibility_repair.sql'
+      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
       - 'src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs'
       - 'src/frontend/project-time-web/src/module-directory-authority.js'
       - 'src/frontend/project-time-web/src/effective-role-authority.js'
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
