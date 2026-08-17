@@ -92,6 +92,35 @@ jobs:
           npm audit --audit-level=high
           npm run build
 
+      - name: Capture exact post-build source status
+        if: always() && steps.source.outputs.worktree != ''
+        shell: bash
+        working-directory: ${{ steps.source.outputs.worktree }}
+        run: |
+          set +e
+          {
+            echo '=== GIT STATUS ==='
+            git status --short --untracked-files=all
+            echo '=== TRACKED UNSTAGED FILES ==='
+            git diff --name-only -- . ':!src/frontend/project-time-web/dist'
+            echo '=== TRACKED UNSTAGED STAT ==='
+            git diff --stat -- . ':!src/frontend/project-time-web/dist'
+            echo '=== UNTRACKED FILES ==='
+            git ls-files --others --exclude-standard
+            echo '=== DIFF CHECK ==='
+            git diff --check
+          } > "$RUNNER_TEMP/module-owner-drawer-post-build-status.txt" 2>&1
+          cat "$RUNNER_TEMP/module-owner-drawer-post-build-status.txt"
+
+      - name: Upload exact post-build source status
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module-owner-drawer-post-build-status-${{ github.run_id }}
+          path: ${{ runner.temp }}/module-owner-drawer-post-build-status.txt
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify builds did not mutate tracked source
         shell: bash
         working-directory: ${{ steps.source.outputs.worktree }}
