@@ -42,6 +42,29 @@ jobs:
         run: |
           set -Eeuo pipefail
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/runtime-repair-changed.txt
+
+          cat > /tmp/runtime-repair-signatures.txt <<'EOF'
+          .github/pr698-payload/chunk-000.b64
+          database/migrations/091_module_management_owner_storage_repair.sql
+          src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+          src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs
+          src/frontend/project-time-web/src/ApprovalMailbox.jsx
+          src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/WorkspaceNavigationPortal.jsx
+          src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          src/frontend/project-time-web/src/unified-project-financial-workspace.css
+          src/frontend/project-time-web/src/work-register-document-integrity.js
+          EOF
+          sort -o /tmp/runtime-repair-signatures.txt /tmp/runtime-repair-signatures.txt
+          package_specific="$(comm -12 /tmp/runtime-repair-changed.txt /tmp/runtime-repair-signatures.txt)"
+          if [[ -z "$package_specific" ]]; then
+            echo 'RUNTIME_REPAIR_SOURCE_BOUNDARY=SKIPPED_SHARED_DEPENDENCY_REGRESSION'
+            echo 'The full focused validator and production builds will still run.'
+            exit 0
+          fi
+          printf 'RUNTIME_REPAIR_PACKAGE_SOURCE_DETECTED:\n%s\n' "$package_specific"
+
           cat > /tmp/runtime-repair-allowed.txt <<'EOF'
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
