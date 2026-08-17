@@ -1,4 +1,4 @@
-name: Export Protected-Test Controller Source
+name: Prepare Migration 093 Protected-Test Controller
 
 on:
   pull_request:
@@ -7,36 +7,249 @@ on:
       - '.github/workflows/export-protected-test-controller-source.yml'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: prepare-migration-093-controller-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  export:
+  prepare:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/migration-093-protected-test-20260817'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Check out exact pull-request head
+      - name: Check out exact release branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
+          ref: release/migration-093-protected-test-20260817
+          fetch-depth: 0
+          persist-credentials: true
 
-      - name: Stage controller sources
+      - name: Apply exact governed controller update
         shell: bash
         run: |
           set -Eeuo pipefail
-          ROOT="$RUNNER_TEMP/controller-source"
-          install -d -m 0700 "$ROOT/.github/workflows" "$ROOT/scripts/release-test" "$ROOT/tests"
-          install -m 0600 .github/workflows/projectpulse-deploy-test.yml "$ROOT/.github/workflows/projectpulse-deploy-test.yml"
-          install -m 0600 .github/workflows/projectpulse-release-test-control-ci.yml "$ROOT/.github/workflows/projectpulse-release-test-control-ci.yml"
-          install -m 0600 scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh "$ROOT/scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh"
-          install -m 0600 tests/validate-systemwide-image-build-controller.mjs "$ROOT/tests/validate-systemwide-image-build-controller.mjs"
-          install -m 0600 tests/validate-systemwide-enterprise-reliability.mjs "$ROOT/tests/validate-systemwide-enterprise-reliability.mjs"
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Upload controller source
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: protected-test-controller-source
-          path: ${{ runner.temp }}/controller-source
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 1
+          root = Path('.')
+          workflow_path = root / '.github/workflows/projectpulse-deploy-test.yml'
+          control_path = root / '.github/workflows/projectpulse-release-test-control-ci.yml'
+          runner_path = root / 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
+          reliability_test_path = root / 'tests/validate-systemwide-enterprise-reliability.mjs'
+          image_test_path = root / 'tests/validate-systemwide-image-build-controller.mjs'
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one occurrence, found {count}')
+              return text.replace(old, new, 1)
+
+          w = workflow_path.read_text()
+          w = replace_once(w,
+              "      - 'database/migrations/088_systemwide_enterprise_reliability.sql'\n",
+              "      - 'database/migrations/088_systemwide_enterprise_reliability.sql'\n      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'\n",
+              'workflow trigger migration 093')
+          w = replace_once(w,
+              "            database/migrations/088_systemwide_enterprise_reliability.sql \\\n",
+              "            database/migrations/088_systemwide_enterprise_reliability.sql \\\n            database/migrations/093_assigned_work_canonical_visibility_repair.sql \\\n",
+              'workflow required migration 093')
+          w = replace_once(w,
+              "          bash tests/test-systemwide-enterprise-reliability-migration-088.sh\n",
+              "          bash tests/test-systemwide-enterprise-reliability-migration-088.sh\n          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs\n",
+              'workflow focused migration 093 validation')
+          w = replace_once(w,
+              '              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability"],',
+              '              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],',
+              'workflow release boundary migrations')
+          w = replace_once(w,
+              '          install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"\n',
+              '          install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"\n          install -m 0644 database/migrations/093_assigned_work_canonical_visibility_repair.sql "$MIGRATION_CONTEXT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"\n',
+              'workflow migration context copy 093')
+          w = replace_once(w,
+              '            "$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql" \\\n            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql"; do\n',
+              '            "$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql" \\\n            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql" \\\n            "$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"; do\n',
+              'workflow migration entrypoint loop 093')
+
+          old_verification = '''          SELECT
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='086_module_066_flowhive_enterprise_pm')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='088_systemwide_enterprise_reliability')::text || '|' ||
+            (to_regclass('public.project_flowhive_working_copies') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_project_controls') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_raid_items') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_status_reports') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_customer_shares') IS NOT NULL)::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='account_executive_user_id')::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text;
+          SQL
+          )"
+          [[ "$verification" == 'true|true|true|true|true|true|true|true|true' ]] || {
+          '''
+          new_verification = '''          SELECT
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='086_module_066_flowhive_enterprise_pm')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='088_systemwide_enterprise_reliability')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='093_assigned_work_canonical_visibility_repair')::text || '|' ||
+            (to_regclass('public.project_flowhive_working_copies') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_project_controls') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_raid_items') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_status_reports') IS NOT NULL)::text || '|' ||
+            (to_regclass('public.project_flowhive_customer_shares') IS NOT NULL)::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='account_executive_user_id')::text || '|' ||
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text || '|' ||
+            (to_regprocedure('public.projectpulse093_resolve_project_task_id(uuid,text)') IS NOT NULL)::text || '|' ||
+            EXISTS(
+              SELECT 1
+              FROM pg_trigger trigger_record
+              WHERE trigger_record.tgrelid = 'public.work_register_task_assignment_history'::regclass
+                AND trigger_record.tgname = 'trg_projectpulse093_sync_work_register_assignment'
+                AND NOT trigger_record.tgisinternal
+            )::text || '|' ||
+            NOT EXISTS (
+              SELECT 1
+              FROM work_register_task_assignment_history history
+              JOIN project_tasks task
+                ON task.project_id = history.project_id
+               AND task.task_id = projectpulse093_resolve_project_task_id(history.project_id, history.task_id_text)
+               AND task.is_active = TRUE
+              JOIN projects project
+                ON project.project_id = history.project_id
+              WHERE history.assigned_user_id IS NOT NULL
+                AND lower(btrim(COALESCE(history.assignment_status, ''))) = 'active'
+                AND (history.effective_end_date IS NULL OR history.effective_end_date >= CURRENT_DATE)
+                AND lower(btrim(COALESCE(project.status, 'active'))) NOT IN (
+                  'closed','complete','completed','done','cancelled','canceled','archived'
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM project_assignments assignment
+                  WHERE assignment.project_id = history.project_id
+                    AND assignment.task_id = task.task_id
+                    AND assignment.user_id = history.assigned_user_id
+                    AND assignment.effective_start_date <= CURRENT_DATE
+                    AND (assignment.effective_end_date IS NULL OR assignment.effective_end_date >= CURRENT_DATE)
+                )
+            )::text;
+          SQL
+          )"
+          [[ "$verification" == 'true|true|true|true|true|true|true|true|true|true|true|true|true' ]] || {
+          '''
+          w = replace_once(w, old_verification, new_verification, 'workflow migration verification')
+          w = replace_once(w,
+              "          echo 'MIGRATION_088=APPLIED_AND_VERIFIED'\n",
+              "          echo 'MIGRATION_088=APPLIED_AND_VERIFIED'\n          echo 'MIGRATION_093=APPLIED_AND_VERIFIED'\n",
+              'workflow migration 093 echo')
+          w = replace_once(w,
+              '      - name: Apply and verify Migrations 086 and 088 inside Test private network',
+              '      - name: Apply and verify Migrations 086, 088, and 093 inside Test private network',
+              'workflow migration step name')
+          w = replace_once(w,
+              "          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:\"applied_and_verified\",migrations:[\"086_module_066_flowhive_enterprise_pm\",\"088_systemwide_enterprise_reliability\"],image:$image,productionMutation:false}' > \"$EVIDENCE_DIR/migrations.json\"",
+              "          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:\"applied_and_verified\",migrations:[\"086_module_066_flowhive_enterprise_pm\",\"088_systemwide_enterprise_reliability\",\"093_assigned_work_canonical_visibility_repair\"],image:$image,productionMutation:false}' > \"$EVIDENCE_DIR/migrations.json\"",
+              'workflow migration evidence')
+          w = replace_once(w,
+              "                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do",
+              "                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do",
+              'workflow served frontend marker')
+          w = replace_once(w,
+              'migration086:"applied_and_verified",migration088:"applied_and_verified",',
+              'migration086:"applied_and_verified",migration088:"applied_and_verified",migration093:"applied_and_verified",',
+              'workflow UAT summary migration 093')
+          w = replace_once(w,
+              "            [[ -f \"$EVIDENCE_DIR/migrations.json\" ]] && echo '- Migrations 086 and 088: applied and verified' || echo '- Migrations 086 and 088: not completed'",
+              "            [[ -f \"$EVIDENCE_DIR/migrations.json\" ]] && echo '- Migrations 086, 088, and 093: applied and verified' || echo '- Migrations 086, 088, and 093: not completed'",
+              'workflow release summary migrations')
+          workflow_path.write_text(w)
+
+          runner = runner_path.read_text().replace('"086-088"', '"086-088-093"')
+          if '"086-088"' in runner:
+              raise RuntimeError('migration runner still contains the retired 086-088 tag')
+          runner_path.write_text(runner)
+
+          test = reliability_test_path.read_text()
+          test = replace_once(test,
+              "const migration = read('database/migrations/088_systemwide_enterprise_reliability.sql');\n",
+              "const migration = read('database/migrations/088_systemwide_enterprise_reliability.sql');\nconst assignmentMigration = read('database/migrations/093_assigned_work_canonical_visibility_repair.sql');\n",
+              'reliability validator migration 093 source')
+          test = replace_once(test,
+              "requireText(migration, 'idx_projectpulse_system_audit_events_correlation', 'audit correlation index');\n",
+              "requireText(migration, 'idx_projectpulse_system_audit_events_correlation', 'audit correlation index');\nrequireText(assignmentMigration, '093_assigned_work_canonical_visibility_repair', 'Migration 093 registration');\nrequireText(assignmentMigration, 'projectpulse093_resolve_project_task_id', 'Migration 093 task resolver');\nrequireText(assignmentMigration, 'trg_projectpulse093_sync_work_register_assignment', 'Migration 093 assignment trigger');\nrequireText(assignmentMigration, 'INSERT INTO project_assignments', 'Migration 093 canonical assignment backfill');\n",
+              'reliability validator migration 093 assertions')
+          test = test.replace('projectpulse-migration"] == "086-088"', 'projectpulse-migration"] == "086-088-093"')
+          test = test.replace("'Migrations 086 and 088',", "'Migrations 086, 088, and 093',")
+          test = replace_once(test,
+              "  'Run protected-Test utilization role-scoping UAT',\n",
+              "  'Run protected-Test utilization role-scoping UAT',\n  'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1',\n  'migration093:\"applied_and_verified\"',\n",
+              'reliability validator PR710 deployment markers')
+          reliability_test_path.write_text(test)
+
+          image_test = image_test_path.read_text()
+          image_test = replace_once(image_test,
+              "assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\\.sh/);\n",
+              "assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\\.sh/);\nassert.match(workflow, /093_assigned_work_canonical_visibility_repair\\.sql/);\nassert.match(workflow, /Apply and verify Migrations 086, 088, and 093 inside Test private network/);\nassert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);\n",
+              'image validator migration 093 markers')
+          image_test_path.write_text(image_test)
+
+          control = control_path.read_text()
+          control = replace_once(control,
+              "      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'\n",
+              "      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'\n      - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'\n",
+              'control CI trigger migration runner')
+          control = replace_once(control,
+              "          scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh\n",
+              "          scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh\n          scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh\n",
+              'control CI allowed migration runner')
+          control = replace_once(control,
+              "          grep -Fq 'Apply and verify Migrations 086 and 088 inside Test private network' \"$CONTROLLER\"\n",
+              "          grep -Fq 'Apply and verify Migrations 086, 088, and 093 inside Test private network' \"$CONTROLLER\"\n          grep -Fq 'database/migrations/093_assigned_work_canonical_visibility_repair.sql' \"$CONTROLLER\"\n          grep -Fq 'MIGRATION_093=APPLIED_AND_VERIFIED' \"$CONTROLLER\"\n",
+              'control CI migration 093 markers')
+          control = replace_once(control,
+              "          echo 'MIGRATIONS_086_088=AUTHORIZED_TEST_APPLY_AND_VERIFY'\n",
+              "          echo 'MIGRATIONS_086_088_093=AUTHORIZED_TEST_APPLY_AND_VERIFY'\n",
+              'control CI migration output')
+          control_path.write_text(control)
+
+          for path in (workflow_path, control_path, runner_path, reliability_test_path, image_test_path):
+              value = path.read_text()
+              if '\r' in value:
+                  raise RuntimeError(f'CRLF found in {path}')
+              if not value.endswith('\n'):
+                  path.write_text(value + '\n')
+          PY
+
+          rm -f .github/workflows/export-protected-test-controller-source.yml
+
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          node --check tests/validate-systemwide-enterprise-reliability.mjs
+          node --check tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+
+          git diff --name-only | LC_ALL=C sort -u > "$RUNNER_TEMP/changed-files"
+          cat > "$RUNNER_TEMP/expected-files" <<'FILES'
+          .github/workflows/export-protected-test-controller-source.yml
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          tests/validate-systemwide-enterprise-reliability.mjs
+          tests/validate-systemwide-image-build-controller.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/expected-files" -o "$RUNNER_TEMP/expected-files"
+          cmp "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/changed-files"
+
+      - name: Commit exact release-control changes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'release(test): apply Migration 093 with PR #710'
+          git push origin HEAD:release/migration-093-protected-test-20260817
