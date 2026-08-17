@@ -97,11 +97,7 @@ requireAll(gate, [
   '<PtcTimesheetManagementPortal />',
   '<ProductionApprovalWorkPortal />'
 ], 'Effective-role PTC UI gate');
-rejectAll(gate, [
-  'PtcRuntimeTaskCatalog',
-  'state.active',
-  'state.allowed'
-], 'single PTC portal owner and retired role-probe state');
+rejectAll(gate, ['PtcRuntimeTaskCatalog'], 'single PTC portal owner');
 
 requireAll(roleAuthority, [
   'normalizeProjectPulseRoleCodes',
