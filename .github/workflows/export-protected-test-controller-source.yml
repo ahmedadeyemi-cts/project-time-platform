@@ -1,0 +1,37 @@
+name: Export Protected-Test Controller Source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-protected-test-controller-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Stage controller sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/controller-source/.github/workflows"
+          install -m 0600 .github/workflows/projectpulse-deploy-test.yml "$RUNNER_TEMP/controller-source/.github/workflows/projectpulse-deploy-test.yml"
+          install -m 0600 .github/workflows/projectpulse-release-test-control-ci.yml "$RUNNER_TEMP/controller-source/.github/workflows/projectpulse-release-test-control-ci.yml"
+
+      - name: Upload controller source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-test-controller-source
+          path: ${{ runner.temp }}/controller-source
+          if-no-files-found: error
+          retention-days: 1
