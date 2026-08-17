@@ -16,7 +16,7 @@ for (const marker of [
   'projectpulse:experience-changed',
   'projectpulse:theme-changed',
   'pulse-display-view-handle',
-  'pulse-display-theme-handle',
+  'pulse-display-appearance-handle',
   'data-pulse-theme-choice={LIGHT_THEME}',
   'data-pulse-theme-choice={DARK_THEME}',
   'role="dialog"',
@@ -34,7 +34,7 @@ for (const marker of [
   'z-index: 16000 !important;',
   '.pulse-display-preferences-drawer',
   '.pulse-display-view-handle',
-  '.pulse-display-theme-handle',
+  '.pulse-display-appearance-handle',
   "[data-theme='dark'] .pulse-display-choice",
   '@media print'
 ]) {
