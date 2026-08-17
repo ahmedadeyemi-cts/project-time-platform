@@ -119,15 +119,20 @@ internal static class ProjectPulseActualSessionAuthority
                 actualEmail,
                 cancellationToken);
 
-        if (resolution is null) return false;
+        var resolved = resolution?.UserId;
+        if (resolved is not Guid administratorUserId || administratorUserId == Guid.Empty)
+            return false;
+        if (resolution is null || !IsAdministratorRoleCode(resolution.RoleCode))
+            return false;
 
         // Repair request-local identity only. No session token, cookie, role
         // assignment, or database row is changed by this compatibility step.
-        context.Items["ProjectPulseActualUserId"] = resolution.UserId;
+        context.Items["ProjectPulseActualUserId"] = administratorUserId;
         if (!IsViewAs(context))
-            context.Items["ProjectPulseEffectiveUserId"] = resolution.UserId;
+            context.Items["ProjectPulseEffectiveUserId"] = administratorUserId;
         context.Items["ProjectPulsePermanentFullControl"] = true;
-        context.Items["ProjectPulseAuthorizationSource"] = resolution.AuthoritySource;
+        context.Items["ProjectPulseAuthorizationSource"] = "actual_session_super_administrator";
+        context.Items["ProjectPulseIdentityResolutionSource"] = resolution.AuthoritySource;
         context.Items["ProjectPulseActualRoleCodes"] = new[] { resolution.RoleCode };
         return true;
     }
@@ -151,9 +156,15 @@ internal static class ProjectPulseActualSessionAuthority
              AND role.is_active = TRUE
             WHERE app_user.user_id = @user_id
               AND app_user.is_active = TRUE
+              AND trim(both '_' from regexp_replace(
+                    upper(btrim(COALESCE(role.role_code, ''))),
+                    '[^A-Z0-9]+',
+                    '_',
+                    'g')) = ANY(@admin_role_codes)
             ORDER BY role.role_code;
             """, connection, transaction);
         command.Parameters.AddWithValue("user_id", userId.Value);
+        AddAdministratorRoleCodes(command);
         return await ReadAdministratorResolutionAsync(
             command,
             "actual_session_user_id",
@@ -178,10 +189,16 @@ internal static class ProjectPulseActualSessionAuthority
               ON role.app_role_id = assignment.app_role_id
              AND role.is_active = TRUE
             WHERE app_user.is_active = TRUE
-              AND lower(COALESCE(app_user.email, '')) = lower(@email)
+              AND lower(app_user.email) = lower(@email)
+              AND trim(both '_' from regexp_replace(
+                    upper(btrim(COALESCE(role.role_code, ''))),
+                    '[^A-Z0-9]+',
+                    '_',
+                    'g')) = ANY(@admin_role_codes)
             ORDER BY app_user.user_id, role.role_code;
             """, connection, transaction);
         command.Parameters.AddWithValue("email", email);
+        AddAdministratorRoleCodes(command);
         return await ReadAdministratorResolutionAsync(
             command,
             "actual_session_application_email",
@@ -222,9 +239,15 @@ internal static class ProjectPulseActualSessionAuthority
                     NULLIF(external_identity.email, ''),
                     NULLIF(external_identity.user_principal_name, ''),
                     '')) = lower(@email)
+              AND trim(both '_' from regexp_replace(
+                    upper(btrim(COALESCE(role.role_code, ''))),
+                    '[^A-Z0-9]+',
+                    '_',
+                    'g')) = ANY(@admin_role_codes)
             ORDER BY app_user.user_id, role.role_code;
             """, connection, transaction);
         command.Parameters.AddWithValue("email", email);
+        AddAdministratorRoleCodes(command);
         return await ReadAdministratorResolutionAsync(
             command,
             "actual_session_external_identity",
@@ -251,6 +274,14 @@ internal static class ProjectPulseActualSessionAuthority
         }
 
         return null;
+    }
+
+    private static void AddAdministratorRoleCodes(NpgsqlCommand command)
+    {
+        command.Parameters.AddWithValue(
+            "admin_role_codes",
+            NpgsqlDbType.Array | NpgsqlDbType.Text,
+            SuperAdministratorRoleCodes);
     }
 
     internal static Guid? ReadUserId(HttpContext context, params string[] keys)
