@@ -88,12 +88,14 @@ AVAILABLE="$EVIDENCE_DIR/jason-available-tasks-$WEEK_START.json"
 CANONICAL_QUEUE="$EVIDENCE_DIR/jason-canonical-work-queue-$WEEK_START.json"
 CLOSEOUT="$EVIDENCE_DIR/jason-engineer-closeout.json"
 WORKSPACE="$EVIDENCE_DIR/jason-engineering-workspace.json"
+OWNERS="$EVIDENCE_DIR/jason-module-owner-catalog.json"
 
 auth_get '001' '/api/security/context' "$SECURITY" 'Jason security context'
 auth_get '001' "/api/assignments/available-tasks?weekStart=$WEEK_START" "$AVAILABLE" 'Module 001 available tasks'
 auth_get '001' "/api/timesheet/work-queue?weekStart=$WEEK_START" "$CANONICAL_QUEUE" 'Module 001 canonical work queue'
 auth_get '001A' '/api/engineer-task-closeout/overview' "$CLOSEOUT" 'Module 001A Engineer closeout'
 auth_get '019' '/api/project-workspace/overview' "$WORKSPACE" 'Module 019 Engineering Workspace'
+auth_get '012' '/api/module-catalog/owners' "$OWNERS" 'Module owner catalog read-through'
 
 JASON_USER_ID="$(jq -r '.userId // empty' "$SECURITY")"
 [[ "$JASON_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
@@ -142,9 +144,25 @@ jq -e \
     and ([.active[]?, .history[]? | select(
       .projectCode == $sr
       and .engineerUserId == $userId
+      and .requestType == "Service Request"
+      and .serviceRequestNumber == $sr
+      and .canClose == true
     )] | length) >= 1
   ' "$CLOSEOUT" >/dev/null \
   || fail "Module 001A did not return the reported Service Request for Jason."
+
+jq -e '
+    .access.canManage == false
+    and .access.authoritySource == "authenticated_read_only"
+    and (.ownerCandidates | length) == 0
+    and ([.owners[]? | select(
+      (.moduleNumber == "001" or .moduleNumber == "001A" or .moduleNumber == "019")
+      and .ownerUserId != null
+      and (.displayName // "") != ""
+      and .displayName != "Unassigned"
+    )] | length) == 3
+  ' "$OWNERS" >/dev/null \
+  || fail "Ordinary authenticated users did not receive the saved Super Administrator module owner display state."
 
 jq -e \
   --arg sr "$REPORTED_SERVICE_REQUEST" \
@@ -185,7 +203,10 @@ jq -n \
     module001AvailableTasks:true,
     module001CanonicalWorkQueue:true,
     module001aEngineerCloseout:true,
+    module001aVisibleRequestReference:true,
     module019EngineeringWorkspace:true,
+    moduleOwnerCatalogReadThrough:true,
+    ownerCandidatesRestrictedToSuperAdministrators:true,
     requestFamilies:["Service Request","Presales","Internal"],
     mutation:false,
     productionMutation:false

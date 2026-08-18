@@ -10,6 +10,8 @@ import './module-availability.css';
 const MODULES_ROUTE = 'modules';
 const MODULES_HASH = '#modules';
 const AVAILABILITY_REFRESH_MS = 30000;
+const MODULE_DIRECTORY_AUTHORITY_POLL_MS = 500;
+const MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT = 'MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_V2';
 
 const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
   timesheet: '001',
@@ -324,6 +326,7 @@ export default function ModulesDirectoryPortal() {
   const [route, setRoute] = useState(currentRoute);
   const [portalHost, setPortalHost] = useState(null);
   const [modules, setModules] = useState([]);
+  const [directoryResolved, setDirectoryResolved] = useState(false);
   const [search, setSearch] = useState('');
   const [group, setGroup] = useState('all');
   const [availability, setAvailability] = useState({
@@ -336,6 +339,7 @@ export default function ModulesDirectoryPortal() {
   const [busyModule, setBusyModule] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const refreshTimer = useRef(null);
+  const directoryResolvedRef = useRef(false);
   const expandedForDirectory = useRef(new Set());
   const active = route === MODULES_ROUTE;
 
@@ -401,6 +405,12 @@ export default function ModulesDirectoryPortal() {
   }, []);
 
   useEffect(() => {
+    const requestAuthorityRefresh = (source) => {
+      window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed', {
+        detail: { source, contract: MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT }
+      }));
+    };
+
     const refresh = () => {
       ensurePersistentModulesLink(active);
       updateWorkspaceHeading(active);
@@ -410,11 +420,35 @@ export default function ModulesDirectoryPortal() {
       window.clearTimeout(refreshTimer.current);
       refreshTimer.current = window.setTimeout(() => {
         const nextModules = collectAuthorizedModules();
+        const navigationResolved = authorizedModulesFromNavigationState(
+          PROJECTPULSE_MODULES,
+          window.__projectPulseEffectiveNavigation
+        ) !== null;
+
+        if (!navigationResolved && nextModules.length === 0) {
+          requestAuthorityRefresh('module_directory_unresolved_authority');
+          return;
+        }
+
+        directoryResolvedRef.current = true;
+        setDirectoryResolved(true);
         setModules((current) => moduleListsMatch(current, nextModules) ? current : nextModules);
       }, 80);
     };
 
+    const resetForIdentity = () => {
+      directoryResolvedRef.current = false;
+      setDirectoryResolved(false);
+      setModules([]);
+      requestAuthorityRefresh('module_directory_identity_changed');
+      refresh();
+    };
+
     refresh();
+    if (active && !directoryResolvedRef.current) {
+      requestAuthorityRefresh('module_directory_route_activated');
+    }
+
     const root = document.getElementById('root');
     const observer = root ? new MutationObserver((mutations) => {
       if (mutations.every(mutationOriginatesInsidePortal)) return;
@@ -429,17 +463,26 @@ export default function ModulesDirectoryPortal() {
       attributeFilter: ['aria-expanded', 'class', 'hidden']
     });
 
-    window.addEventListener('projectpulse:view-as-changed', refresh);
+    const authorityPoll = window.setInterval(() => {
+      if (active && !directoryResolvedRef.current) refresh();
+    }, MODULE_DIRECTORY_AUTHORITY_POLL_MS);
+
+    window.addEventListener('projectpulse:view-as-changed', resetForIdentity);
+    window.addEventListener('projectpulse:auth-session-ready', refresh);
     window.addEventListener('projectpulse:module-availability-changed', refresh);
     window.addEventListener('projectpulse:permission-navigation-updated', refresh);
     window.addEventListener('projectpulse:workspace-authorization-updated', refresh);
+    window.addEventListener('pageshow', refresh);
 
     return () => {
       observer?.disconnect();
-      window.removeEventListener('projectpulse:view-as-changed', refresh);
+      window.clearInterval(authorityPoll);
+      window.removeEventListener('projectpulse:view-as-changed', resetForIdentity);
+      window.removeEventListener('projectpulse:auth-session-ready', refresh);
       window.removeEventListener('projectpulse:module-availability-changed', refresh);
       window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
       window.removeEventListener('projectpulse:workspace-authorization-updated', refresh);
+      window.removeEventListener('pageshow', refresh);
       window.clearTimeout(refreshTimer.current);
       if (active) restoreNavigationGroups(expandedForDirectory.current);
     };
@@ -614,6 +657,7 @@ export default function ModulesDirectoryPortal() {
 
       <ModuleManagementTableView
         modules={visibleModules}
+        directoryResolved={directoryResolved}
         availability={availability}
         canManage={canManage}
         busyModule={busyModule}
@@ -680,10 +724,14 @@ export default function ModulesDirectoryPortal() {
           ))}
         </div>
       ) : (
-        <div className="modules-directory-empty">
-          <h2>No modules match the current filters</h2>
-          <p>Clear the filters or confirm the selected View-As user has module access.</p>
-          <button type="button" onClick={() => { setSearch(''); setGroup('all'); }}>Show authorized modules</button>
+        <div className="modules-directory-empty" role={directoryResolved ? undefined : 'status'}>
+          <h2>{directoryResolved ? 'No modules match the current filters' : 'Loading authorized modules'}</h2>
+          <p>{directoryResolved
+            ? 'Clear the filters or confirm the selected View-As user has module access.'
+            : 'Refreshing the current user’s role-scoped module authority. Existing navigation remains intact.'}</p>
+          {directoryResolved ? (
+            <button type="button" onClick={() => { setSearch(''); setGroup('all'); }}>Show authorized modules</button>
+          ) : null}
         </div>
       )}
     </section>,

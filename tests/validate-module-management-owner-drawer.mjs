@@ -120,7 +120,11 @@ requireMarkers('Module ownership API', ownership, [
   'ownerCandidates',
   'MODULE_OWNER_CHANGED',
   'ownershipDoesNotGrantAccess',
-  'Exit View-As before changing module ownership'
+  'Exit View-As before changing module ownership',
+  'developer_super_administrator_only',
+  'DeveloperOwnerRoleCodes',
+  'IsDeveloperModuleOwnerAsync',
+  'The selected owner must be an active developer Super Administrator.'
 ]);
 
 requireMarkers('Migration 091', migration, [

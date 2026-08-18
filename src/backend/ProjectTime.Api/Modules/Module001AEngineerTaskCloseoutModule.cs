@@ -63,7 +63,10 @@ public static partial class ScopedRolePolicyModule
                 pt.task_name,
                 COALESCE(pt.task_description, '') AS task_description,
                 pt.is_active AS task_active,
-                COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number', ''), '') AS service_request_number,
+                COALESCE(
+                    NULLIF(to_jsonb(pt)->>'service_request_number', ''),
+                    CASE WHEN p.project_code ~* '^(SR|PRES|INT)-' THEN p.project_code ELSE '' END
+                ) AS service_request_number,
                 COALESCE(used.total_hours, 0)::numeric AS used_hours,
                 engineer.display_name AS engineer_name,
                 engineer.email AS engineer_email,
@@ -125,6 +128,7 @@ public static partial class ScopedRolePolicyModule
                     WHEN 'ptc_final_closed' THEN 3
                     ELSE 1
                 END,
+                pa.effective_start_date DESC,
                 p.project_code,
                 pt.task_code;
             """, connection))

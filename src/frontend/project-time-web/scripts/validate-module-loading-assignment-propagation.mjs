@@ -54,7 +54,6 @@ requireText(
 
 const backgroundGate = read('src/frontend/project-time-web/src/background-request-role-gate.js');
 [
-  '/api/module-catalog/owners',
   '/api/production/readiness-command-center',
   '/api/navigation/registry-integrity',
   '/api/dashboard/module-visibility-smoke',
@@ -71,10 +70,55 @@ const backgroundGate = read('src/frontend/project-time-web/src/background-reques
   'visible_authorized_navigation_snapshot',
   'cached_authorized_navigation_snapshot',
   'projectpulse:permission-navigation-updated',
-  'owners: []',
+  'OWNER_CATALOG_READ_THROUGH_FOR_AUTHENTICATED_USERS_V1',
+  'MODULE_DIRECTORY_AUTHORITY_RETRY_MS',
+  'projectpulse:auth-session-ready',
+  'projectpulse:permissions-changed',
   'role_not_applicable',
   'authorization_pending'
 ].forEach((contract) => requireText(backgroundGate, contract, 'immediate module authority'));
+rejectText(
+  backgroundGate,
+  "matches: (path) => path === '/api/module-catalog/owners'",
+  'authenticated owner catalog reads must reach the backend'
+);
+rejectText(backgroundGate, "case 'owners':", 'owner catalog must not be replaced with an empty client payload');
+
+const modulesPortal = read('src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx');
+[
+  'MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_V2',
+  'directoryResolvedRef',
+  'module_directory_unresolved_authority',
+  'module_directory_route_activated',
+  'directoryResolved={directoryResolved}'
+].forEach((contract) => requireText(modulesPortal, contract, 'nonblocking Modules directory hydration'));
+
+const moduleManagement = read('src/frontend/project-time-web/src/ModuleManagementTableView.jsx');
+[
+  'OWNER_CATALOG_READ_THROUGH_FOR_AUTHENTICATED_USERS_V1',
+  'OWNER_LOAD_RETRY_DELAYS_MS',
+  "window.addEventListener('projectpulse:auth-session-ready', refresh)",
+  "window.addEventListener('projectpulse:permission-navigation-updated', refresh)",
+  'Loading owner…',
+  'Retrieving saved owner',
+  '!directoryResolved ? ('
+].forEach((contract) => requireText(moduleManagement, contract, 'owner catalog hydration'));
+rejectText(
+  moduleManagement,
+  'if (!tableMode) return undefined;\n    void loadOwnership();',
+  'owner metadata must load independently of visual layout mode'
+);
+
+const closeoutUi = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
+[
+  'const PAGE_SIZE = 50;',
+  'MODULE001A_VISIBLE_REQUEST_FAMILIES_V2',
+  'compareCloseoutItems',
+  'rightDate - leftDate',
+  "'projectpulse:timesheet-work-queue-changed'",
+  "'projectpulse:work-register-assignment-changed'",
+  '.sort(compareCloseoutItems)'
+].forEach((contract) => requireText(closeoutUi, contract, 'Module 001A visible assigned requests'));
 
 const main = read('src/frontend/project-time-web/src/main.jsx');
 requireText(main, "import './background-request-role-gate.js';", 'background gate installation');
@@ -125,6 +169,26 @@ const migration093 = read('database/migrations/093_assigned_work_canonical_visib
   'migration 093 must remain environment and record neutral'
 ));
 
+const ownershipApi = read('src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs');
+[
+  'developer_super_administrator_only',
+  'DeveloperOwnerRoleCodes',
+  'IsDeveloperModuleOwnerAsync',
+  'app_user_role_assignments owner_assignment',
+  '@developer_owner_role_codes',
+  'Only an actual developer Super Administrator session can change module ownership.',
+  'The selected owner must be an active developer Super Administrator.'
+].forEach((contract) => requireText(
+  ownershipApi,
+  contract,
+  'developer Super Administrator module-owner policy'
+));
+rejectText(
+  ownershipApi,
+  'WHERE app_user.is_active = TRUE\n                    ORDER BY display_name, preferred_email',
+  'owner candidates must not include ordinary active users'
+);
+
 const ownerCatalogRegression = read('tests/test-module-catalog-owner-repair-migration-093.sh');
 [
   'owner_repair_target_count',
@@ -145,6 +209,8 @@ requireText(timesheet, 'pa.user_id = @user_id', 'Module 001 Engineer scope');
 const closeout = read('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs');
 requireText(closeout, 'FROM project_assignments pa', 'Module 001A canonical assignment source');
 requireText(closeout, 'pa.user_id = @engineer_user_id', 'Module 001A Engineer scope');
+requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');
+requireText(closeout, "CASE WHEN p.project_code ~* '^(SR|PRES|INT)-' THEN p.project_code ELSE '' END", 'Module 001A durable request reference');
 
 const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');
 requireText(workspace, 'FROM project_assignments', 'Module 019 canonical assignment source');
@@ -218,6 +284,7 @@ const assignedWorkUat = read('scripts/release-test/run-assigned-work-protected-t
   '/api/assignments/available-tasks?weekStart=',
   '/api/timesheet/work-queue?weekStart=',
   '/api/engineer-task-closeout/overview',
+  'module001aVisibleRequestReference:true',
   '/api/project-workspace/overview',
   'mutation:false',
   'productionMutation:false'
@@ -245,4 +312,7 @@ console.log('module_owner_catalog_031_032_033_repaired=true');
 console.log('timesheet_week_authority=sunday_through_saturday');
 console.log('request_family_classification=sr_pres_int_durable_identifiers');
 console.log('module001a_response_body=explicit_iresult');
+console.log('module001a_request_visibility=recent_first_all_current_assignments');
+console.log('module_directory_authority=nonblocking_identity_scoped_refresh');
+console.log('module_owner_catalog=authenticated_read_through');
 console.log('authenticated_assigned_work_uat=registered');
