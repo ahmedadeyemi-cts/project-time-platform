@@ -1,0 +1,177 @@
+name: Publish Module 001A Route Reachability Hotfix
+
+on:
+  push:
+    branches:
+      - fix/module001a-route-reachability-20260818
+    paths:
+      - '.github/workflows/publish-module001a-route-reachability-hotfix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-module001a-route-reachability-hotfix
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Repair and validate Module 001A route mount
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact hotfix branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module001a-route-reachability-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Apply guarded route reachability repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app_path = Path('src/frontend/project-time-web/src/App.jsx')
+          focused_validator_path = Path('src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs')
+          dedicated_validator_path = Path('src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs')
+
+          app = app_path.read_text()
+          old_route_block = """      {activeRoute === 'engineer-task-closeout' ? (
+                  <section
+                    id="engineer-task-closeout"
+                    className="panel engineer-task-closeout-route-panel"
+                    data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+                  >
+                    <EngineerTaskCloseoutCenter authSession={authSession} />
+                  </section>
+                ) : null}
+          """
+          new_route_block = """      {activeRoute === 'engineer-task-closeout' ? (
+                  <section
+                    id="engineer-task-closeout"
+                    className="panel engineer-task-closeout-route-panel"
+                    data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+                    data-module001a-route-reachable="true"
+                  >
+                    <EngineerTaskCloseoutCenter authSession={authSession} />
+                  </section>
+                ) : null}
+          """
+          boundary = "      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}\n"
+
+          if app.count(old_route_block) != 1:
+              raise SystemExit(f'Expected exactly one legacy Module 001A route mount, found {app.count(old_route_block)}.')
+          if app.count(boundary) != 1:
+              raise SystemExit(f'Expected exactly one standalone-route boundary, found {app.count(boundary)}.')
+          legacy_mount_index = app.index(old_route_block)
+          boundary_index = app.index(boundary)
+          if legacy_mount_index < boundary_index:
+              raise SystemExit('The Module 001A mount is already outside the legacy exclusion boundary; guarded repair refused.')
+
+          app = app.replace(old_route_block, '', 1)
+          app = app.replace(boundary, new_route_block + '\n' + boundary, 1)
+          app_path.write_text(app)
+
+          focused = focused_validator_path.read_text()
+          focused_anchor = "const timesheetUi = read('src/frontend/project-time-web/src/App.jsx');\n"
+          focused_contract = """const module001aReachableMount = `      {activeRoute === 'engineer-task-closeout' ? (
+                  <section
+                    id="engineer-task-closeout"
+                    className="panel engineer-task-closeout-route-panel"
+                    data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+                    data-module001a-route-reachable="true"
+                  >
+                    <EngineerTaskCloseoutCenter authSession={authSession} />
+                  </section>
+                ) : null}`;
+          const module001aMountIndex = timesheetUi.indexOf(module001aReachableMount);
+          const legacyRouteBoundaryIndex = timesheetUi.indexOf('      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}');
+          const module001aLegacyExclusionIndex = timesheetUi.indexOf("        'engineer-task-closeout',", legacyRouteBoundaryIndex);
+          if (module001aMountIndex < 0) {
+            failures.push('Module 001A route reachability: standalone route mount is missing');
+          }
+          if (legacyRouteBoundaryIndex < 0) {
+            failures.push('Module 001A route reachability: legacy exclusion boundary is missing');
+          }
+          if (module001aMountIndex >= legacyRouteBoundaryIndex) {
+            failures.push('Module 001A route reachability: route mount remains trapped inside the excluded legacy block');
+          }
+          if (module001aLegacyExclusionIndex < 0) {
+            failures.push('Module 001A route reachability: route must remain excluded from the legacy all-routes block');
+          }
+          if (timesheetUi.indexOf(module001aReachableMount, legacyRouteBoundaryIndex) >= 0) {
+            failures.push('Module 001A route reachability: unreachable duplicate route mount remains after the legacy boundary');
+          }
+
+          """
+          if focused.count(focused_anchor) != 1:
+              raise SystemExit('Focused validator App.jsx anchor was not found exactly once.')
+          focused = focused.replace(focused_anchor, focused_anchor + focused_contract, 1)
+          focused = focused.replace(
+              "console.log('module001a_request_visibility=recent_first_all_current_assignments');\n",
+              "console.log('module001a_request_visibility=recent_first_all_current_assignments');\nconsole.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');\n",
+              1
+          )
+          focused_validator_path.write_text(focused)
+
+          dedicated = dedicated_validator_path.read_text()
+          dedicated_anchor = "requireText(app, '<EngineerTaskCloseoutCenter authSession={authSession} />', 'authenticated route mount');\n"
+          dedicated_contract = """const module001aRouteMountIndex = app.indexOf('data-module001a-route-reachable="true"');
+          const module001aLegacyBoundaryIndex = app.indexOf('      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}');
+          if (module001aRouteMountIndex < 0 || module001aLegacyBoundaryIndex < 0 || module001aRouteMountIndex >= module001aLegacyBoundaryIndex) {
+            failures.push('authenticated route mount: Module 001A must mount before the legacy route exclusion boundary');
+          }
+          if (app.indexOf('data-module001a-route-reachable="true"', module001aLegacyBoundaryIndex) >= 0) {
+            failures.push('authenticated route mount: unreachable Module 001A duplicate remains inside the excluded legacy block');
+          }
+          """
+          if dedicated.count(dedicated_anchor) != 1:
+              raise SystemExit('Dedicated Module 001A validator route anchor was not found exactly once.')
+          dedicated = dedicated.replace(dedicated_anchor, dedicated_anchor + dedicated_contract, 1)
+          dedicated_validator_path.write_text(dedicated)
+          PY
+
+      - name: Validate Module 001A route and assignment contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          node src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+          git diff --check
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Commit and push reviewed hotfix source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add \
+            src/frontend/project-time-web/src/App.jsx \
+            src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs \
+            src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+          git diff --cached --quiet && {
+            echo 'ERROR: Module 001A route hotfix produced no source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(module001a): mount Engineer closeout outside legacy route exclusion'
+          git push origin HEAD:fix/module001a-route-reachability-20260818
