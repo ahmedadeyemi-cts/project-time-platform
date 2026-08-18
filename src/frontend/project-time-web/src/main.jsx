@@ -1,6 +1,7 @@
 import './runtime-browser-compatibility.js';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { protectReactOwnedRoot } from './external-dom-mutation-resilience.js';
 import './projectpulse-authoritative-api.js';
 import './view-as-storage-compatibility.js';
 import './module-availability-bridge.js';
@@ -69,7 +70,13 @@ import './account-center.css';
 import './workspace-navigation.css';
 import './enterprise-contrast-guard.css';
 
-createRoot(document.getElementById('root')).render(
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error('Pulse root mount is unavailable.');
+}
+protectReactOwnedRoot(rootElement);
+
+createRoot(rootElement).render(
   <React.StrictMode>
     <ApplicationErrorBoundary>
       <App />

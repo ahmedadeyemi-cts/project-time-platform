@@ -1,0 +1,125 @@
+name: Validate External DOM Mutation Resilience
+
+on:
+  push:
+    branches:
+      - 'fix/admin-runtime-stability-dom-mutation-recovery-*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/frontend/project-time-web/index.html'
+      - 'src/frontend/project-time-web/src/ApplicationErrorBoundary.jsx'
+      - 'src/frontend/project-time-web/src/external-dom-mutation-resilience.js'
+      - 'src/frontend/project-time-web/src/main.jsx'
+      - 'src/frontend/project-time-web/scripts/test-external-dom-mutation-resilience.mjs'
+      - '.github/workflows/external-dom-mutation-resilience-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-dom-mutation-resilience-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate browser-extension isolation and bounded UI recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact proposed source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact frontend-only scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "$BASE_SHA" ]]; then
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-files"
+          else
+            git diff --name-only HEAD^...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-files"
+          fi
+
+          cat > "$RUNNER_TEMP/allowed-files" <<'FILES'
+          .github/workflows/external-dom-mutation-resilience-ci.yml
+          src/frontend/project-time-web/index.html
+          src/frontend/project-time-web/scripts/test-external-dom-mutation-resilience.mjs
+          src/frontend/project-time-web/src/ApplicationErrorBoundary.jsx
+          src/frontend/project-time-web/src/external-dom-mutation-resilience.js
+          src/frontend/project-time-web/src/main.jsx
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/allowed-files" -o "$RUNNER_TEMP/allowed-files"
+
+          comm -23 "$RUNNER_TEMP/actual-files" "$RUNNER_TEMP/allowed-files" > "$RUNNER_TEMP/unexpected-files"
+          if [[ -s "$RUNNER_TEMP/unexpected-files" ]]; then
+            echo 'Unexpected files in external DOM mutation resilience PR:' >&2
+            cat "$RUNNER_TEMP/unexpected-files" >&2
+            exit 1
+          fi
+
+          ! grep -Eq '^database/(migrations|rollback)/|^src/backend/|^\.github/workflows/projectpulse-deploy-' "$RUNNER_TEMP/actual-files"
+          echo 'EXTERNAL_DOM_MUTATION_SCOPE=FRONTEND_ONLY'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Execute external DOM mutation recovery harness
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/test-external-dom-mutation-resilience.mjs
+
+      - name: Validate existing React DOM ownership contracts
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run validate:admin-runtime-stability
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm run build
+
+      - name: Validate whitespace
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "$BASE_SHA" ]]; then
+            git diff --check "$BASE_SHA...HEAD"
+          else
+            git diff --check HEAD^...HEAD
+          fi
+
+      - name: Publish validation summary
+        shell: bash
+        run: |
+          echo 'EXTERNAL_DOM_MUTATION_RESILIENCE=PASS'
+          echo 'WRITING_ASSISTANT_OPT_OUT=PASS'
+          echo 'BOUNDED_IN_PLACE_RECOVERY=PASS'
+          echo 'NODE_PROTOTYPE_PATCHING=NONE'
+          echo 'SESSION_AND_ROUTE_PRESERVED=TRUE'
+          echo 'PRODUCTION_MUTATION=NONE'
