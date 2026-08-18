@@ -7,6 +7,7 @@ on:
       - '.github/workflows/projectpulse-deploy-test.yml'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
       - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
@@ -90,6 +91,7 @@ jobs:
             .github/workflows/projectpulse-deploy-test.yml \
             scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh \
             scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh \
+            scripts/release-test/run-assigned-work-protected-test-uat.sh \
             database/migrations/086_module_066_flowhive_enterprise_pm.sql \
             database/migrations/088_systemwide_enterprise_reliability.sql \
             database/migrations/093_assigned_work_canonical_visibility_repair.sql \
@@ -110,6 +112,7 @@ jobs:
 
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           bash -n scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
           node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
@@ -139,6 +142,7 @@ jobs:
               migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],
               migrationScope:$migrationScope,
               utilizationRoleScopingUat:true,
+              assignedWorkUat:true,
               applicationOnlyAfterMigration:true,
               productionMutation:false,
               privateRuntimeConfigurationMutation:false
@@ -826,6 +830,18 @@ jobs:
             --arg projectId "$PROJECT_ID" \
             '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",migration093:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
+
+      - name: Run protected-Test assigned-work visibility UAT
+        id: assigned_work_uat
+        shell: bash
+        working-directory: release
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          BASE: ${{ steps.contract.outputs.base }}
+          EVIDENCE_DIR: /tmp/systemwide-enterprise-reliability-test-evidence
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-assigned-work-protected-test-uat.sh
 
       - name: Run protected-Test utilization role-scoping UAT
         id: utilization_uat

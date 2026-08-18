@@ -25,7 +25,9 @@ public static partial class ScopedRolePolicyModule
 
     public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/engineer-task-closeout/overview", Module001AOverviewAsync);
+        app.MapGet(
+            "/api/engineer-task-closeout/overview",
+            (Func<HttpContext, Task<IResult>>)Module001AOverviewAsync);
         app.MapPost("/api/engineer-task-closeout/assignments/{assignmentId:guid}/close", Module001ACloseAsync);
         app.MapPost("/api/engineer-task-closeout/assignments/{assignmentId:guid}/reopen", Module001AReopenAsync);
         return app;

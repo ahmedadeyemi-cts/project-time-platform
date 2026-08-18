@@ -6,9 +6,12 @@ on:
       - 'database/migrations/092_module_loading_assignment_visibility_repair.sql'
       - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
       - 'tests/test-module-catalog-owner-repair-migration-093.sh'
+      - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs'
+      - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx'
       - 'src/frontend/project-time-web/src/module-directory-authority.js'
       - 'src/frontend/project-time-web/src/effective-role-authority.js'
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
@@ -16,6 +19,8 @@ on:
       - 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'
       - 'src/frontend/project-time-web/src/main.jsx'
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
+      - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
+      - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
   workflow_dispatch:
 
@@ -51,6 +56,10 @@ jobs:
       - name: Execute Migration 093 owner-catalog regression
         shell: bash
         run: bash tests/test-module-catalog-owner-repair-migration-093.sh
+
+      - name: Validate protected-Test assigned-work UAT syntax
+        shell: bash
+        run: bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
 
       - name: Build API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release

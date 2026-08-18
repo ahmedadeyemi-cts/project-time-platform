@@ -171,8 +171,64 @@ requireText(
   'bash tests/test-module-catalog-owner-repair-migration-093.sh',
   'focused CI owner-catalog regression execution'
 );
+requireText(
+  workflow,
+  'bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh',
+  'focused CI assigned-work UAT syntax validation'
+);
 requireText(workflow, 'dotnet build', 'focused CI backend compile');
 requireText(workflow, 'npm run build', 'focused CI frontend compile');
+
+const availableTaskProgram = read('src/backend/ProjectTime.Api/Program.cs');
+const availableTaskStart = availableTaskProgram.indexOf('app.MapGet("/api/assignments/available-tasks"');
+const availableTaskEnd = availableTaskProgram.indexOf('app.MapGet("/api/non-project-time-categories"', availableTaskStart);
+const availableTaskEndpoint = availableTaskStart >= 0 && availableTaskEnd > availableTaskStart
+  ? availableTaskProgram.slice(availableTaskStart, availableTaskEnd)
+  : '';
+[
+  'DayOfWeek.Sunday',
+  "p.project_code ~* '^(SR|PRES|INT)-'",
+  'requestNumber = isRequestFamily ? projectCode : string.Empty',
+  'authoritativeSource = "project_assignments"',
+  'activityClassification = "durable_project_code_and_work_type"'
+].forEach((contract) => requireText(availableTaskEndpoint, contract, 'Module 001 assigned-work endpoint'));
+rejectText(availableTaskEndpoint, 'DayOfWeek.Monday', 'Module 001 Sunday week authority');
+
+const timesheetUi = read('src/frontend/project-time-web/src/App.jsx');
+[
+  "const isDurableRequestFamily = /^(SR|PRES|INT)-/.test(projectCode)",
+  'requestWorkTypes.has(workType)',
+  "if (isDurableRequestFamily || explicitSection === 'requests') return 'requests';"
+].forEach((contract) => requireText(timesheetUi, contract, 'Module 001 request-family UI'));
+
+requireText(
+  closeout,
+  '(Func<HttpContext, Task<IResult>>)Module001AOverviewAsync',
+  'Module 001A explicit IResult execution'
+);
+
+const workspaceUi = read('src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx');
+requireText(workspaceUi, 'assignments.map((assignment)', 'Module 019 assignment rendering');
+requireText(workspaceUi, '{assignment.projectCode}', 'Module 019 durable identifier rendering');
+
+const assignedWorkUat = read('scripts/release-test/run-assigned-work-protected-test-uat.sh');
+[
+  'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS',
+  'SR-8C81ACA3',
+  '/api/assignments/available-tasks?weekStart=',
+  '/api/timesheet/work-queue?weekStart=',
+  '/api/engineer-task-closeout/overview',
+  '/api/project-workspace/overview',
+  'mutation:false',
+  'productionMutation:false'
+].forEach((contract) => requireText(assignedWorkUat, contract, 'assigned-work protected-Test UAT'));
+
+const protectedTestController = read('.github/workflows/projectpulse-deploy-test.yml');
+[
+  'scripts/release-test/run-assigned-work-protected-test-uat.sh',
+  'Run protected-Test assigned-work visibility UAT',
+  'assignedWorkUat:true'
+].forEach((contract) => requireText(protectedTestController, contract, 'assigned-work deployment controller'));
 
 if (failures.length) {
   console.error('MODULE_LOADING_ASSIGNMENT_PROPAGATION=FAIL');
@@ -186,3 +242,7 @@ console.log('unauthorized_background_requests_suppressed=true');
 console.log('uuid_and_task_code_assignments_canonicalized=true');
 console.log('modules_019_001a_001_shared_assignment_authority=true');
 console.log('module_owner_catalog_031_032_033_repaired=true');
+console.log('timesheet_week_authority=sunday_through_saturday');
+console.log('request_family_classification=sr_pres_int_durable_identifiers');
+console.log('module001a_response_body=explicit_iresult');
+console.log('authenticated_assigned_work_uat=registered');
