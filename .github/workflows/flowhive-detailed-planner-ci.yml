@@ -83,6 +83,14 @@ jobs:
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq 'document:${documentId}' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq "const DOCUMENT_OVERVIEW_PATH = '/api/project-workspace/overview';" \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'Replacement authority follows source chronology, not readiness score.' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'if (ordered.length !== items.length) return [];' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'const refreshed = await refreshGenerationBlocks(nativeFetch, projectId);' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq '/sow-evidence/${item.documentId}/prepare' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq 'PROJECTPULSE_LEGACY_WORD_EXTRACTOR_PATH=/usr/bin/antiword' \
