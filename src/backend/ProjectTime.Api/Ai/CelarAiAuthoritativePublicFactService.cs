@@ -27,6 +27,10 @@ public sealed class CelarAiAuthoritativePublicFactService
         new("https://rhc.jo/en/king-abdullah", UriKind.Absolute);
     private static readonly Uri UsSignalLeadership =
         new("https://ussignal.com/why-us-signal/leadership/", UriKind.Absolute);
+    private static readonly Uri UsSignalTechElite2026 =
+        new("https://ussignal.com/press-releases/crn-tech-elite-250-2026/", UriKind.Absolute);
+    private static readonly Uri UsSignalSolutionProvider2026 =
+        new("https://ussignal.com/press-releases/crn-solution-provider-500-2026/", UriKind.Absolute);
 
     private static readonly HashSet<string> ApprovedHosts = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -57,7 +61,7 @@ public sealed class CelarAiAuthoritativePublicFactService
         @"\bKing\s+(?<name>(?:[A-Z][A-Za-z'’.-]+|II|III|IV)(?:\s+(?:[A-Z][A-Za-z'’.-]+|II|III|IV)){0,4})",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex ChiefExecutiveName = new(
-        @"(?<name>(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)(?:\s+(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)){1,4})\s*,?\s+(?i:Chief\s+Executive\s+Officer)\b",
+        @"(?<name>(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)(?:\s+(?:[A-Z][A-Za-z'’.-]+|[A-Z]\.)){1,4})\s*,?\s+(?i:(?:Chief\s+Executive\s+Officer|CEO))\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly HashSet<string> NameStops = new(StringComparer.OrdinalIgnoreCase)
@@ -186,21 +190,62 @@ public sealed class CelarAiAuthoritativePublicFactService
         PulseAiSystemQuestionResult result,
         CancellationToken cancellationToken)
     {
-        var page = await RetrieveAsync(
-            UsSignalLeadership,
-            "us_signal_leadership",
-            "US Signal — Leadership Team",
-            cancellationToken);
-        if (!page.Succeeded) return FailClosed(result, page.DiagnosticCode);
+        var profiles = new[]
+        {
+            (Uri: UsSignalLeadership, SourceCode: "us_signal_leadership", SourceName: "US Signal — Leadership Team"),
+            (Uri: UsSignalTechElite2026, SourceCode: "us_signal_tech_elite_2026", SourceName: "US Signal — CRN Tech Elite 250 for 2026"),
+            (Uri: UsSignalSolutionProvider2026, SourceCode: "us_signal_solution_provider_2026", SourceName: "US Signal — CRN Solution Provider 500 for 2026")
+        };
+        var diagnostics = new List<string>();
 
-        var names = ExtractNames(ChiefExecutiveName, page.Text).ToArray();
-        var chiefExecutive = ResolveCanonicalPersonName(names);
-        if (chiefExecutive is null && names.Length == 0) return FailClosed(result, "official_source_claim_not_found");
-        if (chiefExecutive is null)
-            return Conflict(result, [page], $"The official source returned conflicting US Signal chief executive names: {string.Join(", ", names)}.");
+        foreach (var profile in profiles)
+        {
+            try
+            {
+                var page = await RetrieveAsync(
+                    profile.Uri,
+                    profile.SourceCode,
+                    profile.SourceName,
+                    cancellationToken);
+                if (!page.Succeeded)
+                {
+                    diagnostics.Add($"{profile.SourceCode}:{page.DiagnosticCode}");
+                    continue;
+                }
 
-        var conclusion = $"The Chief Executive Officer of US Signal is {chiefExecutive}. [1]";
-        return Verified(result, conclusion, [page]);
+                var names = ExtractNames(ChiefExecutiveName, page.Text).ToArray();
+                var chiefExecutive = ResolveCanonicalPersonName(names);
+                if (chiefExecutive is null && names.Length == 0)
+                {
+                    diagnostics.Add($"{profile.SourceCode}:official_source_claim_not_found");
+                    continue;
+                }
+                if (chiefExecutive is null)
+                    return Conflict(result, [page], $"The official source returned conflicting US Signal chief executive names: {string.Join(", ", names)}.");
+
+                var conclusion = $"The Chief Executive Officer of US Signal is {chiefExecutive}. [1]";
+                return Verified(result, conclusion, [page]);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                diagnostics.Add($"{profile.SourceCode}:authoritative_public_retrieval_timeout");
+            }
+            catch (Exception exception)
+            {
+                var diagnostic = Diagnostic(exception);
+                diagnostics.Add($"{profile.SourceCode}:{diagnostic}");
+                _logger.LogWarning(
+                    exception,
+                    "US Signal authoritative public source failed; trying the next official source. Source={SourceCode} Diagnostic={Diagnostic}",
+                    profile.SourceCode,
+                    diagnostic);
+            }
+        }
+
+        var combinedDiagnostic = diagnostics.Count == 0
+            ? "official_us_signal_sources_unavailable"
+            : $"official_us_signal_sources_unavailable:{string.Join("|", diagnostics)}";
+        return FailClosed(result, combinedDiagnostic);
     }
 
     private async Task<RetrievedSource> RetrieveAsync(

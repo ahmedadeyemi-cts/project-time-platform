@@ -9,7 +9,9 @@ var officialBodies = new Dictionary<string, string>(StringComparer.OrdinalIgnore
     ["https://www.whitehouse.gov/administration/"] = "<html><body><h1>The Administration</h1><h2>President Donald J. Trump</h2><p>45th &amp; 47th President of the United States</p><nav>President Office President Trump About</nav><h2>Vice President JD Vance</h2><p>Vice President of the United States</p><h2>The Cabinet</h2><p>President Trump’s Team Established in Article II, Section 2 of the Constitution, the Cabinet advises the President on any subject.</p></body></html>",
     ["https://rhc.jo/en/jordans-governing-system"] = "<html><p>Jordan has a parliamentary system of government with a hereditary monarchy. His Majesty the King is the head of state.</p></html>",
     ["https://rhc.jo/en/king-abdullah"] = "<html><h1>King Abdullah II</h1></html>",
-    ["https://ussignal.com/why-us-signal/leadership/"] = "<html><h2>Dan Watts, Chief Executive Officer</h2></html>"
+    ["https://ussignal.com/why-us-signal/leadership/"] = "<html><h2>Dan Watts, Chief Executive Officer</h2></html>",
+    ["https://ussignal.com/press-releases/crn-tech-elite-250-2026/"] = "<html><p>Daniel Watts, CEO of US Signal</p></html>",
+    ["https://ussignal.com/press-releases/crn-solution-provider-500-2026/"] = "<html><p>Daniel Watts, Chief Executive Officer at US Signal</p></html>"
 };
 var factory = new StubHttpClientFactory(uri => officialBodies.TryGetValue(uri.ToString(), out var body)
     ? Response(HttpStatusCode.OK, body)
@@ -112,6 +114,30 @@ Require(wrongUsSignalProvider.Answer.DirectConclusion.Contains("Dan Watts", Stri
 Require(wrongUsSignalProvider.Sources.Count == 1
     && wrongUsSignalProvider.Sources[0].Path.Contains("ussignal.com/why-us-signal/leadership", StringComparison.OrdinalIgnoreCase),
     "US Signal CEO answer cites the official leadership page");
+
+var usSignalFallbackFactory = new StubHttpClientFactory(uri =>
+{
+    if (uri.AbsolutePath.Contains("/why-us-signal/leadership/", StringComparison.OrdinalIgnoreCase))
+        return Response(HttpStatusCode.GatewayTimeout, "leadership source timed out");
+    if (uri.AbsolutePath.Contains("/press-releases/crn-tech-elite-250-2026/", StringComparison.OrdinalIgnoreCase))
+        return Response(HttpStatusCode.OK, "<html><p>Daniel Watts, CEO of US Signal</p></html>");
+    return Response(HttpStatusCode.NotFound, "not found");
+});
+var usSignalFallbackService = new CelarAiAuthoritativePublicFactService(
+    usSignalFallbackFactory,
+    NullLogger<CelarAiAuthoritativePublicFactService>.Instance);
+var usSignalFallback = await usSignalFallbackService.VerifyAsync(
+    Result("completed", "general_knowledge", "A provider did not establish the current CEO."),
+    usSignalPlan,
+    "Who is the CEO of US Signal?",
+    CancellationToken.None);
+Require(usSignalFallback.Answer.DirectConclusion.Contains("Daniel Watts", StringComparison.OrdinalIgnoreCase),
+    "a failed leadership request falls back to a second official US Signal source");
+Require(usSignalFallback.Sources.Count == 1
+    && usSignalFallback.Sources[0].Path.Contains("crn-tech-elite-250-2026", StringComparison.OrdinalIgnoreCase),
+    "the fallback answer cites the successful official US Signal press release");
+Require(usSignalFallbackFactory.Requests.Count == 2,
+    "the US Signal fallback stops after the first successful official source");
 
 var previousEnabled = Environment.GetEnvironmentVariable("PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED");
 Environment.SetEnvironmentVariable("PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED", "false");
@@ -227,6 +253,7 @@ Console.WriteLine("CELAR_AI_WRONG_PROVIDER_TEST=PASS");
 Console.WriteLine("CELAR_AI_STALE_PRESIDENT_TEST=PASS");
 Console.WriteLine("CELAR_AI_WHITE_HOUSE_NOISE_EXTRACTION_TEST=PASS");
 Console.WriteLine("CELAR_AI_US_SIGNAL_CEO_TEST=PASS");
+Console.WriteLine("CELAR_AI_US_SIGNAL_CEO_FALLBACK_TEST=PASS");
 Console.WriteLine("CELAR_AI_FALSE_PREMISE_TEST=PASS");
 Console.WriteLine("CELAR_AI_NO_RETRIEVAL_TEST=PASS");
 Console.WriteLine("CELAR_AI_SOURCE_CONFLICT_TEST=PASS");
