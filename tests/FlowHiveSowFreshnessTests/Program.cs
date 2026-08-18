@@ -53,7 +53,9 @@ var olderFailedNewerReady = ProjectFlowHiveSowFreshnessPolicy.Evaluate(
 ]);
 Assert(olderFailedNewerReady.PendingReplacements.Count == 0,
     "older_failed_upload_does_not_block_newer_ready_sow");
-Assert(olderFailedNewerReady.CurrentSowDocumentIds.SetEquals([newestReadyId]),
+Assert(
+    olderFailedNewerReady.CurrentSowDocumentIds.Count == 1
+    && olderFailedNewerReady.CurrentSowDocumentIds.Contains(newestReadyId),
     "newer_ready_document_is_current_authority");
 
 var independentReadyDocuments = ProjectFlowHiveSowFreshnessPolicy.Evaluate(
@@ -73,7 +75,10 @@ var independentReadyDocuments = ProjectFlowHiveSowFreshnessPolicy.Evaluate(
 ]);
 Assert(independentReadyDocuments.PendingReplacements.Count == 0,
     "independent_sow_filenames_do_not_block_each_other");
-Assert(independentReadyDocuments.CurrentSowDocumentIds.SetEquals([newestReadyId, additionalReadyId]),
+Assert(
+    independentReadyDocuments.CurrentSowDocumentIds.Count == 2
+    && independentReadyDocuments.CurrentSowDocumentIds.Contains(newestReadyId)
+    && independentReadyDocuments.CurrentSowDocumentIds.Contains(additionalReadyId),
     "each_independent_sow_lineage_retains_its_newest_ready_document");
 
 var duplicateRows = ProjectFlowHiveSowFreshnessPolicy.Evaluate(
@@ -93,7 +98,9 @@ var duplicateRows = ProjectFlowHiveSowFreshnessPolicy.Evaluate(
 ]);
 Assert(duplicateRows.PendingReplacements.Count == 0,
     "duplicate_rows_for_one_document_do_not_create_false_replacement");
-Assert(duplicateRows.CurrentSowDocumentIds.SetEquals([newestReadyId]),
+Assert(
+    duplicateRows.CurrentSowDocumentIds.Count == 1
+    && duplicateRows.CurrentSowDocumentIds.Contains(newestReadyId),
     "strongest_duplicate_row_preserves_ready_document");
 
 Console.WriteLine("FLOWHIVE_SOW_FRESHNESS_TESTS=PASS");
