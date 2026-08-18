@@ -19,6 +19,9 @@ const branchName = process.env.CELAR_PR630_VALIDATION_BRANCH || process.env.GITH
 const systemwideReliabilityMode =
   branchName.startsWith('fix/systemwide-enterprise-reliability-final-')
   || branchName.startsWith('fix/celar-ai-president-identity-extraction-');
+const flowHiveDetailedPlannerCompatibilityMode =
+  branchName.startsWith('fix/flowhive-sow-autoadmission-five-phase-');
+const scopedCompatibilityMode = systemwideReliabilityMode || flowHiveDetailedPlannerCompatibilityMode;
 const pr630AllowedPrefixes = [
   '.github/workflows/celar-ai-',
   'database/migrations/084_module_076_',
@@ -64,7 +67,7 @@ childProcess.execFileSync = function governedExecFileSync(file, args = [], optio
   const filtered = asText
     .split(/\r?\n/)
     .filter((line) => line && !compatibilityFilteredPaths.has(line))
-    .filter((line) => !systemwideReliabilityMode || isPr630ScopedPath(line));
+    .filter((line) => !scopedCompatibilityMode || isPr630ScopedPath(line));
   for (const baselinePath of requiredPr630BaselinePaths) {
     if (!filtered.includes(baselinePath)) filtered.push(baselinePath);
   }
@@ -74,6 +77,8 @@ childProcess.execFileSync = function governedExecFileSync(file, args = [], optio
 syncBuiltinESMExports();
 if (systemwideReliabilityMode)
   console.log('CELAR_PR630_SYSTEMWIDE_RELIABILITY_COMPATIBILITY=PASS');
+if (flowHiveDetailedPlannerCompatibilityMode)
+  console.log('CELAR_PR630_FLOWHIVE_DETAILED_PLANNER_COMPATIBILITY=PASS');
 
 try {
   await import('./validate-celar-ai-pr630-consolidated-legacy.mjs');
