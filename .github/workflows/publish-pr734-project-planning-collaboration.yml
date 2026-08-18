@@ -47,6 +47,38 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/release-test/finalize-pr734-source.py')
+          source = path.read_text()
+          old = '''flowhive_module = replace_exact_count(
+              flowhive_module,
+              "OR p.project_manager_user_id = @user_id\\n                OR EXISTS (",
+              association_for_p,
+              2,
+              "FlowHive project association scopes"
+          )'''
+          new = '''flowhive_module = replace_exact_count(
+              flowhive_module,
+              "OR p.project_manager_user_id = @user_id\\n                OR EXISTS (",
+              association_for_p,
+              1,
+              "FlowHive project portfolio association scope"
+          )
+          association_for_scoped_p = association_for_p.replace("\\n                ", "\\n                    ")
+          flowhive_module = replace_exact_count(
+              flowhive_module,
+              "OR p.project_manager_user_id = @user_id\\n                    OR EXISTS (",
+              association_for_scoped_p,
+              1,
+              "FlowHive task scoped-project association scope"
+          )'''
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'PR 734 publisher prepatch expected one FlowHive scope block, found {count}.')
+          path.write_text(source.replace(old, new, 1))
+          PY
           python3 scripts/release-test/finalize-pr734-source.py
 
       - name: Validate focused access contracts
