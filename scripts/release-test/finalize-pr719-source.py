@@ -38,6 +38,38 @@ def normalize_python_heredoc(raw: str, path: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def preserve_triple_string_line_continuations(block: str, path: str) -> str:
+    lines: list[str] = []
+    active_triple: str | None = None
+
+    for source_line in block.splitlines():
+        line = source_line
+        if active_triple is None:
+            opened: str | None = None
+            for delimiter in TRIPLE_QUOTES:
+                if line.count(delimiter) % 2 == 1:
+                    opened = delimiter
+                    break
+            if opened is not None and line.endswith("\\") and not line.endswith("\\\\"):
+                line += "\\"
+            lines.append(line)
+            active_triple = opened
+            continue
+
+        # A single trailing backslash inside a Python triple-quoted literal
+        # suppresses the source newline. Double it so shell continuations in the
+        # intended replacement text remain a literal backslash plus newline.
+        if line.endswith("\\") and not line.endswith("\\\\"):
+            line += "\\"
+        lines.append(line)
+        if line.count(active_triple) % 2 == 1:
+            active_triple = None
+
+    if active_triple is not None:
+        raise SystemExit(f"{path}: unterminated triple-quoted string while preserving line continuations")
+    return "\n".join(lines) + "\n"
+
+
 def python_blocks(path: str) -> list[str]:
     source = Path(path).read_text()
     start_marker = "          python3 - <<'PY'\n"
@@ -53,7 +85,8 @@ def python_blocks(path: str) -> list[str]:
         end = source.find(end_marker, start)
         if end < 0:
             raise SystemExit(f"{path}: unterminated Python heredoc")
-        blocks.append(normalize_python_heredoc(source[start:end], path))
+        normalized = normalize_python_heredoc(source[start:end], path)
+        blocks.append(preserve_triple_string_line_continuations(normalized, path))
         offset = end + len(end_marker)
 
     return blocks
