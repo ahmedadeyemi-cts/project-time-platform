@@ -1,0 +1,249 @@
+name: Observe PR 724 Module 001A Browser UAT v2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr724-module001a-browser-pr-v2.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr724-module001a-browser-v2-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr724-module001a-browser-20260818'
+    name: Verify deployed Module 001A in authenticated Chromium
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: f5d89193fcadd81af5d585e97ce734a58559cce7
+      TARGET_DEPLOY_RUN_ID: '32174704600'
+      BASE: https://phd-west-test.onenecklab.com
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      LOGIN_EMAIL: jason.mosier@ussignal.local
+      EXPECTED_SERVICE_REQUEST: SR-8C81ACA3
+      EVIDENCE_DIR: /tmp/pr724-module001a-browser-evidence-v2
+
+    steps:
+      - name: Verify exact governed Test deployment and no rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_DEPLOY_RUN_ID")"
+          [[ "$(jq -r '.head_sha' <<<"$run_json")" == "$TARGET_SHA" ]]
+          [[ "$(jq -r '.status' <<<"$run_json")" == completed ]]
+          [[ "$(jq -r '.conclusion' <<<"$run_json")" == success ]]
+
+          jobs_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_DEPLOY_RUN_ID/jobs?per_page=100")"
+          job_json="$(jq -c '[.jobs[] | select(.name == "Validate, migrate, deploy, and verify protected Test")] | last // empty' <<<"$jobs_json")"
+          [[ -n "$job_json" ]]
+          [[ "$(jq -r '.conclusion' <<<"$job_json")" == success ]]
+
+          for required_step in \
+            'Deploy immutable Test API image' \
+            'Deploy immutable Test web image' \
+            'Run protected-Test authenticated functional UAT' \
+            'Run protected-Test assigned-work visibility UAT'; do
+            jq -e --arg step "$required_step" '
+              [.steps[] | select(.name == $step and .conclusion == "success")] | length == 1
+            ' <<<"$job_json" >/dev/null
+          done
+
+          jq -e '
+            [.steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")] | length == 1
+          ' <<<"$job_json" >/dev/null
+
+          echo "EXACT_PROTECTED_TEST_RELEASE=$TARGET_SHA"
+          echo 'APPLICATION_ROLLBACK=NONE'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Install Chromium harness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HARNESS="$RUNNER_TEMP/pr724-module001a-browser-v2"
+          install -d -m 0700 "$HARNESS" "$EVIDENCE_DIR"
+          cd "$HARNESS"
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run authenticated Module 001A browser acceptance
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]]
+          HARNESS="$RUNNER_TEMP/pr724-module001a-browser-v2"
+          cat > "$HARNESS/browser-uat.mjs" <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+
+          const base = process.env.BASE;
+          const email = process.env.LOGIN_EMAIL;
+          const password = process.env.TEST_LOGIN_PASSWORD;
+          const expectedServiceRequest = process.env.EXPECTED_SERVICE_REQUEST;
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const releaseSha = process.env.TARGET_SHA;
+
+          const diagnostics = {
+            releaseSha,
+            loginStatus: 0,
+            overviewStatus: 0,
+            routeMounted: false,
+            workspaceVisible: false,
+            serviceRequestVisible: false,
+            currentUrl: '',
+            consoleErrors: []
+          };
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+          let page;
+
+          try {
+            const loginResponse = await context.request.post(`${base}/api/auth/local/login`, {
+              headers: {
+                'Cache-Control': 'no-cache, no-store, max-age=0',
+                'Content-Type': 'application/json',
+                Origin: base,
+                'Sec-Fetch-Site': 'same-origin'
+              },
+              data: { username: email, password }
+            });
+            diagnostics.loginStatus = loginResponse.status();
+            if (!loginResponse.ok()) {
+              throw new Error(`Protected-Test login returned HTTP ${loginResponse.status()}.`);
+            }
+
+            const login = await loginResponse.json();
+            if (typeof login?.sessionToken !== 'string' || login.sessionToken.length < 20) {
+              throw new Error('Protected-Test login did not return a durable session token.');
+            }
+
+            const browserSession = {
+              username: login.username || email,
+              displayName: login.displayName || email,
+              loginMethod: 'local',
+              provider: login.provider || 'LOCAL',
+              sessionToken: login.sessionToken,
+              expiresAt: login.expiresAt,
+              mustChangePassword: Boolean(login.mustChangePassword),
+              signedInAt: new Date().toISOString()
+            };
+
+            await context.addInitScript((session) => {
+              window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(session));
+              window.localStorage.removeItem('projectPulseViewAsUser');
+            }, browserSession);
+
+            page = await context.newPage();
+            page.on('console', (message) => {
+              if (message.type() === 'error') {
+                diagnostics.consoleErrors.push(message.text().replace(/[A-Za-z0-9_-]{40,}/g, '[REDACTED]').slice(0, 500));
+              }
+            });
+            page.on('pageerror', (error) => diagnostics.consoleErrors.push(String(error?.message || error).slice(0, 500)));
+
+            const overviewPromise = page.waitForResponse(
+              (response) => response.url().includes('/api/engineer-task-closeout/overview'),
+              { timeout: 120_000 }
+            );
+
+            const cacheBuster = `${Date.now()}-${releaseSha.slice(0, 12)}`;
+            await page.goto(`${base}/?browser_uat_v2=${cacheBuster}#engineer-task-closeout`, {
+              waitUntil: 'domcontentloaded',
+              timeout: 120_000
+            });
+            diagnostics.currentUrl = page.url();
+
+            const route = page.locator('[data-module001a-route-reachable="true"]');
+            await route.waitFor({ state: 'attached', timeout: 90_000 });
+            diagnostics.routeMounted = true;
+
+            const workspace = page.locator('.engineer-closeout-center');
+            await workspace.waitFor({ state: 'visible', timeout: 90_000 });
+            diagnostics.workspaceVisible = true;
+
+            const overviewResponse = await overviewPromise;
+            diagnostics.overviewStatus = overviewResponse.status();
+            if (overviewResponse.status() !== 200) {
+              throw new Error(`Module 001A overview returned HTTP ${overviewResponse.status()}.`);
+            }
+
+            const overview = await overviewResponse.json();
+            const items = [...(Array.isArray(overview?.active) ? overview.active : []), ...(Array.isArray(overview?.history) ? overview.history : [])];
+            const apiHasExpected = items.some((item) =>
+              [item?.serviceRequestNumber, item?.projectCode, item?.taskCode]
+                .some((value) => String(value || '').toUpperCase() === expectedServiceRequest.toUpperCase())
+            );
+            if (!apiHasExpected) {
+              throw new Error(`Module 001A overview did not contain ${expectedServiceRequest}.`);
+            }
+
+            const search = page.locator('.engineer-closeout-search input');
+            await search.waitFor({ state: 'visible', timeout: 90_000 });
+            await search.fill(expectedServiceRequest);
+            const serviceRequest = page.getByText(expectedServiceRequest, { exact: false }).first();
+            await serviceRequest.waitFor({ state: 'visible', timeout: 90_000 });
+            diagnostics.serviceRequestVisible = true;
+
+            await page.screenshot({ path: `${evidenceDir}/module001a-browser-uat-v2.png`, fullPage: true });
+            fs.writeFileSync(`${evidenceDir}/browser-uat-v2.json`, JSON.stringify(diagnostics, null, 2));
+            console.log(`MODULE001A_BROWSER_UAT_V2=PASS release=${releaseSha} serviceRequest=${expectedServiceRequest}`);
+          } catch (error) {
+            if (page) {
+              diagnostics.currentUrl = page.url();
+              await page.screenshot({ path: `${evidenceDir}/module001a-browser-uat-v2-failure.png`, fullPage: true }).catch(() => {});
+            }
+            fs.writeFileSync(`${evidenceDir}/browser-uat-v2.json`, JSON.stringify({ ...diagnostics, error: String(error?.stack || error) }, null, 2));
+            throw error;
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          cd "$HARNESS"
+          node browser-uat.mjs
+          unset TEST_LOGIN_PASSWORD
+
+      - name: Upload one-day browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr724-module001a-browser-evidence-v2
+          path: /tmp/pr724-module001a-browser-evidence-v2
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish acceptance result
+        if: success()
+        run: |
+          echo "PR724_RELEASE_SHA=$TARGET_SHA"
+          echo 'MODULE001A_ROUTE_MOUNT=PASS'
+          echo 'MODULE001A_BROWSER_UAT=PASS'
+          echo "MODULE001A_SERVICE_REQUEST=$EXPECTED_SERVICE_REQUEST"
+          echo 'APPLICATION_ROLLBACK=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
