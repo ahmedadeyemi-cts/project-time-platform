@@ -1,0 +1,452 @@
+name: Finalize PR 719 Module Directory, Owner, and 001A Repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-pr719-finalize-pr.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-pr719-module-directory-owner-001a
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module-directory-owner-001a-continuity-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out exact PR head branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply reviewed Module Directory and 001A repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          publisher = Path('.github/workflows/publish-pr719-module-directory-owner-001a.yml')
+          source = publisher.read_text()
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = source.find(start_marker)
+          if start < 0:
+              raise SystemExit('Original PR 719 publisher Python block was not found.')
+          start += len(start_marker)
+          end = source.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('Original PR 719 publisher Python terminator was not found.')
+          block = source[start:end]
+          lines = []
+          for line in block.splitlines():
+              lines.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/pr719-base-repair.py').write_text('\n'.join(lines) + '\n')
+          PY
+          python3 /tmp/pr719-base-repair.py
+
+      - name: Enforce developer Super Administrator owner eligibility
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_once(path, old, new):
+              source = read(path)
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one target, found {count}: {old[:160]!r}')
+              write(path, source.replace(old, new, 1))
+
+          ownership = 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'
+          replace_once(
+              ownership,
+              '    private const string MigrationFile = "090_module_management_table_and_ownership.sql";\n',
+              '''    private const string MigrationFile = "090_module_management_table_and_ownership.sql";
+    private const string OwnerEligibilityPolicy = "developer_super_administrator_only";
+    private static readonly string[] DeveloperOwnerRoleCodes =
+    [
+        "SUPER_ADMINISTRATOR",
+        "SUPERADMINISTRATOR",
+        "GLOBAL_ADMINISTRATOR",
+        "GLOBALADMINISTRATOR"
+    ];
+'''
+          )
+          replace_once(
+              ownership,
+              '''            var isViewAs = ProjectPulseActualSessionAuthority.IsViewAs(context);
+            var canManage = administrator && !isViewAs;
+''',
+              '''            var isViewAs = ProjectPulseActualSessionAuthority.IsViewAs(context);
+            var canManage = administrator
+                && !isViewAs
+                && actualUserId.HasValue
+                && await IsDeveloperModuleOwnerAsync(
+                    connection,
+                    transaction: null,
+                    actualUserId.Value,
+                    context.RequestAborted);
+'''
+          )
+          replace_once(
+              ownership,
+              '''                    WHERE app_user.is_active = TRUE
+                    ORDER BY display_name, preferred_email
+                    LIMIT 1000;
+                    """, connection);
+                await using var candidateReader = await candidateCommand.ExecuteReaderAsync(context.RequestAborted);
+''',
+              '''                    WHERE app_user.is_active = TRUE
+                      AND EXISTS (
+                        SELECT 1
+                        FROM app_user_role_assignments owner_assignment
+                        JOIN app_roles owner_role
+                          ON owner_role.app_role_id = owner_assignment.app_role_id
+                         AND owner_role.is_active = TRUE
+                        WHERE owner_assignment.user_id = app_user.user_id
+                          AND owner_assignment.is_active = TRUE
+                          AND trim(both '_' from regexp_replace(
+                                upper(btrim(COALESCE(owner_role.role_code, ''))),
+                                '[^A-Z0-9]+',
+                                '_',
+                                'g')) = ANY(@developer_owner_role_codes)
+                      )
+                    ORDER BY display_name, preferred_email
+                    LIMIT 1000;
+                    """, connection);
+                AddDeveloperOwnerRoleCodes(candidateCommand);
+                await using var candidateReader = await candidateCommand.ExecuteReaderAsync(context.RequestAborted);
+'''
+          )
+          replace_once(
+              ownership,
+              '''                policy = new
+                {
+                    ownershipDoesNotGrantAccess = true,
+                    migration = MigrationFile
+                }
+''',
+              '''                policy = new
+                {
+                    ownershipDoesNotGrantAccess = true,
+                    ownerEligibility = OwnerEligibilityPolicy,
+                    migration = MigrationFile
+                }
+'''
+          )
+          replace_once(
+              ownership,
+              '''            var administrator = await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context,
+                connection,
+                cancellationToken: context.RequestAborted);
+            if (!administrator)
+                return Results.Json(new { status = "forbidden", message = "Only an actual Super Administrator session can change module ownership." }, statusCode: StatusCodes.Status403Forbidden);
+
+            actualUserId = ProjectPulseActualSessionAuthority.ReadUserId(
+                context,
+                "ProjectPulseActualUserId",
+                "ProjectPulseSessionUserId") ?? actualUserId;
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+''',
+              '''            var administrator = await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context,
+                connection,
+                cancellationToken: context.RequestAborted);
+            actualUserId = ProjectPulseActualSessionAuthority.ReadUserId(
+                context,
+                "ProjectPulseActualUserId",
+                "ProjectPulseSessionUserId") ?? actualUserId;
+            var developerOwner = administrator
+                && actualUserId.HasValue
+                && await IsDeveloperModuleOwnerAsync(
+                    connection,
+                    transaction: null,
+                    actualUserId.Value,
+                    context.RequestAborted);
+            if (!developerOwner)
+                return Results.Json(new
+                {
+                    status = "forbidden",
+                    message = "Only an actual developer Super Administrator session can change module ownership."
+                }, statusCode: StatusCodes.Status403Forbidden);
+
+            await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+'''
+          )
+          replace_once(
+              ownership,
+              '''                WHERE app_user.is_active = TRUE
+                  AND (
+                    (@owner_user_id IS NOT NULL AND app_user.user_id = @owner_user_id)
+''',
+              '''                WHERE app_user.is_active = TRUE
+                  AND EXISTS (
+                    SELECT 1
+                    FROM app_user_role_assignments owner_assignment
+                    JOIN app_roles owner_role
+                      ON owner_role.app_role_id = owner_assignment.app_role_id
+                     AND owner_role.is_active = TRUE
+                    WHERE owner_assignment.user_id = app_user.user_id
+                      AND owner_assignment.is_active = TRUE
+                      AND trim(both '_' from regexp_replace(
+                            upper(btrim(COALESCE(owner_role.role_code, ''))),
+                            '[^A-Z0-9]+',
+                            '_',
+                            'g')) = ANY(@developer_owner_role_codes)
+                  )
+                  AND (
+                    (@owner_user_id IS NOT NULL AND app_user.user_id = @owner_user_id)
+'''
+          )
+          replace_once(
+              ownership,
+              '''                ownerCommand.Parameters.AddWithValue("owner_email", (request.OwnerEmail ?? string.Empty).Trim());
+                await using var reader = await ownerCommand.ExecuteReaderAsync(context.RequestAborted);
+''',
+              '''                ownerCommand.Parameters.AddWithValue("owner_email", (request.OwnerEmail ?? string.Empty).Trim());
+                AddDeveloperOwnerRoleCodes(ownerCommand);
+                await using var reader = await ownerCommand.ExecuteReaderAsync(context.RequestAborted);
+'''
+          )
+          replace_once(
+              ownership,
+              '''                    return Results.BadRequest(new { status = "owner_not_found", message = "The selected owner is not an active Pulse user." });
+''',
+              '''                    return Results.BadRequest(new
+                    {
+                        status = "owner_not_found",
+                        message = "The selected owner must be an active developer Super Administrator."
+                    });
+'''
+          )
+          replace_once(
+              ownership,
+              '''                policy = new { ownershipDoesNotGrantAccess = true }
+''',
+              '''                policy = new
+                {
+                    ownershipDoesNotGrantAccess = true,
+                    ownerEligibility = OwnerEligibilityPolicy
+                }
+'''
+          )
+          replace_once(
+              ownership,
+              '''    private static string? BuildConnectionString()
+''',
+              '''    private static async Task<bool> IsDeveloperModuleOwnerAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty) return false;
+
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM app_users app_user
+                JOIN app_user_role_assignments assignment
+                  ON assignment.user_id = app_user.user_id
+                 AND assignment.is_active = TRUE
+                JOIN app_roles role
+                  ON role.app_role_id = assignment.app_role_id
+                 AND role.is_active = TRUE
+                WHERE app_user.user_id = @user_id
+                  AND app_user.is_active = TRUE
+                  AND trim(both '_' from regexp_replace(
+                        upper(btrim(COALESCE(role.role_code, ''))),
+                        '[^A-Z0-9]+',
+                        '_',
+                        'g')) = ANY(@developer_owner_role_codes)
+            );
+            """, connection, transaction);
+        command.Parameters.AddWithValue("user_id", userId);
+        AddDeveloperOwnerRoleCodes(command);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static void AddDeveloperOwnerRoleCodes(NpgsqlCommand command)
+    {
+        command.Parameters.AddWithValue(
+            "developer_owner_role_codes",
+            NpgsqlDbType.Array | NpgsqlDbType.Text,
+            DeveloperOwnerRoleCodes);
+    }
+
+    private static string? BuildConnectionString()
+'''
+          )
+
+          focused = 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
+          replace_once(
+              focused,
+              '''const ownerCatalogRegression = read('tests/test-module-catalog-owner-repair-migration-093.sh');
+''',
+              '''const ownershipApi = read('src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs');
+[
+  'developer_super_administrator_only',
+  'DeveloperOwnerRoleCodes',
+  'IsDeveloperModuleOwnerAsync',
+  'app_user_role_assignments owner_assignment',
+  '@developer_owner_role_codes',
+  'Only an actual developer Super Administrator session can change module ownership.',
+  'The selected owner must be an active developer Super Administrator.'
+].forEach((contract) => requireText(
+  ownershipApi,
+  contract,
+  'developer Super Administrator module-owner policy'
+));
+rejectText(
+  ownershipApi,
+  'WHERE app_user.is_active = TRUE\n                    ORDER BY display_name, preferred_email',
+  'owner candidates must not include ordinary active users'
+);
+
+const ownerCatalogRegression = read('tests/test-module-catalog-owner-repair-migration-093.sh');
+'''
+          )
+
+          owner_validator = 'tests/validate-module-management-owner-drawer.mjs'
+          replace_once(
+              owner_validator,
+              '''  'ownershipDoesNotGrantAccess',
+  'Exit View-As before changing module ownership'
+''',
+              '''  'ownershipDoesNotGrantAccess',
+  'Exit View-As before changing module ownership',
+  'developer_super_administrator_only',
+  'DeveloperOwnerRoleCodes',
+  'IsDeveloperModuleOwnerAsync',
+  'The selected owner must be an active developer Super Administrator.'
+'''
+          )
+
+          ci = '.github/workflows/module-loading-assignment-propagation-ci.yml'
+          replace_once(
+              ci,
+              "      - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'\n",
+              "      - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'\n      - 'src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs'\n      - 'tests/validate-module-management-owner-drawer.mjs'\n"
+          )
+          replace_once(
+              ci,
+              '''      - name: Validate protected-Test assigned-work UAT syntax
+        shell: bash
+        run: bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+''',
+              '''      - name: Validate protected-Test assigned-work UAT syntax
+        shell: bash
+        run: bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+
+      - name: Validate developer-only module-owner authority
+        run: node tests/validate-module-management-owner-drawer.mjs
+'''
+          )
+
+          uat = 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
+          replace_once(
+              uat,
+              '''WORKSPACE="$EVIDENCE_DIR/jason-engineering-workspace.json"
+
+''',
+              '''WORKSPACE="$EVIDENCE_DIR/jason-engineering-workspace.json"
+OWNERS="$EVIDENCE_DIR/jason-module-owner-catalog.json"
+
+'''
+          )
+          replace_once(
+              uat,
+              '''auth_get '019' '/api/project-workspace/overview' "$WORKSPACE" 'Module 019 Engineering Workspace'
+
+''',
+              '''auth_get '019' '/api/project-workspace/overview' "$WORKSPACE" 'Module 019 Engineering Workspace'
+auth_get '012' '/api/module-catalog/owners' "$OWNERS" 'Module owner catalog read-through'
+
+'''
+          )
+          replace_once(
+              uat,
+              '''jq -e \
+  --arg sr "$REPORTED_SERVICE_REQUEST" \
+  --arg userId "$JASON_USER_ID" '
+    .module == "019"
+''',
+              '''jq -e '
+    .access.canManage == false
+    and .access.authoritySource == "authenticated_read_only"
+    and (.ownerCandidates | length) == 0
+    and ([.owners[]? | select(
+      (.moduleNumber == "001" or .moduleNumber == "001A" or .moduleNumber == "019")
+      and .ownerUserId != null
+      and (.displayName // "") != ""
+      and .displayName != "Unassigned"
+    )] | length) == 3
+  ' "$OWNERS" >/dev/null \
+  || fail "Ordinary authenticated users did not receive the saved Super Administrator module owner display state."
+
+jq -e \
+  --arg sr "$REPORTED_SERVICE_REQUEST" \
+  --arg userId "$JASON_USER_ID" '
+    .module == "019"
+'''
+          )
+          replace_once(
+              uat,
+              '''    module019EngineeringWorkspace:true,
+    requestFamilies:["Service Request","Presales","Internal"],
+''',
+              '''    module019EngineeringWorkspace:true,
+    moduleOwnerCatalogReadThrough:true,
+    ownerCandidatesRestrictedToSuperAdministrators:true,
+    requestFamilies:["Service Request","Presales","Internal"],
+'''
+          )
+
+          Path('.github/workflows/publish-pr719-finalize-pr.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Validate final source repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          node tests/validate-module-management-owner-drawer.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-modules-directory-page.mjs
+          )
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+          git diff --check
+
+      - name: Commit and push final PR 719 source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -A
+          git diff --cached --quiet && {
+            echo 'ERROR: PR 719 finalizer produced no source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(modules): restore request visibility, owner truth, and fast directory hydration'
+          git push origin HEAD:fix/module-directory-owner-001a-continuity-20260818
