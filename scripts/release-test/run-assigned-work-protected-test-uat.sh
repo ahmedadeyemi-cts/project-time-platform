@@ -140,7 +140,13 @@ jq -e \
   --arg userId "$JASON_USER_ID" '
     .module == "001A"
     and .status == "engineer_task_closeout_loaded"
+    and .eligibilityContract == "MODULE001A_REQUEST_FAMILY_ONLY_V3"
+    and .workflow.identifierAuthority == "durable_project_code_prefix"
+    and .workflow.projectTasksExcluded == true
     and .access.effectiveUserId == $userId
+    and ([.active[]?, .history[]?
+      | select((((.projectCode // "") | test("^(SR|PRES|INT)-"; "i")) | not))
+    ] | length) == 0
     and ([.active[]?, .history[]? | select(
       .projectCode == $sr
       and .engineerUserId == $userId
@@ -204,14 +210,16 @@ jq -n \
     module001CanonicalWorkQueue:true,
     module001aEngineerCloseout:true,
     module001aVisibleRequestReference:true,
+    module001aRequestFamilyOnly:true,
+    module001aProjectTasksExcluded:true,
     module019EngineeringWorkspace:true,
     moduleOwnerCatalogReadThrough:true,
     ownerCandidatesRestrictedToSuperAdministrators:true,
-    requestFamilies:["Service Request","Presales","Internal"],
+    requestFamilies:["Service Request","Pre-Sales","Internal"],
     mutation:false,
     productionMutation:false
   }' > "$EVIDENCE_DIR/assigned-work-protected-test-uat.json"
 
 unset SESSION_TOKEN
 
-echo 'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS identity=jason.mosier@ussignal.local serviceRequest=SR-8C81ACA3 modules=001,001A,019 week=2026-08-16..2026-08-22'
+echo 'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS identity=jason.mosier@ussignal.local serviceRequest=SR-8C81ACA3 modules=001,001A,019 module001aRequestFamilyOnly=true projectTasksExcluded=true week=2026-08-16..2026-08-22'
