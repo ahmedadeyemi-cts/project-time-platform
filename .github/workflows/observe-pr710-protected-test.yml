@@ -1,0 +1,148 @@
+name: Observe PR 710 Protected-Test Deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr710-protected-test.yml'
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+
+concurrency:
+  group: observe-pr710-protected-test
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    name: Publish protected-Test deployment result
+    runs-on: ubuntu-24.04
+    timeout-minutes: 220
+    env:
+      TARGET_SHA: 6b215dee7df1c9f8d97a3fcd6ca778d3a9220b44
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      STATUS_CONTEXT: protected-test-deployment/pr710-migration093
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Mark deployment observation pending
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          post_status() {
+            local state="$1" description="$2" target_url="${3:-}"
+            jq -n \
+              --arg state "$state" \
+              --arg context "$STATUS_CONTEXT" \
+              --arg description "$description" \
+              --arg target_url "$target_url" \
+              '{state:$state,context:$context,description:$description,target_url:$target_url}' \
+              | curl --fail-with-body --silent --show-error \
+                  --request POST \
+                  --header "Authorization: Bearer $GH_TOKEN" \
+                  --header 'Accept: application/vnd.github+json' \
+                  --header 'X-GitHub-Api-Version: 2022-11-28' \
+                  --data-binary @- \
+                  "$GH_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" >/dev/null
+          }
+          post_status pending 'Waiting for governed protected-Test deployment.'
+
+      - name: Locate and monitor governed deployment
+        id: monitor
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          run_json=''
+          for attempt in $(seq 1 180); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=50")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            if [[ -n "$run_json" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          [[ -n "$run_json" ]] || {
+            echo 'ERROR: No governed protected-Test deployment run was found for the target release SHA.' >&2
+            exit 1
+          }
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          run_url="$(jq -r '.html_url' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "GOVERNED_DEPLOYMENT_RUN=$run_id"
+          echo "GOVERNED_DEPLOYMENT_URL=$run_url"
+
+          for attempt in $(seq 1 840); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+            echo "DEPLOYMENT_STATUS=$status DEPLOYMENT_CONCLUSION=${conclusion:-pending}"
+            if [[ "$status" == 'completed' ]]; then
+              echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+              [[ "$conclusion" == 'success' ]] || exit 1
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo 'ERROR: Governed protected-Test deployment did not complete within the observation window.' >&2
+          exit 1
+
+      - name: Publish successful deployment status
+        if: success()
+        shell: bash
+        env:
+          RUN_URL: ${{ steps.monitor.outputs.run_url }}
+        run: |
+          set -Eeuo pipefail
+          jq -n \
+            --arg state success \
+            --arg context "$STATUS_CONTEXT" \
+            --arg description 'Migration 093, immutable deployment, and authenticated Test UAT passed.' \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}' \
+            | curl --fail-with-body --silent --show-error \
+                --request POST \
+                --header "Authorization: Bearer $GH_TOKEN" \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                --data-binary @- \
+                "$GH_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" >/dev/null
+
+      - name: Publish failed deployment status
+        if: failure()
+        shell: bash
+        env:
+          RUN_URL: ${{ steps.monitor.outputs.run_url }}
+        run: |
+          set -Eeuo pipefail
+          jq -n \
+            --arg state failure \
+            --arg context "$STATUS_CONTEXT" \
+            --arg description 'Governed protected-Test deployment or UAT failed; Test is not released.' \
+            --arg target_url "$RUN_URL" \
+            '{state:$state,context:$context,description:$description,target_url:$target_url}' \
+            | curl --fail-with-body --silent --show-error \
+                --request POST \
+                --header "Authorization: Bearer $GH_TOKEN" \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                --data-binary @- \
+                "$GH_API_URL/repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" >/dev/null
