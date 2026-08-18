@@ -12,9 +12,9 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
       - 'src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py'
       - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'src/frontend/project-time-web/src/flowhive-enterprise-helpers.js'
       - 'src/frontend/project-time-web/src/flowhive-runtime-resilience.js'
       - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
-      - 'src/frontend/project-time-web/src/main.jsx'
       - 'tests/FlowHiveDetailedPlannerTests/**'
       - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
       - '.github/workflows/flowhive-detailed-planner-ci.yml'
@@ -58,6 +58,10 @@ jobs:
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'Plan, Design, Implement, Validate, and Release' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq "import './flowhive-runtime-resilience.js';" \
+            src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
+          grep -Fq "import './flowhive-sow-evidence-autoadmission.js';" \
+            src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
           grep -Fq 'module_availability_unavailable' \
             src/frontend/project-time-web/src/flowhive-runtime-resilience.js
           grep -Fq 'duplicateRecordsConsolidated' \
