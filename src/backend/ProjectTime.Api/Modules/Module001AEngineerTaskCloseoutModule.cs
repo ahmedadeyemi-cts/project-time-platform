@@ -23,6 +23,8 @@ public static partial class ScopedRolePolicyModule
         "closed", "complete", "completed", "done", "cancelled", "canceled", "archived"
     };
 
+    private const string Module001ARequestFamilyOnlyContract = "MODULE001A_REQUEST_FAMILY_ONLY_V3";
+
     public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints(this WebApplication app)
     {
         app.MapGet(
@@ -104,15 +106,9 @@ public static partial class ScopedRolePolicyModule
                   AND entry.status NOT IN ('manager_declined', 'pm_declined')
             ) used ON TRUE
             WHERE pa.user_id = @engineer_user_id
-              AND (
-                    regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (
-                        'servicerequest', 'sr', 'presales', 'presale', 'pres',
-                        'internal', 'internalproject', 'internaltask'
-                    )
-                 OR p.project_code ~* '^(SR|PRES|INT)-'
-                 OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'
-                 OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL
-              )
+              -- Canonical request-family labels remain 'servicerequest', 'presales', and 'internal';
+              -- the durable SR-/PRES-/INT- project code is the sole Module 001A eligibility authority.
+              AND p.project_code ~* '^(SR|PRES|INT)-'
               AND (
                     closeout.module001a_closeout_id IS NOT NULL
                  OR (
@@ -210,10 +206,12 @@ public static partial class ScopedRolePolicyModule
                    dispatch.delivery_status,
                    event.occurred_at
             FROM module001a_engineer_task_closeout_events event
+            JOIN projects request_project ON request_project.project_id = event.project_id
             LEFT JOIN app_users actor ON actor.user_id = event.actor_user_id
             LEFT JOIN project_notification_dispatches dispatch
               ON dispatch.project_notification_dispatch_id = event.notification_dispatch_id
             WHERE event.engineer_user_id = @engineer_user_id
+              AND request_project.project_code ~* '^(SR|PRES|INT)-'
             ORDER BY event.occurred_at DESC
             LIMIT 250;
             """, connection))
@@ -243,6 +241,7 @@ public static partial class ScopedRolePolicyModule
         {
             module = "001A",
             status = "engineer_task_closeout_loaded",
+            eligibilityContract = Module001ARequestFamilyOnlyContract,
             generatedAt = DateTimeOffset.UtcNow,
             access = new
             {
@@ -267,6 +266,9 @@ public static partial class ScopedRolePolicyModule
             workflow = new
             {
                 eligibleWorkTypes = new[] { "Service Request", "Pre-Sales", "Internal" },
+                identifierAuthority = "durable_project_code_prefix",
+                eligibleIdentifiers = new[] { "SR-", "PRES-", "INT-" },
+                projectTasksExcluded = true,
                 closeEffect = "The assignment is removed from Module 001 and new or increased time is blocked.",
                 notificationRoute = "Module 065 sends to the Project Team Coordinator and CCs the Engineer.",
                 reopenRule = "The Engineer must enter a reason and may reopen only before Module 055C final closure.",
@@ -672,15 +674,9 @@ public static partial class ScopedRolePolicyModule
               AND pa.user_id = @engineer_user_id
               AND pa.effective_start_date <= CURRENT_DATE
               AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
-              AND (
-                    regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (
-                        'servicerequest', 'sr', 'presales', 'presale', 'pres',
-                        'internal', 'internalproject', 'internaltask'
-                    )
-                 OR p.project_code ~* '^(SR|PRES|INT)-'
-                 OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'
-                 OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL
-              )
+              -- Canonical request-family labels remain 'servicerequest', 'presales', and 'internal';
+              -- the durable SR-/PRES-/INT- project code is the sole Module 001A eligibility authority.
+              AND p.project_code ~* '^(SR|PRES|INT)-'
             FOR UPDATE OF pa, p, pt;
             """, connection, transaction);
         command.Parameters.AddWithValue("assignment_id", assignmentId);
@@ -980,11 +976,12 @@ public static partial class ScopedRolePolicyModule
 
     private static string Module001ARequestType(string projectCode, string workType)
     {
+        _ = workType;
         var code = (projectCode ?? string.Empty).Trim().ToUpperInvariant();
-        var normalized = new string((workType ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
-        if (code.StartsWith("SR-", StringComparison.Ordinal) || normalized is "servicerequest" or "sr") return "Service Request";
-        if (code.StartsWith("PRES-", StringComparison.Ordinal) || normalized is "presales" or "presale" or "pres") return "Pre-Sales";
-        return "Internal";
+        if (code.StartsWith("SR-", StringComparison.Ordinal)) return "Service Request";
+        if (code.StartsWith("PRES-", StringComparison.Ordinal)) return "Pre-Sales";
+        if (code.StartsWith("INT-", StringComparison.Ordinal)) return "Internal";
+        return "Unsupported";
     }
 
     private static string Module001AClean(string? value, int maximumLength)

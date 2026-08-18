@@ -212,6 +212,25 @@ requireText(closeout, 'FROM project_assignments pa', 'Module 001A canonical assi
 requireText(closeout, 'pa.user_id = @engineer_user_id', 'Module 001A Engineer scope');
 requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');
 requireText(closeout, "CASE WHEN p.project_code ~* '^(SR|PRES|INT)-' THEN p.project_code ELSE '' END", 'Module 001A durable request reference');
+requireText(closeout, 'MODULE001A_REQUEST_FAMILY_ONLY_V3', 'Module 001A strict request-family contract');
+requireText(closeout, 'identifierAuthority = "durable_project_code_prefix"', 'Module 001A durable identifier authority');
+requireText(closeout, 'projectTasksExcluded = true', 'Module 001A project-task exclusion contract');
+requireText(closeout, 'JOIN projects request_project ON request_project.project_id = event.project_id', 'Module 001A request-only event history');
+requireText(closeout, "AND request_project.project_code ~* '^(SR|PRES|INT)-'", 'Module 001A request-only event filter');
+requireText(closeout, 'return "Unsupported";', 'Module 001A fail-closed request classification');
+const strictEligibilityOccurrences = closeout.split("AND p.project_code ~* '^(SR|PRES|INT)-'").length - 1;
+if (strictEligibilityOccurrences !== 2) {
+  failures.push(`Module 001A request-family eligibility: expected 2 strict project-code filters, found ${strictEligibilityOccurrences}`);
+}
+[
+  "regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (",
+  "OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'",
+  "OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL"
+].forEach((legacyEligibility) => rejectText(
+  closeout,
+  legacyEligibility,
+  'Module 001A must not admit project tasks through work-type or task metadata fallbacks'
+));
 
 const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');
 requireText(workspace, 'FROM project_assignments', 'Module 019 canonical assignment source');
@@ -344,6 +363,7 @@ console.log('request_family_classification=sr_pres_int_durable_identifiers');
 console.log('module001a_response_body=explicit_iresult');
 console.log('module001a_request_visibility=recent_first_all_current_assignments');
 console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');
+console.log('module001a_eligibility=request_family_codes_only');
 console.log('module_directory_authority=nonblocking_identity_scoped_refresh');
 console.log('module_owner_catalog=authenticated_read_through');
 console.log('authenticated_assigned_work_uat=registered');
