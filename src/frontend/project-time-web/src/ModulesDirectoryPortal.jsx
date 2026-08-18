@@ -11,7 +11,9 @@ const MODULES_ROUTE = 'modules';
 const MODULES_HASH = '#modules';
 const AVAILABILITY_REFRESH_MS = 30000;
 const MODULE_DIRECTORY_AUTHORITY_POLL_MS = 500;
+const MODULE_DIRECTORY_AUTHORITY_REFRESH_THROTTLE_MS = 2500;
 const MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT = 'MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_V2';
+const MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT = 'MODULE_DIRECTORY_STABLE_HYDRATION_V3';
 
 const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
   timesheet: '001',
@@ -340,6 +342,7 @@ export default function ModulesDirectoryPortal() {
   const [statusMessage, setStatusMessage] = useState('');
   const refreshTimer = useRef(null);
   const directoryResolvedRef = useRef(false);
+  const authorityRefreshRequestedAtRef = useRef(0);
   const expandedForDirectory = useRef(new Set());
   const active = route === MODULES_ROUTE;
 
@@ -406,8 +409,19 @@ export default function ModulesDirectoryPortal() {
 
   useEffect(() => {
     const requestAuthorityRefresh = (source) => {
+      const refreshState = window.__projectPulsePermissionRefreshState;
+      if (refreshState?.contract === 'PERMISSION_REFRESH_SINGLE_FLIGHT_V1'
+          && refreshState.inFlight === true) return;
+
+      const now = Date.now();
+      if (now - authorityRefreshRequestedAtRef.current < MODULE_DIRECTORY_AUTHORITY_REFRESH_THROTTLE_MS) return;
+      authorityRefreshRequestedAtRef.current = now;
       window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed', {
-        detail: { source, contract: MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT }
+        detail: {
+          source,
+          contract: MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT,
+          hydrationContract: MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT
+        }
       }));
     };
 
@@ -431,6 +445,7 @@ export default function ModulesDirectoryPortal() {
         }
 
         directoryResolvedRef.current = true;
+        authorityRefreshRequestedAtRef.current = 0;
         setDirectoryResolved(true);
         setModules((current) => moduleListsMatch(current, nextModules) ? current : nextModules);
       }, 80);
@@ -438,6 +453,7 @@ export default function ModulesDirectoryPortal() {
 
     const resetForIdentity = () => {
       directoryResolvedRef.current = false;
+      authorityRefreshRequestedAtRef.current = 0;
       setDirectoryResolved(false);
       setModules([]);
       requestAuthorityRefresh('module_directory_identity_changed');
@@ -588,7 +604,7 @@ export default function ModulesDirectoryPortal() {
   if (!portalHost || !active) return null;
 
   return createPortal(
-    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title" data-authority-contract={MODULE_DIRECTORY_AUTHORITY_CONTRACT}>
+    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title" data-authority-contract={MODULE_DIRECTORY_AUTHORITY_CONTRACT} data-hydration-contract={MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT}>
       <header className="modules-directory-hero">
         <div>
           <p className="eyebrow">ProjectPulse workspace directory</p>

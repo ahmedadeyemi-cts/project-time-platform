@@ -20,6 +20,7 @@ on:
       - 'src/frontend/project-time-web/src/module-directory-authority.js'
       - 'src/frontend/project-time-web/src/effective-role-authority.js'
       - 'src/frontend/project-time-web/src/background-request-role-gate.js'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/frontend/project-time-web/src/ProductionOperationsPanel.jsx'
       - 'src/frontend/project-time-web/src/module001/PtcTimeStewardGate.jsx'
       - 'src/frontend/project-time-web/src/main.jsx'

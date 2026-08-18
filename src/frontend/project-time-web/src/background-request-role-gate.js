@@ -13,10 +13,16 @@ const MODULE_DIRECTORY_SNAPSHOT_PREFIX = 'projectPulseModuleDirectorySnapshot:';
 const MODULE_DIRECTORY_ROUTE = 'modules';
 const OWNER_EVENT = 'projectpulse:module-owner-changed';
 const OWNER_CATALOG_READ_CONTRACT = 'OWNER_CATALOG_READ_THROUGH_FOR_AUTHENTICATED_USERS_V1';
-const MODULE_DIRECTORY_AUTHORITY_RETRY_MS = 100;
-const MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS = 80;
-const MODULE_DIRECTORY_PERMISSION_REFRESH_THROTTLE_MS = 1500;
+const MODULE_DIRECTORY_AUTHORITY_RETRY_MS = 250;
+const MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS = 32;
+const MODULE_DIRECTORY_PERMISSION_REFRESH_THROTTLE_MS = 2000;
 const MODULE_DIRECTORY_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
+const MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_CONTRACT = 'MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_V3';
+
+let moduleDirectoryAuthorityTimer = 0;
+let moduleDirectoryAuthorityAttempt = 0;
+let moduleDirectoryAuthoritySource = '';
+let moduleDirectoryAuthorityActive = false;
 
 const PLATFORM_OPERATIONS_ROLES = new Set([
   'SUPER_ADMINISTRATOR',
@@ -407,6 +413,10 @@ function ensureImmediateModulesAuthority(source = 'visible_authorized_navigation
 }
 
 function requestModuleDirectoryPermissionRefresh(source) {
+  const refreshState = window.__projectPulsePermissionRefreshState;
+  if (refreshState?.contract === 'PERMISSION_REFRESH_SINGLE_FLIGHT_V1'
+      && refreshState.inFlight === true) return;
+
   const now = Date.now();
   const previous = Number(window.__projectPulseModuleDirectoryPermissionRefreshRequestedAt || 0);
   if (now - previous < MODULE_DIRECTORY_PERMISSION_REFRESH_THROTTLE_MS) return;
@@ -416,16 +426,50 @@ function requestModuleDirectoryPermissionRefresh(source) {
   }));
 }
 
-function scheduleImmediateModulesAuthority(source, attempt = 0) {
-  window.setTimeout(() => {
-    if (currentRoute() !== MODULE_DIRECTORY_ROUTE) return;
-    if (ensureImmediateModulesAuthority(source)) return;
+function clearModuleDirectoryAuthoritySchedule() {
+  window.clearTimeout(moduleDirectoryAuthorityTimer);
+  moduleDirectoryAuthorityTimer = 0;
+  moduleDirectoryAuthorityAttempt = 0;
+  moduleDirectoryAuthoritySource = '';
+  moduleDirectoryAuthorityActive = false;
+  window.__projectPulseModuleDirectoryAuthorityScheduler = {
+    contract: MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_CONTRACT,
+    active: false
+  };
+}
 
-    requestModuleDirectoryPermissionRefresh(source);
-    if (attempt < MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS) {
-      scheduleImmediateModulesAuthority(source, attempt + 1);
+function scheduleImmediateModulesAuthority(source) {
+  moduleDirectoryAuthoritySource = source || moduleDirectoryAuthoritySource || 'module_directory_authority_retry';
+  if (moduleDirectoryAuthorityActive) return;
+
+  moduleDirectoryAuthorityActive = true;
+  moduleDirectoryAuthorityAttempt = 0;
+  const run = () => {
+    moduleDirectoryAuthorityTimer = 0;
+    if (currentRoute() !== MODULE_DIRECTORY_ROUTE) {
+      clearModuleDirectoryAuthoritySchedule();
+      return;
     }
-  }, attempt === 0 ? 0 : MODULE_DIRECTORY_AUTHORITY_RETRY_MS);
+    if (ensureImmediateModulesAuthority(moduleDirectoryAuthoritySource)) {
+      clearModuleDirectoryAuthoritySchedule();
+      return;
+    }
+
+    requestModuleDirectoryPermissionRefresh(moduleDirectoryAuthoritySource);
+    if (moduleDirectoryAuthorityAttempt >= MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS) {
+      clearModuleDirectoryAuthoritySchedule();
+      return;
+    }
+
+    moduleDirectoryAuthorityAttempt += 1;
+    moduleDirectoryAuthorityTimer = window.setTimeout(run, MODULE_DIRECTORY_AUTHORITY_RETRY_MS);
+  };
+
+  window.__projectPulseModuleDirectoryAuthorityScheduler = {
+    contract: MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_CONTRACT,
+    active: true
+  };
+  moduleDirectoryAuthorityTimer = window.setTimeout(run, 0);
 }
 
 function modulesNavigationTarget(event) {
@@ -483,6 +527,7 @@ function installImmediateModuleDirectoryAuthority() {
 
     if (detail?.state === 'ready'
         && detail?.provisionalModuleDirectorySnapshot !== true) {
+      clearModuleDirectoryAuthoritySchedule();
       const signature = `${sessionIdentityFingerprint()}|${clean(detail.authoritySource)}`;
       if (window.__projectPulseOwnerRefreshAuthoritySignature !== signature) {
         window.__projectPulseOwnerRefreshAuthoritySignature = signature;

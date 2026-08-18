@@ -14,6 +14,7 @@ const INSTALL_MARKER = '__projectPulseModuleAvailabilityFetchBridgeInstalled';
 const PERMISSION_MARKER = '__projectPulsePermissionNavigationGuardInstalled';
 const HIDDEN_ATTRIBUTE = 'data-projectpulse-permission-hidden';
 const MORE_SEARCH_HIDDEN_ATTRIBUTE = 'data-projectpulse-more-search-hidden';
+const PERMISSION_REFRESH_SINGLE_FLIGHT_CONTRACT = 'PERMISSION_REFRESH_SINGLE_FLIGHT_V1';
 const RETIRED_ROUTE_NOTICE_KEY = 'projectPulseRetiredWorkTaskBuilderNotice';
 const BODY_NOTICE_ID = 'projectpulse-module-011-retirement-notice';
 const RETIRED_MODULE_NUMBERS = new Set(
@@ -82,6 +83,12 @@ function permissionHeaders() {
   return headers;
 }
 
+function currentPermissionRefreshIdentity() {
+  const token = sessionToken();
+  const viewAsUserId = activeViewAs()?.userId || '';
+  return `${token || 'anonymous'}\u0000${viewAsUserId}`;
+}
+
 function canonicalRoleCode(value) {
   return String(value || '')
     .trim()
@@ -114,6 +121,10 @@ function installPermissionNavigationGuard(nativeFetch) {
   let applyTimer = 0;
   let moreSearchValue = '';
   let refreshSequence = 0;
+  let permissionRefreshInFlight = null;
+  let permissionRefreshIdentity = '';
+  let lastReadyNavigation = null;
+  let lastReadyIdentity = '';
 
   function isModulesDirectoryOwned(element) {
     return Boolean(element?.closest?.('#modules-directory-portal-host'));
@@ -325,6 +336,9 @@ function installPermissionNavigationGuard(nativeFetch) {
       roleCodes: [...effectiveActor.roleCodes],
       permanentFullControl: Boolean(effectiveActor.permanentFullControl),
       authoritySource: effectiveActor.authoritySource || '',
+      refreshing: effectiveActor.refreshing === true,
+      refreshFailed: effectiveActor.refreshFailed === true,
+      refreshContract: PERMISSION_REFRESH_SINGLE_FLIGHT_CONTRACT,
       deniedModuleNumbers: [...deniedModuleNumbers],
       explicitDeniedModuleNumbers: [...(effectiveActor.explicitDeniedModuleNumbers || [])],
       explicitGrantedModuleNumbers: [...(effectiveActor.explicitGrantedModuleNumbers || [])],
@@ -373,11 +387,18 @@ function installPermissionNavigationGuard(nativeFetch) {
     }
   };
 
-  async function refreshPermissions() {
+  async function executePermissionRefresh(requestedIdentity) {
   const sequence = ++refreshSequence;
   const requestedViewAsUserId = activeViewAs()?.userId || '';
   const token = sessionToken();
+  const preserveReady = Boolean(
+    token
+    && lastReadyNavigation
+    && lastReadyIdentity === requestedIdentity
+  );
   if (!token) {
+    lastReadyNavigation = null;
+    lastReadyIdentity = '';
     deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
     permissionEvidenceState = 'anonymous';
     effectiveActor = { roleCodes: [], isViewAs: false, permanentFullControl: false };
@@ -386,23 +407,42 @@ function installPermissionNavigationGuard(nativeFetch) {
     return;
   }
 
-  // Clear stale decisions before requesting the next effective identity.
-  // The More menu remains hidden while loading, and server endpoints remain
-  // authoritative, but a prior user's denial cannot redirect the new user.
-  permissionEvidenceState = 'loading';
-  deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
-  effectiveActor = {
-    roleCodes: [],
-    isViewAs: Boolean(requestedViewAsUserId),
-    permanentFullControl: false,
-    authoritySource: 'permission_refresh_pending',
-    explicitDeniedModuleNumbers: [],
-    explicitGrantedModuleNumbers: [],
-    activeDynamicModuleNumbers: [],
-    inactiveDynamicModuleNumbers: [],
-    legacyFallbackModuleNumbers: [],
-    unregisteredLegacyModuleNumbers: []
-  };
+  // A refresh for the same effective identity must not erase a previously
+  // verified module list. Preserve the last server-authorized result while the
+  // next request is in flight; only an actual identity change enters loading.
+  if (preserveReady) {
+    deniedModuleNumbers = new Set(lastReadyNavigation.deniedModuleNumbers);
+    permissionEvidenceState = 'ready';
+    effectiveActor = {
+      ...lastReadyNavigation.effectiveActor,
+      roleCodes: [...lastReadyNavigation.effectiveActor.roleCodes],
+      explicitDeniedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitDeniedModuleNumbers],
+      explicitGrantedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitGrantedModuleNumbers],
+      activeDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.activeDynamicModuleNumbers],
+      inactiveDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.inactiveDynamicModuleNumbers],
+      legacyFallbackModuleNumbers: [...lastReadyNavigation.effectiveActor.legacyFallbackModuleNumbers],
+      unregisteredLegacyModuleNumbers: [...lastReadyNavigation.effectiveActor.unregisteredLegacyModuleNumbers],
+      refreshing: true,
+      refreshFailed: false
+    };
+  } else {
+    permissionEvidenceState = 'loading';
+    deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
+    effectiveActor = {
+      roleCodes: [],
+      isViewAs: Boolean(requestedViewAsUserId),
+      permanentFullControl: false,
+      authoritySource: 'permission_refresh_pending',
+      explicitDeniedModuleNumbers: [],
+      explicitGrantedModuleNumbers: [],
+      activeDynamicModuleNumbers: [],
+      inactiveDynamicModuleNumbers: [],
+      legacyFallbackModuleNumbers: [],
+      unregisteredLegacyModuleNumbers: [],
+      refreshing: true,
+      refreshFailed: false
+    };
+  }
   applyVisibility();
   publishNavigationState();
 
@@ -483,31 +523,99 @@ function installPermissionNavigationGuard(nativeFetch) {
       activeDynamicModuleNumbers: navigationAccess.activeDynamicModuleNumbers,
       inactiveDynamicModuleNumbers: navigationAccess.inactiveDynamicModuleNumbers,
       legacyFallbackModuleNumbers: navigationAccess.legacyFallbackModuleNumbers,
-      unregisteredLegacyModuleNumbers: navigationAccess.unregisteredLegacyModuleNumbers
+      unregisteredLegacyModuleNumbers: navigationAccess.unregisteredLegacyModuleNumbers,
+      refreshing: false,
+      refreshFailed: false
+    };
+    lastReadyIdentity = requestedIdentity;
+    lastReadyNavigation = {
+      deniedModuleNumbers: [...deniedModuleNumbers],
+      effectiveActor: {
+        ...effectiveActor,
+        roleCodes: [...effectiveActor.roleCodes],
+        explicitDeniedModuleNumbers: [...effectiveActor.explicitDeniedModuleNumbers],
+        explicitGrantedModuleNumbers: [...effectiveActor.explicitGrantedModuleNumbers],
+        activeDynamicModuleNumbers: [...effectiveActor.activeDynamicModuleNumbers],
+        inactiveDynamicModuleNumbers: [...effectiveActor.inactiveDynamicModuleNumbers],
+        legacyFallbackModuleNumbers: [...effectiveActor.legacyFallbackModuleNumbers],
+        unregisteredLegacyModuleNumbers: [...effectiveActor.unregisteredLegacyModuleNumbers]
+      }
     };
     applyVisibility();
     publishNavigationState();
   } catch {
     const currentViewAsUserId = activeViewAs()?.userId || '';
     if (sequence !== refreshSequence || currentViewAsUserId !== requestedViewAsUserId) return;
-    deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
-    permissionEvidenceState = 'unavailable';
-    effectiveActor = {
-      roleCodes: [],
-      isViewAs: Boolean(activeViewAs()),
-      permanentFullControl: false,
-      authoritySource: 'server_endpoint_authorization_only',
-      explicitDeniedModuleNumbers: [],
-      explicitGrantedModuleNumbers: [],
-      activeDynamicModuleNumbers: [],
-      inactiveDynamicModuleNumbers: [],
-      legacyFallbackModuleNumbers: [],
-      unregisteredLegacyModuleNumbers: []
-    };
+    if (lastReadyNavigation && lastReadyIdentity === requestedIdentity) {
+      deniedModuleNumbers = new Set(lastReadyNavigation.deniedModuleNumbers);
+      permissionEvidenceState = 'ready';
+      effectiveActor = {
+        ...lastReadyNavigation.effectiveActor,
+        roleCodes: [...lastReadyNavigation.effectiveActor.roleCodes],
+        explicitDeniedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitDeniedModuleNumbers],
+        explicitGrantedModuleNumbers: [...lastReadyNavigation.effectiveActor.explicitGrantedModuleNumbers],
+        activeDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.activeDynamicModuleNumbers],
+        inactiveDynamicModuleNumbers: [...lastReadyNavigation.effectiveActor.inactiveDynamicModuleNumbers],
+        legacyFallbackModuleNumbers: [...lastReadyNavigation.effectiveActor.legacyFallbackModuleNumbers],
+        unregisteredLegacyModuleNumbers: [...lastReadyNavigation.effectiveActor.unregisteredLegacyModuleNumbers],
+        refreshing: false,
+        refreshFailed: true
+      };
+    } else {
+      deniedModuleNumbers = new Set(RETIRED_MODULE_NUMBERS);
+      permissionEvidenceState = 'unavailable';
+      effectiveActor = {
+        roleCodes: [],
+        isViewAs: Boolean(activeViewAs()),
+        permanentFullControl: false,
+        authoritySource: 'server_endpoint_authorization_only',
+        explicitDeniedModuleNumbers: [],
+        explicitGrantedModuleNumbers: [],
+        activeDynamicModuleNumbers: [],
+        inactiveDynamicModuleNumbers: [],
+        legacyFallbackModuleNumbers: [],
+        unregisteredLegacyModuleNumbers: [],
+        refreshing: false,
+        refreshFailed: true
+      };
+    }
     applyVisibility();
     publishNavigationState();
   }
 }
+
+  function publishPermissionRefreshState(inFlight, startedAt = 0) {
+    const detail = {
+      contract: PERMISSION_REFRESH_SINGLE_FLIGHT_CONTRACT,
+      inFlight,
+      viewAsUserId: activeViewAs()?.userId || '',
+      startedAt: inFlight ? startedAt : 0,
+      completedAt: inFlight ? 0 : Date.now()
+    };
+    window.__projectPulsePermissionRefreshState = detail;
+  }
+
+  function refreshPermissions() {
+    const requestedIdentity = currentPermissionRefreshIdentity();
+    if (permissionRefreshInFlight && permissionRefreshIdentity === requestedIdentity) {
+      return permissionRefreshInFlight;
+    }
+
+    const startedAt = Date.now();
+    const refresh = executePermissionRefresh(requestedIdentity);
+    permissionRefreshInFlight = refresh;
+    permissionRefreshIdentity = requestedIdentity;
+    publishPermissionRefreshState(true, startedAt);
+
+    const complete = () => {
+      if (permissionRefreshInFlight !== refresh) return;
+      permissionRefreshInFlight = null;
+      permissionRefreshIdentity = '';
+      publishPermissionRefreshState(false);
+    };
+    refresh.then(complete, complete);
+    return refresh;
+  }
 
   const boot = () => {
     applyVisibility();
