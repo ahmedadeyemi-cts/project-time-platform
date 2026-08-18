@@ -81,8 +81,15 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'ahmedadeyemi-cts'
           git config user.email 'ahmedadeyemi@gmail.com'
+
+          # The workflow token may publish application source but cannot update
+          # another workflow file. Preserve that tracked workflow here; its one
+          # reviewed path-filter addition is applied afterward through the
+          # repository contents API.
+          git restore --source=HEAD --staged --worktree \
+            .github/workflows/module-loading-assignment-propagation-ci.yml
+
           git add \
-            .github/workflows/module-loading-assignment-propagation-ci.yml \
             src/frontend/project-time-web/src/module-availability-bridge.js \
             src/frontend/project-time-web/src/background-request-role-gate.js \
             src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx \
