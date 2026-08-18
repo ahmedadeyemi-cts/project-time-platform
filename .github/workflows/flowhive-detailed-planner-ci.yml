@@ -52,6 +52,10 @@ jobs:
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'replaced_flowhive_builder != 1' \
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'Return each distinct source-backed SOW work package exactly once' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_canonical_work_package_instruction != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'product, platform, service, model, software or firmware version' \
