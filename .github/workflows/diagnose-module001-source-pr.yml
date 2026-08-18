@@ -1,0 +1,113 @@
+name: Diagnose Module 001 Assigned Work Source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-module001-source-pr.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-module001-source-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/jason-assigned-work-runtime-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Extract relevant source windows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          OUT="$RUNNER_TEMP/module001-source"
+          install -d -m 0700 "$OUT"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          output = Path('/tmp/module001-source')
+          output.mkdir(parents=True, exist_ok=True)
+
+          files_and_terms = {
+              'src/frontend/project-time-web/src/App.jsx': [
+                  'function projectPulseTaskTimeEntrySection',
+                  'const assignedOpenTasks',
+                  "fetchJson('/api/timesheet/work-queue",
+                  'setOpenTasks',
+                  'openTasks.data?.tasks',
+                  'function addTask',
+                  'filteredRequestAssignedTasks'
+              ],
+              'src/frontend/project-time-web/src/App.Module001.g.jsx': [
+                  'function projectPulseTaskTimeEntrySection',
+                  'const assignedOpenTasks',
+                  "fetchJson('/api/timesheet/work-queue",
+                  'setOpenTasks',
+                  'openTasks.data?.tasks',
+                  'function addTask',
+                  'filteredRequestAssignedTasks'
+              ],
+              'src/frontend/project-time-web/src/module001/TimesheetEnhancementPortal.jsx': [
+                  'projectpulse:module001-state',
+                  'assignedTasks',
+                  'TimesheetTaskPicker'
+              ],
+              'src/backend/ProjectTime.Api/Modules/Module001ResultExecutionCompatibility.cs': [
+                  '/api/timesheet/work-queue',
+                  '/api/engineer-task-closeout/overview'
+              ],
+              'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs': [
+                  'MapModule001AEngineerTaskCloseoutEndpoints',
+                  'Module001AOverviewAsync'
+              ],
+              'src/backend/ProjectTime.Api/Program.cs': [
+                  'MapModule001AEngineerTaskCloseoutEndpoints',
+                  'UseModule001ResultExecutionCompatibility'
+              ]
+          }
+
+          chunks = []
+          for file_name, terms in files_and_terms.items():
+              path = Path(file_name)
+              chunks.append(f'===== FILE {file_name} =====')
+              if not path.exists():
+                  chunks.append('MISSING')
+                  continue
+              lines = path.read_text(errors='replace').splitlines()
+              emitted = set()
+              for term in terms:
+                  matches = [i for i, line in enumerate(lines) if term in line]
+                  chunks.append(f'--- TERM {term!r} MATCHES {len(matches)} ---')
+                  for index in matches[:10]:
+                      start = max(0, index - 35)
+                      end = min(len(lines), index + 70)
+                      key = (start, end)
+                      if key in emitted:
+                          continue
+                      emitted.add(key)
+                      chunks.append(f'--- LINES {start + 1}-{end} ---')
+                      chunks.extend(f'{number + 1:06d}: {lines[number]}' for number in range(start, end))
+          (output / 'source-excerpts.txt').write_text('\n'.join(chunks) + '\n')
+          PY
+          cp /tmp/module001-source/source-excerpts.txt "$OUT/source-excerpts.txt"
+          grep -nE 'projectPulseTaskTimeEntrySection|assignedOpenTasks|work-queue|setOpenTasks|Module001AOverviewAsync|UseModule001ResultExecutionCompatibility' "$OUT/source-excerpts.txt" | head -n 200
+
+      - name: Upload source excerpts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module001-assigned-work-source-excerpts
+          path: ${{ runner.temp }}/module001-source
+          if-no-files-found: error
+          retention-days: 1
