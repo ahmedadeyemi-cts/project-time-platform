@@ -86,8 +86,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           node tests/validate-project-planning-collaboration-access.mjs
-          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
-          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-033-project-forge.mjs
+            node scripts/validate-module-066-project-flowhive.mjs
+          )
           git diff --check
 
       - name: Build API
