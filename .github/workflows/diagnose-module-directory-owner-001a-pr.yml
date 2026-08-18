@@ -50,15 +50,22 @@ jobs:
           bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
           git diff --check
 
-      - name: Commit and push final PR 719 source
+      - name: Commit and push final PR 719 application source
         shell: bash
         run: |
           set -Eeuo pipefail
           git config user.name 'ahmedadeyemi-cts'
           git config user.email 'ahmedadeyemi@gmail.com'
+
+          # GitHub's workflow token may publish ordinary source but cannot update
+          # workflow files. Preserve the branch workflow files here; the reviewed
+          # workflow delta and temporary-workflow cleanup are applied afterward
+          # through the repository API.
+          git restore --source=HEAD --staged --worktree .github/workflows
+
           git add -A
           git diff --cached --quiet && {
-            echo 'ERROR: PR 719 finalizer produced no source change.' >&2
+            echo 'ERROR: PR 719 finalizer produced no application source change.' >&2
             exit 1
           }
           git commit -m 'fix(modules): restore request visibility, owner truth, and fast directory hydration'
