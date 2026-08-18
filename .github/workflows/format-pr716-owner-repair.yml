@@ -1,0 +1,91 @@
+name: Format PR 716 Module Owner Repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/format-pr716-owner-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-pr716-module-owner-repair
+  cancel-in-progress: false
+
+jobs:
+  format:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module-owner-031-033-runtime-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: diagnostic/module-owner-031-033-runtime-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Normalize reviewed SQL formatting and revalidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('database/migrations/093_assigned_work_canonical_visibility_repair.sql')
+          source = path.read_text()
+          replacements = {
+              """        SET owner_user_id = default_owner_user_id,
+  owner_revision_number = COALESCE(module.owner_revision_number, 0) + 1,
+  owner_updated_at = NOW(),
+  owner_updated_by_user_id = default_owner_user_id
+""": """        SET owner_user_id = default_owner_user_id,
+            owner_revision_number = COALESCE(module.owner_revision_number, 0) + 1,
+            owner_updated_at = NOW(),
+            owner_updated_by_user_id = default_owner_user_id
+""",
+              """        WHERE upper(module.module_code) = evidence.module_code
+AND evidence.was_present = FALSE
+AND evidence.repaired_owner_revision_number IS NULL
+AND module.owner_user_id IS NULL;
+""": """        WHERE upper(module.module_code) = evidence.module_code
+          AND evidence.was_present = FALSE
+          AND evidence.repaired_owner_revision_number IS NULL
+          AND module.owner_user_id IS NULL;
+""",
+              """        RAISE EXCEPTION
+  'Migration 093 module catalog repair did not restore active canonical row(s): %',
+  array_to_string(invalid_modules, ', ');
+""": """        RAISE EXCEPTION
+            'Migration 093 module catalog repair did not restore active canonical row(s): %',
+            array_to_string(invalid_modules, ', ');
+""",
+          }
+          for before, after in replacements.items():
+              if source.count(before) != 1:
+                  raise SystemExit(f'Expected exactly one SQL formatting target, found {source.count(before)}.')
+              source = source.replace(before, after, 1)
+          path.write_text(source)
+          PY
+
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          bash tests/test-module-catalog-owner-repair-migration-093.sh
+          git diff --check
+
+      - name: Commit the SQL formatting cleanup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add database/migrations/093_assigned_work_canonical_visibility_repair.sql
+          git diff --cached --quiet && {
+            echo 'ERROR: The SQL formatting cleanup produced no change.' >&2
+            exit 1
+          }
+          git commit -m 'style(module-management): normalize owner repair SQL'
+          git push origin HEAD:diagnostic/module-owner-031-033-runtime-20260818
