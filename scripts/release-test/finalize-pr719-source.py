@@ -1,5 +1,4 @@
 from pathlib import Path
-import textwrap
 
 
 def python_blocks(path: str) -> list[str]:
@@ -16,7 +15,12 @@ def python_blocks(path: str) -> list[str]:
         end = source.find(end_marker, start)
         if end < 0:
             raise SystemExit(f"{path}: unterminated Python heredoc")
-        blocks.append(textwrap.dedent(source[start:end]) + "\n")
+        raw = source[start:end]
+        lines = [
+            line[10:] if line.startswith("          ") else line
+            for line in raw.splitlines()
+        ]
+        blocks.append("\n".join(lines) + "\n")
         offset = end + len(end_marker)
     return blocks
 
