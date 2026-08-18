@@ -1,0 +1,197 @@
+name: Diagnose Module Directory, Ownership, and 001A on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-module-directory-owner-001a-pr.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: diagnose-module-directory-owner-001a-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module-directory-owner-001a-continuity-20260818'
+    name: Capture protected-Test runtime evidence
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      EVIDENCE_DIR: /tmp/module-directory-owner-001a
+      TEST_USER_EMAIL: jason.mosier@ussignal.local
+      REPORTED_SERVICE_REQUEST: SR-8C81ACA3
+
+    steps:
+      - name: Authenticate and measure protected-Test APIs
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || fail 'Diagnostic is restricted to protected Test.'
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || fail 'Protected-Test credential is unavailable.'
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          login_payload="$(mktemp)"
+          login_response="$(mktemp)"
+          chmod 0600 "$login_payload" "$login_response"
+          jq -n --arg username "$TEST_USER_EMAIL" --arg password "$TEST_LOGIN_PASSWORD" \
+            '{username:$username,password:$password}' > "$login_payload"
+          login_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$login_response" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$login_payload" "$BASE/api/auth/local/login" || true)"
+          rm -f "$login_payload"
+          [[ "$login_status" == 200 ]] || fail "Protected-Test login returned HTTP $login_status."
+          SESSION_TOKEN="$(jq -er '.sessionToken' "$login_response")"
+          echo "::add-mask::$SESSION_TOKEN"
+          jq 'del(.sessionToken,.token,.password)' "$login_response" > "$EVIDENCE_DIR/login-redacted.json"
+          rm -f "$login_response"
+          unset TEST_LOGIN_PASSWORD
+
+          auth_get() {
+            local label="$1" module="$2" path="$3" output="$4" timing="$5"
+            curl -sS --http1.1 --connect-timeout 20 --max-time 150 \
+              -o "$output" \
+              -w '{"label":"'"$label"'","path":"'"$path"'","httpCode":%{http_code},"dnsSeconds":%{time_namelookup},"connectSeconds":%{time_connect},"tlsSeconds":%{time_appconnect},"firstByteSeconds":%{time_starttransfer},"totalSeconds":%{time_total},"downloadBytes":%{size_download}}\n' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              -H "Authorization: Bearer $SESSION_TOKEN" \
+              -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+              -H "X-ProjectPulse-Module-Number: $module" \
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              "$BASE$path" >> "$timing" || true
+          }
+
+          endpoints=(
+            'rbac-bootstrap|012|/api/rbac/v1/bootstrap'
+            'rbac-matrix|012|/api/rbac/v1/matrix'
+            'security-me|012|/api/security/me'
+            'rbac-modules|012|/api/rbac/v1/modules?includeInactive=true'
+            'module-availability|012|/api/module-availability/overrides'
+            'module-owners|012|/api/module-catalog/owners'
+            'module-001a-overview|001A|/api/engineer-task-closeout/overview'
+          )
+
+          : > "$EVIDENCE_DIR/api-timings.ndjson"
+          for iteration in 1 2 3; do
+            for endpoint in "${endpoints[@]}"; do
+              IFS='|' read -r label module path <<<"$endpoint"
+              output="$EVIDENCE_DIR/${label}-iteration-${iteration}.json"
+              auth_get "$label" "$module" "$path" "$output" "$EVIDENCE_DIR/api-timings.ndjson"
+              jq -e . "$output" >/dev/null 2>&1 || {
+                jq -n --arg raw "$(cat "$output")" '{raw:$raw}' > "$output.normalized"
+                mv "$output.normalized" "$output"
+              }
+            done
+          done
+
+          jq -s '
+            group_by(.label)
+            | map({
+                label: .[0].label,
+                samples: length,
+                httpCodes: ([.[].httpCode] | unique),
+                minSeconds: ([.[].totalSeconds] | min),
+                maxSeconds: ([.[].totalSeconds] | max),
+                averageSeconds: (([.[].totalSeconds] | add) / length),
+                maxFirstByteSeconds: ([.[].firstByteSeconds] | max)
+              })
+            | {environment:"protected-test", endpointTiming:.}
+          ' "$EVIDENCE_DIR/api-timings.ndjson" > "$EVIDENCE_DIR/api-timing-summary.json"
+
+          owners="$EVIDENCE_DIR/module-owners-iteration-3.json"
+          closeout="$EVIDENCE_DIR/module-001a-overview-iteration-3.json"
+          bootstrap="$EVIDENCE_DIR/rbac-bootstrap-iteration-3.json"
+          matrix="$EVIDENCE_DIR/rbac-matrix-iteration-3.json"
+          modules="$EVIDENCE_DIR/rbac-modules-iteration-3.json"
+
+          jq '{
+            access,
+            ownerRecordCount: (.owners | length),
+            assignedOwnerCount: ([.owners[]? | select(.ownerUserId != null)] | length),
+            unassignedOwnerCount: ([.owners[]? | select(.ownerUserId == null)] | length),
+            selectedOwners: [.owners[]? | select(
+              .moduleNumber == "001" or .moduleNumber == "001A" or .moduleNumber == "003"
+              or .moduleNumber == "019" or .moduleNumber == "031" or .moduleNumber == "032"
+              or .moduleNumber == "033"
+            ) | {moduleNumber,ownerUserId,displayName,email,revision,updatedAt}]
+          }' "$owners" > "$EVIDENCE_DIR/module-owner-summary.json"
+
+          jq --arg sr "$REPORTED_SERVICE_REQUEST" '{
+            module,
+            status,
+            access,
+            summary,
+            activeRequestFamilies: ([.active[]? | (.projectCode // "") | capture("^(?<family>SR|PRES|INT)-"; "i").family?] | group_by(.) | map({family:.[0],count:length})),
+            historyRequestFamilies: ([.history[]? | (.projectCode // "") | capture("^(?<family>SR|PRES|INT)-"; "i").family?] | group_by(.) | map({family:.[0],count:length})),
+            reportedServiceRequest: ([
+              (.active[]? | select(.projectCode == $sr) | . + {collection:"active"}),
+              (.history[]? | select(.projectCode == $sr) | . + {collection:"history"})
+            ] | map(select(. != null)))
+          }' "$closeout" > "$EVIDENCE_DIR/module-001a-summary.json"
+
+          jq '{actor,roleCount:(.roles|length),moduleCount:(.modules|length)}' "$bootstrap" > "$EVIDENCE_DIR/rbac-bootstrap-summary.json"
+          jq '{roleCount:(.roles|length),moduleCount:(.modules|length),grantCount:(.grants|length),legacyFallbackCount:(.legacyFallback|length)}' "$matrix" > "$EVIDENCE_DIR/rbac-matrix-summary.json"
+          jq '{moduleCount:(.modules|length),activeCount:([.modules[]? | select(.isActive == true)]|length)}' "$modules" > "$EVIDENCE_DIR/rbac-modules-summary.json"
+
+          curl -sS --http1.1 --connect-timeout 20 --max-time 60 -o /dev/null -X POST \
+            -H "Authorization: Bearer $SESSION_TOKEN" \
+            -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+            -H 'X-ProjectPulse-Module-Number: 012' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
+          unset SESSION_TOKEN
+
+          jq . "$EVIDENCE_DIR/api-timing-summary.json"
+          jq . "$EVIDENCE_DIR/module-owner-summary.json"
+          jq . "$EVIDENCE_DIR/module-001a-summary.json"
+
+      - name: Sign in to protected Test subscription
+        if: always()
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture relevant API warnings
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+          current_subscription="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${current_subscription,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || {
+            echo 'ERROR: Azure login is outside protected Test.' >&2
+            exit 1
+          }
+          az containerapp logs show \
+            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            --name '${{ vars.AZURE_API_APP }}' \
+            --type console \
+            --tail 500 \
+            --format text \
+            > "$EVIDENCE_DIR/api-console-tail.txt" 2>&1 || true
+          grep -Ei 'ModuleCatalogOwnershipModule|Module001A|engineer-task-closeout|rbac|Npgsql|timeout|503|could not be loaded' \
+            "$EVIDENCE_DIR/api-console-tail.txt" \
+            > "$EVIDENCE_DIR/relevant-api-log-lines.txt" || true
+
+      - name: Upload sanitized diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module-directory-owner-001a-runtime-evidence
+          path: /tmp/module-directory-owner-001a
+          if-no-files-found: error
+          retention-days: 1
