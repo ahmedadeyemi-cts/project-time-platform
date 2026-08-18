@@ -3,14 +3,20 @@ name: Runtime Navigation, Work Register, and Responsive Workspace CI
 on:
   pull_request:
     paths:
-      - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
+      - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
+      - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
       - 'src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
       - 'src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs'
       - 'src/frontend/project-time-web/src/App.jsx'
       - 'src/frontend/project-time-web/src/ApprovalMailbox.jsx'
       - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
       - 'src/frontend/project-time-web/src/approval-access-navigation-compatibility.js'
+      - 'src/frontend/project-time-web/src/background-request-role-gate.js'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'src/frontend/project-time-web/src/module-directory-authority.js'
       - 'src/frontend/project-time-web/src/unified-project-financial-workspace.css'
   workflow_dispatch:
@@ -67,14 +73,20 @@ jobs:
           printf 'RUNTIME_REPAIR_PACKAGE_SOURCE_DETECTED:\n%s\n' "$package_specific"
 
           cat > /tmp/runtime-repair-allowed.txt <<'EOF'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
           .github/workflows/runtime-navigation-work-register-responsive-ci.yml
           src/backend/ProjectTime.Api/Modules/ProjectManagementWorkRegisterScope.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
           src/frontend/project-time-web/scripts/validate-runtime-navigation-work-register-responsive.mjs
           src/frontend/project-time-web/src/App.jsx
           src/frontend/project-time-web/src/ApprovalMailbox.jsx
           src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
           src/frontend/project-time-web/src/approval-access-navigation-compatibility.js
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          src/frontend/project-time-web/src/module-availability-bridge.js
           src/frontend/project-time-web/src/module-directory-authority.js
           src/frontend/project-time-web/src/unified-project-financial-workspace.css
           EOF

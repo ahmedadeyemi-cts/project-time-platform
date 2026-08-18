@@ -59,6 +59,18 @@ requireText(portal, [
   'moduleListsMatch(current, nextModules)',
   "window.addEventListener('projectpulse:view-as-changed', resetForIdentity)",
   'MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_V2',
+  'MODULE_DIRECTORY_STABLE_HYDRATION_V3',
+  'MODULE_DIRECTORY_AUTHORITY_REFRESH_THROTTLE_MS',
+  'authorityRefreshRequestedAtRef',
+  '__projectPulsePermissionRefreshState',
+  'MODULE_DIRECTORY_NONSTARVING_REFRESH_V4',
+  'refreshPendingRef',
+  'const resolveDirectory = () =>',
+  'if (refreshTimer.current !== null)',
+  'refreshPendingRef.current = true',
+  'immediate ? 0 : 80',
+  'refresh({ immediate: true })',
+  'data-refresh-contract={MODULE_DIRECTORY_NONSTARVING_REFRESH_CONTRACT}',
   'directoryResolvedRef',
   'module_directory_unresolved_authority',
   "window.addEventListener('hashchange', handleHashChange)",
@@ -154,6 +166,10 @@ if (portal.includes('getInstalledProjectPulseModuleRegistry') || /const\s+module
 
 if (portal.includes('observer.observe(document.body')) {
   throw new Error('The Modules observer must not watch the whole body and retrigger itself from portal card rendering.');
+}
+
+if (portal.includes('window.clearTimeout(refreshTimer.current);\n      refreshTimer.current = window.setTimeout(() =>')) {
+  throw new Error('The Modules directory must not reset its hydration timer for every root mutation.');
 }
 
 if (portal.includes("module.moduleNumber ? `Module ${module.moduleNumber}` : module.group")) {
