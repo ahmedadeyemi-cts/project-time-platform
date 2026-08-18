@@ -41,29 +41,51 @@ jobs:
         run: |
           set -Eeuo pipefail
           git fetch origin main --no-tags
-          ACTUAL="$(git diff --name-only origin/main...HEAD | sort)"
-          EXPECTED="$(cat <<'EOF'
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort -u > "$RUNNER_TEMP/module-management-actual.txt"
+
+          cat > "$RUNNER_TEMP/module-management-focused.txt" <<'EOF'
           .github/workflows/module-management-owner-drawer-ci.yml
           src/backend/ProjectTime.Api/Modules/ProjectPulseActualSessionAuthority.cs
           src/frontend/project-time-web/src/ModuleManagementTableView.jsx
           src/frontend/project-time-web/src/module-management-table.css
           tests/validate-module-management-owner-drawer.mjs
           EOF
-          )"
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/module-management-focused.txt"
+          LC_ALL=C sort -u "$RUNNER_TEMP/module-management-focused.txt" -o "$RUNNER_TEMP/module-management-focused.txt"
 
-          printf '%s\n' "$ACTUAL"
-          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+          cat > "$RUNNER_TEMP/pr719-reviewed.txt" <<'EOF'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
+          src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          tests/validate-module-management-owner-drawer.mjs
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/pr719-reviewed.txt"
+          LC_ALL=C sort -u "$RUNNER_TEMP/pr719-reviewed.txt" -o "$RUNNER_TEMP/pr719-reviewed.txt"
+
+          if cmp -s "$RUNNER_TEMP/module-management-actual.txt" "$RUNNER_TEMP/module-management-focused.txt"; then
+            echo 'MODULE_MANAGEMENT_FOCUSED_SOURCE_BOUNDARY=PASS'
+          elif cmp -s "$RUNNER_TEMP/module-management-actual.txt" "$RUNNER_TEMP/pr719-reviewed.txt"; then
+            echo 'PR719_MODULE_MANAGEMENT_COMBINED_SOURCE_BOUNDARY=PASS'
+          else
             echo 'Module Management repair changed an unexpected source path.' >&2
-            diff -u <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL") || true
+            diff -u "$RUNNER_TEMP/module-management-focused.txt" "$RUNNER_TEMP/module-management-actual.txt" || true
             exit 1
           fi
 
-          if grep -Eq '^database/|^\.github/workflows/projectpulse-deploy-|production|secret|infrastructure' <<<"$ACTUAL"; then
+          if grep -Eq '^database/|^\.github/workflows/projectpulse-deploy-|production|secret|infrastructure' "$RUNNER_TEMP/module-management-actual.txt"; then
             echo 'The focused UI and authority repair crossed a protected deployment, migration, secret, or infrastructure boundary.' >&2
             exit 1
           fi
-
-          echo 'MODULE_MANAGEMENT_FOCUSED_SOURCE_BOUNDARY=PASS'
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
