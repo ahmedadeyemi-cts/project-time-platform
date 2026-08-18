@@ -7,6 +7,7 @@ on:
       - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
+      - '.github/workflows/runtime-navigation-work-register-responsive-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
       - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
@@ -15,7 +16,11 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
       - 'src/backend/ProjectTime.Api/Program.cs'
       - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
+      - 'src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs'
       - 'src/frontend/project-time-web/src/App.jsx'
+      - 'src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx'
+      - 'src/frontend/project-time-web/src/background-request-role-gate.js'
+      - 'src/frontend/project-time-web/src/module-availability-bridge.js'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -66,6 +71,7 @@ jobs:
           .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
           scripts/release-test/run-assigned-work-protected-test-uat.sh
@@ -74,7 +80,11 @@ jobs:
           src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
           src/backend/ProjectTime.Api/Program.cs
           src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
           src/frontend/project-time-web/src/App.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          src/frontend/project-time-web/src/module-availability-bridge.js
           tests/validate-utilization-role-scoping.mjs
           tests/validate-systemwide-image-build-controller.mjs
           tests/validate-systemwide-enterprise-reliability.mjs
@@ -129,6 +139,19 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files" -o "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
 
+          cat > "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          src/frontend/project-time-web/src/module-availability-bridge.js
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files" -o "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"
+
           git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
           if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
@@ -136,6 +159,8 @@ jobs:
             echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"; then
             echo 'EXACT_PR719_MODULE_DIRECTORY_OWNER_001A_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-modules-directory-authority-starvation-files"; then
+            echo 'EXACT_MODULES_DIRECTORY_AUTHORITY_STARVATION_SCOPE=PASSED'
           else
             comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
