@@ -45,12 +45,12 @@ jobs:
           response="$(mktemp)"
           chmod 0600 "$payload" "$response"
           jq -n --arg username "$JASON_EMAIL" --arg password "$TEST_LOGIN_PASSWORD" '{username:$username,password:$password}' > "$payload"
-          status="$(curl -sS --max-time 90 -o "$response" -w '%{http_code}' \
+          login_status="$(curl -sS --max-time 90 -o "$response" -w '%{http_code}' \
             -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' \
             -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
             --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
           rm -f "$payload"
-          [[ "$status" == 200 ]] || fail "Jason login returned HTTP $status."
+          [[ "$login_status" == 200 ]] || fail "Jason login returned HTTP $login_status."
           SESSION_TOKEN="$(jq -er '.sessionToken' "$response")"
           echo "::add-mask::$SESSION_TOKEN"
           jq 'del(.sessionToken,.token,.password)' "$response" > "$EVIDENCE_DIR/jason-login-redacted.json"
@@ -69,44 +69,105 @@ jobs:
               "$BASE$path" || true)"
             jq -n --arg name "$name" --arg module "$module" --arg path "$path" --arg status "$status" \
               '{name:$name,module:$module,path:$path,httpStatus:$status}' >> "$EVIDENCE_DIR/http-status.ndjson"
-            [[ "$status" != 200 ]] || jq -e . "$output" >/dev/null
             printf '%s' "$status"
           }
 
-          security_status="$(auth_get security-context 001 '/api/security/context' "$EVIDENCE_DIR/security-context.json")"
-          queue_status="$(auth_get timesheet-work-queue 001 "/api/timesheet/work-queue?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-work-queue.json")"
-          lines_status="$(auth_get timesheet-weekly-lines 001 "/api/timesheet/weekly-lines?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-weekly-lines.json")"
-          closeout_status="$(auth_get engineer-task-closeout 001A '/api/engineer-task-closeout/overview' "$EVIDENCE_DIR/engineer-task-closeout.json")"
-          workspace_status="$(auth_get engineering-workspace 019 '/api/project-workspace/overview' "$EVIDENCE_DIR/project-workspace.json")"
-          register_status="$(auth_get work-register 055C '/api/work-register/overview' "$EVIDENCE_DIR/work-register.json")"
+          auth_get security-context 001 '/api/security/context' "$EVIDENCE_DIR/security-context.json" >/dev/null
+          auth_get legacy-available-tasks 001 "/api/assignments/available-tasks?weekStart=$WEEK_START" "$EVIDENCE_DIR/available-tasks.json" >/dev/null
+          auth_get canonical-work-queue 001 "/api/timesheet/work-queue?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-work-queue.json" >/dev/null
+          auth_get timesheet-week 001 "/api/timesheets/week?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-week.json" >/dev/null
+          auth_get engineer-task-closeout 001A '/api/engineer-task-closeout/overview' "$EVIDENCE_DIR/engineer-task-closeout.json" >/dev/null
+          auth_get engineering-workspace 019 '/api/project-workspace/overview' "$EVIDENCE_DIR/project-workspace.json" >/dev/null
 
-          jq -n \
-            --arg identity "$JASON_EMAIL" \
-            --arg serviceRequest "$REPORTED_SERVICE_REQUEST" \
-            --arg userId "$(jq -r '.userId // empty' "$EVIDENCE_DIR/security-context.json" 2>/dev/null || true)" \
-            --arg securityStatus "$security_status" \
-            --arg queueStatus "$queue_status" \
-            --arg linesStatus "$lines_status" \
-            --arg closeoutStatus "$closeout_status" \
-            --arg workspaceStatus "$workspace_status" \
-            --arg registerStatus "$register_status" \
-            --argjson queueCount "$(jq -r '.count // (.tasks | length) // -1' "$EVIDENCE_DIR/timesheet-work-queue.json" 2>/dev/null || echo -1)" \
-            --argjson queueMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.tasks[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/timesheet-work-queue.json" 2>/dev/null || echo -1)" \
-            --argjson closeoutCount "$(jq -r '.summary.activeCount // (.active | length) // -1' "$EVIDENCE_DIR/engineer-task-closeout.json" 2>/dev/null || echo -1)" \
-            --argjson closeoutMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.active[]?, .history[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/engineer-task-closeout.json" 2>/dev/null || echo -1)" \
-            --argjson workspaceProjects "$(jq -r '.summary.projectCount // (.projects | length) // -1' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
-            --argjson workspaceAssignments "$(jq -r '.summary.assignmentCount // (.assignments | length) // -1' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
-            --argjson workspaceMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.projects[]?, .assignments[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
-            --argjson registerMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.workItems[]? | select((.projectCode // "") == $sr or (.projectNumber // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/work-register.json" 2>/dev/null || echo -1)" \
-            '{environment:"protected-test",identity:$identity,authenticatedUserId:$userId,serviceRequest:$serviceRequest,http:{security:$securityStatus,workQueue:$queueStatus,weeklyLines:$linesStatus,closeout:$closeoutStatus,workspace:$workspaceStatus,workRegister:$registerStatus},counts:{workQueue:$queueCount,workQueueServiceRequestMatch:$queueMatch,closeoutActive:$closeoutCount,closeoutServiceRequestMatch:$closeoutMatch,workspaceProjects:$workspaceProjects,workspaceAssignments:$workspaceAssignments,workspaceServiceRequestMatch:$workspaceMatch,workRegisterServiceRequestMatch:$registerMatch},mutation:false}' \
-            > "$EVIDENCE_DIR/diagnostic-summary.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('/tmp/jason-assigned-work-runtime')
+          sr = 'SR-8C81ACA3'
+
+          def load(name):
+              path = root / name
+              if not path.exists():
+                  return None, 'missing'
+              raw = path.read_bytes()
+              if not raw:
+                  return None, 'empty'
+              try:
+                  return json.loads(raw), 'json'
+              except Exception:
+                  return raw.decode('utf-8', errors='replace'), 'non_json'
+
+          def tasks_from(payload):
+              if not isinstance(payload, dict):
+                  return []
+              value = payload.get('tasks')
+              return value if isinstance(value, list) else []
+
+          def sr_matches(items):
+              matches = []
+              for item in items:
+                  if not isinstance(item, dict):
+                      continue
+                  values = [
+                      item.get('projectCode'), item.get('serviceRequestNumber'),
+                      item.get('requestNumber'), item.get('projectNumber')
+                  ]
+                  if sr in [str(value or '') for value in values]:
+                      matches.append(item)
+              return matches
+
+          security, security_shape = load('security-context.json')
+          available, available_shape = load('available-tasks.json')
+          queue, queue_shape = load('timesheet-work-queue.json')
+          week, week_shape = load('timesheet-week.json')
+          closeout, closeout_shape = load('engineer-task-closeout.json')
+          workspace, workspace_shape = load('project-workspace.json')
+
+          available_tasks = tasks_from(available)
+          queue_tasks = tasks_from(queue)
+          closeout_rows = []
+          if isinstance(closeout, dict):
+              closeout_rows = [*(closeout.get('active') or []), *(closeout.get('history') or [])]
+          workspace_rows = []
+          if isinstance(workspace, dict):
+              workspace_rows = [*(workspace.get('projects') or []), *(workspace.get('assignments') or [])]
+
+          summary = {
+              'environment': 'protected-test',
+              'identity': 'jason.mosier@ussignal.local',
+              'serviceRequest': sr,
+              'authenticatedUserId': security.get('userId') if isinstance(security, dict) else None,
+              'roles': security.get('roles') if isinstance(security, dict) else None,
+              'responseShapes': {
+                  'security': security_shape,
+                  'legacyAvailableTasks': available_shape,
+                  'canonicalWorkQueue': queue_shape,
+                  'timesheetWeek': week_shape,
+                  'closeout': closeout_shape,
+                  'workspace': workspace_shape,
+              },
+              'counts': {
+                  'legacyAvailableTasks': len(available_tasks),
+                  'legacyAvailableTaskMatches': len(sr_matches(available_tasks)),
+                  'canonicalWorkQueue': len(queue_tasks),
+                  'canonicalWorkQueueMatches': len(sr_matches(queue_tasks)),
+                  'closeoutRows': len(closeout_rows),
+                  'closeoutMatches': len(sr_matches(closeout_rows)),
+                  'workspaceRows': len(workspace_rows),
+                  'workspaceMatches': len(sr_matches(workspace_rows)),
+              },
+              'mutation': False,
+          }
+          (root / 'diagnostic-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+          print(json.dumps(summary, indent=2))
+          PY
 
           curl -sS --max-time 60 -o /dev/null -X POST \
             -H "Authorization: Bearer $SESSION_TOKEN" -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
             -H 'X-ProjectPulse-Module-Number: 001' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
             "$BASE/api/auth/session/logout" || true
           unset SESSION_TOKEN
-          jq . "$EVIDENCE_DIR/diagnostic-summary.json"
 
       - name: Upload sanitized evidence
         if: always()
