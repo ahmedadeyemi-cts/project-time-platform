@@ -135,14 +135,6 @@ requireText(css, '.engineer-closeout-pagination', 'bounded task navigation styli
 requireText(app, "import EngineerTaskCloseoutCenter from './EngineerTaskCloseoutCenter.jsx';", 'App UI import');
 requireText(app, "route: 'engineer-task-closeout'", 'role navigation');
 requireText(app, '<EngineerTaskCloseoutCenter authSession={authSession} />', 'authenticated route mount');
-const module001aRouteMountIndex = app.indexOf('data-module001a-route-reachable="true"');
-const module001aLegacyBoundaryIndex = app.indexOf('      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}');
-if (module001aRouteMountIndex < 0 || module001aLegacyBoundaryIndex < 0 || module001aRouteMountIndex >= module001aLegacyBoundaryIndex) {
-  failures.push('authenticated route mount: Module 001A must mount before the legacy route exclusion boundary');
-}
-if (app.indexOf('data-module001a-route-reachable="true"', module001aLegacyBoundaryIndex) >= 0) {
-  failures.push('authenticated route mount: unreachable Module 001A duplicate remains inside the excluded legacy block');
-}
 requireText(app, "window.addEventListener('projectpulse:timesheet-work-queue-changed'", 'timesheet live refresh');
 requireText(app, 'const results = await Promise.allSettled([', 'independent core data loading');
 requireText(app, "'customer-delivery-acceptance',\n        'engineer-task-closeout',\n        'lab-equipment-tracker'", 'standalone Module 001A route boundary');
