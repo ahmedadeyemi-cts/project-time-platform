@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 230
     env:
-      TARGET_SHA: 544b157e9c598534c55331e1c5c2dc3a46b9e931
+      TARGET_SHA: e258938f79ae8f9e5d1e1ee740fbdac4520d42c8
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
       GH_API_URL: https://api.github.com
       GH_TOKEN: ${{ github.token }}
@@ -94,7 +94,7 @@ jobs:
             exit 1
           }
 
-      - name: Verify deployment job, immutable web release, and authenticated UAT
+      - name: Verify deployment job, immutable release, and authenticated UAT
         shell: bash
         env:
           RUN_ID: ${{ steps.deployment.outputs.run_id }}
@@ -130,7 +130,9 @@ jobs:
             'Apply and verify Migrations 086, 088, and 093 inside Test private network' \
             'Deploy immutable Test API image' \
             'Deploy immutable Test web image' \
-            'Run protected-Test assigned-work visibility UAT'; do
+            'Run protected-Test authenticated functional UAT' \
+            'Run protected-Test assigned-work visibility UAT' \
+            'Run protected-Test utilization role-scoping UAT'; do
             jq -e --arg step "$required_step" '
               [.steps[] | select(.name == $step and .conclusion == "success")]
               | length == 1
@@ -139,6 +141,14 @@ jobs:
               exit 1
             }
           done
+
+          jq -e '
+            [.steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")]
+            | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Application-image rollback was not skipped.' >&2
+            exit 1
+          }
 
           raw_logs="$RUNNER_TEMP/deployment-job-logs.raw"
           text_logs="$RUNNER_TEMP/deployment-job-logs.txt"
@@ -171,6 +181,8 @@ jobs:
           echo "COMBINED_RELEASE_SHA=$TARGET_SHA"
           echo 'PR719_INCLUDED=TRUE'
           echo 'PR721_INCLUDED=TRUE'
+          echo 'PUBLIC_FACT_FALLBACK_INCLUDED=TRUE'
           echo 'PR719_PR721_PROTECTED_TEST_DEPLOYMENT=PASS'
+          echo 'APPLICATION_ROLLBACK=NONE'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
