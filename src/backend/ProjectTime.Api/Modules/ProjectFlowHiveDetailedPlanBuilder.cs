@@ -213,6 +213,8 @@ public static class ProjectFlowHiveDetailedPlanBuilder
                 .Distinct()
                 .OrderBy(value => value)
                 .ToArray();
+            if (citations.Length == 0) continue;
+
             var name = CanonicalName(task.Name);
             var key = WorkPackageKey(name, citations, task.Wbs, order);
 
@@ -412,7 +414,7 @@ public static class ProjectFlowHiveDetailedPlanBuilder
                 "Confirm operational ownership, support readiness, documentation location, acceptance status, unresolved action owners and due dates, warranty or support boundaries, and customer communication requirements.",
                 "Obtain the required handoff and acceptance evidence, archive governed artifacts, record lessons learned, and ensure no customer delivery or completion claim exceeds the approved evidence.",
                 "Close the work package only after PM and Engineering confirm deliverable status, exceptions, follow-up ownership, retention requirements, and the separately governed baseline or customer-delivery decision."
-            ]
+            }
         };
         return Combine(20, 1_200, values);
     }
