@@ -1,6 +1,7 @@
 const INSTALL_MARKER = '__pulseFlowHiveSowEvidenceAutoadmissionInstalled';
 const ENTERPRISE_PATH = /^\/api\/project-flowhive\/projects\/([0-9a-f-]{36})\/enterprise$/i;
 const GENERATION_PATH = /^\/api\/project-flowhive\/ai\/production-generate$/i;
+const DOCUMENT_OVERVIEW_PATH = '/api/project-workspace/overview';
 const activeAdmissions = new Map();
 const generationBlocks = new Map();
 
@@ -11,6 +12,30 @@ function storedSessionToken() {
   } catch {
     return '';
   }
+}
+
+function storedViewAsUserId() {
+  try {
+    const viewAs = JSON.parse(window.localStorage.getItem('projectPulseViewAsUser') || 'null');
+    return String(viewAs?.userId || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function authenticatedHeaders(extra = {}) {
+  const token = storedSessionToken();
+  const viewAsUserId = storedViewAsUserId();
+  return {
+    ...(token ? {
+      Authorization: `Bearer ${token}`,
+      'X-ProjectPulse-Session': token,
+      'X-Project-Pulse-Session': token,
+      'X-Session-Token': token
+    } : {}),
+    ...(viewAsUserId ? { 'X-ProjectPulse-View-As-User': viewAsUserId } : {}),
+    ...extra
+  };
 }
 
 function urlOf(input) {
@@ -52,8 +77,18 @@ export function evidenceScore(item) {
     + Number(item?.citationCount || 0);
 }
 
+export function sourceChronology(item) {
+  for (const value of [item?.sourceEffectiveAt, item?.effectiveAt, item?.uploadedAt]) {
+    const parsed = Date.parse(String(value || ''));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
 function evidenceRecency(item) {
-  for (const value of [item?.processedAt, item?.processingUpdatedAt, item?.uploadedAt]) {
+  const sourceTime = sourceChronology(item);
+  if (sourceTime > 0) return sourceTime;
+  for (const value of [item?.processedAt, item?.processingUpdatedAt]) {
     const parsed = Date.parse(String(value || ''));
     if (Number.isFinite(parsed)) return parsed;
   }
@@ -80,9 +115,50 @@ function filenameIdentity(item) {
   return `${category}|${file}`;
 }
 
+function preferredEvidence(left, right) {
+  const scoreDifference = evidenceScore(right) - evidenceScore(left);
+  if (scoreDifference !== 0) return scoreDifference > 0 ? right : left;
+  return evidenceRecency(right) > evidenceRecency(left) ? right : left;
+}
+
+function authoritativeRows(evidence) {
+  const rows = new Map();
+  for (const item of evidence || []) {
+    const key = evidenceIdentity(item);
+    const current = rows.get(key);
+    rows.set(key, current ? preferredEvidence(current, item) : item);
+  }
+  return [...rows.values()];
+}
+
+export function enrichEvidenceWithDocumentChronology(evidence, documents, projectId = '') {
+  const normalizedProjectId = String(projectId || '').trim().toLowerCase();
+  const byDocumentId = new Map();
+  for (const document of documents || []) {
+    const documentId = String(document?.documentId || document?.id || '').trim().toLowerCase();
+    const documentProjectId = String(document?.projectId || '').trim().toLowerCase();
+    if (!documentId || (normalizedProjectId && documentProjectId && documentProjectId !== normalizedProjectId)) continue;
+    byDocumentId.set(documentId, document);
+  }
+
+  return (evidence || []).map((item) => {
+    const documentId = String(item?.documentId || '').trim().toLowerCase();
+    const document = byDocumentId.get(documentId);
+    if (!document) return item;
+    const uploadedAt = item?.uploadedAt || document?.uploadedAt || null;
+    const sourceEffectiveAt = item?.sourceEffectiveAt || item?.effectiveAt || document?.effectiveAt || uploadedAt;
+    return {
+      ...item,
+      uploadedAt,
+      sourceEffectiveAt,
+      chronologySource: 'module_019_authorized_document_inventory'
+    };
+  });
+}
+
 export function pendingReplacementEvidence(evidence) {
   const groups = new Map();
-  for (const item of evidence || []) {
+  for (const item of authoritativeRows(evidence)) {
     const key = filenameIdentity(item);
     const current = groups.get(key) || [];
     current.push(item);
@@ -91,21 +167,30 @@ export function pendingReplacementEvidence(evidence) {
 
   return [...groups.entries()].flatMap(([key, items]) => {
     const documentIds = [...new Set(items.map((item) => String(item?.documentId || '').trim()).filter(Boolean))];
-    const pending = items.filter((item) => !item?.readyForAiPlanner);
-    if (documentIds.length < 2 || pending.length === 0) return [];
+    if (documentIds.length < 2) return [];
+
+    // Replacement authority follows source chronology, not readiness score.
+    // This prevents an older failed upload from blocking a newer processed SOW.
+    const ordered = [...items]
+      .filter((item) => sourceChronology(item) > 0)
+      .sort((left, right) => sourceChronology(right) - sourceChronology(left)
+        || String(right.documentId || '').localeCompare(String(left.documentId || '')));
+    if (ordered.length !== items.length) return [];
+
+    const newest = ordered[0];
+    const olderReady = ordered.slice(1).some((item) => item?.readyForAiPlanner);
+    if (newest?.readyForAiPlanner || !olderReady) return [];
+
+    const newestDocumentId = String(newest?.documentId || '').trim();
     return [{
       key,
-      originalFileName: pending[0]?.originalFileName || items[0]?.originalFileName || 'SOW',
+      originalFileName: newest?.originalFileName || items[0]?.originalFileName || 'SOW',
       documentIds,
-      pendingDocumentIds: [...new Set(pending.map((item) => String(item?.documentId || '').trim()).filter(Boolean))]
+      newestDocumentId,
+      newestSourceEffectiveAt: newest?.sourceEffectiveAt || newest?.effectiveAt || newest?.uploadedAt || null,
+      pendingDocumentIds: newestDocumentId ? [newestDocumentId] : []
     }];
   });
-}
-
-function preferredEvidence(left, right) {
-  const scoreDifference = evidenceScore(right) - evidenceScore(left);
-  if (scoreDifference !== 0) return scoreDifference > 0 ? right : left;
-  return evidenceRecency(right) > evidenceRecency(left) ? right : left;
 }
 
 export function dedupeEvidence(evidence) {
@@ -154,7 +239,7 @@ export function normalizeEvidenceBody(body) {
       pendingReplacementDocumentIds: pendingReplacements.flatMap((item) => item.pendingDocumentIds),
       duplicateRecordsConsolidated,
       explanation: pendingReplacements.length > 0
-        ? `A replacement SOW that reuses an existing filename is still being privately processed. FlowHive has blocked generation so an older ready SOW cannot be used as stale contractual scope.`
+        ? 'The newest same-name replacement SOW is still being privately processed. FlowHive has blocked generation so the older ready SOW cannot be used as stale contractual scope.'
         : approvedSowScopeReady
           ? `At least one approved, citation-ready SOW scope source is available to AI Planner.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
           : `AI Planner is automatically preparing the active Work Register SOW records. It requires private processing, an active authoritative version, citation indexing, and Scope of Services citations before generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
@@ -178,8 +263,8 @@ function blockedGenerationResponse(blocks) {
     module: '066',
     feature: 'project_flowhive_plan',
     status: 'flowhive_sow_evidence_not_ready',
-    message: 'FlowHive blocked generation because a replacement SOW is still being privately processed. The older ready document was not used as stale contractual scope.',
-    missingEvidence: blocks.map((item) => `${item.originalFileName}: replacement document processing and citation authority are not ready.`),
+    message: 'FlowHive blocked generation because the newest replacement SOW is still being privately processed. The older ready document was not used as stale contractual scope.',
+    missingEvidence: blocks.map((item) => `${item.originalFileName}: newest replacement processing and citation authority are not ready.`),
     warnings: ['Wait for private scanning, extraction, indexing, and authority reconciliation to complete, then retry AI Planner.'],
     stateChanged: false
   }), {
@@ -232,19 +317,12 @@ async function queueEvidence(nativeFetch, projectId, item) {
   const key = `${projectId}:${item.documentId}`;
   if (activeAdmissions.has(key)) return activeAdmissions.get(key);
 
-  const token = storedSessionToken();
   const promise = nativeFetch(
     `/api/project-flowhive/projects/${projectId}/sow-evidence/${item.documentId}/prepare`,
     {
       method: 'POST',
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? {
-          Authorization: `Bearer ${token}`,
-          'X-ProjectPulse-Session': token
-        } : {})
-      },
+      headers: authenticatedHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         approveCurrentVersion: false,
         approvalNote: '',
@@ -268,12 +346,77 @@ async function readJsonBody(response) {
   return response.clone().json().catch(() => null);
 }
 
+async function loadAuthoritativeDocumentChronology(nativeFetch, projectId) {
+  try {
+    const response = await nativeFetch(DOCUMENT_OVERVIEW_PATH, {
+      method: 'GET',
+      credentials: 'include',
+      headers: authenticatedHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' })
+    });
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return [];
+    const body = await readJsonBody(response);
+    const normalizedProjectId = String(projectId || '').trim().toLowerCase();
+    return (body?.documents || []).filter((document) => {
+      const documentProjectId = String(document?.projectId || '').trim().toLowerCase();
+      return !normalizedProjectId || !documentProjectId || documentProjectId === normalizedProjectId;
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function enrichEnterpriseEvidence(nativeFetch, body, projectId) {
+  if (!body || !Array.isArray(body.sowEvidence)) return body;
+  const documents = await loadAuthoritativeDocumentChronology(nativeFetch, projectId);
+  if (documents.length === 0) return body;
+  return {
+    ...body,
+    sowEvidence: enrichEvidenceWithDocumentChronology(body.sowEvidence, documents, projectId)
+  };
+}
+
 function recordGenerationBlocks(projectId, evidence) {
   const key = String(projectId || '').trim().toLowerCase();
-  if (!key) return;
+  if (!key) return [];
   const blocks = pendingReplacementEvidence(evidence);
   if (blocks.length > 0) generationBlocks.set(key, blocks);
   else generationBlocks.delete(key);
+  return blocks;
+}
+
+async function loadEnterpriseEvidence(nativeFetch, projectId) {
+  const response = await nativeFetch(`/api/project-flowhive/projects/${projectId}/enterprise`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: authenticatedHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' })
+  });
+  if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return null;
+  const body = await readJsonBody(response);
+  return enrichEnterpriseEvidence(nativeFetch, body, projectId);
+}
+
+async function refreshGenerationBlocks(nativeFetch, projectId) {
+  const key = String(projectId || '').trim().toLowerCase();
+  if (!key) return { refreshed: false, blocks: [] };
+  try {
+    let body = await loadEnterpriseEvidence(nativeFetch, key);
+    if (!body || !Array.isArray(body.sowEvidence)) {
+      return { refreshed: false, blocks: generationBlocks.get(key) || [] };
+    }
+
+    const candidates = body?.access?.canManage
+      ? queueCandidatesFromEvidence(body.sowEvidence, 6)
+      : [];
+    if (candidates.length > 0) {
+      await Promise.all(candidates.map((item) => queueEvidence(nativeFetch, key, item)));
+      body = await loadEnterpriseEvidence(nativeFetch, key) || body;
+    }
+
+    const blocks = recordGenerationBlocks(key, body.sowEvidence || []);
+    return { refreshed: true, blocks };
+  } catch {
+    return { refreshed: false, blocks: generationBlocks.get(key) || [] };
+  }
 }
 
 if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
@@ -286,9 +429,12 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     if (url?.origin === window.location.origin
       && GENERATION_PATH.test(url.pathname)
       && method === 'POST') {
-      const body = await requestJson(input, init);
-      const projectId = String(body?.plan?.projectId || '').trim().toLowerCase();
-      const blocks = generationBlocks.get(projectId) || [];
+      const requestBody = await requestJson(input, init);
+      const projectId = String(requestBody?.plan?.projectId || '').trim().toLowerCase();
+      const refreshed = await refreshGenerationBlocks(nativeFetch, projectId);
+      const blocks = refreshed.refreshed
+        ? refreshed.blocks
+        : generationBlocks.get(projectId) || [];
       if (blocks.length > 0) return blockedGenerationResponse(blocks);
       return nativeFetch(input, init);
     }
@@ -301,9 +447,10 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     let response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
 
+    const projectId = match[1].toLowerCase();
     let rawBody = await readJsonBody(response);
     if (!rawBody || !Array.isArray(rawBody.sowEvidence)) return response;
-    const projectId = match[1].toLowerCase();
+    rawBody = await enrichEnterpriseEvidence(nativeFetch, rawBody, projectId);
     recordGenerationBlocks(projectId, rawBody.sowEvidence);
     let body = normalizeEvidenceBody(rawBody);
     if (!body?.access?.canManage) return responseWithJson(response, body);
@@ -330,7 +477,10 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
     rawBody = await readJsonBody(response);
-    if (rawBody && Array.isArray(rawBody.sowEvidence)) recordGenerationBlocks(projectId, rawBody.sowEvidence);
+    if (rawBody && Array.isArray(rawBody.sowEvidence)) {
+      rawBody = await enrichEnterpriseEvidence(nativeFetch, rawBody, projectId);
+      recordGenerationBlocks(projectId, rawBody.sowEvidence);
+    }
     body = normalizeEvidenceBody(rawBody);
     return body ? responseWithJson(response, body) : response;
   };
