@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Text;
 using ProjectTime.Api.Ai;
 using ProjectTime.Api.Modules;
 
@@ -162,5 +164,33 @@ Assert(executable.Single(task => task.WbsNumber == "3.1").DetailedSteps!.Any(val
     "source_backed_implementation_steps_preserved");
 Assert(generated.Notes?.Contains("Generated executable tasks: 10", StringComparison.Ordinal) == true,
     "plan_notes_explain_detailed_task_count");
+
+Assert(
+    PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains(".doc", StringComparer.OrdinalIgnoreCase),
+    "legacy_doc_admitted_by_immutable_snapshot_policy");
+Assert(
+    PulseAiPrivateDocumentPipelinePolicy.ExplicitlyBlockedExtensions.Contains(".docm", StringComparer.OrdinalIgnoreCase),
+    "macro_enabled_word_remains_blocked");
+
+var boundedReader = typeof(PulseAiLegacyBinaryWordExtraction).GetMethod(
+    "ReadBoundedAsync",
+    BindingFlags.NonPublic | BindingFlags.Static);
+Assert(boundedReader is not null, "legacy_word_bounded_reader_available_for_regression");
+
+var oversizedOutput = new string('X', (16 * 1024 * 8) + 317);
+using var oversizedStream = new MemoryStream(Encoding.UTF8.GetBytes(oversizedOutput));
+using var oversizedReader = new StreamReader(
+    oversizedStream,
+    Encoding.UTF8,
+    detectEncodingFromByteOrderMarks: false,
+    bufferSize: 1_024,
+    leaveOpen: true);
+var boundedTask = boundedReader!.Invoke(
+    null,
+    new object?[] { oversizedReader, 1_024, CancellationToken.None }) as Task<string>;
+Assert(boundedTask is not null, "legacy_word_bounded_reader_invoked");
+var boundedOutput = await boundedTask!;
+Assert(boundedOutput.Length == 1_024, "legacy_word_retained_output_is_bounded");
+Assert(oversizedReader.EndOfStream, "legacy_word_excess_output_is_fully_drained");
 
 Console.WriteLine("FLOWHIVE_DETAILED_PLANNER_TESTS=PASS");
