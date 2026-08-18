@@ -89,6 +89,8 @@ const backgroundGate = read('src/frontend/project-time-web/src/background-reques
   'projectpulse:permissions-changed',
   'MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_V3',
   'moduleDirectoryAuthorityTimer',
+  'moduleDirectoryAuthorityActive',
+  'if (moduleDirectoryAuthorityActive) return;',
   '__projectPulsePermissionRefreshState',
   'role_not_applicable',
   'authorization_pending'

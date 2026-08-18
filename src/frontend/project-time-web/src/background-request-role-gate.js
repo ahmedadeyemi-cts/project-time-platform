@@ -22,6 +22,7 @@ const MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_CONTRACT = 'MODULE_DIRECTORY_SING
 let moduleDirectoryAuthorityTimer = 0;
 let moduleDirectoryAuthorityAttempt = 0;
 let moduleDirectoryAuthoritySource = '';
+let moduleDirectoryAuthorityActive = false;
 
 const PLATFORM_OPERATIONS_ROLES = new Set([
   'SUPER_ADMINISTRATOR',
@@ -430,12 +431,18 @@ function clearModuleDirectoryAuthoritySchedule() {
   moduleDirectoryAuthorityTimer = 0;
   moduleDirectoryAuthorityAttempt = 0;
   moduleDirectoryAuthoritySource = '';
+  moduleDirectoryAuthorityActive = false;
+  window.__projectPulseModuleDirectoryAuthorityScheduler = {
+    contract: MODULE_DIRECTORY_SINGLE_FLIGHT_SCHEDULER_CONTRACT,
+    active: false
+  };
 }
 
 function scheduleImmediateModulesAuthority(source) {
   moduleDirectoryAuthoritySource = source || moduleDirectoryAuthoritySource || 'module_directory_authority_retry';
-  if (moduleDirectoryAuthorityTimer) return;
+  if (moduleDirectoryAuthorityActive) return;
 
+  moduleDirectoryAuthorityActive = true;
   moduleDirectoryAuthorityAttempt = 0;
   const run = () => {
     moduleDirectoryAuthorityTimer = 0;
