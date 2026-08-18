@@ -6,6 +6,7 @@ import './projectpulse-authoritative-api.js';
 import './view-as-storage-compatibility.js';
 import './module-availability-bridge.js';
 import './flowhive-runtime-resilience.js';
+import './flowhive-sow-evidence-autoadmission.js';
 import './api-error-presentation.js';
 import './runtime-data-compatibility.js';
 import './role-workspace-effective-identity-compatibility.js';
