@@ -33,7 +33,7 @@ USER root
 # scan and path-confinement gates before invoking it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends antiword \
-    && antiword -h >/dev/null 2>&1 || true \
+    && (antiword -h >/dev/null 2>&1 || true) \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
