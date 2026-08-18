@@ -1,0 +1,109 @@
+name: FlowHive Detailed Planner CI
+
+on:
+  pull_request:
+    paths:
+      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
+      - 'database/rollback/094_flowhive_canonical_sow_authority_rollback.sql'
+      - 'deployment/containers/api/Dockerfile'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs'
+      - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'src/frontend/project-time-web/src/flowhive-enterprise-helpers.js'
+      - 'src/frontend/project-time-web/src/flowhive-runtime-resilience.js'
+      - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
+      - '.github/workflows/flowhive-detailed-planner-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout pull-request source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Verify detailed FlowHive source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'ProjectFlowHiveDetailedPlanBuilder.Build(request.Plan, composition.FlowHivePlan)' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'replaced_flowhive_builder != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'Return each distinct source-backed SOW work package exactly once' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_canonical_work_package_instruction != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'product, platform, service, model, software or firmware version' \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq 'Plan, Design, Implement, Validate, and Release' \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq "import './flowhive-runtime-resilience.js';" \
+            src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
+          grep -Fq "import './flowhive-sow-evidence-autoadmission.js';" \
+            src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
+          grep -Fq 'module_availability_unavailable' \
+            src/frontend/project-time-web/src/flowhive-runtime-resilience.js
+          grep -Fq 'duplicateRecordsConsolidated' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq '/sow-evidence/${item.documentId}/prepare' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'PROJECTPULSE_LEGACY_WORD_EXTRACTOR_PATH=/usr/bin/antiword' \
+            deployment/containers/api/Dockerfile
+          grep -Fq '&& (antiword -h >/dev/null 2>&1 || true)' \
+            deployment/containers/api/Dockerfile
+          grep -Fq '094_flowhive_canonical_sow_authority' \
+            database/migrations/094_flowhive_canonical_sow_authority.sql
+          grep -Fq 'active_work_register_sow_private_version_ready' \
+            database/migrations/094_flowhive_canonical_sow_authority.sql
+
+      - name: Validate generated-source post-processor
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py
+          grep -Fq 'EnableFlowHiveLegacyWordExtraction' src/backend/ProjectTime.Api/Directory.Build.props
+          grep -Fq 'ole_compound_word' src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py
+          grep -Fq 'legacy_doc_antiword_text_only' src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
+
+      - name: Execute Migration 094 regression
+        shell: bash
+        run: bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute detailed five-phase planner regression
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci
+
+      - name: Build complete frontend
+        working-directory: src/frontend/project-time-web
+        run: npm run build

@@ -1,3 +1,6 @@
+import './flowhive-runtime-resilience.js';
+import './flowhive-sow-evidence-autoadmission.js';
+
 const PHASES = Object.freeze([
   { wbs: '1', name: 'Plan' },
   { wbs: '2', name: 'Design' },

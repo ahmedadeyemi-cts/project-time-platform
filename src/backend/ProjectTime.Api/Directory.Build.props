@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    The API project already generates a compiler-compatible private document
+    extractor during GenerateScopedRbacSources. Apply the reviewed legacy Word
+    adapter only to that ignored compiler copy after the existing ClosedXML
+    compatibility rewrite. The canonical extractor remains readable and the
+    post-processor fails closed if any expected source anchor changes.
+  -->
+  <Target Name="EnableFlowHiveLegacyWordExtraction"
+          AfterTargets="GenerateScopedRbacSources"
+          BeforeTargets="CoreCompile"
+          Condition="'$(PulseAiPrivateExtractorGenerated)' != ''">
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/build/enable-flowhive-legacy-word-extraction.py&quot; --path &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq '&quot;.doc&quot; =&gt; await PulseAiLegacyBinaryWordExtraction.ExtractAsync' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'extension.Equals(&quot;.doc&quot;, StringComparison.OrdinalIgnoreCase)' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+    <Exec Command="grep -Fq 'ole_compound_word' &quot;$(PulseAiPrivateExtractorGenerated)&quot;" />
+  </Target>
+</Project>
