@@ -70,13 +70,9 @@ import './account-center.css';
 import './workspace-navigation.css';
 import './enterprise-contrast-guard.css';
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error('Pulse root mount is unavailable.');
-}
-protectReactOwnedRoot(rootElement);
-
-createRoot(rootElement).render(
+createRoot(
+  protectReactOwnedRoot(document.getElementById('root'))
+).render(
   <React.StrictMode>
     <ApplicationErrorBoundary>
       <App />

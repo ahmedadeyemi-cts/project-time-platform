@@ -28,20 +28,21 @@ function currentRouteKey(locationObject = globalThis.location) {
 }
 
 export function protectReactOwnedRoot(root, documentObject = globalThis.document) {
-  const protectedNodes = [documentObject?.documentElement, documentObject?.body, root];
-  protectedNodes.forEach(setWritingAssistantOptOut);
-
-  if (root && typeof root.setAttribute === 'function') {
-    root.setAttribute('data-projectpulse-react-owned-root', 'true');
+  if (!root || typeof root.setAttribute !== 'function') {
+    throw new Error('Pulse root mount is unavailable.');
   }
 
+  const protectedNodes = [documentObject?.documentElement, documentObject?.body, root];
+  protectedNodes.forEach(setWritingAssistantOptOut);
+  root.setAttribute('data-projectpulse-react-owned-root', 'true');
+
   globalThis.__projectPulseExternalDomMutationResilience = Object.freeze({
-    reactOwnedRootProtected: Boolean(root),
+    reactOwnedRootProtected: true,
     writingAssistantOptOut: true,
     recoveryWindowMs: EXTERNAL_DOM_RECOVERY_WINDOW_MS
   });
 
-  return Boolean(root);
+  return root;
 }
 
 export function isRecoverableExternalDomMutationError(error) {

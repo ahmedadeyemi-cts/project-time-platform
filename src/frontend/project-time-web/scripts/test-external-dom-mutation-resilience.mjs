@@ -19,7 +19,9 @@ assert.match(indexSource, /<html[^>]+data-gramm="false"[^>]+data-gramm_editor="f
 assert.match(indexSource, /<body[^>]+data-gramm="false"[^>]+data-gramm_editor="false"[^>]+data-enable-grammarly="false"/);
 assert.ok(indexSource.includes('<div id="root"></div>'));
 assert.ok(mainSource.includes("import { protectReactOwnedRoot } from './external-dom-mutation-resilience.js';"));
-assert.ok(mainSource.indexOf('protectReactOwnedRoot(rootElement);') < mainSource.indexOf('createRoot(rootElement).render('));
+const imports = mainSource.slice(0, mainSource.indexOf('createRoot(')).trim();
+assert.ok(imports.endsWith("import './enterprise-contrast-guard.css';"));
+assert.ok(mainSource.includes("createRoot(\n  protectReactOwnedRoot(document.getElementById('root'))\n).render("));
 assert.ok(boundarySource.includes('isRecoverableExternalDomMutationError(error)'));
 assert.ok(boundarySource.includes('claimExternalDomMutationRecovery()'));
 assert.ok(boundarySource.includes('publishExternalDomMutationRecovery(error, info)'));
@@ -56,7 +58,11 @@ function memoryStorage() {
 const documentElement = fakeElement();
 const body = fakeElement();
 const root = fakeElement();
-assert.equal(protectReactOwnedRoot(root, { documentElement, body }), true);
+assert.equal(protectReactOwnedRoot(root, { documentElement, body }), root);
+assert.throws(
+  () => protectReactOwnedRoot(null, { documentElement, body }),
+  /Pulse root mount is unavailable\./
+);
 
 for (const node of [documentElement, body, root]) {
   assert.equal(node.getAttribute('data-gramm'), 'false');
@@ -117,6 +123,8 @@ assert.equal(dispatchedEvents[0].type, 'projectpulse:ui-recovery');
 console.log('EXTERNAL_DOM_MUTATION_SOURCE_WIRING=PASS');
 console.log('EXTERNAL_DOM_MUTATION_ERROR_CLASSIFICATION=PASS');
 console.log('WRITING_ASSISTANT_OPT_OUT=PASS');
+console.log('ROOT_MOUNT_CONTRACT=PASS');
+console.log('CONTRAST_GUARD_IMPORT_ORDER=PASS');
 console.log('ROUTE_SCOPED_RECOVERY_RATE_LIMIT=PASS');
 console.log('UI_RECOVERY_TELEMETRY=PASS');
 console.log('EXTERNAL_DOM_MUTATION_RESILIENCE=PASS');
