@@ -3,6 +3,7 @@ import {
   dedupeEvidence,
   evidenceIdentity,
   normalizeEvidenceBody,
+  pendingReplacementEvidence,
   queueCandidatesFromEvidence
 } from '../src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js';
 
@@ -61,6 +62,10 @@ assert.ok(
   'The replacement SOW must not be hidden by an older ready record.'
 );
 
+const replacementBlocks = pendingReplacementEvidence([oldReady, replacement]);
+assert.equal(replacementBlocks.length, 1, 'A pending same-name replacement must block stale-scope generation.');
+assert.deepEqual(replacementBlocks[0].pendingDocumentIds, [replacement.documentId]);
+
 const replacementCandidates = queueCandidatesFromEvidence([oldReady, replacement]);
 assert.deepEqual(
   replacementCandidates.map((item) => item.documentId),
@@ -92,14 +97,38 @@ assert.equal(
 );
 assert.notEqual(evidenceIdentity(oldReady), evidenceIdentity(sameFileDifferentContent));
 
-const normalized = normalizeEvidenceBody({
+const normalizedPending = normalizeEvidenceBody({
   access: { canManage: true },
   sowEvidence: [oldReady, replacement, sameDocumentDuplicate]
 });
-assert.equal(normalized.sowEvidence.length, 2);
-assert.equal(normalized.sowEvidenceSummary.candidateCount, 2);
-assert.equal(normalized.sowEvidenceSummary.readyCount, 1);
-assert.equal(normalized.sowEvidenceSummary.duplicateRecordsConsolidated, 1);
-assert.equal(normalized.sowEvidenceSummary.approvedSowScopeReady, true);
+assert.equal(normalizedPending.sowEvidence.length, 2);
+assert.equal(normalizedPending.sowEvidenceSummary.candidateCount, 2);
+assert.equal(normalizedPending.sowEvidenceSummary.readyCount, 1);
+assert.equal(normalizedPending.sowEvidenceSummary.duplicateRecordsConsolidated, 1);
+assert.equal(normalizedPending.sowEvidenceSummary.pendingReplacementCount, 1);
+assert.deepEqual(normalizedPending.sowEvidenceSummary.pendingReplacementDocumentIds, [replacement.documentId]);
+assert.equal(
+  normalizedPending.sowEvidenceSummary.approvedSowScopeReady,
+  false,
+  'An older ready SOW must not make the workspace ready while its replacement is processing.'
+);
+
+const readyReplacement = {
+  ...replacement,
+  activeVersionId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+  documentVersion: 'SOW-2',
+  processingStatus: 'ready',
+  authorityStatus: 'canonical',
+  indexStatus: 'ready',
+  citationCount: 12,
+  scopeCitationCount: 4,
+  readyForAiPlanner: true
+};
+const normalizedReady = normalizeEvidenceBody({
+  access: { canManage: true },
+  sowEvidence: [oldReady, readyReplacement]
+});
+assert.equal(normalizedReady.sowEvidenceSummary.pendingReplacementCount, 0);
+assert.equal(normalizedReady.sowEvidenceSummary.approvedSowScopeReady, true);
 
 console.log('FLOWHIVE_SOW_EVIDENCE_AUTOADMISSION_REGRESSION=PASS');
