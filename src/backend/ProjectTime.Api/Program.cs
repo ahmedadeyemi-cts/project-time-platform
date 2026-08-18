@@ -2045,7 +2045,7 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
 
     var start = weekStart ?? DateOnly.FromDateTime(DateTime.UtcNow.Date);
 
-    while (start.DayOfWeek != DayOfWeek.Monday)
+    while (start.DayOfWeek != DayOfWeek.Sunday)
     {
         start = start.AddDays(-1);
     }
@@ -2120,15 +2120,23 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
                 NULLIF(to_jsonb(pt)->>'work_type', ''),
                 'project_task'
             ) AS work_task_category,
-            COALESCE(NULLIF(to_jsonb(pt)->>'service_request_number', ''), '') AS service_request_number,
+            COALESCE(
+                NULLIF(to_jsonb(pt)->>'service_request_number', ''),
+                CASE WHEN p.project_code ~* '^SR-' THEN p.project_code ELSE '' END
+            ) AS service_request_number,
             pt.billable AS billable,
             COALESCE(pt.utilization_bucket, CASE WHEN pt.billable THEN 'billable' ELSE 'non_billable' END) AS utilization_bucket,
             COALESCE(pm.display_name, 'No PM assigned') AS project_manager_name,
             COALESCE(NULLIF(p.work_type, ''), 'Project') AS work_type,
             CASE
-                WHEN lower(COALESCE(NULLIF(p.work_type, ''), 'Project')) IN ('project', 'iqs')
-                    THEN 'regular'
-                ELSE 'requests'
+                WHEN p.project_code ~* '^(SR|PRES|INT)-'
+                  OR regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (
+                      'servicerequest', 'sr', 'presales', 'presale', 'pres',
+                      'internal', 'internalproject', 'internaltask'
+                  )
+                  OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL
+                    THEN 'requests'
+                ELSE 'regular'
             END AS time_entry_section,
             COALESCE(NULLIF(pa.assigned_hours, 0), resource_alloc.allocated_hours_per_task, 0)::numeric AS assigned_hours,
             COALESCE(used_time.used_hours, 0)::numeric AS used_hours,
@@ -2177,31 +2185,33 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
         int O(string name) => reader.GetOrdinal(name);
         var workTaskCategory = reader.GetString(O("work_task_category"));
         var serviceRequestNumber = reader.GetString(O("service_request_number"));
-        var isServiceRequest = string.Equals(
-                workTaskCategory.Trim(),
-                "service_request_task",
-                StringComparison.OrdinalIgnoreCase)
-            || !string.IsNullOrWhiteSpace(serviceRequestNumber);
+        var projectCode = reader.GetString(O("project_code"));
+        var timeEntrySection = reader.GetString(O("time_entry_section"));
+        var isRequestFamily = string.Equals(
+            timeEntrySection,
+            "requests",
+            StringComparison.OrdinalIgnoreCase);
 
         tasks.Add(new
         {
             assignmentId = reader.GetGuid(O("assignment_id")),
             projectId = reader.GetGuid(O("project_id")),
             taskId = reader.GetGuid(O("task_id")),
-            projectCode = reader.GetString(O("project_code")),
+            projectCode,
             projectName = reader.GetString(O("project_name")),
             clientName = reader.GetString(O("client_name")),
             taskCode = reader.GetString(O("task_code")),
             taskName = reader.GetString(O("task_name")),
             taskDescription = reader.IsDBNull(O("task_description")) ? null : reader.GetString(O("task_description")),
-            rowType = isServiceRequest ? "service_request" : "projectTask",
+            rowType = isRequestFamily ? "service_request" : "projectTask",
             workTaskCategory,
+            requestNumber = isRequestFamily ? projectCode : string.Empty,
             serviceRequestNumber,
             billable = reader.GetBoolean(O("billable")),
             utilizationBucket = reader.GetString(O("utilization_bucket")),
             projectManagerName = reader.GetString(O("project_manager_name")),
             workType = reader.GetString(O("work_type")),
-            timeEntrySection = reader.GetString(O("time_entry_section")),
+            timeEntrySection,
             assignedHours = reader.GetDecimal(O("assigned_hours")),
             usedHours = reader.GetDecimal(O("used_hours")),
             remainingHours = reader.GetDecimal(O("remaining_hours")),
@@ -2214,6 +2224,8 @@ app.MapGet("/api/assignments/available-tasks", async (DateOnly? weekStart, HttpC
         weekStart = start,
         weekEnd = end,
         count = tasks.Count,
+        authoritativeSource = "project_assignments",
+        activityClassification = "durable_project_code_and_work_type",
         tasks
     });
 });

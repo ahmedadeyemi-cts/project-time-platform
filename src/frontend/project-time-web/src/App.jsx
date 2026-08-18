@@ -766,14 +766,26 @@ const activitySourceOptions = [
 
 function projectPulseTaskTimeEntrySection(task = {}) {
   const explicitSection = String(task.timeEntrySection || task.time_entry_section || '').trim().toLowerCase();
-  if (explicitSection === 'requests') return 'requests';
-  if (explicitSection === 'regular') return 'regular';
-
+  const projectCode = String(task.projectCode || task.project_code || '').trim().toUpperCase();
+  const serviceRequestNumber = String(
+    task.serviceRequestNumber || task.service_request_number || ''
+  ).trim();
+  const requestNumber = String(task.requestNumber || task.request_number || '').trim();
   const workType = String(task.workType || task.work_type || 'Project')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '');
+  const requestWorkTypes = new Set([
+    'servicerequest', 'sr', 'presales', 'presale', 'pres',
+    'internal', 'internalproject', 'internaltask'
+  ]);
+  const isDurableRequestFamily = /^(SR|PRES|INT)-/.test(projectCode)
+    || serviceRequestNumber.length > 0
+    || requestNumber.length > 0
+    || requestWorkTypes.has(workType);
 
+  if (isDurableRequestFamily || explicitSection === 'requests') return 'requests';
+  if (explicitSection === 'regular') return 'regular';
   return workType === 'project' || workType === 'iqs' ? 'regular' : 'requests';
 }
 
