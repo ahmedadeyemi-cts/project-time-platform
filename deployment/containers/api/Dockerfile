@@ -23,10 +23,24 @@ RUN dotnet publish src/backend/ProjectTime.Api/ProjectTime.Api.csproj \
     /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+
+USER root
+
+# FlowHive may receive legacy binary Microsoft Word .doc SOWs that remain
+# downloadable in Modules 055C and 019. antiword provides a small, local,
+# text-only converter for those files. It never receives network access or
+# executes document macros; the application still requires the private malware
+# scan and path-confinement gates before invoking it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends antiword \
+    && antiword -h >/dev/null 2>&1 || true \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=5080 \
-    DOTNET_EnableDiagnostics=0
+    DOTNET_EnableDiagnostics=0 \
+    PROJECTPULSE_LEGACY_WORD_EXTRACTOR_PATH=/usr/bin/antiword
 
 EXPOSE 5080
 
