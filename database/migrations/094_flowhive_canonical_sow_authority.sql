@@ -102,9 +102,22 @@ BEGIN
       AND version.index_status IN ('lexical_ready','embedding_ready','ready')
     FOR UPDATE OF version;
 
-    IF NOT FOUND OR document_row.authority_status = 'canonical' THEN
+    IF NOT FOUND THEN
         RETURN;
     END IF;
+    IF document_row.authority_status = 'canonical' THEN
+        RETURN;
+    END IF;
+
+    -- Serialize authority selection by project and version label so two workers
+    -- completing equivalent SOW records at the same time cannot race the unique
+    -- canonical-version boundary.
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(
+            document_row.project_id::TEXT || '|' || document_row.document_version,
+            94
+        )
+    );
 
     -- The existing private-runtime index permits one canonical row for a given
     -- project and document_version. A duplicate active source therefore becomes
