@@ -1,0 +1,45 @@
+name: FlowHive Detailed Planner CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
+      - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
+      - 'tests/FlowHiveDetailedPlannerTests/**'
+      - '.github/workflows/flowhive-detailed-planner-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout pull-request source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify compiler-copy routing contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'ProjectFlowHiveDetailedPlanBuilder.Build(request.Plan, composition.FlowHivePlan)' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'replaced_flowhive_builder != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+
+      - name: Build ProjectTime API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Execute detailed five-phase planner regression
+        run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
