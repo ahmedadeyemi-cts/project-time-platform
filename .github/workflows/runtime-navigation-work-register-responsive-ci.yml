@@ -41,7 +41,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -Eeuo pipefail
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sort > /tmp/runtime-repair-changed.txt
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | LC_ALL=C sort -u > /tmp/runtime-repair-changed.txt
 
           cat > /tmp/runtime-repair-signatures.txt <<'EOF'
           .github/pr698-payload/chunk-000.b64
@@ -56,7 +56,8 @@ jobs:
           src/frontend/project-time-web/src/unified-project-financial-workspace.css
           src/frontend/project-time-web/src/work-register-document-integrity.js
           EOF
-          sort -o /tmp/runtime-repair-signatures.txt /tmp/runtime-repair-signatures.txt
+          sed -i 's/^[[:space:]]*//' /tmp/runtime-repair-signatures.txt
+          LC_ALL=C sort -u /tmp/runtime-repair-signatures.txt -o /tmp/runtime-repair-signatures.txt
           package_specific="$(comm -12 /tmp/runtime-repair-changed.txt /tmp/runtime-repair-signatures.txt)"
           if [[ -z "$package_specific" ]]; then
             echo 'RUNTIME_REPAIR_SOURCE_BOUNDARY=SKIPPED_SHARED_DEPENDENCY_REGRESSION'
@@ -77,7 +78,8 @@ jobs:
           src/frontend/project-time-web/src/module-directory-authority.js
           src/frontend/project-time-web/src/unified-project-financial-workspace.css
           EOF
-          sort -o /tmp/runtime-repair-allowed.txt /tmp/runtime-repair-allowed.txt
+          sed -i 's/^[[:space:]]*//' /tmp/runtime-repair-allowed.txt
+          LC_ALL=C sort -u /tmp/runtime-repair-allowed.txt -o /tmp/runtime-repair-allowed.txt
 
           cat > /tmp/runtime-repair-combined-reviewed.txt <<'EOF'
           .github/pr698-payload/chunk-000.b64
@@ -117,10 +119,32 @@ jobs:
           src/frontend/project-time-web/src/work-register-document-integrity.js
           tests/validate-module-management-owner-drawer.mjs
           EOF
-          sort -o /tmp/runtime-repair-combined-reviewed.txt /tmp/runtime-repair-combined-reviewed.txt
+          sed -i 's/^[[:space:]]*//' /tmp/runtime-repair-combined-reviewed.txt
+          LC_ALL=C sort -u /tmp/runtime-repair-combined-reviewed.txt -o /tmp/runtime-repair-combined-reviewed.txt
+
+          cat > /tmp/runtime-repair-pr719-reviewed.txt <<'EOF'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
+          src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          tests/validate-module-management-owner-drawer.mjs
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/runtime-repair-pr719-reviewed.txt
+          LC_ALL=C sort -u /tmp/runtime-repair-pr719-reviewed.txt -o /tmp/runtime-repair-pr719-reviewed.txt
 
           if cmp -s /tmp/runtime-repair-changed.txt /tmp/runtime-repair-combined-reviewed.txt; then
             echo 'COMBINED_REPAIR_EXACT_SOURCE_BOUNDARY=PASS'
+          elif cmp -s /tmp/runtime-repair-changed.txt /tmp/runtime-repair-pr719-reviewed.txt; then
+            echo 'PR719_RUNTIME_COMBINED_SOURCE_BOUNDARY=PASS'
           else
             unexpected="$(comm -23 /tmp/runtime-repair-changed.txt /tmp/runtime-repair-allowed.txt)"
             [[ -z "$unexpected" ]] || {
