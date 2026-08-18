@@ -34,6 +34,16 @@ assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
 assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
 assert.match(workflow, /Apply and verify Migrations 086, 088, and 093 inside Test private network/);
 assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);
+assert.match(
+  workflow,
+  /\(NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history[\s\S]*?\)\)::text;/,
+  'Migration 093 verification must cast the complete NOT EXISTS predicate after boolean evaluation'
+);
+assert.doesNotMatch(
+  workflow,
+  /\n\s{12}NOT EXISTS \(\s*SELECT 1\s*FROM work_register_task_assignment_history history/,
+  'Migration 093 verification must not apply NOT to a text-cast EXISTS result'
+);
 
 const bashScript = [
   'set -Eeuo pipefail',
