@@ -1,0 +1,510 @@
+name: Observe PR 731 Modules Loading Across Views
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr731-modules-nonstarving-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr731-modules-nonstarving-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr731-modules-nonstarving-20260818'
+    name: Verify exact release and Modules hydration in Chromium
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      TARGET_SHA: a5ba6f30d4aecafc6aeed1a214ed4063e9bbb897
+      BASE: https://phd-west-test.onenecklab.com
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      EVIDENCE_DIR: /tmp/pr731-modules-loading-evidence
+
+    steps:
+      - name: Locate and verify exact governed protected-Test deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || {
+            echo 'ERROR: Observer is restricted to protected Test.' >&2
+            exit 1
+          }
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          run_json=''
+          for attempt in $(seq 1 360); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=100")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            [[ -n "$run_json" ]] && break
+            sleep 5
+          done
+          [[ -n "$run_json" ]] || {
+            echo "ERROR: No governed protected-Test deployment was found for $TARGET_SHA." >&2
+            exit 1
+          }
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "GOVERNED_DEPLOYMENT_RUN_ID=$run_id"
+
+          completed=false
+          for attempt in $(seq 1 900); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
+            observed_sha="$(jq -r '.head_sha' <<<"$run_json")"
+            echo "GOVERNED_DEPLOYMENT_STATUS=$status CONCLUSION=$conclusion SHA=$observed_sha"
+            [[ "$observed_sha" == "$TARGET_SHA" ]] || {
+              echo 'ERROR: Deployment run does not target the required release.' >&2
+              exit 1
+            }
+            if [[ "$status" == completed ]]; then
+              [[ "$conclusion" == success ]] || {
+                echo "ERROR: Governed protected-Test deployment concluded $conclusion." >&2
+                exit 1
+              }
+              completed=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$completed" == true ]] || {
+            echo 'ERROR: Governed protected-Test deployment did not complete within the observation window.' >&2
+            exit 1
+          }
+
+          jobs_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+          job_json="$(jq -c '[.jobs[] | select(.name == "Validate, migrate, deploy, and verify protected Test")] | last // empty' <<<"$jobs_json")"
+          [[ -n "$job_json" ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not found.' >&2
+            exit 1
+          }
+          [[ "$(jq -r '.conclusion // ""' <<<"$job_json")" == success ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not successful.' >&2
+            exit 1
+          }
+
+          for required_step in \
+            'Guard exact source and validate release' \
+            'Build immutable API, web, and migration images' \
+            'Apply and verify Migrations 086, 088, and 093 inside Test private network' \
+            'Deploy immutable Test API image' \
+            'Deploy immutable Test web image' \
+            'Run protected-Test authenticated functional UAT' \
+            'Run protected-Test assigned-work visibility UAT' \
+            'Run protected-Test utilization role-scoping UAT'; do
+            jq -e --arg step "$required_step" '
+              [.steps[] | select(.name == $step and .conclusion == "success")] | length == 1
+            ' <<<"$job_json" >/dev/null || {
+              echo "ERROR: Required protected-Test step did not pass: $required_step" >&2
+              exit 1
+            }
+          done
+
+          jq -e '
+            [.steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")] | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Application-image rollback was not skipped.' >&2
+            exit 1
+          }
+
+          jq -n \
+            --arg release "$TARGET_SHA" \
+            --argjson runId "$run_id" \
+            '{release:$release,deploymentRunId:$runId,deploymentConclusion:"success",applicationRollback:false,environment:"protected-test"}' \
+            > "$EVIDENCE_DIR/deployment-contract.json"
+          echo "EXACT_PROTECTED_TEST_RELEASE=$TARGET_SHA"
+          echo 'APPLICATION_ROLLBACK=NONE'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Install Chromium harness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HARNESS="$RUNNER_TEMP/pr731-modules-loading"
+          install -d -m 0700 "$HARNESS" "$EVIDENCE_DIR"
+          cd "$HARNESS"
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run authenticated Modules loading acceptance
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: Protected-Test login credential is unavailable.' >&2
+            exit 1
+          }
+          HARNESS="$RUNNER_TEMP/pr731-modules-loading"
+          cat > "$HARNESS/browser-uat.mjs" <<'NODE'
+          import { chromium, request } from 'playwright';
+          import fs from 'node:fs';
+
+          const base = process.env.BASE;
+          const password = process.env.TEST_LOGIN_PASSWORD;
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const releaseSha = process.env.TARGET_SHA;
+          const maximumHydrationMs = 12_000;
+          const stressDurationMs = 20_000;
+          const maximumRbacRequests = 20;
+          const rbacPaths = [
+            '/api/rbac/v1/bootstrap',
+            '/api/rbac/v1/matrix',
+            '/api/security/me',
+            '/api/rbac/v1/modules'
+          ];
+          const identities = [
+            { email: 'jason.mosier@ussignal.local', role: 'Engineering' },
+            { email: 'demo.manager@ussignal.local', role: 'Manager' },
+            { email: 'heather.schrock@ussignal.local', role: 'Project Management' },
+            { email: 'juli.cambron@ussignal.local', role: 'Accounting' },
+            { email: 'darren.olson@ussignal.local', role: 'Executive' },
+            { email: 'project.team.coordinator@ussignal.local', role: 'Project Team Coordinator' }
+          ];
+          const layouts = ['classic', 'table'];
+          const results = [];
+
+          function pathFromUrl(value) {
+            try { return new URL(value).pathname; } catch { return ''; }
+          }
+
+          function totalRequests(counts) {
+            return Object.values(counts).reduce((sum, value) => sum + value, 0);
+          }
+
+          async function login(identity) {
+            const api = await request.newContext({ baseURL: base });
+            const response = await api.post('/api/auth/local/login', {
+              headers: {
+                'Cache-Control': 'no-cache, no-store, max-age=0',
+                'Content-Type': 'application/json',
+                Origin: base,
+                'Sec-Fetch-Site': 'same-origin'
+              },
+              data: { username: identity.email, password }
+            });
+            if (!response.ok()) {
+              const text = await response.text();
+              await api.dispose();
+              throw new Error(`${identity.email} login returned HTTP ${response.status()}: ${text.slice(0, 300)}`);
+            }
+            const loginPayload = await response.json();
+            if (typeof loginPayload?.sessionToken !== 'string' || loginPayload.sessionToken.length < 20) {
+              await api.dispose();
+              throw new Error(`${identity.email} login did not return a durable session token.`);
+            }
+            return { api, loginPayload };
+          }
+
+          async function waitForDirectory(page, expectedLayout) {
+            await page.waitForFunction(({ layout }) => {
+              const visible = (element) => {
+                if (!element) return false;
+                const style = window.getComputedStyle(element);
+                const box = element.getBoundingClientRect();
+                return style.display !== 'none'
+                  && style.visibility !== 'hidden'
+                  && style.opacity !== '0'
+                  && box.width > 0
+                  && box.height > 0;
+              };
+
+              const portal = document.querySelector('#modules-directory-page[data-refresh-contract="MODULE_DIRECTORY_NONSTARVING_REFRESH_V4"]');
+              if (!visible(portal)) return false;
+              if (window.__projectPulseEffectiveNavigation?.state !== 'ready') return false;
+
+              const loadingVisible = Array.from(document.querySelectorAll('h2, strong'))
+                .some((element) => element.textContent?.trim() === 'Loading authorized modules' && visible(element));
+              if (loadingVisible) return false;
+
+              if (document.documentElement.dataset.pulseLayout !== layout) return false;
+              if (layout === 'classic') {
+                return Array.from(document.querySelectorAll('.modules-directory-card')).some(visible);
+              }
+              return Array.from(document.querySelectorAll('.module-management-table tbody tr')).some(visible);
+            }, { layout: expectedLayout }, { timeout: maximumHydrationMs });
+          }
+
+          async function validateView(identity, session, layout, round) {
+            const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+            const diagnostics = {
+              identity: identity.email,
+              role: identity.role,
+              layout,
+              round,
+              hydrationMs: 0,
+              visibleCount: 0,
+              gridCount: 0,
+              rbacRequestCount: 0,
+              requestCounts: Object.fromEntries(rbacPaths.map((path) => [path, 0])),
+              responseStatuses: Object.fromEntries(rbacPaths.map((path) => [path, []])),
+              refreshEvents: 0,
+              navigationState: '',
+              refreshContract: '',
+              schedulerContract: '',
+              consoleErrors: []
+            };
+            let page;
+
+            try {
+              await context.addInitScript(({ authenticatedSession, requestedLayout, stressDuration }) => {
+                window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(authenticatedSession));
+                window.localStorage.removeItem('projectPulseViewAsUser');
+                window.localStorage.setItem('pulse-enterprise-experience', requestedLayout);
+                window.localStorage.setItem('pulse-enterprise-experience-default-version', 'table-v1');
+                window.__pr731RefreshEvents = 0;
+                window.__pr731StressDeadline = Date.now() + stressDuration;
+                window.__pr731StressTimer = window.setInterval(() => {
+                  window.__pr731RefreshEvents += 1;
+                  window.dispatchEvent(new CustomEvent('projectpulse:module-availability-changed', {
+                    detail: { source: 'pr731_continuous_refresh_pressure' }
+                  }));
+                }, 15);
+              }, {
+                authenticatedSession: session,
+                requestedLayout: layout,
+                stressDuration: stressDurationMs
+              });
+
+              page = await context.newPage();
+              page.on('request', (webRequest) => {
+                const path = pathFromUrl(webRequest.url());
+                const match = rbacPaths.find((candidate) => candidate === path);
+                if (match) diagnostics.requestCounts[match] += 1;
+              });
+              page.on('response', (response) => {
+                const path = pathFromUrl(response.url());
+                const match = rbacPaths.find((candidate) => candidate === path);
+                if (match) diagnostics.responseStatuses[match].push(response.status());
+              });
+              page.on('console', (message) => {
+                if (message.type() === 'error') {
+                  diagnostics.consoleErrors.push(message.text().replace(/[A-Za-z0-9_-]{40,}/g, '[REDACTED]').slice(0, 500));
+                }
+              });
+              page.on('pageerror', (error) => diagnostics.consoleErrors.push(String(error?.message || error).slice(0, 500)));
+
+              const cacheBuster = `${Date.now()}-${identity.email.split('@')[0]}-${layout}-${round}`;
+              const startedAt = Date.now();
+              await page.goto(`${base}/?pr731_modules_uat=${encodeURIComponent(cacheBuster)}#modules`, {
+                waitUntil: 'domcontentloaded',
+                timeout: 120_000
+              });
+              await waitForDirectory(page, layout);
+              diagnostics.hydrationMs = Date.now() - startedAt;
+
+              const stressState = await page.evaluate(() => ({
+                deadline: Number(window.__pr731StressDeadline || 0),
+                refreshEvents: Number(window.__pr731RefreshEvents || 0),
+                navigationState: window.__projectPulseEffectiveNavigation?.state || '',
+                refreshContract: window.__projectPulseEffectiveNavigation?.refreshContract || '',
+                schedulerContract: window.__projectPulseModuleDirectoryAuthorityScheduler?.contract || ''
+              }));
+              diagnostics.refreshEvents = stressState.refreshEvents;
+              diagnostics.navigationState = stressState.navigationState;
+              diagnostics.refreshContract = stressState.refreshContract;
+              diagnostics.schedulerContract = stressState.schedulerContract;
+
+              if (Date.now() >= stressState.deadline || diagnostics.refreshEvents < 25) {
+                throw new Error(`${identity.email} ${layout} round ${round} did not hydrate while continuous refresh pressure was active.`);
+              }
+              if (diagnostics.navigationState !== 'ready'
+                  || diagnostics.refreshContract !== 'PERMISSION_REFRESH_SINGLE_FLIGHT_V1') {
+                throw new Error(`${identity.email} ${layout} round ${round} did not publish ready single-flight authority.`);
+              }
+
+              if (layout === 'classic') {
+                diagnostics.visibleCount = await page.locator('.modules-directory-card:visible').count();
+              } else {
+                diagnostics.visibleCount = await page.locator('.module-management-table tbody tr:visible').count();
+              }
+              if (diagnostics.visibleCount < 1) {
+                throw new Error(`${identity.email} ${layout} round ${round} rendered no authorized modules.`);
+              }
+
+              diagnostics.rbacRequestCount = totalRequests(diagnostics.requestCounts);
+              if (diagnostics.rbacRequestCount > maximumRbacRequests) {
+                throw new Error(`${identity.email} ${layout} round ${round} generated an RBAC request storm (${diagnostics.rbacRequestCount}).`);
+              }
+              for (const path of rbacPaths) {
+                if (diagnostics.responseStatuses[path].some((status) => status >= 400)) {
+                  throw new Error(`${identity.email} ${layout} round ${round} received RBAC errors for ${path}: ${diagnostics.responseStatuses[path].join(',')}.`);
+                }
+              }
+
+              if (layout === 'table') {
+                await page.getByRole('button', { name: 'Grid view' }).click();
+                const gridCards = page.locator('.module-management-grid article:visible');
+                await gridCards.first().waitFor({ state: 'visible', timeout: 8_000 });
+                diagnostics.gridCount = await gridCards.count();
+                if (diagnostics.gridCount < 1) {
+                  throw new Error(`${identity.email} enterprise grid round ${round} rendered no modules.`);
+                }
+              }
+
+              await page.evaluate(() => {
+                window.clearInterval(window.__pr731StressTimer);
+                window.__pr731StressTimer = 0;
+              });
+              await page.waitForFunction(() => {
+                const refresh = window.__projectPulsePermissionRefreshState;
+                const scheduler = window.__projectPulseModuleDirectoryAuthorityScheduler;
+                return window.__projectPulseEffectiveNavigation?.state === 'ready'
+                  && refresh?.inFlight !== true
+                  && scheduler?.active !== true;
+              }, null, { timeout: 15_000 });
+
+              if (round === 1) {
+                await page.screenshot({
+                  path: `${evidenceDir}/${identity.email.split('@')[0]}-${layout}.png`,
+                  fullPage: true
+                });
+              }
+              return diagnostics;
+            } catch (error) {
+              if (page) {
+                await page.screenshot({
+                  path: `${evidenceDir}/${identity.email.split('@')[0]}-${layout}-round-${round}-failure.png`,
+                  fullPage: true
+                }).catch(() => {});
+              }
+              throw Object.assign(error, { diagnostics });
+            } finally {
+              await context.close();
+            }
+          }
+
+          const browser = await chromium.launch({ headless: true });
+          try {
+            for (const identity of identities) {
+              const { api, loginPayload } = await login(identity);
+              const session = {
+                username: loginPayload.username || identity.email,
+                displayName: loginPayload.displayName || identity.email,
+                loginMethod: 'local',
+                provider: loginPayload.provider || 'LOCAL',
+                sessionToken: loginPayload.sessionToken,
+                expiresAt: loginPayload.expiresAt,
+                mustChangePassword: Boolean(loginPayload.mustChangePassword),
+                signedInAt: new Date().toISOString()
+              };
+
+              try {
+                for (let round = 1; round <= 2; round += 1) {
+                  for (const layout of layouts) {
+                    results.push(await validateView(identity, session, layout, round));
+                  }
+                }
+              } finally {
+                await api.post('/api/auth/session/logout', {
+                  headers: {
+                    Authorization: `Bearer ${loginPayload.sessionToken}`,
+                    'X-ProjectPulse-Session': loginPayload.sessionToken,
+                    'X-ProjectPulse-Module-Number': '012',
+                    Origin: base,
+                    'Sec-Fetch-Site': 'same-origin'
+                  }
+                }).catch(() => {});
+                await api.dispose();
+              }
+            }
+
+            const maximumObservedHydrationMs = Math.max(...results.map((result) => result.hydrationMs));
+            const averageHydrationMs = Math.round(results.reduce((sum, result) => sum + result.hydrationMs, 0) / results.length);
+            const maximumObservedRbacRequests = Math.max(...results.map((result) => result.rbacRequestCount));
+            const minimumRefreshEvents = Math.min(...results.map((result) => result.refreshEvents));
+            const evidence = {
+              status: 'passed',
+              environment: 'protected-test',
+              releaseSha,
+              identities: identities.map((identity) => identity.email),
+              views: ['classic', 'enterprise-table', 'enterprise-grid'],
+              iterationsPerIdentityAndLayout: 2,
+              continuousRefreshPressure: true,
+              stressDurationMs,
+              maximumObservedHydrationMs,
+              averageHydrationMs,
+              maximumObservedRbacRequests,
+              minimumRefreshEvents,
+              results,
+              applicationRollback: false,
+              productionMutation: false,
+              privateAiRuntimeMutation: false
+            };
+            fs.writeFileSync(`${evidenceDir}/modules-loading-browser-uat.json`, JSON.stringify(evidence, null, 2));
+            console.log(`MODULES_LOADING_BROWSER_UAT=PASS release=${releaseSha} identities=${identities.length} views=classic,enterprise-table,enterprise-grid iterations=2 maxHydrationMs=${maximumObservedHydrationMs} avgHydrationMs=${averageHydrationMs} maxRbacRequests=${maximumObservedRbacRequests} minRefreshEvents=${minimumRefreshEvents}`);
+          } catch (error) {
+            const evidence = {
+              status: 'failed',
+              environment: 'protected-test',
+              releaseSha,
+              error: String(error?.stack || error),
+              diagnostics: error?.diagnostics || null,
+              completedResults: results,
+              applicationRollback: false,
+              productionMutation: false,
+              privateAiRuntimeMutation: false
+            };
+            fs.writeFileSync(`${evidenceDir}/modules-loading-browser-uat.json`, JSON.stringify(evidence, null, 2));
+            throw error;
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          cd "$HARNESS"
+          node browser-uat.mjs
+          unset TEST_LOGIN_PASSWORD
+
+      - name: Upload one-day browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr731-modules-loading-evidence
+          path: /tmp/pr731-modules-loading-evidence
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish protected-Test acceptance boundary
+        if: success()
+        run: |
+          echo "PR731_RELEASE_SHA=$TARGET_SHA"
+          echo 'MODULES_CLASSIC_VIEW=PASS'
+          echo 'MODULES_ENTERPRISE_TABLE_VIEW=PASS'
+          echo 'MODULES_ENTERPRISE_GRID_VIEW=PASS'
+          echo 'MODULES_CONTINUOUS_REFRESH_PRESSURE=PASS'
+          echo 'MODULES_LOADING_STALL=NOT_REPRODUCED'
+          echo 'APPLICATION_ROLLBACK=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
