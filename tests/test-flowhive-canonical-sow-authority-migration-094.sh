@@ -6,8 +6,9 @@ CONTAINER="projectpulse-flowhive-sow-094-${GITHUB_RUN_ID:-local}-$$"
 DB_USER="projectpulse"
 DB_NAME="projectpulse"
 DB_PASSWORD="projectpulse-test-only"
-MIGRATION="/workspace/database/migrations/094_flowhive_canonical_sow_authority.sql"
-ROLLBACK="/workspace/database/rollback/094_flowhive_canonical_sow_authority_rollback.sql"
+MIGRATION_CONTAINER="/workspace/database/migrations/094_flowhive_canonical_sow_authority.sql"
+ROLLBACK_CONTAINER="/workspace/database/rollback/094_flowhive_canonical_sow_authority_rollback.sql"
+MIGRATION_HOST="$ROOT/database/migrations/094_flowhive_canonical_sow_authority.sql"
 
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -35,13 +36,32 @@ docker run -d --name "$CONTAINER" \
   -v "$ROOT:/workspace:ro" \
   postgres:16-alpine >/dev/null
 
-for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+# pg_isready can report that the server is accepting connections before the
+# entrypoint has finished creating POSTGRES_DB. Wait for a real query against
+# the exact target database so the test cannot race container initialization.
+ready=false
+for _ in $(seq 1 90); do
+  if docker exec -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER" \
+      psql -Atqc 'SELECT 1;' -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+    ready=true
     break
   fi
+
+  if ! docker ps --filter "name=$CONTAINER" --filter status=running \
+      --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    echo 'ASSERTION_FAILED postgres_container_stopped_before_database_ready' >&2
+    docker logs "$CONTAINER" >&2 || true
+    exit 1
+  fi
   sleep 1
-docker ps --filter "name=$CONTAINER" --filter status=running --format '{{.Names}}' | grep -qx "$CONTAINER"
 done
+
+if [[ "$ready" != true ]]; then
+  echo 'ASSERTION_FAILED target_postgres_database_not_ready' >&2
+  docker logs "$CONTAINER" >&2 || true
+  exit 1
+fi
+echo 'ASSERTION_PASSED target_postgres_database_ready=true'
 
 psql_exec <<'SQL'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -140,7 +160,7 @@ VALUES
     ('94200000-0000-0000-0000-000000000005','94000000-0000-0000-0000-000000000001','94100000-0000-0000-0000-000000000005','work_register_bridge','sow','sow',TRUE,'ready','94300000-0000-0000-0000-000000000005','2026-08-14T10:00:00Z','2026-08-14T10:00:00Z',TRUE);
 SQL
 
-psql_exec -f "$MIGRATION" >/dev/null
+psql_exec -f "$MIGRATION_CONTAINER" >/dev/null
 
 assert_eq canonical "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000001';")" newest_equivalent_sow_becomes_canonical
 assert_eq approved "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000002';")" duplicate_version_becomes_approved
@@ -154,11 +174,11 @@ psql_exec -c "UPDATE project_intake_documents SET pulse_ai_processing_status='re
 assert_eq canonical "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000003';")" ready_transition_trigger_promotes
 assert_eq 3 "$(value "SELECT COUNT(*) FROM module094_flowhive_sow_authority_evidence;")" trigger_promotion_evidence_count
 
-psql_exec -f "$MIGRATION" >/dev/null
+psql_exec -f "$MIGRATION_CONTAINER" >/dev/null
 assert_eq 3 "$(value "SELECT COUNT(*) FROM module094_flowhive_sow_authority_evidence;")" migration_reapply_is_idempotent
 assert_eq 1 "$(value "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_projectpulse094_reconcile_ready_work_register_sow' AND NOT tgisinternal;")" one_reconciliation_trigger_after_reapply
 
-psql_exec -f "$ROLLBACK" >/dev/null
+psql_exec -f "$ROLLBACK_CONTAINER" >/dev/null
 assert_eq 0 "$(value "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_projectpulse094_reconcile_ready_work_register_sow' AND NOT tgisinternal;")" rollback_removes_trigger
 assert_eq 0 "$(value "SELECT COUNT(*) FROM schema_migrations WHERE migration_id='094_flowhive_canonical_sow_authority';")" rollback_unregisters_migration
 assert_eq 3 "$(value "SELECT COUNT(*) FROM module094_flowhive_sow_authority_evidence;")" rollback_preserves_durable_evidence
@@ -188,11 +208,11 @@ WHERE project_intake_document_id='94200000-0000-0000-0000-000000000006';
 SQL
 assert_eq candidate "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000006';")" rollback_stops_future_automatic_promotion
 
-psql_exec -f "$MIGRATION" >/dev/null
+psql_exec -f "$MIGRATION_CONTAINER" >/dev/null
 assert_eq canonical "$(value "SELECT authority_status FROM pulse_ai_document_versions WHERE pulse_ai_document_version_id='94300000-0000-0000-0000-000000000006';")" safe_reapply_backfills_new_ready_sow
 assert_eq 4 "$(value "SELECT COUNT(*) FROM module094_flowhive_sow_authority_evidence;")" safe_reapply_retains_and_extends_evidence
 
-if grep -Eiq 'chunk_text|section_text|raw_document|document_text' "$MIGRATION"; then
+if grep -Eiq 'chunk_text|section_text|raw_document|document_text' "$MIGRATION_HOST"; then
   echo 'ASSERTION_FAILED migration_must_not_read_or_store_raw_document_text' >&2
   exit 1
 fi
