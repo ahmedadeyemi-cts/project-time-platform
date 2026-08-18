@@ -9,6 +9,7 @@ on:
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'database/migrations/086_module_066_flowhive_enterprise_pm.sql'
       - 'database/migrations/088_systemwide_enterprise_reliability.sql'
+      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
       - 'src/backend/ProjectTime.Api/**'
       - 'src/frontend/project-time-web/**'
       - 'tests/CelarAiAuthoritativePublicFactTests/**'
@@ -91,6 +92,7 @@ jobs:
             scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh \
             database/migrations/086_module_066_flowhive_enterprise_pm.sql \
             database/migrations/088_systemwide_enterprise_reliability.sql \
+            database/migrations/093_assigned_work_canonical_visibility_repair.sql \
             src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs \
             src/backend/ProjectTime.Api/Modules/AdminAuditTelemetryMiddleware.cs \
             src/frontend/project-time-web/src/enterprise-systemwide-reliability.css \
@@ -114,6 +116,7 @@ jobs:
           node tests/validate-celar-ai-flowhive-authoritative-release.mjs
           bash tests/test-module-066-flowhive-enterprise-pm-migration-086.sh
           bash tests/test-systemwide-enterprise-reliability-migration-088.sh
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           dotnet run --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj --configuration Release
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
           bash tests/test-projectpulse-api-startup.sh
@@ -133,7 +136,7 @@ jobs:
             '{
               environment:"test",
               applicationRelease:$releaseCommit,
-              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability"],
+              migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],
               migrationScope:$migrationScope,
               utilizationRoleScopingUat:true,
               applicationOnlyAfterMigration:true,
@@ -314,6 +317,7 @@ jobs:
           install -d -m 0700 "$MIGRATION_CONTEXT/database/migrations"
           install -m 0644 database/migrations/086_module_066_flowhive_enterprise_pm.sql "$MIGRATION_CONTEXT/database/migrations/086_module_066_flowhive_enterprise_pm.sql"
           install -m 0644 database/migrations/088_systemwide_enterprise_reliability.sql "$MIGRATION_CONTEXT/database/migrations/088_systemwide_enterprise_reliability.sql"
+          install -m 0644 database/migrations/093_assigned_work_canonical_visibility_repair.sql "$MIGRATION_CONTEXT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
 
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
@@ -328,7 +332,8 @@ jobs:
           }
           for migration in \
             "$ROOT/database/migrations/086_module_066_flowhive_enterprise_pm.sql" \
-            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql"; do
+            "$ROOT/database/migrations/088_systemwide_enterprise_reliability.sql" \
+            "$ROOT/database/migrations/093_assigned_work_canonical_visibility_repair.sql"; do
             [[ -f "$migration" ]] || { echo "ERROR: Missing migration $migration" >&2; exit 1; }
             psql -X -v ON_ERROR_STOP=1 --file "$migration"
           done
@@ -336,21 +341,56 @@ jobs:
           SELECT
             EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='086_module_066_flowhive_enterprise_pm')::text || '|' ||
             EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='088_systemwide_enterprise_reliability')::text || '|' ||
+            EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='093_assigned_work_canonical_visibility_repair')::text || '|' ||
             (to_regclass('public.project_flowhive_working_copies') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_project_controls') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_raid_items') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_status_reports') IS NOT NULL)::text || '|' ||
             (to_regclass('public.project_flowhive_customer_shares') IS NOT NULL)::text || '|' ||
             EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='account_executive_user_id')::text || '|' ||
-            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text;
+            EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='project_intake_requests' AND column_name='solution_architect_user_id')::text || '|' ||
+            (to_regprocedure('public.projectpulse093_resolve_project_task_id(uuid,text)') IS NOT NULL)::text || '|' ||
+            EXISTS(
+              SELECT 1
+              FROM pg_trigger trigger_record
+              WHERE trigger_record.tgrelid = 'public.work_register_task_assignment_history'::regclass
+                AND trigger_record.tgname = 'trg_projectpulse093_sync_work_register_assignment'
+                AND NOT trigger_record.tgisinternal
+            )::text || '|' ||
+            NOT EXISTS (
+              SELECT 1
+              FROM work_register_task_assignment_history history
+              JOIN project_tasks task
+                ON task.project_id = history.project_id
+               AND task.task_id = projectpulse093_resolve_project_task_id(history.project_id, history.task_id_text)
+               AND task.is_active = TRUE
+              JOIN projects project
+                ON project.project_id = history.project_id
+              WHERE history.assigned_user_id IS NOT NULL
+                AND lower(btrim(COALESCE(history.assignment_status, ''))) = 'active'
+                AND (history.effective_end_date IS NULL OR history.effective_end_date >= CURRENT_DATE)
+                AND lower(btrim(COALESCE(project.status, 'active'))) NOT IN (
+                  'closed','complete','completed','done','cancelled','canceled','archived'
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM project_assignments assignment
+                  WHERE assignment.project_id = history.project_id
+                    AND assignment.task_id = task.task_id
+                    AND assignment.user_id = history.assigned_user_id
+                    AND assignment.effective_start_date <= CURRENT_DATE
+                    AND (assignment.effective_end_date IS NULL OR assignment.effective_end_date >= CURRENT_DATE)
+                )
+            )::text;
           SQL
           )"
-          [[ "$verification" == 'true|true|true|true|true|true|true|true|true' ]] || {
+          [[ "$verification" == 'true|true|true|true|true|true|true|true|true|true|true|true|true' ]] || {
             echo "ERROR: Migration verification failed: $verification" >&2
             exit 1
           }
           echo 'MIGRATION_086=APPLIED_AND_VERIFIED'
           echo 'MIGRATION_088=APPLIED_AND_VERIFIED'
+          echo 'MIGRATION_093=APPLIED_AND_VERIFIED'
           ENTRYPOINT
           chmod 0555 "$MIGRATION_CONTEXT/entrypoint.sh"
 
@@ -379,7 +419,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           jq -n --arg api "$API_IMAGE" --arg web "$WEB_IMAGE" --arg migration "$MIGRATION_IMAGE" '{apiImage:$api,webImage:$web,migrationImage:$migration}' > "$EVIDENCE_DIR/immutable-images.json"
 
-      - name: Apply and verify Migrations 086 and 088 inside Test private network
+      - name: Apply and verify Migrations 086, 088, and 093 inside Test private network
         id: migration
         shell: bash
         working-directory: release
@@ -403,7 +443,7 @@ jobs:
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         id: deploy_api
@@ -741,7 +781,7 @@ jobs:
                 done
 
                 if [[ "$ASSET_FETCH_OK" == true ]]; then
-                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
+                  for marker in                     'pulse-display-utility-dock'                     'Evidence score'                     'Project Cost Alerts'                     'Data incomplete'                     'Select or type a customer'                     'FlowHive enterprise controls are temporarily unavailable.'                     'AUTHORITATIVE_RBAC_MODULE_DIRECTORY_V1'                     'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1'                     '--project-workload-responsive-metrics:1'                     'Login, logout & sessions'; do
                     grep -Fq -- "$marker" "$FRONTEND_BUNDLE" || MISSING_MARKERS+=("$marker")
                   done
                 fi
@@ -784,7 +824,7 @@ jobs:
             --arg apiImage "$ACTIVE_API_IMAGE" \
             --arg webImage "$ACTIVE_WEB_IMAGE" \
             --arg projectId "$PROJECT_ID" \
-            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
+            '{status:"passed",sourceCommit:$source,apiImage:$apiImage,webImage:$webImage,migration086:"applied_and_verified",migration088:"applied_and_verified",migration093:"applied_and_verified",projectManagementSummary:true,projectIntake:true,opportunityDirectory:true,opportunityDirectoryRole:"ENGINEERING",billingSources:true,costAlerts:true,flowHiveEnterprise:true,flowHiveProjectId:$projectId,auditAuthentication:true,failedLoginAudited:true,logoutAudited:true,presidentOfficiallyVerified:true,usSignalCeoOfficiallyVerified:true,enterpriseResponsiveMarkers:true,projectManagerModules:true,projectManagerWorkRegister:true,projectManagerApprovalAccess:true,productionMutation:false}' > "$EVIDENCE_DIR/uat-summary.json"
           unset COORDINATOR_SESSION TEST_LOGIN_PASSWORD
 
       - name: Run protected-Test utilization role-scoping UAT
@@ -838,7 +878,7 @@ jobs:
             echo "- Application release: \`$TARGET_RELEASE_COMMIT\`"
             echo '- Environment: protected Test only'
             echo '- Target: https://phd-west-test.onenecklab.com'
-            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086 and 088: applied and verified' || echo '- Migrations 086 and 088: not completed'
+            [[ -f "$EVIDENCE_DIR/migrations.json" ]] && echo '- Migrations 086, 088, and 093: applied and verified' || echo '- Migrations 086, 088, and 093: not completed'
             [[ -f "$EVIDENCE_DIR/uat-summary.json" ]] && echo '- System-wide authenticated functional UAT: passed' || echo '- System-wide authenticated functional UAT: not completed'
             [[ -f "$EVIDENCE_DIR/utilization-role-scoping-uat.json" ]] && echo '- Kevin utilization role-scoping UAT: passed' || echo '- Kevin utilization role-scoping UAT: not completed'
             [[ -f "$EVIDENCE_DIR/rollback.json" ]] && echo '- Application image rollback: completed'

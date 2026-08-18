@@ -25,6 +25,7 @@ const billing = read('src/frontend/project-time-web/src/BillingReadinessCenter.j
 const help = read('src/frontend/project-time-web/src/HelpAssistant.jsx');
 const auditUi = read('src/frontend/project-time-web/src/AuditHistoryPanel.jsx');
 const migration = read('database/migrations/088_systemwide_enterprise_reliability.sql');
+const assignmentMigration = read('database/migrations/093_assigned_work_canonical_visibility_repair.sql');
 const rollback = read('database/rollback/088_systemwide_enterprise_reliability_rollback.sql');
 const auditModule = read('src/backend/ProjectTime.Api/Modules/AdminAuditHistoryModule.cs');
 const migrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
@@ -102,12 +103,16 @@ requireText(auditUi, 'Dependency outages', 'dependency audit quick view');
 requireText(migration, '088_systemwide_enterprise_reliability', 'Migration 088 registration');
 requireText(migration, 'account_executive_user_id', 'intake ownership columns');
 requireText(migration, 'idx_projectpulse_system_audit_events_correlation', 'audit correlation index');
+requireText(assignmentMigration, '093_assigned_work_canonical_visibility_repair', 'Migration 093 registration');
+requireText(assignmentMigration, 'projectpulse093_resolve_project_task_id', 'Migration 093 task resolver');
+requireText(assignmentMigration, 'trg_projectpulse093_sync_work_register_assignment', 'Migration 093 assignment trigger');
+requireText(assignmentMigration, 'INSERT INTO project_assignments', 'Migration 093 canonical assignment backfill');
 requireText(rollback, 'deliberately preserves', 'conservative rollback rationale');
 rejectText(rollback, 'DROP COLUMN IF EXISTS account_executive_user_id', 'destructive rollback');
 
 for (const marker of [
   'SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED',
-  'projectpulse-migration"] == "086-088"',
+  'projectpulse-migration"] == "086-088-093"',
   'main-db-password',
   'PROJECTPULSE_ENVIRONMENT'
 ]) requireText(migrationRunner, marker, 'protected Test private-network migration runner');
@@ -115,12 +120,14 @@ for (const marker of [
   'environment: test',
   'group: projectpulse-deploy-test',
   'queue: max',
-  'Migrations 086 and 088',
+  'Migrations 086, 088, and 093',
   'PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true',
   'Project Management summary',
   'FlowHive enterprise workspace',
   'failed-login UAT',
   'Run protected-Test utilization role-scoping UAT',
+  'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSHOT_V1',
+  'migration093:"applied_and_verified"',
   'Who is the current President of the United States?',
   'Who is the CEO of US Signal?',
   'Production mutation: none'
