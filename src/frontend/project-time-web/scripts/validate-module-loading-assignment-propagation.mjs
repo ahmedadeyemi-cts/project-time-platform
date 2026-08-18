@@ -111,7 +111,7 @@ rejectText(
 
 const closeoutUi = read('src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx');
 [
-  'const PAGE_SIZE = 50;',
+  'const PAGE_SIZE = 20;',
   'MODULE001A_VISIBLE_REQUEST_FAMILIES_V2',
   'compareCloseoutItems',
   'rightDate - leftDate',
@@ -176,7 +176,8 @@ const ownershipApi = read('src/backend/ProjectTime.Api/Modules/ModuleCatalogOwne
   'IsDeveloperModuleOwnerAsync',
   'app_user_role_assignments owner_assignment',
   '@developer_owner_role_codes',
-  'Only an actual developer Super Administrator session can change module ownership.',
+  'Only an actual Super Administrator session can change module ownership.',
+  'active developer Super Administrator.',
   'The selected owner must be an active developer Super Administrator.'
 ].forEach((contract) => requireText(
   ownershipApi,

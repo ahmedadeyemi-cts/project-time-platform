@@ -249,7 +249,7 @@ public static class ModuleCatalogOwnershipModule
                 return Results.Json(new
                 {
                     status = "forbidden",
-                    message = "Only an actual developer Super Administrator session can change module ownership."
+                    message = "Only an actual Super Administrator session can change module ownership. The session must belong to an active developer Super Administrator."
                 }, statusCode: StatusCodes.Status403Forbidden);
 
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
