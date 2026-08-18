@@ -31,6 +31,9 @@ assert.match(workflow, /docker push "\$full_image"/);
 assert.match(workflow, /BUILD_LOG="\$EVIDENCE_DIR\/image-build\.log"/);
 assert.match(workflow, /node tests\/validate-systemwide-image-build-controller\.mjs/);
 assert.match(workflow, /run-utilization-role-scoping-protected-test-uat\.sh/);
+assert.match(workflow, /093_assigned_work_canonical_visibility_repair\.sql/);
+assert.match(workflow, /Apply and verify Migrations 086, 088, and 093 inside Test private network/);
+assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);
 
 const bashScript = [
   'set -Eeuo pipefail',

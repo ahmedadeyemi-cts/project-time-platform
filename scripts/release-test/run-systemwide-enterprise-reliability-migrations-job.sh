@@ -140,7 +140,7 @@ validate_job_ownership() {
       (.tags["projectpulse-release"] == $release) and
       (.tags["projectpulse-control"] == $control) and
       (.tags["projectpulse-run"] == $runScope) and
-      (.tags["projectpulse-migration"] == "086-088") and
+      (.tags["projectpulse-migration"] == "086-088-093") and
       (.identity.type == "UserAssigned") and
       ((.identity.userAssignedIdentities | keys | length) == 1) and
       (((.identity.userAssignedIdentities | keys[0]) | ascii_downcase) == ($identity | ascii_downcase)) and
@@ -249,7 +249,7 @@ jq -n \
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-run": $runScope,
-      "projectpulse-migration": "086-088"
+      "projectpulse-migration": "086-088-093"
     },
     properties: {
       environmentId: $environmentId,

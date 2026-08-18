@@ -8,6 +8,7 @@ on:
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
@@ -59,6 +60,7 @@ jobs:
           .github/workflows/projectpulse-release-test-control-ci.yml
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
           tests/validate-utilization-role-scoping.mjs
           tests/validate-systemwide-image-build-controller.mjs
@@ -113,7 +115,9 @@ jobs:
           grep -Fq 'https://phd-west-test.onenecklab.com' "$CONTROLLER"
           grep -Fq 'PROJECTPULSE_M087_PASSWORD' "$CONTROLLER"
           grep -Fq 'Build immutable API, web, and migration images' "$CONTROLLER"
-          grep -Fq 'Apply and verify Migrations 086 and 088 inside Test private network' "$CONTROLLER"
+          grep -Fq 'Apply and verify Migrations 086, 088, and 093 inside Test private network' "$CONTROLLER"
+          grep -Fq 'database/migrations/093_assigned_work_canonical_visibility_repair.sql' "$CONTROLLER"
+          grep -Fq 'MIGRATION_093=APPLIED_AND_VERIFIED' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
@@ -144,6 +148,6 @@ jobs:
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
-          echo 'MIGRATIONS_086_088=AUTHORIZED_TEST_APPLY_AND_VERIFY'
+          echo 'MIGRATIONS_086_088_093=AUTHORIZED_TEST_APPLY_AND_VERIFY'
           echo 'PRODUCTION_MUTATION=NONE'
           echo 'ORACLE_RUNTIME_MUTATION=NONE'
