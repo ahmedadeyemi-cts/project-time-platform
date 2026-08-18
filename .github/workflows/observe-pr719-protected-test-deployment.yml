@@ -1,0 +1,123 @@
+name: Observe PR 719 Protected-Test Deployment
+
+on:
+  push:
+    branches:
+      - fix/module-directory-owner-001a-continuity-20260818
+    paths:
+      - '.github/workflows/observe-pr719-protected-test-deployment.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: observe-pr719-protected-test-deployment
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 235
+    env:
+      TARGET_SHA: ea80bc011804f793f688a721f5f1c3a6f3893b61
+      EVIDENCE_PATH: .github/pr719-deployment-observer/evidence.json
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out merged PR branch for evidence publication
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module-directory-owner-001a-continuity-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Locate and wait for exact protected-Test deployment
+        id: observe
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Target SHA is invalid.'
+
+          run_id=''
+          for attempt in $(seq 1 120); do
+            runs="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs" \
+              -f branch=main -f event=push -f per_page=50)"
+            run_id="$(jq -r --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at) | reverse | .[0].id // empty
+            ' <<<"$runs")"
+            [[ "$run_id" =~ ^[0-9]+$ ]] && break
+            sleep 15
+          done
+          [[ "$run_id" =~ ^[0-9]+$ ]] || fail 'Exact main deployment run was not found.'
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+          install -d "$(dirname "$EVIDENCE_PATH")"
+          run_json=''
+          for attempt in $(seq 1 460); do
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            [[ "$status" == completed ]] && break
+            sleep 30
+          done
+
+          jobs_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+            -f filter=latest -f per_page=100)"
+
+          jq -n \
+            --arg targetSha "$TARGET_SHA" \
+            --arg observedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson run "$run_json" \
+            --argjson jobs "$jobs_json" \
+            '{
+              targetSha:$targetSha,
+              observedAt:$observedAt,
+              run:{
+                id:$run.id,
+                name:$run.name,
+                displayTitle:$run.display_title,
+                event:$run.event,
+                status:$run.status,
+                conclusion:$run.conclusion,
+                headSha:$run.head_sha,
+                headBranch:$run.head_branch,
+                runNumber:$run.run_number,
+                runAttempt:$run.run_attempt,
+                createdAt:$run.created_at,
+                updatedAt:$run.updated_at,
+                htmlUrl:$run.html_url
+              },
+              jobs:[
+                $jobs.jobs[] | {
+                  id,
+                  name,
+                  status,
+                  conclusion,
+                  startedAt:.started_at,
+                  completedAt:.completed_at,
+                  steps:[.steps[]? | {number,name,status,conclusion}]
+                }
+              ],
+              boundary:{
+                environment:"protected-test",
+                productionMutation:false,
+                privateRuntimeConfigurationMutation:false
+              }
+            }' > "$EVIDENCE_PATH"
+
+          jq . "$EVIDENCE_PATH"
+
+      - name: Publish sanitized deployment evidence to merged branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add "$EVIDENCE_PATH"
+          git diff --cached --quiet && exit 0
+          git commit -m 'ops: record PR 719 protected-Test deployment evidence'
+          git push origin HEAD:fix/module-directory-owner-001a-continuity-20260818
