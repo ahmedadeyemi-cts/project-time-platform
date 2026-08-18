@@ -88,6 +88,15 @@ const migration093 = read('database/migrations/093_assigned_work_canonical_visib
 [
   '093_assigned_work_canonical_visibility_repair',
   'ADD COLUMN IF NOT EXISTS owner_user_id',
+  'module_catalog_reconciliation_093_owner_repair_evidence',
+  'projectpulse093_required_owner_catalog',
+  "('031', 'Financial Operations Workbench', 'financial-operations-workbench', 'Reports & Workflow')",
+  "('032', 'Notification Delivery Monitor', 'notification-delivery-monitor', 'Reports & Workflow')",
+  "('033', 'Project Forge', 'project-forge', 'Project Delivery')",
+  'evidence.was_present = FALSE',
+  'GROUP BY module.owner_user_id',
+  'ORDER BY COUNT(*) DESC, module.owner_user_id',
+  'module catalog repair did not restore active canonical row(s)',
   'projectpulse093_resolve_project_task_id',
   'projectpulse093_sync_work_register_assignment',
   'trg_projectpulse093_sync_work_register_assignment',
@@ -116,6 +125,19 @@ const migration093 = read('database/migrations/093_assigned_work_canonical_visib
   'migration 093 must remain environment and record neutral'
 ));
 
+const ownerCatalogRegression = read('tests/test-module-catalog-owner-repair-migration-093.sh');
+[
+  'owner_repair_target_count',
+  'inserted_modules_inherit_default_owner',
+  'preexisting_owner_preserved',
+  'rerun_preserves_changed_owner',
+  'repair_evidence_preserved'
+].forEach((contract) => requireText(
+  ownerCatalogRegression,
+  contract,
+  'Migration 093 owner-catalog executable regression'
+));
+
 const timesheet = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs');
 requireText(timesheet, 'FROM project_assignments pa', 'Module 001 canonical assignment source');
 requireText(timesheet, 'pa.user_id = @user_id', 'Module 001 Engineer scope');
@@ -139,9 +161,23 @@ requireText(
   'node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs',
   'focused CI validator execution'
 );
+requireText(
+  workflow,
+  'tests/test-module-catalog-owner-repair-migration-093.sh',
+  'focused CI owner-catalog regression path'
+);
+requireText(
+  workflow,
+  'bash tests/test-module-catalog-owner-repair-migration-093.sh',
+  'focused CI owner-catalog regression execution'
+);
+requireText(
+  workflow,
+  'bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh',
+  'focused CI assigned-work UAT syntax validation'
+);
 requireText(workflow, 'dotnet build', 'focused CI backend compile');
 requireText(workflow, 'npm run build', 'focused CI frontend compile');
-
 
 const availableTaskProgram = read('src/backend/ProjectTime.Api/Program.cs');
 const availableTaskStart = availableTaskProgram.indexOf('app.MapGet("/api/assignments/available-tasks"');
@@ -161,7 +197,7 @@ rejectText(availableTaskEndpoint, 'DayOfWeek.Monday', 'Module 001 Sunday week au
 const timesheetUi = read('src/frontend/project-time-web/src/App.jsx');
 [
   "const isDurableRequestFamily = /^(SR|PRES|INT)-/.test(projectCode)",
-  "requestWorkTypes.has(workType)",
+  'requestWorkTypes.has(workType)',
   "if (isDurableRequestFamily || explicitSection === 'requests') return 'requests';"
 ].forEach((contract) => requireText(timesheetUi, contract, 'Module 001 request-family UI'));
 
@@ -170,6 +206,7 @@ requireText(
   '(Func<HttpContext, Task<IResult>>)Module001AOverviewAsync',
   'Module 001A explicit IResult execution'
 );
+
 const workspaceUi = read('src/frontend/project-time-web/src/ProjectWorkspaceCenter.jsx');
 requireText(workspaceUi, 'assignments.map((assignment)', 'Module 019 assignment rendering');
 requireText(workspaceUi, '{assignment.projectCode}', 'Module 019 durable identifier rendering');
@@ -204,6 +241,7 @@ console.log('authorized_modules_immediate_snapshot=true');
 console.log('unauthorized_background_requests_suppressed=true');
 console.log('uuid_and_task_code_assignments_canonicalized=true');
 console.log('modules_019_001a_001_shared_assignment_authority=true');
+console.log('module_owner_catalog_031_032_033_repaired=true');
 console.log('timesheet_week_authority=sunday_through_saturday');
 console.log('request_family_classification=sr_pres_int_durable_identifiers');
 console.log('module001a_response_body=explicit_iresult');
