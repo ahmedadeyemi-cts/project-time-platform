@@ -1,0 +1,97 @@
+name: Publish Modules Directory Authority Starvation Repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-modules-directory-authority-starvation.yml'
+      - 'scripts/release-test/finalize-modules-directory-authority-starvation.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-modules-directory-authority-starvation-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/modules-directory-authority-starvation-20260818'
+    name: Repair, validate, and publish Modules directory hydration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply guarded Modules authority repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/finalize-modules-directory-authority-starvation.py
+
+      - name: Validate focused authority and directory contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-modules-directory-page.mjs
+          )
+          git diff --check
+
+      - name: Build API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install, audit, and build complete frontend
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Commit and push reviewed application source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add \
+            .github/workflows/module-loading-assignment-propagation-ci.yml \
+            src/frontend/project-time-web/src/module-availability-bridge.js \
+            src/frontend/project-time-web/src/background-request-role-gate.js \
+            src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx \
+            src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs \
+            src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs \
+            scripts/release-test/finalize-modules-directory-authority-starvation.py
+          git diff --cached --quiet && {
+            echo 'ERROR: Modules authority repair produced no application source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(modules): stop authority refresh starvation and preserve directory state'
+          git push origin HEAD:fix/modules-directory-authority-starvation-20260818
