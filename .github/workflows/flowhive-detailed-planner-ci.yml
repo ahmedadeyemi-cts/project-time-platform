@@ -10,6 +10,7 @@ on:
       - 'src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
       - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
       - 'src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py'
@@ -18,6 +19,7 @@ on:
       - 'src/frontend/project-time-web/src/flowhive-runtime-resilience.js'
       - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
       - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/FlowHiveSowFreshnessTests/**'
       - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
       - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
       - '.github/workflows/flowhive-detailed-planner-ci.yml'
@@ -59,6 +61,14 @@ jobs:
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'inserted_flowhive_canonical_work_package_instruction != 1' \
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'VerifyFlowHiveSowFreshnessAsync(request.Plan, cancellationToken)' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_freshness_precheck != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_freshness_postcheck != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_citation_gate != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'product, platform, service, model, software or firmware version' \
@@ -71,6 +81,16 @@ jobs:
             src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
           grep -Fq 'Continue draining the redirected pipe' \
             src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
+          grep -Fq 'ProjectFlowHiveSowFreshnessPolicy' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'WHERE document.project_id=@project_id' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'document.uploaded_at' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'flowhive_sow_freshness_unavailable' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'FlowHiveStaleSowCitationFailure' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
           grep -Fq "import './flowhive-runtime-resilience.js';" \
             src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
           grep -Fq "import './flowhive-sow-evidence-autoadmission.js';" \
@@ -79,19 +99,15 @@ jobs:
             src/frontend/project-time-web/src/flowhive-runtime-resilience.js
           grep -Fq 'duplicateRecordsConsolidated' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -Fq 'queueCandidatesFromEvidence(rawBody.sowEvidence' \
-            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq 'document:${documentId}' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -Fq "const DOCUMENT_OVERVIEW_PATH = '/api/project-workspace/overview';" \
-            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -Fq 'Replacement authority follows source chronology, not readiness score.' \
-            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -Fq 'if (ordered.length !== items.length) return [];' \
-            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -Fq 'const refreshed = await refreshGenerationBlocks(nativeFetch, projectId);' \
+          grep -Fq 'freshnessAuthority' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq '/sow-evidence/${item.documentId}/prepare' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          ! grep -Fq '/api/project-workspace/overview' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          ! grep -Fq 'GENERATION_PATH' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq 'PROJECTPULSE_LEGACY_WORD_EXTRACTOR_PATH=/usr/bin/antiword' \
             deployment/containers/api/Dockerfile
@@ -120,6 +136,9 @@ jobs:
 
       - name: Execute detailed five-phase and legacy Word regressions
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Execute project-scoped SOW freshness regressions
+        run: dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
 
       - name: Execute SOW identity and admission regression
         run: node tests/validate-flowhive-sow-evidence-autoadmission.mjs
