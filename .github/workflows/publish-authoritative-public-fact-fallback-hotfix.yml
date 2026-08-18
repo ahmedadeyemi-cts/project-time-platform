@@ -1,0 +1,79 @@
+name: Publish Authoritative Public-Fact Fallback Hotfix
+
+on:
+  push:
+    branches:
+      - fix/protected-test-authoritative-public-fact-fallback-20260818
+    paths:
+      - '.github/workflows/publish-authoritative-public-fact-fallback-hotfix.yml'
+      - 'scripts/release-test/apply-public-fact-fallback-hotfix.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-authoritative-public-fact-fallback-hotfix
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Apply and validate official-source fallback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+
+    steps:
+      - name: Check out exact hotfix branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/protected-test-authoritative-public-fact-fallback-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Apply guarded source repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/apply-public-fact-fallback-hotfix.py
+
+      - name: Run focused authoritative public-fact tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run \
+            --project tests/CelarAiAuthoritativePublicFactTests/CelarAiAuthoritativePublicFactTests.csproj \
+            --configuration Release
+
+      - name: Validate system-wide release contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          git diff --check
+
+      - name: Commit and push reviewed hotfix source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add -A \
+            src/backend/ProjectTime.Api/Ai/CelarAiAuthoritativePublicFactService.cs \
+            tests/CelarAiAuthoritativePublicFactTests/Program.cs \
+            scripts/release-test/apply-public-fact-fallback-hotfix.py
+          git diff --cached --quiet && {
+            echo 'ERROR: Hotfix publisher produced no source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(celar): fall back across official US Signal leadership sources'
+          git push origin HEAD:fix/protected-test-authoritative-public-fact-fallback-20260818
