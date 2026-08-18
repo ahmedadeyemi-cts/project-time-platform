@@ -14,6 +14,7 @@ const MODULE_DIRECTORY_AUTHORITY_POLL_MS = 500;
 const MODULE_DIRECTORY_AUTHORITY_REFRESH_THROTTLE_MS = 2500;
 const MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_CONTRACT = 'MODULE_DIRECTORY_NONBLOCKING_AUTHORITY_V2';
 const MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT = 'MODULE_DIRECTORY_STABLE_HYDRATION_V3';
+const MODULE_DIRECTORY_NONSTARVING_REFRESH_CONTRACT = 'MODULE_DIRECTORY_NONSTARVING_REFRESH_V4';
 
 const CANONICAL_MODULE_NUMBER_BY_ROUTE = Object.freeze({
   timesheet: '001',
@@ -341,6 +342,7 @@ export default function ModulesDirectoryPortal() {
   const [busyModule, setBusyModule] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const refreshTimer = useRef(null);
+  const refreshPendingRef = useRef(false);
   const directoryResolvedRef = useRef(false);
   const authorityRefreshRequestedAtRef = useRef(0);
   const expandedForDirectory = useRef(new Set());
@@ -425,42 +427,62 @@ export default function ModulesDirectoryPortal() {
       }));
     };
 
-    const refresh = () => {
+    let disposed = false;
+
+    const resolveDirectory = () => {
+      refreshTimer.current = null;
+      if (disposed || !active) return;
+
+      const nextModules = collectAuthorizedModules();
+      const navigationResolved = authorizedModulesFromNavigationState(
+        PROJECTPULSE_MODULES,
+        window.__projectPulseEffectiveNavigation
+      ) !== null;
+
+      if (!navigationResolved && nextModules.length === 0) {
+        requestAuthorityRefresh('module_directory_unresolved_authority');
+      } else {
+        directoryResolvedRef.current = true;
+        authorityRefreshRequestedAtRef.current = 0;
+        setDirectoryResolved(true);
+        setModules((current) => moduleListsMatch(current, nextModules) ? current : nextModules);
+      }
+
+      if (refreshPendingRef.current) {
+        refreshPendingRef.current = false;
+        refreshTimer.current = window.setTimeout(resolveDirectory, 80);
+      }
+    };
+
+    const refresh = ({ immediate = false } = {}) => {
       ensurePersistentModulesLink(active);
       updateWorkspaceHeading(active);
       if (!active) return;
 
       expandAuthorizedNavigationGroups(expandedForDirectory.current);
-      window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => {
-        const nextModules = collectAuthorizedModules();
-        const navigationResolved = authorizedModulesFromNavigationState(
-          PROJECTPULSE_MODULES,
-          window.__projectPulseEffectiveNavigation
-        ) !== null;
+      if (refreshTimer.current !== null) {
+        refreshPendingRef.current = true;
+        return;
+      }
 
-        if (!navigationResolved && nextModules.length === 0) {
-          requestAuthorityRefresh('module_directory_unresolved_authority');
-          return;
-        }
-
-        directoryResolvedRef.current = true;
-        authorityRefreshRequestedAtRef.current = 0;
-        setDirectoryResolved(true);
-        setModules((current) => moduleListsMatch(current, nextModules) ? current : nextModules);
-      }, 80);
+      refreshTimer.current = window.setTimeout(resolveDirectory, immediate ? 0 : 80);
     };
 
+    const refreshImmediately = () => refresh({ immediate: true });
+
     const resetForIdentity = () => {
+      window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+      refreshPendingRef.current = false;
       directoryResolvedRef.current = false;
       authorityRefreshRequestedAtRef.current = 0;
       setDirectoryResolved(false);
       setModules([]);
       requestAuthorityRefresh('module_directory_identity_changed');
-      refresh();
+      refresh({ immediate: true });
     };
 
-    refresh();
+    refresh({ immediate: true });
     if (active && !directoryResolvedRef.current) {
       requestAuthorityRefresh('module_directory_route_activated');
     }
@@ -484,22 +506,25 @@ export default function ModulesDirectoryPortal() {
     }, MODULE_DIRECTORY_AUTHORITY_POLL_MS);
 
     window.addEventListener('projectpulse:view-as-changed', resetForIdentity);
-    window.addEventListener('projectpulse:auth-session-ready', refresh);
+    window.addEventListener('projectpulse:auth-session-ready', refreshImmediately);
     window.addEventListener('projectpulse:module-availability-changed', refresh);
-    window.addEventListener('projectpulse:permission-navigation-updated', refresh);
-    window.addEventListener('projectpulse:workspace-authorization-updated', refresh);
-    window.addEventListener('pageshow', refresh);
+    window.addEventListener('projectpulse:permission-navigation-updated', refreshImmediately);
+    window.addEventListener('projectpulse:workspace-authorization-updated', refreshImmediately);
+    window.addEventListener('pageshow', refreshImmediately);
 
     return () => {
+      disposed = true;
       observer?.disconnect();
       window.clearInterval(authorityPoll);
       window.removeEventListener('projectpulse:view-as-changed', resetForIdentity);
-      window.removeEventListener('projectpulse:auth-session-ready', refresh);
+      window.removeEventListener('projectpulse:auth-session-ready', refreshImmediately);
       window.removeEventListener('projectpulse:module-availability-changed', refresh);
-      window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
-      window.removeEventListener('projectpulse:workspace-authorization-updated', refresh);
-      window.removeEventListener('pageshow', refresh);
+      window.removeEventListener('projectpulse:permission-navigation-updated', refreshImmediately);
+      window.removeEventListener('projectpulse:workspace-authorization-updated', refreshImmediately);
+      window.removeEventListener('pageshow', refreshImmediately);
       window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+      refreshPendingRef.current = false;
       if (active) restoreNavigationGroups(expandedForDirectory.current);
     };
   }, [active]);
@@ -604,7 +629,7 @@ export default function ModulesDirectoryPortal() {
   if (!portalHost || !active) return null;
 
   return createPortal(
-    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title" data-authority-contract={MODULE_DIRECTORY_AUTHORITY_CONTRACT} data-hydration-contract={MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT}>
+    <section id="modules-directory-page" className="modules-directory-page" aria-labelledby="modules-directory-title" data-authority-contract={MODULE_DIRECTORY_AUTHORITY_CONTRACT} data-hydration-contract={MODULE_DIRECTORY_STABLE_HYDRATION_CONTRACT} data-refresh-contract={MODULE_DIRECTORY_NONSTARVING_REFRESH_CONTRACT}>
       <header className="modules-directory-hero">
         <div>
           <p className="eyebrow">ProjectPulse workspace directory</p>
