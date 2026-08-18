@@ -100,14 +100,24 @@ def execute(block: str, label: str) -> None:
 def repair_generated_validator_escapes() -> None:
     path = Path('src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs')
     source = path.read_text()
-    malformed = "'if (!tableMode) return undefined;\n    void loadOwnership();'"
-    corrected = "'if (!tableMode) return undefined;\\n    void loadOwnership();'"
-    count = source.count(malformed)
-    if count != 1:
-        raise SystemExit(
-            f'{path}: expected one generated multiline validator literal, found {count}'
-        )
-    path.write_text(source.replace(malformed, corrected, 1))
+    replacements = [
+        (
+            "'if (!tableMode) return undefined;\n    void loadOwnership();'",
+            "'if (!tableMode) return undefined;\\n    void loadOwnership();'",
+        ),
+        (
+            "'WHERE app_user.is_active = TRUE\n                    ORDER BY display_name, preferred_email'",
+            "'WHERE app_user.is_active = TRUE\\n                    ORDER BY display_name, preferred_email'",
+        ),
+    ]
+    for malformed, corrected in replacements:
+        count = source.count(malformed)
+        if count != 1:
+            raise SystemExit(
+                f'{path}: expected one generated multiline validator literal, found {count}: {malformed!r}'
+            )
+        source = source.replace(malformed, corrected, 1)
+    path.write_text(source)
 
 
 base_publisher = ".github/workflows/publish-pr719-module-directory-owner-001a.yml"
