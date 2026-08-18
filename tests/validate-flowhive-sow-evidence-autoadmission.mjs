@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   dedupeEvidence,
-  enrichEvidenceWithDocumentChronology,
   evidenceIdentity,
   normalizeEvidenceBody,
-  pendingReplacementEvidence,
-  queueCandidatesFromEvidence,
-  sourceChronology
+  queueCandidatesFromEvidence
 } from '../src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js';
 
 const oldReady = {
@@ -64,11 +61,6 @@ assert.ok(
   'The replacement SOW must not be hidden by an older ready record.'
 );
 
-const replacementBlocks = pendingReplacementEvidence([oldReady, replacement]);
-assert.equal(replacementBlocks.length, 1, 'A newer pending same-name replacement must block stale-scope generation.');
-assert.equal(replacementBlocks[0].newestDocumentId, replacement.documentId);
-assert.deepEqual(replacementBlocks[0].pendingDocumentIds, [replacement.documentId]);
-
 const replacementCandidates = queueCandidatesFromEvidence([oldReady, replacement]);
 assert.deepEqual(
   replacementCandidates.map((item) => item.documentId),
@@ -100,82 +92,15 @@ assert.equal(
 );
 assert.notEqual(evidenceIdentity(oldReady), evidenceIdentity(sameFileDifferentContent));
 
-const olderFailedUpload = {
-  ...replacement,
-  documentId: '44444444-4444-4444-4444-444444444444',
-  processingStatus: 'failed',
-  uploadedAt: '2026-07-15T12:00:00Z'
-};
-const newerReadyUpload = {
-  ...oldReady,
-  documentId: '55555555-5555-5555-5555-555555555555',
-  activeVersionId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
-  documentVersion: 'SOW-3',
-  uploadedAt: '2026-08-19T12:00:00Z'
-};
-assert.equal(
-  pendingReplacementEvidence([olderFailedUpload, newerReadyUpload]).length,
-  0,
-  'An older failed upload must not block a newer citation-ready same-name SOW.'
-);
-
-const evidenceWithoutChronology = [
-  { ...oldReady, uploadedAt: null },
-  { ...replacement, uploadedAt: null }
-];
-assert.equal(
-  pendingReplacementEvidence(evidenceWithoutChronology).length,
-  0,
-  'Incomplete chronology must not guess which same-name document is the replacement.'
-);
-const enrichedChronology = enrichEvidenceWithDocumentChronology(
-  evidenceWithoutChronology,
-  [
-    { documentId: oldReady.documentId, projectId: '99999999-9999-9999-9999-999999999999', uploadedAt: oldReady.uploadedAt },
-    { documentId: replacement.documentId, projectId: '99999999-9999-9999-9999-999999999999', uploadedAt: replacement.uploadedAt }
-  ],
-  '99999999-9999-9999-9999-999999999999'
-);
-assert.equal(sourceChronology(enrichedChronology[0]), Date.parse(oldReady.uploadedAt));
-assert.equal(sourceChronology(enrichedChronology[1]), Date.parse(replacement.uploadedAt));
-assert.equal(
-  pendingReplacementEvidence(enrichedChronology).length,
-  1,
-  'The authorized Module 019 document chronology must identify the newest pending replacement.'
-);
-
-const normalizedPending = normalizeEvidenceBody({
+const normalized = normalizeEvidenceBody({
   access: { canManage: true },
   sowEvidence: [oldReady, replacement, sameDocumentDuplicate]
 });
-assert.equal(normalizedPending.sowEvidence.length, 2);
-assert.equal(normalizedPending.sowEvidenceSummary.candidateCount, 2);
-assert.equal(normalizedPending.sowEvidenceSummary.readyCount, 1);
-assert.equal(normalizedPending.sowEvidenceSummary.duplicateRecordsConsolidated, 1);
-assert.equal(normalizedPending.sowEvidenceSummary.pendingReplacementCount, 1);
-assert.deepEqual(normalizedPending.sowEvidenceSummary.pendingReplacementDocumentIds, [replacement.documentId]);
-assert.equal(
-  normalizedPending.sowEvidenceSummary.approvedSowScopeReady,
-  false,
-  'An older ready SOW must not make the workspace ready while its newer replacement is processing.'
-);
-
-const readyReplacement = {
-  ...replacement,
-  activeVersionId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  documentVersion: 'SOW-2',
-  processingStatus: 'ready',
-  authorityStatus: 'canonical',
-  indexStatus: 'ready',
-  citationCount: 12,
-  scopeCitationCount: 4,
-  readyForAiPlanner: true
-};
-const normalizedReady = normalizeEvidenceBody({
-  access: { canManage: true },
-  sowEvidence: [oldReady, readyReplacement]
-});
-assert.equal(normalizedReady.sowEvidenceSummary.pendingReplacementCount, 0);
-assert.equal(normalizedReady.sowEvidenceSummary.approvedSowScopeReady, true);
+assert.equal(normalized.sowEvidence.length, 2);
+assert.equal(normalized.sowEvidenceSummary.candidateCount, 2);
+assert.equal(normalized.sowEvidenceSummary.readyCount, 1);
+assert.equal(normalized.sowEvidenceSummary.duplicateRecordsConsolidated, 1);
+assert.equal(normalized.sowEvidenceSummary.approvedSowScopeReady, true);
+assert.equal(normalized.sowEvidenceSummary.freshnessAuthority, 'project_scoped_server_gate');
 
 console.log('FLOWHIVE_SOW_EVIDENCE_AUTOADMISSION_REGRESSION=PASS');
