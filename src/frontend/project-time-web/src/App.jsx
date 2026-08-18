@@ -7751,6 +7751,17 @@ Analytics - Variphy / Infortel`}
       ) : null}
       {/* MODULE_066A1_PROJECT_FLOWHIVE_ROUTE_END */}
 
+      {activeRoute === 'engineer-task-closeout' ? (
+        <section
+          id="engineer-task-closeout"
+          className="panel engineer-task-closeout-route-panel"
+          data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+          data-module001a-route-reachable="true"
+        >
+          <EngineerTaskCloseoutCenter authSession={authSession} />
+        </section>
+      ) : null}
+
       {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}
       {/* MODULE_057_STRUCTURAL_ROUTE_BOUNDARY_V6 */}
       {![
@@ -8607,15 +8618,6 @@ Analytics - Variphy / Infortel`}
         </section>
       ) : null}
 
-      {activeRoute === 'engineer-task-closeout' ? (
-        <section
-          id="engineer-task-closeout"
-          className="panel engineer-task-closeout-route-panel"
-          data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
-        >
-          <EngineerTaskCloseoutCenter authSession={authSession} />
-        </section>
-      ) : null}
 
       {/* LIVE_CELAR_AI_ACTUAL_SESSION_ROUTE_AUTHORITY */}
       {(activeRoute === 'work-task-builder' && canSeeAny(['VIEW_WORK_TASK_BUILDER', 'MANAGE_WORK_TASK_BUILDER', 'ASSIGN_WORK_TASKS', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL'])) ? (
