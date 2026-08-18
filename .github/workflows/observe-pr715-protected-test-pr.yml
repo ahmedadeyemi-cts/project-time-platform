@@ -1,0 +1,182 @@
+name: Observe PR 715 Protected-Test Deployment
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr715-protected-test-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr715-protected-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr715-protected-test-20260818'
+    name: Verify governed deployment and assigned-work UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 220
+    env:
+      TARGET_SHA: f5f9c80b927efd0c9432132c24be2d313ef3b18c
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_UAT_MARKER: ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS identity=jason.mosier@ussignal.local serviceRequest=SR-8C81ACA3 modules=001,001A,019 week=2026-08-16..2026-08-22
+
+    steps:
+      - name: Locate exact governed protected-Test deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          run_json=''
+          for attempt in $(seq 1 180); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=50")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            [[ -n "$run_json" ]] && break
+            sleep 5
+          done
+
+          [[ -n "$run_json" ]] || {
+            echo "ERROR: No governed protected-Test deployment was found for $TARGET_SHA." >&2
+            exit 1
+          }
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          run_url="$(jq -r '.html_url' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "GOVERNED_DEPLOYMENT_RUN_ID=$run_id"
+          echo "GOVERNED_DEPLOYMENT_RUN_URL=$run_url"
+
+          for attempt in $(seq 1 840); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
+            echo "GOVERNED_DEPLOYMENT_STATUS=$status CONCLUSION=$conclusion"
+            if [[ "$status" == completed ]]; then
+              [[ "$conclusion" == success ]] || {
+                echo "ERROR: Governed protected-Test deployment concluded $conclusion." >&2
+                exit 1
+              }
+              break
+            fi
+            sleep 15
+          done
+
+          [[ "$(jq -r '.status' <<<"$run_json")" == completed ]] || {
+            echo 'ERROR: Governed protected-Test deployment did not complete within the observation window.' >&2
+            exit 1
+          }
+
+      - name: Verify deployment job and assigned-work UAT step
+        id: verify
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.deployment.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          jobs_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100")"
+          job_json="$(jq -c '
+            [.jobs[] | select(.name == "Validate, migrate, deploy, and verify protected Test")]
+            | last // empty
+          ' <<<"$jobs_json")"
+          [[ -n "$job_json" ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not found.' >&2
+            exit 1
+          }
+
+          job_id="$(jq -r '.id' <<<"$job_json")"
+          job_conclusion="$(jq -r '.conclusion // ""' <<<"$job_json")"
+          [[ "$job_conclusion" == success ]] || {
+            echo "ERROR: Governed deployment job concluded ${job_conclusion:-unknown}." >&2
+            exit 1
+          }
+
+          jq -e '
+            [.steps[] | select(.name == "Apply and verify Migrations 086, 088, and 093 inside Test private network" and .conclusion == "success")]
+            | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Migration 093 apply-and-verify step did not pass.' >&2
+            exit 1
+          }
+
+          jq -e '
+            [.steps[] | select(.name == "Deploy immutable Test API image" and .conclusion == "success")]
+            | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Immutable Test API deployment did not pass.' >&2
+            exit 1
+          }
+
+          jq -e '
+            [.steps[] | select(.name == "Deploy immutable Test web image" and .conclusion == "success")]
+            | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Immutable Test web deployment did not pass.' >&2
+            exit 1
+          }
+
+          jq -e '
+            [.steps[] | select(.name == "Run protected-Test assigned-work visibility UAT" and .conclusion == "success")]
+            | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Assigned-work protected-Test UAT step did not pass.' >&2
+            exit 1
+          }
+
+          raw_logs="$RUNNER_TEMP/deployment-job-logs.raw"
+          text_logs="$RUNNER_TEMP/deployment-job-logs.txt"
+          curl --fail-with-body --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/jobs/$job_id/logs" \
+            --output "$raw_logs"
+
+          if file "$raw_logs" | grep -qi 'zip archive'; then
+            unzip -p "$raw_logs" > "$text_logs"
+          else
+            cp "$raw_logs" "$text_logs"
+          fi
+
+          grep -Fq "$EXPECTED_UAT_MARKER" "$text_logs" || {
+            echo 'ERROR: The exact Jason assigned-work UAT success marker is missing from deployment evidence.' >&2
+            exit 1
+          }
+          grep -Fq 'MIGRATION_093=APPLIED_AND_VERIFIED' "$text_logs" || {
+            echo 'ERROR: Migration 093 success marker is missing from deployment evidence.' >&2
+            exit 1
+          }
+
+          echo "GOVERNED_DEPLOYMENT_JOB_ID=$job_id"
+          echo "$EXPECTED_UAT_MARKER"
+          echo 'PR715_PROTECTED_TEST_DEPLOYMENT=PASS'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
