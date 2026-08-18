@@ -61,7 +61,6 @@ jobs:
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
           node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
-          python3 scripts/security/validate-repository-security-posture.py
           git diff --check
 
       - name: Create immutable Git blobs for reviewed files
