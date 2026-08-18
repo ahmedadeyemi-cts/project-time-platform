@@ -1,0 +1,347 @@
+name: Observe PR 726 Module 001A Request-Family Browser UAT
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr726-module001a-request-family-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr726-module001a-request-family-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr726-module001a-request-family-20260818'
+    name: Verify exact release and request-only Module 001A in Chromium
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      TARGET_SHA: b1e0befeff75b42973bfa41100b26396ebc3571a
+      BASE: https://phd-west-test.onenecklab.com
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      LOGIN_EMAIL: jason.mosier@ussignal.local
+      EXPECTED_SERVICE_REQUEST: SR-8C81ACA3
+      EVIDENCE_DIR: /tmp/pr726-module001a-request-family-evidence
+
+    steps:
+      - name: Locate and verify exact governed protected-Test deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || {
+            echo 'ERROR: Observer is restricted to protected Test.' >&2
+            exit 1
+          }
+
+          run_json=''
+          for attempt in $(seq 1 240); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=100")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            [[ -n "$run_json" ]] && break
+            sleep 5
+          done
+          [[ -n "$run_json" ]] || {
+            echo "ERROR: No governed protected-Test deployment was found for $TARGET_SHA." >&2
+            exit 1
+          }
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "GOVERNED_DEPLOYMENT_RUN_ID=$run_id"
+
+          completed=false
+          for attempt in $(seq 1 360); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
+            observed_sha="$(jq -r '.head_sha' <<<"$run_json")"
+            echo "GOVERNED_DEPLOYMENT_STATUS=$status CONCLUSION=$conclusion SHA=$observed_sha"
+            [[ "$observed_sha" == "$TARGET_SHA" ]] || {
+              echo 'ERROR: Deployment run does not target the required release.' >&2
+              exit 1
+            }
+            if [[ "$status" == completed ]]; then
+              [[ "$conclusion" == success ]] || {
+                echo "ERROR: Governed protected-Test deployment concluded $conclusion." >&2
+                exit 1
+              }
+              completed=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$completed" == true ]] || {
+            echo 'ERROR: Governed protected-Test deployment did not complete within the observation window.' >&2
+            exit 1
+          }
+
+          jobs_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+          job_json="$(jq -c '[.jobs[] | select(.name == "Validate, migrate, deploy, and verify protected Test")] | last // empty' <<<"$jobs_json")"
+          [[ -n "$job_json" ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not found.' >&2
+            exit 1
+          }
+          [[ "$(jq -r '.conclusion // ""' <<<"$job_json")" == success ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not successful.' >&2
+            exit 1
+          }
+
+          for required_step in \
+            'Guard exact source and validate release' \
+            'Build immutable API, web, and migration images' \
+            'Apply and verify Migrations 086, 088, and 093 inside Test private network' \
+            'Deploy immutable Test API image' \
+            'Deploy immutable Test web image' \
+            'Run protected-Test authenticated functional UAT' \
+            'Run protected-Test assigned-work visibility UAT' \
+            'Run protected-Test utilization role-scoping UAT'; do
+            jq -e --arg step "$required_step" '
+              [.steps[] | select(.name == $step and .conclusion == "success")] | length == 1
+            ' <<<"$job_json" >/dev/null || {
+              echo "ERROR: Required protected-Test step did not pass: $required_step" >&2
+              exit 1
+            }
+          done
+
+          jq -e '
+            [.steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")] | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Application-image rollback was not skipped.' >&2
+            exit 1
+          }
+
+          echo "EXACT_PROTECTED_TEST_RELEASE=$TARGET_SHA"
+          echo 'APPLICATION_ROLLBACK=NONE'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Install Chromium harness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HARNESS="$RUNNER_TEMP/pr726-module001a-request-family"
+          install -d -m 0700 "$HARNESS" "$EVIDENCE_DIR"
+          cd "$HARNESS"
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run authenticated request-family-only browser acceptance
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: Protected-Test login credential is unavailable.' >&2
+            exit 1
+          }
+          HARNESS="$RUNNER_TEMP/pr726-module001a-request-family"
+          cat > "$HARNESS/browser-uat.mjs" <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+
+          const base = process.env.BASE;
+          const email = process.env.LOGIN_EMAIL;
+          const password = process.env.TEST_LOGIN_PASSWORD;
+          const expectedServiceRequest = process.env.EXPECTED_SERVICE_REQUEST;
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const releaseSha = process.env.TARGET_SHA;
+          const requestFamily = /^(SR|PRES|INT)-/i;
+
+          const diagnostics = {
+            releaseSha,
+            loginStatus: 0,
+            overviewStatus: 0,
+            eligibilityContract: '',
+            identifierAuthority: '',
+            routeMounted: false,
+            workspaceVisible: false,
+            serviceRequestVisible: false,
+            activeCount: 0,
+            historyCount: 0,
+            apiProjectCodes: [],
+            renderedReferences: [],
+            currentUrl: '',
+            consoleErrors: []
+          };
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+          let page;
+
+          try {
+            const loginResponse = await context.request.post(`${base}/api/auth/local/login`, {
+              headers: {
+                'Cache-Control': 'no-cache, no-store, max-age=0',
+                'Content-Type': 'application/json',
+                Origin: base,
+                'Sec-Fetch-Site': 'same-origin'
+              },
+              data: { username: email, password }
+            });
+            diagnostics.loginStatus = loginResponse.status();
+            if (!loginResponse.ok()) {
+              throw new Error(`Protected-Test login returned HTTP ${loginResponse.status()}.`);
+            }
+
+            const login = await loginResponse.json();
+            if (typeof login?.sessionToken !== 'string' || login.sessionToken.length < 20) {
+              throw new Error('Protected-Test login did not return a durable session token.');
+            }
+
+            const browserSession = {
+              username: login.username || email,
+              displayName: login.displayName || email,
+              loginMethod: 'local',
+              provider: login.provider || 'LOCAL',
+              sessionToken: login.sessionToken,
+              expiresAt: login.expiresAt,
+              mustChangePassword: Boolean(login.mustChangePassword),
+              signedInAt: new Date().toISOString()
+            };
+
+            await context.addInitScript((session) => {
+              window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(session));
+              window.localStorage.removeItem('projectPulseViewAsUser');
+            }, browserSession);
+
+            page = await context.newPage();
+            page.on('console', (message) => {
+              if (message.type() === 'error') {
+                diagnostics.consoleErrors.push(message.text().replace(/[A-Za-z0-9_-]{40,}/g, '[REDACTED]').slice(0, 500));
+              }
+            });
+            page.on('pageerror', (error) => diagnostics.consoleErrors.push(String(error?.message || error).slice(0, 500)));
+
+            const overviewPromise = page.waitForResponse(
+              (response) => response.url().includes('/api/engineer-task-closeout/overview'),
+              { timeout: 120_000 }
+            );
+
+            const cacheBuster = `${Date.now()}-${releaseSha.slice(0, 12)}`;
+            await page.goto(`${base}/?pr726_browser_uat=${cacheBuster}#engineer-task-closeout`, {
+              waitUntil: 'domcontentloaded',
+              timeout: 120_000
+            });
+            diagnostics.currentUrl = page.url();
+
+            const route = page.locator('[data-module001a-route-reachable="true"]');
+            await route.waitFor({ state: 'attached', timeout: 90_000 });
+            diagnostics.routeMounted = true;
+
+            const workspace = page.locator('.engineer-closeout-center');
+            await workspace.waitFor({ state: 'visible', timeout: 90_000 });
+            diagnostics.workspaceVisible = true;
+
+            const overviewResponse = await overviewPromise;
+            diagnostics.overviewStatus = overviewResponse.status();
+            if (overviewResponse.status() !== 200) {
+              throw new Error(`Module 001A overview returned HTTP ${overviewResponse.status()}.`);
+            }
+
+            const overview = await overviewResponse.json();
+            diagnostics.eligibilityContract = String(overview?.eligibilityContract || '');
+            diagnostics.identifierAuthority = String(overview?.workflow?.identifierAuthority || '');
+            if (diagnostics.eligibilityContract !== 'MODULE001A_REQUEST_FAMILY_ONLY_V3') {
+              throw new Error(`Unexpected Module 001A eligibility contract: ${diagnostics.eligibilityContract || 'missing'}.`);
+            }
+            if (diagnostics.identifierAuthority !== 'durable_project_code_prefix' || overview?.workflow?.projectTasksExcluded !== true) {
+              throw new Error('Module 001A did not expose the request-family-only workflow contract.');
+            }
+
+            const active = Array.isArray(overview?.active) ? overview.active : [];
+            const history = Array.isArray(overview?.history) ? overview.history : [];
+            const items = [...active, ...history];
+            diagnostics.activeCount = active.length;
+            diagnostics.historyCount = history.length;
+            diagnostics.apiProjectCodes = items.map((item) => String(item?.projectCode || ''));
+
+            const invalidApiCodes = diagnostics.apiProjectCodes.filter((code) => !requestFamily.test(code));
+            if (invalidApiCodes.length > 0) {
+              throw new Error(`Module 001A API returned project-family work: ${invalidApiCodes.join(', ')}`);
+            }
+            if (!diagnostics.apiProjectCodes.some((code) => code.toUpperCase() === expectedServiceRequest.toUpperCase())) {
+              throw new Error(`Module 001A overview did not contain ${expectedServiceRequest}.`);
+            }
+
+            const cardReferences = page.locator('.engineer-closeout-task__reference strong');
+            await cardReferences.first().waitFor({ state: 'visible', timeout: 90_000 });
+            diagnostics.renderedReferences = (await cardReferences.allTextContents()).map((value) => value.trim()).filter(Boolean);
+            const invalidRendered = diagnostics.renderedReferences.filter((code) => !requestFamily.test(code));
+            if (invalidRendered.length > 0) {
+              throw new Error(`Module 001A rendered project-family work: ${invalidRendered.join(', ')}`);
+            }
+
+            const search = page.locator('.engineer-closeout-search input');
+            await search.waitFor({ state: 'visible', timeout: 90_000 });
+            await search.fill(expectedServiceRequest);
+            const serviceRequest = page.getByText(expectedServiceRequest, { exact: false }).first();
+            await serviceRequest.waitFor({ state: 'visible', timeout: 90_000 });
+            diagnostics.serviceRequestVisible = true;
+
+            await page.screenshot({ path: `${evidenceDir}/module001a-request-family-only.png`, fullPage: true });
+            fs.writeFileSync(`${evidenceDir}/browser-uat.json`, JSON.stringify(diagnostics, null, 2));
+            console.log(`MODULE001A_REQUEST_FAMILY_BROWSER_UAT=PASS release=${releaseSha} active=${diagnostics.activeCount} history=${diagnostics.historyCount} rendered=${diagnostics.renderedReferences.length}`);
+          } catch (error) {
+            if (page) {
+              diagnostics.currentUrl = page.url();
+              await page.screenshot({ path: `${evidenceDir}/module001a-request-family-only-failure.png`, fullPage: true }).catch(() => {});
+            }
+            fs.writeFileSync(`${evidenceDir}/browser-uat.json`, JSON.stringify({ ...diagnostics, error: String(error?.stack || error) }, null, 2));
+            throw error;
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          cd "$HARNESS"
+          node browser-uat.mjs
+          unset TEST_LOGIN_PASSWORD
+
+      - name: Upload one-day browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr726-module001a-request-family-evidence
+          path: /tmp/pr726-module001a-request-family-evidence
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish protected-Test acceptance boundary
+        if: success()
+        run: |
+          echo "PR726_RELEASE_SHA=$TARGET_SHA"
+          echo 'MODULE001A_ROUTE_MOUNT=PASS'
+          echo 'MODULE001A_REQUEST_FAMILY_ONLY=PASS'
+          echo "MODULE001A_SERVICE_REQUEST=$EXPECTED_SERVICE_REQUEST"
+          echo 'MODULE001A_PROJECT_TASKS_EXCLUDED=PASS'
+          echo 'APPLICATION_ROLLBACK=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
