@@ -262,6 +262,35 @@ const availableTaskEndpoint = availableTaskStart >= 0 && availableTaskEnd > avai
 rejectText(availableTaskEndpoint, 'DayOfWeek.Monday', 'Module 001 Sunday week authority');
 
 const timesheetUi = read('src/frontend/project-time-web/src/App.jsx');
+const module001aReachableMount = `      {activeRoute === 'engineer-task-closeout' ? (
+        <section
+          id="engineer-task-closeout"
+          className="panel engineer-task-closeout-route-panel"
+          data-client-access={canUseEngineerTaskCloseout ? 'allowed' : 'server-authority'}
+          data-module001a-route-reachable="true"
+        >
+          <EngineerTaskCloseoutCenter authSession={authSession} />
+        </section>
+      ) : null}`;
+const module001aMountIndex = timesheetUi.indexOf(module001aReachableMount);
+const legacyRouteBoundaryIndex = timesheetUi.indexOf('      {/* MODULE_070_STRUCTURAL_ROUTE_BOUNDARY */}');
+const module001aLegacyExclusionIndex = timesheetUi.indexOf("        'engineer-task-closeout',", legacyRouteBoundaryIndex);
+if (module001aMountIndex < 0) {
+  failures.push('Module 001A route reachability: standalone route mount is missing');
+}
+if (legacyRouteBoundaryIndex < 0) {
+  failures.push('Module 001A route reachability: legacy exclusion boundary is missing');
+}
+if (module001aMountIndex >= legacyRouteBoundaryIndex) {
+  failures.push('Module 001A route reachability: route mount remains trapped inside the excluded legacy block');
+}
+if (module001aLegacyExclusionIndex < 0) {
+  failures.push('Module 001A route reachability: route must remain excluded from the legacy all-routes block');
+}
+if (timesheetUi.indexOf(module001aReachableMount, legacyRouteBoundaryIndex) >= 0) {
+  failures.push('Module 001A route reachability: unreachable duplicate route mount remains after the legacy boundary');
+}
+
 [
   "const isDurableRequestFamily = /^(SR|PRES|INT)-/.test(projectCode)",
   'requestWorkTypes.has(workType)',
@@ -314,6 +343,7 @@ console.log('timesheet_week_authority=sunday_through_saturday');
 console.log('request_family_classification=sr_pres_int_durable_identifiers');
 console.log('module001a_response_body=explicit_iresult');
 console.log('module001a_request_visibility=recent_first_all_current_assignments');
+console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');
 console.log('module_directory_authority=nonblocking_identity_scoped_refresh');
 console.log('module_owner_catalog=authenticated_read_through');
 console.log('authenticated_assigned_work_uat=registered');
