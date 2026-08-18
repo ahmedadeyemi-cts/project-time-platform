@@ -53,6 +53,16 @@ jobs:
               'git merge-base --is-ancestor \'949b2bd1b88086ee511d06df3c74a64963cb9675\' HEAD || {',
               1,
           )
+          script = script.replace(
+              "regression_path.write_text(r'''#!/usr/bin/env bash",
+              "regression_path.write_text((r'''#!/usr/bin/env bash",
+              1,
+          )
+          script = script.replace(
+              "''').replace('\\n          ', '\\n').lstrip()",
+              "''').replace('\\n          ', '\\n').lstrip())",
+              1,
+          )
           output = Path('/tmp/pr716-owner-repair.sh')
           output.write_text(script)
           output.chmod(0o700)
