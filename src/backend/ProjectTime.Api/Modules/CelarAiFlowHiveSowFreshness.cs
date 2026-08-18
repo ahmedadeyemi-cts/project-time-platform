@@ -1,3 +1,4 @@
+using ProjectTime.Api.Ai;
 using Npgsql;
 using NpgsqlTypes;
 
