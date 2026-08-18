@@ -4,12 +4,18 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - '.github/workflows/module-loading-assignment-propagation-ci.yml'
       - '.github/workflows/projectpulse-deploy-test.yml'
       - '.github/workflows/projectpulse-release-test-control-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-ci.yml'
       - '.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
+      - 'scripts/release-test/run-assigned-work-protected-test-uat.sh'
       - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+      - 'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs'
+      - 'src/frontend/project-time-web/src/App.jsx'
       - 'tests/validate-utilization-role-scoping.mjs'
       - 'tests/validate-systemwide-image-build-controller.mjs'
       - 'tests/validate-systemwide-enterprise-reliability.mjs'
@@ -51,17 +57,24 @@ jobs:
           CONTROLLER='.github/workflows/projectpulse-deploy-test.yml'
           RETIRED_CONTROLLER='.github/workflows/systemwide-enterprise-reliability-test-deployment.yml'
           UTILIZATION_UAT='scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh'
+          ASSIGNED_WORK_UAT='scripts/release-test/run-assigned-work-protected-test-uat.sh'
 
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The pull-request base SHA is unavailable.'
           git cat-file -e "$BASE_SHA^{commit}" || fail 'The exact pull-request base commit is unavailable.'
 
           cat > "$RUNNER_TEMP/allowed-release-files" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
           .github/workflows/projectpulse-deploy-test.yml
           .github/workflows/projectpulse-release-test-control-ci.yml
           .github/workflows/systemwide-enterprise-reliability-ci.yml
           .github/workflows/systemwide-enterprise-reliability-test-deployment.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
           scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           scripts/release-test/run-utilization-role-scoping-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Program.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/src/App.jsx
           tests/validate-utilization-role-scoping.mjs
           tests/validate-systemwide-image-build-controller.mjs
           tests/validate-systemwide-enterprise-reliability.mjs
@@ -84,9 +97,24 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-runtime-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-runtime-repair-files" -o "$RUNNER_TEMP/exact-runtime-repair-files"
 
+          cat > "$RUNNER_TEMP/exact-assigned-work-repair-files" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/projectpulse-deploy-test.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Program.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/src/App.jsx
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-assigned-work-repair-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-assigned-work-repair-files" -o "$RUNNER_TEMP/exact-assigned-work-repair-files"
+
           git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
           if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
+            echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
           else
             comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {
@@ -99,8 +127,10 @@ jobs:
           test -f "$CONTROLLER" || fail 'The governed protected-Test controller is missing.'
           test ! -e "$RETIRED_CONTROLLER" || fail 'The unregistered duplicate protected-Test controller was not retired.'
           test -f "$UTILIZATION_UAT" || fail 'The utilization role-scoping UAT script is missing.'
+          test -f "$ASSIGNED_WORK_UAT" || fail 'The assigned-work UAT script is missing.'
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           bash -n "$UTILIZATION_UAT"
+          bash -n "$ASSIGNED_WORK_UAT"
 
           grep -Fq 'name: Deploy System-wide Enterprise Reliability and Utilization to Protected Test' "$CONTROLLER"
           grep -Fq 'branches: [main]' "$CONTROLLER"
@@ -121,7 +151,9 @@ jobs:
           grep -Fq 'Deploy immutable Test API image' "$CONTROLLER"
           grep -Fq 'Deploy immutable Test web image' "$CONTROLLER"
           grep -Fq 'Run protected-Test authenticated functional UAT' "$CONTROLLER"
+          grep -Fq 'Run protected-Test assigned-work visibility UAT' "$CONTROLLER"
           grep -Fq 'Run protected-Test utilization role-scoping UAT' "$CONTROLLER"
+          grep -Fq 'assignedWorkUat:true' "$CONTROLLER"
           grep -Fq 'Restore exact prior Test images after application failure' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_api_image' "$CONTROLLER"
           grep -Fq 'steps.contract.outputs.old_web_image' "$CONTROLLER"
@@ -134,8 +166,9 @@ jobs:
           ! grep -Eq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$CONTROLLER"
           ! grep -Fq 'celarai.onenecklab.com' "$CONTROLLER"
           ! grep -Fq 'phd-west.onenecklab.com' "$CONTROLLER"
-          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT"
+          ! grep -Eq 'productionMutation:true|privateRuntimeConfigurationMutation:true' "$CONTROLLER" "$UTILIZATION_UAT" "$ASSIGNED_WORK_UAT"
 
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
           node tests/validate-utilization-role-scoping.mjs
           node tests/validate-systemwide-image-build-controller.mjs
           node tests/validate-systemwide-enterprise-reliability.mjs
@@ -145,6 +178,7 @@ jobs:
           git diff --check "$BASE_SHA...HEAD"
 
           echo 'GOVERNED_PROTECTED_TEST_CONTROLLER=PASSED'
+          echo 'ASSIGNED_WORK_VISIBILITY_SOURCE=PASSED'
           echo 'UTILIZATION_ROLE_SCOPING_SOURCE=PASSED'
           echo 'SYSTEMWIDE_ENTERPRISE_RELIABILITY_SOURCE=PASSED'
           echo 'SYSTEMWIDE_IMAGE_BUILD_CONTROLLER=PASSED'
