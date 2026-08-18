@@ -1,12 +1,50 @@
 from pathlib import Path
 
 
+YAML_BLOCK_INDENT = "          "
+TRIPLE_QUOTES = ('"""', "'''")
+
+
+def normalize_python_heredoc(raw: str, path: str) -> str:
+    lines: list[str] = []
+    active_triple: str | None = None
+
+    for raw_line in raw.splitlines():
+        if active_triple is None:
+            line = raw_line[len(YAML_BLOCK_INDENT):] if raw_line.startswith(YAML_BLOCK_INDENT) else raw_line
+            lines.append(line)
+            for delimiter in TRIPLE_QUOTES:
+                if line.count(delimiter) % 2 == 1:
+                    active_triple = delimiter
+                    break
+            continue
+
+        stripped = raw_line.lstrip()
+        if stripped.startswith(active_triple):
+            line = raw_line[len(YAML_BLOCK_INDENT):] if raw_line.startswith(YAML_BLOCK_INDENT) else raw_line
+            lines.append(line)
+            if line.count(active_triple) % 2 == 1:
+                active_triple = None
+            continue
+
+        # Leading whitespace inside a triple-quoted replacement is source text,
+        # not workflow indentation. Preserve it exactly.
+        lines.append(raw_line)
+        if raw_line.count(active_triple) % 2 == 1:
+            active_triple = None
+
+    if active_triple is not None:
+        raise SystemExit(f"{path}: unterminated triple-quoted string in Python heredoc")
+    return "\n".join(lines) + "\n"
+
+
 def python_blocks(path: str) -> list[str]:
     source = Path(path).read_text()
     start_marker = "          python3 - <<'PY'\n"
     end_marker = "\n          PY\n"
     blocks: list[str] = []
     offset = 0
+
     while True:
         start = source.find(start_marker, offset)
         if start < 0:
@@ -15,34 +53,10 @@ def python_blocks(path: str) -> list[str]:
         end = source.find(end_marker, start)
         if end < 0:
             raise SystemExit(f"{path}: unterminated Python heredoc")
-        raw = source[start:end]
-        lines = [
-            line[10:] if line.startswith("          ") else line
-            for line in raw.splitlines()
-        ]
-        blocks.append("\n".join(lines) + "\n")
+        blocks.append(normalize_python_heredoc(source[start:end], path))
         offset = end + len(end_marker)
+
     return blocks
-
-
-def omit_call(block: str, start_marker: str, next_marker: str) -> str:
-    start = block.find(start_marker)
-    if start < 0:
-        raise SystemExit(f"repair block omission marker was not found: {start_marker[:120]!r}")
-    end = block.find(next_marker, start)
-    if end < 0:
-        raise SystemExit(f"repair block continuation marker was not found: {next_marker[:120]!r}")
-    return block[:start] + block[end + 2:]
-
-
-def omit_before(block: str, start_marker: str, next_marker: str) -> str:
-    start = block.find(start_marker)
-    if start < 0:
-        raise SystemExit(f"repair block omission marker was not found: {start_marker[:120]!r}")
-    end = block.find(next_marker, start)
-    if end < 0:
-        raise SystemExit(f"repair block continuation marker was not found: {next_marker[:120]!r}")
-    return block[:start] + block[end:]
 
 
 def execute(block: str, label: str) -> None:
@@ -56,28 +70,7 @@ policy_publisher = ".github/workflows/publish-pr719-finalize-pr.yml"
 base_blocks = python_blocks(base_publisher)
 if len(base_blocks) != 1:
     raise SystemExit(f"{base_publisher}: expected one Python repair block, found {len(base_blocks)}")
-base_block = omit_call(
-    base_blocks[0],
-    'replace_once(\n    portal,\n    """        <div className="modules-directory-empty">',
-    '\n\ntable = '
-)
-base_block = omit_before(
-    base_block,
-    'replace_once(\n    table,\n    """                            <span className={module.owner?.ownerUserId',
-    'replace_once(\n    table,\n    """  const selectedOwnerProfile = ownerAvatarProfile'
-)
-base_block = base_block.replace(
-    "                    const ownerName = module.ownerProfile.displayName;\n"
-    "          const ownerEmail = module.ownerProfile.email;\n",
-    "                    const ownerName = module.ownerProfile.displayName;\n"
-    "                    const ownerEmail = module.ownerProfile.email;\n"
-).replace(
-    "                    const ownerName = module.ownerLoaded ? module.ownerProfile.displayName : 'Loading owner…';\n"
-    "          const ownerEmail = module.ownerLoaded ? module.ownerProfile.email : '';\n",
-    "                    const ownerName = module.ownerLoaded ? module.ownerProfile.displayName : 'Loading owner…';\n"
-    "                    const ownerEmail = module.ownerLoaded ? module.ownerProfile.email : '';\n"
-)
-execute(base_block, f"{base_publisher}#repair")
+execute(base_blocks[0], f"{base_publisher}#repair")
 
 policy_blocks = python_blocks(policy_publisher)
 if len(policy_blocks) != 2:
