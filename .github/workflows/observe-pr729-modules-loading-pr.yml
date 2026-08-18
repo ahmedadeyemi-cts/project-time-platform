@@ -1,0 +1,474 @@
+name: Observe PR 729 Modules Loading Across Views
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr729-modules-loading-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr729-modules-loading-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr729-modules-loading-20260818'
+    name: Verify exact release and Modules hydration in Chromium
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      TARGET_SHA: 362c5a6504b6675ab0db7999175ae837a42e77d7
+      BASE: https://phd-west-test.onenecklab.com
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      EVIDENCE_DIR: /tmp/pr729-modules-loading-evidence
+
+    steps:
+      - name: Locate and verify exact governed protected-Test deployment
+        id: deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || {
+            echo 'ERROR: Observer is restricted to protected Test.' >&2
+            exit 1
+          }
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          run_json=''
+          for attempt in $(seq 1 360); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=100")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            [[ -n "$run_json" ]] && break
+            sleep 5
+          done
+          [[ -n "$run_json" ]] || {
+            echo "ERROR: No governed protected-Test deployment was found for $TARGET_SHA." >&2
+            exit 1
+          }
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "GOVERNED_DEPLOYMENT_RUN_ID=$run_id"
+
+          completed=false
+          for attempt in $(seq 1 720); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
+            observed_sha="$(jq -r '.head_sha' <<<"$run_json")"
+            echo "GOVERNED_DEPLOYMENT_STATUS=$status CONCLUSION=$conclusion SHA=$observed_sha"
+            [[ "$observed_sha" == "$TARGET_SHA" ]] || {
+              echo 'ERROR: Deployment run does not target the required release.' >&2
+              exit 1
+            }
+            if [[ "$status" == completed ]]; then
+              [[ "$conclusion" == success ]] || {
+                echo "ERROR: Governed protected-Test deployment concluded $conclusion." >&2
+                exit 1
+              }
+              completed=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$completed" == true ]] || {
+            echo 'ERROR: Governed protected-Test deployment did not complete within the observation window.' >&2
+            exit 1
+          }
+
+          jobs_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+          job_json="$(jq -c '[.jobs[] | select(.name == "Validate, migrate, deploy, and verify protected Test")] | last // empty' <<<"$jobs_json")"
+          [[ -n "$job_json" ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not found.' >&2
+            exit 1
+          }
+          [[ "$(jq -r '.conclusion // ""' <<<"$job_json")" == success ]] || {
+            echo 'ERROR: Governed protected-Test deployment job was not successful.' >&2
+            exit 1
+          }
+
+          for required_step in \
+            'Guard exact source and validate release' \
+            'Build immutable API, web, and migration images' \
+            'Apply and verify Migrations 086, 088, and 093 inside Test private network' \
+            'Deploy immutable Test API image' \
+            'Deploy immutable Test web image' \
+            'Run protected-Test authenticated functional UAT' \
+            'Run protected-Test assigned-work visibility UAT' \
+            'Run protected-Test utilization role-scoping UAT'; do
+            jq -e --arg step "$required_step" '
+              [.steps[] | select(.name == $step and .conclusion == "success")] | length == 1
+            ' <<<"$job_json" >/dev/null || {
+              echo "ERROR: Required protected-Test step did not pass: $required_step" >&2
+              exit 1
+            }
+          done
+
+          jq -e '
+            [.steps[] | select(.name == "Restore exact prior Test images after application failure" and .conclusion == "skipped")] | length == 1
+          ' <<<"$job_json" >/dev/null || {
+            echo 'ERROR: Application-image rollback was not skipped.' >&2
+            exit 1
+          }
+
+          jq -n \
+            --arg release "$TARGET_SHA" \
+            --argjson runId "$run_id" \
+            '{release:$release,deploymentRunId:$runId,deploymentConclusion:"success",applicationRollback:false,environment:"protected-test"}' \
+            > "$EVIDENCE_DIR/deployment-contract.json"
+          echo "EXACT_PROTECTED_TEST_RELEASE=$TARGET_SHA"
+          echo 'APPLICATION_ROLLBACK=NONE'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Install Chromium harness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HARNESS="$RUNNER_TEMP/pr729-modules-loading"
+          install -d -m 0700 "$HARNESS" "$EVIDENCE_DIR"
+          cd "$HARNESS"
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run authenticated Modules loading acceptance
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: Protected-Test login credential is unavailable.' >&2
+            exit 1
+          }
+          HARNESS="$RUNNER_TEMP/pr729-modules-loading"
+          cat > "$HARNESS/browser-uat.mjs" <<'NODE'
+          import { chromium, request } from 'playwright';
+          import fs from 'node:fs';
+
+          const base = process.env.BASE;
+          const password = process.env.TEST_LOGIN_PASSWORD;
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const releaseSha = process.env.TARGET_SHA;
+          const maximumInitialHydrationMs = 15_000;
+          const maximumInitialRbacRequests = 8;
+          const maximumBurstRbacRequests = 8;
+          const rbacPaths = [
+            '/api/rbac/v1/bootstrap',
+            '/api/rbac/v1/matrix',
+            '/api/security/me',
+            '/api/rbac/v1/modules'
+          ];
+          const identities = [
+            { email: 'jason.mosier@ussignal.local', expectedRole: 'ENGINEERING' },
+            { email: 'demo.manager@ussignal.local', expectedRole: 'MANAGER' },
+            { email: 'heather.schrock@ussignal.local', expectedRole: 'PROJECT_MANAGEMENT' }
+          ];
+
+          const results = [];
+          const browser = await chromium.launch({ headless: true });
+
+          function totalRequests(counts) {
+            return Object.values(counts).reduce((sum, value) => sum + value, 0);
+          }
+
+          function requestPath(url) {
+            try {
+              return new URL(url).pathname;
+            } catch {
+              return '';
+            }
+          }
+
+          async function login(identity) {
+            const api = await request.newContext({
+              baseURL: base,
+              extraHTTPHeaders: {
+                'Cache-Control': 'no-cache, no-store, max-age=0',
+                'Content-Type': 'application/json',
+                Origin: base,
+                'Sec-Fetch-Site': 'same-origin'
+              }
+            });
+            const response = await api.post('/api/auth/local/login', {
+              data: { username: identity.email, password }
+            });
+            if (!response.ok()) {
+              const text = await response.text();
+              await api.dispose();
+              throw new Error(`${identity.email} login returned HTTP ${response.status()}: ${text.slice(0, 300)}`);
+            }
+            const loginPayload = await response.json();
+            if (typeof loginPayload?.sessionToken !== 'string' || loginPayload.sessionToken.length < 20) {
+              await api.dispose();
+              throw new Error(`${identity.email} login did not return a durable session token.`);
+            }
+            return { api, loginPayload };
+          }
+
+          async function validatePage({ identity, session, layout, round }) {
+            const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+            await context.addInitScript(({ authenticatedSession, requestedLayout }) => {
+              window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(authenticatedSession));
+              window.localStorage.removeItem('projectPulseViewAsUser');
+              window.localStorage.setItem('pulse-enterprise-experience', requestedLayout);
+              window.__modulesUatPermissionEvents = 0;
+              window.addEventListener('projectpulse:permissions-changed', () => {
+                window.__modulesUatPermissionEvents += 1;
+              });
+            }, { authenticatedSession: session, requestedLayout: layout });
+
+            const page = await context.newPage();
+            const requestCounts = Object.fromEntries(rbacPaths.map((path) => [path, 0]));
+            const responseStatuses = Object.fromEntries(rbacPaths.map((path) => [path, []]));
+            const consoleErrors = [];
+
+            page.on('request', (webRequest) => {
+              const path = requestPath(webRequest.url());
+              const match = rbacPaths.find((candidate) => path === candidate);
+              if (match) requestCounts[match] += 1;
+            });
+            page.on('response', (response) => {
+              const path = requestPath(response.url());
+              const match = rbacPaths.find((candidate) => path === candidate);
+              if (match) responseStatuses[match].push(response.status());
+            });
+            page.on('console', (message) => {
+              if (message.type() === 'error') {
+                consoleErrors.push(message.text().replace(/[A-Za-z0-9_-]{40,}/g, '[REDACTED]').slice(0, 500));
+              }
+            });
+            page.on('pageerror', (error) => consoleErrors.push(String(error?.message || error).slice(0, 500)));
+
+            const cacheBuster = `${Date.now()}-${identity.email.split('@')[0]}-${layout}-${round}`;
+            const startedAt = Date.now();
+            await page.goto(`${base}/?pr729_modules_uat=${encodeURIComponent(cacheBuster)}#modules`, {
+              waitUntil: 'domcontentloaded',
+              timeout: 120_000
+            });
+
+            await page.locator('#modules-directory-page').waitFor({ state: 'visible', timeout: maximumInitialHydrationMs });
+            await page.waitForFunction(() => window.__projectPulseEffectiveNavigation?.state === 'ready', null, {
+              timeout: maximumInitialHydrationMs
+            });
+            await page.getByText('Loading authorized modules', { exact: true }).waitFor({
+              state: 'hidden',
+              timeout: maximumInitialHydrationMs
+            });
+
+            let visibleCount = 0;
+            if (layout === 'classic') {
+              await page.waitForFunction(() => document.documentElement.dataset.pulseLayout === 'classic', null, {
+                timeout: maximumInitialHydrationMs
+              });
+              const cards = page.locator('.modules-directory-card:visible');
+              await cards.first().waitFor({ state: 'visible', timeout: maximumInitialHydrationMs });
+              visibleCount = await cards.count();
+            } else {
+              await page.waitForFunction(() => document.documentElement.dataset.pulseLayout === 'table', null, {
+                timeout: maximumInitialHydrationMs
+              });
+              const rows = page.locator('.module-management-table tbody tr:visible');
+              await rows.first().waitFor({ state: 'visible', timeout: maximumInitialHydrationMs });
+              visibleCount = await rows.count();
+            }
+
+            const hydrationMs = Date.now() - startedAt;
+            if (hydrationMs > maximumInitialHydrationMs) {
+              throw new Error(`${identity.email} ${layout} round ${round} hydration took ${hydrationMs}ms.`);
+            }
+            if (visibleCount < 1) {
+              throw new Error(`${identity.email} ${layout} round ${round} rendered no authorized modules.`);
+            }
+
+            const initialRequestTotal = totalRequests(requestCounts);
+            if (initialRequestTotal > maximumInitialRbacRequests) {
+              throw new Error(`${identity.email} ${layout} round ${round} made ${initialRequestTotal} initial RBAC requests.`);
+            }
+            for (const path of rbacPaths) {
+              if (requestCounts[path] < 1 || requestCounts[path] > 2) {
+                throw new Error(`${identity.email} ${layout} round ${round} request count for ${path} was ${requestCounts[path]}.`);
+              }
+              if (!responseStatuses[path].some((status) => status === 200)) {
+                throw new Error(`${identity.email} ${layout} round ${round} did not receive HTTP 200 from ${path}.`);
+              }
+            }
+
+            const beforeBurst = totalRequests(requestCounts);
+            await page.evaluate(() => {
+              for (let index = 0; index < 10; index += 1) {
+                window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed', {
+                  detail: { source: `pr729_browser_uat_burst_${index}` }
+                }));
+              }
+              window.dispatchEvent(new Event('focus'));
+              window.dispatchEvent(new PageTransitionEvent('pageshow'));
+            });
+            await page.waitForFunction(() => window.__projectPulsePermissionRefreshState?.inFlight !== true, null, {
+              timeout: 15_000
+            });
+            await page.waitForTimeout(750);
+
+            const burstRequestTotal = totalRequests(requestCounts) - beforeBurst;
+            if (burstRequestTotal > maximumBurstRbacRequests) {
+              throw new Error(`${identity.email} ${layout} round ${round} generated an RBAC request storm (${burstRequestTotal} requests) after a refresh burst.`);
+            }
+            await page.getByText('Loading authorized modules', { exact: true }).waitFor({ state: 'hidden', timeout: 5_000 });
+            const schedulerState = await page.evaluate(() => ({
+              navigationState: window.__projectPulseEffectiveNavigation?.state || '',
+              refreshInFlight: window.__projectPulsePermissionRefreshState?.inFlight === true,
+              schedulerActive: window.__projectPulseModuleDirectoryAuthorityScheduler?.active === true,
+              permissionEvents: Number(window.__modulesUatPermissionEvents || 0)
+            }));
+            if (schedulerState.navigationState !== 'ready' || schedulerState.refreshInFlight || schedulerState.schedulerActive) {
+              throw new Error(`${identity.email} ${layout} round ${round} did not return to an idle ready authority state.`);
+            }
+
+            let enterpriseGridCount = 0;
+            if (layout === 'table') {
+              const gridButton = page.getByRole('button', { name: 'Grid view' });
+              await gridButton.click();
+              const gridCards = page.locator('.module-management-grid article:visible');
+              await gridCards.first().waitFor({ state: 'visible', timeout: 8_000 });
+              enterpriseGridCount = await gridCards.count();
+              if (enterpriseGridCount < 1) {
+                throw new Error(`${identity.email} enterprise grid rendered no modules.`);
+              }
+              await page.getByText('Loading authorized modules', { exact: true }).waitFor({ state: 'hidden', timeout: 5_000 });
+            }
+
+            const result = {
+              identity: identity.email,
+              expectedRole: identity.expectedRole,
+              layout,
+              round,
+              hydrationMs,
+              visibleCount,
+              enterpriseGridCount,
+              initialRbacRequests: initialRequestTotal,
+              burstRbacRequests: burstRequestTotal,
+              requestCounts,
+              responseStatuses,
+              permissionEvents: schedulerState.permissionEvents,
+              navigationState: schedulerState.navigationState,
+              consoleErrors: consoleErrors.slice(0, 20)
+            };
+
+            if (round === 1) {
+              await page.screenshot({
+                path: `${evidenceDir}/${identity.email.split('@')[0]}-${layout}.png`,
+                fullPage: true
+              });
+            }
+            await context.close();
+            return result;
+          }
+
+          try {
+            for (const identity of identities) {
+              const { api, loginPayload } = await login(identity);
+              const session = {
+                username: loginPayload.username || identity.email,
+                displayName: loginPayload.displayName || identity.email,
+                loginMethod: 'local',
+                provider: loginPayload.provider || 'LOCAL',
+                sessionToken: loginPayload.sessionToken,
+                expiresAt: loginPayload.expiresAt,
+                mustChangePassword: Boolean(loginPayload.mustChangePassword),
+                signedInAt: new Date().toISOString()
+              };
+
+              for (let round = 1; round <= 2; round += 1) {
+                results.push(await validatePage({ identity, session, layout: 'classic', round }));
+                results.push(await validatePage({ identity, session, layout: 'table', round }));
+              }
+
+              await api.post('/api/auth/session/logout', {
+                headers: {
+                  Authorization: `Bearer ${loginPayload.sessionToken}`,
+                  'X-ProjectPulse-Session': loginPayload.sessionToken,
+                  'X-ProjectPulse-Module-Number': '012',
+                  Origin: base,
+                  'Sec-Fetch-Site': 'same-origin'
+                }
+              }).catch(() => {});
+              await api.dispose();
+            }
+
+            const maximumHydrationMs = Math.max(...results.map((result) => result.hydrationMs));
+            const averageHydrationMs = Math.round(results.reduce((sum, result) => sum + result.hydrationMs, 0) / results.length);
+            const maximumInitialRequests = Math.max(...results.map((result) => result.initialRbacRequests));
+            const maximumBurstRequests = Math.max(...results.map((result) => result.burstRbacRequests));
+            const evidence = {
+              status: 'passed',
+              environment: 'protected-test',
+              releaseSha,
+              identities: identities.map((identity) => identity.email),
+              views: ['classic', 'enterprise-table', 'enterprise-grid'],
+              iterationsPerIdentityAndLayout: 2,
+              maximumHydrationMs,
+              averageHydrationMs,
+              maximumInitialRequests,
+              maximumBurstRequests,
+              results,
+              applicationRollback: false,
+              productionMutation: false,
+              privateAiRuntimeMutation: false
+            };
+            fs.writeFileSync(`${evidenceDir}/modules-loading-browser-uat.json`, JSON.stringify(evidence, null, 2));
+            console.log(`MODULES_LOADING_BROWSER_UAT=PASS release=${releaseSha} identities=${identities.length} views=classic,enterprise-table,enterprise-grid maxHydrationMs=${maximumHydrationMs} avgHydrationMs=${averageHydrationMs} maxInitialRbac=${maximumInitialRequests} maxBurstRbac=${maximumBurstRequests}`);
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          cd "$HARNESS"
+          node browser-uat.mjs
+          unset TEST_LOGIN_PASSWORD
+
+      - name: Upload one-day browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr729-modules-loading-evidence
+          path: /tmp/pr729-modules-loading-evidence
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish protected-Test acceptance boundary
+        if: success()
+        run: |
+          echo "PR729_RELEASE_SHA=$TARGET_SHA"
+          echo 'MODULES_CLASSIC_VIEW=PASS'
+          echo 'MODULES_ENTERPRISE_TABLE_VIEW=PASS'
+          echo 'MODULES_ENTERPRISE_GRID_VIEW=PASS'
+          echo 'MODULES_RBAC_SINGLE_FLIGHT=PASS'
+          echo 'MODULES_LOADING_STALL=NOT_REPRODUCED'
+          echo 'APPLICATION_ROLLBACK=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
