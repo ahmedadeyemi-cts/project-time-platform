@@ -97,6 +97,19 @@ def execute(block: str, label: str) -> None:
     exec(compile(block, label, "exec"), namespace, namespace)
 
 
+def repair_generated_validator_escapes() -> None:
+    path = Path('src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs')
+    source = path.read_text()
+    malformed = "'if (!tableMode) return undefined;\n    void loadOwnership();'"
+    corrected = "'if (!tableMode) return undefined;\\n    void loadOwnership();'"
+    count = source.count(malformed)
+    if count != 1:
+        raise SystemExit(
+            f'{path}: expected one generated multiline validator literal, found {count}'
+        )
+    path.write_text(source.replace(malformed, corrected, 1))
+
+
 base_publisher = ".github/workflows/publish-pr719-module-directory-owner-001a.yml"
 policy_publisher = ".github/workflows/publish-pr719-finalize-pr.yml"
 
@@ -109,5 +122,6 @@ policy_blocks = python_blocks(policy_publisher)
 if len(policy_blocks) != 2:
     raise SystemExit(f"{policy_publisher}: expected two Python blocks, found {len(policy_blocks)}")
 execute(policy_blocks[1], f"{policy_publisher}#developer-owner-policy")
+repair_generated_validator_escapes()
 
 Path("scripts/release-test/finalize-pr719-source.py").unlink(missing_ok=True)
