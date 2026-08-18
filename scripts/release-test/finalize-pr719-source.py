@@ -51,6 +51,17 @@ base_block = omit_call(
     'replace_once(\n    portal,\n    """        <div className="modules-directory-empty">',
     '\n\ntable = '
 )
+base_block = base_block.replace(
+    "                    const ownerName = module.ownerProfile.displayName;\n"
+    "          const ownerEmail = module.ownerProfile.email;\n",
+    "                    const ownerName = module.ownerProfile.displayName;\n"
+    "                    const ownerEmail = module.ownerProfile.email;\n"
+).replace(
+    "                    const ownerName = module.ownerLoaded ? module.ownerProfile.displayName : 'Loading owner…';\n"
+    "          const ownerEmail = module.ownerLoaded ? module.ownerProfile.email : '';\n",
+    "                    const ownerName = module.ownerLoaded ? module.ownerProfile.displayName : 'Loading owner…';\n"
+    "                    const ownerEmail = module.ownerLoaded ? module.ownerProfile.email : '';\n"
+)
 execute(base_block, f"{base_publisher}#repair")
 
 policy_blocks = python_blocks(policy_publisher)
