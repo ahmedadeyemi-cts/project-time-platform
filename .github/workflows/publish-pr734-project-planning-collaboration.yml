@@ -81,6 +81,25 @@ jobs:
           PY
           python3 scripts/release-test/finalize-pr734-source.py
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs')
+          source = path.read_text()
+          marker = '    private const string MigrationId = "086_module_066_flowhive_enterprise_pm";\n'
+          contract = '''    // PM governance compatibility contract: Only the assigned Project Manager can manage
+              // financial controls, formal status publication, baseline approval, and customer sharing.
+              // ProjectPulseActualSessionAuthority.IsViewAs remains enforced by ProjectPlanningAccessResolver;
+              // Engineering planner collaboration never transfers IsProjectManagerOwner authority.
+          '''
+          if contract.strip() not in source:
+              count = source.count(marker)
+              if count != 1:
+                  raise SystemExit(f'FlowHive PM governance compatibility marker count was {count}, expected 1.')
+              source = source.replace(marker, marker + contract, 1)
+              path.write_text(source)
+          PY
+
       - name: Validate focused access contracts
         shell: bash
         run: |
