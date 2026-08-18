@@ -1,0 +1,144 @@
+name: Finalize Assigned-Work Repair on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-module001-source-pr.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-assigned-work-repair-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/jason-assigned-work-runtime-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact PR head
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply reviewed source repair and remove temporary diagnostics
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/tmp/finalize_assigned_work_repair.py
+          git rm -f --ignore-unmatch \
+            .github/workflows/diagnose-available-tasks-source-pr.yml \
+            .github/workflows/diagnose-jason-assigned-work-runtime-pr.yml \
+            .github/workflows/diagnose-jason-assigned-work-runtime.yml \
+            .github/workflows/diagnose-module001-source-pr.yml \
+            .github/workflows/finalize-assigned-work-repair.yml \
+            scripts/tmp/finalize_assigned_work_repair.py
+
+      - name: Enforce final change boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              '.github/workflows/diagnose-available-tasks-source-pr.yml',
+              '.github/workflows/diagnose-jason-assigned-work-runtime-pr.yml',
+              '.github/workflows/diagnose-jason-assigned-work-runtime.yml',
+              '.github/workflows/diagnose-module001-source-pr.yml',
+              '.github/workflows/finalize-assigned-work-repair.yml',
+              '.github/workflows/module-loading-assignment-propagation-ci.yml',
+              '.github/workflows/projectpulse-deploy-test.yml',
+              'scripts/release-test/run-assigned-work-protected-test-uat.sh',
+              'scripts/tmp/finalize_assigned_work_repair.py',
+              'src/backend/ProjectTime.Api/Program.cs',
+              'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs',
+              'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs',
+              'src/frontend/project-time-web/src/App.jsx',
+          }
+          changed = set(subprocess.check_output(
+              ['git', 'status', '--short'], text=True
+          ).splitlines())
+          paths = {line[3:] for line in changed if len(line) > 3}
+          unexpected = sorted(paths - allowed)
+          if unexpected:
+              raise SystemExit('Unexpected repair paths: ' + ', '.join(unexpected))
+          required = {
+              '.github/workflows/module-loading-assignment-propagation-ci.yml',
+              '.github/workflows/projectpulse-deploy-test.yml',
+              'scripts/release-test/run-assigned-work-protected-test-uat.sh',
+              'src/backend/ProjectTime.Api/Program.cs',
+              'src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs',
+              'src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs',
+              'src/frontend/project-time-web/src/App.jsx',
+          }
+          missing = sorted(required - paths)
+          if missing:
+              raise SystemExit('Repair did not modify required paths: ' + ', '.join(missing))
+          PY
+
+      - name: Validate final source and deployment contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          (
+            cd src/frontend/project-time-web
+            npm ci --no-audit --no-fund
+            npm run build
+          )
+          git diff --check
+
+      - name: Commit and push the validated repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add \
+            .github/workflows/module-loading-assignment-propagation-ci.yml \
+            .github/workflows/projectpulse-deploy-test.yml \
+            scripts/release-test/run-assigned-work-protected-test-uat.sh \
+            src/backend/ProjectTime.Api/Program.cs \
+            src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs \
+            src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs \
+            src/frontend/project-time-web/src/App.jsx
+          git diff --cached --quiet && {
+            echo 'ERROR: No validated assigned-work repair changes were produced.' >&2
+            exit 1
+          }
+          git commit -m 'fix: restore assigned work in Modules 001, 001A, and 019'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
