@@ -35,6 +35,16 @@ def omit_call(block: str, start_marker: str, next_marker: str) -> str:
     return block[:start] + block[end + 2:]
 
 
+def omit_before(block: str, start_marker: str, next_marker: str) -> str:
+    start = block.find(start_marker)
+    if start < 0:
+        raise SystemExit(f"repair block omission marker was not found: {start_marker[:120]!r}")
+    end = block.find(next_marker, start)
+    if end < 0:
+        raise SystemExit(f"repair block continuation marker was not found: {next_marker[:120]!r}")
+    return block[:start] + block[end:]
+
+
 def execute(block: str, label: str) -> None:
     namespace = {"__name__": "__main__", "__file__": label}
     exec(compile(block, label, "exec"), namespace, namespace)
@@ -51,10 +61,10 @@ base_block = omit_call(
     'replace_once(\n    portal,\n    """        <div className="modules-directory-empty">',
     '\n\ntable = '
 )
-base_block = omit_call(
+base_block = omit_before(
     base_block,
     'replace_once(\n    table,\n    """                            <span className={module.owner?.ownerUserId',
-    '\n\nreplace_once(\n    table,\n    """  const selectedOwnerProfile = ownerAvatarProfile'
+    'replace_once(\n    table,\n    """  const selectedOwnerProfile = ownerAvatarProfile'
 )
 base_block = base_block.replace(
     "                    const ownerName = module.ownerProfile.displayName;\n"
