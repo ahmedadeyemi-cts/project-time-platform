@@ -17,6 +17,7 @@ BEGIN {
   inserted_current_fact_gate = 0
   inserted_gate = 0
   inserted_evidence = 0
+  replaced_flowhive_builder = 0
   waiting_for_map_brace = 0
   after_quality_gate = 0
 }
@@ -46,6 +47,12 @@ mode == "production" {
     gsub(/CelarAiPeopleAndGuidanceService, CelarAiCapabilityRoutingStore, CancellationToken/,
       "CelarAiPeopleAndGuidanceService, CelarAiAuthoritativePublicFactService, CelarAiUniversalAnswerReliabilityService, CelarAiCapabilityRoutingStore, CancellationToken", line)
     changed_delegate++
+  }
+
+  if (line ~ /var generated = BuildPlan\(request\.Plan, composition\.FlowHivePlan\);/) {
+    gsub(/BuildPlan\(request\.Plan, composition\.FlowHivePlan\)/,
+      "ProjectFlowHiveDetailedPlanBuilder.Build(request.Plan, composition.FlowHivePlan)", line)
+    replaced_flowhive_builder++
   }
 
   print line
@@ -109,6 +116,6 @@ END {
   if (mode == "services") {
     if (inserted_service != 1 || inserted_current_fact_service != 1 || inserted_operations_service != 1) exit 42
   } else if (mode == "production") {
-    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1) exit 42
+    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1 || replaced_flowhive_builder != 1) exit 42
   } else exit 42
 }
