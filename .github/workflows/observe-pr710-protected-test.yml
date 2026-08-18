@@ -1,4 +1,4 @@
-name: Observe PR 710 Protected-Test Deployment
+name: Observe PR 713 Protected-Test Deployment
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: observe-pr710-protected-test
+  group: observe-pr713-protected-test
   cancel-in-progress: true
 
 jobs:
@@ -21,9 +21,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 220
     env:
-      TARGET_SHA: 6b215dee7df1c9f8d97a3fcd6ca778d3a9220b44
+      TARGET_SHA: 0c876fc3392b29727fc4bc9329dbaab129b1d9e9
       DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
-      STATUS_CONTEXT: protected-test-deployment/pr710-migration093
+      STATUS_CONTEXT: protected-test-deployment/pr713-migration093
       GH_API_URL: https://api.github.com
       GH_TOKEN: ${{ github.token }}
 
