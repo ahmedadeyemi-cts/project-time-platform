@@ -1,0 +1,253 @@
+name: Diagnose PR 729 Modules Authority Timeline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-pr729-modules-authority-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: diagnose-pr729-modules-authority-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr729-modules-loading-20260818'
+    name: Capture protected-Test Modules authority evidence
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 362c5a6504b6675ab0db7999175ae837a42e77d7
+      TARGET_DEPLOY_RUN_ID: '32187004017'
+      BASE: https://phd-west-test.onenecklab.com
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+      LOGIN_EMAIL: jason.mosier@ussignal.local
+      EVIDENCE_DIR: /tmp/pr729-modules-authority-diagnostic
+
+    steps:
+      - name: Verify exact successful protected-Test release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+          run_json="$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_DEPLOY_RUN_ID")"
+          [[ "$(jq -r '.head_sha' <<<"$run_json")" == "$TARGET_SHA" ]]
+          [[ "$(jq -r '.status' <<<"$run_json")" == completed ]]
+          [[ "$(jq -r '.conclusion' <<<"$run_json")" == success ]]
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Install Chromium harness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HARNESS="$RUNNER_TEMP/pr729-modules-authority-diagnostic"
+          install -d -m 0700 "$HARNESS" "$EVIDENCE_DIR"
+          cd "$HARNESS"
+          npm init -y >/dev/null
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Capture authenticated authority timeline and endpoint shapes
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]]
+          HARNESS="$RUNNER_TEMP/pr729-modules-authority-diagnostic"
+          cat > "$HARNESS/diagnose.mjs" <<'NODE'
+          import { chromium, request } from 'playwright';
+          import fs from 'node:fs';
+
+          const base = process.env.BASE;
+          const email = process.env.LOGIN_EMAIL;
+          const password = process.env.TEST_LOGIN_PASSWORD;
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const releaseSha = process.env.TARGET_SHA;
+          const endpointPaths = [
+            '/api/rbac/v1/bootstrap',
+            '/api/rbac/v1/matrix',
+            '/api/security/me',
+            '/api/rbac/v1/modules?includeInactive=true'
+          ];
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+          let page;
+
+          try {
+            const api = await request.newContext({ baseURL: base });
+            const loginResponse = await api.post('/api/auth/local/login', {
+              headers: {
+                'Cache-Control': 'no-cache, no-store, max-age=0',
+                'Content-Type': 'application/json',
+                Origin: base,
+                'Sec-Fetch-Site': 'same-origin'
+              },
+              data: { username: email, password }
+            });
+            if (!loginResponse.ok()) throw new Error(`Login returned HTTP ${loginResponse.status()}.`);
+            const login = await loginResponse.json();
+            const token = login.sessionToken;
+            if (typeof token !== 'string' || token.length < 20) throw new Error('Missing session token.');
+
+            const browserSession = {
+              username: login.username || email,
+              displayName: login.displayName || email,
+              loginMethod: 'local',
+              provider: login.provider || 'LOCAL',
+              sessionToken: token,
+              expiresAt: login.expiresAt,
+              mustChangePassword: Boolean(login.mustChangePassword),
+              signedInAt: new Date().toISOString()
+            };
+            await context.addInitScript((session) => {
+              window.localStorage.setItem('projectPulseAuthSession', JSON.stringify(session));
+              window.localStorage.removeItem('projectPulseViewAsUser');
+              window.localStorage.setItem('pulse-enterprise-experience', 'classic');
+              window.localStorage.setItem('pulse-enterprise-experience-default-version', 'table-v1');
+            }, browserSession);
+
+            const endpointEvidence = {};
+            const headers = {
+              Authorization: `Bearer ${token}`,
+              'X-ProjectPulse-Session': token,
+              'X-ProjectPulse-Module-Number': '012',
+              'Cache-Control': 'no-cache, no-store, max-age=0',
+              Origin: base,
+              'Sec-Fetch-Site': 'same-origin'
+            };
+            for (const path of endpointPaths) {
+              const startedAt = Date.now();
+              const response = await api.get(path, { headers });
+              const text = await response.text();
+              let payload = null;
+              try { payload = JSON.parse(text); } catch {}
+              endpointEvidence[path] = {
+                status: response.status(),
+                durationMs: Date.now() - startedAt,
+                bytes: Buffer.byteLength(text),
+                keys: payload && typeof payload === 'object' ? Object.keys(payload) : [],
+                arrayLengths: payload && typeof payload === 'object'
+                  ? Object.fromEntries(Object.entries(payload)
+                      .filter(([, value]) => Array.isArray(value))
+                      .map(([key, value]) => [key, value.length]))
+                  : {},
+                actorRoleCodes: payload?.actor?.roleCodes || [],
+                authoritySource: payload?.authoritySource || payload?.actor?.authoritySource || '',
+                statusValue: payload?.status || ''
+              };
+            }
+
+            page = await context.newPage();
+            const consoleMessages = [];
+            const pageErrors = [];
+            page.on('console', (message) => consoleMessages.push({ type: message.type(), text: message.text().slice(0, 500) }));
+            page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error).slice(0, 1000)));
+
+            const timeline = [];
+            const startedAt = Date.now();
+            await page.goto(`${base}/?pr729_authority_diagnostic=${Date.now()}#modules`, {
+              waitUntil: 'domcontentloaded',
+              timeout: 120_000
+            });
+
+            for (let index = 0; index < 40; index += 1) {
+              const state = await page.evaluate(() => {
+                const visible = (element) => {
+                  if (!element) return false;
+                  const style = window.getComputedStyle(element);
+                  const box = element.getBoundingClientRect();
+                  return style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && style.opacity !== '0'
+                    && box.width > 0
+                    && box.height > 0;
+                };
+                const loadingLabels = Array.from(document.querySelectorAll('h2, strong'))
+                  .filter((element) => element.textContent?.trim() === 'Loading authorized modules')
+                  .filter(visible)
+                  .length;
+                const tableRows = Array.from(document.querySelectorAll('.module-management-table tbody tr')).filter(visible).length;
+                const classicCards = Array.from(document.querySelectorAll('.modules-directory-card')).filter(visible).length;
+                return {
+                  elapsedMs: Math.round(performance.now()),
+                  hash: window.location.hash,
+                  rootPresent: Boolean(document.getElementById('modules-directory-page')),
+                  navigation: window.__projectPulseEffectiveNavigation || null,
+                  refresh: window.__projectPulsePermissionRefreshState || null,
+                  scheduler: window.__projectPulseModuleDirectoryAuthorityScheduler || null,
+                  moreNavigation: window.ProjectPulseMoreNavigation?.state || null,
+                  viewAs: window.localStorage.getItem('projectPulseViewAsUser'),
+                  sessionPresent: Boolean(window.localStorage.getItem('projectPulseAuthSession')),
+                  pulseLayout: document.documentElement.dataset.pulseLayout || '',
+                  loadingLabels,
+                  tableRows,
+                  classicCards
+                };
+              });
+              timeline.push({ observedAfterMs: Date.now() - startedAt, ...state });
+              if (state.navigation?.state === 'ready' && state.loadingLabels === 0) break;
+              await page.waitForTimeout(1000);
+            }
+
+            const resources = await page.evaluate(() => performance.getEntriesByType('resource')
+              .filter((entry) => /\/api\/(rbac\/v1\/(bootstrap|matrix|modules)|security\/me)/.test(entry.name))
+              .map((entry) => ({
+                name: new URL(entry.name).pathname,
+                durationMs: Math.round(entry.duration),
+                transferSize: entry.transferSize,
+                encodedBodySize: entry.encodedBodySize,
+                decodedBodySize: entry.decodedBodySize,
+                responseEnd: Math.round(entry.responseEnd)
+              })));
+
+            const evidence = {
+              environment: 'protected-test',
+              releaseSha,
+              identity: email,
+              endpointEvidence,
+              timeline,
+              resources,
+              consoleMessages,
+              pageErrors
+            };
+            fs.writeFileSync(`${evidenceDir}/authority-diagnostic.json`, JSON.stringify(evidence, null, 2));
+            await page.screenshot({ path: `${evidenceDir}/authority-diagnostic.png`, fullPage: true });
+            console.log(`MODULES_AUTHORITY_DIAGNOSTIC_CAPTURED finalState=${timeline.at(-1)?.navigation?.state || 'missing'} elapsedMs=${timeline.at(-1)?.observedAfterMs || 0}`);
+
+            await api.post('/api/auth/session/logout', { headers }).catch(() => {});
+            await api.dispose();
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          cd "$HARNESS"
+          node diagnose.mjs
+          unset TEST_LOGIN_PASSWORD
+
+      - name: Upload one-day diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr729-modules-authority-diagnostic
+          path: /tmp/pr729-modules-authority-diagnostic
+          if-no-files-found: error
+          retention-days: 1
