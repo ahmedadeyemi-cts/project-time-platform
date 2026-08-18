@@ -1,0 +1,118 @@
+name: Diagnose Jason Assigned Work Runtime on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-jason-assigned-work-runtime-pr.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-jason-assigned-work-runtime-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/jason-assigned-work-runtime-20260818'
+    name: Capture protected-Test assigned-work evidence
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      EVIDENCE_DIR: /tmp/jason-assigned-work-runtime
+      JASON_EMAIL: jason.mosier@ussignal.local
+      WEEK_START: '2026-08-16'
+      REPORTED_SERVICE_REQUEST: SR-8C81ACA3
+
+    steps:
+      - name: Authenticate and capture read-only runtime contracts
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || fail 'Diagnostic is restricted to protected Test.'
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || fail 'Protected-Test login credential is unavailable.'
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          payload="$(mktemp)"
+          response="$(mktemp)"
+          chmod 0600 "$payload" "$response"
+          jq -n --arg username "$JASON_EMAIL" --arg password "$TEST_LOGIN_PASSWORD" '{username:$username,password:$password}' > "$payload"
+          status="$(curl -sS --max-time 90 -o "$response" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
+          rm -f "$payload"
+          [[ "$status" == 200 ]] || fail "Jason login returned HTTP $status."
+          SESSION_TOKEN="$(jq -er '.sessionToken' "$response")"
+          echo "::add-mask::$SESSION_TOKEN"
+          jq 'del(.sessionToken,.token,.password)' "$response" > "$EVIDENCE_DIR/jason-login-redacted.json"
+          rm -f "$response"
+          unset TEST_LOGIN_PASSWORD
+
+          auth_get() {
+            local name="$1" module="$2" path="$3" output="$4" status
+            status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 120 \
+              -o "$output" -w '%{http_code}' \
+              -H 'Cache-Control: no-cache, no-store, max-age=0' \
+              -H "Authorization: Bearer $SESSION_TOKEN" \
+              -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+              -H "X-ProjectPulse-Module-Number: $module" \
+              -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+              "$BASE$path" || true)"
+            jq -n --arg name "$name" --arg module "$module" --arg path "$path" --arg status "$status" \
+              '{name:$name,module:$module,path:$path,httpStatus:$status}' >> "$EVIDENCE_DIR/http-status.ndjson"
+            [[ "$status" != 200 ]] || jq -e . "$output" >/dev/null
+            printf '%s' "$status"
+          }
+
+          security_status="$(auth_get security-context 001 '/api/security/context' "$EVIDENCE_DIR/security-context.json")"
+          queue_status="$(auth_get timesheet-work-queue 001 "/api/timesheet/work-queue?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-work-queue.json")"
+          lines_status="$(auth_get timesheet-weekly-lines 001 "/api/timesheet/weekly-lines?weekStart=$WEEK_START" "$EVIDENCE_DIR/timesheet-weekly-lines.json")"
+          closeout_status="$(auth_get engineer-task-closeout 001A '/api/engineer-task-closeout/overview' "$EVIDENCE_DIR/engineer-task-closeout.json")"
+          workspace_status="$(auth_get engineering-workspace 019 '/api/project-workspace/overview' "$EVIDENCE_DIR/project-workspace.json")"
+          register_status="$(auth_get work-register 055C '/api/work-register/overview' "$EVIDENCE_DIR/work-register.json")"
+
+          jq -n \
+            --arg identity "$JASON_EMAIL" \
+            --arg serviceRequest "$REPORTED_SERVICE_REQUEST" \
+            --arg userId "$(jq -r '.userId // empty' "$EVIDENCE_DIR/security-context.json" 2>/dev/null || true)" \
+            --arg securityStatus "$security_status" \
+            --arg queueStatus "$queue_status" \
+            --arg linesStatus "$lines_status" \
+            --arg closeoutStatus "$closeout_status" \
+            --arg workspaceStatus "$workspace_status" \
+            --arg registerStatus "$register_status" \
+            --argjson queueCount "$(jq -r '.count // (.tasks | length) // -1' "$EVIDENCE_DIR/timesheet-work-queue.json" 2>/dev/null || echo -1)" \
+            --argjson queueMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.tasks[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/timesheet-work-queue.json" 2>/dev/null || echo -1)" \
+            --argjson closeoutCount "$(jq -r '.summary.activeCount // (.active | length) // -1' "$EVIDENCE_DIR/engineer-task-closeout.json" 2>/dev/null || echo -1)" \
+            --argjson closeoutMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.active[]?, .history[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/engineer-task-closeout.json" 2>/dev/null || echo -1)" \
+            --argjson workspaceProjects "$(jq -r '.summary.projectCount // (.projects | length) // -1' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
+            --argjson workspaceAssignments "$(jq -r '.summary.assignmentCount // (.assignments | length) // -1' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
+            --argjson workspaceMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.projects[]?, .assignments[]? | select((.projectCode // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/project-workspace.json" 2>/dev/null || echo -1)" \
+            --argjson registerMatch "$(jq -r --arg sr "$REPORTED_SERVICE_REQUEST" '[.workItems[]? | select((.projectCode // "") == $sr or (.projectNumber // "") == $sr or (.serviceRequestNumber // "") == $sr)] | length' "$EVIDENCE_DIR/work-register.json" 2>/dev/null || echo -1)" \
+            '{environment:"protected-test",identity:$identity,authenticatedUserId:$userId,serviceRequest:$serviceRequest,http:{security:$securityStatus,workQueue:$queueStatus,weeklyLines:$linesStatus,closeout:$closeoutStatus,workspace:$workspaceStatus,workRegister:$registerStatus},counts:{workQueue:$queueCount,workQueueServiceRequestMatch:$queueMatch,closeoutActive:$closeoutCount,closeoutServiceRequestMatch:$closeoutMatch,workspaceProjects:$workspaceProjects,workspaceAssignments:$workspaceAssignments,workspaceServiceRequestMatch:$workspaceMatch,workRegisterServiceRequestMatch:$registerMatch},mutation:false}' \
+            > "$EVIDENCE_DIR/diagnostic-summary.json"
+
+          curl -sS --max-time 60 -o /dev/null -X POST \
+            -H "Authorization: Bearer $SESSION_TOKEN" -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+            -H 'X-ProjectPulse-Module-Number: 001' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
+          unset SESSION_TOKEN
+          jq . "$EVIDENCE_DIR/diagnostic-summary.json"
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jason-assigned-work-runtime-evidence
+          path: /tmp/jason-assigned-work-runtime
+          if-no-files-found: error
+          retention-days: 1
