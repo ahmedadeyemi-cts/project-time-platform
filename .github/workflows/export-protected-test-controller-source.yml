@@ -7,7 +7,7 @@ on:
       - '.github/workflows/export-protected-test-controller-source.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: prepare-migration-093-controller-${{ github.event.pull_request.number }}
@@ -26,7 +26,7 @@ jobs:
         with:
           ref: release/migration-093-protected-test-20260817
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Apply and validate exact governed controller update
         shell: bash
@@ -60,13 +60,19 @@ jobs:
           LC_ALL=C sort -u "$RUNNER_TEMP/expected-files" -o "$RUNNER_TEMP/expected-files"
           cmp "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/changed-files"
 
-      - name: Commit exact release-control changes
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --all
-          git diff --cached --check
-          git commit -m 'release(test): apply Migration 093 with PR #710'
-          git push origin HEAD:release/migration-093-protected-test-20260817
+          ROOT="$RUNNER_TEMP/migration-093-controller"
+          install -d -m 0700 "$ROOT/.github/workflows" "$ROOT/scripts/release-test" "$ROOT/tests"
+          install -m 0600 .github/workflows/projectpulse-deploy-test.yml "$ROOT/.github/workflows/projectpulse-deploy-test.yml"
+          install -m 0600 .github/workflows/projectpulse-release-test-control-ci.yml "$ROOT/.github/workflows/projectpulse-release-test-control-ci.yml"
+          install -m 0600 scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh "$ROOT/scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh"
+          install -m 0600 tests/validate-systemwide-enterprise-reliability.mjs "$ROOT/tests/validate-systemwide-enterprise-reliability.mjs"
+          install -m 0600 tests/validate-systemwide-image-build-controller.mjs "$ROOT/tests/validate-systemwide-image-build-controller.mjs"
+
+      - name: Upload validated controller source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migration-093-protected-test-controller
+          path: ${{ runner.temp }}/migration-093-controller
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
