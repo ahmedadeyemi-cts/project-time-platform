@@ -68,18 +68,30 @@ jobs:
           output.chmod(0o700)
           PY
           /tmp/pr716-owner-repair.sh
-          rm -f .github/workflows/run-pr716-module-owner-repair.yml
+
+          # The GitHub Actions token may not update workflow files. Restore all
+          # workflow paths so this guarded push contains only the validated SQL,
+          # focused validator, and executable PostgreSQL regression. The GitHub
+          # repository connector publishes the workflow changes separately.
+          git checkout HEAD -- \
+            .github/workflows/diagnose-module-owner-031-033-pr.yml \
+            .github/workflows/patch-pr716-module-owner-repair.yml \
+            .github/workflows/run-pr716-module-owner-repair.yml \
+            .github/workflows/module-loading-assignment-propagation-ci.yml
           git diff --check
 
-      - name: Commit the final repair source
+      - name: Commit the validated non-workflow repair source
         shell: bash
         run: |
           set -Eeuo pipefail
           git config user.name 'ahmedadeyemi-cts'
           git config user.email 'ahmedadeyemi@gmail.com'
-          git add -A
+          git add \
+            database/migrations/093_assigned_work_canonical_visibility_repair.sql \
+            src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs \
+            tests/test-module-catalog-owner-repair-migration-093.sh
           git diff --cached --quiet && {
-            echo 'ERROR: The PR #716 repair produced no source changes.' >&2
+            echo 'ERROR: The PR #716 repair produced no non-workflow source changes.' >&2
             exit 1
           }
           git commit -m 'fix(module-management): restore owner catalog rows 031-033'
