@@ -51,6 +51,11 @@ base_block = omit_call(
     'replace_once(\n    portal,\n    """        <div className="modules-directory-empty">',
     '\n\ntable = '
 )
+base_block = omit_call(
+    base_block,
+    'replace_once(\n    table,\n    """                            <span className={module.owner?.ownerUserId',
+    '\n\nreplace_once(\n    table,\n    """  const selectedOwnerProfile = ownerAvatarProfile'
+)
 base_block = base_block.replace(
     "                    const ownerName = module.ownerProfile.displayName;\n"
     "          const ownerEmail = module.ownerProfile.email;\n",
