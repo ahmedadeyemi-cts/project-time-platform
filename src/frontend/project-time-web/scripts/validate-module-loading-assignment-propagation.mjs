@@ -117,8 +117,21 @@ const modulesPortal = read('src/frontend/project-time-web/src/ModulesDirectoryPo
   'MODULE_DIRECTORY_AUTHORITY_REFRESH_THROTTLE_MS',
   'authorityRefreshRequestedAtRef',
   '__projectPulsePermissionRefreshState',
+  'MODULE_DIRECTORY_NONSTARVING_REFRESH_V4',
+  'refreshPendingRef',
+  'const resolveDirectory = () =>',
+  'if (refreshTimer.current !== null)',
+  'refreshPendingRef.current = true',
+  'immediate ? 0 : 80',
+  'refresh({ immediate: true })',
+  'data-refresh-contract={MODULE_DIRECTORY_NONSTARVING_REFRESH_CONTRACT}',
   'directoryResolved={directoryResolved}'
 ].forEach((contract) => requireText(modulesPortal, contract, 'nonblocking Modules directory hydration'));
+rejectText(
+  modulesPortal,
+  'window.clearTimeout(refreshTimer.current);\n      refreshTimer.current = window.setTimeout(() =>',
+  'Modules directory refresh must not use a resettable debounce that can be starved by DOM mutations'
+);
 
 const moduleManagement = read('src/frontend/project-time-web/src/ModuleManagementTableView.jsx');
 [
@@ -392,5 +405,6 @@ console.log('module001a_request_visibility=recent_first_all_current_assignments'
 console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');
 console.log('module001a_eligibility=request_family_codes_only');
 console.log('module_directory_authority=single_flight_preserved_ready_refresh');
+console.log('module_directory_refresh=nonstarving_coalesced_scheduler');
 console.log('module_owner_catalog=authenticated_read_through');
 console.log('authenticated_assigned_work_uat=registered');
