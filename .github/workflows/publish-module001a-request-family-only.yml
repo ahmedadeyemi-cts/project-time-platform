@@ -1,9 +1,8 @@
 name: Publish Module 001A Request-Family-Only Repair
 
 on:
-  push:
-    branches:
-      - fix/module001a-request-family-only-20260818
+  pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/publish-module001a-request-family-only.yml'
 
@@ -11,11 +10,14 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-module001a-request-family-only
+  group: publish-module001a-request-family-only-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/module001a-request-family-only-20260818'
     name: Repair, validate, and publish Module 001A scope
     runs-on: ubuntu-24.04
     timeout-minutes: 75
@@ -24,7 +26,7 @@ jobs:
       - name: Check out exact repair branch
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: fix/module001a-request-family-only-20260818
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -41,6 +43,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Apply guarded request-family-only repair
+        id: repair
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -50,197 +53,267 @@ jobs:
           backend_path = Path('src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs')
           validator_path = Path('src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs')
           uat_path = Path('scripts/release-test/run-assigned-work-protected-test-uat.sh')
+          marker_path = Path('/tmp/module001a-request-family-repair-changed')
 
           backend = backend_path.read_text()
           validator = validator_path.read_text()
           uat = uat_path.read_text()
 
-          constant_anchor = '''    private static readonly HashSet<string> Module001ATerminalProjectStatuses = new(StringComparer.OrdinalIgnoreCase)
-              {
-                  "closed", "complete", "completed", "done", "cancelled", "canceled", "archived"
-              };
+          def block(*lines: str) -> str:
+              return '\n'.join(lines)
 
-              public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints'''
-          constant_replacement = '''    private static readonly HashSet<string> Module001ATerminalProjectStatuses = new(StringComparer.OrdinalIgnoreCase)
-              {
-                  "closed", "complete", "completed", "done", "cancelled", "canceled", "archived"
-              };
+          def replace_exact(source: str, old: str, new: str, label: str, expected: int = 1) -> str:
+              count = source.count(old)
+              if count != expected:
+                  raise SystemExit(f'{label}: expected {expected} occurrence(s), found {count}.')
+              return source.replace(old, new, expected)
 
-              private const string Module001ARequestFamilyOnlyContract = "MODULE001A_REQUEST_FAMILY_ONLY_V3";
+          if 'MODULE001A_REQUEST_FAMILY_ONLY_V3' in backend:
+              marker_path.write_text('false')
+              raise SystemExit(0)
 
-              public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints'''
-          if backend.count(constant_anchor) != 1:
-              raise SystemExit(f'Module 001A contract anchor count was {backend.count(constant_anchor)}, expected 1.')
-          backend = backend.replace(constant_anchor, constant_replacement, 1)
+          constant_anchor = block(
+              '    private static readonly HashSet<string> Module001ATerminalProjectStatuses = new(StringComparer.OrdinalIgnoreCase)',
+              '    {',
+              '        "closed", "complete", "completed", "done", "cancelled", "canceled", "archived"',
+              '    };',
+              '',
+              '    public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints'
+          )
+          constant_replacement = block(
+              '    private static readonly HashSet<string> Module001ATerminalProjectStatuses = new(StringComparer.OrdinalIgnoreCase)',
+              '    {',
+              '        "closed", "complete", "completed", "done", "cancelled", "canceled", "archived"',
+              '    };',
+              '',
+              '    private const string Module001ARequestFamilyOnlyContract = "MODULE001A_REQUEST_FAMILY_ONLY_V3";',
+              '',
+              '    public static WebApplication MapModule001AEngineerTaskCloseoutEndpoints'
+          )
+          backend = replace_exact(backend, constant_anchor, constant_replacement, 'Module 001A contract anchor')
 
-          broad_eligibility = '''              AND (
-                            regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (
-                                'servicerequest', 'sr', 'presales', 'presale', 'pres',
-                                'internal', 'internalproject', 'internaltask'
-                            )
-                         OR p.project_code ~* '^(SR|PRES|INT)-'
-                         OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'
-                         OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL
-                      )'''
-          strict_eligibility = '''              -- Canonical request-family labels remain 'servicerequest', 'presales', and 'internal';
-                      -- the durable SR-/PRES-/INT- project code is the sole Module 001A eligibility authority.
-                      AND p.project_code ~* '^(SR|PRES|INT)-' '''.rstrip()
-          if backend.count(broad_eligibility) != 2:
-              raise SystemExit(f'Broad Module 001A eligibility block count was {backend.count(broad_eligibility)}, expected 2.')
-          backend = backend.replace(broad_eligibility, strict_eligibility)
+          broad_eligibility = block(
+              '              AND (',
+              "                    regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (",
+              "                        'servicerequest', 'sr', 'presales', 'presale', 'pres',",
+              "                        'internal', 'internalproject', 'internaltask'",
+              '                    )',
+              "                 OR p.project_code ~* '^(SR|PRES|INT)-'",
+              "                 OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'",
+              "                 OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL",
+              '              )'
+          )
+          strict_eligibility = block(
+              "              -- Canonical request-family labels remain 'servicerequest', 'presales', and 'internal';",
+              '              -- the durable SR-/PRES-/INT- project code is the sole Module 001A eligibility authority.',
+              "              AND p.project_code ~* '^(SR|PRES|INT)-'"
+          )
+          backend = replace_exact(
+              backend,
+              broad_eligibility,
+              strict_eligibility,
+              'Broad Module 001A eligibility block',
+              expected=2
+          )
 
-          event_from = '''            FROM module001a_engineer_task_closeout_events event
-                      LEFT JOIN app_users actor ON actor.user_id = event.actor_user_id'''
-          event_from_replacement = '''            FROM module001a_engineer_task_closeout_events event
-                      JOIN projects request_project ON request_project.project_id = event.project_id
-                      LEFT JOIN app_users actor ON actor.user_id = event.actor_user_id'''
-          if backend.count(event_from) != 1:
-              raise SystemExit(f'Module 001A event source anchor count was {backend.count(event_from)}, expected 1.')
-          backend = backend.replace(event_from, event_from_replacement, 1)
+          backend = replace_exact(
+              backend,
+              block(
+                  '            FROM module001a_engineer_task_closeout_events event',
+                  '            LEFT JOIN app_users actor ON actor.user_id = event.actor_user_id'
+              ),
+              block(
+                  '            FROM module001a_engineer_task_closeout_events event',
+                  '            JOIN projects request_project ON request_project.project_id = event.project_id',
+                  '            LEFT JOIN app_users actor ON actor.user_id = event.actor_user_id'
+              ),
+              'Module 001A event source anchor'
+          )
+          backend = replace_exact(
+              backend,
+              block(
+                  '            WHERE event.engineer_user_id = @engineer_user_id',
+                  '            ORDER BY event.occurred_at DESC'
+              ),
+              block(
+                  '            WHERE event.engineer_user_id = @engineer_user_id',
+                  "              AND request_project.project_code ~* '^(SR|PRES|INT)-'",
+                  '            ORDER BY event.occurred_at DESC'
+              ),
+              'Module 001A event filter anchor'
+          )
 
-          event_where = '''            WHERE event.engineer_user_id = @engineer_user_id
-                      ORDER BY event.occurred_at DESC'''
-          event_where_replacement = '''            WHERE event.engineer_user_id = @engineer_user_id
-                        AND request_project.project_code ~* '^(SR|PRES|INT)-'
-                      ORDER BY event.occurred_at DESC'''
-          if backend.count(event_where) != 1:
-              raise SystemExit(f'Module 001A event filter anchor count was {backend.count(event_where)}, expected 1.')
-          backend = backend.replace(event_where, event_where_replacement, 1)
+          backend = replace_exact(
+              backend,
+              block(
+                  '            status = "engineer_task_closeout_loaded",',
+                  '            generatedAt = DateTimeOffset.UtcNow,'
+              ),
+              block(
+                  '            status = "engineer_task_closeout_loaded",',
+                  '            eligibilityContract = Module001ARequestFamilyOnlyContract,',
+                  '            generatedAt = DateTimeOffset.UtcNow,'
+              ),
+              'Module 001A response contract anchor'
+          )
+          backend = replace_exact(
+              backend,
+              block(
+                  '                eligibleWorkTypes = new[] { "Service Request", "Pre-Sales", "Internal" },',
+                  '                closeEffect = "The assignment is removed from Module 001 and new or increased time is blocked.",'
+              ),
+              block(
+                  '                eligibleWorkTypes = new[] { "Service Request", "Pre-Sales", "Internal" },',
+                  '                identifierAuthority = "durable_project_code_prefix",',
+                  '                eligibleIdentifiers = new[] { "SR-", "PRES-", "INT-" },',
+                  '                projectTasksExcluded = true,',
+                  '                closeEffect = "The assignment is removed from Module 001 and new or increased time is blocked.",'
+              ),
+              'Module 001A workflow contract anchor'
+          )
 
-          response_anchor = '''            status = "engineer_task_closeout_loaded",
-                      generatedAt = DateTimeOffset.UtcNow,'''
-          response_replacement = '''            status = "engineer_task_closeout_loaded",
-                      eligibilityContract = Module001ARequestFamilyOnlyContract,
-                      generatedAt = DateTimeOffset.UtcNow,'''
-          if backend.count(response_anchor) != 1:
-              raise SystemExit(f'Module 001A response contract anchor count was {backend.count(response_anchor)}, expected 1.')
-          backend = backend.replace(response_anchor, response_replacement, 1)
+          backend = replace_exact(
+              backend,
+              block(
+                  '    private static string Module001ARequestType(string projectCode, string workType)',
+                  '    {',
+                  '        var code = (projectCode ?? string.Empty).Trim().ToUpperInvariant();',
+                  '        var normalized = new string((workType ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();',
+                  '        if (code.StartsWith("SR-", StringComparison.Ordinal) || normalized is "servicerequest" or "sr") return "Service Request";',
+                  '        if (code.StartsWith("PRES-", StringComparison.Ordinal) || normalized is "presales" or "presale" or "pres") return "Pre-Sales";',
+                  '        return "Internal";',
+                  '    }'
+              ),
+              block(
+                  '    private static string Module001ARequestType(string projectCode, string workType)',
+                  '    {',
+                  '        _ = workType;',
+                  '        var code = (projectCode ?? string.Empty).Trim().ToUpperInvariant();',
+                  '        if (code.StartsWith("SR-", StringComparison.Ordinal)) return "Service Request";',
+                  '        if (code.StartsWith("PRES-", StringComparison.Ordinal)) return "Pre-Sales";',
+                  '        if (code.StartsWith("INT-", StringComparison.Ordinal)) return "Internal";',
+                  '        return "Unsupported";',
+                  '    }'
+              ),
+              'Module 001A request-type classifier'
+          )
 
-          workflow_anchor = '''                eligibleWorkTypes = new[] { "Service Request", "Pre-Sales", "Internal" },
-                          closeEffect = "The assignment is removed from Module 001 and new or increased time is blocked.",'''
-          workflow_replacement = '''                eligibleWorkTypes = new[] { "Service Request", "Pre-Sales", "Internal" },
-                          identifierAuthority = "durable_project_code_prefix",
-                          eligibleIdentifiers = new[] { "SR-", "PRES-", "INT-" },
-                          projectTasksExcluded = true,
-                          closeEffect = "The assignment is removed from Module 001 and new or increased time is blocked.",'''
-          if backend.count(workflow_anchor) != 1:
-              raise SystemExit(f'Module 001A workflow contract anchor count was {backend.count(workflow_anchor)}, expected 1.')
-          backend = backend.replace(workflow_anchor, workflow_replacement, 1)
+          validator_anchor = block(
+              "requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');",
+              'requireText(closeout, "CASE WHEN p.project_code ~* \'^(SR|PRES|INT)-\' THEN p.project_code ELSE \'\' END", \'Module 001A durable request reference\');',
+              '',
+              "const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');"
+          )
+          validator_replacement = block(
+              "requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');",
+              'requireText(closeout, "CASE WHEN p.project_code ~* \'^(SR|PRES|INT)-\' THEN p.project_code ELSE \'\' END", \'Module 001A durable request reference\');',
+              "requireText(closeout, 'MODULE001A_REQUEST_FAMILY_ONLY_V3', 'Module 001A strict request-family contract');",
+              "requireText(closeout, 'identifierAuthority = \"durable_project_code_prefix\"', 'Module 001A durable identifier authority');",
+              "requireText(closeout, 'projectTasksExcluded = true', 'Module 001A project-task exclusion contract');",
+              "requireText(closeout, 'JOIN projects request_project ON request_project.project_id = event.project_id', 'Module 001A request-only event history');",
+              'requireText(closeout, "AND request_project.project_code ~* \'^(SR|PRES|INT)-\'", \'Module 001A request-only event filter\');',
+              "requireText(closeout, 'return \"Unsupported\";', 'Module 001A fail-closed request classification');",
+              'const strictEligibilityOccurrences = closeout.split("AND p.project_code ~* \'^(SR|PRES|INT)-\'").length - 1;',
+              'if (strictEligibilityOccurrences !== 2) {',
+              '  failures.push(`Module 001A request-family eligibility: expected 2 strict project-code filters, found ${strictEligibilityOccurrences}`);',
+              '}',
+              '[',
+              '  "regexp_replace(lower(COALESCE(p.work_type, \'\')), \'[^a-z0-9]+\', \'\', \'g\') IN (",',
+              '  "OR lower(COALESCE(NULLIF(to_jsonb(pt)->>\'work_task_category\', \'\'), \'\')) = \'service_request_task\'",',
+              '  "OR NULLIF(to_jsonb(pt)->>\'service_request_number\', \'\') IS NOT NULL"',
+              '].forEach((legacyEligibility) => rejectText(',
+              '  closeout,',
+              '  legacyEligibility,',
+              "  'Module 001A must not admit project tasks through work-type or task metadata fallbacks'",
+              '));',
+              '',
+              "const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');"
+          )
+          validator = replace_exact(
+              validator,
+              validator_anchor,
+              validator_replacement,
+              'Focused Module 001A validator anchor'
+          )
+          validator = replace_exact(
+              validator,
+              "console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');",
+              block(
+                  "console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');",
+                  "console.log('module001a_eligibility=request_family_codes_only');"
+              ),
+              'Focused Module 001A validator result marker'
+          )
 
-          request_type_method = '''    private static string Module001ARequestType(string projectCode, string workType)
-              {
-                  var code = (projectCode ?? string.Empty).Trim().ToUpperInvariant();
-                  var normalized = new string((workType ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
-                  if (code.StartsWith("SR-", StringComparison.Ordinal) || normalized is "servicerequest" or "sr") return "Service Request";
-                  if (code.StartsWith("PRES-", StringComparison.Ordinal) || normalized is "presales" or "presale" or "pres") return "Pre-Sales";
-                  return "Internal";
-              }'''
-          strict_request_type_method = '''    private static string Module001ARequestType(string projectCode, string workType)
-              {
-                  _ = workType;
-                  var code = (projectCode ?? string.Empty).Trim().ToUpperInvariant();
-                  if (code.StartsWith("SR-", StringComparison.Ordinal)) return "Service Request";
-                  if (code.StartsWith("PRES-", StringComparison.Ordinal)) return "Pre-Sales";
-                  if (code.StartsWith("INT-", StringComparison.Ordinal)) return "Internal";
-                  return "Unsupported";
-              }'''
-          if backend.count(request_type_method) != 1:
-              raise SystemExit(f'Module 001A request-type method count was {backend.count(request_type_method)}, expected 1.')
-          backend = backend.replace(request_type_method, strict_request_type_method, 1)
-
-          validator_anchor = '''requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');
-          requireText(closeout, "CASE WHEN p.project_code ~* '^(SR|PRES|INT)-' THEN p.project_code ELSE '' END", 'Module 001A durable request reference');
-
-          const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');'''
-          validator_replacement = '''requireText(closeout, 'pa.effective_start_date DESC', 'Module 001A recent assignment ordering');
-          requireText(closeout, "CASE WHEN p.project_code ~* '^(SR|PRES|INT)-' THEN p.project_code ELSE '' END", 'Module 001A durable request reference');
-          requireText(closeout, 'MODULE001A_REQUEST_FAMILY_ONLY_V3', 'Module 001A strict request-family contract');
-          requireText(closeout, 'identifierAuthority = "durable_project_code_prefix"', 'Module 001A durable identifier authority');
-          requireText(closeout, 'projectTasksExcluded = true', 'Module 001A project-task exclusion contract');
-          requireText(closeout, 'JOIN projects request_project ON request_project.project_id = event.project_id', 'Module 001A request-only event history');
-          requireText(closeout, "AND request_project.project_code ~* '^(SR|PRES|INT)-'", 'Module 001A request-only event filter');
-          requireText(closeout, 'return "Unsupported";', 'Module 001A fail-closed request classification');
-          const strictEligibilityOccurrences = closeout.match(/AND p\\.project_code ~\\* '\\^\\(SR\\|PRES\\|INT\\\\\\\\)-'/g) || [];
-          if (strictEligibilityOccurrences.length !== 2) {
-            failures.push(`Module 001A request-family eligibility: expected 2 strict project-code filters, found ${strictEligibilityOccurrences.length}`);
-          }
-          [
-            "regexp_replace(lower(COALESCE(p.work_type, '')), '[^a-z0-9]+', '', 'g') IN (",
-            "OR lower(COALESCE(NULLIF(to_jsonb(pt)->>'work_task_category', ''), '')) = 'service_request_task'",
-            "OR NULLIF(to_jsonb(pt)->>'service_request_number', '') IS NOT NULL"
-          ].forEach((legacyEligibility) => rejectText(
-            closeout,
-            legacyEligibility,
-            'Module 001A must not admit project tasks through work-type or task metadata fallbacks'
-          ));
-
-          const workspace = read('src/backend/ProjectTime.Api/Modules/ProjectWorkspaceModule019Repair.cs');'''
-          if validator.count(validator_anchor) != 1:
-              raise SystemExit(f'Focused Module 001A validator anchor count was {validator.count(validator_anchor)}, expected 1.')
-          validator = validator.replace(validator_anchor, validator_replacement, 1)
-
-          validator_log_anchor = "console.log('module001a_route_reachability=standalone_mount_before_legacy_exclusion');\n"
-          validator_log_replacement = validator_log_anchor + "console.log('module001a_eligibility=request_family_codes_only');\n"
-          if validator.count(validator_log_anchor) != 1:
-              raise SystemExit(f'Focused Module 001A validator log anchor count was {validator.count(validator_log_anchor)}, expected 1.')
-          validator = validator.replace(validator_log_anchor, validator_log_replacement, 1)
-
-          uat_anchor = '''    .module == "001A"
-              and .status == "engineer_task_closeout_loaded"
-              and .access.effectiveUserId == $userId
-              and ([.active[]?, .history[]? | select(
-                .projectCode == $sr
-                and .engineerUserId == $userId
-                and .requestType == "Service Request"
-                and .serviceRequestNumber == $sr
-                and .canClose == true
-              )] | length) >= 1'''
-          uat_replacement = '''    .module == "001A"
-              and .status == "engineer_task_closeout_loaded"
-              and .eligibilityContract == "MODULE001A_REQUEST_FAMILY_ONLY_V3"
-              and .workflow.identifierAuthority == "durable_project_code_prefix"
-              and .workflow.projectTasksExcluded == true
-              and .access.effectiveUserId == $userId
-              and ([.active[]?, .history[]?
-                | select((((.projectCode // "") | test("^(SR|PRES|INT)-"; "i")) | not))
-              ] | length) == 0
-              and ([.active[]?, .history[]? | select(
-                .projectCode == $sr
-                and .engineerUserId == $userId
-                and .requestType == "Service Request"
-                and .serviceRequestNumber == $sr
-                and .canClose == true
-              )] | length) >= 1'''
-          if uat.count(uat_anchor) != 1:
-              raise SystemExit(f'Protected-Test Module 001A UAT anchor count was {uat.count(uat_anchor)}, expected 1.')
-          uat = uat.replace(uat_anchor, uat_replacement, 1)
-
-          uat_evidence_anchor = '''    module001aEngineerCloseout:true,
-              module001aVisibleRequestReference:true,
-              module019EngineeringWorkspace:true,'''
-          uat_evidence_replacement = '''    module001aEngineerCloseout:true,
-              module001aVisibleRequestReference:true,
-              module001aRequestFamilyOnly:true,
-              module001aProjectTasksExcluded:true,
-              module019EngineeringWorkspace:true,'''
-          if uat.count(uat_evidence_anchor) != 1:
-              raise SystemExit(f'Protected-Test UAT evidence anchor count was {uat.count(uat_evidence_anchor)}, expected 1.')
-          uat = uat.replace(uat_evidence_anchor, uat_evidence_replacement, 1)
-          uat = uat.replace(
+          uat = replace_exact(
+              uat,
+              block(
+                  '    .module == "001A"',
+                  '    and .status == "engineer_task_closeout_loaded"',
+                  '    and .access.effectiveUserId == $userId',
+                  '    and ([.active[]?, .history[]? | select(',
+                  '      .projectCode == $sr',
+                  '      and .engineerUserId == $userId',
+                  '      and .requestType == "Service Request"',
+                  '      and .serviceRequestNumber == $sr',
+                  '      and .canClose == true',
+                  '    )] | length) >= 1'
+              ),
+              block(
+                  '    .module == "001A"',
+                  '    and .status == "engineer_task_closeout_loaded"',
+                  '    and .eligibilityContract == "MODULE001A_REQUEST_FAMILY_ONLY_V3"',
+                  '    and .workflow.identifierAuthority == "durable_project_code_prefix"',
+                  '    and .workflow.projectTasksExcluded == true',
+                  '    and .access.effectiveUserId == $userId',
+                  '    and ([.active[]?, .history[]?',
+                  '      | select((((.projectCode // "") | test("^(SR|PRES|INT)-"; "i")) | not))',
+                  '    ] | length) == 0',
+                  '    and ([.active[]?, .history[]? | select(',
+                  '      .projectCode == $sr',
+                  '      and .engineerUserId == $userId',
+                  '      and .requestType == "Service Request"',
+                  '      and .serviceRequestNumber == $sr',
+                  '      and .canClose == true',
+                  '    )] | length) >= 1'
+              ),
+              'Protected-Test Module 001A request-family assertion'
+          )
+          uat = replace_exact(
+              uat,
+              block(
+                  '    module001aEngineerCloseout:true,',
+                  '    module001aVisibleRequestReference:true,',
+                  '    module019EngineeringWorkspace:true,'
+              ),
+              block(
+                  '    module001aEngineerCloseout:true,',
+                  '    module001aVisibleRequestReference:true,',
+                  '    module001aRequestFamilyOnly:true,',
+                  '    module001aProjectTasksExcluded:true,',
+                  '    module019EngineeringWorkspace:true,'
+              ),
+              'Protected-Test UAT evidence contract'
+          )
+          uat = replace_exact(
+              uat,
               'requestFamilies:["Service Request","Presales","Internal"]',
               'requestFamilies:["Service Request","Pre-Sales","Internal"]',
-              1
+              'Protected-Test request-family labels'
           )
-          uat = uat.replace(
+          uat = replace_exact(
+              uat,
               "echo 'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS identity=jason.mosier@ussignal.local serviceRequest=SR-8C81ACA3 modules=001,001A,019 week=2026-08-16..2026-08-22'",
               "echo 'ASSIGNED_WORK_PROTECTED_TEST_UAT=PASS identity=jason.mosier@ussignal.local serviceRequest=SR-8C81ACA3 modules=001,001A,019 module001aRequestFamilyOnly=true projectTasksExcluded=true week=2026-08-16..2026-08-22'",
-              1
+              'Protected-Test UAT completion marker'
           )
 
           backend_path.write_text(backend)
           validator_path.write_text(validator)
           uat_path.write_text(uat)
+          marker_path.write_text('true')
           PY
+          echo "changed=$(cat /tmp/module001a-request-family-repair-changed)" >> "$GITHUB_OUTPUT"
 
       - name: Validate focused source and protected-Test UAT contracts
         shell: bash
@@ -271,6 +344,7 @@ jobs:
           npm run build
 
       - name: Commit and push reviewed repair source
+        if: steps.repair.outputs.changed == 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
