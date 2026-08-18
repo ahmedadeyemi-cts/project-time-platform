@@ -1,0 +1,111 @@
+name: Reconcile PR 719 Legacy Validators and Full Build
+
+on:
+  push:
+    branches:
+      - fix/module-directory-owner-001a-continuity-20260818
+    paths:
+      - '.github/workflows/reconcile-pr719-legacy-validators.yml'
+      - 'scripts/release-test/reconcile-pr719-legacy-validators.py'
+      - 'src/frontend/project-time-web/scripts/**'
+      - 'tests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-pr719-legacy-validators
+  cancel-in-progress: false
+
+jobs:
+  reconcile-and-validate:
+    if: github.ref_name == 'fix/module-directory-owner-001a-continuity-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact PR head branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module-directory-owner-001a-continuity-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconcile stale marker-only validation expectations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/reconcile-pr719-legacy-validators.py
+
+          mapfile -t changed < <(git diff --name-only)
+          for file in "${changed[@]}"; do
+            case "$file" in
+              src/frontend/project-time-web/scripts/*.mjs|src/frontend/project-time-web/scripts/*.js|tests/*.mjs|tests/*.js|tests/*.cjs) ;;
+              *)
+                echo "ERROR: guarded reconciler changed non-validator source: $file" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run focused PR 719 contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          node tests/validate-module-management-owner-drawer.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-modules-directory-page.mjs
+          )
+          bash tests/test-module-catalog-owner-repair-migration-093.sh
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+
+      - name: Build API
+        run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Run complete frontend production build
+        working-directory: src/frontend/project-time-web
+        run: npm run build
+
+      - name: Validate final diff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+
+      - name: Publish reconciled validator source when required
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then
+            echo 'PR719_FULL_BUILD=PASS_NO_RECONCILIATION_REQUIRED'
+            exit 0
+          fi
+
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add src/frontend/project-time-web/scripts tests
+          git diff --cached --quiet && {
+            echo 'ERROR: reconciliation produced no staged validator change.' >&2
+            exit 1
+          }
+          git commit -m 'test(modules): align legacy validators with authenticated owner reads'
+          git push origin HEAD:fix/module-directory-owner-001a-continuity-20260818
