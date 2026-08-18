@@ -1,6 +1,6 @@
 -- Pulse migration 093
--- Complete the non-Super-Administrator Modules-page repair and make Module 055C
--- assignments canonical for Modules 019, 001A, and 001.
+-- Complete the non-Super-Administrator Modules-page and owner-catalog repair,
+-- and make Module 055C assignments canonical for Modules 019, 001A, and 001.
 --
 -- This migration is additive and idempotent. It does not hard-code any Service
 -- Request, Presales, Internal Task, engineer, email address, or environment.
@@ -63,6 +63,160 @@ $projectpulse093_owner_constraints$;
 
 CREATE INDEX IF NOT EXISTS ix_scoped_role_policy_modules_owner
     ON scoped_role_policy_modules(owner_user_id, is_active, module_code);
+
+-- Migration 089 was registered in some environments before Modules 031, 032,
+-- and 033 were added to its canonical catalog. Those environments can render
+-- the frontend modules while lacking the scoped_role_policy_modules rows that
+-- the owner-update API locks and updates. Reconcile the three canonical rows
+-- without replacing an existing owner or owner revision.
+CREATE TABLE IF NOT EXISTS module_catalog_reconciliation_093_owner_repair_evidence (
+    module_code TEXT PRIMARY KEY,
+    was_present BOOLEAN NOT NULL,
+    previous_module_name TEXT NULL,
+    previous_route_scope TEXT NULL,
+    previous_current_state TEXT NULL,
+    previous_permission_notes TEXT NULL,
+    previous_source_url TEXT NULL,
+    previous_is_active BOOLEAN NULL,
+    previous_owner_user_id UUID NULL,
+    previous_owner_revision_number INTEGER NULL,
+    repaired_owner_user_id UUID NULL,
+    repaired_owner_revision_number INTEGER NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TEMP TABLE projectpulse093_required_owner_catalog (
+    module_code TEXT PRIMARY KEY,
+    module_name TEXT NOT NULL,
+    route_scope TEXT NOT NULL,
+    module_group TEXT NOT NULL
+) ON COMMIT DROP;
+
+INSERT INTO projectpulse093_required_owner_catalog (
+    module_code,
+    module_name,
+    route_scope,
+    module_group
+)
+VALUES
+    ('031', 'Financial Operations Workbench', 'financial-operations-workbench', 'Reports & Workflow'),
+    ('032', 'Notification Delivery Monitor', 'notification-delivery-monitor', 'Reports & Workflow'),
+    ('033', 'Project Forge', 'project-forge', 'Project Delivery');
+
+INSERT INTO module_catalog_reconciliation_093_owner_repair_evidence (
+    module_code,
+    was_present,
+    previous_module_name,
+    previous_route_scope,
+    previous_current_state,
+    previous_permission_notes,
+    previous_source_url,
+    previous_is_active,
+    previous_owner_user_id,
+    previous_owner_revision_number
+)
+SELECT
+    required.module_code,
+    existing.module_code IS NOT NULL,
+    existing.module_name,
+    existing.route_scope,
+    existing.current_state,
+    existing.permission_notes,
+    existing.source_url,
+    existing.is_active,
+    existing.owner_user_id,
+    existing.owner_revision_number
+FROM projectpulse093_required_owner_catalog required
+LEFT JOIN scoped_role_policy_modules existing
+  ON upper(existing.module_code) = required.module_code
+ON CONFLICT (module_code) DO NOTHING;
+
+INSERT INTO scoped_role_policy_modules (
+    module_code,
+    module_name,
+    route_scope,
+    current_state,
+    permission_notes,
+    source_url,
+    is_active
+)
+SELECT
+    required.module_code,
+    required.module_name,
+    required.route_scope,
+    'Installed',
+    'Canonical Pulse module catalog entry · ' || required.module_group || '. Reconciled by Migration 093.',
+    'src/frontend/project-time-web/src/module-availability-registry.js',
+    TRUE
+FROM projectpulse093_required_owner_catalog required
+ON CONFLICT (module_code) DO UPDATE
+SET module_name = EXCLUDED.module_name,
+    route_scope = EXCLUDED.route_scope,
+    current_state = EXCLUDED.current_state,
+    permission_notes = EXCLUDED.permission_notes,
+    source_url = EXCLUDED.source_url,
+    is_active = TRUE;
+
+DO $projectpulse093_assign_repaired_catalog_owner$
+DECLARE
+    default_owner_user_id UUID;
+BEGIN
+    SELECT module.owner_user_id
+    INTO default_owner_user_id
+    FROM scoped_role_policy_modules module
+    JOIN app_users owner_user
+      ON owner_user.user_id = module.owner_user_id
+     AND owner_user.is_active = TRUE
+    WHERE module.is_active = TRUE
+      AND module.owner_user_id IS NOT NULL
+      AND upper(module.module_code) NOT IN ('031', '032', '033')
+    GROUP BY module.owner_user_id
+    ORDER BY COUNT(*) DESC, module.owner_user_id
+    LIMIT 1;
+
+    IF default_owner_user_id IS NOT NULL THEN
+        UPDATE scoped_role_policy_modules module
+        SET owner_user_id = default_owner_user_id,
+  owner_revision_number = COALESCE(module.owner_revision_number, 0) + 1,
+  owner_updated_at = NOW(),
+  owner_updated_by_user_id = default_owner_user_id
+        FROM module_catalog_reconciliation_093_owner_repair_evidence evidence
+        WHERE upper(module.module_code) = evidence.module_code
+AND evidence.was_present = FALSE
+AND evidence.repaired_owner_revision_number IS NULL
+AND module.owner_user_id IS NULL;
+    END IF;
+
+    UPDATE module_catalog_reconciliation_093_owner_repair_evidence evidence
+    SET repaired_owner_user_id = module.owner_user_id,
+        repaired_owner_revision_number = COALESCE(module.owner_revision_number, 0)
+    FROM scoped_role_policy_modules module
+    WHERE upper(module.module_code) = evidence.module_code
+      AND evidence.repaired_owner_revision_number IS NULL;
+END;
+$projectpulse093_assign_repaired_catalog_owner$;
+
+DO $projectpulse093_verify_owner_catalog_repair$
+DECLARE
+    invalid_modules TEXT[];
+BEGIN
+    SELECT array_agg(required.module_code ORDER BY required.module_code)
+    INTO invalid_modules
+    FROM projectpulse093_required_owner_catalog required
+    LEFT JOIN scoped_role_policy_modules module
+      ON upper(module.module_code) = required.module_code
+    WHERE module.module_code IS NULL
+       OR module.is_active IS DISTINCT FROM TRUE
+       OR module.module_name IS DISTINCT FROM required.module_name
+       OR module.route_scope IS DISTINCT FROM required.route_scope;
+
+    IF invalid_modules IS NOT NULL THEN
+        RAISE EXCEPTION
+  'Migration 093 module catalog repair did not restore active canonical row(s): %',
+  array_to_string(invalid_modules, ', ');
+    END IF;
+END;
+$projectpulse093_verify_owner_catalog_repair$;
 
 -- Preserve the canonical project_assignments contract consumed directly by:
 --   Module 019  Project Engineering Workspace
@@ -533,7 +687,7 @@ CREATE INDEX IF NOT EXISTS ix_work_register_assignment_history_active_engineer
 INSERT INTO schema_migrations (migration_id, description, applied_at)
 VALUES (
     '093_assigned_work_canonical_visibility_repair',
-    'Resolve UUID and durable task-code assignments from Module 055C into canonical project assignments for Modules 019, 001A, and 001, with lifecycle resynchronization and optional module-owner storage repair',
+    'Restore canonical owner-catalog rows for Modules 031, 032, and 033 and resolve UUID and durable task-code assignments from Module 055C into canonical project assignments for Modules 019, 001A, and 001, with lifecycle resynchronization',
     NOW()
 )
 ON CONFLICT (migration_id) DO UPDATE
