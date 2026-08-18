@@ -25,6 +25,16 @@ def python_blocks(path: str) -> list[str]:
     return blocks
 
 
+def omit_call(block: str, start_marker: str, next_marker: str) -> str:
+    start = block.find(start_marker)
+    if start < 0:
+        raise SystemExit(f"repair block omission marker was not found: {start_marker[:120]!r}")
+    end = block.find(next_marker, start)
+    if end < 0:
+        raise SystemExit(f"repair block continuation marker was not found: {next_marker[:120]!r}")
+    return block[:start] + block[end + 2:]
+
+
 def execute(block: str, label: str) -> None:
     namespace = {"__name__": "__main__", "__file__": label}
     exec(compile(block, label, "exec"), namespace, namespace)
@@ -36,7 +46,12 @@ policy_publisher = ".github/workflows/publish-pr719-finalize-pr.yml"
 base_blocks = python_blocks(base_publisher)
 if len(base_blocks) != 1:
     raise SystemExit(f"{base_publisher}: expected one Python repair block, found {len(base_blocks)}")
-execute(base_blocks[0], f"{base_publisher}#repair")
+base_block = omit_call(
+    base_blocks[0],
+    'replace_once(\n    portal,\n    """        <div className="modules-directory-empty">',
+    '\n\ntable = '
+)
+execute(base_block, f"{base_publisher}#repair")
 
 policy_blocks = python_blocks(policy_publisher)
 if len(policy_blocks) != 2:
