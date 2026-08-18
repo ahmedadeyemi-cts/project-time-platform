@@ -1,0 +1,119 @@
+name: Reconcile PR 715 with Latest Main
+
+on:
+  push:
+    branches:
+      - diagnostic/jason-assigned-work-runtime-20260818
+    paths:
+      - '.github/workflows/merge-main-pr715-assigned-work.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-pr715-latest-main
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    if: github.ref == 'refs/heads/diagnostic/jason-assigned-work-runtime-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: diagnostic/jason-assigned-work-runtime-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge latest main and preserve both repair contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git fetch origin main
+
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+
+          if [[ "$merge_status" -ne 0 ]]; then
+            git diff --name-only --diff-filter=U | LC_ALL=C sort -u > "$RUNNER_TEMP/conflicts"
+            cat > "$RUNNER_TEMP/expected-conflicts" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          FILES
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-conflicts"
+            LC_ALL=C sort -u "$RUNNER_TEMP/expected-conflicts" -o "$RUNNER_TEMP/expected-conflicts"
+            cmp -s "$RUNNER_TEMP/conflicts" "$RUNNER_TEMP/expected-conflicts" || {
+              echo 'Unexpected merge conflicts:' >&2
+              cat "$RUNNER_TEMP/conflicts" >&2
+              exit 1
+            }
+            git checkout --ours -- \
+              .github/workflows/module-loading-assignment-propagation-ci.yml \
+              src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if new in text:
+                  return text
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one marker, found {count}')
+              return text.replace(old, new, 1)
+
+          ci_path = Path('.github/workflows/module-loading-assignment-propagation-ci.yml')
+          ci = ci_path.read_text()
+          ci = replace_once(
+              ci,
+              "      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'\n",
+              "      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'\n      - 'tests/test-module-catalog-owner-repair-migration-093.sh'\n",
+              'owner regression path')
+          ci = ci.replace('    timeout-minutes: 30\n', '    timeout-minutes: 45\n', 1)
+          ci = replace_once(
+              ci,
+              "      - name: Validate focused source contracts\n        run: node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs\n\n      - name: Validate protected-Test assigned-work UAT syntax\n",
+              "      - name: Validate focused source contracts\n        run: node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs\n\n      - name: Execute Migration 093 owner-catalog regression\n        shell: bash\n        run: bash tests/test-module-catalog-owner-repair-migration-093.sh\n\n      - name: Validate protected-Test assigned-work UAT syntax\n",
+              'owner regression execution')
+          ci_path.write_text(ci)
+
+          validator_path = Path('src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs')
+          validator = validator_path.read_text()
+          validator = replace_once(
+              validator,
+              "  'ADD COLUMN IF NOT EXISTS owner_user_id',\n  'projectpulse093_resolve_project_task_id',\n",
+              "  'ADD COLUMN IF NOT EXISTS owner_user_id',\n  'module_catalog_reconciliation_093_owner_repair_evidence',\n  'projectpulse093_required_owner_catalog',\n  \"('031', 'Financial Operations Workbench', 'financial-operations-workbench', 'Reports & Workflow')\",\n  \"('032', 'Notification Delivery Monitor', 'notification-delivery-monitor', 'Reports & Workflow')\",\n  \"('033', 'Project Forge', 'project-forge', 'Project Delivery')\",\n  'evidence.was_present = FALSE',\n  'GROUP BY module.owner_user_id',\n  'ORDER BY COUNT(*) DESC, module.owner_user_id',\n  'module catalog repair did not restore active canonical row(s)',\n  'projectpulse093_resolve_project_task_id',\n",
+              'owner catalog contracts')
+          validator = replace_once(
+              validator,
+              "].forEach((value) => rejectText(\n  migration093,\n  value,\n  'migration 093 must remain environment and record neutral'\n));\n\nconst timesheet = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs');\n",
+              "].forEach((value) => rejectText(\n  migration093,\n  value,\n  'migration 093 must remain environment and record neutral'\n));\n\nconst ownerCatalogRegression = read('tests/test-module-catalog-owner-repair-migration-093.sh');\n[\n  'owner_repair_target_count',\n  'inserted_modules_inherit_default_owner',\n  'preexisting_owner_preserved',\n  'rerun_preserves_changed_owner',\n  'repair_evidence_preserved'\n].forEach((contract) => requireText(\n  ownerCatalogRegression,\n  contract,\n  'Migration 093 owner-catalog executable regression'\n));\n\nconst timesheet = read('src/backend/ProjectTime.Api/Modules/Module001TimesheetEnhancementModule.cs');\n",
+              'owner regression validator')
+          validator = replace_once(
+              validator,
+              "requireText(\n  workflow,\n  'node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs',\n  'focused CI validator execution'\n);\nrequireText(workflow, 'dotnet build', 'focused CI backend compile');\n",
+              "requireText(\n  workflow,\n  'node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs',\n  'focused CI validator execution'\n);\nrequireText(\n  workflow,\n  'tests/test-module-catalog-owner-repair-migration-093.sh',\n  'focused CI owner-catalog regression path'\n);\nrequireText(\n  workflow,\n  'bash tests/test-module-catalog-owner-repair-migration-093.sh',\n  'focused CI owner-catalog regression execution'\n);\nrequireText(workflow, 'dotnet build', 'focused CI backend compile');\n",
+              'owner regression CI validator')
+          validator = replace_once(
+              validator,
+              "console.log('authenticated_assigned_work_uat=registered');\n",
+              "console.log('authenticated_assigned_work_uat=registered');\nconsole.log('module_owner_catalog_031_032_033_repaired=true');\n",
+              'owner repair result marker')
+          validator_path.write_text(validator)
+          PY
+
+          git add -A
+          git rm -f .github/workflows/merge-main-pr715-assigned-work.yml
+          test -z "$(git diff --name-only --diff-filter=U)"
+          bash -n scripts/release-test/run-assigned-work-protected-test-uat.sh
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          git diff --check --cached
+          git commit -m 'merge: preserve owner catalog and assigned-work repairs'
+          git push origin HEAD:diagnostic/jason-assigned-work-runtime-20260818
