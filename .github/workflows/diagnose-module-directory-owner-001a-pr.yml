@@ -21,7 +21,7 @@ jobs:
       github.event.pull_request.head.ref == 'fix/module-directory-owner-001a-continuity-20260818'
     name: Publish final reviewed PR 719 source
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Check out exact PR head branch
@@ -35,7 +35,28 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 scripts/release-test/finalize-pr719-source.py
+
+          ruby -ryaml -e '
+            document = YAML.load_file(ARGV.fetch(0))
+            step = document.fetch("jobs").fetch("publish").fetch("steps").find do |candidate|
+              candidate["name"] == "Apply the reviewed source repair"
+            end
+            abort("Base PR 719 repair step was not found.") unless step && step["run"]
+            File.write(ARGV.fetch(1), step.fetch("run"))
+          ' .github/workflows/publish-pr719-module-directory-owner-001a.yml /tmp/pr719-base-repair.sh
+
+          ruby -ryaml -e '
+            document = YAML.load_file(ARGV.fetch(0))
+            step = document.fetch("jobs").fetch("finalize").fetch("steps").find do |candidate|
+              candidate["name"] == "Enforce developer Super Administrator owner eligibility"
+            end
+            abort("Developer-owner policy step was not found.") unless step && step["run"]
+            File.write(ARGV.fetch(1), step.fetch("run"))
+          ' .github/workflows/publish-pr719-finalize-pr.yml /tmp/pr719-developer-owner-policy.sh
+
+          bash /tmp/pr719-base-repair.sh
+          bash /tmp/pr719-developer-owner-policy.sh
+          rm -f scripts/release-test/finalize-pr719-source.py
 
       - name: Validate final source contracts
         shell: bash
