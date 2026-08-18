@@ -1,0 +1,184 @@
+name: Diagnose Module 031-033 Owner Updates on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-module-owner-031-033-pr.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: diagnose-module-owner-031-033-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'diagnostic/module-owner-031-033-runtime-20260818'
+    name: Capture protected-Test owner-update evidence
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE: https://phd-west-test.onenecklab.com
+      EVIDENCE_DIR: /tmp/module-owner-031-033-runtime
+      SUPER_ADMIN_EMAIL: Ahmed.Adeyemi@ussignal.local
+
+    steps:
+      - name: Authenticate and run non-mutating owner probes
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || fail 'Diagnostic is restricted to protected Test.'
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || fail 'Protected-Test login credential is unavailable.'
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          payload="$(mktemp)"
+          response="$(mktemp)"
+          chmod 0600 "$payload" "$response"
+          jq -n --arg username "$SUPER_ADMIN_EMAIL" --arg password "$TEST_LOGIN_PASSWORD" \
+            '{username:$username,password:$password}' > "$payload"
+          status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$response" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
+          rm -f "$payload"
+          [[ "$status" == 200 ]] || fail "Super Administrator login returned HTTP $status."
+          SESSION_TOKEN="$(jq -er '.sessionToken' "$response")"
+          echo "::add-mask::$SESSION_TOKEN"
+          jq 'del(.sessionToken,.token,.password)' "$response" > "$EVIDENCE_DIR/login-redacted.json"
+          rm -f "$response"
+          unset TEST_LOGIN_PASSWORD
+
+          auth_request() {
+            local method="$1" path="$2" output="$3" request_body="${4:-}" status
+            local args=(
+              --silent --show-error --http1.1 --connect-timeout 20 --max-time 120
+              --output "$output" --write-out '%{http_code}'
+              --request "$method"
+              --header 'Cache-Control: no-cache, no-store, max-age=0'
+              --header "Authorization: Bearer $SESSION_TOKEN"
+              --header "X-ProjectPulse-Session: $SESSION_TOKEN"
+              --header 'X-ProjectPulse-Module-Number: 012'
+              --header "Origin: $BASE"
+              --header 'Sec-Fetch-Site: same-origin'
+            )
+            if [[ -n "$request_body" ]]; then
+              args+=(--header 'Content-Type: application/json' --data-binary "@$request_body")
+            fi
+            status="$(curl "${args[@]}" "$BASE$path" || true)"
+            printf '%s' "$status"
+          }
+
+          owners_status="$(auth_request GET '/api/module-catalog/owners' "$EVIDENCE_DIR/owners.json")"
+          [[ "$owners_status" == 200 ]] || fail "Module owner catalog returned HTTP $owners_status."
+          jq -e . "$EVIDENCE_DIR/owners.json" >/dev/null
+          jq '{access,policy,owners:[.owners[]? | select(.moduleNumber == "031" or .moduleNumber == "032" or .moduleNumber == "033")],candidateCount:(.ownerCandidates|length)}' \
+            "$EVIDENCE_DIR/owners.json" > "$EVIDENCE_DIR/owners-031-033.json"
+
+          TARGET_OWNER_ID="$(jq -r --arg email "${SUPER_ADMIN_EMAIL,,}" '
+            [
+              .ownerCandidates[]?
+              | select((.email // "" | ascii_downcase) == $email)
+              | .userId
+            ][0] // .ownerCandidates[0].userId // empty
+          ' "$EVIDENCE_DIR/owners.json")"
+          [[ "$TARGET_OWNER_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail 'No active owner candidate could be selected for the non-mutating probes.'
+
+          : > "$EVIDENCE_DIR/probe-summary.ndjson"
+          for module in 031 032 033; do
+            owner_record="$(jq -c --arg module "$module" '[.owners[]? | select(.moduleNumber == $module)][0] // {}' "$EVIDENCE_DIR/owners.json")"
+            catalog_revision="$(jq -r '.revision // 0' <<<"$owner_record")"
+            catalog_owner_id="$(jq -r '.ownerUserId // empty' <<<"$owner_record")"
+
+            mismatch_payload="$EVIDENCE_DIR/$module-revision-mismatch-request.json"
+            mismatch_response="$EVIDENCE_DIR/$module-revision-mismatch-response.json"
+            jq -n --arg ownerUserId "$TARGET_OWNER_ID" \
+              '{ownerUserId:$ownerUserId,expectedRevision:2147483647}' > "$mismatch_payload"
+            mismatch_status="$(auth_request PUT "/api/module-catalog/$module/owner" "$mismatch_response" "$mismatch_payload")"
+            jq -e . "$mismatch_response" >/dev/null 2>&1 || jq -n --arg raw "$(cat "$mismatch_response")" '{raw:$raw}' > "$mismatch_response.normalized"
+            [[ -f "$mismatch_response.normalized" ]] && mv "$mismatch_response.normalized" "$mismatch_response"
+
+            owner_lookup_payload="$EVIDENCE_DIR/$module-owner-lookup-request.json"
+            owner_lookup_response="$EVIDENCE_DIR/$module-owner-lookup-response.json"
+            jq -n --arg ownerEmail "projectpulse-owner-diagnostic-no-such-user-$module@example.invalid" \
+              --argjson expectedRevision "$catalog_revision" \
+              '{ownerEmail:$ownerEmail,expectedRevision:$expectedRevision}' > "$owner_lookup_payload"
+            owner_lookup_status="$(auth_request PUT "/api/module-catalog/$module/owner" "$owner_lookup_response" "$owner_lookup_payload")"
+            jq -e . "$owner_lookup_response" >/dev/null 2>&1 || jq -n --arg raw "$(cat "$owner_lookup_response")" '{raw:$raw}' > "$owner_lookup_response.normalized"
+            [[ -f "$owner_lookup_response.normalized" ]] && mv "$owner_lookup_response.normalized" "$owner_lookup_response"
+
+            jq -n \
+              --arg module "$module" \
+              --arg catalogOwnerId "$catalog_owner_id" \
+              --argjson catalogRevision "$catalog_revision" \
+              --arg mismatchStatus "$mismatch_status" \
+              --arg mismatchContract "$(jq -r '.status // empty' "$mismatch_response")" \
+              --arg mismatchMessage "$(jq -r '.message // empty' "$mismatch_response")" \
+              --arg lookupStatus "$owner_lookup_status" \
+              --arg lookupContract "$(jq -r '.status // empty' "$owner_lookup_response")" \
+              --arg lookupMessage "$(jq -r '.message // empty' "$owner_lookup_response")" \
+              '{module:$module,catalogOwnerId:$catalogOwnerId,catalogRevision:$catalogRevision,revisionMismatchProbe:{httpStatus:$mismatchStatus,status:$mismatchContract,message:$mismatchMessage},nonexistentOwnerProbe:{httpStatus:$lookupStatus,status:$lookupContract,message:$lookupMessage},mutation:false}' \
+              >> "$EVIDENCE_DIR/probe-summary.ndjson"
+          done
+
+          jq -s '{environment:"protected-test",probes:.,mutation:false}' "$EVIDENCE_DIR/probe-summary.ndjson" \
+            > "$EVIDENCE_DIR/diagnostic-summary.json"
+
+          curl -sS --http1.1 --connect-timeout 20 --max-time 60 -o /dev/null -X POST \
+            -H "Authorization: Bearer $SESSION_TOKEN" \
+            -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+            -H 'X-ProjectPulse-Module-Number: 012' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
+          unset SESSION_TOKEN
+          jq . "$EVIDENCE_DIR/diagnostic-summary.json"
+
+      - name: Sign in to protected Test subscription
+        if: always()
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture recent API warning logs
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0700 "$EVIDENCE_DIR"
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || {
+            echo 'ERROR: Azure login is outside protected Test.' >&2
+            exit 1
+          }
+          az containerapp logs show \
+            --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
+            --name '${{ vars.AZURE_API_APP }}' \
+            --type console \
+            --tail 300 \
+            --format text \
+            > "$EVIDENCE_DIR/api-console-tail.txt" 2>&1 || true
+          grep -Ei 'ModuleCatalogOwnershipModule|owner_update_failed|module ownership could not be updated' \
+            "$EVIDENCE_DIR/api-console-tail.txt" \
+            > "$EVIDENCE_DIR/module-owner-log-matches.txt" || true
+          wc -l "$EVIDENCE_DIR/module-owner-log-matches.txt"
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module-owner-031-033-runtime-evidence
+          path: /tmp/module-owner-031-033-runtime
+          if-no-files-found: error
+          retention-days: 1
