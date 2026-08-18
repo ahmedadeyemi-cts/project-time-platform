@@ -1,0 +1,101 @@
+name: Prepare Migration 093 Verification Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/prepare-migration093-verification-hotfix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-migration093-verification-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/protected-test-migration093-verification-20260818'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact hotfix branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Patch and validate protected-Test verification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path('.github/workflows/projectpulse-deploy-test.yml')
+          test_path = Path('tests/validate-systemwide-image-build-controller.mjs')
+
+          workflow = workflow_path.read_text()
+          old_open = """            NOT EXISTS (\n              SELECT 1\n              FROM work_register_task_assignment_history history\n"""
+          new_open = """            (NOT EXISTS (\n              SELECT 1\n              FROM work_register_task_assignment_history history\n"""
+          old_close = """                )\n            )::text;\n          SQL\n"""
+          new_close = """                )\n            ))::text;\n          SQL\n"""
+          if workflow.count(old_open) != 1:
+              raise RuntimeError('Expected one Migration 093 outer NOT EXISTS predicate.')
+          if workflow.count(old_close) != 1:
+              raise RuntimeError('Expected one Migration 093 verification predicate close marker.')
+          workflow = workflow.replace(old_open, new_open, 1).replace(old_close, new_close, 1)
+          workflow_path.write_text(workflow)
+
+          test = test_path.read_text()
+          anchor = "assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);\n"
+          assertions = """assert.match(workflow, /MIGRATION_093=APPLIED_AND_VERIFIED/);\nassert.match(\n  workflow,\n  /\\(NOT EXISTS \\(\\s*SELECT 1\\s*FROM work_register_task_assignment_history history[\\s\\S]*?\\)\\)::text;/,\n  'Migration 093 verification must cast the complete NOT EXISTS predicate after boolean evaluation'\n);\nassert.doesNotMatch(\n  workflow,\n  /\\n\\s{12}NOT EXISTS \\(\\s*SELECT 1\\s*FROM work_register_task_assignment_history history/,\n  'Migration 093 verification must not apply NOT to a text-cast EXISTS result'\n);\n"""
+          if test.count(anchor) != 1:
+              raise RuntimeError('Expected one Migration 093 validation anchor.')
+          test_path.write_text(test.replace(anchor, assertions, 1))
+          PY
+
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+
+      - name: Create immutable Git blobs for reviewed files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          create_blob() {
+            local path="$1" response
+            response="$(jq -Rs '{content: ., encoding: "utf-8"}' < "$path" | \
+              curl --fail-with-body --silent --show-error \
+                -X POST \
+                -H 'Accept: application/vnd.github+json' \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                --data-binary @- \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs")"
+            jq -er '.sha' <<<"$response"
+          }
+
+          WORKFLOW_SHA="$(create_blob .github/workflows/projectpulse-deploy-test.yml)"
+          TEST_SHA="$(create_blob tests/validate-systemwide-image-build-controller.mjs)"
+          jq -n \
+            --arg workflow "$WORKFLOW_SHA" \
+            --arg test "$TEST_SHA" \
+            '{workflowBlob:$workflow,testBlob:$test}' > "$RUNNER_TEMP/migration093-verification-hotfix-blobs.json"
+          echo "HOTFIX_WORKFLOW_BLOB_SHA=$WORKFLOW_SHA"
+          echo "HOTFIX_TEST_BLOB_SHA=$TEST_SHA"
+
+      - name: Upload immutable blob manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migration093-verification-hotfix-blobs
+          path: ${{ runner.temp }}/migration093-verification-hotfix-blobs.json
+          if-no-files-found: error
+          retention-days: 1
