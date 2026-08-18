@@ -1,0 +1,50 @@
+name: Reconcile PR 719 Module 001A Pagination Contract
+
+on:
+  push:
+    branches:
+      - fix/module-directory-owner-001a-continuity-20260818
+    paths:
+      - '.github/workflows/finalize-pr719-page-size.yml'
+      - 'scripts/release-test/finalize-pr719-page-size.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-pr719-page-size
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module-directory-owner-001a-continuity-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Restore established bounded pagination contract
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/finalize-pr719-page-size.py
+          node src/frontend/project-time-web/scripts/validate-module-001a-engineer-request-closeout.mjs
+          git diff --check
+
+      - name: Commit application-source reconciliation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx scripts/release-test/finalize-pr719-page-size.py
+          git diff --cached --quiet && {
+            echo 'ERROR: pagination reconciliation produced no source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(module001a): preserve bounded pagination while showing recent assignments'
+          git push origin HEAD:fix/module-directory-owner-001a-continuity-20260818
