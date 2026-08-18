@@ -1,0 +1,55 @@
+name: Reconcile PR 719 Validation Contracts
+
+on:
+  push:
+    branches:
+      - fix/module-directory-owner-001a-continuity-20260818
+    paths:
+      - '.github/workflows/finalize-pr719-contract-compatibility.yml'
+      - 'scripts/release-test/finalize-pr719-contract-compatibility.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-pr719-validation-contracts
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/module-directory-owner-001a-continuity-20260818
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconcile established contract wording
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/finalize-pr719-contract-compatibility.py
+          node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          node src/frontend/project-time-web/scripts/validate-pr698-table-module-management.mjs
+          node tests/validate-module-management-owner-drawer.mjs
+          git diff --check
+
+      - name: Commit reconciled PR source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'ahmedadeyemi-cts'
+          git config user.email 'ahmedadeyemi@gmail.com'
+          git add \
+            src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs \
+            src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs \
+            scripts/release-test/finalize-pr719-contract-compatibility.py
+          git diff --cached --quiet && {
+            echo 'ERROR: contract reconciliation produced no source change.' >&2
+            exit 1
+          }
+          git commit -m 'fix(modules): align owner policy and bounded pagination contracts'
+          git push origin HEAD:fix/module-directory-owner-001a-continuity-20260818
