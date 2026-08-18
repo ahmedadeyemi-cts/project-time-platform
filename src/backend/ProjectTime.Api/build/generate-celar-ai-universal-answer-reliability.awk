@@ -18,6 +18,9 @@ BEGIN {
   inserted_gate = 0
   inserted_evidence = 0
   inserted_flowhive_canonical_work_package_instruction = 0
+  inserted_flowhive_freshness_precheck = 0
+  inserted_flowhive_freshness_postcheck = 0
+  inserted_flowhive_citation_gate = 0
   replaced_flowhive_builder = 0
   waiting_for_map_brace = 0
   after_quality_gate = 0
@@ -56,7 +59,28 @@ mode == "production" {
     replaced_flowhive_builder++
   }
 
+  if (line ~ /var outcome = BuildPlanningOutcome\(request\);/) {
+    print "        var sowFreshness = await VerifyFlowHiveSowFreshnessAsync(request.Plan, cancellationToken);"
+    print "        if (sowFreshness.Failure is not null) return sowFreshness.Failure;"
+    inserted_flowhive_freshness_precheck++
+  }
+
+  if (line ~ /var sowCitations = composition\.Citations\.Where\(citation =>/) {
+    print "        sowFreshness = await VerifyFlowHiveSowFreshnessAsync(request.Plan, cancellationToken);"
+    print "        if (sowFreshness.Failure is not null) return sowFreshness.Failure;"
+    inserted_flowhive_freshness_postcheck++
+  }
+
   print line
+
+  if (line ~ /citation\.DocumentCategory\.Equals\("statement_of_work".*ToArray\(\);/) {
+    print "        var staleSowCitations = sowCitations"
+    print "            .Where(citation => !sowFreshness.CurrentSowDocumentIds.Contains(citation.DocumentId))"
+    print "            .ToArray();"
+    print "        if (staleSowCitations.Length > 0)"
+    print "            return FlowHiveStaleSowCitationFailure(staleSowCitations.Length);"
+    inserted_flowhive_citation_gate++
+  }
 
   if (line ~ /Treat the approved SOW Scope of Services section as the primary delivery authority/) {
     print "        builder.AppendLine(\"Return each distinct source-backed SOW work package exactly once as one canonical work-package record. Do not pre-expand or duplicate the same scope outcome across Plan, Design, Implement, Validate, and Release; the deterministic FlowHive builder creates those five phase tasks. Use the phase field only as schema compatibility and preserve complete source citations, used-item details, prerequisites, roles, inputs, outputs, validation, acceptance, risks, and open questions on the single canonical work package.\");"
@@ -122,6 +146,6 @@ END {
   if (mode == "services") {
     if (inserted_service != 1 || inserted_current_fact_service != 1 || inserted_operations_service != 1) exit 42
   } else if (mode == "production") {
-    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1 || inserted_flowhive_canonical_work_package_instruction != 1 || replaced_flowhive_builder != 1) exit 42
+    if (inserted_map != 1 || inserted_intent_map != 1 || changed_delegate != 1 || inserted_parameter != 1 || inserted_plan != 1 || inserted_current_fact_gate != 1 || inserted_gate != 1 || inserted_evidence != 1 || inserted_flowhive_canonical_work_package_instruction != 1 || inserted_flowhive_freshness_precheck != 1 || inserted_flowhive_freshness_postcheck != 1 || inserted_flowhive_citation_gate != 1 || replaced_flowhive_builder != 1) exit 42
   } else exit 42
 }
