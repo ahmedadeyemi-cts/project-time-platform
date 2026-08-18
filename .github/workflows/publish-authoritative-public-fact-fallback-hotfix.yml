@@ -7,16 +7,25 @@ on:
     paths:
       - '.github/workflows/publish-authoritative-public-fact-fallback-hotfix.yml'
       - 'scripts/release-test/apply-public-fact-fallback-hotfix.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-authoritative-public-fact-fallback-hotfix.yml'
+      - 'scripts/release-test/apply-public-fact-fallback-hotfix.py'
 
 permissions:
   contents: write
 
 concurrency:
-  group: publish-authoritative-public-fact-fallback-hotfix
+  group: publish-authoritative-public-fact-fallback-hotfix-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'fix/protected-test-authoritative-public-fact-fallback-20260818')
     name: Apply and validate official-source fallback
     runs-on: ubuntu-24.04
     timeout-minutes: 55
