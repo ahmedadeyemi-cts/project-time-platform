@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usSignalLogoDataUrl } from './assets/usSignalLogoData.js';
 import './engineer-task-closeout-center.css';
 
@@ -14,6 +14,9 @@ const EMPTY_OVERVIEW = Object.freeze({
   }
 });
 const PAGE_SIZE = 20;
+const OVERVIEW_RETRY_DELAYS_MS = Object.freeze([0, 250, 750]);
+const OVERVIEW_RETRYABLE_STATUS = new Set([401, 408, 425, 429, 502, 503, 504]);
+const MODULE001A_VISIBLE_REQUEST_FAMILIES_CONTRACT = 'MODULE001A_VISIBLE_REQUEST_FAMILIES_V2';
 
 function sessionHeaders(authSession, json = false) {
   const token = authSession?.sessionToken || authSession?.token || authSession?.accessToken || '';
@@ -45,6 +48,25 @@ function formatDate(value) {
 function formatHours(value) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number.toFixed(1) : '0.0';
+}
+
+function compareCloseoutItems(left, right) {
+  const leftDate = Date.parse(left?.effectiveStartDate || '') || 0;
+  const rightDate = Date.parse(right?.effectiveStartDate || '') || 0;
+  if (leftDate !== rightDate) return rightDate - leftDate;
+  const projectComparison = String(left?.projectCode || '').localeCompare(String(right?.projectCode || ''));
+  if (projectComparison !== 0) return projectComparison;
+  return String(left?.taskCode || '').localeCompare(String(right?.taskCode || ''));
+}
+
+function waitForOverviewRetry(milliseconds, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, milliseconds);
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true });
+  });
 }
 
 async function readResponse(response) {
@@ -235,26 +257,81 @@ export default function EngineerTaskCloseoutCenter({ authSession }) {
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [transitionError, setTransitionError] = useState('');
   const [page, setPage] = useState(1);
+  const overviewAbortRef = useRef(null);
+  const overviewRequestSequenceRef = useRef(0);
 
   const loadOverview = useCallback(async () => {
+    const requestSequence = overviewRequestSequenceRef.current + 1;
+    overviewRequestSequenceRef.current = requestSequence;
+    overviewAbortRef.current?.abort();
+    const controller = new AbortController();
+    overviewAbortRef.current = controller;
     setLoading(true);
     setError('');
+
+    let lastError = null;
     try {
-      const response = await fetch('/api/engineer-task-closeout/overview', {
-        credentials: 'include',
-        headers: sessionHeaders(authSession)
-      });
-      const result = await readResponse(response);
-      setOverview({ ...EMPTY_OVERVIEW, ...result });
+      for (let attempt = 0; attempt < OVERVIEW_RETRY_DELAYS_MS.length; attempt += 1) {
+        if (OVERVIEW_RETRY_DELAYS_MS[attempt] > 0) {
+          await waitForOverviewRetry(OVERVIEW_RETRY_DELAYS_MS[attempt], controller.signal);
+        }
+
+        try {
+          const response = await fetch('/api/engineer-task-closeout/overview', {
+            credentials: 'include',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+              ...sessionHeaders(authSession),
+              'X-ProjectPulse-Module001A-Read-Contract': MODULE001A_VISIBLE_REQUEST_FAMILIES_CONTRACT
+            }
+          });
+          if (!response.ok && OVERVIEW_RETRYABLE_STATUS.has(response.status)
+              && attempt < OVERVIEW_RETRY_DELAYS_MS.length - 1) {
+            await response.text();
+            continue;
+          }
+          const result = await readResponse(response);
+          if (requestSequence === overviewRequestSequenceRef.current) {
+            setOverview({ ...EMPTY_OVERVIEW, ...result });
+          }
+          return;
+        } catch (loadError) {
+          if (loadError?.name === 'AbortError') throw loadError;
+          lastError = loadError;
+          if (attempt === OVERVIEW_RETRY_DELAYS_MS.length - 1) throw loadError;
+        }
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load Engineer task closeout.');
+      if (loadError?.name !== 'AbortError' && requestSequence === overviewRequestSequenceRef.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load Engineer task closeout.');
+      }
     } finally {
-      setLoading(false);
+      if (requestSequence === overviewRequestSequenceRef.current) setLoading(false);
+      if (overviewAbortRef.current === controller) overviewAbortRef.current = null;
+      if (lastError?.name === 'AbortError') return;
     }
   }, [authSession]);
 
   useEffect(() => {
     void loadOverview();
+    return () => overviewAbortRef.current?.abort();
+  }, [loadOverview]);
+
+  useEffect(() => {
+    const refresh = () => void loadOverview();
+    const events = [
+      'projectpulse:timesheet-work-queue-changed',
+      'projectpulse:work-register-assignment-changed',
+      'projectpulse:auth-session-ready',
+      'projectpulse:view-as-changed'
+    ];
+    events.forEach((eventName) => window.addEventListener(eventName, refresh));
+    window.addEventListener('pageshow', refresh);
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, refresh));
+      window.removeEventListener('pageshow', refresh);
+    };
   }, [loadOverview]);
 
   const sourceItems = tab === 'active' ? overview.active : overview.history;
@@ -265,7 +342,7 @@ export default function EngineerTaskCloseoutCenter({ authSession }) {
       if (!needle) return true;
       return [item.projectCode, item.projectName, item.taskCode, item.taskName, item.customerName, item.serviceRequestNumber]
         .some((value) => String(value || '').toLowerCase().includes(needle));
-    });
+    }).sort(compareCloseoutItems);
   }, [query, requestType, sourceItems]);
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const visibleItems = useMemo(() => {

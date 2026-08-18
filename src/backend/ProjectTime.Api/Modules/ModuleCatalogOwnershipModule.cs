@@ -11,6 +11,14 @@ namespace ProjectTime.Api.Modules;
 public static class ModuleCatalogOwnershipModule
 {
     private const string MigrationFile = "090_module_management_table_and_ownership.sql";
+    private const string OwnerEligibilityPolicy = "developer_super_administrator_only";
+    private static readonly string[] DeveloperOwnerRoleCodes =
+    [
+        "SUPER_ADMINISTRATOR",
+        "SUPERADMINISTRATOR",
+        "GLOBAL_ADMINISTRATOR",
+        "GLOBALADMINISTRATOR"
+    ];
 
     public sealed record ModuleOwnerUpdateRequest(
         Guid? OwnerUserId,
@@ -55,7 +63,14 @@ public static class ModuleCatalogOwnershipModule
                 "ProjectPulseActualUserId",
                 "ProjectPulseSessionUserId") ?? actualUserId;
             var isViewAs = ProjectPulseActualSessionAuthority.IsViewAs(context);
-            var canManage = administrator && !isViewAs;
+            var canManage = administrator
+                && !isViewAs
+                && actualUserId.HasValue
+                && await IsDeveloperModuleOwnerAsync(
+                    connection,
+                    transaction: null,
+                    actualUserId.Value,
+                    context.RequestAborted);
 
             var owners = new List<object>();
             await using (var command = new NpgsqlCommand("""
@@ -120,9 +135,24 @@ public static class ModuleCatalogOwnershipModule
                         LIMIT 1
                     ) external_identity ON TRUE
                     WHERE app_user.is_active = TRUE
+                      AND EXISTS (
+                        SELECT 1
+                        FROM app_user_role_assignments owner_assignment
+                        JOIN app_roles owner_role
+                          ON owner_role.app_role_id = owner_assignment.app_role_id
+                         AND owner_role.is_active = TRUE
+                        WHERE owner_assignment.user_id = app_user.user_id
+                          AND owner_assignment.is_active = TRUE
+                          AND trim(both '_' from regexp_replace(
+                                upper(btrim(COALESCE(owner_role.role_code, ''))),
+                                '[^A-Z0-9]+',
+                                '_',
+                                'g')) = ANY(@developer_owner_role_codes)
+                      )
                     ORDER BY display_name, preferred_email
                     LIMIT 1000;
                     """, connection);
+                AddDeveloperOwnerRoleCodes(candidateCommand);
                 await using var candidateReader = await candidateCommand.ExecuteReaderAsync(context.RequestAborted);
                 while (await candidateReader.ReadAsync(context.RequestAborted))
                 {
@@ -150,6 +180,7 @@ public static class ModuleCatalogOwnershipModule
                 policy = new
                 {
                     ownershipDoesNotGrantAccess = true,
+                    ownerEligibility = OwnerEligibilityPolicy,
                     migration = MigrationFile
                 }
             });
@@ -203,13 +234,24 @@ public static class ModuleCatalogOwnershipModule
                 context,
                 connection,
                 cancellationToken: context.RequestAborted);
-            if (!administrator)
-                return Results.Json(new { status = "forbidden", message = "Only an actual Super Administrator session can change module ownership." }, statusCode: StatusCodes.Status403Forbidden);
-
             actualUserId = ProjectPulseActualSessionAuthority.ReadUserId(
                 context,
                 "ProjectPulseActualUserId",
                 "ProjectPulseSessionUserId") ?? actualUserId;
+            var developerOwner = administrator
+                && actualUserId.HasValue
+                && await IsDeveloperModuleOwnerAsync(
+                    connection,
+                    transaction: null,
+                    actualUserId.Value,
+                    context.RequestAborted);
+            if (!developerOwner)
+                return Results.Json(new
+                {
+                    status = "forbidden",
+                    message = "Only an actual Super Administrator session can change module ownership. The session must belong to an active developer Super Administrator."
+                }, statusCode: StatusCodes.Status403Forbidden);
+
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
 
             Guid? previousOwnerId = null;
@@ -265,6 +307,20 @@ public static class ModuleCatalogOwnershipModule
                     LIMIT 1
                 ) external_identity ON TRUE
                 WHERE app_user.is_active = TRUE
+                  AND EXISTS (
+                    SELECT 1
+                    FROM app_user_role_assignments owner_assignment
+                    JOIN app_roles owner_role
+                      ON owner_role.app_role_id = owner_assignment.app_role_id
+                     AND owner_role.is_active = TRUE
+                    WHERE owner_assignment.user_id = app_user.user_id
+                      AND owner_assignment.is_active = TRUE
+                      AND trim(both '_' from regexp_replace(
+                            upper(btrim(COALESCE(owner_role.role_code, ''))),
+                            '[^A-Z0-9]+',
+                            '_',
+                            'g')) = ANY(@developer_owner_role_codes)
+                  )
                   AND (
                     (@owner_user_id IS NOT NULL AND app_user.user_id = @owner_user_id)
                     OR (@owner_email <> '' AND (
@@ -279,11 +335,16 @@ public static class ModuleCatalogOwnershipModule
                 ownerCommand.Parameters.Add("owner_user_id", NpgsqlDbType.Uuid).Value =
                     request.OwnerUserId.HasValue ? request.OwnerUserId.Value : DBNull.Value;
                 ownerCommand.Parameters.AddWithValue("owner_email", (request.OwnerEmail ?? string.Empty).Trim());
+                AddDeveloperOwnerRoleCodes(ownerCommand);
                 await using var reader = await ownerCommand.ExecuteReaderAsync(context.RequestAborted);
                 if (!await reader.ReadAsync(context.RequestAborted))
                 {
                     await transaction.RollbackAsync(context.RequestAborted);
-                    return Results.BadRequest(new { status = "owner_not_found", message = "The selected owner is not an active Pulse user." });
+                    return Results.BadRequest(new
+                    {
+                        status = "owner_not_found",
+                        message = "The selected owner must be an active developer Super Administrator."
+                    });
                 }
                 ownerUserId = reader.GetGuid(0);
                 ownerDisplayName = reader.GetString(1);
@@ -370,7 +431,11 @@ public static class ModuleCatalogOwnershipModule
                     revision = nextRevision,
                     updatedAt
                 },
-                policy = new { ownershipDoesNotGrantAccess = true }
+                policy = new
+                {
+                    ownershipDoesNotGrantAccess = true,
+                    ownerEligibility = OwnerEligibilityPolicy
+                }
             });
         }
         catch (PostgresException exception) when (
@@ -387,6 +452,46 @@ public static class ModuleCatalogOwnershipModule
                 .LogWarning("Module ownership could not be updated ({ExceptionType}).", exception.GetType().Name);
             return Results.Json(new { status = "owner_update_failed", message = "Module ownership could not be updated. No access permissions were changed." }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
+    }
+
+    private static async Task<bool> IsDeveloperModuleOwnerAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty) return false;
+
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM app_users app_user
+                JOIN app_user_role_assignments assignment
+                  ON assignment.user_id = app_user.user_id
+                 AND assignment.is_active = TRUE
+                JOIN app_roles role
+                  ON role.app_role_id = assignment.app_role_id
+                 AND role.is_active = TRUE
+                WHERE app_user.user_id = @user_id
+                  AND app_user.is_active = TRUE
+                  AND trim(both '_' from regexp_replace(
+                        upper(btrim(COALESCE(role.role_code, ''))),
+                        '[^A-Z0-9]+',
+                        '_',
+                        'g')) = ANY(@developer_owner_role_codes)
+            );
+            """, connection, transaction);
+        command.Parameters.AddWithValue("user_id", userId);
+        AddDeveloperOwnerRoleCodes(command);
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+
+    private static void AddDeveloperOwnerRoleCodes(NpgsqlCommand command)
+    {
+        command.Parameters.AddWithValue(
+            "developer_owner_role_codes",
+            NpgsqlDbType.Array | NpgsqlDbType.Text,
+            DeveloperOwnerRoleCodes);
     }
 
     private static string? BuildConnectionString()

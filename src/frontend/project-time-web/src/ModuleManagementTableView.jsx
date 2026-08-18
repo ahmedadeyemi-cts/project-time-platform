@@ -15,6 +15,9 @@ const MODULE_006_NUMBER = '006';
 const MODULE_006_NAME = 'Customer Programs';
 const MODULE_006_DESCRIPTION = 'Pipeline management and reporting for Toyota, Hyundai, Turion Space, and other authorized customer programs.';
 const DEFAULT_PAGE_SIZE = 10;
+const OWNER_CATALOG_READ_CONTRACT = 'OWNER_CATALOG_READ_THROUGH_FOR_AUTHENTICATED_USERS_V1';
+const OWNER_LOAD_RETRY_DELAYS_MS = Object.freeze([0, 250, 750, 1500]);
+const OWNER_LOAD_RETRYABLE_STATUS = new Set([401, 408, 425, 429, 502, 503, 504]);
 
 const DETAIL_TABS = Object.freeze([
   { id: 'overview', label: 'Overview' },
@@ -114,6 +117,10 @@ function useTableLayout() {
   }, []);
 
   return layout === TABLE_EXPERIENCE;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 async function readJson(response) {
@@ -384,6 +391,7 @@ function FilterChip({ label, onClear }) {
 
 export default function ModuleManagementTableView({
   modules,
+  directoryResolved,
   availability,
   canManage,
   busyModule,
@@ -429,22 +437,46 @@ export default function ModuleManagementTableView({
   }, [tableMode]);
 
   const loadOwnership = useCallback(async ({ preserveStatus = false } = {}) => {
-    try {
-      const response = await fetch('/api/module-catalog/owners', {
-        cache: 'no-store',
-        credentials: 'include'
-      });
-      const body = await readJson(response);
-      if (!response.ok) throw new Error(body?.message || 'Module ownership could not be loaded.');
-      setOwnership(normalizedOwnership(body));
-      if (!preserveStatus) setStatus('');
-    } catch (error) {
-      setOwnership((current) => ({
-        ...current,
-        loaded: false,
-        error: error?.message || 'Module ownership could not be loaded.'
-      }));
+    let lastError = null;
+    for (let attempt = 0; attempt < OWNER_LOAD_RETRY_DELAYS_MS.length; attempt += 1) {
+      if (OWNER_LOAD_RETRY_DELAYS_MS[attempt] > 0) {
+        await wait(OWNER_LOAD_RETRY_DELAYS_MS[attempt]);
+      }
+
+      try {
+        const response = await fetch('/api/module-catalog/owners', {
+          cache: 'no-store',
+          credentials: 'include',
+          headers: {
+            'X-ProjectPulse-Owner-Read-Contract': OWNER_CATALOG_READ_CONTRACT
+          }
+        });
+        const body = await readJson(response);
+        if (!response.ok) {
+          const error = new Error(body?.message || 'Module ownership could not be loaded.');
+          error.status = response.status;
+          throw error;
+        }
+        if (!Array.isArray(body?.owners)) {
+          throw new Error('Module ownership returned an invalid read response.');
+        }
+        setOwnership(normalizedOwnership(body));
+        if (!preserveStatus) setStatus('');
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!OWNER_LOAD_RETRYABLE_STATUS.has(Number(error?.status || 0))
+            || attempt === OWNER_LOAD_RETRY_DELAYS_MS.length - 1) {
+          break;
+        }
+      }
     }
+
+    setOwnership((current) => ({
+      ...current,
+      loaded: current.loaded,
+      error: lastError?.message || 'Module ownership could not be loaded.'
+    }));
   }, []);
 
   const refreshSignedInProfile = useCallback(() => {
@@ -458,16 +490,23 @@ export default function ModuleManagementTableView({
   }, []);
 
   useEffect(() => {
-    if (!tableMode) return undefined;
     void loadOwnership();
     const refresh = () => void loadOwnership({ preserveStatus: true });
     window.addEventListener(OWNER_EVENT, refresh);
     window.addEventListener('projectpulse:view-as-changed', refresh);
+    window.addEventListener('projectpulse:auth-session-ready', refresh);
+    window.addEventListener('projectpulse:permission-navigation-updated', refresh);
+    window.addEventListener('pageshow', refresh);
+    window.addEventListener('focus', refresh);
     return () => {
       window.removeEventListener(OWNER_EVENT, refresh);
       window.removeEventListener('projectpulse:view-as-changed', refresh);
+      window.removeEventListener('projectpulse:auth-session-ready', refresh);
+      window.removeEventListener('projectpulse:permission-navigation-updated', refresh);
+      window.removeEventListener('pageshow', refresh);
+      window.removeEventListener('focus', refresh);
     };
-  }, [loadOwnership, tableMode]);
+  }, [loadOwnership]);
 
   useEffect(() => {
     if (!tableMode) return undefined;
@@ -543,12 +582,13 @@ export default function ModuleManagementTableView({
       ...module,
       owner,
       ownerProfile,
+      ownerLoaded: ownership.loaded,
       updatedAt,
       accessScope: accessScopeLabel(module),
       assignedRole: assignedRoleLabel(module),
       bucket: moduleBucket(module)
     };
-  }, [ownership.owners, signedInProfile]);
+  }, [ownership.loaded, ownership.owners, signedInProfile]);
 
   const allModuleStates = useMemo(
     () => modules.map(moduleWithState),
@@ -771,7 +811,9 @@ export default function ModuleManagementTableView({
   const selectedOwner = selectedModule
     ? (ownership.owners.get(selectedModule.moduleNumber) || {})
     : {};
-  const selectedOwnerProfile = ownerAvatarProfile(selectedOwner, signedInProfile);
+  const selectedOwnerProfile = ownership.loaded
+    ? ownerAvatarProfile(selectedOwner, signedInProfile)
+    : { displayName: 'Loading owner…', email: '', profilePhotoDataUrl: '' };
   const selectedLastUpdated = selectedOwner.updatedAt || selectedModule?.updatedAt;
   const selectedStart = filteredModules.length ? (page - 1) * pageSize + 1 : 0;
   const selectedEnd = Math.min(page * pageSize, filteredModules.length);
@@ -923,7 +965,7 @@ export default function ModuleManagementTableView({
             </div>
           ) : null}
 
-          {!modules.length ? (
+          {!directoryResolved ? (
             <div className="module-management-loading" role="status">
               <span className="module-management-loading-spinner" aria-hidden="true" />
               <div><strong>Loading authorized modules</strong><p>Your navigation and role-scoped module catalog remain intact while the directory initializes.</p></div>
@@ -960,8 +1002,8 @@ export default function ModuleManagementTableView({
                 </thead>
                 <tbody>
                   {pagedModules.map((module) => {
-                    const ownerName = module.ownerProfile.displayName;
-                    const ownerEmail = module.ownerProfile.email;
+                    const ownerName = module.ownerLoaded ? module.ownerProfile.displayName : 'Loading owner…';
+                    const ownerEmail = module.ownerLoaded ? module.ownerProfile.email : '';
                     const isSelected = selectedModuleNumber === module.moduleNumber;
                     const isChecked = selectedRows.has(module.moduleNumber);
                     return (
@@ -1002,9 +1044,19 @@ export default function ModuleManagementTableView({
                         {columns.availability ? <td><span className={module.isEnabled ? 'module-management-state enabled' : 'module-management-state disabled'}><i aria-hidden="true" />{module.isEnabled ? 'Enabled' : 'Disabled'}</span></td> : null}
                         {columns.owner ? (
                           <td>
-                            <span className={module.owner?.ownerUserId ? 'module-owner-readonly' : 'module-owner-readonly unassigned'}>
-                              <span className="module-owner-avatar-shell"><IdentityAvatar profile={module.ownerProfile} size="small" showPresence={false} /></span>
-                              <span><strong>{ownerName}</strong>{ownerEmail ? <small>{ownerEmail}</small> : canChangeOwner ? <small>Open Configuration to assign</small> : null}</span>
+                            <span className={!module.ownerLoaded
+                              ? 'module-owner-readonly loading'
+                              : module.owner?.ownerUserId
+                                ? 'module-owner-readonly'
+                                : 'module-owner-readonly unassigned'}>
+                              <span className="module-owner-avatar-shell"><IdentityAvatar profile={module.ownerLoaded ? module.ownerProfile : { displayName: ownerName }} size="small" showPresence={false} /></span>
+                              <span><strong>{ownerName}</strong>{!module.ownerLoaded
+                                ? <small>Retrieving saved owner</small>
+                                : ownerEmail
+                                  ? <small>{ownerEmail}</small>
+                                  : canChangeOwner
+                                    ? <small>Open Configuration to assign</small>
+                                    : null}</span>
                             </span>
                           </td>
                         ) : null}

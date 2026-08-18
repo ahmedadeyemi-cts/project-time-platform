@@ -110,11 +110,32 @@ jobs:
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-assigned-work-repair-files"
           LC_ALL=C sort -u "$RUNNER_TEMP/exact-assigned-work-repair-files" -o "$RUNNER_TEMP/exact-assigned-work-repair-files"
 
+          cat > "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files" <<'FILES'
+          .github/workflows/module-loading-assignment-propagation-ci.yml
+          .github/workflows/module-management-owner-drawer-ci.yml
+          .github/workflows/projectpulse-release-test-control-ci.yml
+          .github/workflows/runtime-navigation-work-register-responsive-ci.yml
+          scripts/release-test/run-assigned-work-protected-test-uat.sh
+          src/backend/ProjectTime.Api/Modules/Module001AEngineerTaskCloseoutModule.cs
+          src/backend/ProjectTime.Api/Modules/ModuleCatalogOwnershipModule.cs
+          src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
+          src/frontend/project-time-web/scripts/validate-modules-directory-page.mjs
+          src/frontend/project-time-web/src/EngineerTaskCloseoutCenter.jsx
+          src/frontend/project-time-web/src/ModuleManagementTableView.jsx
+          src/frontend/project-time-web/src/ModulesDirectoryPortal.jsx
+          src/frontend/project-time-web/src/background-request-role-gate.js
+          tests/validate-module-management-owner-drawer.mjs
+          FILES
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files" -o "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"
+
           git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
           if cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-runtime-repair-files"; then
             echo 'EXACT_RUNTIME_REPAIR_SCOPE=PASSED'
           elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-assigned-work-repair-files"; then
             echo 'EXACT_ASSIGNED_WORK_REPAIR_SCOPE=PASSED'
+          elif cmp -s "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/exact-pr719-module-directory-owner-001a-files"; then
+            echo 'EXACT_PR719_MODULE_DIRECTORY_OWNER_001A_SCOPE=PASSED'
           else
             comm -23 "$RUNNER_TEMP/actual-release-files" "$RUNNER_TEMP/allowed-release-files" > "$RUNNER_TEMP/unexpected-release-files"
             [[ ! -s "$RUNNER_TEMP/unexpected-release-files" ]] || {

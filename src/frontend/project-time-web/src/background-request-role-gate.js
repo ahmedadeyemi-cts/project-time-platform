@@ -12,10 +12,11 @@ const MODULE_DIRECTORY_SNAPSHOT_CONTRACT = 'VISIBLE_AUTHORIZED_NAVIGATION_SNAPSH
 const MODULE_DIRECTORY_SNAPSHOT_PREFIX = 'projectPulseModuleDirectorySnapshot:';
 const MODULE_DIRECTORY_ROUTE = 'modules';
 const OWNER_EVENT = 'projectpulse:module-owner-changed';
-
-const OWNER_MANAGEMENT_ROLES = new Set([
-  'SUPER_ADMINISTRATOR'
-]);
+const OWNER_CATALOG_READ_CONTRACT = 'OWNER_CATALOG_READ_THROUGH_FOR_AUTHENTICATED_USERS_V1';
+const MODULE_DIRECTORY_AUTHORITY_RETRY_MS = 100;
+const MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS = 80;
+const MODULE_DIRECTORY_PERMISSION_REFRESH_THROTTLE_MS = 1500;
+const MODULE_DIRECTORY_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 
 const PLATFORM_OPERATIONS_ROLES = new Set([
   'SUPER_ADMINISTRATOR',
@@ -74,11 +75,6 @@ const TIME_STEWARD_ROLES = new Set([
 ]);
 
 const RESTRICTED_BACKGROUND_ROUTES = Object.freeze([
-  {
-    matches: (path) => path === '/api/module-catalog/owners',
-    roles: OWNER_MANAGEMENT_ROLES,
-    kind: 'owners'
-  },
   {
     matches: (path) => path === '/api/production/readiness-command-center',
     roles: PLATFORM_OPERATIONS_ROLES,
@@ -169,14 +165,6 @@ function neutralPayload(kind, authority) {
   };
 
   switch (kind) {
-    case 'owners':
-      return {
-        status,
-        owners: [],
-        ownerCandidates: [],
-        access,
-        message: 'Module ownership administration is available only to an actual Super Administrator session.'
-      };
     case 'readiness':
       return {
         status,
@@ -268,7 +256,6 @@ function readJsonStorage(storage, key) {
 function sessionIdentityFingerprint() {
   const session = readJsonStorage(window.localStorage, 'projectPulseAuthSession') || {};
   const viewAs = readJsonStorage(window.localStorage, 'projectPulseViewAsUser') || {};
-  const authority = readEffectiveRoleAuthority();
   const actualIdentity = clean(
     session.userId
       || session.userID
@@ -281,13 +268,12 @@ function sessionIdentityFingerprint() {
       || viewAs.email
       || actualIdentity
   ).toLowerCase();
-  const roles = [...(authority.roleCodes || [])]
-    .map((role) => clean(role).toUpperCase())
-    .filter(Boolean)
-    .sort()
-    .join(',');
 
-  return `${actualIdentity || 'anonymous'}|${effectiveIdentity || 'self'}|${roles || 'roles-pending'}`;
+  // The provisional cache is identity-scoped rather than role-keyed so it can
+  // hydrate the Modules route before the asynchronous role authority is ready.
+  // It is replaced by current server evidence immediately, and backend access
+  // remains authoritative for every module route.
+  return `${actualIdentity || 'anonymous'}|${effectiveIdentity || 'self'}`;
 }
 
 function snapshotStorageKey() {
@@ -361,7 +347,7 @@ function readCachedModuleNumbers() {
       || snapshot.contract !== MODULE_DIRECTORY_SNAPSHOT_CONTRACT
       || snapshot.identityFingerprint !== sessionIdentityFingerprint()
       || !Array.isArray(snapshot.moduleNumbers)
-      || Date.now() - Number(snapshot.savedAt || 0) > 8 * 60 * 60 * 1000) {
+      || Date.now() - Number(snapshot.savedAt || 0) > MODULE_DIRECTORY_SNAPSHOT_MAX_AGE_MS) {
     return [];
   }
 
@@ -420,12 +406,26 @@ function ensureImmediateModulesAuthority(source = 'visible_authorized_navigation
   return false;
 }
 
+function requestModuleDirectoryPermissionRefresh(source) {
+  const now = Date.now();
+  const previous = Number(window.__projectPulseModuleDirectoryPermissionRefreshRequestedAt || 0);
+  if (now - previous < MODULE_DIRECTORY_PERMISSION_REFRESH_THROTTLE_MS) return;
+  window.__projectPulseModuleDirectoryPermissionRefreshRequestedAt = now;
+  window.dispatchEvent(new CustomEvent('projectpulse:permissions-changed', {
+    detail: { source, contract: MODULE_DIRECTORY_SNAPSHOT_CONTRACT }
+  }));
+}
+
 function scheduleImmediateModulesAuthority(source, attempt = 0) {
   window.setTimeout(() => {
     if (currentRoute() !== MODULE_DIRECTORY_ROUTE) return;
     if (ensureImmediateModulesAuthority(source)) return;
-    if (attempt < 20) scheduleImmediateModulesAuthority(source, attempt + 1);
-  }, attempt === 0 ? 0 : 50);
+
+    requestModuleDirectoryPermissionRefresh(source);
+    if (attempt < MODULE_DIRECTORY_AUTHORITY_MAX_ATTEMPTS) {
+      scheduleImmediateModulesAuthority(source, attempt + 1);
+    }
+  }, attempt === 0 ? 0 : MODULE_DIRECTORY_AUTHORITY_RETRY_MS);
 }
 
 function modulesNavigationTarget(event) {
@@ -454,6 +454,25 @@ function installImmediateModuleDirectoryAuthority() {
     }
   });
 
+  window.addEventListener('focus', () => {
+    if (currentRoute() === MODULE_DIRECTORY_ROUTE
+        && window.__projectPulseEffectiveNavigation?.state !== 'ready') {
+      scheduleImmediateModulesAuthority('modules_focus_navigation_snapshot');
+    }
+  });
+
+  window.addEventListener('projectpulse:auth-session-ready', () => {
+    if (currentRoute() === MODULE_DIRECTORY_ROUTE) {
+      scheduleImmediateModulesAuthority('modules_auth_session_navigation_snapshot');
+    }
+  });
+
+  window.addEventListener('projectpulse:view-as-changed', () => {
+    if (currentRoute() === MODULE_DIRECTORY_ROUTE) {
+      scheduleImmediateModulesAuthority('modules_view_as_navigation_snapshot');
+    }
+  });
+
   window.addEventListener('projectpulse:permission-navigation-updated', (event) => {
     const detail = event?.detail || window.__projectPulseEffectiveNavigation;
     saveReadyNavigationSnapshot(detail);
@@ -462,15 +481,17 @@ function installImmediateModuleDirectoryAuthority() {
       scheduleImmediateModulesAuthority('navigation_refresh_visible_snapshot');
     }
 
-    const authority = readEffectiveRoleAuthority();
     if (detail?.state === 'ready'
-        && detail?.provisionalModuleDirectorySnapshot !== true
-        && authority.viewAsActive !== true
-        && hasAnyEffectiveRole(authority, OWNER_MANAGEMENT_ROLES)) {
+        && detail?.provisionalModuleDirectorySnapshot !== true) {
       const signature = `${sessionIdentityFingerprint()}|${clean(detail.authoritySource)}`;
       if (window.__projectPulseOwnerRefreshAuthoritySignature !== signature) {
         window.__projectPulseOwnerRefreshAuthoritySignature = signature;
-        window.dispatchEvent(new CustomEvent(OWNER_EVENT, { detail: { source: 'owner_authority_ready' } }));
+        window.dispatchEvent(new CustomEvent(OWNER_EVENT, {
+          detail: {
+            source: 'owner_catalog_read_authority_ready',
+            contract: OWNER_CATALOG_READ_CONTRACT
+          }
+        }));
       }
     }
   });
