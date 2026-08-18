@@ -1,0 +1,168 @@
+{
+  "targetSha": "ea80bc011804f793f688a721f5f1c3a6f3893b61",
+  "observedAt": "2026-08-18T15:24:53Z",
+  "found": true,
+  "run": {
+    "id": 32153131948,
+    "name": "Deploy System-wide Enterprise Reliability and Utilization to Protected Test",
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "ea80bc011804f793f688a721f5f1c3a6f3893b61",
+    "headBranch": "main",
+    "runNumber": 176,
+    "runAttempt": 1,
+    "createdAt": "2026-08-18T15:13:20Z",
+    "updatedAt": "2026-08-18T15:23:45Z",
+    "htmlUrl": "https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/32153131948"
+  },
+  "jobs": [
+    {
+      "id": 95763742888,
+      "name": "Validate, migrate, deploy, and verify protected Test",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-08-18T15:13:24Z",
+      "completedAt": "2026-08-18T15:23:45Z",
+      "steps": [
+        {
+          "number": 1,
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 2,
+          "name": "Check out exact merged release",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 3,
+          "name": "Require protected Test login credential",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 4,
+          "name": "Set up Node 22",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 5,
+          "name": "Set up .NET 10",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 6,
+          "name": "Guard exact source and validate release",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 7,
+          "name": "Sign in to protected Test subscription",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 8,
+          "name": "Snapshot protected Test and preserve rollback contract",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 9,
+          "name": "Build immutable API, web, and migration images",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 10,
+          "name": "Apply and verify Migrations 086, 088, and 093 inside Test private network",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 11,
+          "name": "Deploy immutable Test API image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 12,
+          "name": "Deploy immutable Test web image",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 13,
+          "name": "Run protected-Test authenticated functional UAT",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 14,
+          "name": "Run protected-Test assigned-work visibility UAT",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 15,
+          "name": "Run protected-Test utilization role-scoping UAT",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 16,
+          "name": "Restore exact prior Test images after application failure",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "number": 17,
+          "name": "Upload protected-Test deployment evidence",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 18,
+          "name": "Publish protected-Test release summary",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 33,
+          "name": "Post Sign in to protected Test subscription",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 34,
+          "name": "Post Set up .NET 10",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 35,
+          "name": "Post Set up Node 22",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 36,
+          "name": "Post Check out exact merged release",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "number": 37,
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}
