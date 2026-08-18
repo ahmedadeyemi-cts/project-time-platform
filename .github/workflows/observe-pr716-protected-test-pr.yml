@@ -1,0 +1,195 @@
+name: Observe PR 716 Protected-Test Deployment on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-pr716-protected-test-pr.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: observe-pr716-protected-test-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/observe-pr716-protected-test-20260818'
+    name: Verify governed Test deployment and owner catalog
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 230
+    env:
+      TARGET_SHA: 3030dacbe4b92f584ada7e2861b35adfe692963a
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      BASE: https://phd-west-test.onenecklab.com
+      EVIDENCE_DIR: /tmp/pr716-protected-test-observer
+      READ_ONLY_USER_EMAIL: jason.mosier@ussignal.local
+      GH_API_URL: https://api.github.com
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Locate and monitor exact governed deployment
+        id: monitor
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Target release SHA is invalid.'
+          [[ "$BASE" == 'https://phd-west-test.onenecklab.com' ]] || fail 'Observer is restricted to protected Test.'
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          run_json=''
+          for attempt in $(seq 1 360); do
+            response="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$DEPLOY_WORKFLOW/runs?event=push&branch=main&per_page=100")"
+            run_json="$(jq -c --arg sha "$TARGET_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+            ' <<<"$response")"
+            if [[ -n "$run_json" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          [[ -n "$run_json" ]] || fail 'No governed protected-Test deployment run was found for the merged PR #716 release.'
+
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          run_url="$(jq -r '.html_url' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          jq -n --argjson runId "$run_id" --arg runUrl "$run_url" --arg targetSha "$TARGET_SHA" \
+            '{targetSha:$targetSha,runId:$runId,runUrl:$runUrl}' > "$EVIDENCE_DIR/deployment-run.json"
+          echo "GOVERNED_DEPLOYMENT_RUN=$run_id"
+          echo "GOVERNED_DEPLOYMENT_URL=$run_url"
+
+          for attempt in $(seq 1 800); do
+            run_json="$(api_get "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+            echo "DEPLOYMENT_STATUS=$status DEPLOYMENT_CONCLUSION=${conclusion:-pending}"
+            if [[ "$status" == 'completed' ]]; then
+              jq '{id,html_url,status,conclusion,event,head_sha,run_attempt,created_at,updated_at}' \
+                <<<"$run_json" > "$EVIDENCE_DIR/deployment-result.json"
+              [[ "$conclusion" == 'success' ]] || fail "Governed protected-Test deployment concluded with ${conclusion:-unknown}."
+              exit 0
+            fi
+            sleep 15
+          done
+
+          fail 'Governed protected-Test deployment did not complete within the observation window.'
+
+      - name: Verify Modules 031-033 through authenticated owner catalog
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ ${#TEST_LOGIN_PASSWORD} -ge 12 ]] || fail 'Protected-Test login credential is unavailable.'
+
+          payload="$(mktemp)"
+          login_response="$(mktemp)"
+          chmod 0600 "$payload" "$login_response"
+          jq -n --arg username "$READ_ONLY_USER_EMAIL" --arg password "$TEST_LOGIN_PASSWORD" \
+            '{username:$username,password:$password}' > "$payload"
+          login_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 90 \
+            -o "$login_response" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            --data-binary @"$payload" "$BASE/api/auth/local/login" || true)"
+          rm -f "$payload"
+          [[ "$login_status" == 200 ]] || fail "Protected-Test login returned HTTP $login_status."
+          SESSION_TOKEN="$(jq -er '.sessionToken' "$login_response")"
+          echo "::add-mask::$SESSION_TOKEN"
+          jq 'del(.sessionToken,.token,.password)' "$login_response" > "$EVIDENCE_DIR/login-redacted.json"
+          rm -f "$login_response"
+          unset TEST_LOGIN_PASSWORD
+
+          owners_status="$(curl -sS --http1.1 --connect-timeout 20 --max-time 120 \
+            -o "$EVIDENCE_DIR/owners.json" -w '%{http_code}' \
+            -H 'Cache-Control: no-cache, no-store, max-age=0' \
+            -H "Authorization: Bearer $SESSION_TOKEN" \
+            -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+            -H 'X-ProjectPulse-Module-Number: 012' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/module-catalog/owners" || true)"
+          [[ "$owners_status" == 200 ]] || fail "Module owner catalog returned HTTP $owners_status."
+          jq -e . "$EVIDENCE_DIR/owners.json" >/dev/null
+
+          jq -e '
+            [.owners[]? | select(
+              .moduleNumber == "031"
+              or .moduleNumber == "032"
+              or .moduleNumber == "033"
+            )] as $targets
+            | ($targets | length) == 3
+              and (([$targets[].moduleNumber] | sort) == ["031", "032", "033"])
+              and (([$targets[] | select((.ownerUserId // "") | test("^[0-9a-fA-F-]{36}$"))] | length) == 3)
+              and (([$targets[] | select((.revision // 0) >= 1)] | length) == 3)
+              and (([$targets[] | select((.displayName // "") != "" and .displayName != "Unassigned")] | length) == 3)
+          ' "$EVIDENCE_DIR/owners.json" >/dev/null \
+            || fail 'Modules 031, 032, and 033 were not all restored with durable owner records.'
+
+          jq '{
+            environment:"protected-test",
+            access,
+            owners:[
+              .owners[]?
+              | select(.moduleNumber == "031" or .moduleNumber == "032" or .moduleNumber == "033")
+              | {moduleNumber,ownerUserId,displayName,revision,updatedAt}
+            ],
+            productionMutation:false,
+            ownerMutation:false
+          }' "$EVIDENCE_DIR/owners.json" > "$EVIDENCE_DIR/owner-catalog-verification.json"
+          rm -f "$EVIDENCE_DIR/owners.json"
+
+          curl -sS --http1.1 --connect-timeout 20 --max-time 60 -o /dev/null -X POST \
+            -H "Authorization: Bearer $SESSION_TOKEN" \
+            -H "X-ProjectPulse-Session: $SESSION_TOKEN" \
+            -H 'X-ProjectPulse-Module-Number: 012' \
+            -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+            "$BASE/api/auth/session/logout" || true
+          unset SESSION_TOKEN
+          jq . "$EVIDENCE_DIR/owner-catalog-verification.json"
+
+      - name: Publish observer summary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '## PR #716 protected-Test deployment observation'
+            echo
+            [[ -f "$EVIDENCE_DIR/deployment-result.json" ]] \
+              && echo '- Governed deployment: completed successfully' \
+              || echo '- Governed deployment: completion evidence unavailable'
+            [[ -f "$EVIDENCE_DIR/owner-catalog-verification.json" ]] \
+              && echo '- Modules 031, 032, and 033 owner catalog: verified' \
+              || echo '- Modules 031, 032, and 033 owner catalog: not verified'
+            echo '- Production mutation: none'
+            echo '- Owner mutation: none'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr716-protected-test-observer-evidence
+          path: /tmp/pr716-protected-test-observer
+          if-no-files-found: error
+          retention-days: 1
