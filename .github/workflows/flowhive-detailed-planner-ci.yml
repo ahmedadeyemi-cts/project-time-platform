@@ -54,7 +54,7 @@ jobs:
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
-          grep -Fq 'products, platforms, services, models, software or firmware version' \
+          grep -Fq 'product, platform, service, model, software or firmware version' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'Plan, Design, Implement, Validate, and Release' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
