@@ -1,6 +1,8 @@
 const INSTALL_MARKER = '__pulseFlowHiveSowEvidenceAutoadmissionInstalled';
 const ENTERPRISE_PATH = /^\/api\/project-flowhive\/projects\/([0-9a-f-]{36})\/enterprise$/i;
+const GENERATION_PATH = /^\/api\/project-flowhive\/ai\/production-generate$/i;
 const activeAdmissions = new Map();
+const generationBlocks = new Map();
 
 function storedSessionToken() {
   try {
@@ -25,6 +27,16 @@ function methodOf(input, init) {
 
 function cloneInput(input) {
   return input instanceof Request ? input.clone() : input;
+}
+
+async function requestJson(input, init) {
+  try {
+    if (typeof init?.body === 'string') return JSON.parse(init.body);
+    if (input instanceof Request) return await input.clone().json();
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function evidenceScore(item) {
@@ -60,6 +72,34 @@ export function evidenceIdentity(item) {
   const version = String(item?.documentVersion || '').trim().toLowerCase();
   const uploadedAt = String(item?.uploadedAt || '').trim().toLowerCase();
   return `fallback:${category}|${file}|${version}|${uploadedAt}`;
+}
+
+function filenameIdentity(item) {
+  const category = String(item?.documentCategory || 'other').trim().toLowerCase();
+  const file = String(item?.originalFileName || '').trim().toLowerCase();
+  return `${category}|${file}`;
+}
+
+export function pendingReplacementEvidence(evidence) {
+  const groups = new Map();
+  for (const item of evidence || []) {
+    const key = filenameIdentity(item);
+    const current = groups.get(key) || [];
+    current.push(item);
+    groups.set(key, current);
+  }
+
+  return [...groups.entries()].flatMap(([key, items]) => {
+    const documentIds = [...new Set(items.map((item) => String(item?.documentId || '').trim()).filter(Boolean))];
+    const pending = items.filter((item) => !item?.readyForAiPlanner);
+    if (documentIds.length < 2 || pending.length === 0) return [];
+    return [{
+      key,
+      originalFileName: pending[0]?.originalFileName || items[0]?.originalFileName || 'SOW',
+      documentIds,
+      pendingDocumentIds: [...new Set(pending.map((item) => String(item?.documentId || '').trim()).filter(Boolean))]
+    }];
+  });
 }
 
 function preferredEvidence(left, right) {
@@ -98,8 +138,9 @@ export function dedupeEvidence(evidence) {
 export function normalizeEvidenceBody(body) {
   if (!body || !Array.isArray(body.sowEvidence)) return body;
   const sowEvidence = dedupeEvidence(body.sowEvidence);
+  const pendingReplacements = pendingReplacementEvidence(body.sowEvidence);
   const readyCount = sowEvidence.filter((item) => item.readyForAiPlanner).length;
-  const approvedSowScopeReady = readyCount > 0;
+  const approvedSowScopeReady = readyCount > 0 && pendingReplacements.length === 0;
   const duplicateRecordsConsolidated = body.sowEvidence.length - sowEvidence.length;
   return {
     ...body,
@@ -109,10 +150,14 @@ export function normalizeEvidenceBody(body) {
       candidateCount: sowEvidence.length,
       readyCount,
       approvedSowScopeReady,
+      pendingReplacementCount: pendingReplacements.length,
+      pendingReplacementDocumentIds: pendingReplacements.flatMap((item) => item.pendingDocumentIds),
       duplicateRecordsConsolidated,
-      explanation: approvedSowScopeReady
-        ? `At least one approved, citation-ready SOW scope source is available to AI Planner.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
-        : `AI Planner is automatically preparing the active Work Register SOW records. It requires private processing, an active authoritative version, citation indexing, and Scope of Services citations before generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
+      explanation: pendingReplacements.length > 0
+        ? `A replacement SOW that reuses an existing filename is still being privately processed. FlowHive has blocked generation so an older ready SOW cannot be used as stale contractual scope.`
+        : approvedSowScopeReady
+          ? `At least one approved, citation-ready SOW scope source is available to AI Planner.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
+          : `AI Planner is automatically preparing the active Work Register SOW records. It requires private processing, an active authoritative version, citation indexing, and Scope of Services citations before generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
     }
   };
 }
@@ -125,6 +170,24 @@ function responseWithJson(response, body) {
     status: response.status,
     statusText: response.statusText,
     headers
+  });
+}
+
+function blockedGenerationResponse(blocks) {
+  return new Response(JSON.stringify({
+    module: '066',
+    feature: 'project_flowhive_plan',
+    status: 'flowhive_sow_evidence_not_ready',
+    message: 'FlowHive blocked generation because a replacement SOW is still being privately processed. The older ready document was not used as stale contractual scope.',
+    missingEvidence: blocks.map((item) => `${item.originalFileName}: replacement document processing and citation authority are not ready.`),
+    warnings: ['Wait for private scanning, extraction, indexing, and authority reconciliation to complete, then retry AI Planner.'],
+    stateChanged: false
+  }), {
+    status: 422,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'X-Pulse-FlowHive-Stale-Sow-Blocked': 'true'
+    }
   });
 }
 
@@ -205,25 +268,46 @@ async function readJsonBody(response) {
   return response.clone().json().catch(() => null);
 }
 
+function recordGenerationBlocks(projectId, evidence) {
+  const key = String(projectId || '').trim().toLowerCase();
+  if (!key) return;
+  const blocks = pendingReplacementEvidence(evidence);
+  if (blocks.length > 0) generationBlocks.set(key, blocks);
+  else generationBlocks.delete(key);
+}
+
 if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
   const nativeFetch = window.fetch.bind(window);
 
   window.fetch = async (input, init = {}) => {
     const url = urlOf(input);
+    const method = methodOf(input, init);
+
+    if (url?.origin === window.location.origin
+      && GENERATION_PATH.test(url.pathname)
+      && method === 'POST') {
+      const body = await requestJson(input, init);
+      const projectId = String(body?.plan?.projectId || '').trim().toLowerCase();
+      const blocks = generationBlocks.get(projectId) || [];
+      if (blocks.length > 0) return blockedGenerationResponse(blocks);
+      return nativeFetch(input, init);
+    }
+
     const match = url?.origin === window.location.origin
       ? url.pathname.match(ENTERPRISE_PATH)
       : null;
-    if (!match || methodOf(input, init) !== 'GET') return nativeFetch(input, init);
+    if (!match || method !== 'GET') return nativeFetch(input, init);
 
     let response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
 
     let rawBody = await readJsonBody(response);
     if (!rawBody || !Array.isArray(rawBody.sowEvidence)) return response;
+    const projectId = match[1].toLowerCase();
+    recordGenerationBlocks(projectId, rawBody.sowEvidence);
     let body = normalizeEvidenceBody(rawBody);
     if (!body?.access?.canManage) return responseWithJson(response, body);
 
-    const projectId = match[1];
     // Admission is intentionally based on the raw authoritative records rather
     // than the normalized display collection. A replacement SOW that reuses an
     // older filename must still receive its own private processing request.
@@ -246,6 +330,7 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
     rawBody = await readJsonBody(response);
+    if (rawBody && Array.isArray(rawBody.sowEvidence)) recordGenerationBlocks(projectId, rawBody.sowEvidence);
     body = normalizeEvidenceBody(rawBody);
     return body ? responseWithJson(response, body) : response;
   };
