@@ -6,7 +6,9 @@ on:
       - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
       - 'database/rollback/094_flowhive_canonical_sow_authority_rollback.sql'
       - 'deployment/containers/api/Dockerfile'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
       - 'src/backend/ProjectTime.Api/Directory.Build.props'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
@@ -17,6 +19,7 @@ on:
       - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
       - 'tests/FlowHiveDetailedPlannerTests/**'
       - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
+      - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
       - '.github/workflows/flowhive-detailed-planner-ci.yml'
   workflow_dispatch:
 
@@ -62,6 +65,12 @@ jobs:
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'Plan, Design, Implement, Validate, and Release' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq '".doc",' \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs
+          grep -Fq 'PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains' \
+            src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
+          grep -Fq 'Continue draining the redirected pipe' \
+            src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
           grep -Fq "import './flowhive-runtime-resilience.js';" \
             src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
           grep -Fq "import './flowhive-sow-evidence-autoadmission.js';" \
@@ -69,6 +78,10 @@ jobs:
           grep -Fq 'module_availability_unavailable' \
             src/frontend/project-time-web/src/flowhive-runtime-resilience.js
           grep -Fq 'duplicateRecordsConsolidated' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'queueCandidatesFromEvidence(rawBody.sowEvidence' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'document:${documentId}' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq '/sow-evidence/${item.documentId}/prepare' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
@@ -97,8 +110,11 @@ jobs:
       - name: Build ProjectTime API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
-      - name: Execute detailed five-phase planner regression
+      - name: Execute detailed five-phase and legacy Word regressions
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Execute SOW identity and admission regression
+        run: node tests/validate-flowhive-sow-evidence-autoadmission.mjs
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
