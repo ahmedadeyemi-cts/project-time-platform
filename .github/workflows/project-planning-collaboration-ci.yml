@@ -7,6 +7,7 @@ on:
       - 'database/migrations/095_project_planning_collaboration_access.sql'
       - 'database/rollback/095_project_planning_collaboration_access_rollback.sql'
       - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs'
@@ -16,10 +17,11 @@ on:
       - 'src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx'
       - 'src/frontend/project-time-web/src/ProjectForgeCenter.jsx'
       - 'scripts/release-test/run-project-planning-collaboration-migration-job.sh'
+      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
       - 'tests/test-project-planning-collaboration-migration-095.sh'
       - 'tests/validate-project-planning-collaboration-access.mjs'
       - '.github/workflows/project-planning-collaboration-ci.yml'
-      - '.github/workflows/project-planning-collaboration-deploy-test.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
   workflow_dispatch:
 
 permissions:
@@ -62,6 +64,7 @@ jobs:
             node scripts/validate-module-066-project-flowhive.mjs
           )
           bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
 
       - name: Build API
         shell: bash
