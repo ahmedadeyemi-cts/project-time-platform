@@ -1,6 +1,5 @@
 using ProjectTime.Api.Ai;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace ProjectTime.Api.Modules;
 
@@ -108,32 +107,69 @@ public static partial class CelarAiProductionPlatformModule
 
     private static async Task<FlowHiveSowFreshnessVerification> VerifyFlowHiveSowFreshnessAsync(
         ProjectFlowHivePlanRequest plan,
+        HttpContext context,
+        Guid effectiveUserId,
         CancellationToken cancellationToken)
     {
-        var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
-        if (config.Missing.Count > 0)
-        {
-            return FailedFreshnessVerification(
-                StatusCodes.Status503ServiceUnavailable,
-                "flowhive_sow_freshness_unavailable",
-                "FlowHive could not verify the current project SOW because database configuration is incomplete. No plan was generated.");
-        }
-
         try
         {
-            await using var connection = new NpgsqlConnection(config.ConnectionString);
-            await connection.OpenAsync(cancellationToken);
+            // Resolve the project through the exact private-RAG authorization
+            // contract before loading or describing any SOW evidence. This applies
+            // effective-user broad scope, PM-lead scope, PM ownership, project
+            // assignment, and engineering-resource-request predicates and avoids
+            // turning this precheck into a project-existence or filename oracle.
+            var privateRepository = context.RequestServices
+                .GetRequiredService<PulseAiPrivateRagRepository>();
+            if (!privateRepository.DatabaseConfigured)
+            {
+                return FailedFreshnessVerification(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "flowhive_sow_freshness_unavailable",
+                    "FlowHive could not verify the current project SOW because private project authorization is temporarily unavailable. No plan was generated.");
+            }
 
-            var projectId = await ResolveFlowHiveFreshnessProjectIdAsync(connection, plan, cancellationToken);
-            if (!projectId.HasValue)
+            var privateAccess = await privateRepository.LoadAccessAsync(
+                effectiveUserId,
+                cancellationToken);
+            if (!privateAccess.IsActive)
+            {
+                return FailedFreshnessVerification(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "flowhive_sow_freshness_unavailable",
+                    "FlowHive could not verify the current project SOW because private project authorization is temporarily unavailable. No plan was generated.");
+            }
+
+            var project = await privateRepository.ResolveProjectAsync(
+                privateAccess,
+                plan.ProjectId,
+                taskId: null,
+                assignmentId: null,
+                plan.ProjectCode,
+                plan.ProjectName,
+                cancellationToken);
+            if (project is null)
             {
                 return FailedFreshnessVerification(
                     StatusCodes.Status422UnprocessableEntity,
                     "flowhive_project_identity_unresolved",
-                    "FlowHive could not resolve one authoritative project identity for SOW verification. Select the project again before generating a plan.");
+                    "FlowHive could not resolve one authorized project from the supplied project identity. Select the project again before generating a plan.");
             }
 
-            var evidence = await LoadFlowHiveSowFreshnessEvidenceAsync(connection, projectId.Value, cancellationToken);
+            var config = ProjectFlowHiveDatabaseConfig.FromEnvironment();
+            if (config.Missing.Count > 0)
+            {
+                return FailedFreshnessVerification(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "flowhive_sow_freshness_unavailable",
+                    "FlowHive could not verify the current project SOW because database configuration is incomplete. No plan was generated.");
+            }
+
+            await using var connection = new NpgsqlConnection(config.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            var evidence = await LoadFlowHiveSowFreshnessEvidenceAsync(
+                connection,
+                project.ProjectId,
+                cancellationToken);
             var decision = ProjectFlowHiveSowFreshnessPolicy.Evaluate(evidence);
             if (decision.PendingReplacements.Count > 0)
             {
@@ -157,14 +193,14 @@ public static partial class CelarAiProductionPlatformModule
                         stateChanged = false
                     }, statusCode: StatusCodes.Status422UnprocessableEntity),
                     decision.CurrentSowDocumentIds,
-                    projectId,
+                    project.ProjectId,
                     evidence.Count);
             }
 
             return new FlowHiveSowFreshnessVerification(
                 null,
                 decision.CurrentSowDocumentIds,
-                projectId,
+                project.ProjectId,
                 evidence.Count);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -208,49 +244,6 @@ public static partial class CelarAiProductionPlatformModule
             staleCitationCount,
             stateChanged = false
         }, statusCode: StatusCodes.Status422UnprocessableEntity);
-
-    private static async Task<Guid?> ResolveFlowHiveFreshnessProjectIdAsync(
-        NpgsqlConnection connection,
-        ProjectFlowHivePlanRequest plan,
-        CancellationToken cancellationToken)
-    {
-        const string sql = """
-            SELECT project_id
-            FROM projects
-            WHERE (
-                    @project_id IS NOT NULL
-                    AND project_id=@project_id
-                  )
-               OR (
-                    @project_id IS NULL
-                    AND @project_code <> ''
-                    AND LOWER(project_code)=LOWER(@project_code)
-                  )
-               OR (
-                    @project_id IS NULL
-                    AND @project_code = ''
-                    AND @project_name <> ''
-                    AND LOWER(project_name)=LOWER(@project_name)
-                  )
-            ORDER BY CASE
-                       WHEN @project_id IS NOT NULL AND project_id=@project_id THEN 0
-                       WHEN @project_code <> '' AND LOWER(project_code)=LOWER(@project_code) THEN 1
-                       ELSE 2
-                     END,
-                     updated_at DESC
-            LIMIT 2;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.Add("project_id", NpgsqlDbType.Uuid).Value =
-            plan.ProjectId.HasValue ? plan.ProjectId.Value : DBNull.Value;
-        command.Parameters.AddWithValue("project_code", (plan.ProjectCode ?? string.Empty).Trim());
-        command.Parameters.AddWithValue("project_name", (plan.ProjectName ?? string.Empty).Trim());
-
-        var matches = new List<Guid>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) matches.Add(reader.GetGuid(0));
-        return matches.Count == 1 ? matches[0] : null;
-    }
 
     private static async Task<List<ProjectFlowHiveSowFreshnessEvidence>> LoadFlowHiveSowFreshnessEvidenceAsync(
         NpgsqlConnection connection,
