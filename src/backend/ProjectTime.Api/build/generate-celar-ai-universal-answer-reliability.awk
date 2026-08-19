@@ -60,13 +60,21 @@ mode == "production" {
   }
 
   if (line ~ /var outcome = BuildPlanningOutcome\(request\);/) {
-    print "        var sowFreshness = await VerifyFlowHiveSowFreshnessAsync(request.Plan, cancellationToken);"
+    print "        var sowFreshness = await VerifyFlowHiveSowFreshnessAsync("
+    print "            request.Plan,"
+    print "            context,"
+    print "            identity.Value.Effective,"
+    print "            cancellationToken);"
     print "        if (sowFreshness.Failure is not null) return sowFreshness.Failure;"
     inserted_flowhive_freshness_precheck++
   }
 
   if (line ~ /var sowCitations = composition\.Citations\.Where\(citation =>/) {
-    print "        sowFreshness = await VerifyFlowHiveSowFreshnessAsync(request.Plan, cancellationToken);"
+    print "        sowFreshness = await VerifyFlowHiveSowFreshnessAsync("
+    print "            request.Plan,"
+    print "            context,"
+    print "            identity.Value.Effective,"
+    print "            cancellationToken);"
     print "        if (sowFreshness.Failure is not null) return sowFreshness.Failure;"
     inserted_flowhive_freshness_postcheck++
   }
