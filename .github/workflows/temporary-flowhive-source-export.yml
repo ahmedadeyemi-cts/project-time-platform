@@ -1,6 +1,10 @@
 name: Temporary FlowHive Source Export
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/temporary-flowhive-source-export.yml'
   push:
     branches:
       - feature/project-planning-collaboration-access-20260818
@@ -24,7 +28,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -32,7 +36,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          archive="/tmp/project-time-platform-${GITHUB_SHA}.tar.gz"
+          source_sha="$(git rev-parse HEAD)"
+          archive="/tmp/project-time-platform-${source_sha}.tar.gz"
           tar \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -41,14 +46,14 @@ jobs:
             --exclude='**/dist' \
             -czf "$archive" .
           sha256sum "$archive" > "${archive}.sha256"
-          echo "SOURCE_ARCHIVE=$archive"
+          printf 'SOURCE_SHA=%s\n' "$source_sha"
 
       - name: Upload exact source archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: flowhive-source-${{ github.sha }}
+          name: flowhive-source-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            /tmp/project-time-platform-${{ github.sha }}.tar.gz
-            /tmp/project-time-platform-${{ github.sha }}.tar.gz.sha256
+            /tmp/project-time-platform-${{ github.event.pull_request.head.sha || github.sha }}.tar.gz
+            /tmp/project-time-platform-${{ github.event.pull_request.head.sha || github.sha }}.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
