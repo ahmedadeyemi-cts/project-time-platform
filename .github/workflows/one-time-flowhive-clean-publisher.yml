@@ -1,6 +1,11 @@
 name: One-time FlowHive Clean Publisher
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-publisher.yml'
+      - '.github/flowhive-clean/repair.patch.gz.b64'
   push:
     branches:
       - tooling/one-time-flowhive-clean-publisher-20260819
@@ -38,7 +43,11 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
           [[ "$GITHUB_REPOSITORY" == ahmedadeyemi-cts/project-time-platform ]] || fail 'Unexpected repository.'
-          [[ "$GITHUB_REF" == refs/heads/tooling/one-time-flowhive-clean-publisher-20260819 ]] || fail 'Unexpected publisher branch.'
+          case "$GITHUB_EVENT_NAME" in
+            push) [[ "$GITHUB_REF" == refs/heads/tooling/one-time-flowhive-clean-publisher-20260819 ]] || fail 'Unexpected publisher branch.' ;;
+            pull_request) [[ "$GITHUB_HEAD_REF" == tooling/one-time-flowhive-clean-publisher-20260819 ]] || fail 'Unexpected publisher PR branch.' ;;
+            *) fail 'Unexpected workflow event.' ;;
+          esac
 
           git fetch origin main --no-tags
           ACTUAL_MAIN="$(git rev-parse origin/main)"
