@@ -1,0 +1,54 @@
+name: Temporary FlowHive Source Export
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-source-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-flowhive-source-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export exact PR source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Package source without build output
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          archive="/tmp/project-time-platform-${GITHUB_SHA}.tar.gz"
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='**/bin' \
+            --exclude='**/obj' \
+            --exclude='**/dist' \
+            -czf "$archive" .
+          sha256sum "$archive" > "${archive}.sha256"
+          echo "SOURCE_ARCHIVE=$archive"
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flowhive-source-${{ github.sha }}
+          path: |
+            /tmp/project-time-platform-${{ github.sha }}.tar.gz
+            /tmp/project-time-platform-${{ github.sha }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
