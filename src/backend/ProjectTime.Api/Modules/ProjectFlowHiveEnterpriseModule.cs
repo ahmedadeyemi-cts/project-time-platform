@@ -15,7 +15,19 @@ namespace ProjectTime.Api.Modules;
 /// </summary>
 internal static class ProjectFlowHiveEnterpriseModule
 {
+    private enum FlowHiveAccessRequirement
+    {
+        View,
+        EditPlanner,
+        AdministerPlanner,
+        CustomerShare
+    }
+
     private const string MigrationId = "086_module_066_flowhive_enterprise_pm";
+    // PM governance compatibility contract: Only the assigned Project Manager can manage
+    // financial controls, formal status publication, baseline approval, and customer sharing.
+    // ProjectPulseActualSessionAuthority.IsViewAs remains enforced by ProjectPlanningAccessResolver;
+    // Engineering planner collaboration never transfers IsProjectManagerOwner authority.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -66,13 +78,15 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: false, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.View, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
 
         var workingCopy = await LoadWorkingCopyAsync(connection, projectId, cancellationToken);
-        var controls = await LoadControlsAsync(connection, projectId, cancellationToken);
+        object controls = access.CanViewFinancials
+            ? await LoadControlsAsync(connection, projectId, cancellationToken)
+            : RedactedControls(projectId);
         var raid = await LoadRaidAsync(connection, projectId, cancellationToken);
         var statusReports = await LoadStatusReportsAsync(connection, projectId, cancellationToken);
         var shares = await LoadSharesAsync(connection, projectId, cancellationToken);
@@ -99,11 +113,20 @@ internal static class ProjectFlowHiveEnterpriseModule
                 access.IsViewAs,
                 access.IsProjectManagerOwner,
                 access.IsAdministrator,
+                access.IsAccountExecutive,
+                access.IsSolutionArchitect,
                 access.CanView,
+                access.CanReviewPlanner,
+                access.CanEditPlanner,
+                access.CanAdministerPlanner,
+                access.CanAdoptBaseline,
                 access.CanManage,
                 access.CanShare,
                 access.CanViewFinancials,
-                managementRule = "A Project Manager may mutate only projects for which they are the assigned Project Manager. Administrator support authority is non-transferable and unavailable in View-As."
+                access.ScopeReason,
+                access.CapabilityLabel,
+                accessContract = ProjectPlanningAccessResolver.Contract,
+                managementRule = "Project Managers and PM Leads retain governance. Associated Engineering collaborators may edit planning content only; associated Account Executives and Solution Architects are read-only. View-As cannot write."
             },
             workingCopy,
             controls,
@@ -142,7 +165,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         if (request.Plan.ProjectId != projectId)
             return Validation("The working copy project does not match the selected project.");
 
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.EditPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -225,7 +248,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.AdministerPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -302,7 +325,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.EditPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -348,7 +371,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.EditPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -379,7 +402,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.EditPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
 
@@ -400,7 +423,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.AdministerPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -463,7 +486,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.CustomerShare, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -582,7 +605,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.CustomerShare, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -612,7 +635,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var opened = await OpenAuthorizedAsync(projectId, context, requireManage: true, cancellationToken);
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.AdministerPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
@@ -898,7 +921,7 @@ internal static class ProjectFlowHiveEnterpriseModule
     private static async Task<OpenOutcome> OpenAuthorizedAsync(
         Guid projectId,
         HttpContext context,
-        bool requireManage,
+        FlowHiveAccessRequirement requirement,
         CancellationToken cancellationToken)
     {
         var actual = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseActualUserId", "ProjectPulseSessionUserId");
@@ -928,16 +951,43 @@ internal static class ProjectFlowHiveEnterpriseModule
             }, statusCode: 503));
         }
 
-        var access = await LoadAccessAsync(connection, context, projectId, actual.Value, effective.Value, cancellationToken);
-        if (access is null || !access.CanView)
+        var planningAccess = await ProjectPlanningAccessResolver.ResolveAsync(
+            connection,
+            context,
+            projectId,
+            "066",
+            cancellationToken);
+        if (!planningAccess.CanView)
         {
             await connection.DisposeAsync();
             return OpenOutcome.Fail(Forbidden("The project is outside the current FlowHive scope."));
         }
-        if (requireManage && !access.CanManage)
+
+        var allowed = requirement switch
+        {
+            FlowHiveAccessRequirement.View => planningAccess.CanView,
+            FlowHiveAccessRequirement.EditPlanner => planningAccess.CanEditPlanner,
+            FlowHiveAccessRequirement.AdministerPlanner => planningAccess.CanAdministerPlanner,
+            FlowHiveAccessRequirement.CustomerShare => planningAccess.CanCreateCustomerShare,
+            _ => false
+        };
+        if (!allowed)
         {
             await connection.DisposeAsync();
-            return OpenOutcome.Fail(Forbidden("Only the assigned Project Manager can manage this project's FlowHive working plan. View-As is read-only."));
+            var message = requirement switch
+            {
+                FlowHiveAccessRequirement.EditPlanner => "This project is read-only for the current identity. Planner editing requires an associated Engineering collaborator or PM governance role.",
+                FlowHiveAccessRequirement.CustomerShare => "Only the assigned Project Manager, authorized PM Lead, or Administrator may create or revoke customer shares.",
+                _ => "Only the assigned Project Manager, authorized PM Lead, or Administrator may perform this project-governance action."
+            };
+            return OpenOutcome.Fail(Forbidden(message));
+        }
+
+        var access = await LoadAccessAsync(connection, projectId, planningAccess, cancellationToken);
+        if (access is null)
+        {
+            await connection.DisposeAsync();
+            return OpenOutcome.Fail(Forbidden("The project is outside the current FlowHive scope."));
         }
         return new OpenOutcome(connection, access, null);
     }
@@ -959,45 +1009,16 @@ internal static class ProjectFlowHiveEnterpriseModule
 
     private static async Task<ProjectFlowHiveEnterpriseAccess?> LoadAccessAsync(
         NpgsqlConnection connection,
-        HttpContext context,
         Guid projectId,
-        Guid actualUserId,
-        Guid effectiveUserId,
+        ProjectPlanningAccess planningAccess,
         CancellationToken cancellationToken)
     {
+        var effectiveUserId = planningAccess.EffectiveUserId ?? Guid.Empty;
         const string sql = """
             SELECT project.project_id,project.project_code,project.project_name,
                    COALESCE(client.client_name,''),project.project_manager_user_id,
                    COALESCE(NULLIF(manager.display_name,''),manager.email,'Unassigned'),
-                   COALESCE(NULLIF(actor.display_name,''),actor.email,''),
-                   EXISTS(SELECT 1 FROM project_assignments assignment
-                          WHERE assignment.project_id=project.project_id AND assignment.user_id=@effective),
-                   EXISTS(SELECT 1 FROM app_user_role_assignments assignment
-                          JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                          WHERE assignment.user_id=@effective AND assignment.is_active=TRUE
-                            AND role.role_code IN ('SUPER_ADMINISTRATOR','SYSTEM_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR','PROJECT_COORDINATOR','PROJECT_MANAGEMENT_LEAD','PROJECT_MANAGEMENT_TEAM_LEAD','PM_TEAM_LEAD','EXECUTIVE')),
-                   EXISTS(SELECT 1 FROM app_user_role_assignments assignment
-                          JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                          WHERE assignment.user_id=@actual AND assignment.is_active=TRUE
-                            AND role.role_code IN ('SUPER_ADMINISTRATOR','SYSTEM_ADMINISTRATOR','ADMINISTRATOR')),
-                   EXISTS(SELECT 1 FROM app_user_role_assignments assignment
-                          JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                          JOIN app_role_permissions grant_row ON grant_row.app_role_id=role.app_role_id
-                          JOIN app_permissions permission ON permission.app_permission_id=grant_row.app_permission_id
-                          WHERE assignment.user_id=@effective AND assignment.is_active=TRUE
-                            AND permission.permission_code='MANAGE_FLOWHIVE_PM_WORKSPACE_066'),
-                   EXISTS(SELECT 1 FROM app_user_role_assignments assignment
-                          JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                          JOIN app_role_permissions grant_row ON grant_row.app_role_id=role.app_role_id
-                          JOIN app_permissions permission ON permission.app_permission_id=grant_row.app_permission_id
-                          WHERE assignment.user_id=@effective AND assignment.is_active=TRUE
-                            AND permission.permission_code='CREATE_FLOWHIVE_CUSTOMER_SHARE_066'),
-                   EXISTS(SELECT 1 FROM app_user_role_assignments assignment
-                          JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                          JOIN app_role_permissions grant_row ON grant_row.app_role_id=role.app_role_id
-                          JOIN app_permissions permission ON permission.app_permission_id=grant_row.app_permission_id
-                          WHERE assignment.user_id=@effective AND assignment.is_active=TRUE
-                            AND permission.permission_code='VIEW_FLOWHIVE_FINANCIALS_066')
+                   COALESCE(NULLIF(actor.display_name,''),actor.email,'')
             FROM projects project
             LEFT JOIN clients client ON client.client_id=project.client_id
             LEFT JOIN app_users manager ON manager.user_id=project.project_manager_user_id
@@ -1006,29 +1027,36 @@ internal static class ProjectFlowHiveEnterpriseModule
             """;
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("project_id", projectId);
-        command.Parameters.AddWithValue("actual", actualUserId);
         command.Parameters.AddWithValue("effective", effectiveUserId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
 
-        Guid? managerId = reader.IsDBNull(4) ? null : reader.GetGuid(4);
-        var owner = managerId.HasValue && managerId.Value == effectiveUserId;
-        var assigned = reader.GetBoolean(7);
-        var broad = reader.GetBoolean(8);
-        var administrator = reader.GetBoolean(9)
-            || (context.Items.TryGetValue("ProjectPulsePermanentFullControl", out var permanent) && permanent is true);
-        var hasManage = reader.GetBoolean(10);
-        var hasShare = reader.GetBoolean(11);
-        var hasFinancial = reader.GetBoolean(12);
-        var viewAs = ProjectPulseActualSessionAuthority.IsViewAs(context) || actualUserId != effectiveUserId;
-        var ownSession = !viewAs && actualUserId == effectiveUserId;
-        var canView = owner || assigned || broad || administrator;
-        var canManage = ownSession && ((owner && hasManage) || administrator);
-        var canShare = ownSession && ((owner && hasShare) || administrator);
+        var managerId = reader.IsDBNull(4) ? (Guid?)null : reader.GetGuid(4);
         return new ProjectFlowHiveEnterpriseAccess(
-            actualUserId,effectiveUserId,reader.GetString(6),viewAs,reader.GetGuid(0),reader.GetString(1),
-            reader.GetString(2),reader.GetString(3),managerId,reader.GetString(5),owner,administrator,
-            canView,canManage,canShare,canView && (hasFinancial || owner || administrator));
+            planningAccess.ActualUserId ?? Guid.Empty,
+            effectiveUserId,
+            reader.GetString(6),
+            planningAccess.IsViewAs,
+            reader.GetGuid(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            managerId,
+            reader.GetString(5),
+            planningAccess.IsProjectManagerOwner,
+            planningAccess.IsAdministrator,
+            planningAccess.IsAccountExecutive,
+            planningAccess.IsSolutionArchitect,
+            planningAccess.CanView,
+            planningAccess.CanReviewPlanner,
+            planningAccess.CanEditPlanner,
+            planningAccess.CanAdministerPlanner,
+            planningAccess.CanAdoptBaseline,
+            planningAccess.CanAdministerPlanner,
+            planningAccess.CanCreateCustomerShare,
+            planningAccess.CanManageFinancials,
+            planningAccess.ScopeReason,
+            planningAccess.CapabilityLabel);
     }
 
     private static async Task<object?> LoadWorkingCopyAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
@@ -1051,6 +1079,23 @@ internal static class ProjectFlowHiveEnterpriseModule
             updatedAt = reader.GetFieldValue<DateTimeOffset>(6)
         };
     }
+
+    private static object RedactedControls(Guid projectId) => new
+    {
+        projectId,
+        contractType = "restricted",
+        currencyCode = "USD",
+        approvedBudget = (decimal?)null,
+        expenseBudget = (decimal?)null,
+        contingencyBudget = (decimal?)null,
+        forecastAtCompletion = (decimal?)null,
+        percentCompleteMethod = "restricted",
+        statusReportCadence = "restricted",
+        customerSharingEnabled = false,
+        financialNotes = string.Empty,
+        restricted = true,
+        updatedAt = (DateTimeOffset?)null
+    };
 
     private static async Task<object> LoadControlsAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
     {
@@ -1582,10 +1627,18 @@ internal sealed record ProjectFlowHiveEnterpriseAccess(
     string ProjectManagerName,
     bool IsProjectManagerOwner,
     bool IsAdministrator,
+    bool IsAccountExecutive,
+    bool IsSolutionArchitect,
     bool CanView,
+    bool CanReviewPlanner,
+    bool CanEditPlanner,
+    bool CanAdministerPlanner,
+    bool CanAdoptBaseline,
     bool CanManage,
     bool CanShare,
-    bool CanViewFinancials);
+    bool CanViewFinancials,
+    string ScopeReason,
+    string CapabilityLabel);
 
 internal sealed record ProjectFlowHiveSowEvidenceState(
     Guid DocumentId,

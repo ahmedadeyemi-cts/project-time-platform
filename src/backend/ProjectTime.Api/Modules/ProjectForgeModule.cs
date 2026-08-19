@@ -301,7 +301,7 @@ public static partial class ProjectForgeModule
         await using var connection = new NpgsqlConnection(configured.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
-        if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
+        if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
         if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken))
             return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
@@ -338,7 +338,7 @@ public static partial class ProjectForgeModule
         await using var connection = new NpgsqlConnection(configured.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
-        if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
+        if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
         if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
@@ -1551,8 +1551,29 @@ public static partial class ProjectForgeModule
                     WHERE scope.scoped_user_id=@effective_user_id AND scope.is_active=TRUE
                       AND scope.scope_type='project_management_team_lead'
                       AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,''))=LOWER(scope.team_name))
-                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,''))=LOWER(scope.department_name))
+                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,pm.department,''))=LOWER(scope.department_name))
                         OR scope.manager_user_id=pm.user_id)
+                )
+              )
+        ), authorized_engineering_members AS (
+            SELECT DISTINCT member.user_id
+            FROM app_users member
+            WHERE member.is_active=TRUE
+              AND (
+                EXISTS(
+                    SELECT 1 FROM reporting_relationships rr
+                    WHERE rr.employee_user_id=member.user_id
+                      AND (rr.manager_user_id=@effective_user_id OR rr.team_lead_user_id=@effective_user_id)
+                      AND rr.effective_start_date<=CURRENT_DATE
+                      AND (rr.effective_end_date IS NULL OR rr.effective_end_date>=CURRENT_DATE)
+                )
+                OR EXISTS(
+                    SELECT 1 FROM projectpulse_team_scope_assignments scope
+                    WHERE scope.scoped_user_id=@effective_user_id AND scope.is_active=TRUE
+                      AND scope.scope_type='engineering_team_lead'
+                      AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name,''))=LOWER(scope.team_name))
+                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name,member.department,''))=LOWER(scope.department_name))
+                        OR scope.manager_user_id=member.user_id)
                 )
               )
         ), scoped_projects AS (
@@ -1568,6 +1589,24 @@ public static partial class ProjectForgeModule
                       AND self_assignment.effective_start_date<=CURRENT_DATE
                       AND (self_assignment.effective_end_date IS NULL OR self_assignment.effective_end_date>=CURRENT_DATE)
                 ))
+                OR (@is_engineering_lead AND EXISTS(
+                    SELECT 1 FROM project_assignments team_assignment
+                    WHERE team_assignment.project_id=p.project_id
+                      AND team_assignment.user_id IN (SELECT user_id FROM authorized_engineering_members)
+                      AND team_assignment.effective_start_date<=CURRENT_DATE
+                      AND (team_assignment.effective_end_date IS NULL OR team_assignment.effective_end_date>=CURRENT_DATE)
+                ))
+                OR (@is_account_executive AND p.account_executive_user_id=@effective_user_id)
+                OR (@is_solution_architect AND p.solution_architect_user_id=@effective_user_id)
+                OR EXISTS(
+                    SELECT 1 FROM project_planning_collaborators collaborator
+                    WHERE collaborator.project_id=p.project_id
+                      AND collaborator.user_id=@effective_user_id
+                      AND collaborator.module_code='033'
+                      AND collaborator.is_active=TRUE
+                      AND collaborator.effective_start_date<=CURRENT_DATE
+                      AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date>=CURRENT_DATE)
+                )
             )
             AND (@manager_filter IS NULL OR p.project_manager_user_id=@manager_filter)
             AND (@project_filter IS NULL OR p.project_id=@project_filter)
@@ -1941,36 +1980,24 @@ public static partial class ProjectForgeModule
         Guid? managerFilter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT EXISTS(
-                SELECT 1 FROM projects p
-                WHERE p.project_id=@project_id AND (@manager IS NULL OR p.project_manager_user_id=@manager)
-                  AND (
-                    @is_admin
-                    OR (@is_pm AND p.project_manager_user_id=@user_id)
-                    OR (@is_pm_lead AND (
-                        EXISTS(SELECT 1 FROM reporting_relationships rr WHERE rr.employee_user_id=p.project_manager_user_id
-                               AND (rr.manager_user_id=@user_id OR rr.team_lead_user_id=@user_id)
-                               AND rr.effective_start_date<=CURRENT_DATE AND (rr.effective_end_date IS NULL OR rr.effective_end_date>=CURRENT_DATE))
-                        OR EXISTS(SELECT 1 FROM app_users pm JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id=@user_id
-                                  WHERE pm.user_id=p.project_manager_user_id AND scope.is_active=TRUE AND scope.scope_type='project_management_team_lead'
-                                    AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,''))=LOWER(scope.team_name))
-                                      OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,''))=LOWER(scope.department_name))
-                                      OR scope.manager_user_id=pm.user_id))))
-                    OR (@is_engineer AND EXISTS(SELECT 1 FROM project_assignments pa WHERE pa.project_id=p.project_id AND pa.user_id=@user_id
-                                               AND pa.effective_start_date<=CURRENT_DATE AND (pa.effective_end_date IS NULL OR pa.effective_end_date>=CURRENT_DATE)))
-                  )
-            )
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("project_id", projectId);
-        AddNullableUuid(command, "manager", managerFilter);
-        command.Parameters.AddWithValue("is_admin", access.IsAdministrator);
-        command.Parameters.AddWithValue("is_pm", access.IsProjectManager);
-        command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
-        command.Parameters.AddWithValue("is_engineer", access.IsEngineer);
-        command.Parameters.AddWithValue("user_id", access.EffectiveUserId);
-        return (bool?)await command.ExecuteScalarAsync(cancellationToken) == true;
+        if (managerFilter.HasValue)
+        {
+            await using var managerCommand = new NpgsqlCommand(
+                "SELECT project_manager_user_id FROM projects WHERE project_id=@project_id;",
+                connection);
+            managerCommand.Parameters.AddWithValue("project_id", projectId);
+            var manager = await managerCommand.ExecuteScalarAsync(cancellationToken);
+            if (manager is not Guid managerUserId || managerUserId != managerFilter.Value)
+                return false;
+        }
+
+        var planningAccess = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection,
+            access.EffectiveUserId,
+            projectId,
+            "033",
+            cancellationToken);
+        return planningAccess.CanView;
     }
 
     private static async Task<bool> IsEligibleEngineerReviewerAsync(NpgsqlConnection connection, Guid projectId, Guid userId, CancellationToken cancellationToken)
@@ -2018,13 +2045,16 @@ public static partial class ProjectForgeModule
         command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
         command.Parameters.AddWithValue("is_pm", access.IsProjectManager);
         command.Parameters.AddWithValue("is_engineer", access.IsEngineer);
+        command.Parameters.AddWithValue("is_engineering_lead", access.IsEngineeringLead);
+        command.Parameters.AddWithValue("is_account_executive", access.IsAccountExecutive);
+        command.Parameters.AddWithValue("is_solution_architect", access.IsSolutionArchitect);
         command.Parameters.AddWithValue("can_view_all_tasks", access.CanViewAllScopedTasks);
         command.Parameters.AddWithValue("can_manage", access.CanManage);
         command.Parameters.AddWithValue("can_view_financials", access.CanViewFinancials);
         command.Parameters.AddWithValue("can_view_ai_citations", access.CanViewAiCitations);
         command.Parameters.AddWithValue("is_view_as", access.IsViewAs);
         command.Parameters.AddWithValue("can_update_assigned_status", access.CanUpdateAssignedTaskStatus);
-        command.Parameters.AddWithValue("can_write_estimate", !access.IsViewAs && (access.CanManage || access.CanEditAssignedEstimate));
+        command.Parameters.AddWithValue("can_write_estimate", !access.IsViewAs && (access.CanManage || access.CanEditReviewPlan || access.CanEditAssignedEstimate));
     }
 
     private static async Task<List<JsonElement>> ReadJsonRowsAsync(
@@ -2314,26 +2344,56 @@ public static partial class ProjectForgeModule
         public bool IsAdministrator => HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR", "SYSTEM_ADMINISTRATOR");
         public bool IsProjectManagementLead => HasRole("PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD");
         public bool IsProjectManager => !IsAdministrator && !IsProjectManagementLead && HasRole("PROJECT_MANAGER", "PROJECT_MANAGEMENT");
+        public bool IsEngineeringLead => !IsAdministrator && !IsProjectManagementLead && !IsProjectManager
+            && HasRole("ENGINEERING_LEAD", "ENGINEERING_TEAM_LEAD");
+        public bool IsAccountExecutive => !IsAdministrator && HasRole("ACCOUNT_EXECUTIVE", "SALES_ACCOUNT_EXECUTIVE");
+        public bool IsSolutionArchitect => !IsAdministrator && HasRole("SOLUTION_ARCHITECT", "SOLUTIONS_ARCHITECT");
         public bool IsEngineer => !IsAdministrator && !IsProjectManagementLead && !IsProjectManager
-            && (HasRole("ENGINEER", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER", "ENTERPRISE_NETWORK_ENGINEER")
+            && (IsEngineeringLead
+                || HasRole("ENGINEER", "ENGINEERING", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER", "ENTERPRISE_NETWORK_ENGINEER")
                 || HasPermission("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033"));
-        public bool CanView => IsActive && (IsAdministrator || IsProjectManagementLead || IsProjectManager || IsEngineer || HasPermission("VIEW_PROJECT_FORGE_033"));
+        public bool CanView => IsActive && (IsAdministrator || IsProjectManagementLead || IsProjectManager || IsEngineer
+            || IsAccountExecutive || IsSolutionArchitect
+            || HasPermission("VIEW_PROJECT_FORGE_033") || HasPermission("VIEW_ASSOCIATED_PROJECT_FORGE_033"));
         public bool CanManage => IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("MANAGE_PROJECT_FORGE_033");
+        public bool CanReviewPlan => CanView && (CanManage || HasPermission("REVIEW_PROJECT_FORGE_PLAN_033"));
+        public bool CanEditReviewPlan => CanView && (CanManage || HasPermission("EDIT_PROJECT_FORGE_REVIEW_PLAN_033"));
+        public bool CanAdoptPlan => CanManage;
         public bool CanUseAi => CanManage && (IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("USE_PROJECT_FORGE_AI_033"));
         public bool CanEditAssignedEstimate => IsEngineer || HasPermission("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033");
         public bool CanUpdateAssignedTaskStatus => HasPermission("UPDATE_ASSIGNED_PROJECT_FORGE_TASK_STATUS_033");
         public bool CanViewFinancials => CanManage && !IsViewAs;
         public bool CanViewAiCitations => CanManage && !IsViewAs;
         public bool CanSelectProjectManager => IsAdministrator || IsProjectManagementLead;
-        public bool CanViewAllScopedTasks => IsAdministrator || IsProjectManagementLead || IsProjectManager;
+        public bool CanViewAllScopedTasks => IsAdministrator || IsProjectManagementLead || IsProjectManager
+            || IsEngineeringLead || IsAccountExecutive || IsSolutionArchitect
+            || HasPermission("VIEW_ASSOCIATED_PROJECT_FORGE_033");
         public object ToResponse(Guid? selectedManager) => new
         {
             actualUserId = ActualUserId, effectiveUserId = EffectiveUserId, DisplayName, Email,
             roles = Roles.OrderBy(value => value), isViewAs = IsViewAs,
-            scope = IsAdministrator ? "all_projects" : IsProjectManagementLead ? "managed_pm_team_projects" : IsProjectManager ? "own_managed_projects" : "assigned_projects_and_tasks",
+            scope = IsAdministrator ? "all_projects"
+                : IsProjectManagementLead ? "managed_pm_team_projects"
+                : IsProjectManager ? "own_managed_projects"
+                : IsEngineeringLead ? "assigned_engineering_team_projects"
+                : IsAccountExecutive ? "associated_account_executive_projects"
+                : IsSolutionArchitect ? "associated_solution_architect_projects"
+                : "assigned_projects_and_tasks",
+            capabilityLabel = CanManage ? "Project Owner — Full Control"
+                : CanEditReviewPlan ? "Engineering Collaborator — Planner Edit"
+                : CanReviewPlan ? "Technical Reviewer — Review and Comment"
+                : "Project Stakeholder — Read Only",
+            accessContract = ProjectPlanningAccessResolver.Contract,
             canSelectProjectManager = CanSelectProjectManager, selectedProjectManagerUserId = selectedManager,
-            canManage = CanManage && !IsViewAs, canUseAi = CanUseAi && !IsViewAs, canEditAssignedEstimate = CanEditAssignedEstimate && !IsViewAs,
-            canUpdateAssignedTaskStatus = CanUpdateAssignedTaskStatus && !IsViewAs, canViewFinancials = CanViewFinancials,
+            canManage = CanManage && !IsViewAs,
+            canAdministerPlanner = CanManage && !IsViewAs,
+            canReviewPlan = CanReviewPlan && !IsViewAs,
+            canEditReviewPlan = CanEditReviewPlan && !IsViewAs,
+            canAdoptPlan = CanAdoptPlan && !IsViewAs,
+            canUseAi = CanUseAi && !IsViewAs,
+            canEditAssignedEstimate = CanEditAssignedEstimate && !IsViewAs,
+            canUpdateAssignedTaskStatus = CanUpdateAssignedTaskStatus && !IsViewAs,
+            canViewFinancials = CanViewFinancials,
             serverAuthorized = true
         };
     }

@@ -355,7 +355,7 @@ export default function ProjectFlowHiveCenter() {
         setSchedule(null);
         setValidation(null);
         setDirty(false);
-        setNotice(`Loaded PM working-copy revision ${result.workingCopy.workingRevision}.`);
+        setNotice(`Loaded project planning working-copy revision ${result.workingCopy.workingRevision}.`);
       }
     } catch (workspaceError) {
       setEnterprise(null);
@@ -393,6 +393,10 @@ export default function ProjectFlowHiveCenter() {
   const assignments = portfolio?.assignments ?? [];
   const capabilities = capabilityResponse?.capabilities ?? [];
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
+  const canEditPlanner = Boolean(enterprise?.access?.canEditPlanner && !enterprise?.access?.isViewAs);
+  const canAdministerPlanner = Boolean(enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
+  const canAdoptBaseline = Boolean(enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
+  const capabilityLabel = enterprise?.access?.capabilityLabel || 'Project scope resolving';
   const scheduleByWbs = useMemo(() => new Map(
     (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
   ), [schedule]);
@@ -435,6 +439,7 @@ export default function ProjectFlowHiveCenter() {
   }, [customer, projectStatus, projects, search]);
 
   function createLocalDraft() {
+    if (!canEditPlanner) return;
     if (!selectedProject) return;
     setDraftPlan(buildLocalDraft(selectedProject, tasks, assignments));
     setDirty(true);
@@ -448,12 +453,14 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updatePlan(field, value) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => current ? { ...current, [field]: value } : current);
     setSchedule(null);
     setDirty(true);
   }
 
   function updateTask(index, field, value) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => {
       if (!current) return current;
       const nextTasks = current.tasks.map((task, taskIndex) => taskIndex === index
@@ -466,6 +473,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updateDependencyForTask(index, field, value) {
+    if (!canEditPlanner) return;
     if (!draftPlan || draftPlan.tasks[index]?.isSummary) return;
     const successorWbs = draftPlan.tasks[index].wbsNumber;
     setDraftPlan((current) => {
@@ -494,6 +502,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updateTaskResource(taskWbs, resourceUserId) {
+    if (!canEditPlanner) return;
     const identity = identityOptions.find((option) => option.userId === resourceUserId);
     setDraftPlan((current) => {
       if (!current) return current;
@@ -516,6 +525,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function addTask(phaseWbs) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => addFlowHiveTask(current, phaseWbs, localTask));
     setSchedule(null);
     setValidation(null);
@@ -525,6 +535,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function deleteTask(wbsNumber) {
+    if (!canEditPlanner) return;
     const task = draftPlan?.tasks?.find((candidate) => !candidate.isSummary && candidate.wbsNumber === wbsNumber);
     if (!task || !window.confirm(`Delete WBS ${wbsNumber} — ${task.name}? Dependencies and assignments referencing this task will be repaired or removed.`)) return;
     setDraftPlan((current) => deleteFlowHiveTask(current, wbsNumber));
@@ -536,6 +547,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function dropTask(targetWbs, targetPhaseWbs, placement = 'before') {
+    if (!canEditPlanner) return;
     if (!draggedTaskWbs || draggedTaskWbs === targetWbs) return;
     setDraftPlan((current) => moveFlowHiveTask(current, draggedTaskWbs, targetWbs, targetPhaseWbs, placement));
     setDraggedTaskWbs('');
@@ -546,6 +558,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function changeTaskPhase(wbsNumber, phaseWbs) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => moveFlowHiveTask(current, wbsNumber, '', phaseWbs, 'after'));
     setSchedule(null);
     setValidation(null);
@@ -553,6 +566,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function moveTaskOffset(wbsNumber, offset) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => moveFlowHiveTaskByOffset(current, wbsNumber, offset));
     setSchedule(null);
     setValidation(null);
@@ -560,6 +574,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updateTaskStartDate(index, value) {
+    if (!canEditPlanner) return;
     setDraftPlan((current) => {
       if (!current) return current;
       const nextTasks = current.tasks.map((task, taskIndex) => taskIndex === index
@@ -572,6 +587,7 @@ export default function ProjectFlowHiveCenter() {
   }
 
   function updateTaskEndDate(index, value, scheduledStart) {
+    if (!canEditPlanner) return;
     if (!value) return;
     setDraftPlan((current) => {
       if (!current) return current;
@@ -594,7 +610,7 @@ export default function ProjectFlowHiveCenter() {
         expectedRowVersion: enterprise?.workingCopy?.rowVersion || null
       });
       setDirty(false);
-      setNotice(`PM working-copy revision ${result.workingRevision} saved. The canonical project and immutable plan history were not changed.`);
+      setNotice(`Project planning working-copy revision ${result.workingRevision} saved. The canonical project and immutable plan history were not changed.`);
       await loadEnterpriseWorkspace(selectedProjectId, false);
     } catch (actionError) {
       setError(actionError.message);
@@ -978,6 +994,7 @@ export default function ProjectFlowHiveCenter() {
           <div><span>Effective user</span><strong>{portfolio.access.displayName || portfolio.access.email}</strong></div>
           <div><span>Backend scope</span><strong>{labelFrom(portfolio.access.scope)}</strong></div>
           <div><span>View-As</span><strong>{portfolio.access.isViewAs ? 'Read-only preview' : 'Not active'}</strong></div>
+          <div><span>Planning capability</span><strong>{capabilityLabel}</strong></div>
           <div><span>Persistence</span><strong>{capabilityResponse?.databaseMutationEnabled ? 'Ready' : 'Unavailable'}</strong></div>
           <div><span>Customer links</span><strong>{enterprise?.access?.canShare ? (controls.customerSharingEnabled ? 'Enabled for reviewed baseline' : 'Available — enable in Financials') : 'Read-only / unavailable'}</strong></div>
         </div>
@@ -1026,14 +1043,14 @@ export default function ProjectFlowHiveCenter() {
         <div className="flowhive-view-panel">
           <div className="flowhive-planner-toolbar">
             <label>Canonical project<select value={selectedProjectId} onChange={(event) => { setSelectedProjectId(event.target.value); setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); }}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.projectCode} — {project.projectName}</option>)}</select></label>
-            <button type="button" onClick={createLocalDraft} disabled={!selectedProject}>Create/reset draft</button><button type="button" onClick={() => loadEnterpriseWorkspace(selectedProjectId, true)} disabled={!enterprise?.workingCopy}>Load working copy</button>
-            <button type="button" className="primary flowhive-ai-planner-button" onClick={previewAiRequest} disabled={!draftPlan || busy}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
+            <button type="button" onClick={createLocalDraft} disabled={!selectedProject || !canEditPlanner}>Create/reset draft</button><button type="button" onClick={() => loadEnterpriseWorkspace(selectedProjectId, true)} disabled={!enterprise?.workingCopy}>Load working copy</button>
+            <button type="button" className="primary flowhive-ai-planner-button" onClick={previewAiRequest} disabled={!draftPlan || busy || !canAdministerPlanner}>{busy === 'ai-planner' ? 'Building from SOW…' : 'AI Planner'}</button>
             <button type="button" onClick={validatePlan} disabled={!draftPlan || busy}>Validate</button>
-            <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>{busy === 'schedule' ? 'Calculating…' : 'Calculate schedule'}</button>
-            <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || portfolio?.access?.isViewAs}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
-            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || portfolio?.access?.isViewAs || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button>
+            <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>
+            <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || !canEditPlanner}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
+            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button>
           </div>
-          <FlowHiveSaveBar dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
+          <FlowHiveSaveBar dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
           <div className="flowhive-plan-metadata">
             <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">New unsaved plan</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
             <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>
@@ -1116,7 +1133,7 @@ export default function ProjectFlowHiveCenter() {
 
       {activeView === 'financials' ? <FlowHiveFinancialsPanel enterprise={enterprise} financials={financials} controls={controls} setControls={setControls} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onSave={() => saveProjectControls()} /> : null}
 
-      {activeView === 'status' ? <FlowHiveStatusRaidPanel enterprise={enterprise} draftPlan={draftPlan} statusDraft={statusDraft} setStatusDraft={setStatusDraft} newRaid={newRaid} setNewRaid={setNewRaid} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onCreateRaid={createRaidItem} onDeleteRaid={deleteRaidItem} onGenerateSummary={generateStatusSummary} onCreateStatusReport={createStatusReport} /> : null}
+      {activeView === 'status' ? <FlowHiveStatusRaidPanel enterprise={enterprise} draftPlan={draftPlan} statusDraft={statusDraft} setStatusDraft={setStatusDraft} newRaid={newRaid} setNewRaid={setNewRaid} canEditPlanner={canEditPlanner} canAdministerPlanner={canAdministerPlanner} busy={busy} onCreateRaid={createRaidItem} onDeleteRaid={deleteRaidItem} onGenerateSummary={generateStatusSummary} onCreateStatusReport={createStatusReport} /> : null}
 
       {activeView === 'timeline' ? (
         <div className="flowhive-view-panel">
