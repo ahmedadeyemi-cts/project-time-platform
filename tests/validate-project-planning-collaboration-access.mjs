@@ -12,6 +12,7 @@ const rejectText = (source, text, label) => {
 const migration = read('database/migrations/095_project_planning_collaboration_access.sql');
 const rollback = read('database/rollback/095_project_planning_collaboration_access_rollback.sql');
 const resolver = read('src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs');
+const collaborationModule = read('src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs');
 const flowhive = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs');
 const flowhivePortfolio = read('src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs');
 const flowhiveRepository = read('src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs');
@@ -20,8 +21,9 @@ const forgeInteractive = read('src/backend/ProjectTime.Api/Modules/ProjectForgeI
 const flowhiveUi = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const forgeUi = read('src/frontend/project-time-web/src/ProjectForgeCenter.jsx');
 const flowhivePanels = read('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
-const deployment = read('.github/workflows/project-planning-collaboration-deploy-test.yml');
+const deployment = read('.github/workflows/projectpulse-deploy-test.yml');
 const migrationRunner = read('scripts/release-test/run-project-planning-collaboration-migration-job.sh');
+const governedMigrationRunner = read('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh');
 
 [
   'project_planning_collaborators',
@@ -49,6 +51,19 @@ requireText(rollback, 'immutable project planning collaboration audit evidence e
   'Project Stakeholder — Read Only'
 ].forEach((text) => requireText(resolver, text, 'shared planning access resolver'));
 rejectText(resolver, 'scoped_role_policy_modules', 'module owner metadata must not grant planning access');
+
+[
+  '/api/project-planning/projects',
+  '/api/project-planning/projects/{projectId:guid}/access',
+  '/api/project-planning/projects/{projectId:guid}/collaborators',
+  'module_code',
+  'collaboration_level',
+  'ProjectPlanningAccessResolver.ResolveAsync',
+  'ViewAsWriteBlocked',
+  'ownershipDoesNotGrantAccess = true'
+].forEach((text) => requireText(collaborationModule, text, 'project planning collaboration API'));
+rejectText(collaborationModule, 'revision_number', 'Migration 095 collaboration API must not use legacy revision columns');
+rejectText(collaborationModule, 'collaboration_role', 'Migration 095 collaboration API must not use legacy collaboration-role columns');
 
 [
   'FlowHiveAccessRequirement.EditPlanner',
@@ -98,8 +113,11 @@ if (flowhivePanels.includes('export function FlowHiveFinancialsPanel') && flowhi
 ).includes('canAdministerPlanner')) {
   failures.push('FlowHive financial panel references a capability not present in its props');
 }
-requireText(deployment, '095_project_planning_collaboration_access', 'protected-Test Migration 095 wiring');
-requireText(deployment, 'MIGRATION_095=APPLIED_AND_VERIFIED', 'protected-Test Migration 095 verification');
+requireText(deployment, 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh', 'governed protected-Test deployment wiring');
+requireText(deployment, 'group: projectpulse-deploy-test', 'shared protected-Test deployment lock');
+requireText(deployment, 'environment: test', 'protected-Test environment boundary');
+requireText(governedMigrationRunner, '095_project_planning_collaboration_access.sql', 'Migration 095 shared private-network wiring');
+requireText(governedMigrationRunner, 'MIGRATION_095=APPLIED_AND_VERIFIED', 'Migration 095 shared private-network verification');
 requireText(migrationRunner, '095-project-planning-collaboration', 'private-network Migration 095 ownership tag');
 
 if (failures.length) {
