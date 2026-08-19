@@ -259,7 +259,7 @@ jq -n \
         replicaRetryLimit: 0,
         manualTriggerConfig: {replicaCompletionCount: 1, parallelism: 1},
         registries: [{server: $server, identity: $identity}],
-        secrets: [{name: "main-db-password", keyVaultUrl: $databasePasswordSecretUri, identity: $identity}]
+        secrets: [{name: "main-db-password", keyVaultUrl: $databaseSecretUri, identity: $identity}]
       },
       template: {
         containers: [{
