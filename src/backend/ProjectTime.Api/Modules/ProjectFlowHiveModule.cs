@@ -655,6 +655,18 @@ public static class ProjectFlowHiveModule
             WHERE
                 @is_broad_scope = TRUE
                 OR p.project_manager_user_id = @user_id
+                OR p.account_executive_user_id = @user_id
+                OR p.solution_architect_user_id = @user_id
+                OR EXISTS (
+                    SELECT 1
+                    FROM project_planning_collaborators collaborator
+                    WHERE collaborator.project_id = p.project_id
+                      AND collaborator.user_id = @user_id
+                      AND collaborator.module_code = '066'
+                      AND collaborator.is_active = TRUE
+                      AND collaborator.effective_start_date <= CURRENT_DATE
+                      AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date >= CURRENT_DATE)
+                )
                 OR EXISTS (
                     SELECT 1
                     FROM project_assignments self_assignment
@@ -754,6 +766,18 @@ public static class ProjectFlowHiveModule
                 WHERE
                     @is_broad_scope = TRUE
                     OR p.project_manager_user_id = @user_id
+                    OR p.account_executive_user_id = @user_id
+                    OR p.solution_architect_user_id = @user_id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM project_planning_collaborators collaborator
+                        WHERE collaborator.project_id = p.project_id
+                          AND collaborator.user_id = @user_id
+                          AND collaborator.module_code = '066'
+                          AND collaborator.is_active = TRUE
+                          AND collaborator.effective_start_date <= CURRENT_DATE
+                          AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date >= CURRENT_DATE)
+                    )
                     OR EXISTS (
                         SELECT 1
                         FROM project_assignments self_assignment
@@ -918,6 +942,18 @@ public static class ProjectFlowHiveModule
                 @is_broad_scope = TRUE
                 OR assignment.user_id = @user_id
                 OR project.project_manager_user_id = @user_id
+                OR project.account_executive_user_id = @user_id
+                OR project.solution_architect_user_id = @user_id
+                OR EXISTS (
+                    SELECT 1
+                    FROM project_planning_collaborators collaborator
+                    WHERE collaborator.project_id = project.project_id
+                      AND collaborator.user_id = @user_id
+                      AND collaborator.module_code = '066'
+                      AND collaborator.is_active = TRUE
+                      AND collaborator.effective_start_date <= CURRENT_DATE
+                      AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date >= CURRENT_DATE)
+                )
                 OR (
                     @can_view_team_scope = TRUE
                     AND (
@@ -1092,6 +1128,14 @@ internal sealed record ProjectFlowHiveAccessContext(
         "ENGINEERING_LEAD",
         "ENGINEERING_TEAM_LEAD");
 
+    public bool IsAccountExecutive => HasRole(
+        "ACCOUNT_EXECUTIVE",
+        "SALES_ACCOUNT_EXECUTIVE");
+
+    public bool IsSolutionArchitect => HasRole(
+        "SOLUTION_ARCHITECT",
+        "SOLUTIONS_ARCHITECT");
+
     public bool IsExecutive => HasRole(
         "EXECUTIVE",
         "EXECUTIVE_LEADERSHIP");
@@ -1112,7 +1156,9 @@ internal sealed record ProjectFlowHiveAccessContext(
         || IsProjectManager
         || IsProjectManagementLead
         || IsPeopleManager
-        || IsEngineeringLead;
+        || IsEngineeringLead
+        || IsAccountExecutive
+        || IsSolutionArchitect;
 
     public string ScopeLabel
     {
@@ -1124,6 +1170,8 @@ internal sealed record ProjectFlowHiveAccessContext(
             if (IsProjectManagementLead) return "project_management_team_scope";
             if (IsPeopleManager) return "manager_team_scope";
             if (IsEngineeringLead) return "engineering_team_scope";
+            if (IsAccountExecutive) return "associated_account_executive_projects";
+            if (IsSolutionArchitect) return "associated_solution_architect_projects";
             if (IsProjectManager) return "managed_projects_scope";
             return "assigned_projects_and_tasks_scope";
         }

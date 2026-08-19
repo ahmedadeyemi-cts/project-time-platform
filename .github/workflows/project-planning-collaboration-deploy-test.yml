@@ -1,0 +1,217 @@
+name: Apply Project Planning Collaboration Migration to Protected Test
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy System-wide Enterprise Reliability and Utilization to Protected Test
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact merged main commit to verify and migrate
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: projectpulse-deploy-test
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    name: Apply and verify Migration 095 in protected Test
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_RELEASE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.event.workflow_run.head_sha }}
+      MIGRATION_SCOPE: project-planning-collaboration-test
+      EVIDENCE_DIR: /tmp/project-planning-collaboration-test-evidence
+
+    steps:
+      - name: Check out exact governed release
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.TARGET_RELEASE_COMMIT }}
+          path: release
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact source and Migration 095 contract
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          [[ "$TARGET_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'Release identity is invalid.'
+          [[ "$RELEASE_COMMIT" == "$TARGET_RELEASE_COMMIT" ]] || fail 'Checkout is not the exact governed release.'
+
+          for required in \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            database/rollback/095_project_planning_collaboration_access_rollback.sql \
+            scripts/release-test/run-project-planning-collaboration-migration-job.sh \
+            tests/test-project-planning-collaboration-migration-095.sh \
+            tests/validate-project-planning-collaboration-access.mjs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs; do
+            test -f "$required" || fail "Required Migration 095 release artifact is missing: $required"
+          done
+
+          node tests/validate-project-planning-collaboration-access.mjs
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          git diff --check
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n \
+            --arg release "$RELEASE_COMMIT" \
+            --arg scope "$MIGRATION_SCOPE" \
+            '{environment:"protected-test",releaseCommit:$release,migration:"095_project_planning_collaboration_access",migrationScope:$scope,productionMutation:false,privateAiRuntimeMutation:false}' \
+            > "$EVIDENCE_DIR/release-boundary.json"
+
+      - name: Sign in to protected Test subscription
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build immutable Migration 095 image
+        id: build
+        shell: bash
+        working-directory: release
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          ACR='${{ vars.AZURE_ACR_NAME }}'
+          [[ -n "$ACR" && "$ACR" =~ ^[A-Za-z0-9]+$ ]] || fail 'AZURE_ACR_NAME is missing or invalid.'
+          CURRENT_SUBSCRIPTION="$(az account show --query id -o tsv --only-show-errors)"
+          [[ "${CURRENT_SUBSCRIPTION,,}" == "${{ vars.AZURE_SUBSCRIPTION_ID }}" ]] || fail 'Azure login is outside protected Test.'
+
+          CONTEXT="$RUNNER_TEMP/project-planning-collaboration-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          install -d -m 0700 "$CONTEXT"
+          cp database/migrations/095_project_planning_collaboration_access.sql "$CONTEXT/migration.sql"
+
+          cat > "$CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
+          #!/usr/bin/env sh
+          set -eu
+          psql -X --set ON_ERROR_STOP=1 --file /opt/projectpulse-migration/migration.sql
+          verification="$(psql -X -Atqc "
+            SELECT
+              EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id='095_project_planning_collaboration_access') || '|' ||
+              (to_regclass('public.project_planning_collaborators') IS NOT NULL) || '|' ||
+              (to_regclass('public.project_planning_collaboration_audit_events') IS NOT NULL) || '|' ||
+              ((SELECT COUNT(*) FROM app_permissions WHERE permission_code IN (
+                'VIEW_ASSOCIATED_FLOWHIVE_PROJECT_066','REVIEW_FLOWHIVE_PLANNER_066','EDIT_FLOWHIVE_PLANNER_066',
+                'VIEW_ASSOCIATED_PROJECT_FORGE_033','REVIEW_PROJECT_FORGE_PLAN_033','EDIT_PROJECT_FORGE_REVIEW_PLAN_033'
+              ))=6);
+          ")"
+          [ "$verification" = 'true|true|true|true' ] || {
+            echo "ERROR: Migration 095 verification failed: $verification" >&2
+            exit 1
+          }
+          echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+          echo 'PROJECT_PLANNING_COLLABORATION_PRIVATE_NETWORK_JOB=SUCCEEDED'
+          ENTRYPOINT
+          chmod 0555 "$CONTEXT/entrypoint.sh"
+
+          cat > "$CONTEXT/Dockerfile" <<'DOCKERFILE'
+          FROM postgres:16-alpine
+          ARG RELEASE_COMMIT
+          ARG MIGRATION_SCOPE
+          LABEL org.opencontainers.image.revision=$RELEASE_COMMIT \
+                com.projectpulse.environment=test \
+                com.projectpulse.production-mutation=false \
+                com.projectpulse.projectpulse-migration=095-project-planning-collaboration \
+                com.projectpulse.migration-scope=$MIGRATION_SCOPE \
+                com.projectpulse.release-commit=$RELEASE_COMMIT \
+                com.projectpulse.control-sha=$RELEASE_COMMIT
+          WORKDIR /opt/projectpulse-migration
+          COPY migration.sql migration.sql
+          COPY entrypoint.sh /usr/local/bin/projectpulse-migration-095
+          RUN chmod 0444 migration.sql && chmod 0555 /usr/local/bin/projectpulse-migration-095
+          ENTRYPOINT ["/usr/local/bin/projectpulse-migration-095"]
+          DOCKERFILE
+
+          TAG="planning-095-${TARGET_RELEASE_COMMIT:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REPOSITORY='project-health-dashboard-planning-migration'
+          IMAGE_TAG="$REPOSITORY:$TAG"
+          az acr build \
+            --registry "$ACR" \
+            --image "$IMAGE_TAG" \
+            --file "$CONTEXT/Dockerfile" \
+            --build-arg "RELEASE_COMMIT=$TARGET_RELEASE_COMMIT" \
+            --build-arg "MIGRATION_SCOPE=$MIGRATION_SCOPE" \
+            --timeout 1800 \
+            "$CONTEXT" \
+            > "$EVIDENCE_DIR/acr-build.log" 2>&1
+          DIGEST="$(az acr repository show --name "$ACR" --image "$IMAGE_TAG" --query digest -o tsv --only-show-errors)"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Could not resolve immutable Migration 095 image digest.'
+          IMAGE="$ACR.azurecr.io/$REPOSITORY@$DIGEST"
+          {
+            echo "image=$IMAGE"
+            echo "image_tag=$IMAGE_TAG"
+          } >> "$GITHUB_OUTPUT"
+          jq -n --arg image "$IMAGE" --arg release "$TARGET_RELEASE_COMMIT" '{image:$image,releaseCommit:$release,migration:"095_project_planning_collaboration_access"}' > "$EVIDENCE_DIR/migration-image.json"
+
+      - name: Apply Migration 095 inside the Test private network
+        shell: bash
+        working-directory: release
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          RELIABILITY_MIGRATION_IMAGE: ${{ steps.build.outputs.image }}
+          RELIABILITY_MIGRATION_JOB_NAME: plan095-${{ github.run_id }}-${{ github.run_attempt }}
+          AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID: ${{ vars.AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID }}
+          AZURE_KEY_VAULT_URI: ${{ vars.AZURE_KEY_VAULT_URI }}
+          PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME: ${{ vars.PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME }}
+          PROJECTPULSE_TEST_DATABASE_HOST: ${{ vars.PROJECTPULSE_TEST_DATABASE_HOST }}
+          PROJECTPULSE_TEST_DATABASE_PORT: ${{ vars.PROJECTPULSE_TEST_DATABASE_PORT }}
+          PROJECTPULSE_TEST_DATABASE_NAME: ${{ vars.PROJECTPULSE_TEST_DATABASE_NAME }}
+          PROJECTPULSE_TEST_DATABASE_USER: ${{ vars.PROJECTPULSE_TEST_DATABASE_USER }}
+          RELIABILITY_CONTROL_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
+          RELIABILITY_RELEASE_COMMIT: ${{ env.TARGET_RELEASE_COMMIT }}
+          RELIABILITY_MIGRATION_SCOPE: project-planning-collaboration-test
+        run: |
+          set -Eeuo pipefail
+          bash scripts/release-test/run-project-planning-collaboration-migration-job.sh | tee "$EVIDENCE_DIR/private-network-job.log"
+          grep -q 'PROJECT_PLANNING_COLLABORATION_PRIVATE_NETWORK_JOB=SUCCEEDED' "$EVIDENCE_DIR/private-network-job.log"
+          echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+
+      - name: Remove temporary Migration 095 image tag
+        if: always() && steps.build.outputs.image_tag != ''
+        shell: bash
+        run: |
+          az acr repository delete \
+            --name '${{ vars.AZURE_ACR_NAME }}' \
+            --image '${{ steps.build.outputs.image_tag }}' \
+            --yes \
+            --only-show-errors || true
+
+      - name: Upload one-day protected-Test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: project-planning-collaboration-migration-095-evidence
+          path: /tmp/project-planning-collaboration-test-evidence
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish protected-Test boundary
+        if: success()
+        run: |
+          echo "PROJECT_PLANNING_COLLABORATION_RELEASE=$TARGET_RELEASE_COMMIT"
+          echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+          echo 'MODULE_033_PROJECT_SCOPED_COLLABORATION=READY'
+          echo 'MODULE_066_PROJECT_SCOPED_COLLABORATION=READY'
+          echo 'APPLICATION_ROLLBACK=NONE'
+          echo 'PRODUCTION_MUTATION=NONE'
+          echo 'PRIVATE_AI_RUNTIME_MUTATION=NONE'
