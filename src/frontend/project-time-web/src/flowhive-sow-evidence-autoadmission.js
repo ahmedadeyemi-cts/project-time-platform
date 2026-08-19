@@ -27,7 +27,7 @@ function cloneInput(input) {
   return input instanceof Request ? input.clone() : input;
 }
 
-function evidenceScore(item) {
+export function evidenceScore(item) {
   const authority = String(item?.authorityStatus || '').toLowerCase();
   const processing = String(item?.processingStatus || '').toLowerCase();
   const index = String(item?.indexStatus || '').toLowerCase();
@@ -40,39 +40,62 @@ function evidenceScore(item) {
     + Number(item?.citationCount || 0);
 }
 
-function evidenceKey(item) {
-  const category = String(item?.documentCategory || 'other').trim().toLowerCase();
-  const file = String(item?.originalFileName || item?.documentId || '').trim().toLowerCase();
-  return `${category}|${file}`;
+function evidenceRecency(item) {
+  for (const value of [item?.uploadedAt, item?.processedAt, item?.processingUpdatedAt]) {
+    const parsed = Date.parse(String(value || ''));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
-function dedupeEvidence(evidence) {
+export function evidenceIdentity(item) {
+  const documentId = String(item?.documentId || '').trim().toLowerCase();
+  if (documentId) return `document:${documentId}`;
+
+  const activeVersionId = String(item?.activeVersionId || '').trim().toLowerCase();
+  if (activeVersionId) return `version:${activeVersionId}`;
+
+  const category = String(item?.documentCategory || 'other').trim().toLowerCase();
+  const file = String(item?.originalFileName || '').trim().toLowerCase();
+  const version = String(item?.documentVersion || '').trim().toLowerCase();
+  const uploadedAt = String(item?.uploadedAt || '').trim().toLowerCase();
+  return `fallback:${category}|${file}|${version}|${uploadedAt}`;
+}
+
+function preferredEvidence(left, right) {
+  const scoreDifference = evidenceScore(right) - evidenceScore(left);
+  if (scoreDifference !== 0) return scoreDifference > 0 ? right : left;
+  return evidenceRecency(right) > evidenceRecency(left) ? right : left;
+}
+
+export function dedupeEvidence(evidence) {
   const groups = new Map();
   for (const item of evidence || []) {
-    const key = evidenceKey(item);
+    const key = evidenceIdentity(item);
     const current = groups.get(key);
     if (!current) {
       groups.set(key, { selected: item, all: [item] });
       continue;
     }
     current.all.push(item);
-    if (evidenceScore(item) > evidenceScore(current.selected)) current.selected = item;
+    current.selected = preferredEvidence(current.selected, item);
   }
 
   return [...groups.values()]
     .map(({ selected, all }) => ({
       ...selected,
       duplicateCount: all.length,
-      duplicateDocumentIds: all.map((item) => item.documentId).filter(Boolean),
+      duplicateDocumentIds: [...new Set(all.map((item) => item.documentId).filter(Boolean))],
       equivalentRecordNote: all.length > 1
-        ? `${all.length} equivalent active records were consolidated; the strongest current private version is shown.`
+        ? `${all.length} rows for the same authoritative document identity were consolidated; the strongest current private version is shown.`
         : ''
     }))
     .sort((left, right) => evidenceScore(right) - evidenceScore(left)
+      || evidenceRecency(right) - evidenceRecency(left)
       || String(left.originalFileName || '').localeCompare(String(right.originalFileName || '')));
 }
 
-function normalizeEvidenceBody(body) {
+export function normalizeEvidenceBody(body) {
   if (!body || !Array.isArray(body.sowEvidence)) return body;
   const sowEvidence = dedupeEvidence(body.sowEvidence);
   const readyCount = sowEvidence.filter((item) => item.readyForAiPlanner).length;
@@ -87,9 +110,10 @@ function normalizeEvidenceBody(body) {
       readyCount,
       approvedSowScopeReady,
       duplicateRecordsConsolidated,
+      freshnessAuthority: 'project_scoped_server_gate',
       explanation: approvedSowScopeReady
-        ? `At least one approved, citation-ready SOW scope source is available to AI Planner.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} equivalent duplicate record(s) were consolidated.` : ''}`
-        : `AI Planner is automatically preparing the strongest active Work Register SOW. It requires private processing, an active authoritative version, citation indexing, and Scope of Services citations before generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} equivalent duplicate record(s) were consolidated.` : ''}`
+        ? `At least one approved, citation-ready SOW scope source is available. The server will verify newest-source authority again before and after generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
+        : `AI Planner is automatically preparing the active Work Register SOW records. It requires private processing, an active authoritative version, citation indexing, and Scope of Services citations before generation.${duplicateRecordsConsolidated > 0 ? ` ${duplicateRecordsConsolidated} authoritative duplicate row(s) were consolidated.` : ''}`
     }
   };
 }
@@ -105,13 +129,33 @@ function responseWithJson(response, body) {
   });
 }
 
-function isQueueCandidate(item) {
+export function isQueueCandidate(item) {
   const category = String(item?.documentCategory || '').trim().toLowerCase();
   const status = String(item?.processingStatus || 'not_requested').trim().toLowerCase();
   return !item?.readyForAiPlanner
     && ['sow', 'statement_of_work'].includes(category)
     && ['', 'not_requested', 'not_started'].includes(status)
     && Boolean(item?.documentId);
+}
+
+export function queueCandidatesFromEvidence(evidence, maximum = 6) {
+  const candidatesByDocument = new Map();
+  for (const item of evidence || []) {
+    if (!isQueueCandidate(item)) continue;
+    const documentId = String(item.documentId).trim().toLowerCase();
+    const current = candidatesByDocument.get(documentId);
+    if (!current
+      || evidenceRecency(item) > evidenceRecency(current)
+      || (evidenceRecency(item) === evidenceRecency(current) && evidenceScore(item) > evidenceScore(current))) {
+      candidatesByDocument.set(documentId, item);
+    }
+  }
+
+  return [...candidatesByDocument.values()]
+    .sort((left, right) => evidenceRecency(right) - evidenceRecency(left)
+      || evidenceScore(right) - evidenceScore(left)
+      || String(left.documentId || '').localeCompare(String(right.documentId || '')))
+    .slice(0, Math.max(0, maximum));
 }
 
 function correlationId() {
@@ -158,9 +202,8 @@ async function queueEvidence(nativeFetch, projectId, item) {
   return promise;
 }
 
-async function readNormalizedBody(response) {
-  const body = await response.clone().json().catch(() => null);
-  return normalizeEvidenceBody(body);
+async function readJsonBody(response) {
+  return response.clone().json().catch(() => null);
 }
 
 if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
@@ -176,12 +219,16 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     let response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
 
-    let body = await readNormalizedBody(response);
-    if (!body || !Array.isArray(body.sowEvidence)) return response;
+    let rawBody = await readJsonBody(response);
+    if (!rawBody || !Array.isArray(rawBody.sowEvidence)) return response;
+    let body = normalizeEvidenceBody(rawBody);
     if (!body?.access?.canManage) return responseWithJson(response, body);
 
+    // Admission is intentionally based on raw project-scoped evidence rather
+    // than the normalized display list. A replacement SOW that reuses an older
+    // filename therefore receives its own private processing request.
     const projectId = match[1];
-    const candidates = body.sowEvidence.filter(isQueueCandidate).slice(0, 6);
+    const candidates = queueCandidatesFromEvidence(rawBody.sowEvidence, 6);
     if (candidates.length === 0) return responseWithJson(response, body);
 
     const results = await Promise.all(candidates.map((item) => queueEvidence(nativeFetch, projectId, item)));
@@ -199,7 +246,8 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
 
     response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
-    body = await readNormalizedBody(response);
+    rawBody = await readJsonBody(response);
+    body = normalizeEvidenceBody(rawBody);
     return body ? responseWithJson(response, body) : response;
   };
 

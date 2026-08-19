@@ -16,6 +16,10 @@ public static class PulseAiPrivateDocumentPipelinePolicy
     public static readonly string[] SupportedExtensions =
     [
         ".pdf",
+        // Legacy binary Word is admitted to the immutable snapshot only. The
+        // extraction service still requires the OLE signature and routes the
+        // snapshot through the fixed, private, text-only antiword adapter.
+        ".doc",
         ".docx",
         ".pptx",
         ".xlsx",

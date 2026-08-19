@@ -6,17 +6,25 @@ on:
       - 'database/migrations/094_flowhive_canonical_sow_authority.sql'
       - 'database/rollback/094_flowhive_canonical_sow_authority_rollback.sql'
       - 'deployment/containers/api/Dockerfile'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs'
       - 'src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
       - 'src/backend/ProjectTime.Api/Directory.Build.props'
+      - 'src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs'
       - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
       - 'src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
       - 'src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py'
+      - 'src/backend/ProjectTime.Api/build/generate-module-availability-runtime-resilience.py'
       - 'src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk'
       - 'src/frontend/project-time-web/src/flowhive-enterprise-helpers.js'
       - 'src/frontend/project-time-web/src/flowhive-runtime-resilience.js'
       - 'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js'
+      - 'src/frontend/project-time-web/scripts/validate-module-availability.mjs'
       - 'tests/FlowHiveDetailedPlannerTests/**'
+      - 'tests/FlowHiveSowFreshnessTests/**'
       - 'tests/test-flowhive-canonical-sow-authority-migration-094.sh'
+      - 'tests/validate-flowhive-sow-evidence-autoadmission.mjs'
       - '.github/workflows/flowhive-detailed-planner-ci.yml'
   workflow_dispatch:
 
@@ -56,12 +64,48 @@ jobs:
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'inserted_flowhive_canonical_work_package_instruction != 1' \
             src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'VerifyFlowHiveSowFreshnessAsync(' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'identity.Value.Effective' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_freshness_precheck != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_freshness_postcheck != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
+          grep -Fq 'inserted_flowhive_citation_gate != 1' \
+            src/backend/ProjectTime.Api/build/generate-celar-ai-universal-answer-reliability.awk
           grep -Fq 'flowhive-five-phase-detailed-work-package-v1-20260818' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'product, platform, service, model, software or firmware version' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
           grep -Fq 'Plan, Design, Implement, Validate, and Release' \
             src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq '".doc",' \
+            src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs
+          grep -Fq 'PulseAiPrivateDocumentPipelinePolicy.SupportedExtensions.Contains' \
+            src/backend/ProjectTime.Api/Ai/PulseAiImmutableDocumentSnapshot.cs
+          grep -Fq 'Continue draining the redirected pipe' \
+            src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
+          grep -Fq 'ProjectFlowHiveSowFreshnessPolicy' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'GetRequiredService<PulseAiPrivateRagRepository>()' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'privateRepository.ResolveProjectAsync(' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'effective-user broad scope, PM-lead scope, PM ownership, project' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'WHERE document.project_id=@project_id' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'document.uploaded_at' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'flowhive_sow_freshness_unavailable' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'FlowHiveStaleSowCitationFailure' \
+            src/backend/ProjectTime.Api/Modules/CelarAiFlowHiveSowFreshness.cs
+          grep -Fq 'GenerateModuleAvailabilityRuntimeResilience' \
+            src/backend/ProjectTime.Api/Directory.Build.props
+          grep -Fq 'generate-module-availability-runtime-resilience.py' \
+            src/backend/ProjectTime.Api/Directory.Build.props
           grep -Fq "import './flowhive-runtime-resilience.js';" \
             src/frontend/project-time-web/src/flowhive-enterprise-helpers.js
           grep -Fq "import './flowhive-sow-evidence-autoadmission.js';" \
@@ -70,7 +114,15 @@ jobs:
             src/frontend/project-time-web/src/flowhive-runtime-resilience.js
           grep -Fq 'duplicateRecordsConsolidated' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'document:${documentId}' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -Fq 'freshnessAuthority' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq '/sow-evidence/${item.documentId}/prepare' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          ! grep -Fq '/api/project-workspace/overview' \
+            src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          ! grep -Fq 'GENERATION_PATH' \
             src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
           grep -Fq 'PROJECTPULSE_LEGACY_WORD_EXTRACTOR_PATH=/usr/bin/antiword' \
             deployment/containers/api/Dockerfile
@@ -81,14 +133,23 @@ jobs:
           grep -Fq 'active_work_register_sow_private_version_ready' \
             database/migrations/094_flowhive_canonical_sow_authority.sql
 
-      - name: Validate generated-source post-processor
+      - name: Validate generated-source post-processors
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 -m py_compile src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py
+          python3 -m py_compile src/backend/ProjectTime.Api/build/generate-module-availability-runtime-resilience.py
           grep -Fq 'EnableFlowHiveLegacyWordExtraction' src/backend/ProjectTime.Api/Directory.Build.props
           grep -Fq 'ole_compound_word' src/backend/ProjectTime.Api/build/enable-flowhive-legacy-word-extraction.py
           grep -Fq 'legacy_doc_antiword_text_only' src/backend/ProjectTime.Api/Ai/PulseAiLegacyBinaryWordExtraction.cs
+          python3 src/backend/ProjectTime.Api/build/generate-module-availability-runtime-resilience.py \
+            --input src/backend/ProjectTime.Api/Modules/ModuleAvailabilityModule.cs \
+            --output /tmp/ModuleAvailabilityModule.Resilient.g.cs
+          grep -Fq 'degraded-default-enabled' /tmp/ModuleAvailabilityModule.Resilient.g.cs
+          grep -Fq 'ProjectPulseModuleAvailabilityDegraded' /tmp/ModuleAvailabilityModule.Resilient.g.cs
+          grep -Fq 'availability_store_unreachable' /tmp/ModuleAvailabilityModule.Resilient.g.cs
+          grep -Fq 'MaxPoolSize = 30' /tmp/ModuleAvailabilityModule.Resilient.g.cs
+          grep -Fq 'Timeout = 5' /tmp/ModuleAvailabilityModule.Resilient.g.cs
 
       - name: Execute Migration 094 regression
         shell: bash
@@ -97,12 +158,21 @@ jobs:
       - name: Build ProjectTime API
         run: dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
 
-      - name: Execute detailed five-phase planner regression
+      - name: Execute detailed five-phase and legacy Word regressions
         run: dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+
+      - name: Execute project-scoped SOW freshness regressions
+        run: dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+
+      - name: Execute SOW identity and admission regression
+        run: node tests/validate-flowhive-sow-evidence-autoadmission.mjs
 
       - name: Install frontend dependencies
         working-directory: src/frontend/project-time-web
         run: npm ci
+
+      - name: Validate module availability contracts
+        run: node src/frontend/project-time-web/scripts/validate-module-availability.mjs
 
       - name: Build complete frontend
         working-directory: src/frontend/project-time-web

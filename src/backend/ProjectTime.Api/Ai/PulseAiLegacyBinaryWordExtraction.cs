@@ -224,15 +224,23 @@ public static class PulseAiLegacyBinaryWordExtraction
         int maximumCharacters,
         CancellationToken cancellationToken)
     {
+        maximumCharacters = Math.Max(0, maximumCharacters);
         var result = new StringBuilder(Math.Min(maximumCharacters, 256 * 1024));
-        var buffer = new char[Math.Min(16 * 1024, Math.Max(1, maximumCharacters))];
-        while (result.Length < maximumCharacters)
+        var buffer = new char[16 * 1024];
+
+        // Continue draining the redirected pipe after the retained-text limit is
+        // reached. Stopping the read early can block antiword when its remaining
+        // output fills the OS pipe buffer while the caller is waiting for exit.
+        while (true)
         {
-            var requested = Math.Min(buffer.Length, maximumCharacters - result.Length);
-            var read = await reader.ReadAsync(buffer.AsMemory(0, requested), cancellationToken);
+            var read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
             if (read == 0) break;
-            result.Append(buffer, 0, read);
+
+            var remaining = maximumCharacters - result.Length;
+            if (remaining <= 0) continue;
+            result.Append(buffer, 0, Math.Min(read, remaining));
         }
+
         return result.ToString();
     }
 
