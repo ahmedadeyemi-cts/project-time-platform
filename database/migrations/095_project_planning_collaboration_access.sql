@@ -18,6 +18,8 @@ BEGIN
        OR to_regclass('public.app_roles') IS NULL
        OR to_regclass('public.app_permissions') IS NULL
        OR to_regclass('public.app_role_permissions') IS NULL
+       OR to_regclass('public.reporting_relationships') IS NULL
+       OR to_regclass('public.projectpulse_team_scope_assignments') IS NULL
        OR to_regclass('public.project_forge_plans') IS NULL
        OR to_regclass('public.project_flowhive_plans') IS NULL THEN
         RAISE EXCEPTION 'Migration 095 requires canonical project, identity, RBAC, Project Forge, and Project FlowHive foundations.';
@@ -68,11 +70,11 @@ CREATE INDEX IF NOT EXISTS ix_project_planning_collaborators_project_scope
 CREATE TABLE IF NOT EXISTS project_planning_collaboration_audit_events (
     project_planning_collaboration_audit_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_planning_collaborator_id UUID NULL,
-    project_id UUID NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
+    project_id UUID NOT NULL,
+    user_id UUID NOT NULL,
     module_code VARCHAR(16) NOT NULL,
     event_code VARCHAR(80) NOT NULL,
-    actor_user_id UUID NULL REFERENCES app_users(user_id) ON DELETE SET NULL,
+    actor_user_id UUID NULL,
     prior_state JSONB NULL,
     new_state JSONB NULL,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -283,6 +285,47 @@ WITH desired(role_code,permission_code) AS (
         ('SOLUTIONS_ARCHITECT','VIEW_PROJECT_FLOWHIVE_066'),
         ('SOLUTIONS_ARCHITECT','VIEW_ASSOCIATED_PROJECT_FORGE_033'),
         ('SOLUTIONS_ARCHITECT','VIEW_PROJECT_FORGE_033')
+), candidates AS (
+    SELECT role.app_role_id,permission.app_permission_id
+    FROM desired
+    JOIN app_roles role
+      ON UPPER(role.role_code)=desired.role_code
+     AND role.is_active=TRUE
+    JOIN app_permissions permission
+      ON permission.permission_code=desired.permission_code
+    LEFT JOIN app_role_permissions existing
+      ON existing.app_role_id=role.app_role_id
+     AND existing.app_permission_id=permission.app_permission_id
+    WHERE existing.app_role_permission_id IS NULL
+), inserted AS (
+    INSERT INTO app_role_permissions(app_role_id,app_permission_id,created_at)
+    SELECT app_role_id,app_permission_id,NOW() FROM candidates
+    ON CONFLICT(app_role_id,app_permission_id) DO NOTHING
+    RETURNING app_role_id,app_permission_id
+)
+INSERT INTO project_planning_095_role_grants(app_role_id,app_permission_id)
+SELECT app_role_id,app_permission_id FROM inserted
+ON CONFLICT DO NOTHING;
+
+
+-- Reconcile legacy module-view permissions for supported Engineering role aliases.
+-- These grants are recorded so rollback removes only rows introduced by Migration 095.
+WITH desired(role_code,permission_code) AS (
+    VALUES
+        ('ENGINEER','VIEW_PROJECT_FLOWHIVE_066'),
+        ('ENGINEERING','VIEW_PROJECT_FLOWHIVE_066'),
+        ('ENGINEERING_LEAD','VIEW_PROJECT_FLOWHIVE_066'),
+        ('ENGINEERING_TEAM_LEAD','VIEW_PROJECT_FLOWHIVE_066'),
+        ('SYSTEMS_ENGINEER','VIEW_PROJECT_FLOWHIVE_066'),
+        ('NETWORK_ENGINEER','VIEW_PROJECT_FLOWHIVE_066'),
+        ('ENTERPRISE_NETWORK_ENGINEER','VIEW_PROJECT_FLOWHIVE_066'),
+        ('ENGINEER','VIEW_PROJECT_FORGE_033'),
+        ('ENGINEERING','VIEW_PROJECT_FORGE_033'),
+        ('ENGINEERING_LEAD','VIEW_PROJECT_FORGE_033'),
+        ('ENGINEERING_TEAM_LEAD','VIEW_PROJECT_FORGE_033'),
+        ('SYSTEMS_ENGINEER','VIEW_PROJECT_FORGE_033'),
+        ('NETWORK_ENGINEER','VIEW_PROJECT_FORGE_033'),
+        ('ENTERPRISE_NETWORK_ENGINEER','VIEW_PROJECT_FORGE_033')
 ), candidates AS (
     SELECT role.app_role_id,permission.app_permission_id
     FROM desired

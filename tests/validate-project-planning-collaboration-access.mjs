@@ -19,6 +19,9 @@ const forge = read('src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs');
 const forgeInteractive = read('src/backend/ProjectTime.Api/Modules/ProjectForgeInteractiveModule.cs');
 const flowhiveUi = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
 const forgeUi = read('src/frontend/project-time-web/src/ProjectForgeCenter.jsx');
+const flowhivePanels = read('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
+const deployment = read('.github/workflows/project-planning-collaboration-deploy-test.yml');
+const migrationRunner = read('scripts/release-test/run-project-planning-collaboration-migration-job.sh');
 
 [
   'project_planning_collaborators',
@@ -76,11 +79,28 @@ requireText(flowhivePortfolio, 'p.solution_architect_user_id = @user_id', 'FlowH
   'ProjectPlanningAccessResolver.ResolveForActorAsync'
 ].forEach((text) => requireText(forge, text, 'Project Forge collaboration access'));
 requireText(forgeInteractive, 'state.RecordSource == "review_plan" && access.CanEditReviewPlan', 'Project Forge review-plan task edit');
+requireText(forge, 'PreserveCollaboratorRestrictedFieldsAsync', 'Project Forge restricted financial preservation');
+requireText(forge, 'RestrictNewCollaboratorPlan', 'Project Forge new collaborator plan restriction');
+requireText(forge, 'access.CanEditReviewPlan', 'Project Forge collaborator estimate authority');
 
 requireText(flowhiveUi, 'canEditPlanner', 'FlowHive capability-driven UI');
 requireText(flowhiveUi, 'canAdoptBaseline', 'FlowHive baseline control');
 requireText(forgeUi, 'canEditReviewPlan', 'Project Forge capability-driven UI');
 requireText(forgeUi, 'canEditWorkspace', 'Project Forge workspace capability');
+requireText(resolver, 'project_team_coordinator_business_scope', 'FlowHive established PTC read scope');
+requireText(resolver, 'executive_read_scope', 'FlowHive established Executive read scope');
+requireText(resolver, 'manager_team_scope', 'FlowHive established Manager read scope');
+requireText(flowhivePanels, 'export function FlowHiveSaveBar({ dirty, workingCopy, canManage', 'FlowHive save-bar capability contract');
+requireText(flowhivePanels, 'export function FlowHiveStatusRaidPanel({ enterprise, draftPlan, statusDraft, setStatusDraft, newRaid, setNewRaid, canEditPlanner, canAdministerPlanner', 'FlowHive RAID/status split capability contract');
+if (flowhivePanels.includes('export function FlowHiveFinancialsPanel') && flowhivePanels.slice(
+  flowhivePanels.indexOf('export function FlowHiveFinancialsPanel'),
+  flowhivePanels.indexOf('export function FlowHiveStatusRaidPanel')
+).includes('canAdministerPlanner')) {
+  failures.push('FlowHive financial panel references a capability not present in its props');
+}
+requireText(deployment, '095_project_planning_collaboration_access', 'protected-Test Migration 095 wiring');
+requireText(deployment, 'MIGRATION_095=APPLIED_AND_VERIFIED', 'protected-Test Migration 095 verification');
+requireText(migrationRunner, '095-project-planning-collaboration', 'private-network Migration 095 ownership tag');
 
 if (failures.length) {
   console.error('Project planning collaboration validation failed:');

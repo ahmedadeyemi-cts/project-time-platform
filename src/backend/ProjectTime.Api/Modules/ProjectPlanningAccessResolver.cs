@@ -48,6 +48,21 @@ internal static class ProjectPlanningAccessResolver
         "SOLUTION_ARCHITECT", "SOLUTIONS_ARCHITECT"
     ];
 
+    private static readonly string[] ProjectCoordinatorRoles =
+    [
+        "PROJECT_TEAM_COORDINATOR", "PROJECT_COORDINATOR"
+    ];
+
+    private static readonly string[] ExecutiveRoles =
+    [
+        "EXECUTIVE", "EXECUTIVE_LEADERSHIP"
+    ];
+
+    private static readonly string[] PeopleManagerRoles =
+    [
+        "MANAGER"
+    ];
+
     internal static async Task<ProjectPlanningAccess> ResolveAsync(
         NpgsqlConnection connection,
         HttpContext context,
@@ -157,6 +172,9 @@ internal static class ProjectPlanningAccessResolver
         var engineeringLeadRole = HasAny(identity.Roles, EngineeringLeadRoles);
         var accountExecutiveRole = HasAny(identity.Roles, AccountExecutiveRoles);
         var solutionArchitectRole = HasAny(identity.Roles, SolutionArchitectRoles);
+        var projectCoordinatorRole = HasAny(identity.Roles, ProjectCoordinatorRoles);
+        var executiveRole = HasAny(identity.Roles, ExecutiveRoles);
+        var peopleManagerRole = HasAny(identity.Roles, PeopleManagerRoles);
 
         var projectManagerOwner = projectManagerRole
             && association.ProjectManagerUserId == effectiveUserId;
@@ -170,6 +188,11 @@ internal static class ProjectPlanningAccessResolver
             && association.AccountExecutiveUserId == effectiveUserId;
         var solutionArchitect = solutionArchitectRole
             && association.SolutionArchitectUserId == effectiveUserId;
+        var businessBroadRead = normalizedModule == "066"
+            && (projectCoordinatorRole || executiveRole);
+        var peopleManagerScope = normalizedModule == "066"
+            && peopleManagerRole
+            && association.EngineeringLeadScope;
 
         var explicitLevel = association.ExplicitCollaborationLevel;
         var explicitViewer = explicitLevel is "viewer" or "reviewer" or "editor";
@@ -183,7 +206,9 @@ internal static class ProjectPlanningAccessResolver
             || engineeringLeadScope
             || explicitViewer
             || accountExecutive
-            || solutionArchitect;
+            || solutionArchitect
+            || businessBroadRead
+            || peopleManagerScope;
 
         var viewPermission = normalizedModule == "033"
             ? HasAnyPermission(
@@ -207,7 +232,7 @@ internal static class ProjectPlanningAccessResolver
                 "MANAGE_PROJECT_FLOWHIVE_066",
                 "MANAGE_FLOWHIVE_PM_WORKSPACE_066");
 
-        var canView = associated && (administrator || viewPermission);
+        var canView = associated && (administrator || businessBroadRead || viewPermission);
         var ownSession = !isViewAs && actualUserId == effectiveUserId;
         var technicalReviewAssociation = directProjectAssignment
             || engineeringLeadScope
@@ -243,6 +268,9 @@ internal static class ProjectPlanningAccessResolver
                 || identity.Permissions.Contains("CREATE_FLOWHIVE_CUSTOMER_SHARE_066"));
 
         var scopeReason = administrator ? "administrator_support"
+            : projectCoordinatorRole && businessBroadRead ? "project_team_coordinator_business_scope"
+            : executiveRole && businessBroadRead ? "executive_read_scope"
+            : peopleManagerScope ? "manager_team_scope"
             : projectManagerOwner ? "assigned_project_manager"
             : projectManagementLeadScope ? "assigned_pm_team_scope"
             : directProjectAssignment ? "active_project_assignment"

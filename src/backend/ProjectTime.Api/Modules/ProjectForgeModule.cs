@@ -302,21 +302,22 @@ public static partial class ProjectForgeModule
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken))
+        var effectiveRequest = access.CanManage ? request : RestrictNewCollaboratorPlan(request);
+        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken))
             return Forbidden("project_forge_project_scope");
-        var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
+        var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var validation = ValidatePlan(request);
+        var validation = ValidatePlan(effectiveRequest);
         if (validation is not null) return validation;
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await LockProjectAsync(connection, transaction, request.ProjectId, cancellationToken);
-        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken);
+        await LockProjectAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
+        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         var planId = Guid.NewGuid();
-        await InsertPlanAsync(connection, transaction, planId, request, "manual", null, access.ActualUserId, cancellationToken);
-        await ReplacePlanRowsAsync(connection, transaction, planId, request.Tasks!, request.Dependencies ?? [], access.ActualUserId, cancellationToken);
-        await InsertAuditAsync(connection, transaction, request.ProjectId, planId, null, "PLAN_CREATED", access, new { request.PlanName }, cancellationToken);
+        await InsertPlanAsync(connection, transaction, planId, effectiveRequest, "manual", null, access.ActualUserId, cancellationToken);
+        await ReplacePlanRowsAsync(connection, transaction, planId, effectiveRequest.Tasks!, effectiveRequest.Dependencies ?? [], access.ActualUserId, cancellationToken);
+        await InsertAuditAsync(connection, transaction, effectiveRequest.ProjectId, planId, null, "PLAN_CREATED", access, new { effectiveRequest.PlanName }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Created($"/api/project-forge/plans/{planId}", new { module = "033", status = "review_plan_created", planId, stateChanged = true });
     }
@@ -339,15 +340,18 @@ public static partial class ProjectForgeModule
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
-        var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
+        var effectiveRequest = access.CanManage
+            ? request
+            : await PreserveCollaboratorRestrictedFieldsAsync(connection, planId, request, cancellationToken);
+        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var validation = ValidatePlan(request);
+        var validation = ValidatePlan(effectiveRequest);
         if (validation is not null) return validation;
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await LockProjectAsync(connection, transaction, request.ProjectId, cancellationToken);
-        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken);
+        await LockProjectAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
+        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         await using (var reviewEvidence = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM project_forge_plan_assignments WHERE plan_id=@plan_id)", connection, transaction))
         {
@@ -365,20 +369,20 @@ public static partial class ProjectForgeModule
         await using (var command = new NpgsqlCommand(updateSql, connection, transaction))
         {
             command.Parameters.AddWithValue("plan_id", planId);
-            command.Parameters.AddWithValue("project_id", request.ProjectId);
-            command.Parameters.AddWithValue("name", Clean(request.PlanName, 240, "Project plan"));
-            command.Parameters.AddWithValue("objective", Clean(request.Objective, 4000, string.Empty));
-            AddNullableDate(command, "start_date", request.StartDate);
-            AddNullableDate(command, "end_date", LatestDueDate(request.Tasks));
-            command.Parameters.AddWithValue("review_note", Clean(request.ReviewNote, 4000, string.Empty));
+            command.Parameters.AddWithValue("project_id", effectiveRequest.ProjectId);
+            command.Parameters.AddWithValue("name", Clean(effectiveRequest.PlanName, 240, "Project plan"));
+            command.Parameters.AddWithValue("objective", Clean(effectiveRequest.Objective, 4000, string.Empty));
+            AddNullableDate(command, "start_date", effectiveRequest.StartDate);
+            AddNullableDate(command, "end_date", LatestDueDate(effectiveRequest.Tasks));
+            command.Parameters.AddWithValue("review_note", Clean(effectiveRequest.ReviewNote, 4000, string.Empty));
             command.Parameters.AddWithValue("actor", access.ActualUserId);
             command.Parameters.AddWithValue("expected_revision", request.ExpectedRevision.Value);
             if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
                 return Results.Conflict(new { status = "plan_revision_conflict", message = "Refresh the review plan before saving." });
         }
-        await ReplacePlanRowsAsync(connection, transaction, planId, request.Tasks!, request.Dependencies ?? [], access.ActualUserId, cancellationToken);
-        await InsertAuditAsync(connection, transaction, request.ProjectId, planId, null, "PLAN_UPDATED", access, new { request.PlanName }, cancellationToken);
-        await InsertNotificationAsync(connection, transaction, ProjectForgePolicy.PlanUpdatedPolicy, request.ProjectId, null, $"plan:{planId}:updated:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}", new { planId, request.PlanName, updatedByName = access.DisplayName, changeSummary = "The review plan and its tasks were updated." }, cancellationToken);
+        await ReplacePlanRowsAsync(connection, transaction, planId, effectiveRequest.Tasks!, effectiveRequest.Dependencies ?? [], access.ActualUserId, cancellationToken);
+        await InsertAuditAsync(connection, transaction, effectiveRequest.ProjectId, planId, null, "PLAN_UPDATED", access, new { effectiveRequest.PlanName }, cancellationToken);
+        await InsertNotificationAsync(connection, transaction, ProjectForgePolicy.PlanUpdatedPolicy, effectiveRequest.ProjectId, null, $"plan:{planId}:updated:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}", new { planId, effectiveRequest.PlanName, updatedByName = access.DisplayName, changeSummary = "The review plan and its tasks were updated." }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Ok(new { module = "033", status = "review_plan_updated", planId, stateChanged = true });
     }
@@ -770,7 +774,9 @@ public static partial class ProjectForgeModule
         if (!await CanAccessProjectAsync(connection, access, task.Value.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, task.Value.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var canEdit = access.CanManage || (access.CanEditAssignedEstimate && task.Value.ReviewerUserId == access.EffectiveUserId);
+        var canEdit = access.CanManage
+            || access.CanEditReviewPlan
+            || (access.CanEditAssignedEstimate && task.Value.ReviewerUserId == access.EffectiveUserId);
         if (!canEdit) return Forbidden("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033");
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -1055,6 +1061,86 @@ public static partial class ProjectForgeModule
             assignmentsCreated = request.CreateAssignments,
             stateChanged = true
         });
+    }
+
+    private sealed record ProjectForgeRestrictedTaskFields(
+        decimal HourlyRate,
+        decimal MaterialUnits,
+        decimal MaterialUnitCost,
+        decimal FixedCost,
+        decimal TravelCost,
+        decimal EquipmentCost,
+        decimal MiscCost,
+        Guid? ReviewerUserId);
+
+    private static ProjectForgePlanSaveRequest RestrictNewCollaboratorPlan(
+        ProjectForgePlanSaveRequest request)
+    {
+        var tasks = (request.Tasks ?? [])
+            .Select(task => task with
+            {
+                HourlyRate = 0,
+                MaterialUnits = 0,
+                MaterialUnitCost = 0,
+                FixedCost = 0,
+                TravelCost = 0,
+                EquipmentCost = 0,
+                MiscCost = 0,
+                ReviewerUserId = null
+            })
+            .ToArray();
+        return request with { Tasks = tasks };
+    }
+
+    private static async Task<ProjectForgePlanSaveRequest> PreserveCollaboratorRestrictedFieldsAsync(
+        NpgsqlConnection connection,
+        Guid planId,
+        ProjectForgePlanSaveRequest request,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT plan_task_id,wbs_code,hourly_rate,material_units,material_unit_cost,
+                   fixed_cost,travel_cost,equipment_cost,miscellaneous_cost,reviewer_user_id
+            FROM project_forge_plan_tasks
+            WHERE plan_id=@plan_id AND canonical_task_id IS NULL AND task_status<>'cancelled';
+            """;
+        var byId = new Dictionary<Guid, ProjectForgeRestrictedTaskFields>();
+        var byWbs = new Dictionary<string, ProjectForgeRestrictedTaskFields>(StringComparer.OrdinalIgnoreCase);
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("plan_id", planId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var restricted = new ProjectForgeRestrictedTaskFields(
+                    reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4),
+                    reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8),
+                    reader.IsDBNull(9) ? null : reader.GetGuid(9));
+                byId[reader.GetGuid(0)] = restricted;
+                var wbs = reader.GetString(1);
+                if (!string.IsNullOrWhiteSpace(wbs)) byWbs[wbs] = restricted;
+            }
+        }
+
+        var tasks = (request.Tasks ?? []).Select(task =>
+        {
+            ProjectForgeRestrictedTaskFields? restricted = null;
+            if (task.PlanTaskId.HasValue) byId.TryGetValue(task.PlanTaskId.Value, out restricted);
+            if (restricted is null && !string.IsNullOrWhiteSpace(task.Wbs)) byWbs.TryGetValue(task.Wbs.Trim(), out restricted);
+            restricted ??= new ProjectForgeRestrictedTaskFields(0, 0, 0, 0, 0, 0, 0, null);
+            return task with
+            {
+                HourlyRate = restricted.HourlyRate,
+                MaterialUnits = restricted.MaterialUnits,
+                MaterialUnitCost = restricted.MaterialUnitCost,
+                FixedCost = restricted.FixedCost,
+                TravelCost = restricted.TravelCost,
+                EquipmentCost = restricted.EquipmentCost,
+                MiscCost = restricted.MiscCost,
+                ReviewerUserId = restricted.ReviewerUserId
+            };
+        }).ToArray();
+        return request with { Tasks = tasks };
     }
 
     private static IResult? CandidateAiDraftMutationBlocked()
