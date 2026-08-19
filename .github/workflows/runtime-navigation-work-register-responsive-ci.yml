@@ -173,7 +173,7 @@ jobs:
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
