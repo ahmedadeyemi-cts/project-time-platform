@@ -259,7 +259,7 @@ jq -n \
         replicaRetryLimit: 0,
         manualTriggerConfig: {replicaCompletionCount: 1, parallelism: 1},
         registries: [{server: $server, identity: $identity}],
-        secrets: [{name: "main-db-password", keyVaultUrl: $databaseSecretUri, identity: $identity}]
+        secrets: [{name: "main-db-password", keyVaultUrl: $databasePasswordSecretUri, identity: $identity}]
       },
       template: {
         containers: [{
@@ -305,13 +305,15 @@ START_ATTEMPTED=1
 EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
 normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the migration execution name."
 
+CORE_MIGRATIONS_SUCCEEDED=0
 for _ in $(seq 1 180); do
   STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
     --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
   case "$STATUS" in
     Succeeded)
       echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED"
-      exit 0
+      CORE_MIGRATIONS_SUCCEEDED=1
+      break
       ;;
     Failed|Stopped|Canceled|Cancelled|Degraded)
       echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=$STATUS" >&2
@@ -321,6 +323,12 @@ for _ in $(seq 1 180); do
   sleep 5
 done
 
-az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
-  --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
-fail "The protected Test system-wide reliability migration job did not succeed."
+if (( CORE_MIGRATIONS_SUCCEEDED != 1 )); then
+  az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+    --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
+  fail "The protected Test system-wide reliability migration job did not succeed."
+fi
+
+PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
+  bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
+echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
