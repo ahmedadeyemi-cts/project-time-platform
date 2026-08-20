@@ -41,6 +41,19 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          for segment in .github/flowhive-clean/patch-{00..04}.b64; do
+            printf 'REMOTE_SEGMENT %s bytes=%s sha256=%s\n' \
+              "$(basename "$segment")" \
+              "$(wc -c < "$segment")" \
+              "$(sha256sum "$segment" | awk '{print $1}')"
+          done
+          cat .github/flowhive-clean/patch-{00..04}.b64 | tr -d '\r\n' > /tmp/flowhive-diagnostic.b64
+          if base64 --decode /tmp/flowhive-diagnostic.b64 > /tmp/flowhive-diagnostic.patch.gz; then
+            printf 'REMOTE_COMBINED_GZIP sha256=%s\n' "$(sha256sum /tmp/flowhive-diagnostic.patch.gz | awk '{print $1}')"
+          else
+            echo 'REMOTE_COMBINED_BASE64=INVALID'
+          fi
+
           python3 - <<'PY'
           from pathlib import Path
 
