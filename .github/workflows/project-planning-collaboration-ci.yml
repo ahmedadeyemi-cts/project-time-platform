@@ -1,0 +1,102 @@
+name: Validate Project Planning Collaboration Access
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'database/migrations/095_project_planning_collaboration_access.sql'
+      - 'database/rollback/095_project_planning_collaboration_access_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectForgeInteractiveModule.cs'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx'
+      - 'src/frontend/project-time-web/src/ProjectForgeCenter.jsx'
+      - 'scripts/release-test/run-project-planning-collaboration-migration-job.sh'
+      - 'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh'
+      - 'tests/test-project-planning-collaboration-migration-095.sh'
+      - 'tests/validate-project-planning-collaboration-access.mjs'
+      - '.github/workflows/project-planning-collaboration-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate collaboration scope and complete builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate focused collaboration contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-project-planning-collaboration-access.mjs
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-033-project-forge.mjs
+            node scripts/validate-module-066-project-flowhive.mjs
+          )
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+
+      - name: Build API
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit frontend dependencies
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm audit --audit-level=high
+
+      - name: Build complete frontend production bundle
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: npm run build
+
+      - name: Validate whitespace and source cleanliness
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${PR_BASE_SHA:-}" && -n "${PR_HEAD_SHA:-}" ]]; then
+            git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+          else
+            git diff --check HEAD^...HEAD
+          fi
+          git status --short

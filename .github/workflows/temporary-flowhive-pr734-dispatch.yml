@@ -1,0 +1,46 @@
+name: Temporary FlowHive PR 734 Finalizer Dispatch
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-pr734-dispatch.yml'
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: feature/project-planning-collaboration-access-20260818
+          fetch-depth: 0
+
+      - name: Dispatch exact guarded finalizer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f .github/workflows/temporary-flowhive-pr734-finalizer.yml
+          gh workflow run temporary-flowhive-pr734-finalizer.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref feature/project-planning-collaboration-access-20260818
+
+      - name: Remove temporary dispatcher
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/temporary-flowhive-pr734-dispatch.yml
+          git add -A
+          git diff --cached --name-only | grep -Fx '.github/workflows/temporary-flowhive-pr734-dispatch.yml'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove temporary FlowHive PR 734 dispatcher'
+          git push origin HEAD:feature/project-planning-collaboration-access-20260818

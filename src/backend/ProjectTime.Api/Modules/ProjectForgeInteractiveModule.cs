@@ -142,6 +142,7 @@ public static partial class ProjectForgeModule
 
     private static bool CanManageTask(ProjectForgeAccess access, InteractiveTaskState state, bool workflowOnly)
         => !access.IsViewAs && (access.CanManage
+            || (state.RecordSource == "review_plan" && access.CanEditReviewPlan)
             || (workflowOnly && state.RecordSource == "canonical" && state.IsAssignedToEffectiveUser && access.CanUpdateAssignedTaskStatus));
 
     private static async Task InvalidatePlanTaskReviewAsync(

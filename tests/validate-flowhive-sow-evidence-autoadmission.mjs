@@ -3,8 +3,43 @@ import {
   dedupeEvidence,
   evidenceIdentity,
   normalizeEvidenceBody,
+  normalizePreparePayload,
+  prepareRequestHeaderObject,
   queueCandidatesFromEvidence
 } from '../src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js';
+
+const queuePayload = normalizePreparePayload({
+  approveCurrentVersion: false,
+  approvalNote: '',
+  correlationId: 'flowhive-queue-test'
+});
+assert.deepEqual(queuePayload, {
+  approveCurrentVersion: false,
+  approvalNote: null,
+  correlationId: 'flowhive-queue-test'
+}, 'Queue preparation must never send an empty approval-note string.');
+
+const approvalPayload = normalizePreparePayload({
+  approveCurrentVersion: true,
+  approvalNote: '  Reviewed by the assigned PM.  ',
+  correlationId: 'flowhive-approval-test'
+});
+assert.deepEqual(approvalPayload, {
+  approveCurrentVersion: true,
+  approvalNote: 'Reviewed by the assigned PM.',
+  correlationId: 'flowhive-approval-test'
+}, 'Approval preparation must preserve a trimmed governed review note.');
+
+const prepareHeaders = prepareRequestHeaderObject(
+  { 'X-Existing-Header': 'preserved' },
+  'test-session-token'
+);
+assert.equal(prepareHeaders['x-projectpulse-module-number'], '066');
+assert.equal(prepareHeaders.authorization, 'Bearer test-session-token');
+assert.equal(prepareHeaders['x-projectpulse-session'], 'test-session-token');
+assert.equal(prepareHeaders['content-type'], 'application/json; charset=utf-8');
+assert.equal(prepareHeaders.accept, 'application/json');
+assert.equal(prepareHeaders['x-existing-header'], 'preserved');
 
 const oldReady = {
   documentId: '11111111-1111-1111-1111-111111111111',

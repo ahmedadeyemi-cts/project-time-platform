@@ -4,8 +4,8 @@ set -Eeuo pipefail
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
 API_APP="${AZURE_API_APP:-}"
 ACR_NAME="${AZURE_ACR_NAME:-}"
-MIGRATION_IMAGE="${RELIABILITY_MIGRATION_IMAGE:-}"
-JOB_NAME="${RELIABILITY_MIGRATION_JOB_NAME:-}"
+MIGRATION_IMAGE="${FLOWHIVE_MIGRATION_IMAGE:-}"
+JOB_NAME="${FLOWHIVE_MIGRATION_JOB_NAME:-}"
 MIGRATOR_IDENTITY="${AZURE_CELAR_MIGRATOR_IDENTITY_RESOURCE_ID:-}"
 KEY_VAULT_URI="${AZURE_KEY_VAULT_URI:-}"
 DATABASE_PASSWORD_SECRET_NAME="${PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME:-}"
@@ -13,9 +13,9 @@ DATABASE_HOST="${PROJECTPULSE_TEST_DATABASE_HOST:-}"
 DATABASE_PORT="${PROJECTPULSE_TEST_DATABASE_PORT:-}"
 DATABASE_NAME="${PROJECTPULSE_TEST_DATABASE_NAME:-}"
 DATABASE_USER="${PROJECTPULSE_TEST_DATABASE_USER:-}"
-CONTROL_SHA="${RELIABILITY_CONTROL_SHA:-}"
-RELEASE_COMMIT="${RELIABILITY_RELEASE_COMMIT:-}"
-MIGRATION_SCOPE="${RELIABILITY_MIGRATION_SCOPE:-systemwide-enterprise-reliability-test}"
+RELEASE_COMMIT="${FLOWHIVE_RELEASE_COMMIT:-}"
+CONTROL_SHA="${FLOWHIVE_CONTROL_SHA:-}"
+MIGRATION_SCOPE="${FLOWHIVE_MIGRATION_SCOPE:-flowhive-authority-094-test}"
 RUN_SCOPE="${GITHUB_RUN_ID:-unknown}-${GITHUB_RUN_ATTEMPT:-unknown}"
 
 fail() {
@@ -32,27 +32,27 @@ normalize() {
 
 [[ -n "$RESOURCE_GROUP" ]] || fail "AZURE_RESOURCE_GROUP is not configured."
 [[ -n "$API_APP" ]] || fail "AZURE_API_APP is not configured."
-[[ -n "$ACR_NAME" ]] || fail "AZURE_ACR_NAME is not configured."
+[[ -n "$ACR_NAME" && "$ACR_NAME" =~ ^[A-Za-z0-9]+$ ]] || fail "AZURE_ACR_NAME is missing or invalid."
 [[ "$MIGRATION_IMAGE" == "$ACR_NAME.azurecr.io/"*@sha256:* ]] \
-  || fail "RELIABILITY_MIGRATION_IMAGE must be an immutable digest in the approved Test ACR."
+  || fail "FLOWHIVE_MIGRATION_IMAGE must be an immutable digest in the approved Test ACR."
 [[ "$JOB_NAME" =~ ^[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]] \
-  || fail "RELIABILITY_MIGRATION_JOB_NAME is invalid."
-[[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "RELIABILITY_CONTROL_SHA must be an exact commit."
-[[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "RELIABILITY_RELEASE_COMMIT must be an exact commit."
-[[ "$MIGRATION_SCOPE" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || fail "RELIABILITY_MIGRATION_SCOPE is invalid."
+  || fail "FLOWHIVE_MIGRATION_JOB_NAME is invalid or longer than 32 characters."
+[[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail "FLOWHIVE_RELEASE_COMMIT must be an exact commit."
+[[ "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "FLOWHIVE_CONTROL_SHA must be an exact commit."
+[[ "$MIGRATION_SCOPE" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]] || fail "FLOWHIVE_MIGRATION_SCOPE is invalid."
 [[ "$KEY_VAULT_URI" =~ ^https://[a-z0-9-]+\.vault\.azure\.net/?$ ]] \
   || fail "AZURE_KEY_VAULT_URI must be an exact HTTPS Key Vault URI."
 [[ "$DATABASE_PASSWORD_SECRET_NAME" =~ ^[A-Za-z0-9-]+(/[0-9A-Fa-f]{32})?$ ]] \
-  || fail "PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME must be an exact secret name with an optional version."
+  || fail "PROJECTPULSE_DATABASE_PASSWORD_SECRET_NAME is invalid."
 [[ "$DATABASE_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}[A-Za-z0-9]$ ]] \
-  || fail "PROJECTPULSE_TEST_DATABASE_HOST must be an exact database host."
+  || fail "PROJECTPULSE_TEST_DATABASE_HOST is invalid."
 [[ "$DATABASE_PORT" =~ ^[0-9]{1,5}$ ]] \
   && (( DATABASE_PORT >= 1 && DATABASE_PORT <= 65535 )) \
-  || fail "PROJECTPULSE_TEST_DATABASE_PORT must be an exact database port."
+  || fail "PROJECTPULSE_TEST_DATABASE_PORT is invalid."
 [[ "$DATABASE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] \
-  || fail "PROJECTPULSE_TEST_DATABASE_NAME must be an exact PostgreSQL identifier."
+  || fail "PROJECTPULSE_TEST_DATABASE_NAME is invalid."
 [[ "$DATABASE_USER" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] \
-  || fail "PROJECTPULSE_TEST_DATABASE_USER must be an exact PostgreSQL identifier."
+  || fail "PROJECTPULSE_TEST_DATABASE_USER is invalid."
 
 for command_name in az curl jq; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required."
@@ -64,31 +64,30 @@ MIGRATOR_IDENTITY_LOWER="${MIGRATOR_IDENTITY,,}"
 
 KEY_VAULT_URI="${KEY_VAULT_URI%/}"
 DATABASE_PASSWORD_SECRET_URI="$KEY_VAULT_URI/secrets/$DATABASE_PASSWORD_SECRET_NAME"
-
 SUBSCRIPTION_ID="$(az account show --query id -o tsv --only-show-errors)"
 [[ "$SUBSCRIPTION_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "Azure subscription ID is unavailable."
 UAMI_SUBSCRIPTION="${MIGRATOR_IDENTITY#*/subscriptions/}"
 UAMI_SUBSCRIPTION="${UAMI_SUBSCRIPTION%%/*}"
 [[ "${UAMI_SUBSCRIPTION,,}" == "${SUBSCRIPTION_ID,,}" ]] \
-  || fail "The migration UAMI is outside the logged-in Test subscription."
+  || fail "The Migration 094 UAMI is outside the logged-in Test subscription."
 
 ACTUAL_IDENTITY="$(az identity show --ids "$MIGRATOR_IDENTITY" --query id -o tsv --only-show-errors)"
 [[ "${ACTUAL_IDENTITY,,}" == "${MIGRATOR_IDENTITY,,}" ]] \
-  || fail "The protected Test migration UAMI could not be resolved exactly."
+  || fail "The protected-Test Migration 094 UAMI could not be resolved exactly."
 
 API_JSON="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" -o json --only-show-errors)"
-[[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == "test" ]] \
+[[ "$(jq -r '.tags.environment // empty' <<<"$API_JSON")" == test ]] \
   || fail "The API app is not tagged as Test."
 JQ_IDENTITY="$MIGRATOR_IDENTITY" jq -e '
   (.identity.userAssignedIdentities // {}) | keys | map(ascii_downcase) |
   index(env.JQ_IDENTITY | ascii_downcase) != null
 ' <<<"$API_JSON" >/dev/null \
-  || fail "The protected Test migration UAMI is not assigned to the API app."
+  || fail "The protected-Test Migration 094 UAMI is not assigned to the API app."
 
 ENVIRONMENT_ID="$(jq -r '.properties.managedEnvironmentId // empty' <<<"$API_JSON")"
 LOCATION="$(jq -r '.location // empty' <<<"$API_JSON")"
-normalize "$ENVIRONMENT_ID" >/dev/null || fail "The Test API app has no managed environment."
-normalize "$LOCATION" >/dev/null || fail "The Test API app has no Azure location."
+normalize "$ENVIRONMENT_ID" >/dev/null || fail "The protected-Test API has no managed environment."
+normalize "$LOCATION" >/dev/null || fail "The protected-Test API has no Azure location."
 
 JOB_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/jobs/$JOB_NAME"
 JOB_URI="https://management.azure.com$JOB_ID?api-version=2024-03-01"
@@ -140,7 +139,7 @@ validate_job_ownership() {
       (.tags["projectpulse-release"] == $release) and
       (.tags["projectpulse-control"] == $control) and
       (.tags["projectpulse-run"] == $runScope) and
-      (.tags["projectpulse-migration"] == "086-088-093") and
+      (.tags["projectpulse-migration"] == "094") and
       (.identity.type == "UserAssigned") and
       ((.identity.userAssignedIdentities | keys | length) == 1) and
       (((.identity.userAssignedIdentities | keys[0]) | ascii_downcase) == ($identity | ascii_downcase)) and
@@ -160,7 +159,7 @@ validate_job_ownership() {
           {name, value: (.value // null), secretRef: (.secretRef // null)}
         ] | sort_by(.name)
       ) == ([
-        {name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release, secretRef: null},
+        {name: "FLOWHIVE_EXPECTED_RELEASE_COMMIT", value: $release, secretRef: null},
         {name: "PGCONNECT_TIMEOUT", value: "15", secretRef: null},
         {name: "PGDATABASE", value: $databaseName, secretRef: null},
         {name: "PGHOST", value: $databaseHost, secretRef: null},
@@ -195,9 +194,9 @@ cleanup() {
   set +e
   if (( CREATE_ATTEMPTED == 1 && PREFLIGHT_CONFIRMED_404 == 1 )); then
     http_status="$(arm_get_job "$JOB_RESPONSE" 2>/dev/null || true)"
-    if [[ "$http_status" == "200" ]]; then
+    if [[ "$http_status" == 200 ]]; then
       if ! validate_job_ownership "$JOB_RESPONSE"; then
-        echo "ERROR: Refusing to delete a temporary migration job whose ownership contract changed." >&2
+        echo "ERROR: Refusing to delete a temporary Migration 094 job whose ownership contract changed." >&2
         exit_status=1
       else
         if (( START_ATTEMPTED == 1 )); then stop_nonterminal_executions || exit_status=1; fi
@@ -205,13 +204,13 @@ cleanup() {
           --yes --output none --only-show-errors || exit_status=1
         for _ in $(seq 1 30); do
           http_status="$(arm_get_job "$JOB_RESPONSE" 2>/dev/null || true)"
-          if [[ "$http_status" == "404" ]]; then confirmed_absent=1; break; fi
+          if [[ "$http_status" == 404 ]]; then confirmed_absent=1; break; fi
           sleep 2
         done
         (( confirmed_absent == 1 )) || exit_status=1
       fi
-    elif [[ "$http_status" != "404" ]]; then
-      echo "ERROR: Could not prove temporary migration job cleanup." >&2
+    elif [[ "$http_status" != 404 ]]; then
+      echo "ERROR: Could not prove temporary Migration 094 job cleanup." >&2
       exit_status=1
     fi
   fi
@@ -221,8 +220,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-PREFLIGHT_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not perform the migration job ARM preflight."
-[[ "$PREFLIGHT_STATUS" == "404" ]] || fail "A Container Apps Job already exists with the guarded migration job name."
+PREFLIGHT_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not perform the Migration 094 job ARM preflight."
+[[ "$PREFLIGHT_STATUS" == 404 ]] || fail "A Container Apps Job already exists with the guarded Migration 094 job name."
 PREFLIGHT_CONFIRMED_404=1
 
 jq -n \
@@ -249,7 +248,7 @@ jq -n \
       "projectpulse-release": $release,
       "projectpulse-control": $control,
       "projectpulse-run": $runScope,
-      "projectpulse-migration": "086-088-093"
+      "projectpulse-migration": "094"
     },
     properties: {
       environmentId: $environmentId,
@@ -266,7 +265,7 @@ jq -n \
           name: $jobName,
           image: $image,
           env: [
-            {name: "MAIN_RELEASE_EXPECTED_RELEASE_COMMIT", value: $release},
+            {name: "FLOWHIVE_EXPECTED_RELEASE_COMMIT", value: $release},
             {name: "PGCONNECT_TIMEOUT", value: "15"},
             {name: "PGDATABASE", value: $databaseName},
             {name: "PGHOST", value: $databaseHost},
@@ -289,46 +288,38 @@ az rest --method put --uri "$JOB_URI" --body @"$PAYLOAD" --output none --only-sh
 
 PROVISIONED=0
 for _ in $(seq 1 60); do
-  JOB_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not read the temporary migration job after creation."
-  [[ "$JOB_STATUS" == "200" ]] || fail "The temporary migration job was not readable after creation."
-  validate_job_ownership "$JOB_RESPONSE" || fail "The temporary migration job ownership or immutable configuration did not match."
+  JOB_STATUS="$(arm_get_job "$JOB_RESPONSE")" || fail "Could not read the temporary Migration 094 job after creation."
+  [[ "$JOB_STATUS" == 200 ]] || fail "The temporary Migration 094 job was not readable after creation."
+  validate_job_ownership "$JOB_RESPONSE" || fail "The temporary Migration 094 job ownership or immutable configuration did not match."
   PROVISIONING_STATE="$(jq -r '.properties.provisioningState // empty' "$JOB_RESPONSE")"
   case "$PROVISIONING_STATE" in
     Succeeded) PROVISIONED=1; break ;;
-    Failed|Canceled|Cancelled) fail "The temporary migration job provisioning failed." ;;
+    Failed|Canceled|Cancelled) fail "The temporary Migration 094 job provisioning failed." ;;
   esac
   sleep 2
 done
-(( PROVISIONED == 1 )) || fail "The temporary migration job did not provision successfully."
+(( PROVISIONED == 1 )) || fail "The temporary Migration 094 job did not provision successfully."
 
 START_ATTEMPTED=1
 EXECUTION_NAME="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$JOB_NAME" --query name -o tsv --only-show-errors)"
-normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the migration execution name."
+normalize "$EXECUTION_NAME" >/dev/null || fail "Azure did not return the Migration 094 execution name."
 
-CORE_MIGRATIONS_SUCCEEDED=0
 for _ in $(seq 1 180); do
   STATUS="$(az containerapp job execution list -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
     --query "[?name=='$EXECUTION_NAME'].properties.status | [0]" -o tsv --only-show-errors)"
   case "$STATUS" in
     Succeeded)
-      echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=SUCCEEDED"
-      CORE_MIGRATIONS_SUCCEEDED=1
-      break
+      echo "FLOWHIVE_AUTHORITY_MIGRATION_094_PRIVATE_NETWORK_JOB=SUCCEEDED"
+      exit 0
       ;;
     Failed|Stopped|Canceled|Cancelled|Degraded)
-      echo "SYSTEMWIDE_RELIABILITY_MIGRATIONS_PRIVATE_NETWORK_JOB=$STATUS" >&2
+      echo "FLOWHIVE_AUTHORITY_MIGRATION_094_PRIVATE_NETWORK_JOB=$STATUS" >&2
       break
       ;;
   esac
   sleep 5
 done
 
-if (( CORE_MIGRATIONS_SUCCEEDED != 1 )); then
-  az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
-    --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
-  fail "The protected Test system-wide reliability migration job did not succeed."
-fi
-
-PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \
-  bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
-echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+az containerapp job logs show -g "$RESOURCE_GROUP" -n "$JOB_NAME" \
+  --execution "$EXECUTION_NAME" --container "$JOB_NAME" --tail 250 --only-show-errors >&2 || true
+fail "The protected-Test FlowHive Migration 094 job did not succeed."

@@ -1,5 +1,6 @@
 const INSTALL_MARKER = '__pulseFlowHiveSowEvidenceAutoadmissionInstalled';
 const ENTERPRISE_PATH = /^\/api\/project-flowhive\/projects\/([0-9a-f-]{36})\/enterprise$/i;
+const PREPARE_PATH = /^\/api\/project-flowhive\/projects\/([0-9a-f-]{36})\/sow-evidence\/([0-9a-f-]{36})\/prepare$/i;
 const activeAdmissions = new Map();
 
 function storedSessionToken() {
@@ -25,6 +26,109 @@ function methodOf(input, init) {
 
 function cloneInput(input) {
   return input instanceof Request ? input.clone() : input;
+}
+
+function newCorrelationId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `flowhive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+export function normalizePreparePayload(value = {}) {
+  const approveCurrentVersion = value?.approveCurrentVersion === true;
+  const correlationId = String(value?.correlationId || '').trim() || newCorrelationId();
+  return {
+    approveCurrentVersion,
+    approvalNote: approveCurrentVersion
+      ? String(value?.approvalNote || '').trim()
+      : null,
+    correlationId
+  };
+}
+
+export function prepareRequestHeaderObject(existing = {}, token = '') {
+  const headers = new Headers(existing || {});
+  headers.set('Accept', 'application/json');
+  headers.set('Content-Type', 'application/json; charset=utf-8');
+  headers.set('X-ProjectPulse-Module-Number', '066');
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-ProjectPulse-Session', token);
+  }
+  return Object.fromEntries(headers.entries());
+}
+
+async function readPreparePayload(input, init = {}) {
+  const providedBody = init?.body;
+  if (typeof providedBody === 'string' && providedBody.trim()) {
+    try {
+      return JSON.parse(providedBody);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof Request !== 'undefined' && input instanceof Request) {
+    try {
+      const text = await input.clone().text();
+      return text.trim() ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function requestHeaders(input, init, token) {
+  const existing = new Headers(
+    init?.headers || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : {})
+  );
+  return prepareRequestHeaderObject(existing, token);
+}
+
+async function responseJson(response) {
+  if (!response?.headers?.get('content-type')?.includes('application/json')) return {};
+  return response.clone().json().catch(() => ({}));
+}
+
+function shouldRetryQueueValidation(response, responseBody, payload) {
+  if (payload.approveCurrentVersion || response.status !== 400) return false;
+  const status = String(responseBody?.status || responseBody?.code || '').toLowerCase();
+  const message = String(responseBody?.message || responseBody?.detail || '').toLowerCase();
+  return !status
+    || status.includes('request_validation')
+    || status.includes('validation')
+    || message.includes('request') && message.includes('valid');
+}
+
+async function sendPrepareRequest(nativeFetch, input, init = {}) {
+  const url = urlOf(input);
+  const token = storedSessionToken();
+  const payload = normalizePreparePayload(await readPreparePayload(input, init));
+  const headers = requestHeaders(input, init, token);
+  const requestInit = {
+    ...init,
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(payload)
+  };
+  let response = await nativeFetch(url?.href || input, requestInit);
+  const body = await responseJson(response);
+  if (!shouldRetryQueueValidation(response, body, payload)) return response;
+
+  // Compatibility retry for older protected-Test revisions whose prepare
+  // contract rejected an explicit null approval note. Approval requests are
+  // never retried because their note validation is a governed user action.
+  response = await nativeFetch(url?.href || input, {
+    ...requestInit,
+    body: JSON.stringify({
+      approveCurrentVersion: false,
+      correlationId: payload.correlationId
+    })
+  });
+  return response;
 }
 
 export function evidenceScore(item) {
@@ -158,43 +262,21 @@ export function queueCandidatesFromEvidence(evidence, maximum = 6) {
     .slice(0, Math.max(0, maximum));
 }
 
-function correlationId() {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `flowhive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-}
-
 async function queueEvidence(nativeFetch, projectId, item) {
   const key = `${projectId}:${item.documentId}`;
   if (activeAdmissions.has(key)) return activeAdmissions.get(key);
 
-  const token = storedSessionToken();
-  const promise = nativeFetch(
+  const promise = sendPrepareRequest(
+    nativeFetch,
     `/api/project-flowhive/projects/${projectId}/sow-evidence/${item.documentId}/prepare`,
     {
       method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? {
-          Authorization: `Bearer ${token}`,
-          'X-ProjectPulse-Session': token
-        } : {})
-      },
-      body: JSON.stringify({
-        approveCurrentVersion: false,
-        approvalNote: '',
-        correlationId: correlationId()
-      })
+      body: JSON.stringify(normalizePreparePayload())
     }
   ).then(async (response) => ({
     succeeded: response.ok,
     status: response.status,
-    body: response.headers.get('content-type')?.includes('application/json')
-      ? await response.clone().json().catch(() => ({}))
-      : {}
+    body: await responseJson(response)
   })).catch(() => ({ succeeded: false, status: 0, body: {} }));
 
   activeAdmissions.set(key, promise);
@@ -211,10 +293,14 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
 
   window.fetch = async (input, init = {}) => {
     const url = urlOf(input);
-    const match = url?.origin === window.location.origin
-      ? url.pathname.match(ENTERPRISE_PATH)
-      : null;
-    if (!match || methodOf(input, init) !== 'GET') return nativeFetch(input, init);
+    const method = methodOf(input, init);
+    const sameOrigin = url?.origin === window.location.origin;
+    if (sameOrigin && method === 'POST' && PREPARE_PATH.test(url.pathname)) {
+      return sendPrepareRequest(nativeFetch, input, init);
+    }
+
+    const match = sameOrigin ? url.pathname.match(ENTERPRISE_PATH) : null;
+    if (!match || method !== 'GET') return nativeFetch(input, init);
 
     let response = await nativeFetch(cloneInput(input), init);
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response;
@@ -222,7 +308,8 @@ if (typeof window !== 'undefined' && !window[INSTALL_MARKER]) {
     let rawBody = await readJsonBody(response);
     if (!rawBody || !Array.isArray(rawBody.sowEvidence)) return response;
     let body = normalizeEvidenceBody(rawBody);
-    if (!body?.access?.canManage) return responseWithJson(response, body);
+    const mayPrepare = Boolean(body?.access?.canAdministerPlanner || body?.access?.canManage);
+    if (!mayPrepare) return responseWithJson(response, body);
 
     // Admission is intentionally based on raw project-scoped evidence rather
     // than the normalized display list. A replacement SOW that reuses an older

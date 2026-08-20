@@ -301,22 +301,23 @@ public static partial class ProjectForgeModule
         await using var connection = new NpgsqlConnection(configured.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
-        if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken))
+        if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
+        var effectiveRequest = access.CanManage ? request : RestrictNewCollaboratorPlan(request);
+        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken))
             return Forbidden("project_forge_project_scope");
-        var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
+        var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var validation = ValidatePlan(request);
+        var validation = ValidatePlan(effectiveRequest);
         if (validation is not null) return validation;
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await LockProjectAsync(connection, transaction, request.ProjectId, cancellationToken);
-        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken);
+        await LockProjectAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
+        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         var planId = Guid.NewGuid();
-        await InsertPlanAsync(connection, transaction, planId, request, "manual", null, access.ActualUserId, cancellationToken);
-        await ReplacePlanRowsAsync(connection, transaction, planId, request.Tasks!, request.Dependencies ?? [], access.ActualUserId, cancellationToken);
-        await InsertAuditAsync(connection, transaction, request.ProjectId, planId, null, "PLAN_CREATED", access, new { request.PlanName }, cancellationToken);
+        await InsertPlanAsync(connection, transaction, planId, effectiveRequest, "manual", null, access.ActualUserId, cancellationToken);
+        await ReplacePlanRowsAsync(connection, transaction, planId, effectiveRequest.Tasks!, effectiveRequest.Dependencies ?? [], access.ActualUserId, cancellationToken);
+        await InsertAuditAsync(connection, transaction, effectiveRequest.ProjectId, planId, null, "PLAN_CREATED", access, new { effectiveRequest.PlanName }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Created($"/api/project-forge/plans/{planId}", new { module = "033", status = "review_plan_created", planId, stateChanged = true });
     }
@@ -338,16 +339,19 @@ public static partial class ProjectForgeModule
         await using var connection = new NpgsqlConnection(configured.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
-        if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
-        var projectWriteError = await EnsureProjectWritableAsync(connection, request.ProjectId, cancellationToken);
+        if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
+        var effectiveRequest = access.CanManage
+            ? request
+            : await PreserveCollaboratorRestrictedFieldsAsync(connection, planId, request, cancellationToken);
+        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var validation = ValidatePlan(request);
+        var validation = ValidatePlan(effectiveRequest);
         if (validation is not null) return validation;
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await LockProjectAsync(connection, transaction, request.ProjectId, cancellationToken);
-        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, request.ProjectId, cancellationToken);
+        await LockProjectAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
+        projectWriteError = await EnsureProjectWritableAsync(connection, transaction, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         await using (var reviewEvidence = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM project_forge_plan_assignments WHERE plan_id=@plan_id)", connection, transaction))
         {
@@ -365,20 +369,20 @@ public static partial class ProjectForgeModule
         await using (var command = new NpgsqlCommand(updateSql, connection, transaction))
         {
             command.Parameters.AddWithValue("plan_id", planId);
-            command.Parameters.AddWithValue("project_id", request.ProjectId);
-            command.Parameters.AddWithValue("name", Clean(request.PlanName, 240, "Project plan"));
-            command.Parameters.AddWithValue("objective", Clean(request.Objective, 4000, string.Empty));
-            AddNullableDate(command, "start_date", request.StartDate);
-            AddNullableDate(command, "end_date", LatestDueDate(request.Tasks));
-            command.Parameters.AddWithValue("review_note", Clean(request.ReviewNote, 4000, string.Empty));
+            command.Parameters.AddWithValue("project_id", effectiveRequest.ProjectId);
+            command.Parameters.AddWithValue("name", Clean(effectiveRequest.PlanName, 240, "Project plan"));
+            command.Parameters.AddWithValue("objective", Clean(effectiveRequest.Objective, 4000, string.Empty));
+            AddNullableDate(command, "start_date", effectiveRequest.StartDate);
+            AddNullableDate(command, "end_date", LatestDueDate(effectiveRequest.Tasks));
+            command.Parameters.AddWithValue("review_note", Clean(effectiveRequest.ReviewNote, 4000, string.Empty));
             command.Parameters.AddWithValue("actor", access.ActualUserId);
             command.Parameters.AddWithValue("expected_revision", request.ExpectedRevision.Value);
             if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
                 return Results.Conflict(new { status = "plan_revision_conflict", message = "Refresh the review plan before saving." });
         }
-        await ReplacePlanRowsAsync(connection, transaction, planId, request.Tasks!, request.Dependencies ?? [], access.ActualUserId, cancellationToken);
-        await InsertAuditAsync(connection, transaction, request.ProjectId, planId, null, "PLAN_UPDATED", access, new { request.PlanName }, cancellationToken);
-        await InsertNotificationAsync(connection, transaction, ProjectForgePolicy.PlanUpdatedPolicy, request.ProjectId, null, $"plan:{planId}:updated:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}", new { planId, request.PlanName, updatedByName = access.DisplayName, changeSummary = "The review plan and its tasks were updated." }, cancellationToken);
+        await ReplacePlanRowsAsync(connection, transaction, planId, effectiveRequest.Tasks!, effectiveRequest.Dependencies ?? [], access.ActualUserId, cancellationToken);
+        await InsertAuditAsync(connection, transaction, effectiveRequest.ProjectId, planId, null, "PLAN_UPDATED", access, new { effectiveRequest.PlanName }, cancellationToken);
+        await InsertNotificationAsync(connection, transaction, ProjectForgePolicy.PlanUpdatedPolicy, effectiveRequest.ProjectId, null, $"plan:{planId}:updated:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}", new { planId, effectiveRequest.PlanName, updatedByName = access.DisplayName, changeSummary = "The review plan and its tasks were updated." }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Ok(new { module = "033", status = "review_plan_updated", planId, stateChanged = true });
     }
@@ -770,7 +774,9 @@ public static partial class ProjectForgeModule
         if (!await CanAccessProjectAsync(connection, access, task.Value.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, task.Value.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
-        var canEdit = access.CanManage || (access.CanEditAssignedEstimate && task.Value.ReviewerUserId == access.EffectiveUserId);
+        var canEdit = access.CanManage
+            || access.CanEditReviewPlan
+            || (access.CanEditAssignedEstimate && task.Value.ReviewerUserId == access.EffectiveUserId);
         if (!canEdit) return Forbidden("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033");
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -1055,6 +1061,86 @@ public static partial class ProjectForgeModule
             assignmentsCreated = request.CreateAssignments,
             stateChanged = true
         });
+    }
+
+    private sealed record ProjectForgeRestrictedTaskFields(
+        decimal HourlyRate,
+        decimal MaterialUnits,
+        decimal MaterialUnitCost,
+        decimal FixedCost,
+        decimal TravelCost,
+        decimal EquipmentCost,
+        decimal MiscCost,
+        Guid? ReviewerUserId);
+
+    private static ProjectForgePlanSaveRequest RestrictNewCollaboratorPlan(
+        ProjectForgePlanSaveRequest request)
+    {
+        var tasks = (request.Tasks ?? [])
+            .Select(task => task with
+            {
+                HourlyRate = 0,
+                MaterialUnits = 0,
+                MaterialUnitCost = 0,
+                FixedCost = 0,
+                TravelCost = 0,
+                EquipmentCost = 0,
+                MiscCost = 0,
+                ReviewerUserId = null
+            })
+            .ToArray();
+        return request with { Tasks = tasks };
+    }
+
+    private static async Task<ProjectForgePlanSaveRequest> PreserveCollaboratorRestrictedFieldsAsync(
+        NpgsqlConnection connection,
+        Guid planId,
+        ProjectForgePlanSaveRequest request,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT plan_task_id,wbs_code,hourly_rate,material_units,material_unit_cost,
+                   fixed_cost,travel_cost,equipment_cost,miscellaneous_cost,reviewer_user_id
+            FROM project_forge_plan_tasks
+            WHERE plan_id=@plan_id AND canonical_task_id IS NULL AND task_status<>'cancelled';
+            """;
+        var byId = new Dictionary<Guid, ProjectForgeRestrictedTaskFields>();
+        var byWbs = new Dictionary<string, ProjectForgeRestrictedTaskFields>(StringComparer.OrdinalIgnoreCase);
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("plan_id", planId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var restricted = new ProjectForgeRestrictedTaskFields(
+                    reader.GetDecimal(2), reader.GetDecimal(3), reader.GetDecimal(4),
+                    reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8),
+                    reader.IsDBNull(9) ? null : reader.GetGuid(9));
+                byId[reader.GetGuid(0)] = restricted;
+                var wbs = reader.GetString(1);
+                if (!string.IsNullOrWhiteSpace(wbs)) byWbs[wbs] = restricted;
+            }
+        }
+
+        var tasks = (request.Tasks ?? []).Select(task =>
+        {
+            ProjectForgeRestrictedTaskFields? restricted = null;
+            if (task.PlanTaskId.HasValue) byId.TryGetValue(task.PlanTaskId.Value, out restricted);
+            if (restricted is null && !string.IsNullOrWhiteSpace(task.Wbs)) byWbs.TryGetValue(task.Wbs.Trim(), out restricted);
+            restricted ??= new ProjectForgeRestrictedTaskFields(0, 0, 0, 0, 0, 0, 0, null);
+            return task with
+            {
+                HourlyRate = restricted.HourlyRate,
+                MaterialUnits = restricted.MaterialUnits,
+                MaterialUnitCost = restricted.MaterialUnitCost,
+                FixedCost = restricted.FixedCost,
+                TravelCost = restricted.TravelCost,
+                EquipmentCost = restricted.EquipmentCost,
+                MiscCost = restricted.MiscCost,
+                ReviewerUserId = restricted.ReviewerUserId
+            };
+        }).ToArray();
+        return request with { Tasks = tasks };
     }
 
     private static IResult? CandidateAiDraftMutationBlocked()
@@ -1551,8 +1637,29 @@ public static partial class ProjectForgeModule
                     WHERE scope.scoped_user_id=@effective_user_id AND scope.is_active=TRUE
                       AND scope.scope_type='project_management_team_lead'
                       AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,''))=LOWER(scope.team_name))
-                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,''))=LOWER(scope.department_name))
+                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,pm.department,''))=LOWER(scope.department_name))
                         OR scope.manager_user_id=pm.user_id)
+                )
+              )
+        ), authorized_engineering_members AS (
+            SELECT DISTINCT member.user_id
+            FROM app_users member
+            WHERE member.is_active=TRUE
+              AND (
+                EXISTS(
+                    SELECT 1 FROM reporting_relationships rr
+                    WHERE rr.employee_user_id=member.user_id
+                      AND (rr.manager_user_id=@effective_user_id OR rr.team_lead_user_id=@effective_user_id)
+                      AND rr.effective_start_date<=CURRENT_DATE
+                      AND (rr.effective_end_date IS NULL OR rr.effective_end_date>=CURRENT_DATE)
+                )
+                OR EXISTS(
+                    SELECT 1 FROM projectpulse_team_scope_assignments scope
+                    WHERE scope.scoped_user_id=@effective_user_id AND scope.is_active=TRUE
+                      AND scope.scope_type='engineering_team_lead'
+                      AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(member.team_name,''))=LOWER(scope.team_name))
+                        OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(member.department_name,member.department,''))=LOWER(scope.department_name))
+                        OR scope.manager_user_id=member.user_id)
                 )
               )
         ), scoped_projects AS (
@@ -1568,6 +1675,24 @@ public static partial class ProjectForgeModule
                       AND self_assignment.effective_start_date<=CURRENT_DATE
                       AND (self_assignment.effective_end_date IS NULL OR self_assignment.effective_end_date>=CURRENT_DATE)
                 ))
+                OR (@is_engineering_lead AND EXISTS(
+                    SELECT 1 FROM project_assignments team_assignment
+                    WHERE team_assignment.project_id=p.project_id
+                      AND team_assignment.user_id IN (SELECT user_id FROM authorized_engineering_members)
+                      AND team_assignment.effective_start_date<=CURRENT_DATE
+                      AND (team_assignment.effective_end_date IS NULL OR team_assignment.effective_end_date>=CURRENT_DATE)
+                ))
+                OR (@is_account_executive AND p.account_executive_user_id=@effective_user_id)
+                OR (@is_solution_architect AND p.solution_architect_user_id=@effective_user_id)
+                OR EXISTS(
+                    SELECT 1 FROM project_planning_collaborators collaborator
+                    WHERE collaborator.project_id=p.project_id
+                      AND collaborator.user_id=@effective_user_id
+                      AND collaborator.module_code='033'
+                      AND collaborator.is_active=TRUE
+                      AND collaborator.effective_start_date<=CURRENT_DATE
+                      AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date>=CURRENT_DATE)
+                )
             )
             AND (@manager_filter IS NULL OR p.project_manager_user_id=@manager_filter)
             AND (@project_filter IS NULL OR p.project_id=@project_filter)
@@ -1941,36 +2066,24 @@ public static partial class ProjectForgeModule
         Guid? managerFilter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT EXISTS(
-                SELECT 1 FROM projects p
-                WHERE p.project_id=@project_id AND (@manager IS NULL OR p.project_manager_user_id=@manager)
-                  AND (
-                    @is_admin
-                    OR (@is_pm AND p.project_manager_user_id=@user_id)
-                    OR (@is_pm_lead AND (
-                        EXISTS(SELECT 1 FROM reporting_relationships rr WHERE rr.employee_user_id=p.project_manager_user_id
-                               AND (rr.manager_user_id=@user_id OR rr.team_lead_user_id=@user_id)
-                               AND rr.effective_start_date<=CURRENT_DATE AND (rr.effective_end_date IS NULL OR rr.effective_end_date>=CURRENT_DATE))
-                        OR EXISTS(SELECT 1 FROM app_users pm JOIN projectpulse_team_scope_assignments scope ON scope.scoped_user_id=@user_id
-                                  WHERE pm.user_id=p.project_manager_user_id AND scope.is_active=TRUE AND scope.scope_type='project_management_team_lead'
-                                    AND ((scope.team_name IS NOT NULL AND LOWER(COALESCE(pm.team_name,''))=LOWER(scope.team_name))
-                                      OR (scope.department_name IS NOT NULL AND LOWER(COALESCE(pm.department_name,''))=LOWER(scope.department_name))
-                                      OR scope.manager_user_id=pm.user_id))))
-                    OR (@is_engineer AND EXISTS(SELECT 1 FROM project_assignments pa WHERE pa.project_id=p.project_id AND pa.user_id=@user_id
-                                               AND pa.effective_start_date<=CURRENT_DATE AND (pa.effective_end_date IS NULL OR pa.effective_end_date>=CURRENT_DATE)))
-                  )
-            )
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("project_id", projectId);
-        AddNullableUuid(command, "manager", managerFilter);
-        command.Parameters.AddWithValue("is_admin", access.IsAdministrator);
-        command.Parameters.AddWithValue("is_pm", access.IsProjectManager);
-        command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
-        command.Parameters.AddWithValue("is_engineer", access.IsEngineer);
-        command.Parameters.AddWithValue("user_id", access.EffectiveUserId);
-        return (bool?)await command.ExecuteScalarAsync(cancellationToken) == true;
+        if (managerFilter.HasValue)
+        {
+            await using var managerCommand = new NpgsqlCommand(
+                "SELECT project_manager_user_id FROM projects WHERE project_id=@project_id;",
+                connection);
+            managerCommand.Parameters.AddWithValue("project_id", projectId);
+            var manager = await managerCommand.ExecuteScalarAsync(cancellationToken);
+            if (manager is not Guid managerUserId || managerUserId != managerFilter.Value)
+                return false;
+        }
+
+        var planningAccess = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection,
+            access.EffectiveUserId,
+            projectId,
+            "033",
+            cancellationToken);
+        return planningAccess.CanView;
     }
 
     private static async Task<bool> IsEligibleEngineerReviewerAsync(NpgsqlConnection connection, Guid projectId, Guid userId, CancellationToken cancellationToken)
@@ -2018,13 +2131,16 @@ public static partial class ProjectForgeModule
         command.Parameters.AddWithValue("is_pm_lead", access.IsProjectManagementLead);
         command.Parameters.AddWithValue("is_pm", access.IsProjectManager);
         command.Parameters.AddWithValue("is_engineer", access.IsEngineer);
+        command.Parameters.AddWithValue("is_engineering_lead", access.IsEngineeringLead);
+        command.Parameters.AddWithValue("is_account_executive", access.IsAccountExecutive);
+        command.Parameters.AddWithValue("is_solution_architect", access.IsSolutionArchitect);
         command.Parameters.AddWithValue("can_view_all_tasks", access.CanViewAllScopedTasks);
         command.Parameters.AddWithValue("can_manage", access.CanManage);
         command.Parameters.AddWithValue("can_view_financials", access.CanViewFinancials);
         command.Parameters.AddWithValue("can_view_ai_citations", access.CanViewAiCitations);
         command.Parameters.AddWithValue("is_view_as", access.IsViewAs);
         command.Parameters.AddWithValue("can_update_assigned_status", access.CanUpdateAssignedTaskStatus);
-        command.Parameters.AddWithValue("can_write_estimate", !access.IsViewAs && (access.CanManage || access.CanEditAssignedEstimate));
+        command.Parameters.AddWithValue("can_write_estimate", !access.IsViewAs && (access.CanManage || access.CanEditReviewPlan || access.CanEditAssignedEstimate));
     }
 
     private static async Task<List<JsonElement>> ReadJsonRowsAsync(
@@ -2314,26 +2430,56 @@ public static partial class ProjectForgeModule
         public bool IsAdministrator => HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR", "SYSTEM_ADMINISTRATOR");
         public bool IsProjectManagementLead => HasRole("PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD");
         public bool IsProjectManager => !IsAdministrator && !IsProjectManagementLead && HasRole("PROJECT_MANAGER", "PROJECT_MANAGEMENT");
+        public bool IsEngineeringLead => !IsAdministrator && !IsProjectManagementLead && !IsProjectManager
+            && HasRole("ENGINEERING_LEAD", "ENGINEERING_TEAM_LEAD");
+        public bool IsAccountExecutive => !IsAdministrator && HasRole("ACCOUNT_EXECUTIVE", "SALES_ACCOUNT_EXECUTIVE");
+        public bool IsSolutionArchitect => !IsAdministrator && HasRole("SOLUTION_ARCHITECT", "SOLUTIONS_ARCHITECT");
         public bool IsEngineer => !IsAdministrator && !IsProjectManagementLead && !IsProjectManager
-            && (HasRole("ENGINEER", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER", "ENTERPRISE_NETWORK_ENGINEER")
+            && (IsEngineeringLead
+                || HasRole("ENGINEER", "ENGINEERING", "SYSTEMS_ENGINEER", "NETWORK_ENGINEER", "ENTERPRISE_NETWORK_ENGINEER")
                 || HasPermission("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033"));
-        public bool CanView => IsActive && (IsAdministrator || IsProjectManagementLead || IsProjectManager || IsEngineer || HasPermission("VIEW_PROJECT_FORGE_033"));
+        public bool CanView => IsActive && (IsAdministrator || IsProjectManagementLead || IsProjectManager || IsEngineer
+            || IsAccountExecutive || IsSolutionArchitect
+            || HasPermission("VIEW_PROJECT_FORGE_033") || HasPermission("VIEW_ASSOCIATED_PROJECT_FORGE_033"));
         public bool CanManage => IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("MANAGE_PROJECT_FORGE_033");
+        public bool CanReviewPlan => CanView && (CanManage || HasPermission("REVIEW_PROJECT_FORGE_PLAN_033"));
+        public bool CanEditReviewPlan => CanView && (CanManage || HasPermission("EDIT_PROJECT_FORGE_REVIEW_PLAN_033"));
+        public bool CanAdoptPlan => CanManage;
         public bool CanUseAi => CanManage && (IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("USE_PROJECT_FORGE_AI_033"));
         public bool CanEditAssignedEstimate => IsEngineer || HasPermission("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033");
         public bool CanUpdateAssignedTaskStatus => HasPermission("UPDATE_ASSIGNED_PROJECT_FORGE_TASK_STATUS_033");
         public bool CanViewFinancials => CanManage && !IsViewAs;
         public bool CanViewAiCitations => CanManage && !IsViewAs;
         public bool CanSelectProjectManager => IsAdministrator || IsProjectManagementLead;
-        public bool CanViewAllScopedTasks => IsAdministrator || IsProjectManagementLead || IsProjectManager;
+        public bool CanViewAllScopedTasks => IsAdministrator || IsProjectManagementLead || IsProjectManager
+            || IsEngineeringLead || IsAccountExecutive || IsSolutionArchitect
+            || HasPermission("VIEW_ASSOCIATED_PROJECT_FORGE_033");
         public object ToResponse(Guid? selectedManager) => new
         {
             actualUserId = ActualUserId, effectiveUserId = EffectiveUserId, DisplayName, Email,
             roles = Roles.OrderBy(value => value), isViewAs = IsViewAs,
-            scope = IsAdministrator ? "all_projects" : IsProjectManagementLead ? "managed_pm_team_projects" : IsProjectManager ? "own_managed_projects" : "assigned_projects_and_tasks",
+            scope = IsAdministrator ? "all_projects"
+                : IsProjectManagementLead ? "managed_pm_team_projects"
+                : IsProjectManager ? "own_managed_projects"
+                : IsEngineeringLead ? "assigned_engineering_team_projects"
+                : IsAccountExecutive ? "associated_account_executive_projects"
+                : IsSolutionArchitect ? "associated_solution_architect_projects"
+                : "assigned_projects_and_tasks",
+            capabilityLabel = CanManage ? "Project Owner — Full Control"
+                : CanEditReviewPlan ? "Engineering Collaborator — Planner Edit"
+                : CanReviewPlan ? "Technical Reviewer — Review and Comment"
+                : "Project Stakeholder — Read Only",
+            accessContract = ProjectPlanningAccessResolver.Contract,
             canSelectProjectManager = CanSelectProjectManager, selectedProjectManagerUserId = selectedManager,
-            canManage = CanManage && !IsViewAs, canUseAi = CanUseAi && !IsViewAs, canEditAssignedEstimate = CanEditAssignedEstimate && !IsViewAs,
-            canUpdateAssignedTaskStatus = CanUpdateAssignedTaskStatus && !IsViewAs, canViewFinancials = CanViewFinancials,
+            canManage = CanManage && !IsViewAs,
+            canAdministerPlanner = CanManage && !IsViewAs,
+            canReviewPlan = CanReviewPlan && !IsViewAs,
+            canEditReviewPlan = CanEditReviewPlan && !IsViewAs,
+            canAdoptPlan = CanAdoptPlan && !IsViewAs,
+            canUseAi = CanUseAi && !IsViewAs,
+            canEditAssignedEstimate = CanEditAssignedEstimate && !IsViewAs,
+            canUpdateAssignedTaskStatus = CanUpdateAssignedTaskStatus && !IsViewAs,
+            canViewFinancials = CanViewFinancials,
             serverAuthorized = true
         };
     }

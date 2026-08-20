@@ -99,8 +99,41 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
               AND (
                   actor.broad_scope
                   OR project.project_manager_user_id=@actor
+                  OR project.account_executive_user_id=@actor
+                  OR project.solution_architect_user_id=@actor
                   OR EXISTS(SELECT 1 FROM project_assignments assignment
-                            WHERE assignment.project_id=plan.project_id AND assignment.user_id=@actor)
+                            WHERE assignment.project_id=plan.project_id AND assignment.user_id=@actor
+                              AND assignment.effective_start_date<=CURRENT_DATE
+                              AND (assignment.effective_end_date IS NULL OR assignment.effective_end_date>=CURRENT_DATE))
+                  OR EXISTS(SELECT 1 FROM project_planning_collaborators collaborator
+                            WHERE collaborator.project_id=plan.project_id AND collaborator.user_id=@actor
+                              AND collaborator.module_code='066' AND collaborator.is_active=TRUE
+                              AND collaborator.effective_start_date<=CURRENT_DATE
+                              AND (collaborator.effective_end_date IS NULL OR collaborator.effective_end_date>=CURRENT_DATE))
+                  OR EXISTS(
+                      SELECT 1 FROM project_assignments team_assignment
+                      JOIN app_users team_member ON team_member.user_id=team_assignment.user_id AND team_member.is_active=TRUE
+                      WHERE team_assignment.project_id=plan.project_id
+                        AND team_assignment.effective_start_date<=CURRENT_DATE
+                        AND (team_assignment.effective_end_date IS NULL OR team_assignment.effective_end_date>=CURRENT_DATE)
+                        AND EXISTS(SELECT 1 FROM app_user_role_assignments lead_assignment
+                                   JOIN app_roles lead_role ON lead_role.app_role_id=lead_assignment.app_role_id AND lead_role.is_active=TRUE
+                                   WHERE lead_assignment.user_id=@actor AND lead_assignment.is_active=TRUE
+                                     AND lead_role.role_code IN ('ENGINEERING_LEAD','ENGINEERING_TEAM_LEAD'))
+                        AND (
+                          EXISTS(SELECT 1 FROM reporting_relationships relationship
+                                 WHERE relationship.employee_user_id=team_member.user_id
+                                   AND (relationship.manager_user_id=@actor OR relationship.team_lead_user_id=@actor)
+                                   AND relationship.effective_start_date<=CURRENT_DATE
+                                   AND (relationship.effective_end_date IS NULL OR relationship.effective_end_date>=CURRENT_DATE))
+                          OR EXISTS(SELECT 1 FROM projectpulse_team_scope_assignments scope
+                                    WHERE scope.scoped_user_id=@actor AND scope.is_active=TRUE
+                                      AND scope.scope_type='engineering_team_lead'
+                                      AND ((scope.team_name IS NOT NULL AND lower(COALESCE(team_member.team_name,''))=lower(scope.team_name))
+                                        OR (scope.department_name IS NOT NULL AND lower(COALESCE(team_member.department_name,team_member.department,''))=lower(scope.department_name))
+                                        OR scope.manager_user_id=team_member.user_id))
+                        )
+                  )
               )
             ORDER BY plan.updated_at DESC,plan.plan_name
             LIMIT 500;
@@ -362,42 +395,36 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
     private static async Task<bool> CanViewPlanAsync(
         NpgsqlConnection connection, Guid actor, Guid planId, CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT EXISTS(
-                SELECT 1 FROM project_flowhive_plans plan
-                JOIN projects project ON project.project_id=plan.project_id
-                WHERE plan.plan_id=@plan_id
-                  AND EXISTS(
-                      SELECT 1 FROM app_user_role_assignments ura
-                      JOIN app_roles role ON role.app_role_id=ura.app_role_id AND role.is_active=TRUE
-                      JOIN app_role_permissions grant_row ON grant_row.app_role_id=role.app_role_id
-                      JOIN app_permissions permission ON permission.app_permission_id=grant_row.app_permission_id
-                      WHERE ura.user_id=@actor AND ura.is_active=TRUE
-                        AND permission.permission_code='VIEW_PROJECT_FLOWHIVE_066')
-                  AND (
-                    project.project_manager_user_id=@actor
-                    OR EXISTS(SELECT 1 FROM project_assignments a WHERE a.project_id=project.project_id AND a.user_id=@actor)
-                    OR EXISTS(SELECT 1 FROM app_user_role_assignments ura
-                              JOIN app_roles role ON role.app_role_id=ura.app_role_id AND role.is_active=TRUE
-                              WHERE ura.user_id=@actor AND ura.is_active=TRUE AND role.role_code IN (
-                                  'SUPER_ADMINISTRATOR','SYSTEM_ADMINISTRATOR','ADMINISTRATOR','PROJECT_TEAM_COORDINATOR',
-                                  'PROJECT_COORDINATOR','PROJECT_MANAGEMENT_LEAD','PROJECT_MANAGEMENT_TEAM_LEAD','PM_TEAM_LEAD'))));
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(
+            "SELECT project_id FROM project_flowhive_plans WHERE plan_id=@plan_id;",
+            connection);
         command.Parameters.AddWithValue("plan_id", planId);
-        command.Parameters.AddWithValue("actor", actor);
-        return (bool?)await command.ExecuteScalarAsync(cancellationToken) == true;
+        var project = await command.ExecuteScalarAsync(cancellationToken);
+        if (project is not Guid projectId) return false;
+        var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection, actor, projectId, "066", cancellationToken);
+        return access.CanView;
     }
 
-    private static Task<bool> CanManageProjectAsync(
+    private static async Task<bool> CanManageProjectAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actor, Guid projectId,
-        CancellationToken cancellationToken) =>
-        HasProjectPermissionAsync(connection, transaction, actor, projectId, "MANAGE_PROJECT_FLOWHIVE_066", cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        _ = transaction;
+        var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection, actor, projectId, "066", cancellationToken);
+        return access.CanEditPlanner;
+    }
 
-    private static Task<bool> CanBaselineProjectAsync(
+    private static async Task<bool> CanBaselineProjectAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actor, Guid projectId,
-        CancellationToken cancellationToken) =>
-        HasProjectPermissionAsync(connection, transaction, actor, projectId, "BASELINE_PROJECT_FLOWHIVE_066", cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        _ = transaction;
+        var access = await ProjectPlanningAccessResolver.ResolveForActorAsync(
+            connection, actor, projectId, "066", cancellationToken);
+        return access.CanAdoptBaseline;
+    }
 
     private static async Task<bool> HasProjectPermissionAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid actor, Guid projectId,
