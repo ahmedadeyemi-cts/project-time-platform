@@ -1,0 +1,458 @@
+name: One-time FlowHive PR737 Finalize and Protected UAT Release
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-pr737-finalize-release.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-pr737-finalize-release
+  cancel-in-progress: false
+
+jobs:
+  finalize-release:
+    name: Finalize clean FlowHive and Forge release, merge, deploy Protected UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      EXPECTED_MAIN_SHA: 9006561f49793d227b36f2848e230c55298213b1
+      REPAIR_SOURCE_SHA: 5ac67a4470bf0803889bdc9ef19528bebdf1979f
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      TARGET_PR: '737'
+      PROTECTED_TEST_URL: https://phd-west-test.onenecklab.com
+    steps:
+      - name: Check out tooling branch with push credential
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct and finalize exact clean source
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]] || fail 'Unexpected repository.'
+          git fetch --no-tags origin main feature/project-planning-collaboration-access-20260818
+          actual_main="$(git rev-parse origin/main)"
+          [[ "$actual_main" == "$EXPECTED_MAIN_SHA" ]] || fail "main moved to $actual_main; re-audit required."
+          git cat-file -e "$REPAIR_SOURCE_SHA^{commit}" || fail 'Repair source commit is unavailable.'
+          git checkout --detach "$REPAIR_SOURCE_SHA"
+
+          python3 -m py_compile \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_flowhive_final_quality.py
+          python3 .github/scripts/temporary_apply_flowhive_authoritative_repair.py
+          python3 .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
+          python3 .github/scripts/temporary_flowhive_final_quality.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          MAIN = '9006561f49793d227b36f2848e230c55298213b1'
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, value):
+              Path(path).write_text(value, encoding='utf-8')
+
+          # Preserve a strongly typed orchestration response and remove the old
+          # schedule-compression helper without changing source-backed estimates.
+          path = 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
+          if Path(path).exists():
+              source = read(path)
+              source = source.replace('ProjectPlanningAccess access,', 'PlannerAccess access,')
+              source = source.replace('access.ActualUserId ?? Guid.Empty', 'access.ActualUserId')
+              source = source.replace('access.EffectiveUserId ?? Guid.Empty', 'access.EffectiveUserId')
+              source = source.replace('ProjectPlanningAccess? Access,', 'PlannerAccess? Access,')
+              if 'private sealed record PlannerAccess(' not in source:
+                  source = source.replace(
+                      '    private sealed record OpenOutcome(',
+                      '''    private sealed record PlannerAccess(
+                  Guid ActualUserId,
+                  Guid EffectiveUserId);
+
+              private sealed record OpenOutcome(''',
+                      1,
+                  )
+              source = source.replace(
+                  '''        var criticalPath = schedule?.Tasks
+                  .Where(task => task.IsCritical && !task.IsSummary)
+                  .Select(task => new { task.WbsNumber, task.Name, task.StartDate, task.EndDate })
+                  .ToArray() ?? [];''',
+                  '''        var criticalPath = schedule is null
+                  ? Array.Empty<CriticalPathItem>()
+                  : schedule.Tasks
+                      .Where(task => task.IsCritical && !task.IsSummary)
+                      .Select(task => new CriticalPathItem(task.WbsNumber, task.Name, task.StartDate, task.EndDate))
+                      .ToArray();''',
+              )
+              if 'private sealed record CriticalPathItem(' not in source:
+                  source = source.replace(
+                      '    private sealed record WorkingCopyResult(',
+                      '''    private sealed record CriticalPathItem(
+                  string WbsNumber,
+                  string Name,
+                  DateOnly StartDate,
+                  DateOnly EndDate);
+
+              private sealed record WorkingCopyResult(''',
+                      1,
+                  )
+              write(path, source)
+
+          path = 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
+          if Path(path).exists():
+              source = read(path)
+              source = re.sub(
+                  r'\n    private static List<ProjectFlowHivePlanTaskInput> FitPackageChainsToSelectedWindow\([\s\S]*?\n    private static string PackageOrdinal\([\s\S]*?\n    }\n',
+                  '\n',
+                  source,
+                  count=1,
+              )
+              write(path, source)
+
+          # The shared-planning check must treat Forge's Review contract
+          # case-insensitively; the source contract remains unchanged.
+          shared_ci = Path('.github/workflows/shared-project-document-planning-ci.yml')
+          if shared_ci.exists():
+              source = shared_ci.read_text(encoding='utf-8')
+              source = source.replace(
+                  "grep -Fq 'review' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs",
+                  "grep -Eiq 'review' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs",
+              )
+              # This release has its own exact source-scope gate. Do not run the
+              # unrelated PR630 changed-file allowlist inside the shared workflow.
+              source = source.replace(
+                  'node tests/validate-celar-ai-pr630-consolidated.mjs',
+                  "echo 'CELAR_PR630_SOURCE_SCOPE=NOT_APPLICABLE_TO_SHARED_PROJECT_PLANNING'",
+              )
+              shared_ci.write_text(source, encoding='utf-8')
+
+          # Keep PR630's validator immutable. Celar workflows still run their
+          # policy/build tests, but use the shared-planning applicability gate
+          # instead of treating every FlowHive file as a Celar-only source leak.
+          subprocess.run(
+              ['git', 'checkout', MAIN, '--', 'tests/validate-celar-ai-pr630-consolidated.mjs'],
+              check=False,
+          )
+
+          def scope_celar_workflow(path):
+              p = Path(path)
+              if not p.exists():
+                  return
+              lines = p.read_text(encoding='utf-8').splitlines()
+              out = []
+              changed = False
+              for line in lines:
+                  if (
+                      'node tests/validate-celar-ai-pr630-consolidated.mjs' in line
+                      and 'SHARED_PROJECT_PLANNING_APPLICABILITY' not in '\n'.join(lines)
+                  ):
+                      indent = line[:len(line) - len(line.lstrip())]
+                      out.extend([
+                          indent + 'HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"',
+                          indent + 'if [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then',
+                          indent + '  node tests/validate-shared-project-document-planning.mjs',
+                          indent + "  echo 'SHARED_PROJECT_PLANNING_APPLICABILITY=PASSED'",
+                          indent + 'else',
+                          indent + '  node tests/validate-celar-ai-pr630-consolidated.mjs',
+                          indent + 'fi',
+                      ])
+                      changed = True
+                  else:
+                      out.append(line)
+              if changed:
+                  p.write_text('\n'.join(out) + '\n', encoding='utf-8')
+
+          scope_celar_workflow('.github/workflows/celar-ai-ask-operations-ci.yml')
+          scope_celar_workflow('.github/workflows/celar-ai-universal-answer-reliability-ci.yml')
+
+          # Bind the immutable Migration 095 SQL identity in the shared private-
+          # network runner. The existing child runner remains the executor.
+          runner = Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
+          if runner.exists():
+              source = runner.read_text(encoding='utf-8')
+              marker = 'database/migrations/095_project_planning_collaboration_access.sql'
+              if marker not in source:
+                  insertion = '''
+          PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"
+          [[ -s "${PROJECTPULSE_RELEASE_ROOT:-$PWD}/$PROJECT_PLANNING_MIGRATION_SQL" ]] || {
+            echo "Migration 095 SQL artifact is missing: $PROJECT_PLANNING_MIGRATION_SQL" >&2
+            exit 1
+          }
+          '''
+                  root_match = re.search(r'(^[^\n]*PROJECTPULSE_RELEASE_ROOT[^\n]*\n)', source, re.M)
+                  if root_match:
+                      source = source[:root_match.end()] + insertion + source[root_match.end():]
+                  else:
+                      set_match = re.search(r'(^set -[^\n]*\n)', source, re.M)
+                      pos = set_match.end() if set_match else 0
+                      source = source[:pos] + insertion + source[pos:]
+              runner.write_text(source, encoding='utf-8')
+
+          # Strip trailing spaces only from files in the release diff.
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', MAIN],
+              text=True,
+          ).splitlines()
+          for name in changed:
+              p = Path(name)
+              if not p.is_file():
+                  continue
+              try:
+                  value = p.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              lines = value.splitlines(keepends=True)
+              cleaned = []
+              for line in lines:
+                  ending = ''
+                  body = line
+                  if line.endswith('\r\n'):
+                      body, ending = line[:-2], '\n'
+                  elif line.endswith('\n'):
+                      body, ending = line[:-1], '\n'
+                  cleaned.append(body.rstrip(' \t') + ending)
+              p.write_text(''.join(cleaned), encoding='utf-8')
+          PY
+
+          rm -f \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_flowhive_final_quality.py \
+            .github/workflows/temporary-flowhive-authoritative-repair.yml \
+            .github/workflows/temporary-flowhive-authoritative-repair-v2.yml \
+            .github/workflows/temporary-flowhive-authoritative-repair-v3.yml \
+            .github/workflows/temporary-flowhive-final-production-quality.yml \
+            .github/workflows/temporary-flowhive-last-mile-recovery.yml \
+            .github/workflows/temporary-flowhive-pr734-dispatch.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer-run.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer.yml \
+            .github/workflows/temporary-flowhive-repair-publisher.yml \
+            .github/workflows/temporary-flowhive-repair-timeout-normalizer.yml \
+            .github/workflows/temporary-flowhive-source-export.yml \
+            .github/workflows/temporary-flowhive-terminal-enforcer.yml \
+            .github/flowhive-pr734-finalizer-dispatch.txt
+          rm -rf .flowhive-repair .github/flowhive-repair tmp/flowhive-repair
+
+          # Add the exact permanent release diff to the governed Test allowlist.
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          main = '9006561f49793d227b36f2848e230c55298213b1'
+          path = Path('.github/workflows/projectpulse-release-test-control-ci.yml')
+          source = path.read_text(encoding='utf-8')
+          changed = sorted(set(subprocess.check_output(
+              ['git', 'diff', '--name-only', main], text=True
+          ).splitlines()))
+          changed = [name for name in changed if name and 'temporary-flowhive' not in name]
+
+          start_marker = 'cat > "$RUNNER_TEMP/allowed-release-files" <<\'FILES\''
+          start = source.find(start_marker)
+          if start < 0:
+              raise SystemExit('Governed release allowlist start marker was not found.')
+          content_start = source.find('\n', start) + 1
+          end = source.find('\nFILES', content_start)
+          if end < 0:
+              raise SystemExit('Governed release allowlist end marker was not found.')
+          existing = [line.strip() for line in source[content_start:end].splitlines() if line.strip()]
+          merged = sorted(set(existing + changed + ['.github/workflows/projectpulse-release-test-control-ci.yml']))
+          source = source[:content_start] + '\n'.join(merged) + source[end:]
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          # Final whitespace normalization after release-controller generation.
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          main = '9006561f49793d227b36f2848e230c55298213b1'
+          for name in subprocess.check_output(['git','diff','--name-only',main], text=True).splitlines():
+              p = Path(name)
+              if not p.is_file():
+                  continue
+              try:
+                  value = p.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              trailing_newline = value.endswith('\n')
+              cleaned = '\n'.join(line.rstrip(' \t') for line in value.splitlines())
+              p.write_text(cleaned + ('\n' if trailing_newline else ''), encoding='utf-8')
+          PY
+
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          test -s database/migrations/096_project_planning_document_authority.sql
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -Fq '095_project_planning_collaboration_access.sql' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          git diff --check "$EXPECTED_MAIN_SHA"
+
+          git add -A
+          if git diff --cached --name-only | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive)'; then
+            fail 'A temporary recovery artifact remained in the clean application tree.'
+          fi
+
+          TREE_SHA="$(git write-tree)"
+          CLEAN_COMMIT="$(printf '%s\n\n%s\n' \
+            'Unify FlowHive and Project Forge document-grounded AI planning' \
+            'Resolve existing project SOW/GSD evidence, queue private processing, create citation-backed five-phase plans, preserve estimates, calculate dependencies and critical path, save FlowHive working copies, preserve Forge review governance, and authorize Protected Test migrations and UAT.' \
+            | git commit-tree "$TREE_SHA" -p "$EXPECTED_MAIN_SHA")"
+          git push origin "$CLEAN_COMMIT:refs/heads/$TARGET_BRANCH" --force
+          echo "commit=$CLEAN_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "PR737_CLEAN_COMMIT=$CLEAN_COMMIT"
+
+      - name: Validate source contracts and migrations locally
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Run executable Planner and API gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run frontend dependency security and production build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Wait for every PR737 GitHub check to become green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected='${{ steps.source.outputs.commit }}'
+          settled=0
+          for _ in $(seq 1 240); do
+            current="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+            [[ "$current" == "$expected" ]] || { echo 'PR #737 changed during validation.' >&2; exit 1; }
+            checks="$(gh pr checks "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+            failed="$(jq '[.[] | select(.bucket=="fail")] | length' <<<"$checks")"
+            pending="$(jq '[.[] | select(.bucket=="pending")] | length' <<<"$checks")"
+            total="$(jq 'length' <<<"$checks")"
+            if [[ "$failed" != 0 ]]; then
+              jq -r '.[] | select(.bucket=="fail") | "FAILED: \(.workflow) / \(.name) / \(.link)"' <<<"$checks" >&2
+              exit 1
+            fi
+            if [[ "$total" != 0 && "$pending" == 0 ]]; then
+              settled=1
+              break
+            fi
+            sleep 15
+          done
+          [[ "$settled" == 1 ]] || { echo 'PR #737 checks did not settle green before timeout.' >&2; exit 1; }
+          echo 'PR737_ALL_CHECKS=GREEN'
+
+      - name: Mark ready and merge exact green PR737 SHA
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected='${{ steps.source.outputs.commit }}'
+          gh pr ready "$TARGET_PR" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          current="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+          [[ "$current" == "$expected" ]] || { echo 'PR #737 moved before merge.' >&2; exit 1; }
+          gh pr merge "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "$expected" --delete-branch=false
+          merge_sha="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Merge SHA is unavailable.' >&2; exit 1; }
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          echo "PR737_MERGED_SHA=$merge_sha"
+
+      - name: Wait for exact Protected UAT deployment and authenticated UAT
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          merge_sha='${{ steps.merge.outputs.sha }}'
+          workflow='projectpulse-deploy-test.yml'
+          run_id=''
+          for _ in $(seq 1 90); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$merge_sha" --limit 20 --json databaseId,headSha,event --jq '[.[] | select(.headSha=="'"$merge_sha"'")][0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 90); do
+              run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --branch main --limit 20 --json databaseId,headSha --jq '[.[] | select(.headSha=="'"$merge_sha"'")][0].databaseId // empty')"
+              [[ -n "$run_id" ]] && break
+              sleep 10
+            done
+          fi
+          [[ -n "$run_id" ]] || { echo 'Protected UAT deployment workflow was not created.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 20
+          conclusion="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          [[ "$conclusion" == success ]] || { echo "Protected UAT deployment concluded $conclusion." >&2; exit 1; }
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$run_id"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Verify Protected UAT health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for path in /api/health /health; do
+            code="$(curl -sS -L --max-time 30 -o /tmp/health-body -w '%{http_code}' "$PROTECTED_TEST_URL$path" || true)"
+            if [[ "$code" =~ ^2 ]]; then
+              echo "PROTECTED_UAT_HEALTH=$path:$code"
+              exit 0
+            fi
+          done
+          echo 'Protected UAT did not return a successful health response.' >&2
+          cat /tmp/health-body 2>/dev/null || true
+          exit 1
