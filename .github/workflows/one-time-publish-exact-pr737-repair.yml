@@ -1,4 +1,4 @@
-name: One-time Dispatch Complete PR737 Release
+name: One-time Observe Complete PR737 Release
 
 on:
   pull_request:
@@ -6,28 +6,42 @@ on:
     types: [reopened]
 
 permissions:
-  actions: write
+  actions: read
   contents: read
+  pull-requests: write
 
 concurrency:
-  group: one-time-dispatch-complete-pr737-release
-  cancel-in-progress: false
+  group: one-time-observe-complete-pr737-release
+  cancel-in-progress: true
 
 jobs:
-  dispatch:
+  observe:
     if: github.event.pull_request.number == 736
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Dispatch the registered terminal release workflow
+      - name: Record the latest terminal release run
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh api \
-            --method POST \
-            "repos/${GITHUB_REPOSITORY}/actions/workflows/one-time-complete-flowhive-pr737.yml/dispatches" \
-            -f ref='tooling/one-time-flowhive-clean-publisher-20260819'
-          echo 'FLOWHIVE_PR737_TERMINAL_WORKFLOW_DISPATCHED=TRUE'
-          echo 'PRODUCTION_MUTATION=NONE'
+          json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/one-time-complete-flowhive-pr737.yml/runs?event=workflow_dispatch&per_page=10")"
+          run_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$json")"
+          status="$(jq -r '.workflow_runs[0].status // empty' <<<"$json")"
+          conclusion="$(jq -r '.workflow_runs[0].conclusion // ""' <<<"$json")"
+          head_sha="$(jq -r '.workflow_runs[0].head_sha // empty' <<<"$json")"
+          created_at="$(jq -r '.workflow_runs[0].created_at // empty' <<<"$json")"
+          test -n "$run_id"
+          body=$(cat <<EOF
+          <!-- flowhive-pr737-terminal-observer -->
+          Terminal release run: ${run_id}
+          Status: ${status}
+          Conclusion: ${conclusion:-pending}
+          Head SHA: ${head_sha}
+          Created: ${created_at}
+          Production mutation: NONE
+          EOF
+          )
+          gh pr comment 736 --repo "$GITHUB_REPOSITORY" --body "$body"
+          printf 'TERMINAL_RUN_ID=%s\nTERMINAL_STATUS=%s\nTERMINAL_CONCLUSION=%s\n' "$run_id" "$status" "${conclusion:-pending}"
