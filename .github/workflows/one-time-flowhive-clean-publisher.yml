@@ -1,10 +1,6 @@
 name: One-time FlowHive Clean Publisher
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/one-time-flowhive-clean-publisher.yml'
   push:
     branches:
       - tooling/one-time-flowhive-clean-publisher-20260819
@@ -21,276 +17,52 @@ concurrency:
 
 jobs:
   publish:
-    name: Rebuild and publish clean shared planning branch
+    name: Publish exact clean FlowHive and Forge source
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       MAIN_SHA: 9006561f49793d227b36f2848e230c55298213b1
-      DURABLE_SOURCE_SHA: af375ce3a6642b4e831ac22474d9fc871f2e4ec3
       REPAIR_SOURCE_SHA: 5ac67a4470bf0803889bdc9ef19528bebdf1979f
       TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      FINAL_DELTA_SHA256: 24fcb6031e8eb46735edbed604b9c3d48f0b3117c02fb4fce079d6b0ae922364
     steps:
       - name: Check out tooling branch with push credential
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Reconstruct exact reviewed source
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          fail() { echo "ERROR: $*" >&2; exit 1; }
-          [[ "$GITHUB_REPOSITORY" == ahmedadeyemi-cts/project-time-platform ]] || fail 'Unexpected repository.'
-          git fetch --no-tags origin main feature/project-planning-collaboration-access-20260818
-          [[ "$(git rev-parse origin/main)" == "$MAIN_SHA" ]] || fail 'main moved after the reviewed boundary; re-audit is required.'
-          git cat-file -e "$DURABLE_SOURCE_SHA^{commit}" || fail 'Durable source commit is unavailable.'
-          git cat-file -e "$REPAIR_SOURCE_SHA^{commit}" || fail 'Repair source commit is unavailable.'
-
-          git checkout --detach "$DURABLE_SOURCE_SHA"
-          install -d -m 0700 .github/scripts
-          for script in \
-            temporary_apply_flowhive_authoritative_repair.py \
-            temporary_finalize_flowhive_authoritative_repair.py \
-            temporary_flowhive_final_quality.py; do
-            git show "$REPAIR_SOURCE_SHA:.github/scripts/$script" > ".github/scripts/$script"
-            python3 -m py_compile ".github/scripts/$script"
-          done
-
-          python3 .github/scripts/temporary_apply_flowhive_authoritative_repair.py
-          python3 .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
-          python3 .github/scripts/temporary_flowhive_final_quality.py
-
-      - name: Stabilize shared FlowHive and Forge implementation
+      - name: Execute checksum-pinned final publisher
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          def read(path):
-              return Path(path).read_text(encoding='utf-8')
-          def write(path, value):
-              Path(path).write_text(value, encoding='utf-8')
+          workflow = Path('.github/workflows/one-time-flowhive-clean-publisher-v2.yml')
+          source = workflow.read_text(encoding='utf-8').splitlines()
+          marker = '        run: |'
+          try:
+              start = source.index(marker) + 1
+          except ValueError as exc:
+              raise SystemExit('Final publisher run block is missing.') from exc
 
-          path='src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
-          if Path(path).exists():
-              source=read(path)
-              source=source.replace('ProjectPlanningAccess access,','PlannerAccess access,')
-              source=source.replace('access.ActualUserId ?? Guid.Empty','access.ActualUserId')
-              source=source.replace('access.EffectiveUserId ?? Guid.Empty','access.EffectiveUserId')
-              source=source.replace('ProjectPlanningAccess? Access,','PlannerAccess? Access,')
-              source=source.replace(
-              '''        return new OpenOutcome(connection, access, null);
-              }
+          script = []
+          for line in source[start:]:
+              if line.strip() and len(line) - len(line.lstrip(' ')) <= 8:
+                  break
+              if not line.strip():
+                  script.append('')
+                  continue
+              if not line.startswith('          '):
+                  raise SystemExit(f'Unexpected final publisher indentation: {line!r}')
+              script.append(line[10:])
 
-              private static T? Deserialize<T>(string value)''',
-              '''        return new OpenOutcome(
-                  connection,
-                  new PlannerAccess(
-                      access.ActualUserId ?? Guid.Empty,
-                      access.EffectiveUserId ?? Guid.Empty),
-                  null);
-              }
-
-              private static T? Deserialize<T>(string value)''')
-              if 'private sealed record PlannerAccess(' not in source:
-                  source=source.replace('    private sealed record OpenOutcome(','''    private sealed record PlannerAccess(
-                  Guid ActualUserId,
-                  Guid EffectiveUserId);
-
-              private sealed record OpenOutcome(''',1)
-              source=source.replace(
-              '''        var criticalPath = schedule?.Tasks
-                  .Where(task => task.IsCritical && !task.IsSummary)
-                  .Select(task => new { task.WbsNumber, task.Name, task.StartDate, task.EndDate })
-                  .ToArray() ?? [];''',
-              '''        var criticalPath = schedule is null
-                  ? Array.Empty<CriticalPathItem>()
-                  : schedule.Tasks
-                      .Where(task => task.IsCritical && !task.IsSummary)
-                      .Select(task => new CriticalPathItem(task.WbsNumber, task.Name, task.StartDate, task.EndDate))
-                      .ToArray();''')
-              source=source.replace('                    : []\n            },','                    : Array.Empty<string>()\n            },')
-              if 'private sealed record CriticalPathItem(' not in source:
-                  source=source.replace('    private sealed record WorkingCopyResult(','''    private sealed record CriticalPathItem(
-                  string WbsNumber,
-                  string Name,
-                  DateOnly StartDate,
-                  DateOnly EndDate);
-
-              private sealed record WorkingCopyResult(''',1)
-              source=source.replace(
-                  '                reader.GetInt32(14),\n                reader.GetInt32(15)));',
-                  '                reader.GetInt32(14),\n                reader.GetInt32(15))\n            {\n                ProjectId = projectId\n            });')
-              source=source.replace(
-              '''                           OR c.citation_anchor ILIKE '%scope%'
-                                         OR c.citation_anchor ILIKE '%service%'))''',
-              '''                           OR c.citation_anchor ILIKE '%scope%'
-                                         OR c.citation_anchor ILIKE '%service%'
-                                         OR c.chunk_text ILIKE '%scope of services%'
-                                         OR c.chunk_text ILIKE '%in scope%'
-                                         OR c.chunk_text ILIKE '%out of scope%'
-                                         OR c.chunk_text ILIKE '%deliverable%'
-                                         OR c.chunk_text ILIKE '%responsibilit%'))''')
-              source=source.replace(
-              '''            await using var reader = await schema.ExecuteReaderAsync(cancellationToken);
-                          await reader.ReadAsync(cancellationToken);
-                          if (!reader.GetBoolean(0) || !reader.GetBoolean(1))
-                          {
-                              await connection.DisposeAsync();''',
-              '''            await using var reader = await schema.ExecuteReaderAsync(cancellationToken);
-                          await reader.ReadAsync(cancellationToken);
-                          var migrationReady = reader.GetBoolean(0);
-                          var runTableReady = reader.GetBoolean(1);
-                          await reader.CloseAsync();
-                          if (!migrationReady || !runTableReady)
-                          {
-                              await connection.DisposeAsync();''')
-              write(path,source)
-
-          path='src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
-          source=read(path)
-          source=re.sub(r'\n    private static List<ProjectFlowHivePlanTaskInput> FitPackageChainsToSelectedWindow\([\s\S]*?\n    private static string PackageOrdinal\([\s\S]*?\n    }\n','\n',source,count=1)
-          write(path,source)
-
-          path='scripts/release-test/verify-runtime.mjs'
-          if Path(path).exists():
-              source=read(path)
-              source=re.sub(r'const expectedSource = "[0-9a-f]{40}";','const expectedSource = (process.env.SOURCE_SHA || "").trim();',source,count=1)
-              write(path,source)
-
-          path='tests/validate-celar-ai-pr630-consolidated.mjs'
-          if Path(path).exists():
-              source=read(path).replace('/api/project-flowhive/projects/${selectedProjectId}/ai-planner/runs','/api/project-flowhive/ai/production-generate')
-              write(path,source)
-
-          path='src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs'
-          if Path(path).exists():
-              source=read(path).replace('AI draft studio','AI Planning Workspace').replace('AI Draft Studio','AI Planning Workspace')
-              write(path,source)
-
-          path='src/backend/ProjectTime.Api/Modules/CelarAiProductionPlatformModule.cs'
-          source=read(path)
-          marker='project-scoped /api/project-flowhive/projects/{projectId}/ai-planner/runs'
-          if marker not in source:
-              source=source.replace('public static partial class CelarAiProductionPlatformModule',f'// FlowHive UI orchestration uses the {marker} contract; production-generate remains compatibility-only.\npublic static partial class CelarAiProductionPlatformModule',1)
-          write(path,source)
+          if not script or script[0] != 'set -Eeuo pipefail':
+              raise SystemExit('Final publisher script did not decode safely.')
+          target = Path('/tmp/flowhive-final-publisher.sh')
+          target.write_text('\n'.join(script) + '\n', encoding='utf-8')
           PY
-
-      - name: Wire exact Test migrations and deployment controls
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          path=Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
-          source=path.read_text(encoding='utf-8')
-          if 'FLOWHIVE_AUTHORITY_MIGRATION_SQL=' not in source:
-              match=re.search(r'RUN_SCOPE=.*\n',source)
-              if not match: raise SystemExit('RUN_SCOPE anchor missing')
-              source=source[:match.end()]+'FLOWHIVE_AUTHORITY_MIGRATION_SQL="database/migrations/094_flowhive_canonical_sow_authority.sql"\nPROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"\nPROJECTPULSE_RELEASE_ROOT="${PROJECTPULSE_RELEASE_ROOT:-$(pwd -P)}"\n'+source[match.end():]
-              anchor='[[ -n "$RESOURCE_GROUP" ]] || fail'
-              source=source.replace(anchor,'[[ -s "$PROJECTPULSE_RELEASE_ROOT/$FLOWHIVE_AUTHORITY_MIGRATION_SQL" ]] || fail "Migration 094 SQL artifact is missing."\n[[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_MIGRATION_SQL" ]] || fail "Migration 095 SQL artifact is missing."\n'+anchor,1)
-          if 'build-and-run-flowhive-authority-migration-094-job.sh' not in source:
-              marker='PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \\\n  bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
-              if marker not in source: raise SystemExit('Migration 095 invocation missing')
-              source=source.replace(marker,'PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \\\n  bash scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh\necho \'MIGRATION_094=APPLIED_AND_VERIFIED\'\n\n'+marker,1)
-          path.write_text(source,encoding='utf-8')
-
-          deploy=Path('.github/workflows/projectpulse-deploy-test.yml')
-          if deploy.exists():
-              source=deploy.read_text(encoding='utf-8')
-              source=source.replace('Apply and verify Migrations 086, 088, and 093 inside Test private network','Apply and verify Migrations 086, 088, 093, 094, and 095 inside Test private network')
-              deploy.write_text(source,encoding='utf-8')
-          PY
-          chmod 0755 scripts/release-test/*.sh
-
-      - name: Remove every temporary recovery artifact
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          rm -f \
-            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
-            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
-            .github/scripts/temporary_flowhive_final_quality.py \
-            .github/workflows/temporary-flowhive-authoritative-repair.yml \
-            .github/workflows/temporary-flowhive-authoritative-repair-v2.yml \
-            .github/workflows/temporary-flowhive-authoritative-repair-v3.yml \
-            .github/workflows/temporary-flowhive-final-production-quality.yml \
-            .github/workflows/temporary-flowhive-last-mile-recovery.yml \
-            .github/workflows/temporary-flowhive-pr734-dispatch.yml \
-            .github/workflows/temporary-flowhive-pr734-finalizer-run.yml \
-            .github/workflows/temporary-flowhive-pr734-finalizer.yml \
-            .github/workflows/temporary-flowhive-repair-publisher.yml \
-            .github/workflows/temporary-flowhive-repair-timeout-normalizer.yml \
-            .github/workflows/temporary-flowhive-source-export.yml \
-            .github/workflows/temporary-flowhive-terminal-enforcer.yml \
-            .github/flowhive-pr734-finalizer-dispatch.txt
-          rm -rf .flowhive-repair .github/flowhive-repair tmp/flowhive-repair
-
-      - name: Require the shared document-grounded architecture
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          test -f src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
-          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api
-          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
-          grep -R -Fq 'project_flowhive_ai_planner_runs' database/migrations src/backend/ProjectTime.Api
-          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
-          ! grep -R -Fq "label: 'AI draft studio'" src/frontend/project-time-web/src
-          ! grep -Fq 'window.fetch = async' src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
-          grep -R -Fq 'project_end_exceeded' tests src/backend/ProjectTime.Api/Modules
-          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          echo 'FLOWHIVE_CLEAN_ARCHITECTURE=VERIFIED'
-
-      - name: Run focused source, migration, API, and frontend gates
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
-          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
-          bash -n scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
-          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
-          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
-          node tests/validate-project-planning-collaboration-access.mjs
-          node tests/validate-project-planning-collaboration.mjs
-          node tests/validate-celar-ai-pr630-consolidated.mjs
-          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
-          python3 scripts/security/validate-repository-security-posture.py
-          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
-          bash tests/test-project-planning-collaboration-migration-095.sh
-          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
-          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
-          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
-          bash tests/test-projectpulse-api-startup.sh
-          (
-            cd src/frontend/project-time-web
-            npm ci --no-audit --no-fund
-            npm audit --audit-level=high
-            npm run build
-          )
-          git diff --check "$MAIN_SHA"
-
-      - name: Publish one clean commit directly on current main
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git add -A
-          for forbidden in $(git diff --cached --name-only | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)' || true); do
-            echo "Forbidden temporary path remains: $forbidden" >&2
-            exit 1
-          done
-          TREE_SHA="$(git write-tree)"
-          CLEAN_COMMIT="$(printf '%s\n\n%s\n' \
-            'Unify FlowHive and Project Forge document-grounded AI planning' \
-            'Resolve each project existing SOW and GSD through the private evidence pipeline, generate detailed Plan, Design, Implement, Validate, and Release tasks with estimates, dependencies, dates, citations, and explicit review controls, and retain Protected Test-only deployment governance.' \
-            | git commit-tree "$TREE_SHA" -p "$MAIN_SHA")"
-          git push origin "$CLEAN_COMMIT:refs/heads/$TARGET_BRANCH" --force
-          printf 'CLEAN_BRANCH=%s\nCLEAN_COMMIT=%s\n' "$TARGET_BRANCH" "$CLEAN_COMMIT"
+          bash -n /tmp/flowhive-final-publisher.sh
+          bash /tmp/flowhive-final-publisher.sh
