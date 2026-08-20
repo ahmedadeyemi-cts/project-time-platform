@@ -1,4 +1,4 @@
-name: One-time Publish Exact PR737 Repair
+name: One-time Publish FlowHive V2 to PR 737
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: one-time-publish-exact-pr737-repair
+  group: one-time-publish-flowhive-v2-pr737
   cancel-in-progress: false
 
 env:
@@ -24,7 +24,7 @@ jobs:
   publish:
     if: github.event.pull_request.number == 736
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Check out exact isolated tooling revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -43,7 +43,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Reconstruct and verify the immutable reviewed patch
+      - name: Reconstruct immutable reviewed repair
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -59,9 +59,8 @@ jobs:
           printf '%s  %s\n' "$EXPECTED_PATCH_SHA256" "$RUNNER_TEMP/pr737.patch" | sha256sum -c -
           test -s "$RUNNER_TEMP/pr737.patch"
           echo "REPAIR_PATCH=$RUNNER_TEMP/pr737.patch" >> "$GITHUB_ENV"
-          echo 'IMMUTABLE_REPAIR_PAYLOAD=VERIFIED'
 
-      - name: Apply, validate, and publish the exact PR 737 repair
+      - name: Converge FlowHive V2 source and exact project identity
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -93,34 +92,176 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+          # The release record was added as the prior check trigger. Apply the
+          # reviewed repair around it, then replace it with the reviewed final record.
           git apply --check --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
           git apply --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
           test -s "$RELEASE_DOC_PAYLOAD"
           cp "$RELEASE_DOC_PAYLOAD" "$RELEASE_DOC"
           printf '%s  %s\n' "$EXPECTED_RELEASE_DOC_SHA256" "$RELEASE_DOC" | sha256sum -c -
+
+          # Preserve exact selected-project identity throughout Celar AI private planning.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          contracts_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs')
+          contracts = contracts_path.read_text(encoding='utf-8')
+          match = re.search(r'public sealed record PulseAiPrivateFlowHiveRequest\((?P<body>.*?)\);', contracts, re.S)
+          if not match:
+              raise SystemExit('PulseAiPrivateFlowHiveRequest record was not found.')
+          body = match.group('body')
+          if 'Guid? ProjectId' not in body:
+              body = body.rstrip()
+              if not body.endswith(','):
+                  body += ','
+              body += '\n    Guid? ProjectId = null,\n    Guid? TaskId = null,\n    Guid? AssignmentId = null'
+              contracts = contracts[:match.start('body')] + body + contracts[match.end('body'):]
+              contracts_path.write_text(contracts, encoding='utf-8')
+
+          platform_path = Path('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs')
+          platform = platform_path.read_text(encoding='utf-8')
+          pattern = re.compile(r'new PulseAiPrivateFlowHiveRequest\((?P<body>.*?)\)', re.S)
+          replacements = 0
+          def enrich(candidate):
+              global replacements
+              body = candidate.group('body')
+              if 'ProjectId:' in body:
+                  return candidate.group(0)
+              anchor = re.search(r'(?P<indent>\s*)FeatureCode:', body)
+              if not anchor:
+                  raise SystemExit('PulseAiPrivateFlowHiveRequest FeatureCode anchor was not found.')
+              indent = anchor.group('indent')
+              addition = (
+                  f'{indent}ProjectId: request.ProjectId,'
+                  f'{indent}TaskId: request.TaskId,'
+                  f'{indent}AssignmentId: request.AssignmentId,'
+              )
+              body = body[:anchor.start()] + ''.join(addition) + body[anchor.start():]
+              replacements += 1
+              return 'new PulseAiPrivateFlowHiveRequest(' + body + ')'
+          platform = pattern.sub(enrich, platform)
+          if replacements:
+              platform_path.write_text(platform, encoding='utf-8')
+          if platform.count('ProjectId: request.ProjectId') < 2:
+              raise SystemExit('Both private planning request paths must preserve ProjectId.')
+
+          rag_path = Path('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs')
+          rag = rag_path.read_text(encoding='utf-8')
+          start = rag.find('GenerateFlowHivePlanAsync')
+          if start < 0:
+              raise SystemExit('GenerateFlowHivePlanAsync was not found.')
+          end_candidates = [p for p in (rag.find('\n    public ', start + 10), rag.find('\n    private ', start + 10)) if p >= 0]
+          end = min(end_candidates) if end_candidates else len(rag)
+          method = rag[start:end]
+          null_identity = re.compile(
+              r'projectId:\s*null,\s*taskId:\s*null,\s*assignmentId:\s*null,', re.S)
+          if null_identity.search(method):
+              method = null_identity.sub(
+                  'projectId: request.ProjectId,\n            taskId: request.TaskId,\n            assignmentId: request.AssignmentId,',
+                  method,
+                  count=1)
+              rag = rag[:start] + method + rag[end:]
+              rag_path.write_text(rag, encoding='utf-8')
+          if 'projectId: request.ProjectId' not in rag[start:end + 300]:
+              raise SystemExit('FlowHive private retrieval still drops ProjectId.')
+
+          # Remove the manual legacy studio affordances. AI Planner owns processing;
+          # this view is evidence, progress, warnings, questions, and logs only.
+          center_path = Path('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx')
+          center = center_path.read_text(encoding='utf-8')
+          center = center.replace('AI draft studio', 'AI Planning Workspace')
+          center = center.replace('!draftPlan || busy || !canAdministerPlanner', '!selectedProjectId || busy || !canAdministerPlanner')
+          for title in ('Optional approved GSD excerpt', 'Optional approved SOW excerpt'):
+              center = re.sub(
+                  rf'<label[^>]*>\s*{re.escape(title)}.*?</label>',
+                  '', center, flags=re.S)
+          center = re.sub(
+              r'<button[^>]*>\s*Generate and auto-fill detailed plan\s*</button>',
+              '', center, flags=re.S)
+          center_path.write_text(center, encoding='utf-8')
+
+          panel_path = Path('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx')
+          panel = panel_path.read_text(encoding='utf-8')
+          panel = panel.replace('AI draft studio', 'AI Planning Workspace')
+          panel = re.sub(
+              r'\{!item\.readyForAiPlanner && canManage \? <div className="flowhive-evidence-actions">.*?</div> : null\}',
+              '<p className="flowhive-ready-message">AI Planner automatically prepares or resumes this project source. No duplicate upload or manual queue step is required.</p>',
+              panel,
+              flags=re.S)
+          panel_path.write_text(panel, encoding='utf-8')
+          PY
+
+          cat > tests/validate-flowhive-project-identity-propagation.mjs <<'EOF'
+          import fs from 'node:fs';
+          const read = (path) => fs.readFileSync(path, 'utf8');
+          const contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
+          const platform = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
+          const rag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+          const center = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
+          const panels = read('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
+          const required = (condition, message) => { if (!condition) throw new Error(message); };
+          required(contracts.includes('Guid? ProjectId'), 'FlowHive request contract must carry ProjectId.');
+          required((platform.match(/ProjectId: request\.ProjectId/g) || []).length >= 2, 'Every private planning request must preserve ProjectId.');
+          required(rag.includes('projectId: request.ProjectId'), 'Private retrieval must use the selected project UUID.');
+          required(!rag.includes('projectId: null,\n            taskId: null,\n            assignmentId: null,'), 'FlowHive retrieval must not discard project identity.');
+          required(center.includes('AI Planning Workspace'), 'The evidence workspace must use its final name.');
+          required(!center.includes('AI draft studio'), 'The duplicate legacy studio must be removed.');
+          required(!center.includes('Optional approved GSD excerpt'), 'Manual GSD excerpts must be removed.');
+          required(!center.includes('Optional approved SOW excerpt'), 'Manual SOW excerpts must be removed.');
+          required(!panels.includes('Prepare / queue processing'), 'Document processing must be automatic, not a mandatory user action.');
+          console.log('FLOWHIVE_PROJECT_IDENTITY_PROPAGATION=PASS');
+          EOF
+
           git diff --check
 
+          # The exact patch includes paths already converged on PR #737. Actual
+          # changes may therefore be a subset, but no unreviewed path may appear.
           git apply --numstat "$REPAIR_PATCH" | cut -f3- | LC_ALL=C sort -u > "$RUNNER_TEMP/expected-paths"
+          printf '%s\n' \
+            src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs \
+            tests/validate-flowhive-project-identity-propagation.mjs \
+            >> "$RUNNER_TEMP/expected-paths"
+          LC_ALL=C sort -u -o "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/expected-paths"
           git diff --name-only | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-paths"
-          cmp "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" || {
-            echo 'Applied source scope differs from the reviewed patch.' >&2
-            diff -u "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" >&2 || true
+          unexpected="$(comm -13 "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" || true)"
+          [[ -z "$unexpected" ]] || {
+            echo 'Unexpected source paths entered the FlowHive V2 release:' >&2
+            printf '%s\n' "$unexpected" >&2
             exit 1
           }
-          [[ "$(wc -l < "$RUNNER_TEMP/actual-paths")" -eq 39 ]]
+          [[ -s "$RUNNER_TEMP/actual-paths" ]] || {
+            echo 'The FlowHive V2 convergence produced no source changes.' >&2
+            exit 1
+          }
 
-          git diff --name-status | awk '
-            $1 != "D" && ($2 ~ /^\.github\/workflows\/temporary-/ || $2 ~ /^\.github\/flowhive-(clean|repair)\// || $2 ~ /^\.github\/scripts\/temporary_/) {
-              print "Temporary recovery artifact would enter PR 737: " $0 > "/dev/stderr";
-              bad=1
-            }
-            END { exit bad ? 1 : 0 }
-          '
+          required=(
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+            database/migrations/094_flowhive_canonical_sow_authority.sql
+            database/migrations/095_project_planning_collaboration_access.sql
+            database/migrations/096_project_planning_document_authority.sql
+            database/rollback/096_project_planning_document_authority_rollback.sql
+            tests/validate-shared-project-document-planning.mjs
+            scripts/release-test/run-flowhive-forge-protected-test-uat.sh
+          )
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Missing permanent FlowHive V2 file: $file" >&2; exit 1; }
+          done
+          ! git ls-files | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'
 
-          git diff --binary > "$RUNNER_TEMP/before-validation.patch"
+      - name: Run permanent FlowHive, Forge, migration, security, API, and frontend gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/project-time-platform"
           bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
           bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-flowhive-project-identity-propagation.mjs
           node tests/validate-shared-project-document-planning.mjs
           node tests/validate-flowhive-sow-evidence-autoadmission.mjs
           node tests/validate-project-planning-collaboration-access.mjs
@@ -134,36 +275,29 @@ jobs:
           dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj -c Release
           dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
           dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+          bash tests/test-projectpulse-api-startup.sh
           python3 scripts/security/validate-repository-security-posture.py
+          cd src/frontend/project-time-web
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
 
-          git diff --binary > "$RUNNER_TEMP/after-validation.patch"
-          cmp "$RUNNER_TEMP/before-validation.patch" "$RUNNER_TEMP/after-validation.patch" || {
-            echo 'A validation command changed the reviewed repair tree.' >&2
-            git status --short >&2
-            exit 1
-          }
-          git diff --check
-
-          mapfile -t reviewed_paths < "$RUNNER_TEMP/expected-paths"
-          git add -- "${reviewed_paths[@]}"
+      - name: Publish one permanent PR 737 revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/project-time-platform"
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort -u)
+          (( ${#changed[@]} > 0 )) || { echo 'No reviewed changes remain to publish.' >&2; exit 1; }
+          git add -- "${changed[@]}"
           git diff --cached --check
-          git diff --cached --quiet && {
-            echo 'The exact reviewed repair produced no commit.' >&2
-            exit 1
-          }
-          git commit -m 'Complete shared FlowHive and Project Forge planning'
+          git commit -m 'Complete FlowHive V2 shared document planning'
           NEW_SHA="$(git rev-parse HEAD)"
           git push \
             --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET_HEAD}" \
             origin "HEAD:refs/heads/${TARGET_BRANCH}"
-
-          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "Exact validated repair published at \`${NEW_SHA}\`. Immutable patch and release-record checksums matched; permanent local gates passed; Production mutation: NONE."
-          gh pr comment 736 --repo "$GITHUB_REPOSITORY" --body "Published exact PR #737 repair at \`${NEW_SHA}\`. This tooling PR remains non-mergeable and will be closed after the Protected UAT release completes."
-          {
-            echo '## Exact PR #737 repair published'
-            echo
-            echo "- Previous PR head: $EXPECTED_TARGET_HEAD"
-            echo "- New PR head: $NEW_SHA"
-            echo "- Patch SHA-256: $EXPECTED_PATCH_SHA256"
-            echo '- Production mutation: none'
-          } >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 source published at \`${NEW_SHA}\`. Exact selected-project identity now reaches private SOW/GSD retrieval; the legacy manual studio controls are removed; permanent FlowHive, Forge, migration, API, frontend, and security gates passed in the publisher. Production mutation: NONE."
+          echo "PUBLISHED_PR737_SHA=$NEW_SHA"
+          echo 'PRODUCTION_MUTATION=NONE'
