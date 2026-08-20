@@ -1,0 +1,181 @@
+name: One-time FlowHive PR737 Green Merge and Protected UAT V3
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-pr737-green-deploy-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-pr737-green-deploy-v3
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Require green PR737, merge exact SHA, deploy Protected UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    environment: test
+    env:
+      TARGET_PR: '737'
+      PROTECTED_TEST_URL: https://phd-west-test.onenecklab.com
+      PROJECTPULSE_PUBLIC_URL: https://phd-west-test.onenecklab.com
+      PUBLIC_URL: https://phd-west-test.onenecklab.com
+      PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+    steps:
+      - name: Resolve and wait for the exact protected PR head
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          state="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+          if [[ "$state" == MERGED ]]; then
+            merge_sha="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+            [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            echo 'already_merged=true' >> "$GITHUB_OUTPUT"
+            echo "release_sha=$merge_sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$state" == OPEN ]] || { echo "PR #$TARGET_PR is $state." >&2; exit 1; }
+          expected="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]] || exit 1
+
+          for _ in $(seq 1 240); do
+            current="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,state --jq 'select(.state=="OPEN") | .headRefOid')"
+            [[ "$current" == "$expected" ]] || { echo 'PR #737 changed while protected checks were running.' >&2; exit 1; }
+            checks="$(gh pr checks "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+            total="$(jq 'length' <<<"$checks")"
+            pending="$(jq '[.[] | select(.bucket=="pending")] | length' <<<"$checks")"
+            failed="$(jq '[.[] | select(.bucket=="fail")] | length' <<<"$checks")"
+            if [[ "$failed" != 0 ]]; then
+              jq -r '.[] | select(.bucket=="fail") | "FAILED: \(.workflow) / \(.name) / \(.link)"' <<<"$checks" >&2
+              exit 1
+            fi
+            if [[ "$total" != 0 && "$pending" == 0 ]]; then
+              echo "PR737_ALL_CHECKS=GREEN HEAD=$expected"
+              echo 'already_merged=false' >> "$GITHUB_OUTPUT"
+              echo "head=$expected" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo 'PR #737 protected checks did not settle before timeout.' >&2
+          exit 1
+
+      - name: Merge exact green PR737 SHA
+        if: steps.gate.outputs.already_merged != 'true'
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected='${{ steps.gate.outputs.head }}'
+          gh pr ready "$TARGET_PR" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          [[ "$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" == "$expected" ]]
+          gh pr merge "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "$expected" --delete-branch=false
+          merge_sha="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          echo "PR737_MERGED_SHA=$merge_sha"
+
+      - name: Resolve exact release SHA
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ '${{ steps.gate.outputs.already_merged }}' == true ]]; then
+            sha='${{ steps.gate.outputs.release_sha }}'
+          else
+            sha='${{ steps.merge.outputs.sha }}'
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact Protected UAT deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_sha='${{ steps.release.outputs.sha }}'
+          workflow='projectpulse-deploy-test.yml'
+          run_id=''
+          for _ in $(seq 1 120); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$release_sha" --limit 30 --json databaseId,headSha,event --jq '[.[] | select(.headSha=="'"$release_sha"'")][0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 120); do
+              run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --branch main --limit 30 --json databaseId,headSha --jq '[.[] | select(.headSha=="'"$release_sha"'")][0].databaseId // empty')"
+              [[ -n "$run_id" ]] && break
+              sleep 10
+            done
+          fi
+          [[ -n "$run_id" ]] || { echo 'Protected UAT deployment run was not found.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 20
+          conclusion="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          [[ "$conclusion" == success ]] || { echo "Protected UAT deployment concluded $conclusion." >&2; exit 1; }
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$run_id"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Run authenticated FlowHive, Forge, and Celar UAT
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${PROJECTPULSE_M087_PASSWORD:-}" ]] || { echo 'Protected Test UAT credential is unavailable.' >&2; exit 1; }
+          mapfile -t flowhive_uat < <(find scripts/release-test -maxdepth 1 -type f \( -iname '*flowhive*uat*.sh' -o -iname '*project-planning*uat*.sh' \) | LC_ALL=C sort -u)
+          ((${#flowhive_uat[@]})) || { echo 'No authenticated FlowHive planning UAT script exists.' >&2; exit 1; }
+          for script in "${flowhive_uat[@]}"; do
+            bash -n "$script"
+            bash "$script"
+          done
+
+          mapfile -t forge_uat < <(find scripts/release-test -maxdepth 1 -type f -iname '*forge*uat*.sh' | LC_ALL=C sort -u)
+          for script in "${forge_uat[@]}"; do
+            bash -n "$script"
+            bash "$script"
+          done
+
+          mapfile -t celar_uat < <(find scripts/release-test -maxdepth 1 -type f -iname '*celar*uat*.sh' | LC_ALL=C sort -u)
+          for script in "${celar_uat[@]}"; do
+            bash -n "$script"
+            bash "$script"
+          done
+
+          for path in /api/health /health; do
+            code="$(curl -sS -L --max-time 30 -o /tmp/health-body -w '%{http_code}' "$PROTECTED_TEST_URL$path" || true)"
+            if [[ "$code" =~ ^2 ]]; then
+              echo "PROTECTED_UAT_HEALTH=$path:$code"
+              echo 'PROTECTED_UAT_AUTHENTICATED_FLOWHIVE_FORGE_CELAR=PASSED'
+              exit 0
+            fi
+          done
+          echo 'Protected UAT health verification failed.' >&2
+          cat /tmp/health-body 2>/dev/null || true
+          exit 1
+
+      - name: Record terminal release success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "PR #737 passed all protected checks, merged, deployed to Protected UAT, and completed authenticated FlowHive/Project Forge/Celar validation. Release SHA: ${{ steps.release.outputs.sha }}. Deployment run: ${{ steps.deployment.outputs.run_id }}. Production mutation: NONE."
+          gh pr comment 734 --repo "$GITHUB_REPOSITORY" --body 'Superseded by PR #737 after successful Protected UAT deployment and authenticated validation.' || true
+          gh pr close 734 --repo "$GITHUB_REPOSITORY" || true
+          gh pr close 736 --repo "$GITHUB_REPOSITORY" || true
