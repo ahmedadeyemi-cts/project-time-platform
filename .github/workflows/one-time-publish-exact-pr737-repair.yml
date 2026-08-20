@@ -18,12 +18,13 @@ env:
   EXPECTED_TARGET_HEAD: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
   EXPECTED_MAIN_HEAD: 9006561f49793d227b36f2848e230c55298213b1
   EXPECTED_PATCH_SHA256: c0cb724c48164d95efde1147db11f31ad99ce7b5ce4620aed2794cd0eec35e21
+  EXPECTED_RELEASE_DOC_SHA256: c82381a754dc809a6edb3967c5250866e9352a728993c10d3b00050c1e53c86b
 
 jobs:
   publish:
     if: github.event.pull_request.number == 736
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Check out exact isolated tooling revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -68,6 +69,9 @@ jobs:
           set -Eeuo pipefail
           WORK="$RUNNER_TEMP/project-time-platform"
           AUTH_REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          RELEASE_DOC='docs/architecture/flowhive-project-forge-protected-uat-release.md'
+          RELEASE_DOC_PAYLOAD="$GITHUB_WORKSPACE/.github/flowhive-clean/final-flowhive-project-forge-protected-uat-release.md"
+
           git clone --quiet "$AUTH_REPO" "$WORK"
           cd "$WORK"
           git fetch --no-tags origin \
@@ -89,8 +93,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-          git apply --check "$REPAIR_PATCH"
-          git apply "$REPAIR_PATCH"
+          git apply --check --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
+          git apply --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
+          test -s "$RELEASE_DOC_PAYLOAD"
+          cp "$RELEASE_DOC_PAYLOAD" "$RELEASE_DOC"
+          printf '%s  %s\n' "$EXPECTED_RELEASE_DOC_SHA256" "$RELEASE_DOC" | sha256sum -c -
           git diff --check
 
           git apply --numstat "$REPAIR_PATCH" | cut -f3- | LC_ALL=C sort -u > "$RUNNER_TEMP/expected-paths"
@@ -111,7 +118,6 @@ jobs:
           '
 
           git diff --binary > "$RUNNER_TEMP/before-validation.patch"
-
           bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
           bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
           bash tests/test-project-planning-collaboration-migration-095.sh
@@ -138,7 +144,9 @@ jobs:
           }
           git diff --check
 
-          git add -A
+          mapfile -t reviewed_paths < "$RUNNER_TEMP/expected-paths"
+          git add -- "${reviewed_paths[@]}"
+          git diff --cached --check
           git diff --cached --quiet && {
             echo 'The exact reviewed repair produced no commit.' >&2
             exit 1
@@ -149,7 +157,7 @@ jobs:
             --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET_HEAD}" \
             origin "HEAD:refs/heads/${TARGET_BRANCH}"
 
-          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "Exact validated repair published at \`${NEW_SHA}\`. The immutable payload matched SHA-256 \`${EXPECTED_PATCH_SHA256}\`; permanent local gates passed; Production mutation: NONE."
+          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "Exact validated repair published at \`${NEW_SHA}\`. Immutable patch and release-record checksums matched; permanent local gates passed; Production mutation: NONE."
           gh pr comment 736 --repo "$GITHUB_REPOSITORY" --body "Published exact PR #737 repair at \`${NEW_SHA}\`. This tooling PR remains non-mergeable and will be closed after the Protected UAT release completes."
           {
             echo '## Exact PR #737 repair published'
