@@ -1,0 +1,320 @@
+name: One-time FlowHive V2 Finalize Source
+
+on:
+  pull_request:
+    branches: [main]
+    types: [reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-v2-finalize-source
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.event.pull_request.number == 736
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      TARGET_PR: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+    steps:
+      - name: Check out tooling control branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Finalize exact FlowHive V2 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORK="$RUNNER_TEMP/project-time-platform"
+          AUTH_REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git clone --quiet "$AUTH_REPO" "$WORK"
+          cd "$WORK"
+
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_PR}")"
+          PR_STATE="$(jq -r '.state' <<< "$PR_JSON")"
+          PR_DRAFT="$(jq -r '.draft' <<< "$PR_JSON")"
+          PR_HEAD="$(jq -r '.head.sha' <<< "$PR_JSON")"
+          PR_BRANCH="$(jq -r '.head.ref' <<< "$PR_JSON")"
+          PR_BASE="$(jq -r '.base.ref' <<< "$PR_JSON")"
+          [[ "$PR_STATE" == 'open' ]]
+          [[ "$PR_DRAFT" == 'true' ]]
+          [[ "$PR_BRANCH" == "$TARGET_BRANCH" ]]
+          [[ "$PR_BASE" == 'main' ]]
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          [[ "$(git rev-parse "origin/${TARGET_BRANCH}")" == "$PR_HEAD" ]]
+          git switch -C "$TARGET_BRANCH" "origin/${TARGET_BRANCH}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path.cwd()
+
+          def read(rel):
+              path = root / rel
+              if not path.exists():
+                  raise SystemExit(f"Required FlowHive V2 source is missing: {rel}")
+              return path, path.read_text(encoding='utf-8')
+
+          def write_if_changed(path, before, after):
+              if before != after:
+                  path.write_text(after, encoding='utf-8')
+
+          # Preserve exact project, task, and assignment identity through the private planning contract.
+          contracts_path, contracts = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs')
+          record_pattern = re.compile(r'public sealed record PulseAiPrivateFlowHiveRequest\((.*?)\);', re.S)
+          record_match = record_pattern.search(contracts)
+          if not record_match:
+              raise SystemExit('PulseAiPrivateFlowHiveRequest contract was not found.')
+          body = record_match.group(1)
+          if 'Guid? ProjectId' not in body:
+              replacement, count = re.subn(
+                  r'(\s*string\?\s+FeatureCode)\s*,?\s*$',
+                  r'\1,\n    Guid? ProjectId = null,\n    Guid? TaskId = null,\n    Guid? AssignmentId = null',
+                  body,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit('Could not extend PulseAiPrivateFlowHiveRequest with project identity.')
+              contracts = contracts[:record_match.start(1)] + replacement + contracts[record_match.end(1):]
+          write_if_changed(contracts_path, record_match.string, contracts)
+
+          celar_path, celar = read('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs')
+          if 'new PulseAiPrivateFlowHiveRequest' not in celar:
+              raise SystemExit('Celar FlowHive private request construction was not found.')
+          celar_before = celar
+          celar = re.sub(
+              r'(new PulseAiPrivateFlowHiveRequest\(\s*\n)(\s*)ProjectCode:',
+              lambda match: (
+                  match.group(1)
+                  + match.group(2) + 'ProjectId: request.ProjectId,\n'
+                  + match.group(2) + 'TaskId: request.TaskId,\n'
+                  + match.group(2) + 'AssignmentId: request.AssignmentId,\n'
+                  + match.group(2) + 'ProjectCode:'
+              ),
+              celar,
+          )
+          if celar.count('ProjectId: request.ProjectId') < 2:
+              raise SystemExit('Every Celar FlowHive request must preserve the exact project ID.')
+          write_if_changed(celar_path, celar_before, celar)
+
+          rag_path, rag = read('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs')
+          method_start = rag.find('public async Task<PulseAiPrivateRagAnswer> GenerateFlowHivePlanAsync')
+          if method_start < 0:
+              raise SystemExit('GenerateFlowHivePlanAsync was not found.')
+          next_method = rag.find('\n    public ', method_start + 20)
+          if next_method < 0:
+              next_method = len(rag)
+          method = rag[method_start:next_method]
+          method_before = method
+          method = method.replace(
+              'projectId: null,\n            taskId: null,\n            assignmentId: null,',
+              'projectId: request.ProjectId,\n            taskId: request.TaskId,\n            assignmentId: request.AssignmentId,',
+          )
+          if 'projectId: request.ProjectId' not in method or 'taskId: request.TaskId' not in method or 'assignmentId: request.AssignmentId' not in method:
+              raise SystemExit('Private FlowHive retrieval is still dropping exact project identity.')
+          if re.search(r'projectId:\s*null', method):
+              raise SystemExit('GenerateFlowHivePlanAsync still contains a null project identity.')
+          rag = rag[:method_start] + method + rag[next_method:]
+          write_if_changed(rag_path, method_before, rag)
+
+          center_path, center = read('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx')
+          center_before = center
+          center = center.replace('AI draft studio', 'AI Planning Workspace')
+          center = center.replace('AI Draft Studio', 'AI Planning Workspace')
+          center = center.replace('Open AI draft studio', 'Open AI Planning Workspace')
+          center = center.replace('allowSanitizedExternalFallback: true', 'allowSanitizedExternalFallback: false')
+          center = center.replace(
+              'disabled={!draftPlan || busy || !canAdministerPlanner}',
+              'disabled={!selectedProjectId || busy || !canAdministerPlanner}',
+          )
+          center = re.sub(
+              r'<label[^>]*>\s*Optional approved GSD excerpt.*?</label>',
+              '',
+              center,
+              flags=re.S | re.I,
+          )
+          center = re.sub(
+              r'<label[^>]*>\s*Optional approved SOW excerpt.*?</label>',
+              '',
+              center,
+              flags=re.S | re.I,
+          )
+          center = re.sub(r'^\s*gsdExcerpt:\s*.*?,$', '', center, flags=re.M)
+          center = re.sub(r'^\s*sowExcerpt:\s*.*?,$', '', center, flags=re.M)
+          center = re.sub(
+              r'<button[^>]*>\s*Generate and auto-fill detailed plan\s*</button>',
+              '',
+              center,
+              flags=re.S | re.I,
+          )
+          if 'AI draft studio' in center.lower():
+              raise SystemExit('The legacy AI Draft Studio label remains in FlowHive.')
+          if 'Optional approved GSD excerpt' in center or 'Optional approved SOW excerpt' in center:
+              raise SystemExit('Manual SOW/GSD excerpt fields remain in FlowHive.')
+          if 'AI Planning Workspace' not in center:
+              raise SystemExit('AI Planning Workspace was not established.')
+          write_if_changed(center_path, center_before, center)
+
+          panels_path, panels = read('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx')
+          panels_before = panels
+          panels = panels.replace('AI draft studio', 'AI Planning Workspace')
+          panels = panels.replace('AI Draft Studio', 'AI Planning Workspace')
+          panels, removed_actions = re.subn(
+              r'\{!item\.readyForAiPlanner\s*&&\s*canManage\s*\?\s*<div className="flowhive-evidence-actions">.*?</div>\s*:\s*null\}',
+              '{!item.readyForAiPlanner ? <p className="flowhive-processing-message">AI Planner automatically prepares and resumes this project evidence. Progress refreshes here.</p> : null}',
+              panels,
+              flags=re.S,
+          )
+          panels = panels.replace('Prepare / queue processing', 'Automatic evidence preparation')
+          if 'Prepare / queue processing' in panels:
+              raise SystemExit('The mandatory manual evidence preparation control remains.')
+          write_if_changed(panels_path, panels_before, panels)
+
+          # The permanent shared resolver/orchestrator and server-owned run API must exist.
+          required = {
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs': ['ProjectPlanningDocumentResolver'],
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs': ['ProjectPlanningAiOrchestrator'],
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs': ['ai-planner', 'run'],
+              'database/migrations/096_project_planning_document_authority.sql': ['project', 'document'],
+          }
+          for rel, markers in required.items():
+              path, text = read(rel)
+              for marker in markers:
+                  if marker.lower() not in text.lower():
+                      raise SystemExit(f'Required marker {marker!r} is missing from {rel}.')
+
+          # Remove the temporary source-export workflow from the application PR.
+          temporary = root / '.github/workflows/temporary-flowhive-source-export.yml'
+          if temporary.exists():
+              temporary.unlink()
+
+          # Extend the existing permanent validator with the exact identity and UX regression gate.
+          validator_path, validator = read('tests/validate-shared-project-document-planning.mjs')
+          validator_before = validator
+          marker = 'FLOWHIVE_V2_EXACT_PROJECT_IDENTITY_GATE'
+          if marker not in validator:
+              validator += r'''
+
+          // FLOWHIVE_V2_EXACT_PROJECT_IDENTITY_GATE
+          {
+            const fsV2 = await import('node:fs');
+            const pathV2 = await import('node:path');
+            const rootV2 = process.cwd();
+            const readV2 = (relative) => fsV2.readFileSync(pathV2.join(rootV2, relative), 'utf8');
+            const contractsV2 = readV2('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
+            const celarV2 = readV2('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
+            const ragV2 = readV2('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+            const centerV2 = readV2('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
+            const panelsV2 = readV2('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
+            const requiredV2 = [
+              [contractsV2, 'Guid? ProjectId'],
+              [contractsV2, 'Guid? TaskId'],
+              [contractsV2, 'Guid? AssignmentId'],
+              [celarV2, 'ProjectId: request.ProjectId'],
+              [celarV2, 'TaskId: request.TaskId'],
+              [celarV2, 'AssignmentId: request.AssignmentId'],
+              [ragV2, 'projectId: request.ProjectId'],
+              [ragV2, 'taskId: request.TaskId'],
+              [ragV2, 'assignmentId: request.AssignmentId'],
+              [centerV2, 'AI Planning Workspace'],
+              [panelsV2, 'AI Planner automatically prepares and resumes this project evidence'],
+            ];
+            for (const [sourceV2, tokenV2] of requiredV2) {
+              if (!sourceV2.includes(tokenV2)) throw new Error(`FlowHive V2 regression: missing ${tokenV2}`);
+            }
+            for (const forbiddenV2 of ['AI draft studio', 'Optional approved GSD excerpt', 'Optional approved SOW excerpt', 'Prepare / queue processing']) {
+              if (`${centerV2}\n${panelsV2}`.toLowerCase().includes(forbiddenV2.toLowerCase())) {
+                throw new Error(`FlowHive V2 regression: legacy control remains: ${forbiddenV2}`);
+              }
+            }
+            if (fsV2.existsSync(pathV2.join(rootV2, '.github/workflows/temporary-flowhive-source-export.yml'))) {
+              throw new Error('FlowHive V2 regression: temporary source-export workflow remains in the application PR.');
+            }
+            console.log('FlowHive V2 exact project identity and evidence-only workspace gate passed.');
+          }
+          '''
+          write_if_changed(validator_path, validator_before, validator)
+
+          # Ensure the permanent governed release manifest includes every permanent changed path.
+          manifest_path = root / '.github/shared-project-document-planning-governed-release-files.txt'
+          if manifest_path.exists():
+              entries = [line.strip() for line in manifest_path.read_text(encoding='utf-8').splitlines() if line.strip()]
+              for rel in [
+                  'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
+                  'tests/validate-shared-project-document-planning.mjs',
+              ]:
+                  if rel not in entries:
+                      entries.append(rel)
+              manifest_path.write_text('\n'.join(sorted(set(entries))) + '\n', encoding='utf-8')
+          PY
+
+          git diff --check
+          [[ ! -e .github/workflows/temporary-flowhive-source-export.yml ]]
+
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj -c Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj -c Release
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+          python3 scripts/security/validate-repository-security-posture.py
+
+          pushd src/frontend/project-time-web >/dev/null
+          npm ci --ignore-scripts
+          npm run build
+          popd >/dev/null
+
+          mapfile -t changed_paths < <(git status --porcelain=v1 -uall | cut -c4- | sed 's/ -> /\n/' | LC_ALL=C sort -u)
+          [[ "${#changed_paths[@]}" -gt 0 ]] || {
+            echo 'FlowHive V2 source was already finalized; no commit required.'
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 source finalizer found the exact project identity, evidence-only workspace, shared resolver/orchestrator, and permanent validation gates already present at \`${PR_HEAD}\`. Production mutation: NONE."
+            exit 0
+          }
+          printf '%s\n' "${changed_paths[@]}" | awk '
+            /^\.github\/workflows\/temporary-/ || /^\.github\/flowhive-(clean|repair)\// || /^\.github\/scripts\/temporary_/ { bad=1; print "Disallowed temporary application artifact: " $0 > "/dev/stderr" }
+            END { exit bad ? 1 : 0 }
+          '
+
+          git add -- "${changed_paths[@]}"
+          git diff --cached --check
+          git commit -m 'Finalize FlowHive V2 project identity and evidence workspace'
+          NEW_SHA="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/${TARGET_BRANCH}:${PR_HEAD}" origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 source finalized at \`${NEW_SHA}\`: exact project identity now reaches private retrieval; the legacy AI Draft Studio/manual excerpt/manual prepare controls are removed; permanent local API/frontend/planner/security gates passed. Candidate Protected-UAT validation is next. Production mutation: NONE."
+          echo "FLOWHIVE_V2_FINAL_SHA=$NEW_SHA"
+          echo 'PRODUCTION_MUTATION=NONE'
