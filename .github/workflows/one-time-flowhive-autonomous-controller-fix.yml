@@ -1,0 +1,79 @@
+name: One-time FlowHive Autonomous Controller Fix
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-autonomous-controller-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: one-time-flowhive-autonomous-controller-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    name: Patch autonomous controller retry scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Stop when PR737 is already merged
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          state="$(gh pr view 737 --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+          if [[ "$state" == MERGED ]]; then
+            echo 'merged=true' >> "$GITHUB_OUTPUT"
+          else
+            [[ "$state" == OPEN ]] || { echo "PR #737 is $state." >&2; exit 1; }
+            echo 'merged=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out tooling branch with push credential
+        if: steps.state.outputs.merged != 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: tooling/one-time-flowhive-clean-publisher-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Patch and republish autonomous controller
+        if: steps.state.outputs.merged != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          path='.github/workflows/one-time-flowhive-pr737-autonomous-terminal.yml'
+          test -s "$path"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/one-time-flowhive-pr737-autonomous-terminal.yml')
+          source = path.read_text(encoding='utf-8')
+          needle = """          expected='${{ steps.publish.outputs.head }}'\n          for attempt in 1 2 3; do\n"""
+          replacement = """          expected='${{ steps.publish.outputs.head }}'\n          allowed_regex='^(\\.github/workflows/(celar-ai-ask-operations-ci|celar-ai-universal-answer-reliability-ci|project-planning-collaboration-ci|projectpulse-deploy-test|projectpulse-release-test-control-ci|shared-project-document-planning-ci)\\.yml|database/(migrations|rollback)/(094_|095_|096_).+\\.sql|docs/architecture/project-planning-collaboration-access\\.md|scripts/(release-test/.+|validate-module-033-project-forge-interactive\\.sh)|src/backend/ProjectTime\\.Api/Modules/(FlowHiveProtectedTestReleaseMarker|PostgresProjectFlowHivePlanRepository|ProjectFlowHive.+|ProjectForge.+|ProjectPlanning.+)\\.cs|src/frontend/project-time-web/(scripts/validate-module-066-project-flowhive\\.mjs|src/(ProjectFlowHive.+|ProjectForgeCenter|flowhive-sow-evidence-autoadmission)\\.(jsx|js))|tests/(FlowHive.+/.+|test-(flowhive|project-planning).+|validate-(flowhive|project-planning|shared-project-document).+)\\.(cs|csproj|sh|mjs)|tests/validate-celar-ai-pr630-consolidated\\.mjs)$'\n          for attempt in 1 2 3; do\n"""
+          if 'allowed_regex=' not in source[source.find('name: Converge normal GitHub checks'):]:
+              if needle not in source:
+                  raise SystemExit('Autonomous convergence insertion point was not found.')
+              source = source.replace(needle, replacement, 1)
+          source = '\n'.join(line.rstrip(' \t') for line in source.splitlines()) + '\n'
+          path.write_text(source, encoding='utf-8')
+          PY
+          git diff --check
+          if git diff --quiet -- "$path"; then
+            echo 'AUTONOMOUS_CONTROLLER_ALREADY_PATCHED=TRUE'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$path"
+          git commit -m 'Fix autonomous FlowHive convergence retry scope'
+          git push origin HEAD:tooling/one-time-flowhive-clean-publisher-20260819
+          echo 'AUTONOMOUS_CONTROLLER_REPUBLISHED=TRUE'
