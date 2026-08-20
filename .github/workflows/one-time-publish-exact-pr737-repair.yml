@@ -7,6 +7,9 @@ on:
     paths:
       - '.github/workflows/one-time-publish-exact-pr737-repair.yml'
       - '.github/flowhive-clean/execution-marker-20260819.txt'
+  pull_request:
+    branches: [main]
+    types: [ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -23,13 +26,14 @@ env:
 
 jobs:
   publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.number == 736
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out exact isolated tooling revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: true
 
