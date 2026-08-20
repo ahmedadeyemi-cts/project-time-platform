@@ -154,3 +154,5 @@ jobs:
           gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "Exact validated repair published at \`${NEW_SHA}\`. The immutable payload matched SHA-256 \`${EXPECTED_PATCH_SHA256}\`; permanent validation gates passed; Production mutation: NONE."
           echo "PUBLISHED_PR737_SHA=$NEW_SHA"
           echo 'PRODUCTION_MUTATION=NONE'
+
+# execution-trigger: 2026-08-20T14:02Z
