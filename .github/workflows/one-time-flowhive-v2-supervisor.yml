@@ -1,0 +1,251 @@
+name: One-time FlowHive V2 Protected-UAT Supervisor
+
+on:
+  pull_request:
+    branches: [main]
+    types: [reopened]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-v2-protected-uat-supervisor
+  cancel-in-progress: false
+
+jobs:
+  supervise:
+    if: github.event.pull_request.number == 736
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      TARGET_PR: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      FINALIZER_WORKFLOW: one-time-flowhive-v2-finalize-source.yml
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+    steps:
+      - name: Check out tooling control branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Wait for exact source finalizer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          FINALIZER_ID=''
+          for attempt in $(seq 1 120); do
+            FINALIZER_ID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$FINALIZER_WORKFLOW" --branch "${{ github.event.pull_request.head.ref }}" --event pull_request --limit 20 --json databaseId,createdAt,status --jq 'sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+            [[ -n "$FINALIZER_ID" ]] && break
+            sleep 10
+          done
+          [[ -n "$FINALIZER_ID" ]] || {
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body 'FlowHive V2 supervisor could not locate the source-finalizer run. Candidate deployment did not start. Production mutation: NONE.'
+            exit 1
+          }
+          echo "FINALIZER_ID=$FINALIZER_ID" >> "$GITHUB_ENV"
+
+          for attempt in $(seq 1 180); do
+            STATUS="$(gh run view "$FINALIZER_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+            [[ "$STATUS" == 'completed' ]] && break
+            sleep 15
+          done
+          STATUS="$(gh run view "$FINALIZER_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+          CONCLUSION="$(gh run view "$FINALIZER_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          if [[ "$STATUS" != 'completed' || "$CONCLUSION" != 'success' ]]; then
+            gh run view "$FINALIZER_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/finalizer-failure.log" 2>&1 || true
+            tail -n 120 "$RUNNER_TEMP/finalizer-failure.log" > "$RUNNER_TEMP/finalizer-failure-tail.log" || true
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 source finalizer did not pass (run \`${FINALIZER_ID}\`, conclusion \`${CONCLUSION:-unknown}\`). Protected-UAT deployment was not started. Production mutation: NONE."
+            cat "$RUNNER_TEMP/finalizer-failure-tail.log" >&2 || true
+            exit 1
+          fi
+
+      - name: Verify permanent FlowHive V2 candidate source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_PR}")"
+          TARGET_SHA="$(jq -r '.head.sha' <<< "$PR_JSON")"
+          TARGET_REF="$(jq -r '.head.ref' <<< "$PR_JSON")"
+          [[ "$(jq -r '.state' <<< "$PR_JSON")" == 'open' ]]
+          [[ "$(jq -r '.draft' <<< "$PR_JSON")" == 'true' ]]
+          [[ "$TARGET_REF" == "$TARGET_BRANCH" ]]
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+
+          WORK="$RUNNER_TEMP/candidate"
+          git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORK"
+          cd "$WORK"
+          git fetch --no-tags origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          [[ "$(git rev-parse "origin/${TARGET_BRANCH}")" == "$TARGET_SHA" ]]
+          git switch --detach "$TARGET_SHA"
+
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          test -s database/migrations/096_project_planning_document_authority.sql
+          grep -Fq 'Guid? ProjectId' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          grep -Fq 'ProjectId: request.ProjectId' src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs
+          grep -Fq 'projectId: request.ProjectId' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs
+          grep -Fq 'AI Planning Workspace' src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          ! grep -Fqi 'AI draft studio' src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          ! grep -Fq 'Optional approved GSD excerpt' src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          ! grep -Fq 'Optional approved SOW excerpt' src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          ! grep -Fq 'Prepare / queue processing' src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx
+          [[ ! -e .github/workflows/temporary-flowhive-source-export.yml ]]
+          git diff --check
+
+      - name: Wait for exact candidate CI matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Give pull_request workflows time to register for the final source SHA.
+          sleep 30
+          for attempt in $(seq 1 160); do
+            RUNS="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100" --jq '[.workflow_runs[] | {id,name,status,conclusion,path,event,created_at}] | unique_by(.id)')"
+            COUNT="$(jq 'length' <<< "$RUNS")"
+            PENDING="$(jq '[.[] | select(.status != "completed")] | length' <<< "$RUNS")"
+            [[ "$COUNT" -gt 0 && "$PENDING" -eq 0 ]] && break
+            sleep 15
+          done
+
+          RUNS="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100" --jq '[.workflow_runs[] | {id,name,status,conclusion,path,event,created_at}] | unique_by(.id)')"
+          COUNT="$(jq 'length' <<< "$RUNS")"
+          [[ "$COUNT" -gt 0 ]]
+          jq . <<< "$RUNS"
+
+          FAILURES="$(jq '[.[] | select(.status == "completed") | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")]' <<< "$RUNS")"
+          PENDING="$(jq '[.[] | select(.status != "completed")]' <<< "$RUNS")"
+          if [[ "$(jq 'length' <<< "$FAILURES")" -gt 0 || "$(jq 'length' <<< "$PENDING")" -gt 0 ]]; then
+            jq . <<< "$FAILURES" >&2
+            jq . <<< "$PENDING" >&2
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 candidate \`${TARGET_SHA}\` is not yet green across GitHub Actions. Protected-UAT deployment did not start. The failing/pending exact-SHA runs are recorded in supervisor run \`${GITHUB_RUN_ID}\`. Production mutation: NONE."
+            exit 1
+          fi
+
+          # Explicitly require the load-bearing permanent workflows.
+          for required in \
+            'ProjectPulse CI' \
+            'ProjectPulse Repository Security Posture' \
+            'FlowHive Detailed Planner CI' \
+            'Validate Module 033 Project Forge' \
+            'Validate Shared FlowHive and Project Forge Document Planning' \
+            'Validate Project Planning Collaboration Access' \
+            'Validate Governed Protected-Test Release Controller' \
+            'System-wide Enterprise Reliability CI'; do
+            jq -e --arg required "$required" '.[] | select(.name == $required and .conclusion == "success")' <<< "$RUNS" >/dev/null || {
+              echo "Required successful workflow is missing: $required" >&2
+              exit 1
+            }
+          done
+
+      - name: Dispatch exact candidate to Protected UAT
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "DISPATCHED_AT=$DISPATCHED_AT" >> "$GITHUB_ENV"
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH"
+
+          DEPLOY_ID=''
+          for attempt in $(seq 1 90); do
+            DEPLOY_ID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" --branch "$TARGET_BRANCH" --event workflow_dispatch --limit 30 --json databaseId,headSha,createdAt --jq --arg sha "$TARGET_SHA" --arg dispatched "$DISPATCHED_AT" '[.[] | select(.headSha == $sha and .createdAt >= $dispatched)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+            [[ -n "$DEPLOY_ID" ]] && break
+            sleep 10
+          done
+          [[ -n "$DEPLOY_ID" ]] || {
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 candidate \`${TARGET_SHA}\` passed source CI, but no exact-SHA Protected-UAT deployment run was created. Production mutation: NONE."
+            exit 1
+          }
+          echo "DEPLOY_ID=$DEPLOY_ID" >> "$GITHUB_ENV"
+
+          for attempt in $(seq 1 360); do
+            STATUS="$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+            [[ "$STATUS" == 'completed' ]] && break
+            sleep 20
+          done
+          STATUS="$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+          CONCLUSION="$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          HEAD_SHA="$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)"
+          [[ "$HEAD_SHA" == "$TARGET_SHA" ]]
+          if [[ "$STATUS" != 'completed' || "$CONCLUSION" != 'success' ]]; then
+            gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$RUNNER_TEMP/deploy-failure.log" 2>&1 || true
+            tail -n 160 "$RUNNER_TEMP/deploy-failure.log" >&2 || true
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 exact candidate \`${TARGET_SHA}\` reached Protected-UAT deployment run \`${DEPLOY_ID}\`, but the run concluded \`${CONCLUSION:-unknown}\`. Do not test yet. Production mutation: NONE."
+            exit 1
+          fi
+
+      - name: Verify Protected-UAT release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          EVIDENCE="$RUNNER_TEMP/evidence"
+          mkdir -p "$EVIDENCE"
+          gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --log > "$EVIDENCE/deployment.log"
+          gh run download "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --dir "$EVIDENCE/artifacts" >/dev/null 2>&1 || true
+          find "$EVIDENCE" -type f -maxdepth 8 -print0 | xargs -0 cat > "$EVIDENCE/all-evidence.txt" 2>/dev/null || true
+
+          grep -Eqi "${TARGET_SHA}|${TARGET_SHA:0:12}" "$EVIDENCE/all-evidence.txt"
+          grep -Eqi '094[_ -]flowhive|migration.?094' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi '095[_ -]project.?planning|migration.?095' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi '096[_ -]project.?planning|migration.?096' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi 'FlowHive.*(UAT|authenticated)|authenticated.*FlowHive' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi 'Project Forge.*(UAT|authenticated)|authenticated.*Project Forge' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi 'document.*download|download.*document|055C' "$EVIDENCE/all-evidence.txt"
+          grep -Eqi 'Production mutation[:= ]+NONE|PRODUCTION_MUTATION=NONE' "$EVIDENCE/all-evidence.txt"
+
+          for endpoint in \
+            'https://phd-west-test.onenecklab.com/' \
+            'https://phd-west-test.onenecklab.com/api/health'; do
+            code="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' --max-time 45 "$endpoint" || true)"
+            [[ "$code" =~ ^2|^3 ]] && break
+          done
+          [[ "$code" =~ ^2|^3 ]] || {
+            echo "Protected UAT is not reachable after deployment; HTTP $code" >&2
+            exit 1
+          }
+
+      - name: Publish ready-to-test marker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATUS_BRANCH="${{ github.event.pull_request.head.ref }}"
+          STATUS_WORK="$RUNNER_TEMP/status-repo"
+          git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$STATUS_WORK"
+          cd "$STATUS_WORK"
+          git fetch --no-tags origin "+refs/heads/${STATUS_BRANCH}:refs/remotes/origin/${STATUS_BRANCH}"
+          git switch -C "$STATUS_BRANCH" "origin/${STATUS_BRANCH}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p .github/flowhive-v2/status
+          cat > ".github/flowhive-v2/status/ready-to-test-${TARGET_SHA}.txt" <<EOF
+          FLOWHIVE_V2_READY_TO_TEST=TRUE
+          PR_NUMBER=${TARGET_PR}
+          CANDIDATE_SHA=${TARGET_SHA}
+          PROTECTED_UAT_DEPLOYMENT_RUN=${DEPLOY_ID}
+          PROTECTED_UAT_URL=https://phd-west-test.onenecklab.com/#project-flowhive
+          PRODUCTION_MUTATION=NONE
+          EOF
+          git add -- ".github/flowhive-v2/status/ready-to-test-${TARGET_SHA}.txt"
+          git commit -m "chore: record FlowHive V2 Protected-UAT candidate ${TARGET_SHA}"
+          git push origin "HEAD:refs/heads/${STATUS_BRANCH}"
+
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "## FlowHive V2 is ready for Protected-UAT testing\n\nExact candidate: \`${TARGET_SHA}\`\nProtected-UAT deployment run: \`${DEPLOY_ID}\`\n\nThe exact-SHA CI matrix, migrations 094/095/096, Module 055C document-download evidence, authenticated FlowHive/Project Forge UAT, and Production-mutation guard passed. PR #737 remains unmerged and draft while user validation is performed."
+          echo 'FLOWHIVE_V2_READY_TO_TEST=TRUE'
+          echo "CANDIDATE_SHA=$TARGET_SHA"
+          echo "DEPLOY_ID=$DEPLOY_ID"
+          echo 'PRODUCTION_MUTATION=NONE'
