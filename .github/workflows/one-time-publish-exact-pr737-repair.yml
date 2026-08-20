@@ -1,120 +1,33 @@
-name: One-time Publish Exact PR737 Repair
+name: One-time Dispatch Complete PR737 Release
 
 on:
-  push:
-    branches:
-      - tooling/one-time-flowhive-clean-publisher-20260819
-    paths:
-      - '.github/workflows/one-time-publish-exact-pr737-repair.yml'
-      - '.github/flowhive-clean/execution-marker-20260819.txt'
   pull_request:
     branches: [main]
-    types: [ready_for_review]
-  workflow_dispatch:
+    types: [reopened]
 
 permissions:
-  contents: write
+  actions: write
+  contents: read
 
 concurrency:
-  group: one-time-publish-exact-pr737-repair
+  group: one-time-dispatch-complete-pr737-release
   cancel-in-progress: false
 
-env:
-  TARGET_BRANCH: fix/shared-project-document-planning-20260819
-  EXPECTED_TARGET_HEAD: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
-  EXPECTED_PATCH_SHA256: c0cb724c48164d95efde1147db11f31ad99ce7b5ce4620aed2794cd0eec35e21
-
 jobs:
-  publish:
-    if: github.event_name != 'pull_request' || github.event.pull_request.number == 736
+  dispatch:
+    if: github.event.pull_request.number == 736
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
-      - name: Check out exact isolated tooling revision
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Set up Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-
-      - name: Decode and verify the reviewed repair payload
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          PAYLOAD='.github/flowhive-clean/repair.patch.gz.b64'
-          test -s "$PAYLOAD"
-          tr -d '\r\n' < "$PAYLOAD" | base64 --decode > "$RUNNER_TEMP/repair.patch.gz"
-          gzip -t "$RUNNER_TEMP/repair.patch.gz"
-          gzip -dc "$RUNNER_TEMP/repair.patch.gz" > "$RUNNER_TEMP/repair.patch"
-          test -s "$RUNNER_TEMP/repair.patch"
-          printf '%s  %s\n' "$EXPECTED_PATCH_SHA256" "$RUNNER_TEMP/repair.patch" | sha256sum -c -
-          echo "PATCH=$RUNNER_TEMP/repair.patch" >> "$GITHUB_ENV"
-          echo 'REVIEWED_PATCH_CHECKSUM=VERIFIED'
-
-      - name: Apply and publish exactly one permanent PR 737 repair commit
+      - name: Dispatch the registered terminal release workflow
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          WORK="$RUNNER_TEMP/project-time-platform"
-          git clone --quiet "$REPO" "$WORK"
-          cd "$WORK"
-          git fetch --no-tags origin "$TARGET_BRANCH"
-          ACTUAL_HEAD="$(git rev-parse "origin/$TARGET_BRANCH")"
-          [[ "$ACTUAL_HEAD" == "$EXPECTED_TARGET_HEAD" ]] || {
-            echo "Target branch moved: expected $EXPECTED_TARGET_HEAD, found $ACTUAL_HEAD" >&2
-            exit 1
-          }
-
-          git switch -C "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-          git apply --check --index "$PATCH"
-          git apply --index "$PATCH"
-          git diff --cached --check
-
-          git apply --numstat "$PATCH" | cut -f3- | LC_ALL=C sort -u > "$RUNNER_TEMP/expected-repair-paths"
-          git diff --cached --name-only | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-repair-paths"
-          cmp "$RUNNER_TEMP/expected-repair-paths" "$RUNNER_TEMP/actual-repair-paths" || {
-            echo 'The staged repair scope differs from the reviewed patch.' >&2
-            diff -u "$RUNNER_TEMP/expected-repair-paths" "$RUNNER_TEMP/actual-repair-paths" >&2 || true
-            exit 1
-          }
-
-          bash tests/test-project-planning-collaboration-migration-095.sh
-          node tests/validate-shared-project-document-planning.mjs
-          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
-          node tests/validate-project-planning-collaboration-access.mjs
-          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
-          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
-
-          git diff --quiet || {
-            echo 'A validation command modified the working tree.' >&2
-            git status --short >&2
-            exit 1
-          }
-          git diff --cached --quiet && {
-            echo 'The reviewed repair produced no staged change.' >&2
-            exit 1
-          }
-
-          git commit -m 'Complete shared FlowHive and Project Forge planning'
-          NEW_SHA="$(git rev-parse HEAD)"
-          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
-          echo "PUBLISHED_PR737_SHA=$NEW_SHA"
-          {
-            echo '## Exact PR #737 repair published'
-            echo
-            echo "- Previous head: $EXPECTED_TARGET_HEAD"
-            echo "- New head: $NEW_SHA"
-            echo "- Reviewed patch SHA-256: $EXPECTED_PATCH_SHA256"
-            echo '- Production mutation: none'
-          } >> "$GITHUB_STEP_SUMMARY"
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/one-time-complete-flowhive-pr737.yml/dispatches" \
+            -f ref='tooling/one-time-flowhive-clean-publisher-20260819'
+          echo 'FLOWHIVE_PR737_TERMINAL_WORKFLOW_DISPATCHED=TRUE'
+          echo 'PRODUCTION_MUTATION=NONE'
