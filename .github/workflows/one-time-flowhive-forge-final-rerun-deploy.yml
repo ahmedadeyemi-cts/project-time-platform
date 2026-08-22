@@ -1,0 +1,206 @@
+name: One-time Final FlowHive and Forge Rerun Deploy
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-forge-final-rerun-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-final-flowhive-forge-rerun-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Rerun transient checks, merge exact green SHA, deploy Protected UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    environment: test
+    env:
+      TARGET_BRANCH: fix/flowhive-forge-final-protected-uat-20260819
+      PROTECTED_TEST_URL: https://phd-west-test.onenecklab.com
+      PROJECTPULSE_PUBLIC_URL: https://phd-west-test.onenecklab.com
+      PUBLIC_URL: https://phd-west-test.onenecklab.com
+      PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+    steps:
+      - name: Resolve the final clean PR
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr_json="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$TARGET_BRANCH" --base main --state all --json number,state,headRefOid,url,mergeCommit --jq 'sort_by(.number) | reverse | .[0] // empty')"
+          [[ -n "$pr_json" ]] || { echo 'Final clean PR was not found.' >&2; exit 1; }
+          number="$(jq -r '.number' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+          head="$(jq -r '.headRefOid' <<<"$pr_json")"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          if [[ "$state" == MERGED ]]; then
+            release_sha="$(jq -r '.mergeCommit.oid // empty' <<<"$pr_json")"
+            [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            echo 'already_merged=true' >> "$GITHUB_OUTPUT"
+            echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$state" == OPEN ]] || { echo "Final clean PR is $state." >&2; exit 1; }
+            [[ "$head" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            echo 'already_merged=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "FINAL_PR=$number STATE=$state HEAD=$head"
+
+      - name: Converge protected checks on the exact unchanged head
+        if: steps.target.outputs.already_merged != 'true'
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          number='${{ steps.target.outputs.number }}'
+          expected='${{ steps.target.outputs.head }}'
+
+          wait_for_settle() {
+            local checks
+            for _ in $(seq 1 240); do
+              current="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json state,headRefOid --jq 'select(.state=="OPEN") | .headRefOid')"
+              [[ "$current" == "$expected" ]] || { echo 'Final clean PR changed during protected validation.' >&2; return 2; }
+              checks="$(gh pr checks "$number" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+              total="$(jq 'length' <<<"$checks")"
+              pending="$(jq '[.[] | select(.bucket=="pending")] | length' <<<"$checks")"
+              if [[ "$total" != 0 && "$pending" == 0 ]]; then
+                printf '%s' "$checks"
+                return 0
+              fi
+              sleep 15
+            done
+            return 1
+          }
+
+          for attempt in 1 2 3; do
+            checks="$(wait_for_settle)" || { echo 'Protected checks did not settle.' >&2; exit 1; }
+            failed="$(jq '[.[] | select(.bucket=="fail")] | length' <<<"$checks")"
+            if [[ "$failed" == 0 ]]; then
+              echo "head=$expected" >> "$GITHUB_OUTPUT"
+              echo "FINAL_CLEAN_PR_ALL_CHECKS=GREEN ATTEMPT=$attempt HEAD=$expected"
+              exit 0
+            fi
+
+            echo "Protected checks failed on attempt $attempt; rerunning failed jobs only." >&2
+            jq -r '.[] | select(.bucket=="fail") | "FAILED: \(.workflow) / \(.name) / \(.link)"' <<<"$checks" >&2
+            jq -r '.[] | select(.bucket=="fail") | .link' <<<"$checks" | while read -r link; do
+              run_id="$(sed -nE 's#^.*/actions/runs/([0-9]+)(/.*)?$#\1#p' <<<"$link")"
+              [[ -n "$run_id" ]] && gh run rerun "$run_id" --repo "$GITHUB_REPOSITORY" --failed || true
+            done
+            sleep 20
+          done
+
+          checks="$(wait_for_settle)" || true
+          jq -r '.[] | select(.bucket=="fail") | "TERMINAL FAILURE: \(.workflow) / \(.name) / \(.link)"' <<<"${checks:-[]}" >&2
+          echo 'The exact final clean SHA remained red after three failed-job reruns; merge refused.' >&2
+          exit 1
+
+      - name: Merge the exact green SHA
+        if: steps.target.outputs.already_merged != 'true'
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          number='${{ steps.target.outputs.number }}'
+          expected='${{ steps.checks.outputs.head }}'
+          gh pr ready "$number" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          [[ "$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" == "$expected" ]]
+          gh pr merge "$number" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "$expected" --delete-branch=false
+          merge_sha="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          echo "FINAL_CLEAN_PR_MERGED=$number SHA=$merge_sha"
+
+      - name: Resolve release SHA
+        id: release
+        shell: bash
+        run: |
+          if [[ '${{ steps.target.outputs.already_merged }}' == true ]]; then
+            sha='${{ steps.target.outputs.release_sha }}'
+          else
+            sha='${{ steps.merge.outputs.sha }}'
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact Protected-UAT deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_sha='${{ steps.release.outputs.sha }}'
+          workflow='projectpulse-deploy-test.yml'
+          run_id=''
+          for _ in $(seq 1 120); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$release_sha" --limit 30 --json databaseId,headSha,event --jq '[.[] | select(.headSha=="'"$release_sha"'")][0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 120); do
+              run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --branch main --limit 30 --json databaseId,headSha --jq '[.[] | select(.headSha=="'"$release_sha"'")][0].databaseId // empty')"
+              [[ -n "$run_id" ]] && break
+              sleep 10
+            done
+          fi
+          [[ -n "$run_id" ]] || { echo 'Protected-UAT deployment run was not found.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 20
+          [[ "$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" == success ]]
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$run_id"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Run authenticated FlowHive, Forge, and Celar UAT
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${PROJECTPULSE_M087_PASSWORD:-}" ]] || { echo 'Protected Test UAT credential is unavailable.' >&2; exit 1; }
+          mapfile -t flowhive_uat < <(find scripts/release-test -maxdepth 1 -type f \( -iname '*flowhive*uat*.sh' -o -iname '*project-planning*uat*.sh' \) | LC_ALL=C sort -u)
+          ((${#flowhive_uat[@]})) || { echo 'No authenticated FlowHive/project-planning UAT script exists.' >&2; exit 1; }
+          for script in "${flowhive_uat[@]}"; do bash -n "$script"; bash "$script"; done
+          mapfile -t forge_uat < <(find scripts/release-test -maxdepth 1 -type f -iname '*forge*uat*.sh' | LC_ALL=C sort -u)
+          for script in "${forge_uat[@]}"; do bash -n "$script"; bash "$script"; done
+          mapfile -t celar_uat < <(find scripts/release-test -maxdepth 1 -type f -iname '*celar*uat*.sh' | LC_ALL=C sort -u)
+          for script in "${celar_uat[@]}"; do bash -n "$script"; bash "$script"; done
+          for path in /api/health /health; do
+            code="$(curl -sS -L --max-time 30 -o /tmp/health-body -w '%{http_code}' "$PROTECTED_TEST_URL$path" || true)"
+            if [[ "$code" =~ ^2 ]]; then
+              echo "PROTECTED_UAT_HEALTH=$path:$code"
+              echo 'PROTECTED_UAT_AUTHENTICATED_FLOWHIVE_FORGE_CELAR=PASSED'
+              exit 0
+            fi
+          done
+          echo 'Protected-UAT health verification failed.' >&2
+          exit 1
+
+      - name: Record terminal success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          number='${{ steps.target.outputs.number }}'
+          gh pr comment "$number" --repo "$GITHUB_REPOSITORY" --body "The exact clean SHA passed all protected checks, merged, deployed to Protected UAT, and completed authenticated FlowHive/Project Forge/Celar validation. Release SHA: ${{ steps.release.outputs.sha }}. Deployment run: ${{ steps.deployment.outputs.run_id }}. Production mutation: NONE."
+          for superseded in 734 736 737; do
+            [[ "$superseded" == "$number" ]] && continue
+            gh pr close "$superseded" --repo "$GITHUB_REPOSITORY" || true
+          done

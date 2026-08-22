@@ -1,0 +1,120 @@
+name: One-time FlowHive Clean Publisher
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-publisher.yml'
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-publisher.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-flowhive-clean-publisher-20260819
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish exact clean FlowHive and Forge source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      MAIN_SHA: 9006561f49793d227b36f2848e230c55298213b1
+      REPAIR_SOURCE_SHA: 5ac67a4470bf0803889bdc9ef19528bebdf1979f
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      FINAL_DELTA_SHA256: 24fcb6031e8eb46735edbed604b9c3d48f0b3117c02fb4fce079d6b0ae922364
+    steps:
+      - name: Check out tooling branch with push credential
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Execute checksum-pinned final publisher
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/one-time-flowhive-clean-publisher-v2.yml')
+          source = workflow.read_text(encoding='utf-8').splitlines()
+          marker = '        run: |'
+          try:
+              start = source.index(marker) + 1
+          except ValueError as exc:
+              raise SystemExit('Final publisher run block is missing.') from exc
+
+          script = []
+          for line in source[start:]:
+              if line.strip() and len(line) - len(line.lstrip(' ')) <= 8:
+                  break
+              if not line.strip():
+                  script.append('')
+                  continue
+              if not line.startswith('          '):
+                  raise SystemExit(f'Unexpected final publisher indentation: {line!r}')
+              script.append(line[10:])
+
+          if not script or script[0] != 'set -Eeuo pipefail':
+              raise SystemExit('Final publisher script did not decode safely.')
+
+          stale = 'run-flowhive-project-forge-protected-test-uat.sh'
+          script = [line for line in script if stale not in line]
+
+          try:
+              segment_start = next(i for i, line in enumerate(script) if line.startswith('declare -A expected_segments=('))
+              segment_end = next(i for i in range(segment_start, len(script)) if script[i] == 'done')
+          except StopIteration as exc:
+              raise SystemExit('Segment checksum block was not found safely.') from exc
+          del script[segment_start:segment_end + 1]
+
+          diagnostic = [
+              'publisher_error() {',
+              '  rc=$?',
+              '  command=${BASH_COMMAND:-unknown}',
+              '  line=${BASH_LINENO[0]:-${LINENO:-unknown}}',
+              '  printf "exit_code=%s\\nline=%s\\ncommand=%s\\n" "$rc" "$line" "$command" > /tmp/flowhive-publisher-failure.txt',
+              '  cat /tmp/flowhive-publisher-failure.txt >&2',
+              '  exit "$rc"',
+              '}',
+              'trap publisher_error ERR',
+          ]
+          script[1:1] = diagnostic
+          target = Path('/tmp/flowhive-final-publisher.sh')
+          target.write_text('\n'.join(script) + '\n', encoding='utf-8')
+          PY
+          bash -n /tmp/flowhive-final-publisher.sh
+          set +e
+          bash /tmp/flowhive-final-publisher.sh > /tmp/flowhive-publisher-output.log 2>&1
+          publisher_rc=$?
+          set -e
+          tail -n 240 /tmp/flowhive-publisher-output.log
+          if [[ "$publisher_rc" -ne 0 ]]; then
+            {
+              printf 'publisher_exit_code=%s\n' "$publisher_rc"
+              test -f /tmp/flowhive-publisher-failure.txt && cat /tmp/flowhive-publisher-failure.txt || true
+              printf '\nlast_output:\n'
+              tail -n 240 /tmp/flowhive-publisher-output.log
+            } > /tmp/flowhive-publisher-failure.txt.tmp
+            mv /tmp/flowhive-publisher-failure.txt.tmp /tmp/flowhive-publisher-failure.txt
+            exit "$publisher_rc"
+          fi
+
+      - name: Upload publisher failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-publisher-failure-${{ github.run_id }}
+          path: |
+            /tmp/flowhive-publisher-failure.txt
+            /tmp/flowhive-publisher-output.log
+          if-no-files-found: error
+          retention-days: 1

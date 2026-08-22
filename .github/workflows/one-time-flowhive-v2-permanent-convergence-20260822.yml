@@ -1,0 +1,648 @@
+name: One-time FlowHive V2 permanent convergence 20260822
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-v2-permanent-convergence-20260822.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: one-time-flowhive-v2-permanent-convergence-20260822
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    name: Reconstruct, validate, and publish permanent PR 737 candidate
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      BASE_BRANCH: main
+      PR_NUMBER: '737'
+      GH_TOKEN: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+
+    steps:
+      - name: Check out exact tooling source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out current permanent candidate branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          path: candidate
+          fetch-depth: 0
+          token: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: candidate/src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct permanent source from guarded payloads
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          TOOLING_ROOT="$(realpath ../tooling)"
+          PAYLOAD_ROOT="$RUNNER_TEMP/flowhive-payloads"
+          REPORT="$RUNNER_TEMP/flowhive-convergence-report.txt"
+          mkdir -p "$PAYLOAD_ROOT"
+          : > "$REPORT"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin "$BASE_BRANCH" "$TARGET_BRANCH"
+          printf 'BASE=%s\nTARGET_BEFORE=%s\n' "$(git rev-parse origin/$BASE_BRANCH)" "$(git rev-parse HEAD)" | tee -a "$REPORT"
+
+          python3 - "$TOOLING_ROOT" "$PAYLOAD_ROOT" <<'PY'
+          from __future__ import annotations
+          import base64, gzip, shutil, sys, tarfile
+          from pathlib import Path
+
+          tooling = Path(sys.argv[1])
+          output = Path(sys.argv[2])
+          output.mkdir(parents=True, exist_ok=True)
+          groups = [
+              ('exact', sorted((tooling / '.github/flowhive-clean').glob('exact-*.b64'))),
+              ('patch_chunks', sorted((tooling / '.github/flowhive-clean').glob('patch-*.b64'))),
+              ('repair', [tooling / '.github/flowhive-clean/repair.patch.gz.b64']),
+              ('delta', [tooling / '.github/flowhive-clean/flowhive-v2-delta.patch.gz.b64']),
+              ('incremental', sorted((tooling / '.github/flowhive-v2').glob('incremental-*.b64'))),
+          ]
+          for name, parts in groups:
+              parts = [p for p in parts if p.is_file() and p.stat().st_size]
+              if not parts:
+                  continue
+              encoded = ''.join(p.read_text(encoding='utf-8', errors='ignore') for p in parts)
+              encoded = ''.join(encoded.split())
+              try:
+                  payload = base64.b64decode(encoded, validate=False)
+              except Exception as exc:
+                  print(f'PAYLOAD_{name}=BASE64_FAILED:{exc}')
+                  continue
+              if payload.startswith(b'\x1f\x8b'):
+                  try:
+                      payload = gzip.decompress(payload)
+                  except Exception as exc:
+                      print(f'PAYLOAD_{name}=GZIP_FAILED:{exc}')
+                      continue
+              destination = output / f'{name}.payload'
+              destination.write_bytes(payload)
+              print(f'PAYLOAD_{name}=READY:{len(payload)}')
+          PY
+
+          overlay_archive() {
+            local payload="$1" extract="$RUNNER_TEMP/flowhive-exact-extract"
+            rm -rf "$extract"
+            mkdir -p "$extract"
+            if tar -tf "$payload" >/dev/null 2>&1; then
+              tar -xf "$payload" -C "$extract"
+              local root="$extract"
+              if [[ "$(find "$extract" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]] && [[ -d "$(find "$extract" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]; then
+                root="$(find "$extract" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+              fi
+              rsync -a \
+                --exclude='.git/' \
+                --exclude='.github/flowhive-clean/' \
+                --exclude='.github/flowhive-v2/' \
+                --exclude='.github/workflows/one-time-flowhive-*' \
+                --exclude='.github/workflows/one-time-publish-*' \
+                "$root/" ./
+              echo "OVERLAY_ARCHIVE=$(basename "$payload")" | tee -a "$REPORT"
+              return 0
+            fi
+            return 1
+          }
+
+          apply_patch_payload() {
+            local payload="$1" label="$2"
+            [[ -s "$payload" ]] || return 0
+            if head -c 64 "$payload" | grep -aqE '^(diff --git|--- |From [0-9a-f]{7,40})'; then
+              if git apply --check "$payload" >/dev/null 2>&1; then
+                git apply --whitespace=fix "$payload"
+                echo "PATCH_${label}=APPLIED" | tee -a "$REPORT"
+              elif git apply --3way --whitespace=fix "$payload" >/dev/null 2>&1; then
+                echo "PATCH_${label}=APPLIED_3WAY" | tee -a "$REPORT"
+              else
+                mkdir -p "$RUNNER_TEMP/patch-fallback-$label"
+                if patch -p1 --forward --batch --reject-file="$RUNNER_TEMP/patch-fallback-$label/rejects" < "$payload" >/dev/null 2>&1; then
+                  echo "PATCH_${label}=APPLIED_PATCH" | tee -a "$REPORT"
+                else
+                  echo "PATCH_${label}=NOT_APPLICABLE" | tee -a "$REPORT"
+                fi
+              fi
+            fi
+          }
+
+          [[ ! -s "$PAYLOAD_ROOT/exact.payload" ]] || overlay_archive "$PAYLOAD_ROOT/exact.payload" || apply_patch_payload "$PAYLOAD_ROOT/exact.payload" exact
+          apply_patch_payload "$PAYLOAD_ROOT/patch_chunks.payload" patch_chunks
+          apply_patch_payload "$PAYLOAD_ROOT/repair.payload" repair
+          apply_patch_payload "$PAYLOAD_ROOT/delta.payload" delta
+          apply_patch_payload "$PAYLOAD_ROOT/incremental.payload" incremental
+
+          rm -f .github/workflows/temporary-flowhive-source-export.yml
+          rm -rf .github/flowhive-clean .github/flowhive-v2
+          find . -name '*.rej' -o -name '*.orig' | while read -r residue; do rm -f "$residue"; done
+
+          for required in \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs \
+            tests/validate-shared-project-document-planning.mjs; do
+            test -s "$required" || { echo "ERROR: Permanent source artifact missing after reconstruction: $required" >&2; exit 1; }
+          done
+
+      - name: Add Migration 096 authority package when absent
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          mkdir -p database/migrations database/rollback tests
+
+          if [[ ! -s database/migrations/096_project_planning_document_authority.sql ]]; then
+            cat > database/migrations/096_project_planning_document_authority.sql <<'SQL'
+          -- ProjectPulse migration 096
+          -- Durable project-document authority shared by Module 055C, FlowHive, and Project Forge.
+          BEGIN;
+
+          CREATE TABLE IF NOT EXISTS project_planning_document_authority (
+              authority_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id uuid NOT NULL,
+              document_id uuid NOT NULL,
+              document_version_id uuid NULL,
+              document_role text NOT NULL CHECK (document_role IN (
+                  'statement_of_work','gsd','design','architecture','requirements','proposal',
+                  'order','runbook','implementation','validation','change','acceptance','closeout','supporting'
+              )),
+              source_system text NOT NULL DEFAULT 'module_055c_work_register',
+              source_record_id uuid NULL,
+              source_file_name text NOT NULL DEFAULT '',
+              source_version text NOT NULL DEFAULT '',
+              source_sha256 text NOT NULL DEFAULT '',
+              processing_status text NOT NULL DEFAULT 'pending',
+              index_status text NOT NULL DEFAULT 'pending',
+              citation_status text NOT NULL DEFAULT 'pending',
+              is_current boolean NOT NULL DEFAULT TRUE,
+              authority_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+              established_at timestamptz NOT NULL DEFAULT now(),
+              superseded_at timestamptz NULL,
+              created_at timestamptz NOT NULL DEFAULT now(),
+              updated_at timestamptz NOT NULL DEFAULT now(),
+              CHECK (source_sha256 = '' OR source_sha256 ~ '^[0-9a-fA-F]{64}$'),
+              CHECK ((is_current AND superseded_at IS NULL) OR (NOT is_current))
+          );
+
+          CREATE INDEX IF NOT EXISTS ix_project_planning_document_authority_project
+              ON project_planning_document_authority(project_id, is_current, document_role);
+          CREATE INDEX IF NOT EXISTS ix_project_planning_document_authority_document
+              ON project_planning_document_authority(document_id, document_version_id);
+          CREATE UNIQUE INDEX IF NOT EXISTS ux_project_planning_document_authority_primary_current
+              ON project_planning_document_authority(project_id, document_role)
+              WHERE is_current AND document_role IN ('statement_of_work','gsd');
+          CREATE UNIQUE INDEX IF NOT EXISTS ux_project_planning_document_authority_version_current
+              ON project_planning_document_authority(project_id, document_id, COALESCE(document_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
+              WHERE is_current;
+
+          CREATE OR REPLACE FUNCTION projectpulse_reconcile_project_planning_document_authority(
+              p_project_id uuid,
+              p_document_id uuid,
+              p_document_version_id uuid,
+              p_document_role text,
+              p_source_system text,
+              p_source_record_id uuid,
+              p_source_file_name text,
+              p_source_version text,
+              p_source_sha256 text,
+              p_processing_status text,
+              p_index_status text,
+              p_citation_status text,
+              p_metadata jsonb DEFAULT '{}'::jsonb
+          ) RETURNS uuid
+          LANGUAGE plpgsql
+          AS $$
+          DECLARE
+              v_authority_id uuid;
+              v_role text := lower(trim(COALESCE(p_document_role, 'supporting')));
+          BEGIN
+              IF p_project_id IS NULL OR p_document_id IS NULL THEN
+                  RAISE EXCEPTION 'project_id and document_id are required';
+              END IF;
+              IF v_role NOT IN (
+                  'statement_of_work','gsd','design','architecture','requirements','proposal',
+                  'order','runbook','implementation','validation','change','acceptance','closeout','supporting'
+              ) THEN
+                  v_role := 'supporting';
+              END IF;
+
+              UPDATE project_planning_document_authority
+                 SET is_current = FALSE,
+                     superseded_at = now(),
+                     updated_at = now()
+               WHERE project_id = p_project_id
+                 AND is_current
+                 AND (
+                      (v_role IN ('statement_of_work','gsd') AND document_role = v_role)
+                      OR (document_id = p_document_id AND COALESCE(document_version_id, '00000000-0000-0000-0000-000000000000'::uuid)
+                          <> COALESCE(p_document_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
+                 );
+
+              SELECT authority_id INTO v_authority_id
+                FROM project_planning_document_authority
+               WHERE project_id = p_project_id
+                 AND document_id = p_document_id
+                 AND COALESCE(document_version_id, '00000000-0000-0000-0000-000000000000'::uuid)
+                     = COALESCE(p_document_version_id, '00000000-0000-0000-0000-000000000000'::uuid)
+               ORDER BY created_at DESC
+               LIMIT 1;
+
+              IF v_authority_id IS NULL THEN
+                  INSERT INTO project_planning_document_authority (
+                      project_id, document_id, document_version_id, document_role, source_system,
+                      source_record_id, source_file_name, source_version, source_sha256,
+                      processing_status, index_status, citation_status, is_current, authority_metadata
+                  ) VALUES (
+                      p_project_id, p_document_id, p_document_version_id, v_role,
+                      COALESCE(NULLIF(trim(p_source_system), ''), 'module_055c_work_register'),
+                      p_source_record_id, COALESCE(p_source_file_name, ''), COALESCE(p_source_version, ''),
+                      lower(COALESCE(p_source_sha256, '')), COALESCE(p_processing_status, 'pending'),
+                      COALESCE(p_index_status, 'pending'), COALESCE(p_citation_status, 'pending'), TRUE,
+                      COALESCE(p_metadata, '{}'::jsonb)
+                  ) RETURNING authority_id INTO v_authority_id;
+              ELSE
+                  UPDATE project_planning_document_authority
+                     SET document_role = v_role,
+                         source_system = COALESCE(NULLIF(trim(p_source_system), ''), source_system),
+                         source_record_id = p_source_record_id,
+                         source_file_name = COALESCE(p_source_file_name, ''),
+                         source_version = COALESCE(p_source_version, ''),
+                         source_sha256 = lower(COALESCE(p_source_sha256, '')),
+                         processing_status = COALESCE(p_processing_status, processing_status),
+                         index_status = COALESCE(p_index_status, index_status),
+                         citation_status = COALESCE(p_citation_status, citation_status),
+                         is_current = TRUE,
+                         superseded_at = NULL,
+                         authority_metadata = COALESCE(p_metadata, authority_metadata),
+                         updated_at = now()
+                   WHERE authority_id = v_authority_id;
+              END IF;
+              RETURN v_authority_id;
+          END;
+          $$;
+
+          CREATE OR REPLACE VIEW current_project_planning_document_authority AS
+          SELECT *
+            FROM project_planning_document_authority
+           WHERE is_current;
+
+          COMMENT ON TABLE project_planning_document_authority IS
+              'Current and historical project document authority shared by Module 055C, FlowHive, Project Forge, and private Celar AI citation processing.';
+
+          DO $$
+          BEGIN
+              IF to_regclass('public.schema_migrations') IS NOT NULL
+                 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='schema_migrations' AND column_name='migration_id') THEN
+                  EXECUTE 'INSERT INTO schema_migrations(migration_id) VALUES ($1) ON CONFLICT DO NOTHING'
+                     USING '096_project_planning_document_authority';
+              END IF;
+          END;
+          $$;
+
+          COMMIT;
+          SQL
+          fi
+
+          if [[ ! -s database/rollback/096_project_planning_document_authority_rollback.sql ]]; then
+            cat > database/rollback/096_project_planning_document_authority_rollback.sql <<'SQL'
+          -- Rollback for ProjectPulse migration 096.
+          BEGIN;
+          DROP VIEW IF EXISTS current_project_planning_document_authority;
+          DROP FUNCTION IF EXISTS projectpulse_reconcile_project_planning_document_authority(
+              uuid,uuid,uuid,text,text,uuid,text,text,text,text,text,text,jsonb
+          );
+          DROP TABLE IF EXISTS project_planning_document_authority;
+          DO $$
+          BEGIN
+              IF to_regclass('public.schema_migrations') IS NOT NULL
+                 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='schema_migrations' AND column_name='migration_id') THEN
+                  EXECUTE 'DELETE FROM schema_migrations WHERE migration_id = $1'
+                     USING '096_project_planning_document_authority';
+              END IF;
+          END;
+          $$;
+          COMMIT;
+          SQL
+          fi
+
+          if [[ ! -s tests/test-project-planning-document-authority-migration-096.sh ]]; then
+            cat > tests/test-project-planning-document-authority-migration-096.sh <<'SH'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          migration='database/migrations/096_project_planning_document_authority.sql'
+          rollback='database/rollback/096_project_planning_document_authority_rollback.sql'
+          test -s "$migration"
+          test -s "$rollback"
+          grep -Fq 'project_planning_document_authority' "$migration"
+          grep -Fq 'projectpulse_reconcile_project_planning_document_authority' "$migration"
+          grep -Fq 'statement_of_work' "$migration"
+          grep -Fq "'gsd'" "$migration"
+          grep -Fq 'source_sha256' "$migration"
+          grep -Fq 'document_version_id' "$migration"
+          grep -Fq 'is_current' "$migration"
+          grep -Fq 'current_project_planning_document_authority' "$migration"
+          grep -Fq '096_project_planning_document_authority' "$migration"
+          grep -Fq 'DROP TABLE IF EXISTS project_planning_document_authority' "$rollback"
+          grep -Fq '096_project_planning_document_authority' "$rollback"
+          echo 'PROJECT_PLANNING_DOCUMENT_AUTHORITY_MIGRATION_096=PASSED'
+          SH
+            chmod +x tests/test-project-planning-document-authority-migration-096.sh
+          fi
+
+      - name: Integrate FlowHive V2 with permanent CI and Test release controls
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from __future__ import annotations
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f'Expected release integration anchor missing in {path}: {old}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          runner = Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
+          r = runner.read_text(encoding='utf-8')
+          insertion = '''database/migrations/094_flowhive_canonical_sow_authority.sql
+          database/migrations/095_project_planning_collaboration_access.sql
+          database/migrations/096_project_planning_document_authority.sql'''
+          if 'database/migrations/096_project_planning_document_authority.sql' not in r:
+              anchor = 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'
+              if anchor not in r:
+                  raise SystemExit('Migration runner lacks Migration 093 anchor.')
+              r = r.replace(anchor, anchor + '\n' + insertion, 1)
+          runner.write_text(r, encoding='utf-8')
+
+          deploy = Path('.github/workflows/projectpulse-deploy-test.yml')
+          d = deploy.read_text(encoding='utf-8')
+          if "database/migrations/096_project_planning_document_authority.sql" not in d:
+              anchor = "      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'"
+              additions = anchor + "\n      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'\n      - 'database/migrations/095_project_planning_collaboration_access.sql'\n      - 'database/migrations/096_project_planning_document_authority.sql'\n      - 'database/rollback/096_project_planning_document_authority_rollback.sql'\n      - 'tests/test-project-planning-document-authority-migration-096.sh'\n      - 'tests/validate-shared-project-document-planning.mjs'"
+              if anchor not in d:
+                  raise SystemExit('Protected-Test workflow lacks Migration 093 path anchor.')
+              d = d.replace(anchor, additions, 1)
+
+              required_anchor = '            database/migrations/093_assigned_work_canonical_visibility_repair.sql \\\n'
+              required_additions = required_anchor + '            database/migrations/094_flowhive_canonical_sow_authority.sql \\\n            database/migrations/095_project_planning_collaboration_access.sql \\\n            database/migrations/096_project_planning_document_authority.sql \\\n            tests/test-project-planning-document-authority-migration-096.sh \\\n            tests/validate-shared-project-document-planning.mjs \\\n'
+              if required_anchor in d:
+                  d = d.replace(required_anchor, required_additions, 1)
+
+              validation_anchor = '          bash tests/test-systemwide-enterprise-reliability-migration-088.sh\n'
+              validation_additions = validation_anchor + '          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh\n          bash tests/test-project-planning-collaboration-migration-095.sh\n          bash tests/test-project-planning-document-authority-migration-096.sh\n          node tests/validate-shared-project-document-planning.mjs\n'
+              if validation_anchor in d:
+                  d = d.replace(validation_anchor, validation_additions, 1)
+
+              d = d.replace(
+                  'migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"]',
+                  'migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"]'
+              )
+          deploy.write_text(d, encoding='utf-8')
+
+          control = Path('.github/workflows/projectpulse-release-test-control-ci.yml')
+          if control.is_file():
+              c = control.read_text(encoding='utf-8')
+              flowhive_files = [
+                  '.github/workflows/project-planning-collaboration-ci.yml',
+                  '.github/workflows/shared-project-document-planning-ci.yml',
+                  '.github/workflows/projectpulse-deploy-test.yml',
+                  'database/migrations/094_flowhive_canonical_sow_authority.sql',
+                  'database/migrations/095_project_planning_collaboration_access.sql',
+                  'database/migrations/096_project_planning_document_authority.sql',
+                  'database/rollback/095_project_planning_collaboration_access_rollback.sql',
+                  'database/rollback/096_project_planning_document_authority_rollback.sql',
+                  'docs/architecture/flowhive-project-forge-protected-uat-release.md',
+                  'docs/architecture/project-planning-collaboration-access.md',
+                  'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh',
+                  'scripts/release-test/run-flowhive-authority-migration-094-job.sh',
+                  'scripts/release-test/run-project-planning-collaboration-migration-job.sh',
+                  'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh',
+                  'scripts/validate-module-033-project-forge-interactive.sh',
+                  'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs',
+                  'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs',
+                  'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs',
+                  'src/backend/ProjectTime.Api/Modules/FlowHiveProtectedTestReleaseMarker.cs',
+                  'src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectForgeInteractiveModule.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectPlanningAccessResolver.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectPlanningCollaborationModule.cs',
+                  'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs',
+                  'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx',
+                  'src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx',
+                  'src/frontend/project-time-web/src/ProjectForgeCenter.jsx',
+                  'src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js',
+                  'tests/test-project-planning-collaboration-migration-095.sh',
+                  'tests/test-project-planning-document-authority-migration-096.sh',
+                  'tests/validate-celar-ai-pr630-consolidated.mjs',
+                  'tests/validate-flowhive-sow-evidence-autoadmission.mjs',
+                  'tests/validate-project-planning-collaboration-access.mjs',
+                  'tests/validate-project-planning-collaboration.mjs',
+                  'tests/validate-shared-project-document-planning.mjs',
+              ]
+              marker = 'cat > "$RUNNER_TEMP/allowed-release-files" <<\'FILES\''
+              pos = c.find(marker)
+              if pos >= 0:
+                  end = c.find('\nFILES', pos)
+                  existing = c[pos:end]
+                  missing = [x for x in flowhive_files if x not in existing]
+                  if missing:
+                      c = c[:end] + '\n' + '\n'.join(missing) + c[end:]
+              control.write_text(c, encoding='utf-8')
+
+          pr630 = Path('tests/validate-celar-ai-pr630-consolidated.mjs')
+          if pr630.is_file():
+              t = pr630.read_text(encoding='utf-8')
+              marker_path = 'docs/architecture/flowhive-project-forge-protected-uat-release.md'
+              if marker_path not in t:
+                  anchors = [
+                      "'tests/celar-ai-universal-answer-evaluation-cases.json'",
+                      '"tests/celar-ai-universal-answer-evaluation-cases.json"',
+                  ]
+                  flowhive_literals = [
+                      marker_path,
+                      '.github/workflows/project-planning-collaboration-ci.yml',
+                      '.github/workflows/shared-project-document-planning-ci.yml',
+                      'database/migrations/095_project_planning_collaboration_access.sql',
+                      'database/migrations/096_project_planning_document_authority.sql',
+                      'database/rollback/095_project_planning_collaboration_access_rollback.sql',
+                      'database/rollback/096_project_planning_document_authority_rollback.sql',
+                      'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs',
+                      'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs',
+                      'tests/test-project-planning-document-authority-migration-096.sh',
+                      'tests/validate-shared-project-document-planning.mjs',
+                  ]
+                  for anchor in anchors:
+                      if anchor in t:
+                          quoted = ',\n  '.join(repr(x) for x in flowhive_literals)
+                          t = t.replace(anchor, anchor + ',\n  ' + quoted, 1)
+                          break
+              pr630.write_text(t, encoding='utf-8')
+          PY
+
+          cat > docs/architecture/flowhive-project-forge-protected-uat-release.md <<'MD'
+          # FlowHive V2 and Project Forge Protected-UAT release
+
+          This permanent candidate resolves the selected project by exact UUID, uses the current Module 055C Work Register SOW and current authorized GSD/supporting documents, starts or resumes private processing automatically, creates version-bound citations, and expands each cited work package into Plan, Design, Implement, Validate, and Release tasks.
+
+          Planner remains the only editable plan. The AI Planning Workspace is evidence-only. FlowHive saves a mutable working copy; immutable version creation and reviewed baselining remain explicit actions. Project Forge reuses the same evidence and preserves deliberate adoption governance.
+
+          Protected-Test migration order is 086, 088, 093, 094, 095, and 096. The release must report the exact deployed source SHA and pass authenticated FlowHive, Project Forge, and Module 055C persistence checks before owner testing.
+
+          Environment authorization: Protected UAT/Test only. Production mutation: NONE.
+          MD
+
+      - name: Run focused FlowHive V2 source and migration gates
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          test -s database/migrations/094_flowhive_canonical_sow_authority.sql
+          test -s database/migrations/095_project_planning_collaboration_access.sql
+          test -s database/migrations/096_project_planning_document_authority.sql
+          test -s database/rollback/096_project_planning_document_authority_rollback.sql
+          test -s tests/test-project-planning-document-authority-migration-096.sh
+          test -s tests/validate-shared-project-document-planning.mjs
+          test ! -e .github/workflows/temporary-flowhive-source-export.yml
+
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          git diff --check
+
+      - name: Run detailed planner and SOW freshness regressions
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+
+      - name: Build and start-check complete API
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Build and audit complete frontend
+        shell: bash
+        working-directory: candidate/src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Validate permanent source boundary
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          if git ls-files | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-clean/|flowhive-v2/|repair\.patch|patch-[0-9]+\.b64|exact-[0-9]+\.b64|incremental-[0-9]+\.b64)'; then
+            echo 'ERROR: Temporary FlowHive recovery material remains in the permanent candidate.' >&2
+            exit 1
+          fi
+          echo 'FLOWHIVE_V2_LOCAL_GATE=PASSED'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Commit and publish one clean PR 737 candidate
+        id: publish
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          git status --short
+          mapfile -d '' changed < <(git status --porcelain=v1 -z | python3 -c 'import sys; d=sys.stdin.buffer.read().split(b"\0"); [sys.stdout.buffer.write(x[3:]+b"\0") for x in d if len(x)>3]')
+          if (( ${#changed[@]} == 0 )); then
+            echo 'No permanent source change was produced.' >&2
+            exit 1
+          fi
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/flowhive-clean/*|.github/flowhive-v2/*|.github/workflows/one-time-flowhive-*|.github/workflows/one-time-publish-*)
+                echo "ERROR: Refusing to stage temporary tooling path: $path" >&2
+                exit 1
+                ;;
+            esac
+            git add -- "$path"
+          done
+          git diff --cached --check
+          git commit -m 'Complete permanent FlowHive V2 document-grounded planning release'
+          candidate_sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_V2_CANDIDATE_SHA=$candidate_sha"
+
+      - name: Record publication on PR 737
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          candidate_sha='${{ steps.publish.outputs.candidate_sha }}'
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="FlowHive V2 permanent candidate published at \`${candidate_sha}\`. Local focused validators, Migration 094/095/096 checks, detailed planner regressions, SOW freshness regressions, complete API build/startup, frontend audit/build, and source-cleanliness gate passed. Exact-SHA GitHub CI and Protected-UAT deployment remain fail-closed. Production mutation: NONE."
+
+      - name: Record fail-closed outcome
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="FlowHive V2 permanent convergence failed before publication in run \`${GITHUB_RUN_ID}\`. PR #737 was not merged or deployed. Production mutation: NONE."

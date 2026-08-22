@@ -1,0 +1,2 @@
+Trigger the isolated FlowHive V2 source finalization, exact-SHA CI convergence, and Protected-UAT candidate deployment.
+Production mutation: NONE.

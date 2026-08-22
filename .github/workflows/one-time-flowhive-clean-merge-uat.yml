@@ -1,0 +1,232 @@
+name: One-time Clean FlowHive Forge Merge and Protected UAT
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-merge-uat.yml'
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-merge-uat.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-clean-flowhive-forge-merge-uat
+  cancel-in-progress: false
+
+jobs:
+  validate-merge-uat:
+    name: Validate clean source, merge, and verify Protected UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      EXPECTED_MAIN: 9006561f49793d227b36f2848e230c55298213b1
+      PUBLIC_URL: https://phd-west-test.onenecklab.com
+    steps:
+      - name: Resolve exact clean PR
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr_json="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$TARGET_BRANCH" --base main --state open --json number,headRefOid,baseRefName,isDraft,url --jq '.[0] // empty')"
+          [[ -n "$pr_json" ]] || { echo 'Clean replacement PR is not open.' >&2; exit 1; }
+          number="$(jq -r '.number' <<<"$pr_json")"
+          head="$(jq -r '.headRefOid' <<<"$pr_json")"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo 'Clean PR head SHA is invalid.' >&2; exit 1; }
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "url=$(jq -r '.url' <<<"$pr_json")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact clean PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.target.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require current-main ancestry and clean source scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          actual_main="$(git rev-parse origin/main)"
+          [[ "$actual_main" == "$EXPECTED_MAIN" ]] || { echo "main changed to $actual_main; re-audit before merge." >&2; exit 1; }
+          git merge-base --is-ancestor "$EXPECTED_MAIN" HEAD
+
+          changed="$(git diff --name-only "$EXPECTED_MAIN"...HEAD)"
+          [[ -n "$changed" ]] || { echo 'Clean PR has no source changes.' >&2; exit 1; }
+          if grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64|one-time-flowhive-clean)' <<<"$changed"; then
+            echo 'Temporary recovery or tooling artifacts are forbidden from the clean PR.' >&2
+            exit 1
+          fi
+          if git ls-tree -r --name-only HEAD | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'; then
+            echo 'Temporary recovery artifacts remain in the clean tree.' >&2
+            exit 1
+          fi
+          echo "$changed"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Require shared project-document planning architecture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -R -Fq '/api/project-flowhive/projects/{projectId:guid}/ai-planner/runs' src/backend/ProjectTime.Api
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
+          grep -R -Fq 'Plan' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'Design' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'Implement' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'Validate' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'Release' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          grep -R -Fq 'project_end_exceeded' tests src/backend/ProjectTime.Api/Modules
+          grep -R -Fq 'ProjectForge' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          grep -R -Fq 'statement_of_work' src/backend/ProjectTime.Api
+          grep -R -Fq 'gsd' src/backend/ProjectTime.Api
+          grep -R -Fq 'citation' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
+          ! grep -R -Fq "label: 'AI draft studio'" src/frontend/project-time-web/src
+          ! grep -Fq 'window.fetch = async' src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+
+      - name: Validate migrations and release wiring
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          grep -Fq '094_flowhive_canonical_sow_authority.sql' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq '095_project_planning_collaboration_access.sql' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+
+      - name: Run FlowHive and Forge source contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Run executable Planner and API gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run frontend dependency security and production build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Require all clean PR checks green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          number='${{ steps.target.outputs.number }}'
+          head='${{ steps.target.outputs.head }}'
+          for _ in $(seq 1 120); do
+            current="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+            [[ "$current" == "$head" ]] || { echo 'Clean PR changed during validation.' >&2; exit 1; }
+            checks="$(gh pr checks "$number" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+            failed="$(jq '[.[] | select(.bucket=="fail")] | length' <<<"$checks")"
+            pending="$(jq '[.[] | select(.bucket=="pending")] | length' <<<"$checks")"
+            [[ "$failed" == 0 ]] || { jq -r '.[] | select(.bucket=="fail") | "FAILED: \(.workflow) / \(.name) / \(.link)"' <<<"$checks" >&2; exit 1; }
+            if [[ "$pending" == 0 ]]; then break; fi
+            sleep 15
+          done
+          checks="$(gh pr checks "$number" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+          [[ "$(jq '[.[] | select(.bucket=="fail" or .bucket=="pending")] | length' <<<"$checks")" == 0 ]]
+
+      - name: Merge exact clean PR
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          number='${{ steps.target.outputs.number }}'
+          head='${{ steps.target.outputs.head }}'
+          gh pr ready "$number" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          gh pr merge "$number" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "$head" --delete-branch=false
+          merge_sha="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Protected Test deployment and authenticated UAT
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          merge_sha='${{ steps.merge.outputs.sha }}'
+          workflow='.github/workflows/projectpulse-deploy-test.yml'
+          run_id=''
+          for _ in $(seq 1 60); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$merge_sha" --limit 10 --json databaseId,event --jq '[.[] | select(.event=="push")][0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 60); do
+              run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --branch main --limit 10 --json databaseId,headSha,event --jq '[.[] | select(.headSha=="'"$merge_sha"'")][0].databaseId // empty')"
+              [[ -n "$run_id" ]] && break
+              sleep 10
+            done
+          fi
+          [[ -n "$run_id" ]] || { echo 'Protected Test deployment run was not created.' >&2; exit 1; }
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 20
+          conclusion="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          [[ "$conclusion" == success ]]
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN=$run_id"
+          echo "PRODUCTION_MUTATION=NONE"
+
+      - name: Retire superseded drafts after Protected UAT success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr comment 734 --repo "$GITHUB_REPOSITORY" --body 'Superseded by the clean shared FlowHive and Project Forge document-grounded planning release after successful Protected UAT.' || true
+          gh pr close 734 --repo "$GITHUB_REPOSITORY" || true
+          echo 'PR_734=SUPERSEDED'
+          echo 'TOOLING_PR_736=RETAINED_OPEN_UNTIL_THIS_RUN_COMPLETES'

@@ -1,0 +1,145 @@
+name: One-time FlowHive PR737 Green Merge and Protected UAT
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-pr737-green-merge-uat.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-pr737-green-merge-uat
+  cancel-in-progress: false
+
+jobs:
+  merge-and-uat:
+    name: Wait for green PR737, merge exact SHA, deploy Protected UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      TARGET_PR: '737'
+      OLD_HEAD: 9f2e82d409f7227f6fd0e5c76c5702add3181f96
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      PROTECTED_TEST_URL: https://phd-west-test.onenecklab.com
+    steps:
+      - name: Wait for republished clean head
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          head=''
+          for _ in $(seq 1 120); do
+            state="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+            [[ "$state" == OPEN ]] || { echo "PR #$TARGET_PR is not open." >&2; exit 1; }
+            head="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+            if [[ "$head" =~ ^[0-9a-f]{40}$ && "$head" != "$OLD_HEAD" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          [[ "$head" =~ ^[0-9a-f]{40}$ && "$head" != "$OLD_HEAD" ]] || {
+            echo 'The clean republisher did not publish a new PR #737 head.' >&2
+            exit 1
+          }
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "PR737_HEAD=$head"
+
+      - name: Wait for every PR737 check to become green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected='${{ steps.target.outputs.head }}'
+          settled=0
+          for _ in $(seq 1 240); do
+            current="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+            [[ "$current" == "$expected" ]] || { echo 'PR #737 changed during validation.' >&2; exit 1; }
+            checks="$(gh pr checks "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json name,bucket,state,workflow,link 2>/dev/null || echo '[]')"
+            failed="$(jq '[.[] | select(.bucket=="fail")] | length' <<<"$checks")"
+            pending="$(jq '[.[] | select(.bucket=="pending")] | length' <<<"$checks")"
+            total="$(jq 'length' <<<"$checks")"
+            if [[ "$failed" != 0 ]]; then
+              jq -r '.[] | select(.bucket=="fail") | "FAILED: \(.workflow) / \(.name) / \(.link)"' <<<"$checks" >&2
+              exit 1
+            fi
+            if [[ "$total" != 0 && "$pending" == 0 ]]; then
+              settled=1
+              break
+            fi
+            sleep 15
+          done
+          [[ "$settled" == 1 ]] || { echo 'PR #737 checks did not settle green before timeout.' >&2; exit 1; }
+          echo 'PR737_ALL_CHECKS=GREEN'
+
+      - name: Mark PR ready and merge exact green SHA
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected='${{ steps.target.outputs.head }}'
+          gh pr ready "$TARGET_PR" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+          current="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+          [[ "$current" == "$expected" ]] || { echo 'PR #737 head moved before merge.' >&2; exit 1; }
+          gh pr merge "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "$expected" --delete-branch=false
+          merge_sha="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq '.mergeCommit.oid')"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Merge SHA is unavailable.' >&2; exit 1; }
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          echo "PR737_MERGED_SHA=$merge_sha"
+
+      - name: Wait for exact Protected UAT deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          merge_sha='${{ steps.merge.outputs.sha }}'
+          workflow='projectpulse-deploy-test.yml'
+          run_id=''
+          for _ in $(seq 1 90); do
+            run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$merge_sha" --limit 20 --json databaseId,headSha,event --jq '[.[] | select(.headSha=="'"$merge_sha"'")][0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 90); do
+              run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --branch main --limit 20 --json databaseId,headSha --jq '[.[] | select(.headSha=="'"$merge_sha"'")][0].databaseId // empty')"
+              [[ -n "$run_id" ]] && break
+              sleep 10
+            done
+          fi
+          [[ -n "$run_id" ]] || { echo 'Protected UAT deployment workflow was not created.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 20
+          conclusion="$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)"
+          [[ "$conclusion" == success ]] || { echo "Protected UAT deployment concluded $conclusion." >&2; exit 1; }
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$run_id"
+
+      - name: Verify Protected UAT responds after deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for path in /api/health /health; do
+            code="$(curl -sS -L --max-time 30 -o /tmp/health-body -w '%{http_code}' "$PROTECTED_TEST_URL$path" || true)"
+            if [[ "$code" =~ ^2 ]]; then
+              echo "PROTECTED_UAT_HEALTH=$path:$code"
+              echo 'PRODUCTION_MUTATION=NONE'
+              exit 0
+            fi
+          done
+          echo 'Protected UAT did not return a successful health response.' >&2
+          cat /tmp/health-body 2>/dev/null || true
+          exit 1

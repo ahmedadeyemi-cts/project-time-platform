@@ -1,0 +1,293 @@
+name: One-time FlowHive V2 release wiring v2 20260822
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-v2-release-wiring-v2-20260822.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: one-time-flowhive-v2-release-wiring-v2-20260822
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair permanent source, release gates, and Test migration wiring
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PR_NUMBER: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      GH_TOKEN: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+
+    steps:
+      - name: Require open PR 737
+        id: state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          merged="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged')"
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+
+      - name: Check out tooling payloads
+        if: steps.state.outputs.merged != 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out current PR candidate
+        if: steps.state.outputs.merged != 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          path: candidate
+          fetch-depth: 0
+          token: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+          persist-credentials: true
+
+      - name: Set up Node 22
+        if: steps.state.outputs.merged != 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: candidate/src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        if: steps.state.outputs.merged != 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Recover resolver and orchestrator only when absent
+        if: steps.state.outputs.merged != 'true'
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main "$TARGET_BRANCH"
+          if [[ -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs && -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs ]]; then
+            echo 'SHARED_RESOLVER_ORCHESTRATOR=ALREADY_PRESENT'
+            exit 0
+          fi
+          tooling="$(realpath ../tooling)"
+          output="$RUNNER_TEMP/wiring-payloads"
+          mkdir -p "$output"
+          python3 - "$tooling" "$output" <<'PY'
+          import base64,gzip,sys
+          from pathlib import Path
+          tooling=Path(sys.argv[1]); out=Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=True)
+          groups=[
+            ('repair',[tooling/'.github/flowhive-clean/repair.patch.gz.b64']),
+            ('delta',[tooling/'.github/flowhive-clean/flowhive-v2-delta.patch.gz.b64']),
+            ('incremental',sorted((tooling/'.github/flowhive-v2').glob('incremental-*.b64'))),
+            ('exact',sorted((tooling/'.github/flowhive-clean').glob('exact-*.b64'))),
+          ]
+          for name,parts in groups:
+            parts=[p for p in parts if p.is_file() and p.stat().st_size]
+            if not parts: continue
+            data=base64.b64decode(''.join(''.join(p.read_text(errors='ignore').split()) for p in parts))
+            if data[:2]==b'\x1f\x8b': data=gzip.decompress(data)
+            (out/f'{name}.patch').write_bytes(data)
+          PY
+          for name in repair delta incremental exact; do
+            payload="$output/$name.patch"
+            [[ -s "$payload" ]] || continue
+            if head -c 80 "$payload" | grep -aqE '^(diff --git|--- |From [0-9a-f]{7,40})'; then
+              git apply --3way --whitespace=fix "$payload" >/dev/null 2>&1 || \
+                git apply --whitespace=fix "$payload" >/dev/null 2>&1 || \
+                patch -p1 --forward --batch < "$payload" >/dev/null 2>&1 || true
+            fi
+          done
+          find . \( -name '*.rej' -o -name '*.orig' \) -type f -delete
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -s src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+
+      - name: Update exact permanent release wiring
+        if: steps.state.outputs.merged != 'true'
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          rm -f .github/workflows/temporary-flowhive-source-export.yml
+          rm -rf .github/flowhive-clean .github/flowhive-v2
+          python3 <<'PY'
+          from pathlib import Path
+          import re,subprocess
+
+          result=subprocess.run(['git','diff','--name-only','origin/main...HEAD'],text=True,capture_output=True,check=True)
+          files={x.strip() for x in result.stdout.splitlines() if x.strip()}
+          files.update({
+            '.github/workflows/projectpulse-deploy-test.yml',
+            '.github/workflows/projectpulse-release-test-control-ci.yml',
+            'scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh',
+            'database/migrations/094_flowhive_canonical_sow_authority.sql',
+            'database/migrations/095_project_planning_collaboration_access.sql',
+            'database/migrations/096_project_planning_document_authority.sql',
+            'database/rollback/095_project_planning_collaboration_access_rollback.sql',
+            'database/rollback/096_project_planning_document_authority_rollback.sql',
+            'tests/test-project-planning-document-authority-migration-096.sh',
+            'tests/validate-shared-project-document-planning.mjs',
+          })
+          files=sorted(f for f in files if not f.startswith('.github/workflows/temporary-'))
+
+          runner=Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
+          r=runner.read_text()
+          anchor='database/migrations/093_assigned_work_canonical_visibility_repair.sql'
+          required_migrations=[
+            'database/migrations/094_flowhive_canonical_sow_authority.sql',
+            'database/migrations/095_project_planning_collaboration_access.sql',
+            'database/migrations/096_project_planning_document_authority.sql',
+          ]
+          for migration in required_migrations:
+            if migration not in r:
+              if anchor not in r: raise SystemExit('Migration runner does not expose Migration 093 anchor')
+              r=r.replace(anchor,anchor+'\n'+migration,1)
+          runner.write_text(r)
+
+          deploy=Path('.github/workflows/projectpulse-deploy-test.yml')
+          d=deploy.read_text()
+          path_anchor="      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'"
+          path_entries=[
+            'database/migrations/094_flowhive_canonical_sow_authority.sql',
+            'database/migrations/095_project_planning_collaboration_access.sql',
+            'database/migrations/096_project_planning_document_authority.sql',
+            'database/rollback/096_project_planning_document_authority_rollback.sql',
+            'tests/test-project-planning-document-authority-migration-096.sh',
+            'tests/validate-shared-project-document-planning.mjs',
+          ]
+          for entry in path_entries:
+            literal=f"      - '{entry}'"
+            if literal not in d:
+              if path_anchor not in d: raise SystemExit('Protected-Test workflow Migration 093 path anchor missing')
+              d=d.replace(path_anchor,path_anchor+'\n'+literal,1)
+          old='migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair"]'
+          new='migrations:["086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority"]'
+          d=d.replace(old,new)
+          validation_anchor='          bash tests/test-systemwide-enterprise-reliability-migration-088.sh\n'
+          additions=(
+            '          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh\n'
+            '          bash tests/test-project-planning-collaboration-migration-095.sh\n'
+            '          bash tests/test-project-planning-document-authority-migration-096.sh\n'
+            '          node tests/validate-shared-project-document-planning.mjs\n'
+          )
+          if 'bash tests/test-project-planning-document-authority-migration-096.sh' not in d:
+            if validation_anchor not in d: raise SystemExit('Protected-Test workflow validation anchor missing')
+            d=d.replace(validation_anchor,validation_anchor+additions,1)
+          deploy.write_text(d)
+
+          control=Path('.github/workflows/projectpulse-release-test-control-ci.yml')
+          if not control.is_file(): raise SystemExit('Governed release control workflow missing')
+          c=control.read_text()
+          marker='cat > "$RUNNER_TEMP/allowed-release-files" <<\'FILES\''
+          pos=c.find(marker); end=c.find('\nFILES',pos)
+          if pos<0 or end<0: raise SystemExit('Governed release allowlist block missing')
+          block=c[pos:end]
+          missing=[f for f in files if f not in block]
+          if missing: c=c[:end]+'\n'+'\n'.join(missing)+c[end:]
+          control.write_text(c)
+
+          pr630=Path('tests/validate-celar-ai-pr630-consolidated.mjs')
+          if pr630.is_file():
+            t=pr630.read_text()
+            anchor='tests/celar-ai-universal-answer-evaluation-cases.json'
+            arrays=list(re.finditer(r'(?:new\s+Set\s*\(\s*\[|=\s*\[)(.*?)(?:\]\s*\)|\])',t,re.S))
+            chosen=next((m for m in arrays if anchor in m.group(1)),None)
+            if chosen:
+              body=chosen.group(1)
+              missing=[f for f in files if f not in body]
+              if missing:
+                insertion='\n  '+',\n  '.join(repr(f) for f in missing)+','
+                t=t[:chosen.end(1)]+insertion+t[chosen.end(1):]
+                pr630.write_text(t)
+          PY
+          git diff --check
+
+      - name: Run exact source-scope, migration, API, and UI gate
+        if: steps.state.outputs.merged != 'true'
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          for required in \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs \
+            database/migrations/094_flowhive_canonical_sow_authority.sql \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            database/migrations/096_project_planning_document_authority.sql \
+            database/rollback/096_project_planning_document_authority_rollback.sql \
+            tests/test-project-planning-document-authority-migration-096.sh \
+            tests/validate-shared-project-document-planning.mjs; do test -s "$required"; done
+          test ! -e .github/workflows/temporary-flowhive-source-export.yml
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+          (
+            cd src/frontend/project-time-web
+            npm ci --no-audit --no-fund
+            npm audit --audit-level=high
+            npm run build
+          )
+          git diff --check
+          echo 'FLOWHIVE_V2_RELEASE_WIRING_V2_GATE=PASSED'
+
+      - name: Publish exact current permanent candidate
+        if: steps.state.outputs.merged != 'true'
+        id: publish
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -Eeuo pipefail
+          mapfile -d '' changed < <(git status --porcelain=v1 -z | python3 -c 'import sys; d=sys.stdin.buffer.read().split(b"\0"); [sys.stdout.buffer.write(x[3:]+b"\0") for x in d if len(x)>3]')
+          if (( ${#changed[@]} == 0 )); then
+            echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/flowhive-clean/*|.github/flowhive-v2/*|.github/workflows/one-time-flowhive-*|.github/workflows/one-time-publish-*) echo "Temporary path rejected: $path" >&2; exit 1;;
+            esac
+            git add -- "$path"
+          done
+          git diff --cached --check
+          git commit -m 'Complete FlowHive V2 release and migration wiring'
+          sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "candidate_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_V2_RELEASE_WIRING_SHA=$sha"
+
+      - name: Record wiring result
+        if: steps.state.outputs.merged != 'true' && success()
+        shell: bash
+        run: |
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="FlowHive V2 release wiring v2 passed the full local source-scope, migration, API, planner, SOW-freshness, and frontend gate at \`${{ steps.publish.outputs.candidate_sha }}\`. Exact-SHA CI and Protected-Test deployment remain fail-closed. Production mutation: NONE."
+
+      - name: Record wiring failure
+        if: steps.state.outputs.merged != 'true' && failure()
+        shell: bash
+        run: |
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="FlowHive V2 release wiring v2 failed before publication in run \`${GITHUB_RUN_ID}\`. No merge or deployment was performed. Production mutation: NONE." || true

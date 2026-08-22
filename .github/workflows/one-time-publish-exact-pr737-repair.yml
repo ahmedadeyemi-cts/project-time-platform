@@ -1,0 +1,205 @@
+name: One-time Publish FlowHive V2 to PR 737
+
+on:
+  pull_request:
+    branches: [main]
+    types: [reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-publish-flowhive-v2-pr737-final
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: fix/shared-project-document-planning-20260819
+  EXPECTED_TARGET_HEAD: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
+  EXPECTED_MAIN_HEAD: 9006561f49793d227b36f2848e230c55298213b1
+  ORIGINAL_PATCH_SHA256: c0cb724c48164d95efde1147db11f31ad99ce7b5ce4620aed2794cd0eec35e21
+  V2_DELTA_SHA256: 5789ff1df4566cb7ee63b3a983601e764d97524b9a48e08b90ddcfd98a87c5ee
+  FINAL_MANIFEST_SHA256: 6c200f612e284d4908b76967c219cb1764a8f60b6536073ca338de5cfc9cbe75
+
+jobs:
+  publish:
+    if: github.event.pull_request.number == 736
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact tooling revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct immutable reviewed payloads
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t parts < <(find .github/flowhive-clean -maxdepth 1 -type f -name 'exact-*.b64' | LC_ALL=C sort)
+          [[ "${#parts[@]}" -eq 21 ]] || {
+            echo "Expected 21 original repair segments; found ${#parts[@]}." >&2
+            exit 1
+          }
+
+          cat "${parts[@]}" | tr -d '\r\n' > "$RUNNER_TEMP/original.patch.gz.b64"
+          base64 --decode "$RUNNER_TEMP/original.patch.gz.b64" > "$RUNNER_TEMP/original.patch.gz"
+          gzip -t "$RUNNER_TEMP/original.patch.gz"
+          gzip -dc "$RUNNER_TEMP/original.patch.gz" > "$RUNNER_TEMP/original.patch"
+          printf '%s  %s\n' "$ORIGINAL_PATCH_SHA256" "$RUNNER_TEMP/original.patch" | sha256sum -c -
+
+          tr -d '\r\n' < .github/flowhive-clean/flowhive-v2-delta.patch.gz.b64 > "$RUNNER_TEMP/v2.patch.gz.b64"
+          base64 --decode "$RUNNER_TEMP/v2.patch.gz.b64" > "$RUNNER_TEMP/v2.patch.gz"
+          gzip -t "$RUNNER_TEMP/v2.patch.gz"
+          gzip -dc "$RUNNER_TEMP/v2.patch.gz" > "$RUNNER_TEMP/v2.patch"
+          printf '%s  %s\n' "$V2_DELTA_SHA256" "$RUNNER_TEMP/v2.patch" | sha256sum -c -
+
+          cp .github/flowhive-clean/flowhive-v2-final.sha256 "$RUNNER_TEMP/final.sha256"
+          printf '%s  %s\n' "$FINAL_MANIFEST_SHA256" "$RUNNER_TEMP/final.sha256" | sha256sum -c -
+
+          echo "ORIGINAL_PATCH=$RUNNER_TEMP/original.patch" >> "$GITHUB_ENV"
+          echo "V2_PATCH=$RUNNER_TEMP/v2.patch" >> "$GITHUB_ENV"
+          echo "FINAL_MANIFEST=$RUNNER_TEMP/final.sha256" >> "$GITHUB_ENV"
+
+      - name: Apply, validate, and publish FlowHive V2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORK="$RUNNER_TEMP/project-time-platform"
+          AUTH_REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          RELEASE_DOC='docs/architecture/flowhive-project-forge-protected-uat-release.md'
+          RELEASE_DOC_PAYLOAD="$GITHUB_WORKSPACE/.github/flowhive-clean/final-flowhive-project-forge-protected-uat-release.md"
+
+          git clone --quiet "$AUTH_REPO" "$WORK"
+          cd "$WORK"
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+
+          MAIN_HEAD="$(git rev-parse origin/main)"
+          TARGET_HEAD="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          [[ "$MAIN_HEAD" == "$EXPECTED_MAIN_HEAD" ]] || {
+            echo "main moved: expected $EXPECTED_MAIN_HEAD, found $MAIN_HEAD" >&2
+            exit 1
+          }
+          [[ "$TARGET_HEAD" == "$EXPECTED_TARGET_HEAD" ]] || {
+            echo "PR #737 moved: expected $EXPECTED_TARGET_HEAD, found $TARGET_HEAD" >&2
+            exit 1
+          }
+
+          git switch -C "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git apply --check --exclude="$RELEASE_DOC" "$ORIGINAL_PATCH"
+          git apply --exclude="$RELEASE_DOC" "$ORIGINAL_PATCH"
+          test -s "$RELEASE_DOC_PAYLOAD"
+          cp "$RELEASE_DOC_PAYLOAD" "$RELEASE_DOC"
+
+          git apply --check "$V2_PATCH"
+          git apply "$V2_PATCH"
+          git diff --check
+
+          {
+            git apply --numstat "$ORIGINAL_PATCH"
+            git apply --numstat "$V2_PATCH"
+          } | cut -f3- | LC_ALL=C sort -u > "$RUNNER_TEMP/expected-paths"
+          [[ "$(wc -l < "$RUNNER_TEMP/expected-paths")" -eq 42 ]] || {
+            echo 'The reviewed release manifest must contain exactly 42 paths.' >&2
+            cat "$RUNNER_TEMP/expected-paths" >&2
+            exit 1
+          }
+
+          test ! -e .github/workflows/temporary-flowhive-source-export.yml
+          while IFS= read -r path; do
+            [[ "$path" == '.github/workflows/temporary-flowhive-source-export.yml' ]] && continue
+            test -f "$path" || {
+              echo "Required final release file is missing: $path" >&2
+              exit 1
+            }
+          done < "$RUNNER_TEMP/expected-paths"
+
+          sha256sum -c "$FINAL_MANIFEST"
+
+          git add --pathspec-from-file="$RUNNER_TEMP/expected-paths"
+          git diff --cached --check
+          git diff --cached --name-only | LC_ALL=C sort -u > "$RUNNER_TEMP/staged-paths"
+          comm -23 "$RUNNER_TEMP/staged-paths" "$RUNNER_TEMP/expected-paths" > "$RUNNER_TEMP/unexpected-paths"
+          test ! -s "$RUNNER_TEMP/unexpected-paths" || {
+            echo 'Unexpected paths entered the FlowHive V2 commit:' >&2
+            cat "$RUNNER_TEMP/unexpected-paths" >&2
+            exit 1
+          }
+          git diff --cached --quiet && {
+            echo 'The reviewed FlowHive V2 release produced no commit.' >&2
+            exit 1
+          }
+          git diff --cached --binary > "$RUNNER_TEMP/before-validation.patch"
+
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          node --check scripts/release-test/verify-runtime.mjs
+
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj -c Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj -c Release
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+
+          pushd src/frontend/project-time-web >/dev/null
+          npm ci --no-audit --no-fund
+          npm run build
+          popd >/dev/null
+
+          python3 scripts/security/validate-repository-security-posture.py
+
+          git add --pathspec-from-file="$RUNNER_TEMP/expected-paths"
+          git diff --cached --binary > "$RUNNER_TEMP/after-validation.patch"
+          cmp "$RUNNER_TEMP/before-validation.patch" "$RUNNER_TEMP/after-validation.patch" || {
+            echo 'A validation command changed the reviewed FlowHive V2 release tree.' >&2
+            git status --short >&2
+            exit 1
+          }
+          git diff --cached --check
+          sha256sum -c "$FINAL_MANIFEST"
+
+          git commit -m 'Complete FlowHive V2 project-grounded planning'
+          NEW_SHA="$(git rev-parse HEAD)"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET_HEAD}" \
+            origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 exact reviewed release published at \`${NEW_SHA}\`. The original repair, V2 delta, and 41-file final checksum manifest were verified; API, frontend, planner, Forge, collaboration, security, and document-planning gates passed in the publisher. Protected-UAT candidate validation remains required. Production mutation: NONE."
+          {
+            echo '## FlowHive V2 published'
+            echo
+            echo "- Previous PR head: $EXPECTED_TARGET_HEAD"
+            echo "- New PR head: $NEW_SHA"
+            echo "- Original patch SHA-256: $ORIGINAL_PATCH_SHA256"
+            echo "- V2 delta SHA-256: $V2_DELTA_SHA256"
+            echo "- Final manifest SHA-256: $FINAL_MANIFEST_SHA256"
+            echo '- Production mutation: NONE'
+          } >> "$GITHUB_STEP_SUMMARY"

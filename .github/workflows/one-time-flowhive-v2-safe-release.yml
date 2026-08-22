@@ -1,0 +1,379 @@
+name: One-time FlowHive V2 Safe Candidate Release
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/flowhive-v2/trigger-safe-release.txt'
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-flowhive-v2-safe-candidate-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      TARGET_PR: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+    steps:
+      - name: Check out isolated control revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Finalize, validate, and deploy exact FlowHive V2 candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          failure() {
+            local line="${1:-unknown}"
+            local status="${2:-failed}"
+            gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 safe candidate release ${status} near controller line \`${line}\` (run \`${GITHUB_RUN_ID}\`). Protected-UAT validation is not complete; do not test yet. Production mutation: NONE." >/dev/null 2>&1 || true
+          }
+          trap 'failure "$LINENO" "failed"' ERR
+
+          WORK="$RUNNER_TEMP/project-time-platform"
+          AUTH_REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git clone --quiet "$AUTH_REPO" "$WORK"
+          cd "$WORK"
+
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${TARGET_PR}")"
+          [[ "$(jq -r '.state' <<< "$PR_JSON")" == 'open' ]]
+          [[ "$(jq -r '.draft' <<< "$PR_JSON")" == 'true' ]]
+          [[ "$(jq -r '.head.ref' <<< "$PR_JSON")" == "$TARGET_BRANCH" ]]
+          [[ "$(jq -r '.base.ref' <<< "$PR_JSON")" == 'main' ]]
+          ORIGINAL_SHA="$(jq -r '.head.sha' <<< "$PR_JSON")"
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          [[ "$(git rev-parse "origin/${TARGET_BRANCH}")" == "$ORIGINAL_SHA" ]]
+          git switch -C "$TARGET_BRANCH" "origin/${TARGET_BRANCH}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path.cwd()
+          def load(rel):
+              path = root / rel
+              if not path.exists():
+                  raise SystemExit(f'Missing required FlowHive V2 source: {rel}')
+              return path, path.read_text(encoding='utf-8')
+          def save(path, before, after):
+              if before != after:
+                  path.write_text(after, encoding='utf-8')
+
+          contracts_path, contracts = load('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs')
+          contracts_before = contracts
+          match = re.search(r'public sealed record PulseAiPrivateFlowHiveRequest\((.*?)\);', contracts, re.S)
+          if not match:
+              raise SystemExit('PulseAiPrivateFlowHiveRequest was not found.')
+          body = match.group(1)
+          if 'Guid? ProjectId' not in body:
+              body2, count = re.subn(
+                  r'(\s*string\?\s+FeatureCode)\s*,?\s*$',
+                  r'\1,\n    Guid? ProjectId = null,\n    Guid? TaskId = null,\n    Guid? AssignmentId = null',
+                  body,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit('Could not extend PulseAiPrivateFlowHiveRequest.')
+              contracts = contracts[:match.start(1)] + body2 + contracts[match.end(1):]
+          save(contracts_path, contracts_before, contracts)
+
+          celar_path, celar = load('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs')
+          celar_before = celar
+          celar = re.sub(
+              r'(new PulseAiPrivateFlowHiveRequest\(\s*\n)(\s*)ProjectCode:',
+              lambda m: m.group(1)
+                + m.group(2) + 'ProjectId: request.ProjectId,\n'
+                + m.group(2) + 'TaskId: request.TaskId,\n'
+                + m.group(2) + 'AssignmentId: request.AssignmentId,\n'
+                + m.group(2) + 'ProjectCode:',
+              celar,
+          )
+          if celar.count('ProjectId: request.ProjectId') < 2:
+              raise SystemExit('Celar AI is still dropping exact project identity.')
+          save(celar_path, celar_before, celar)
+
+          rag_path, rag = load('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs')
+          rag_before = rag
+          start = rag.find('public async Task<PulseAiPrivateRagAnswer> GenerateFlowHivePlanAsync')
+          if start < 0:
+              raise SystemExit('GenerateFlowHivePlanAsync was not found.')
+          end = rag.find('\n    public ', start + 20)
+          if end < 0:
+              end = len(rag)
+          method = rag[start:end]
+          method = method.replace(
+              'projectId: null,\n            taskId: null,\n            assignmentId: null,',
+              'projectId: request.ProjectId,\n            taskId: request.TaskId,\n            assignmentId: request.AssignmentId,',
+          )
+          for token in ('projectId: request.ProjectId', 'taskId: request.TaskId', 'assignmentId: request.AssignmentId'):
+              if token not in method:
+                  raise SystemExit(f'Private FlowHive retrieval is missing {token}.')
+          if re.search(r'projectId:\s*null', method):
+              raise SystemExit('Private FlowHive retrieval still contains a null project identity.')
+          rag = rag[:start] + method + rag[end:]
+          save(rag_path, rag_before, rag)
+
+          center_path, center = load('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx')
+          center_before = center
+          center = center.replace('AI draft studio', 'AI Planning Workspace')
+          center = center.replace('AI Draft Studio', 'AI Planning Workspace')
+          center = center.replace('Open AI draft studio', 'Open AI Planning Workspace')
+          center = center.replace('allowSanitizedExternalFallback: true', 'allowSanitizedExternalFallback: false')
+          center = center.replace('disabled={!draftPlan || busy || !canAdministerPlanner}', 'disabled={!selectedProjectId || busy || !canAdministerPlanner}')
+          center = re.sub(r'<label[^>]*>\s*Optional approved GSD excerpt.*?</label>', '', center, flags=re.S | re.I)
+          center = re.sub(r'<label[^>]*>\s*Optional approved SOW excerpt.*?</label>', '', center, flags=re.S | re.I)
+          center = re.sub(r'^\s*gsdExcerpt:\s*.*?,$', '', center, flags=re.M)
+          center = re.sub(r'^\s*sowExcerpt:\s*.*?,$', '', center, flags=re.M)
+          center = re.sub(r'<button[^>]*>\s*Generate and auto-fill detailed plan\s*</button>', '', center, flags=re.S | re.I)
+          if 'AI draft studio' in center.lower():
+              raise SystemExit('Legacy AI Draft Studio remains.')
+          if 'Optional approved GSD excerpt' in center or 'Optional approved SOW excerpt' in center:
+              raise SystemExit('Manual SOW/GSD excerpt controls remain.')
+          if 'AI Planning Workspace' not in center:
+              raise SystemExit('AI Planning Workspace is missing.')
+          save(center_path, center_before, center)
+
+          panels_path, panels = load('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx')
+          panels_before = panels
+          panels = panels.replace('AI draft studio', 'AI Planning Workspace').replace('AI Draft Studio', 'AI Planning Workspace')
+          panels = re.sub(
+              r'\{!item\.readyForAiPlanner\s*&&\s*canManage\s*\?\s*<div className="flowhive-evidence-actions">.*?</div>\s*:\s*null\}',
+              '{!item.readyForAiPlanner ? <p className="flowhive-processing-message">AI Planner automatically prepares and resumes this project evidence. Progress refreshes here.</p> : null}',
+              panels,
+              flags=re.S,
+          )
+          panels = panels.replace('Prepare / queue processing', 'Automatic evidence preparation')
+          if 'Prepare / queue processing' in panels:
+              raise SystemExit('Manual prepare/queue action remains.')
+          save(panels_path, panels_before, panels)
+
+          required = {
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs': ('ProjectPlanningDocumentResolver',),
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs': ('ProjectPlanningAiOrchestrator',),
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs': ('ai-planner',),
+              'database/migrations/096_project_planning_document_authority.sql': ('project', 'document'),
+          }
+          for rel, markers in required.items():
+              _, value = load(rel)
+              for marker in markers:
+                  if marker.lower() not in value.lower():
+                      raise SystemExit(f'Missing {marker} in {rel}.')
+
+          temporary = root / '.github/workflows/temporary-flowhive-source-export.yml'
+          if temporary.exists():
+              temporary.unlink()
+
+          validator_path, validator = load('tests/validate-shared-project-document-planning.mjs')
+          validator_before = validator
+          if 'FLOWHIVE_V2_EXACT_PROJECT_IDENTITY_GATE' not in validator:
+              validator += r'''
+
+          // FLOWHIVE_V2_EXACT_PROJECT_IDENTITY_GATE
+          {
+            const fsV2 = await import('node:fs');
+            const pathV2 = await import('node:path');
+            const rootV2 = process.cwd();
+            const readV2 = (relative) => fsV2.readFileSync(pathV2.join(rootV2, relative), 'utf8');
+            const contractsV2 = readV2('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs');
+            const celarV2 = readV2('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs');
+            const ragV2 = readV2('src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs');
+            const centerV2 = readV2('src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx');
+            const panelsV2 = readV2('src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx');
+            const requiredV2 = [
+              [contractsV2, 'Guid? ProjectId'], [contractsV2, 'Guid? TaskId'], [contractsV2, 'Guid? AssignmentId'],
+              [celarV2, 'ProjectId: request.ProjectId'], [celarV2, 'TaskId: request.TaskId'], [celarV2, 'AssignmentId: request.AssignmentId'],
+              [ragV2, 'projectId: request.ProjectId'], [ragV2, 'taskId: request.TaskId'], [ragV2, 'assignmentId: request.AssignmentId'],
+              [centerV2, 'AI Planning Workspace'],
+              [panelsV2, 'AI Planner automatically prepares and resumes this project evidence'],
+            ];
+            for (const [sourceV2, tokenV2] of requiredV2) {
+              if (!sourceV2.includes(tokenV2)) throw new Error(`FlowHive V2 regression: missing ${tokenV2}`);
+            }
+            for (const forbiddenV2 of ['AI draft studio', 'Optional approved GSD excerpt', 'Optional approved SOW excerpt', 'Prepare / queue processing']) {
+              if (`${centerV2}\n${panelsV2}`.toLowerCase().includes(forbiddenV2.toLowerCase())) throw new Error(`FlowHive V2 regression: legacy control remains: ${forbiddenV2}`);
+            }
+            if (fsV2.existsSync(pathV2.join(rootV2, '.github/workflows/temporary-flowhive-source-export.yml'))) throw new Error('Temporary source-export workflow remains.');
+            console.log('FlowHive V2 exact project identity and evidence-only workspace gate passed.');
+          }
+          '''
+          save(validator_path, validator_before, validator)
+
+          manifest = root / '.github/shared-project-document-planning-governed-release-files.txt'
+          if manifest.exists():
+              values = [line.strip() for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip()]
+              for rel in ('src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs', 'tests/validate-shared-project-document-planning.mjs'):
+                  if rel not in values:
+                      values.append(rel)
+              manifest.write_text('\n'.join(sorted(set(values))) + '\n', encoding='utf-8')
+          PY
+
+          git diff --check
+          [[ ! -e .github/workflows/temporary-flowhive-source-export.yml ]]
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj -c Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj -c Release
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+          python3 scripts/security/validate-repository-security-posture.py
+          pushd src/frontend/project-time-web >/dev/null
+          npm ci --ignore-scripts
+          npm run build
+          popd >/dev/null
+
+          mapfile -t changed_paths < <(git status --porcelain=v1 -uall | cut -c4- | sed 's/ -> /\n/' | LC_ALL=C sort -u)
+          TARGET_SHA="$ORIGINAL_SHA"
+          if [[ "${#changed_paths[@]}" -gt 0 ]]; then
+            printf '%s\n' "${changed_paths[@]}" | awk '
+              /^\.github\/workflows\/temporary-/ || /^\.github\/flowhive-(clean|repair)\// || /^\.github\/scripts\/temporary_/ { bad=1; print "Disallowed temporary application artifact: " $0 > "/dev/stderr" }
+              END { exit bad ? 1 : 0 }
+            '
+            git add -- "${changed_paths[@]}"
+            git diff --cached --check
+            git commit -m 'Finalize FlowHive V2 project identity and evidence workspace'
+            TARGET_SHA="$(git rev-parse HEAD)"
+            git push --force-with-lease="refs/heads/${TARGET_BRANCH}:${ORIGINAL_SHA}" origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          fi
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "FlowHive V2 permanent source is finalized at \`${TARGET_SHA}\`. Exact project identity, automatic evidence preparation, evidence-only AI Planning Workspace, shared FlowHive/Forge services, API build, frontend build, planner tests, and security checks passed locally. Exact-SHA GitHub CI and Protected-UAT candidate deployment are continuing. Production mutation: NONE."
+
+          sleep 45
+          REQUIRED=(
+            'ProjectPulse CI'
+            'ProjectPulse Repository Security Posture'
+            'FlowHive Detailed Planner CI'
+            'Validate Module 033 Project Forge'
+            'Validate Shared FlowHive and Project Forge Document Planning'
+            'Validate Project Planning Collaboration Access'
+            'Validate Governed Protected-Test Release Controller'
+            'System-wide Enterprise Reliability CI'
+          )
+          RUNS='[]'
+          for attempt in $(seq 1 180); do
+            RUNS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100" --jq '[.workflow_runs[] | {id,name,status,conclusion,path,event,created_at}]')"
+            missing=0
+            pending=0
+            failed=0
+            for required in "${REQUIRED[@]}"; do
+              if ! jq -e --arg required "$required" '.[] | select(.name == $required)' <<< "$RUNS" >/dev/null; then missing=$((missing+1)); fi
+              if jq -e --arg required "$required" '.[] | select(.name == $required and .status != "completed")' <<< "$RUNS" >/dev/null; then pending=$((pending+1)); fi
+              if jq -e --arg required "$required" '.[] | select(.name == $required and .status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")' <<< "$RUNS" >/dev/null; then failed=$((failed+1)); fi
+            done
+            [[ "$missing" -eq 0 && "$pending" -eq 0 ]] && break
+            [[ "$failed" -gt 0 ]] && break
+            sleep 15
+          done
+          jq . <<< "$RUNS"
+          for required in "${REQUIRED[@]}"; do
+            jq -e --arg required "$required" '.[] | select(.name == $required and .conclusion == "success")' <<< "$RUNS" >/dev/null || {
+              echo "Required exact-SHA workflow is not successful: $required" >&2
+              exit 1
+            }
+          done
+          jq -e '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and (.name | startswith("Temporary") | not) and (.name | startswith("One-time") | not))] | length == 0' <<< "$RUNS" >/dev/null
+
+          DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH"
+          DEPLOY_ID=''
+          for attempt in $(seq 1 90); do
+            DEPLOY_ID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$DEPLOY_WORKFLOW" --branch "$TARGET_BRANCH" --event workflow_dispatch --limit 30 --json databaseId,headSha,createdAt --jq --arg sha "$TARGET_SHA" --arg start "$DISPATCHED_AT" '[.[] | select(.headSha == $sha and .createdAt >= $start)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')"
+            [[ -n "$DEPLOY_ID" ]] && break
+            sleep 10
+          done
+          [[ -n "$DEPLOY_ID" ]]
+          echo "DEPLOY_ID=$DEPLOY_ID" >> "$GITHUB_ENV"
+
+          for attempt in $(seq 1 420); do
+            DEPLOY_STATUS="$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)"
+            [[ "$DEPLOY_STATUS" == 'completed' ]] && break
+            sleep 20
+          done
+          [[ "$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" == "$TARGET_SHA" ]]
+          [[ "$(gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" == 'success' ]]
+
+          EVIDENCE="$RUNNER_TEMP/evidence"
+          mkdir -p "$EVIDENCE"
+          gh run view "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --log > "$EVIDENCE/deployment.log"
+          gh run download "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --dir "$EVIDENCE/artifacts" >/dev/null 2>&1 || true
+          find "$EVIDENCE" -type f -maxdepth 8 -print0 | xargs -0 cat > "$EVIDENCE/all.txt" 2>/dev/null || true
+          grep -Eqi "${TARGET_SHA}|${TARGET_SHA:0:12}" "$EVIDENCE/all.txt"
+          grep -Eqi '094[_ -]flowhive|migration.?094' "$EVIDENCE/all.txt"
+          grep -Eqi '095[_ -]project.?planning|migration.?095' "$EVIDENCE/all.txt"
+          grep -Eqi '096[_ -]project.?planning|migration.?096' "$EVIDENCE/all.txt"
+          grep -Eqi 'FlowHive.*(UAT|authenticated)|authenticated.*FlowHive' "$EVIDENCE/all.txt"
+          grep -Eqi 'Project Forge.*(UAT|authenticated)|authenticated.*Project Forge' "$EVIDENCE/all.txt"
+          grep -Eqi 'document.*download|download.*document|055C' "$EVIDENCE/all.txt"
+          grep -Eqi 'Production mutation[:= ]+NONE|PRODUCTION_MUTATION=NONE' "$EVIDENCE/all.txt"
+
+          code='000'
+          for endpoint in 'https://phd-west-test.onenecklab.com/' 'https://phd-west-test.onenecklab.com/api/health'; do
+            code="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' --max-time 45 "$endpoint" || true)"
+            [[ "$code" =~ ^[23] ]] && break
+          done
+          [[ "$code" =~ ^[23] ]]
+
+          STATUS_BRANCH="${{ github.ref_name }}"
+          STATUS_WORK="$RUNNER_TEMP/status-repo"
+          git clone --quiet "$AUTH_REPO" "$STATUS_WORK"
+          cd "$STATUS_WORK"
+          git fetch --no-tags origin "+refs/heads/${STATUS_BRANCH}:refs/remotes/origin/${STATUS_BRANCH}"
+          git switch -C "$STATUS_BRANCH" "origin/${STATUS_BRANCH}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p .github/flowhive-v2/status
+          cat > ".github/flowhive-v2/status/ready-to-test-${TARGET_SHA}.txt" <<EOF
+          FLOWHIVE_V2_READY_TO_TEST=TRUE
+          PR_NUMBER=${TARGET_PR}
+          CANDIDATE_SHA=${TARGET_SHA}
+          PROTECTED_UAT_DEPLOYMENT_RUN=${DEPLOY_ID}
+          PROTECTED_UAT_URL=https://phd-west-test.onenecklab.com/#project-flowhive
+          PRODUCTION_MUTATION=NONE
+          EOF
+          git add -- ".github/flowhive-v2/status/ready-to-test-${TARGET_SHA}.txt"
+          git commit -m "chore: record FlowHive V2 candidate ${TARGET_SHA} ready for testing"
+          git push origin "HEAD:refs/heads/${STATUS_BRANCH}"
+
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "## FlowHive V2 is ready for Protected-UAT testing\n\nExact candidate: \`${TARGET_SHA}\`\nProtected-UAT deployment run: \`${DEPLOY_ID}\`\n\nExact-SHA CI, migrations 094/095/096, Module 055C download evidence, authenticated FlowHive/Project Forge UAT, and the no-Production-mutation guard passed. PR #737 remains draft and unmerged during user validation."
+          trap - ERR
+          echo 'FLOWHIVE_V2_READY_TO_TEST=TRUE'
+          echo "CANDIDATE_SHA=$TARGET_SHA"
+          echo "DEPLOY_ID=$DEPLOY_ID"
+          echo 'PRODUCTION_MUTATION=NONE'

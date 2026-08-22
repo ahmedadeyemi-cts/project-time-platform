@@ -1,0 +1,207 @@
+name: One-time FlowHive Clean Publisher V2
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-clean-publisher-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-flowhive-clean-publisher-v2-20260819
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish final clean shared planning source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      MAIN_SHA: 9006561f49793d227b36f2848e230c55298213b1
+      REPAIR_SOURCE_SHA: 5ac67a4470bf0803889bdc9ef19528bebdf1979f
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      FINAL_DELTA_SHA256: 24fcb6031e8eb46735edbed604b9c3d48f0b3117c02fb4fce079d6b0ae922364
+    steps:
+      - name: Check out tooling branch with push credential
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconstruct, validate, and publish exact clean source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_REPOSITORY" == ahmedadeyemi-cts/project-time-platform ]] || fail 'Unexpected repository.'
+
+          declare -A expected_segments=(
+            [patch-00.b64]='3dc2b2f7e2e3ae7dd83a51c6cc0423ae25ee293976a7cc10751e5c8b31ad600b'
+            [patch-01.b64]='c2bf39e2268220a564efaac614a353880cb59b2a8ebeae1c2fe6151354a2b963'
+            [patch-02.b64]='b37176d84e3e93ec10805871bf58f97a66b6aae61a298342eb30094d3c47bf33'
+            [patch-03.b64]='029f33e7ffbdb81b5461ec3f2c7b5151d8edaa8b3d2d12d1dfe4197b1ecce179'
+            [patch-04.b64]='acbd8ec9a1d97ae7af2030f597e47c7d6ab659585e584f96956171ee374983c9'
+          )
+          for segment in patch-00.b64 patch-01.b64 patch-02.b64 patch-03.b64 patch-04.b64; do
+            path=".github/flowhive-clean/$segment"
+            [[ -s "$path" ]] || fail "Missing final delta segment: $segment"
+            actual="$(sha256sum "$path" | awk '{print $1}')"
+            [[ "$actual" == "${expected_segments[$segment]}" ]] || fail "Checksum mismatch for $segment"
+          done
+          cat .github/flowhive-clean/patch-{00..04}.b64 | tr -d '\r\n' > "$RUNNER_TEMP/final-delta.b64"
+          base64 --decode "$RUNNER_TEMP/final-delta.b64" > "$RUNNER_TEMP/final-delta.patch.gz"
+          echo "$FINAL_DELTA_SHA256  $RUNNER_TEMP/final-delta.patch.gz" | sha256sum --check --strict
+          gzip --decompress --stdout "$RUNNER_TEMP/final-delta.patch.gz" > "$RUNNER_TEMP/final-delta.patch"
+
+          git fetch --no-tags origin main feature/project-planning-collaboration-access-20260818
+          [[ "$(git rev-parse origin/main)" == "$MAIN_SHA" ]] || fail 'main moved after the reviewed boundary.'
+          git cat-file -e "$REPAIR_SOURCE_SHA^{commit}" || fail 'Repair source commit is unavailable.'
+          git checkout --detach "$REPAIR_SOURCE_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          python3 -m py_compile \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_flowhive_final_quality.py
+          python3 .github/scripts/temporary_apply_flowhive_authoritative_repair.py
+          python3 .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
+          python3 .github/scripts/temporary_flowhive_final_quality.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path): return Path(path).read_text(encoding='utf-8')
+          def write(path, value): Path(path).write_text(value, encoding='utf-8')
+
+          path = 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs'
+          if Path(path).exists():
+              source = read(path)
+              source = source.replace('ProjectPlanningAccess access,', 'PlannerAccess access,')
+              source = source.replace('access.ActualUserId ?? Guid.Empty', 'access.ActualUserId')
+              source = source.replace('access.EffectiveUserId ?? Guid.Empty', 'access.EffectiveUserId')
+              source = source.replace('ProjectPlanningAccess? Access,', 'PlannerAccess? Access,')
+              if 'private sealed record PlannerAccess(' not in source:
+                  source = source.replace('    private sealed record OpenOutcome(', '''    private sealed record PlannerAccess(
+                  Guid ActualUserId,
+                  Guid EffectiveUserId);
+
+              private sealed record OpenOutcome(''', 1)
+              source = source.replace(
+                  '''        var criticalPath = schedule?.Tasks
+                  .Where(task => task.IsCritical && !task.IsSummary)
+                  .Select(task => new { task.WbsNumber, task.Name, task.StartDate, task.EndDate })
+                  .ToArray() ?? [];''',
+                  '''        var criticalPath = schedule is null
+                  ? Array.Empty<CriticalPathItem>()
+                  : schedule.Tasks
+                      .Where(task => task.IsCritical && !task.IsSummary)
+                      .Select(task => new CriticalPathItem(task.WbsNumber, task.Name, task.StartDate, task.EndDate))
+                      .ToArray();''')
+              if 'private sealed record CriticalPathItem(' not in source:
+                  source = source.replace('    private sealed record WorkingCopyResult(', '''    private sealed record CriticalPathItem(
+                  string WbsNumber,
+                  string Name,
+                  DateOnly StartDate,
+                  DateOnly EndDate);
+
+              private sealed record WorkingCopyResult(''', 1)
+              write(path, source)
+
+          path = 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs'
+          if Path(path).exists():
+              source = read(path)
+              source = re.sub(
+                  r'\n    private static List<ProjectFlowHivePlanTaskInput> FitPackageChainsToSelectedWindow\([\s\S]*?\n    private static string PackageOrdinal\([\s\S]*?\n    }\n',
+                  '\n',
+                  source,
+                  count=1)
+              write(path, source)
+          PY
+
+          rm -f \
+            .github/flowhive-pr734-governed-release-files.txt \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_flowhive_final_quality.py \
+            .github/workflows/temporary-flowhive-authoritative-repair.yml \
+            .github/workflows/temporary-flowhive-authoritative-repair-v2.yml \
+            .github/workflows/temporary-flowhive-authoritative-repair-v3.yml \
+            .github/workflows/temporary-flowhive-final-production-quality.yml \
+            .github/workflows/temporary-flowhive-last-mile-recovery.yml \
+            .github/workflows/temporary-flowhive-pr734-dispatch.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer-run.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer.yml \
+            .github/workflows/temporary-flowhive-repair-publisher.yml \
+            .github/workflows/temporary-flowhive-repair-timeout-normalizer.yml \
+            .github/workflows/temporary-flowhive-source-export.yml \
+            .github/workflows/temporary-flowhive-terminal-enforcer.yml \
+            .github/flowhive-pr734-finalizer-dispatch.txt
+          rm -rf \
+            .flowhive-repair \
+            .github/flowhive-repair \
+            .github/scripts/__pycache__ \
+            tmp/flowhive-repair
+
+          git apply --whitespace=error-all "$RUNNER_TEMP/final-delta.patch"
+
+          test -f src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+          test -f src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+          test -f src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          test -f database/migrations/096_project_planning_document_authority.sql
+          test -f scripts/release-test/run-flowhive-project-forge-protected-test-uat.sh
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh
+          bash -n scripts/release-test/run-project-planning-document-authority-migration-job.sh
+          bash -n scripts/release-test/run-flowhive-project-forge-protected-test-uat.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          GITHUB_HEAD_REF="$TARGET_BRANCH" node tests/validate-celar-ai-pr630-consolidated.mjs
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-066-project-flowhive.mjs
+            node scripts/validate-module-033-project-forge.mjs
+          )
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$PWD" --self-test
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$MAIN_SHA"
+
+          if git status --porcelain | grep -E '(^.. )?(.*/)?(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'; then
+            fail 'A temporary recovery artifact remained in the clean application tree.'
+          fi
+
+          git add -A
+          git diff --cached --name-only "$MAIN_SHA" | LC_ALL=C sort -u > "$RUNNER_TEMP/release-files"
+          printf '%s\n' '.github/flowhive-pr737-governed-release-files.txt' >> "$RUNNER_TEMP/release-files"
+          LC_ALL=C sort -u "$RUNNER_TEMP/release-files" -o "$RUNNER_TEMP/release-files"
+          cp "$RUNNER_TEMP/release-files" .github/flowhive-pr737-governed-release-files.txt
+          git add .github/flowhive-pr737-governed-release-files.txt
+          git diff --cached --name-only "$MAIN_SHA" | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-release-files"
+          cmp "$RUNNER_TEMP/release-files" "$RUNNER_TEMP/actual-release-files" || fail 'Governed release manifest does not match the exact clean diff.'
+          git diff --cached --check "$MAIN_SHA"
+
+          TREE_SHA="$(git write-tree)"
+          CLEAN_COMMIT="$(printf '%s\n\n%s\n' \
+            'Unify FlowHive and Project Forge document-grounded AI planning' \
+            'Resolve each project existing SOW and GSD, run private evidence processing, generate detailed Plan/Design/Implement/Validate/Release work with preserved estimates and logical scheduling, save a FlowHive working draft, retain Forge review governance, and add Protected UAT validation.' \
+            | git commit-tree "$TREE_SHA" -p "$MAIN_SHA")"
+          git push origin "$CLEAN_COMMIT:refs/heads/$TARGET_BRANCH" --force
+          printf 'CLEAN_BRANCH=%s\nCLEAN_COMMIT=%s\n' "$TARGET_BRANCH" "$CLEAN_COMMIT"
+          echo 'PRODUCTION_MUTATION=NONE'

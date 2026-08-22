@@ -1,0 +1,1 @@
+Second guarded continuation marker. Publish only permanent FlowHive V2 source to PR #737, remove temporary recovery artifacts, require exact-SHA green validation, and deploy only Protected UAT/Test with PRODUCTION_MUTATION=NONE.

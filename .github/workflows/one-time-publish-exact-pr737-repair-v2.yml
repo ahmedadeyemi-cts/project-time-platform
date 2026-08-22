@@ -1,0 +1,161 @@
+name: One-time Publish Exact PR 737 Repair V2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-publish-exact-pr737-repair-v2
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: fix/shared-project-document-planning-20260819
+  EXPECTED_TARGET_HEAD: c0a8beab4881a1f2a7c495c3f22f9c09872cecf4
+  EXPECTED_MAIN_HEAD: 9006561f49793d227b36f2848e230c55298213b1
+  EXPECTED_PATCH_SHA256: c0cb724c48164d95efde1147db11f31ad99ce7b5ce4620aed2794cd0eec35e21
+  EXPECTED_RELEASE_DOC_SHA256: c82381a754dc809a6edb3967c5250866e9352a728993c10d3b00050c1e53c86b
+
+jobs:
+  publish:
+    if: github.event.pull_request.number == 736
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact isolated tooling revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct and verify immutable repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t parts < <(find .github/flowhive-clean -maxdepth 1 -type f -name 'exact-*.b64' | LC_ALL=C sort)
+          [[ "${#parts[@]}" -eq 21 ]] || {
+            echo "Expected 21 immutable payload segments; found ${#parts[@]}." >&2
+            exit 1
+          }
+          cat "${parts[@]}" | tr -d '\r\n' > "$RUNNER_TEMP/pr737.patch.gz.b64"
+          base64 --decode "$RUNNER_TEMP/pr737.patch.gz.b64" > "$RUNNER_TEMP/pr737.patch.gz"
+          gzip -t "$RUNNER_TEMP/pr737.patch.gz"
+          gzip -dc "$RUNNER_TEMP/pr737.patch.gz" > "$RUNNER_TEMP/pr737.patch"
+          printf '%s  %s\n' "$EXPECTED_PATCH_SHA256" "$RUNNER_TEMP/pr737.patch" | sha256sum -c -
+          test -s "$RUNNER_TEMP/pr737.patch"
+          echo "REPAIR_PATCH=$RUNNER_TEMP/pr737.patch" >> "$GITHUB_ENV"
+
+      - name: Apply, validate, and publish exact PR 737 repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          WORK="$RUNNER_TEMP/project-time-platform"
+          AUTH_REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          RELEASE_DOC='docs/architecture/flowhive-project-forge-protected-uat-release.md'
+          RELEASE_DOC_PAYLOAD="$GITHUB_WORKSPACE/.github/flowhive-clean/final-flowhive-project-forge-protected-uat-release.md"
+
+          git clone --quiet "$AUTH_REPO" "$WORK"
+          cd "$WORK"
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+
+          MAIN_HEAD="$(git rev-parse origin/main)"
+          TARGET_HEAD="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          [[ "$MAIN_HEAD" == "$EXPECTED_MAIN_HEAD" ]] || {
+            echo "main moved: expected $EXPECTED_MAIN_HEAD, found $MAIN_HEAD" >&2
+            exit 1
+          }
+          [[ "$TARGET_HEAD" == "$EXPECTED_TARGET_HEAD" ]] || {
+            echo "PR 737 moved: expected $EXPECTED_TARGET_HEAD, found $TARGET_HEAD" >&2
+            exit 1
+          }
+
+          git switch -C "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git apply --check --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
+          git apply --exclude="$RELEASE_DOC" "$REPAIR_PATCH"
+          test -s "$RELEASE_DOC_PAYLOAD"
+          cp "$RELEASE_DOC_PAYLOAD" "$RELEASE_DOC"
+          printf '%s  %s\n' "$EXPECTED_RELEASE_DOC_SHA256" "$RELEASE_DOC" | sha256sum -c -
+          git diff --check
+
+          git apply --numstat "$REPAIR_PATCH" | cut -f3- | LC_ALL=C sort -u > "$RUNNER_TEMP/expected-paths"
+          git diff --name-only | LC_ALL=C sort -u > "$RUNNER_TEMP/actual-paths"
+          cmp "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" || {
+            echo 'Applied source scope differs from the reviewed patch.' >&2
+            diff -u "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" >&2 || true
+            exit 1
+          }
+          [[ "$(wc -l < "$RUNNER_TEMP/actual-paths")" -eq 39 ]]
+
+          git diff --name-status | awk '
+            $1 != "D" && ($2 ~ /^\.github\/workflows\/temporary-/ || $2 ~ /^\.github\/flowhive-(clean|repair)\// || $2 ~ /^\.github\/scripts\/temporary_/) {
+              print "Temporary recovery artifact would enter PR 737: " $0 > "/dev/stderr";
+              bad=1
+            }
+            END { exit bad ? 1 : 0 }
+          '
+
+          git diff --binary > "$RUNNER_TEMP/before-validation.patch"
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj -c Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj -c Release
+          dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj -c Release --no-restore
+          python3 scripts/security/validate-repository-security-posture.py
+
+          git diff --binary > "$RUNNER_TEMP/after-validation.patch"
+          cmp "$RUNNER_TEMP/before-validation.patch" "$RUNNER_TEMP/after-validation.patch" || {
+            echo 'A validation command changed the reviewed repair tree.' >&2
+            git status --short >&2
+            exit 1
+          }
+          git diff --check
+
+          mapfile -t reviewed_paths < "$RUNNER_TEMP/expected-paths"
+          git add -- "${reviewed_paths[@]}"
+          git diff --cached --check
+          git diff --cached --quiet && {
+            echo 'The exact reviewed repair produced no commit.' >&2
+            exit 1
+          }
+          git commit -m 'Complete shared FlowHive and Project Forge planning'
+          NEW_SHA="$(git rev-parse HEAD)"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET_HEAD}" \
+            origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+          gh pr comment 737 --repo "$GITHUB_REPOSITORY" --body "Exact validated repair published at \`${NEW_SHA}\`. Immutable patch and release-record checksums matched; permanent validation gates passed; Production mutation: NONE."
+          echo "PUBLISHED_PR737_SHA=$NEW_SHA"
+          echo 'PRODUCTION_MUTATION=NONE'

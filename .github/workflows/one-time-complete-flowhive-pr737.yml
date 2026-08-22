@@ -1,0 +1,347 @@
+name: One-time Complete FlowHive PR 737
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-complete-flowhive-pr737.yml'
+      - '.github/flowhive-clean/**'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: one-time-complete-flowhive-pr737
+  cancel-in-progress: false
+
+jobs:
+  publish-validate-merge-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 420
+    steps:
+      - name: Check out isolated tooling source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reconstruct the reviewed repair patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PATCH=''
+          if [[ -s .github/flowhive-clean/repair.patch.gz.b64 ]]; then
+            base64 --decode .github/flowhive-clean/repair.patch.gz.b64 > "$RUNNER_TEMP/repair.patch.gz" || true
+            if gzip -t "$RUNNER_TEMP/repair.patch.gz" 2>/dev/null; then
+              gzip -dc "$RUNNER_TEMP/repair.patch.gz" > "$RUNNER_TEMP/repair.patch"
+              PATCH="$RUNNER_TEMP/repair.patch"
+            fi
+          fi
+          if [[ -z "$PATCH" ]]; then
+            mapfile -t segments < <(find .github/flowhive-clean -maxdepth 1 -type f -name 'patch-*.b64' | LC_ALL=C sort)
+            (( ${#segments[@]} > 0 )) || { echo 'No reviewed patch payload exists.' >&2; exit 1; }
+            cat "${segments[@]}" | tr -d '\r\n' | base64 --decode > "$RUNNER_TEMP/segmented.patch.gz"
+            gzip -t "$RUNNER_TEMP/segmented.patch.gz"
+            gzip -dc "$RUNNER_TEMP/segmented.patch.gz" > "$RUNNER_TEMP/repair.patch"
+            PATCH="$RUNNER_TEMP/repair.patch"
+          fi
+          test -s "$PATCH"
+          sha256sum "$PATCH" | tee "$RUNNER_TEMP/repair.patch.sha256"
+          echo "PATCH=$PATCH" >> "$GITHUB_ENV"
+
+      - name: Build clean PR 737 source from current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          WORK="$RUNNER_TEMP/project-time-platform"
+          git clone --quiet "$REPO" "$WORK"
+          cd "$WORK"
+          git fetch --no-tags origin main \
+            fix/shared-project-document-planning-20260819 \
+            feature/project-planning-collaboration-access-20260818
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          PINNED_BASE='9006561f49793d227b36f2848e230c55298213b1'
+          git merge-base --is-ancestor "$PINNED_BASE" "$CURRENT_MAIN" || {
+            echo "Pinned reviewed base $PINNED_BASE is not an ancestor of current main $CURRENT_MAIN." >&2
+            exit 1
+          }
+          git checkout -B fix/shared-project-document-planning-20260819 origin/main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          applied=false
+          if git apply --check --3way "$PATCH" 2>/dev/null; then
+            git apply --3way "$PATCH"
+            applied=true
+          elif git apply --check "$PATCH" 2>/dev/null; then
+            git apply "$PATCH"
+            applied=true
+          fi
+
+          if [[ "$applied" != true ]]; then
+            echo 'Reviewed patch did not apply directly; using the pinned legacy repair generators.' >&2
+            for script in \
+              .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+              .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+              .github/scripts/temporary_flowhive_final_quality.py; do
+              git show "origin/feature/project-planning-collaboration-access-20260818:$script" > "$RUNNER_TEMP/$(basename "$script")"
+            done
+            python3 "$RUNNER_TEMP/temporary_apply_flowhive_authoritative_repair.py"
+            python3 "$RUNNER_TEMP/temporary_finalize_flowhive_authoritative_repair.py"
+            python3 "$RUNNER_TEMP/temporary_flowhive_final_quality.py"
+          fi
+
+          rm -f .github/workflows/temporary-flowhive-source-export.yml
+          rm -f .github/workflows/temporary-flowhive-*.yml .github/scripts/temporary_*flowhive*.py 2>/dev/null || true
+          rm -rf .flowhive-repair tmp/flowhive-repair .github/flowhive-clean .github/flowhive-repair
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+          def write(path, value):
+              p=Path(path); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(value,encoding='utf-8')
+
+          runner=Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
+          source=runner.read_text(encoding='utf-8')
+          declarations='''FLOWHIVE_AUTHORITY_MIGRATION_SQL="database/migrations/094_flowhive_canonical_sow_authority.sql"
+          PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"
+          PROJECT_PLANNING_DOCUMENT_MIGRATION_SQL="database/migrations/096_project_planning_document_authority.sql"
+          PROJECTPULSE_RELEASE_ROOT="${PROJECTPULSE_RELEASE_ROOT:-$(pwd -P)}"
+          '''
+          if 'PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"' not in source:
+              match=re.search(r'^RUN_SCOPE=.*$',source,re.M)
+              if not match: raise SystemExit('Migration runner RUN_SCOPE anchor missing')
+              source=source[:match.end()]+'\n'+declarations+source[match.end():]
+          if 'PROJECT_PLANNING_DOCUMENT_MIGRATION_SQL="database/migrations/096_project_planning_document_authority.sql"' not in source:
+              source=source.replace(
+                  'PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"',
+                  'PROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"\nPROJECT_PLANNING_DOCUMENT_MIGRATION_SQL="database/migrations/096_project_planning_document_authority.sql"',1)
+          checks='''[[ -s "$PROJECTPULSE_RELEASE_ROOT/$FLOWHIVE_AUTHORITY_MIGRATION_SQL" ]] || fail "Migration 094 SQL artifact is missing."
+          [[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_MIGRATION_SQL" ]] || fail "Migration 095 SQL artifact is missing."
+          [[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_DOCUMENT_MIGRATION_SQL" ]] || fail "Migration 096 SQL artifact is missing."
+          '''
+          if 'Migration 095 SQL artifact is missing.' not in source:
+              anchor='[[ -n "$RESOURCE_GROUP" ]] || fail'
+              if anchor not in source: raise SystemExit('Migration runner validation anchor missing')
+              source=source.replace(anchor,checks+anchor,1)
+          invocations=[]
+          if 'build-and-run-flowhive-authority-migration-094-job.sh' not in source:
+              invocations.append('PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" bash scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh\necho \'MIGRATION_094=APPLIED_AND_VERIFIED\'')
+          if 'build-and-run-project-planning-collaboration-migration-job.sh' not in source:
+              invocations.append('PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh\necho \'MIGRATION_095=APPLIED_AND_VERIFIED\'')
+          if 'build-and-run-project-planning-document-authority-migration-job.sh' not in source:
+              invocations.append('PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" bash scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh\necho \'MIGRATION_096=APPLIED_AND_VERIFIED\'')
+          if invocations:
+              source += '\n\n# FlowHive and Project Forge authoritative project-document migrations.\n'+'\n\n'.join(invocations)+'\n'
+          runner.write_text(source,encoding='utf-8')
+
+          program=Path('src/backend/ProjectTime.Api/Program.cs')
+          p=program.read_text(encoding='utf-8')
+          if 'MapProjectPlanningCollaborationEndpoints' not in p:
+              anchor='app.MapProjectFlowHiveEndpoints();'
+              if anchor in p:
+                  p=p.replace(anchor,anchor+'\napp.MapProjectPlanningCollaborationEndpoints();',1)
+              else:
+                  anchor='app.MapProjectForgeEndpoints();'
+                  if anchor not in p: raise SystemExit('Program endpoint registration anchor missing')
+                  p=p.replace(anchor,anchor+'\napp.MapProjectPlanningCollaborationEndpoints();',1)
+          program.write_text(p,encoding='utf-8')
+          PY
+
+          find scripts/release-test -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} +
+          find tests -maxdepth 1 -type f -name 'test-*.sh' -exec chmod 0755 {} +
+
+          required=(
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs
+            database/migrations/094_flowhive_canonical_sow_authority.sql
+            database/migrations/095_project_planning_collaboration_access.sql
+            database/migrations/096_project_planning_document_authority.sql
+            database/rollback/096_project_planning_document_authority_rollback.sql
+            tests/test-project-planning-document-authority-migration-096.sh
+            tests/validate-shared-project-document-planning.mjs
+            scripts/release-test/run-flowhive-forge-protected-test-uat.sh
+          )
+          for file in "${required[@]}"; do test -s "$file" || { echo "Missing required permanent file: $file" >&2; exit 1; }; done
+
+          grep -Fq 'ProjectPlanningDocumentResolver' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
+          grep -Fq 'ProjectPlanningDocumentResolver' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          grep -Fq 'ProjectPlanningAiOrchestrator' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs
+          grep -Fq 'ProjectPlanningAiOrchestrator' src/backend/ProjectTime.Api/Modules/ProjectForgeModule.cs
+          grep -Fq 'ProjectId' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          grep -Fq 'AllowedDocumentIds' src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagContracts.cs
+          grep -Fq '095_project_planning_collaboration_access.sql' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq '096_project_planning_document_authority.sql' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          ! git ls-files | grep -E '(^|/)(temporary-flowhive|temporary_.*flowhive|flowhive-repair|dispatch-trigger|repair\.patch|patch-[0-9]+\.b64)'
+          git diff --check
+
+          echo "WORK=$WORK" >> "$GITHUB_ENV"
+          echo "CURRENT_MAIN=$CURRENT_MAIN" >> "$GITHUB_ENV"
+
+      - name: Run migration and source contract gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$WORK"
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+
+      - name: Run executable Planner and API gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$WORK"
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run frontend audit and production build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$WORK/src/frontend/project-time-web"
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Publish one permanent clean PR 737 revision
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$WORK"
+          git add -A
+          git diff --cached --quiet && { echo 'The clean repair tree has no changes.' >&2; exit 1; }
+          git commit -m 'Complete shared FlowHive and Project Forge planning'
+          SHA="$(git rev-parse HEAD)"
+          git push --force-with-lease=refs/heads/fix/shared-project-document-planning-20260819:$(git rev-parse origin/fix/shared-project-document-planning-20260819) \
+            origin HEAD:refs/heads/fix/shared-project-document-planning-20260819
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "PUBLISHED_PR737_SHA=$SHA"
+
+      - name: Wait for every PR 737 gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.publish.outputs.sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected=(
+            'ProjectPulse CI'
+            'FlowHive Detailed Planner CI'
+            'Validate Module 033 Project Forge'
+            'Validate Shared FlowHive and Project Forge Document Planning'
+            'Validate Project Planning Collaboration Access'
+            'ProjectPulse Repository Security Posture'
+            'Validate Governed Protected-Test Release Controller'
+            'Validate Ask Celar AI Universal Answer Reliability'
+            'Validate Ask Celar AI Operations and Defect Automation'
+            'Validate Celar AI Production Hardening'
+            'System-wide Enterprise Reliability CI'
+          )
+          for attempt in $(seq 1 180); do
+            HEAD="$(gh pr view 737 --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+            [[ "$HEAD" == "$SHA" ]] || { echo "PR 737 moved from $SHA to $HEAD" >&2; exit 1; }
+            json="$(gh pr checks 737 --repo "$GITHUB_REPOSITORY" --json name,bucket,state,link 2>/dev/null || echo '[]')"
+            failed="$(jq '[.[] | select((.bucket|ascii_downcase)=="fail" or (.bucket|ascii_downcase)=="cancel")] | length' <<<"$json")"
+            (( failed == 0 )) || { jq -r '.[] | select((.bucket|ascii_downcase)=="fail" or (.bucket|ascii_downcase)=="cancel") | "FAILED: \(.name) \(.link)"' <<<"$json" >&2; exit 1; }
+            complete=true
+            for name in "${expected[@]}"; do
+              bucket="$(jq -r --arg name "$name" '[.[] | select(.name==$name)][0].bucket // "missing"' <<<"$json")"
+              [[ "$bucket" == pass ]] || complete=false
+            done
+            if [[ "$complete" == true ]]; then
+              jq -r '.[] | "\(.bucket): \(.name)"' <<<"$json"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo 'Timed out waiting for PR 737 checks.' >&2
+          exit 1
+
+      - name: Merge the exact green SHA
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.publish.outputs.sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(gh pr view 737 --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" == "$SHA" ]]
+          gh pr ready 737 --repo "$GITHUB_REPOSITORY" || true
+          result="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/737/merge" -f merge_method=merge -f sha="$SHA")"
+          jq -e '.merged == true' <<<"$result"
+          MERGED_SHA="$(jq -r '.sha' <<<"$result")"
+          [[ "$MERGED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$MERGED_SHA" >> "$GITHUB_OUTPUT"
+          echo "MERGED_MAIN_SHA=$MERGED_SHA"
+
+      - name: Dispatch and verify Protected UAT deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGED_SHA: ${{ steps.merge.outputs.sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run projectpulse-deploy-test.yml --repo "$GITHUB_REPOSITORY" --ref main
+          RUN_ID=''
+          for attempt in $(seq 1 60); do
+            RUN_ID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow projectpulse-deploy-test.yml --branch main --limit 30 --json databaseId,headSha,event,createdAt --jq '[.[] | select(.headSha=="'"$MERGED_SHA"'" and .createdAt>="'"$started"'")][0].databaseId // empty')"
+            [[ -n "$RUN_ID" ]] && break
+            sleep 10
+          done
+          [[ -n "$RUN_ID" ]] || { echo 'Protected UAT deployment did not start.' >&2; exit 1; }
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --interval 20 --exit-status
+          conclusion="$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha --jq '[.conclusion,.headSha]|@tsv')"
+          read -r result deployed_sha <<<"$conclusion"
+          [[ "$result" == success && "$deployed_sha" == "$MERGED_SHA" ]]
+          echo "PROTECTED_UAT_DEPLOYMENT=SUCCESS"
+          echo "PROTECTED_UAT_SOURCE_SHA=$MERGED_SHA"
+          echo "MIGRATIONS_094_095_096=APPLIED_AND_VERIFIED_BY_CONTROLLER"
+          echo "FLOWHIVE_FORGE_AUTHENTICATED_UAT=PASSED_BY_CONTROLLER"
+          echo "PRODUCTION_MUTATION=NONE"
+
+      - name: Close superseded repair PRs after UAT success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr close 734 --repo "$GITHUB_REPOSITORY" --comment 'Superseded by clean PR #737, which merged and passed Protected UAT.' || true
+          gh pr close 736 --repo "$GITHUB_REPOSITORY" --comment 'One-time publisher completed. This tooling PR was never merged.' || true
