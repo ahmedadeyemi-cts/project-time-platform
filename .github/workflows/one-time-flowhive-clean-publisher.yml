@@ -84,13 +84,29 @@ jobs:
           target.write_text('\n'.join(script) + '\n', encoding='utf-8')
           PY
           bash -n /tmp/flowhive-final-publisher.sh
-          bash /tmp/flowhive-final-publisher.sh
+          set +e
+          bash /tmp/flowhive-final-publisher.sh > /tmp/flowhive-publisher-output.log 2>&1
+          publisher_rc=$?
+          set -e
+          tail -n 240 /tmp/flowhive-publisher-output.log
+          if [[ "$publisher_rc" -ne 0 ]]; then
+            {
+              printf 'publisher_exit_code=%s\n' "$publisher_rc"
+              test -f /tmp/flowhive-publisher-failure.txt && cat /tmp/flowhive-publisher-failure.txt || true
+              printf '\nlast_output:\n'
+              tail -n 240 /tmp/flowhive-publisher-output.log
+            } > /tmp/flowhive-publisher-failure.txt.tmp
+            mv /tmp/flowhive-publisher-failure.txt.tmp /tmp/flowhive-publisher-failure.txt
+            exit "$publisher_rc"
+          fi
 
       - name: Upload publisher failure diagnostic
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flowhive-publisher-failure-${{ github.run_id }}
-          path: /tmp/flowhive-publisher-failure.txt
-          if-no-files-found: warn
+          path: |
+            /tmp/flowhive-publisher-failure.txt
+            /tmp/flowhive-publisher-output.log
+          if-no-files-found: error
           retention-days: 1
