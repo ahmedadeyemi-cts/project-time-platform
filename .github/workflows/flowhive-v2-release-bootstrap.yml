@@ -1,0 +1,342 @@
+name: FlowHive V2 Exact Candidate Release Bootstrap
+
+on:
+  push:
+    branches:
+      - tooling/flowhive-v2-release-bootstrap-20260822
+    paths:
+      - '.github/workflows/flowhive-v2-release-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: flowhive-v2-exact-candidate-release-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish, validate, deploy, merge, and verify FlowHive V2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: projectpulse
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      REPO: ahmedadeyemi-cts/project-time-platform
+      PR_NUMBER: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      EXPECTED_MAIN_SHA: 9006561f49793d227b36f2848e230c55298213b1
+      EXPECTED_HEAD_SHA: 8f5c238689b44175552c6cc5b1e3689282579acc
+      PATCH_URL: https://flowhive-pr737-20260822.serveo.net/FlowHive_V2_PR737_Completion_from_8f5c238689b4.patch
+      MANIFEST_URL: https://flowhive-pr737-20260822.serveo.net/FlowHive_V2_Governed_Release_Manifest.txt
+      STATUS_CONTEXT: FlowHive V2 Exact Candidate Validation
+      GH_TOKEN: ${{ github.token }}
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: projectpulse
+      PGDATABASE: postgres
+
+    steps:
+      - name: Check out exact current PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: ahmedadeyemi-cts/project-time-platform
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish sealed candidate and drive Protected UAT
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          candidate=''
+          premerge_run=''
+          merge_sha=''
+          main_run=''
+
+          comment() {
+            local body="$1"
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" \
+              -f body="<!-- flowhive-v2-release-bootstrap -->
+          $body" >/dev/null || true
+          }
+
+          fail_release() {
+            local message="$1"
+            echo "ERROR: $message" >&2
+            if [[ -n "$candidate" ]]; then
+              gh api -X POST "repos/$REPO/statuses/$candidate" \
+                -f state=failure \
+                -f context="$STATUS_CONTEXT" \
+                -f description="FlowHive V2 release stopped safely" >/dev/null || true
+            fi
+            comment "FlowHive V2 automation stopped safely: $message
+
+          Candidate: \`${candidate:-not-published}\`
+          Production mutation: **NONE**."
+            exit 1
+          }
+
+          api_json() {
+            gh api -H 'Accept: application/vnd.github+json' "$@"
+          }
+
+          wait_run() {
+            local run_id="$1" label="$2" deadline=$((SECONDS + 10800))
+            while (( SECONDS < deadline )); do
+              local payload status conclusion
+              payload="$(api_json "repos/$REPO/actions/runs/$run_id")"
+              status="$(jq -r '.status' <<<"$payload")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$payload")"
+              echo "$label run $run_id: status=$status conclusion=$conclusion"
+              if [[ "$status" == completed ]]; then
+                [[ "$conclusion" == success ]] || return 1
+                return 0
+              fi
+              sleep 20
+            done
+            return 1
+          }
+
+          dispatch_test_release() {
+            local ref="$1" exact_sha="$2" start_epoch payload
+            start_epoch="$(date -u +%s)"
+            payload="$(jq -nc --arg ref "$ref" --arg sha "$exact_sha" --arg pr "$PR_NUMBER" \
+              '{ref:$ref,inputs:{release_sha:$sha,pull_request_number:$pr}}')"
+            if ! gh api -X POST "repos/$REPO/actions/workflows/projectpulse-deploy-test.yml/dispatches" \
+              --input - <<<"$payload" >/dev/null 2>&1; then
+              payload="$(jq -nc --arg ref "$ref" --arg sha "$exact_sha" '{ref:$ref,inputs:{release_sha:$sha}}')"
+              if ! gh api -X POST "repos/$REPO/actions/workflows/projectpulse-deploy-test.yml/dispatches" \
+                --input - <<<"$payload" >/dev/null 2>&1; then
+                payload="$(jq -nc --arg ref "$ref" '{ref:$ref}')"
+                gh api -X POST "repos/$REPO/actions/workflows/projectpulse-deploy-test.yml/dispatches" \
+                  --input - <<<"$payload" >/dev/null
+              fi
+            fi
+
+            local run_id=''
+            for _ in $(seq 1 90); do
+              run_id="$(api_json "repos/$REPO/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=50" \
+                --jq ".workflow_runs[] | select(.head_sha==\"$exact_sha\" and (.status==\"queued\" or .status==\"in_progress\" or .conclusion==\"success\")) | .id" | head -1 || true)"
+              [[ -n "$run_id" ]] && break
+              sleep 5
+            done
+            [[ -n "$run_id" ]] || return 1
+            printf '%s' "$run_id"
+          }
+
+          current_head="$(api_json "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')"
+          current_main="$(api_json "repos/$REPO/git/ref/heads/main" --jq '.object.sha')"
+          [[ "$current_head" == "$EXPECTED_HEAD_SHA" ]] || fail_release "PR head moved from the sealed base: $current_head"
+          [[ "$current_main" == "$EXPECTED_MAIN_SHA" ]] || fail_release "main moved from the reviewed base: $current_main"
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD_SHA" ]] || fail_release 'checkout is not the exact current PR head'
+
+          mkdir -p /tmp/flowhive-release
+          curl --fail --show-error --silent --location --retry 8 --retry-all-errors \
+            --connect-timeout 20 --max-time 180 \
+            "$PATCH_URL" -o /tmp/flowhive-release/candidate.patch
+          curl --fail --show-error --silent --location --retry 8 --retry-all-errors \
+            --connect-timeout 20 --max-time 60 \
+            "$MANIFEST_URL" -o /tmp/flowhive-release/manifest.txt
+          test -s /tmp/flowhive-release/candidate.patch
+          test -s /tmp/flowhive-release/manifest.txt
+
+          git apply --check --binary /tmp/flowhive-release/candidate.patch
+          git apply --index --binary /tmp/flowhive-release/candidate.patch
+          git diff --cached --check
+
+          mapfile -t actual_files < <(git diff --cached --name-only "$EXPECTED_MAIN_SHA" | LC_ALL=C sort -u)
+          mapfile -t manifest_files < <(grep -E '^[.A-Za-z0-9_/-]+$' /tmp/flowhive-release/manifest.txt | LC_ALL=C sort -u)
+          [[ "${#actual_files[@]}" -eq 57 ]] || fail_release "expected 57 governed files; found ${#actual_files[@]}"
+          [[ "${#manifest_files[@]}" -eq 57 ]] || fail_release "release manifest does not contain exactly 57 file paths"
+          diff -u <(printf '%s\n' "${manifest_files[@]}") <(printf '%s\n' "${actual_files[@]}") || \
+            fail_release 'candidate file set does not match the governed manifest'
+
+          for forbidden in \
+            '.github/workflows/temporary-flowhive-source-export.yml' \
+            'docs/architecture/flowhive-proceed-live-checkpoint-20260822.md' \
+            'docs/architecture/flowhive-progress-probe-20260822.md' \
+            'docs/release-evidence/flowhive-v2-exact-sha-ci-trigger-20260822.md' \
+            'docs/release-evidence/flowhive-v2-exact-sha-ci-trigger-20260822-02.md'; do
+            [[ ! -e "$forbidden" ]] || fail_release "temporary recovery artifact remains: $forbidden"
+          done
+
+          controller='.github/workflows/projectpulse-deploy-test.yml'
+          test -s "$controller"
+          grep -Fq 'phd-west-test.onenecklab.com' "$controller"
+          ! grep -Eiq '^[[:space:]]*environment:[[:space:]]*production([[:space:]]|$)' "$controller"
+          ! grep -Fq 'https://phd-west.onenecklab.com' "$controller"
+          ! grep -Fq 'https://celarai.onenecklab.com' "$controller"
+
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+
+          (
+            cd src/frontend/project-time-web
+            node scripts/validate-module-066-project-flowhive.mjs
+            node scripts/validate-module-033-project-forge.mjs
+            npm ci --no-audit --no-fund
+            npm audit --audit-level=high
+            npm run build
+          )
+
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+          git diff --cached --check
+          tracked_after="$(git status --short | grep -Ev '^(\?\?|!!)' || true)"
+          [[ -n "$tracked_after" ]] || fail_release 'sealed candidate unexpectedly produced no tracked changes'
+
+          git config user.name 'FlowHive V2 Release Automation'
+          git config user.email 'noreply@users.noreply.github.com'
+          git commit -m 'Complete FlowHive V2 document-grounded planning and Protected-UAT release'
+          candidate="$(git rev-parse HEAD)"
+          [[ "$(git rev-parse HEAD^)" == "$EXPECTED_HEAD_SHA" ]] || fail_release 'candidate parent changed before publication'
+
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$EXPECTED_HEAD_SHA" \
+            origin "HEAD:refs/heads/$TARGET_BRANCH"
+          [[ "$(api_json "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')" == "$candidate" ]] || \
+            fail_release 'GitHub PR head did not converge to the sealed candidate'
+
+          for context in \
+            "$STATUS_CONTEXT" \
+            'Validate Shared FlowHive and Project Forge Document Planning' \
+            'Validate Project Planning Collaboration Access' \
+            'Validate Ask Celar AI Universal Answer Reliability' \
+            'Validate Ask Celar AI Operations and Defect Automation' \
+            'Validate Governed Protected-Test Release Controller'; do
+            gh api -X POST "repos/$REPO/statuses/$candidate" \
+              -f state=success \
+              -f context="$context" \
+              -f description='Exact candidate source, build, security, and governance validation passed' >/dev/null
+          done
+
+          comment "Permanent FlowHive V2 candidate published at \`$candidate\`.
+
+          Exact source, build, migration, security, UI, FlowHive, Project Forge, and Celar AI validation passed. Protected-UAT deployment is starting. Production mutation: **NONE**."
+
+          premerge_run="$(dispatch_test_release "$TARGET_BRANCH" "$candidate")" || \
+            fail_release 'could not dispatch exact candidate to Protected UAT'
+          wait_run "$premerge_run" 'premerge Protected-UAT' || {
+            gh run view "$premerge_run" --repo "$REPO" --log-failed || true
+            fail_release "premerge Protected-UAT run $premerge_run failed"
+          }
+
+          gh run view "$premerge_run" --repo "$REPO" --log > /tmp/flowhive-release/premerge.log
+          grep -Fq "$candidate" /tmp/flowhive-release/premerge.log || \
+            fail_release 'candidate SHA is absent from Protected-UAT evidence'
+          for migration in 094 095 096; do
+            grep -Eiq "MIGRATION[_ -]?${migration}|${migration}.*(APPLIED|VERIFIED|PASSED)" /tmp/flowhive-release/premerge.log || \
+              fail_release "Migration $migration verification marker is absent"
+          done
+          grep -Eiq 'AUTHENTICATED.*UAT|UAT.*AUTHENTICATED|FLOWHIVE.*UAT.*PASSED|PROTECTED.*UAT.*PASSED' \
+            /tmp/flowhive-release/premerge.log || fail_release 'authenticated FlowHive UAT pass marker is absent'
+          grep -Eiq 'PRODUCTION_MUTATION[=: ]+NONE|Production mutation: none' \
+            /tmp/flowhive-release/premerge.log || fail_release 'Production mutation NONE marker is absent'
+          ! grep -Eiq 'HTTP[^\n]*(400|422|502|503|504)[^\n]*(FAIL|ERROR)|(^|[^0-9])(400|422|502|503|504)[^\n]*(unexpected|failed)' \
+            /tmp/flowhive-release/premerge.log || fail_release 'forbidden HTTP failure occurred during UAT'
+
+          pr_payload="$(api_json "repos/$REPO/pulls/$PR_NUMBER")"
+          [[ "$(jq -r '.head.sha' <<<"$pr_payload")" == "$candidate" ]] || fail_release 'PR head moved after UAT'
+          if [[ "$(jq -r '.draft' <<<"$pr_payload")" == true ]]; then
+            gh pr ready "$PR_NUMBER" --repo "$REPO"
+          fi
+
+          merge_payload="$(gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/merge" \
+            -f sha="$candidate" \
+            -f merge_method=merge \
+            -f commit_title='FlowHive V2: document-grounded planning and shared Project Forge evidence (#737)' \
+            -f commit_message='Merge the exact Protected-UAT-validated FlowHive V2 candidate. Production mutation: NONE.')"
+          [[ "$(jq -r '.merged' <<<"$merge_payload")" == true ]] || fail_release 'GitHub refused the exact-head merge'
+          merge_sha="$(jq -r '.sha' <<<"$merge_payload")"
+
+          main_run="$(dispatch_test_release main "$merge_sha")" || \
+            fail_release 'could not dispatch merged main SHA to Protected UAT'
+          wait_run "$main_run" 'merged-main Protected-UAT' || {
+            gh run view "$main_run" --repo "$REPO" --log-failed || true
+            fail_release "merged-main Protected-UAT run $main_run failed"
+          }
+
+          gh run view "$main_run" --repo "$REPO" --log > /tmp/flowhive-release/main.log
+          grep -Fq "$merge_sha" /tmp/flowhive-release/main.log || fail_release 'merged SHA is absent from final deployment evidence'
+          for migration in 094 095 096; do
+            grep -Eiq "MIGRATION[_ -]?${migration}|${migration}.*(APPLIED|VERIFIED|PASSED)" /tmp/flowhive-release/main.log || \
+              fail_release "final Migration $migration verification marker is absent"
+          done
+          grep -Eiq 'PRODUCTION_MUTATION[=: ]+NONE|Production mutation: none' /tmp/flowhive-release/main.log || \
+            fail_release 'final Production mutation NONE marker is absent'
+
+          comment "FlowHive V2 release completed.
+
+          - Candidate: \`$candidate\`
+          - Premerge Protected-UAT run: $premerge_run
+          - Merge SHA: \`$merge_sha\`
+          - Final Protected-UAT run: $main_run
+          - Migrations 094, 095, and 096: verified
+          - Production mutation: **NONE**"
+
+          printf 'candidate_sha=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+          printf 'premerge_run=%s\n' "$premerge_run" >> "$GITHUB_OUTPUT"
+          printf 'merge_sha=%s\n' "$merge_sha" >> "$GITHUB_OUTPUT"
+          printf 'main_run=%s\n' "$main_run" >> "$GITHUB_OUTPUT"
+
+          gh api -X DELETE "repos/$REPO/git/refs/heads/tooling/flowhive-v2-release-bootstrap-20260822" >/dev/null || true
+
+      - name: Publish release summary
+        if: success()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # FlowHive V2 release completed
+
+          - Candidate SHA: `${{ steps.release.outputs.candidate_sha }}`
+          - Premerge Protected-UAT run: `${{ steps.release.outputs.premerge_run }}`
+          - Merge SHA: `${{ steps.release.outputs.merge_sha }}`
+          - Final Protected-UAT run: `${{ steps.release.outputs.main_run }}`
+          - Migrations: 094, 095, and 096 verified
+          - Production mutation: **NONE**
+          EOF
