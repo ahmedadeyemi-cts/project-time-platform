@@ -78,8 +78,29 @@ jobs:
 
           if not script or script[0] != 'set -Eeuo pipefail':
               raise SystemExit('Final publisher script did not decode safely.')
+          diagnostic = [
+              'publisher_error() {',
+              '  rc=$?',
+              '  command=${BASH_COMMAND:-unknown}',
+              '  line=${BASH_LINENO[0]:-${LINENO:-unknown}}',
+              '  printf "exit_code=%s\\nline=%s\\ncommand=%s\\n" "$rc" "$line" "$command" > /tmp/flowhive-publisher-failure.txt',
+              '  cat /tmp/flowhive-publisher-failure.txt >&2',
+              '  exit "$rc"',
+              '}',
+              'trap publisher_error ERR',
+          ]
+          script[1:1] = diagnostic
           target = Path('/tmp/flowhive-final-publisher.sh')
           target.write_text('\n'.join(script) + '\n', encoding='utf-8')
           PY
           bash -n /tmp/flowhive-final-publisher.sh
           bash /tmp/flowhive-final-publisher.sh
+
+      - name: Upload publisher failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-publisher-failure-${{ github.run_id }}
+          path: /tmp/flowhive-publisher-failure.txt
+          if-no-files-found: warn
+          retention-days: 1
