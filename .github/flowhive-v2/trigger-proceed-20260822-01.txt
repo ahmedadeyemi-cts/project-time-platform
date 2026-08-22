@@ -1,0 +1,1 @@
+Authorized continuation for FlowHive V2 permanent-source convergence and Protected UAT deployment. Reuse PR #737, require exact-SHA green CI, apply Migrations 094, 095, and 096, deploy Test only, and record PRODUCTION_MUTATION=NONE.
