@@ -1,0 +1,249 @@
+name: One-time FlowHive V2 green merge and Protected Test deploy 20260822
+
+on:
+  push:
+    branches:
+      - tooling/one-time-flowhive-clean-publisher-20260819
+    paths:
+      - '.github/workflows/one-time-flowhive-v2-green-merge-deploy-20260822.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: one-time-flowhive-v2-green-merge-deploy-20260822
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Require green exact SHA, merge, deploy, and verify Protected Test
+    if: github.repository == 'ahmedadeyemi-cts/project-time-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PR_NUMBER: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      DEPLOY_WORKFLOW: projectpulse-deploy-test.yml
+      GH_TOKEN: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+
+    steps:
+      - name: Check out exact current PR candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          token: ${{ secrets.FLOWHIVE_PUBLISHER_TOKEN || secrets.PROJECTPULSE_GITHUB_TOKEN || secrets.GH_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Reverify exact candidate source locally
+        id: candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          remote_sha="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          [[ "$candidate_sha" == "$remote_sha" ]] || { echo 'ERROR: Checkout is not the current PR head.' >&2; exit 1; }
+          for required in \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentResolver.cs \
+            src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs \
+            database/migrations/094_flowhive_canonical_sow_authority.sql \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            database/migrations/096_project_planning_document_authority.sql \
+            database/rollback/096_project_planning_document_authority_rollback.sql \
+            tests/test-project-planning-document-authority-migration-096.sh \
+            tests/validate-shared-project-document-planning.mjs \
+            .github/workflows/projectpulse-deploy-test.yml; do
+            test -s "$required" || { echo "ERROR: Required permanent candidate file missing: $required" >&2; exit 1; }
+          done
+          test ! -e .github/workflows/temporary-flowhive-source-export.yml
+          if git ls-files | grep -E '(^|/)(flowhive-clean/|flowhive-v2/|one-time-flowhive|one-time-publish-exact-pr737|repair\.patch|patch-[0-9]+\.b64|exact-[0-9]+\.b64|incremental-[0-9]+\.b64)'; then
+            echo 'ERROR: Temporary recovery or release-control source remains in PR #737.' >&2
+            exit 1
+          fi
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node src/frontend/project-time-web/scripts/validate-module-033-project-forge.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          git diff --check
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_V2_EXACT_CANDIDATE=$candidate_sha"
+
+      - name: Build API and frontend before remote gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+          (
+            cd src/frontend/project-time-web
+            npm ci --no-audit --no-fund
+            npm audit --audit-level=high
+            npm run build
+          )
+          git diff --check
+          echo 'FLOWHIVE_V2_SUPERVISOR_LOCAL_GATE=PASSED'
+
+      - name: Wait for a completely green exact-SHA GitHub matrix
+        id: ci
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        run: |
+          set -Eeuo pipefail
+          required_names=(
+            'ProjectPulse CI'
+            'FlowHive Detailed Planner CI'
+            'Validate Shared FlowHive and Project Forge Document Planning'
+            'Validate Project Planning Collaboration Access'
+            'Validate Governed Protected-Test Release Controller'
+            'Validate Module 033 Project Forge'
+            'ProjectPulse Repository Security Posture'
+            'System-wide Enterprise Reliability CI'
+          )
+          settled=0
+          for attempt in $(seq 1 180); do
+            runs="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${CANDIDATE_SHA}&per_page=100" --jq '[.workflow_runs[] | {id,name,status,conclusion,event,head_sha,html_url,created_at}] | unique_by(.id)')"
+            printf '%s\n' "$runs" > "$RUNNER_TEMP/exact-sha-runs.json"
+            active="$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")"
+            failed="$(jq '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not))] | length' <<<"$runs")"
+            total="$(jq 'length' <<<"$runs")"
+            missing=0
+            for required in "${required_names[@]}"; do
+              jq -e --arg name "$required" 'any(.[]; .name == $name and .status == "completed" and (.conclusion | IN("success","skipped","neutral")))' <<<"$runs" >/dev/null || missing=$((missing+1))
+            done
+            echo "CI_POLL=$attempt TOTAL=$total ACTIVE=$active FAILED=$failed MISSING_REQUIRED=$missing"
+            if (( failed > 0 )); then
+              jq -r '.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "FAILED_RUN=\(.id) \(.name) \(.conclusion) \(.html_url)"' <<<"$runs" >&2
+              gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+                -f body="FlowHive V2 exact-SHA CI failed for \`${CANDIDATE_SHA}\`. Failed runs: $(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name) #\(.id) (\(.conclusion))"] | join(", ")' <<<"$runs"). PR #737 was not merged or deployed. Production mutation: NONE."
+              exit 1
+            fi
+            if (( active == 0 && missing == 0 && total >= ${#required_names[@]} )); then
+              settled=$((settled+1))
+              if (( settled >= 3 )); then
+                echo 'EXACT_SHA_CI_MATRIX=GREEN'
+                echo "run_inventory=$RUNNER_TEMP/exact-sha-runs.json" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            else
+              settled=0
+            fi
+            sleep 30
+          done
+          echo 'ERROR: Exact-SHA CI did not settle green within the guarded window.' >&2
+          exit 1
+
+      - name: Mark PR ready and merge exact candidate
+        id: merge
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        run: |
+          set -Eeuo pipefail
+          current_head="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          [[ "$current_head" == "$CANDIDATE_SHA" ]] || { echo 'ERROR: PR head changed after CI.' >&2; exit 1; }
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --delete-branch=false
+          for attempt in $(seq 1 30); do
+            merged="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged')"
+            [[ "$merged" == true ]] && break
+            sleep 10
+          done
+          [[ "$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged')" == true ]] || { echo 'ERROR: PR #737 did not merge.' >&2; exit 1; }
+          main_sha="$(gh api "/repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')"
+          git fetch origin main
+          git merge-base --is-ancestor "$CANDIDATE_SHA" "$main_sha" || { echo 'ERROR: Main does not contain the exact candidate.' >&2; exit 1; }
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_V2_MERGED_MAIN_SHA=$main_sha"
+
+      - name: Explicitly dispatch main-only Protected Test deployment
+        id: dispatch
+        shell: bash
+        env:
+          MAIN_SHA: ${{ steps.merge.outputs.main_sha }}
+        run: |
+          set -Eeuo pipefail
+          dispatch_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run "$DEPLOY_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref main
+          run_id=''
+          for attempt in $(seq 1 60); do
+            run_id="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW}/runs?branch=main&event=workflow_dispatch&per_page=30" --jq --arg sha "$MAIN_SHA" --arg since "$dispatch_time" '[.workflow_runs[] | select(.head_sha == $sha and .created_at >= $since)] | sort_by(.created_at) | reverse | .[0].id // empty')"
+            [[ "$run_id" =~ ^[0-9]+$ ]] && break
+            sleep 10
+          done
+          [[ "$run_id" =~ ^[0-9]+$ ]] || { echo 'ERROR: Protected-Test deployment run was not created.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN=$run_id"
+
+      - name: Wait for Protected Test deployment and verify evidence
+        shell: bash
+        env:
+          MAIN_SHA: ${{ steps.merge.outputs.main_sha }}
+          DEPLOY_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 240); do
+            status="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOY_RUN_ID}" --jq '.status')"
+            conclusion="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOY_RUN_ID}" --jq '.conclusion // ""')"
+            echo "DEPLOY_POLL=$attempt STATUS=$status CONCLUSION=$conclusion"
+            if [[ "$status" == completed ]]; then
+              [[ "$conclusion" == success ]] || { echo "ERROR: Protected-Test deployment concluded $conclusion." >&2; exit 1; }
+              break
+            fi
+            sleep 30
+          done
+          [[ "$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOY_RUN_ID}" --jq '.conclusion')" == success ]] || { echo 'ERROR: Protected-Test deployment did not complete successfully.' >&2; exit 1; }
+
+          gh run view "$DEPLOY_RUN_ID" --repo "$GITHUB_REPOSITORY" --log > "$RUNNER_TEMP/protected-test-deployment.log"
+          grep -Fq "$MAIN_SHA" "$RUNNER_TEMP/protected-test-deployment.log"
+          grep -Eiq '094_flowhive_canonical_sow_authority|MIGRATION_094' "$RUNNER_TEMP/protected-test-deployment.log"
+          grep -Eiq '095_project_planning_collaboration_access|MIGRATION_095' "$RUNNER_TEMP/protected-test-deployment.log"
+          grep -Eiq '096_project_planning_document_authority|MIGRATION_096' "$RUNNER_TEMP/protected-test-deployment.log"
+          grep -Eiq 'PRODUCTION_MUTATION[=: ]+NONE|Production mutation: none' "$RUNNER_TEMP/protected-test-deployment.log"
+
+          base='https://phd-west-test.onenecklab.com'
+          live_verified=false
+          for endpoint in /api/celar-ai/v1/system/version /api/system/version /health; do
+            status="$(curl -ksS --max-time 45 -o "$RUNNER_TEMP/live.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "$base$endpoint?flowhiveRelease=$DEPLOY_RUN_ID" || true)"
+            if [[ "$status" == 200 ]] && grep -Fq "$MAIN_SHA" "$RUNNER_TEMP/live.json"; then
+              live_verified=true
+              echo "LIVE_RUNTIME_SHA_ENDPOINT=$endpoint"
+              break
+            fi
+          done
+          [[ "$live_verified" == true ]] || { echo 'ERROR: Live Protected-Test runtime did not report the merged release SHA.' >&2; exit 1; }
+
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="## FlowHive V2 is ready for Protected-UAT testing\n\n- Candidate SHA: \`${{ steps.candidate.outputs.candidate_sha }}\`\n- Merged main SHA: \`${MAIN_SHA}\`\n- Protected-Test deployment run: \`${DEPLOY_RUN_ID}\`\n- Migrations 094, 095, and 096: verified in deployment evidence\n- Live runtime SHA: verified\n- Exact-SHA CI: green\n- Production mutation: NONE"
+          echo 'FLOWHIVE_V2_PROTECTED_UAT=READY'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Record fail-closed release result
+        if: failure()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -f body="FlowHive V2 green-merge/deploy supervisor failed in run \`${GITHUB_RUN_ID}\`. A failed gate is not represented as deployment success. Check the failed step before continuing. Production mutation: NONE." || true
